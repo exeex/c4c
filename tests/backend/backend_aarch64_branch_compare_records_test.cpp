@@ -78,6 +78,14 @@ int true_false_target_pairs_preserve_block_and_function_ids() {
       payload->condition_record->compare_operands.has_value()) {
     return fail("expected materialized-bool branch condition to retain value identity only");
   }
+  if (branch.opcode != aarch64_codegen::MachineOpcode::ConditionalBranch ||
+      branch.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      branch.operands.size() != 3 || branch.uses.size() != 3 ||
+      branch.operands[2].kind != aarch64_codegen::OperandKind::PreparedValue ||
+      branch.uses[2].value_id != prepare::PreparedValueId{30} ||
+      branch.uses[2].value_name != c4c::ValueNameId{7}) {
+    return fail("expected materialized-bool branch node to carry condition value operand");
+  }
   if (aarch64_codegen::branch_condition_form_name(payload->condition_record->form) !=
       "materialized_bool") {
     return fail("expected materialized-bool form name");
@@ -166,6 +174,16 @@ int fused_compare_conditions_preserve_predicate_type_and_operands() {
       condition.compare_operands->lhs.source_value.name != "%lhs" ||
       condition.compare_operands->rhs.source_value.name != "%rhs") {
     return fail("expected compare operand pair to retain prepared and BIR value facts");
+  }
+  if (branch.opcode != aarch64_codegen::MachineOpcode::CompareBranch ||
+      branch.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      branch.operands.size() != 5 || branch.uses.size() != 5 ||
+      branch.operands[2].kind != aarch64_codegen::OperandKind::PreparedValue ||
+      branch.operands[3].kind != aarch64_codegen::OperandKind::PreparedValue ||
+      branch.operands[4].kind != aarch64_codegen::OperandKind::PreparedValue ||
+      branch.uses[3].value_id != prepare::PreparedValueId{41} ||
+      branch.uses[4].value_id != prepare::PreparedValueId{42}) {
+    return fail("expected fused compare branch node to carry condition and compare operands");
   }
   return 0;
 }

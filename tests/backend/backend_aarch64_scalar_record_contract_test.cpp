@@ -206,6 +206,23 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
     return fail("expected deferred scalar records to preserve source opcodes without support");
   }
 
+  const auto deferred_alu_node = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(deferred_alu));
+  const auto deferred_cast_node = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(deferred_cast));
+  if (deferred_alu_node.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      deferred_cast_node.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      deferred_alu_node.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      deferred_cast_node.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      deferred_alu_node.selection.diagnostic !=
+          "scalar ALU operation is outside the selected subset" ||
+      deferred_cast_node.selection.diagnostic !=
+          "scalar cast operation is outside the selected subset") {
+    return fail("expected unsupported scalar machine nodes to fail closed");
+  }
+
   return 0;
 }
 

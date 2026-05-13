@@ -1,59 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/215_aarch64_first_machine_node_selection_slice.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Add Minimal Machine Node Model
+Current Step ID: Step 3
+Current Step Title: Select Scalar And Branch Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2: Add Minimal Machine Node Model.
+Completed `plan.md` Step 3: Select Scalar And Branch Nodes.
 
-The existing `InstructionRecord` shell in
-`src/backend/mir/aarch64/codegen/records.hpp` now carries the minimal selected
-machine-node surface for the first AArch64 selection subset:
+`records.cpp` now tightens scalar and branch machine-node selection over the
+accepted target-MIR record subset:
 
-- concrete `MachineOpcode` identity for branch, compare-branch, scalar ALU,
-  simple cast, memory load/store, and spill/reload pseudo op families
-- explicit `MachinePseudoKind` markers for future selected spill/reload pseudo
-  nodes
-- `MachineNodeStatusRecord` with selected/deferred/missing-facts status and a
-  diagnostic string for fail-closed unsupported cases
-- ordered typed node operands copied from existing branch/scalar/memory record
-  payloads without assembly text
-- `defs`, `uses`, `clobbers`, and `side_effects` vectors over structured
-  resources such as prepared values, registers, memory, frame slots, symbols,
-  branch targets, and control-flow/memory/call/return effects
+- supported integer scalar ALU and simple cast records stay selected with
+  concrete `MachineOpcode` values, typed operands, prepared value provenance,
+  and def/use metadata
+- unsupported scalar ALU and cast records now fail closed as
+  `DeferredUnsupported` machine nodes with explicit diagnostics instead of
+  looking selected with an unspecified opcode
+- materialized-bool conditional branches now surface the condition value as a
+  structured node operand when no physical condition operand is already present
+- fused integer compare branches now surface condition plus compare operands as
+  structured node operands, preserve predicates and compare widths in the
+  payload, and fail closed when required compare facts or fusable-candidate
+  authority are missing
 
-`records.cpp` now derives opcode, ordered operands, def/use metadata, and
-side-effect metadata in the existing `make_*_instruction` helpers. It also
-publishes name helpers for the new enums and a
-`make_unsupported_machine_instruction(...)` fail-closed constructor for
-unsupported selection inputs.
-
-Focused backend tests now inspect the new structured fields directly in
-`backend_aarch64_target_instruction_records`,
-`backend_aarch64_scalar_record_contract`, and
-`backend_aarch64_memory_operand_records`, including selected status, concrete
-opcode names, pseudo vocabulary, def/use resources, memory/control-flow
-effects, and deferred unsupported status without relying on assembly text.
+Focused backend tests now inspect structured scalar, materialized-bool branch,
+and fused compare-branch machine-node fields directly, including operand order,
+prepared value ids, register uses, opcode identity, selection status, and
+unsupported-case diagnostics without relying on assembly text.
 
 ## Suggested Next
 
-Implement Step 3 by selecting scalar ALU/cast and branch/compare records into
-the now-structured `InstructionRecord` machine-node fields, keeping unsupported
-forms fail-closed through `MachineNodeStatusRecord`.
+Implement Step 4 by selecting the narrow spill/reload and memory operand subset
+into structured machine-node fields, preserving prepared slot/scratch/memory
+facts and keeping unsupported forms fail-closed.
 
 ## Watchouts
 
 - Do not emit or parse assembly text under this plan.
 - Select only from accepted target-MIR records; do not bypass through rendered
   BIR, old examples, or fixture names.
-- Step 2 added the model and helper derivation, not a module-owned selected-node
-  list.
-- Keep call/return/prologue/variadic/global/linker behavior out of the first
-  selection subset even though placeholder record variants and statuses exist.
+- Branch compare records still preserve predicate and compare width in the
+  payload; there is no condition-code spelling or final compare instruction
+  encoding in this slice.
+- Step 4 should keep call/return/prologue/variadic/global/linker behavior out
+  of scope even though placeholder record variants and statuses exist.
 - The spill/reload pseudo vocabulary is present, but the module spill/reload
   bridge still belongs to the later spill/reload selection packet.
 

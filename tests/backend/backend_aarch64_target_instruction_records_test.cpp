@@ -43,29 +43,55 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
                   .function_name = c4c::FunctionNameId{2},
                   .condition_value_id = prepare::PreparedValueId{10},
               },
+          .target_pair =
+              aarch64_codegen::BranchTargetPairRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .true_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{7},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{10},
+                      },
+                  .false_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{8},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{10},
+                      },
+              },
           .condition = condition,
+          .condition_record =
+              aarch64_codegen::BranchConditionRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .form = aarch64_codegen::BranchConditionForm::MaterializedBool,
+                  .condition_value_id = prepare::PreparedValueId{10},
+                  .condition_value_name = c4c::ValueNameId{3},
+                  .condition_type = bir::TypeKind::I1,
+              },
           .conditional = true,
       });
 
   const auto scalar = aarch64_codegen::make_scalar_instruction(
-      aarch64_codegen::ScalarInstructionRecord{
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I64,
           .result_value_id = prepare::PreparedValueId{11},
           .result_value_name = c4c::ValueNameId{4},
           .result_type = bir::TypeKind::I64,
-          .inputs =
-              {
-                  make_value_register(prepare::PreparedValueId{12}, c4c::ValueNameId{5}, 2),
-                  aarch64_codegen::make_immediate_operand(
-                      aarch64_codegen::ImmediateOperand{
-                          .kind = aarch64_codegen::ImmediateKind::SignedInteger,
-                          .type = bir::TypeKind::I64,
-                          .signed_value = 8,
-                          .source_value_id = prepare::PreparedValueId{13},
-                          .source_value_name = c4c::ValueNameId{6},
-                      }),
-              },
-          .source_binary_opcode = bir::BinaryOpcode::Add,
-      });
+          .lhs = make_value_register(prepare::PreparedValueId{12}, c4c::ValueNameId{5}, 2),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I64,
+              .signed_value = 8,
+              .source_value_id = prepare::PreparedValueId{13},
+              .source_value_name = c4c::ValueNameId{6},
+          }),
+          .supported_integer_operation = true,
+      }));
 
   const auto memory = aarch64_codegen::make_memory_instruction(
       aarch64_codegen::MemoryInstructionRecord{
@@ -100,13 +126,15 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       branch.opcode != aarch64_codegen::MachineOpcode::ConditionalBranch ||
       aarch64_codegen::machine_opcode_name(branch.opcode) != "conditional_branch" ||
       branch.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      branch.operands.size() != 2 || branch.uses.size() != 2 || !branch.defs.empty() ||
+      branch.operands.size() != 3 || branch.uses.size() != 3 || !branch.defs.empty() ||
       branch.side_effects.size() != 1 ||
       branch.side_effects.front() != aarch64_codegen::MachineSideEffectKind::ControlFlowTransfer ||
       !aarch64_codegen::is_structured_downstream_surface(branch.surface) ||
       branch_payload == nullptr || !branch_payload->conditional ||
       branch_payload->target.block_label != c4c::BlockLabelId{7} ||
-      branch_payload->target.condition_value_id != prepare::PreparedValueId{10}) {
+      branch_payload->target.condition_value_id != prepare::PreparedValueId{10} ||
+      !branch_payload->target_pair.has_value() ||
+      branch_payload->target_pair->false_target.block_label != c4c::BlockLabelId{8}) {
     return fail("expected branch instruction to be a typed machine-node handoff");
   }
 
@@ -114,7 +142,7 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       scalar_payload->inputs.size() != 2 ||
       scalar_payload->source_binary_opcode != bir::BinaryOpcode::Add ||
       aarch64_codegen::instruction_family_name(scalar.family) != "scalar" ||
-      scalar.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      scalar.opcode != aarch64_codegen::MachineOpcode::Add ||
       scalar.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       scalar.operands.size() != 2 || scalar.uses.size() != 2 ||
       scalar.defs.size() != 1 ||

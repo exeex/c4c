@@ -1300,6 +1300,33 @@ MachineEffectResource prepared_value_def(
   };
 }
 
+OperandRecord make_condition_value_operand(const BranchConditionRecord& condition) {
+  return make_prepared_value_operand(PreparedValueOperand{
+      .value_id = condition.condition_value_id.value_or(0),
+      .value_name = condition.condition_value_name,
+      .type = condition.condition_type,
+  });
+}
+
+std::optional<OperandRecord> make_compare_value_operand(const CompareValueRecord& value) {
+  if (value.source_value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    const auto immediate =
+        make_scalar_immediate_operand(value.source_value, value.value_id, value.value_name);
+    if (immediate.has_value()) {
+      return make_immediate_operand(*immediate);
+    }
+    return std::nullopt;
+  }
+  if (!value.value_id.has_value()) {
+    return std::nullopt;
+  }
+  return make_prepared_value_operand(PreparedValueOperand{
+      .value_id = *value.value_id,
+      .value_name = value.value_name,
+      .type = value.type,
+  });
+}
+
 std::vector<OperandRecord> branch_instruction_operands(const BranchInstructionRecord& instruction) {
   std::vector<OperandRecord> operands;
   if (instruction.target_pair.has_value()) {
@@ -1317,6 +1344,23 @@ std::vector<OperandRecord> branch_instruction_operands(const BranchInstructionRe
   }
   if (instruction.condition.has_value()) {
     operands.push_back(*instruction.condition);
+  } else if (instruction.condition_record.has_value() &&
+             instruction.condition_record->condition_value_id.has_value()) {
+    operands.push_back(make_condition_value_operand(*instruction.condition_record));
+  }
+  if (instruction.condition_record.has_value() &&
+      instruction.condition_record->form == BranchConditionForm::FusedCompare &&
+      instruction.condition_record->compare_operands.has_value()) {
+    if (const auto lhs =
+            make_compare_value_operand(instruction.condition_record->compare_operands->lhs);
+        lhs.has_value()) {
+      operands.push_back(*lhs);
+    }
+    if (const auto rhs =
+            make_compare_value_operand(instruction.condition_record->compare_operands->rhs);
+        rhs.has_value()) {
+      operands.push_back(*rhs);
+    }
   }
   return operands;
 }
@@ -1341,6 +1385,73 @@ std::vector<MachineSideEffectKind> memory_side_effects(
     side_effects.push_back(MachineSideEffectKind::VolatileMemoryAccess);
   }
   return side_effects;
+}
+
+MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& instruction,
+                                                const std::vector<OperandRecord>& operands) {
+  if (!instruction.conditional) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (!instruction.target_pair.has_value() || !instruction.condition_record.has_value()) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "conditional branch is missing target pair or condition"};
+  }
+  const auto& condition = *instruction.condition_record;
+  if (!condition.condition_value_id.has_value() ||
+      condition.condition_value_name == c4c::kInvalidValueName ||
+      condition.condition_type != c4c::backend::bir::TypeKind::I1) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "conditional branch is missing condition value identity"};
+  }
+  if (condition.form == BranchConditionForm::FusedCompare) {
+    const auto has_candidate = condition.compare_branch_candidate.has_value();
+    const auto candidate_fusable =
+        has_candidate ? condition.compare_branch_candidate->kind ==
+                                BranchCompareCandidateKind::FusedCompareAndBranch &&
+                            condition.compare_branch_candidate->can_fuse_with_branch
+                      : condition.can_fuse_with_branch;
+    if (!condition.predicate.has_value() || !condition.compare_operands.has_value()) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                     .diagnostic =
+                                         "fused compare branch is missing compare facts"};
+    }
+    if (!condition.can_fuse_with_branch || !candidate_fusable) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                     .diagnostic =
+                                         "compare branch candidate is not fusable"};
+    }
+    if (operands.size() < 5U) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                     .diagnostic =
+                                         "fused compare branch is missing compare operands"};
+    }
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& instruction) {
+  if (instruction.scalar_alu.has_value()) {
+    if (instruction.scalar_alu->supported_integer_operation &&
+        instruction.scalar_alu->operation != ScalarAluOperationKind::Deferred) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                   .diagnostic =
+                                       "scalar ALU operation is outside the selected subset"};
+  }
+  if (instruction.scalar_cast.has_value()) {
+    if (instruction.scalar_cast->supported_simple_integer_cast &&
+        instruction.scalar_cast->operation != ScalarCastOperationKind::Deferred) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                   .diagnostic =
+                                       "scalar cast operation is outside the selected subset"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                 .diagnostic = "scalar node is missing scalar ALU or cast record"};
 }
 
 }  // namespace
@@ -1375,11 +1486,12 @@ OperandRecord make_memory_operand(MemoryOperand operand) {
 
 InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
   const auto operands = branch_instruction_operands(instruction);
+  const auto selection = branch_selection_status(instruction, operands);
   return InstructionRecord{
       .family = InstructionFamily::Branch,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .opcode = machine_opcode_from_branch_instruction(instruction),
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .selection = selection,
       .function_name = instruction.target.function_name,
       .block_label = instruction.target.block_label,
       .operands = operands,
@@ -1394,11 +1506,12 @@ InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
   if (instruction.result_value_id.has_value()) {
     defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
   }
+  const auto selection = scalar_selection_status(instruction);
   return InstructionRecord{
       .family = InstructionFamily::Scalar,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .opcode = machine_opcode_from_scalar_instruction(instruction),
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .selection = selection,
       .operands = instruction.inputs,
       .defs = defs,
       .uses = effects_from_operands(instruction.inputs),
