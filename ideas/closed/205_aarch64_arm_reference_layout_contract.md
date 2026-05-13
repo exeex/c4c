@@ -1,7 +1,8 @@
 # AArch64 ARM-Reference Layout Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/203_aarch64_markdown_first_backend_reconstruction.md`
