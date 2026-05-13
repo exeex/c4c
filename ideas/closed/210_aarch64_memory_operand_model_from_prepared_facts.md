@@ -1,7 +1,8 @@
 # AArch64 Memory Operand Model From Prepared Facts
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/open/207_aarch64_target_register_and_instruction_record_core.md`
@@ -78,6 +79,24 @@ invent ad hoc memory records in the first file that needs them.
 - Tests or compile proof cover representative memory operand construction and
   volatility/address-space preservation.
 - No load/store instruction selection or assembly emission is introduced.
+
+## Closure Notes
+
+Closed after the active runbook completed all six steps. The accepted work
+defined the AArch64 target-local memory operand model under the target record
+owner, added prepared-fact conversion coverage for representative memory bases,
+documented the memory operand contract, and proved the record-only boundary.
+
+The completed slice preserves prepared memory access identity, base identity,
+offset, size, alignment, volatility, and address-space facts in target-local
+records. Load/store instruction selection, assembly, encoding, object output,
+calls, returns, and memory emission remain out of scope.
+
+Close validation used the backend proof scope:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
+
+Regression guard passed with `--allow-non-decreasing-passed`: 131 passed before,
+131 passed after, 0 failed.
 
 ## Reviewer Reject Signals
 
