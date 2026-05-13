@@ -48,6 +48,13 @@ The memory carrier facts named by that ledger are the shared typed fields
 atomics, inline-asm, or alias-analysis markdown must not be used to infer or
 reconstruct those facts for target lowering.
 
+Allocation-sensitive roadmap language is governed by
+`ALLOCATION_CONTRACT.md`. Legacy notes may describe old fixed registers,
+callee-saved caches, stack slots, or scratch choices, but future scalar,
+memory, branch, call, return, vector, inline-asm, prologue, assembler, and
+object work must consume the shared allocation result for long-lived homes,
+structured spill slots, reserved MIR scratch, and call resources.
+
 ## Artifact Index
 
 | Artifact | Classification | Contract influence | Legacy or deprecated note |
@@ -110,6 +117,9 @@ For Step 4, the only positive inputs from this index should be:
   and `PreparedMemoryAccess::is_volatile`, treated as the only accepted source
   for address-space and volatility facts before target-local memory operands
   exist.
+- `ALLOCATION_CONTRACT.md` as the accepted source for allocation-result shape,
+  physical homes, structured spill slots, reserved MIR scratch policy, and
+  call-preservation resources.
 
 Everything marked `obsolete route` or `delete/defer` is excluded from the new
 backend entry contract unless a later plan explicitly reopens it.

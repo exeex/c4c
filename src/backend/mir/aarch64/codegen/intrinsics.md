@@ -230,6 +230,10 @@ Intrinsic lowering should map each accepted intrinsic family to structured
 target MIR and machine instruction nodes before printer or encoder handling.
 Feature-gated mnemonic choices such as CRC or cache maintenance must be node
 identity or encoding-table data, not parser-recovered assembly text.
+Scalar, vector, CRC, cache-maintenance, and helper-call temporaries must use
+the allocation result and reserved MIR scratch policy from
+`../ALLOCATION_CONTRACT.md`; intrinsic-specific notes may not allocate `x0`,
+`x9`, `v0`, or `v1` as local homes.
 
 1. Separate scalar builtins, barriers/cache hints, vector memory operations,
    vector arithmetic, CRC, and unsupported x86-only intrinsic policy.

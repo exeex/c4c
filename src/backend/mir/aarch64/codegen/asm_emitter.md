@@ -205,9 +205,13 @@ boundary, not a direct semantic emitter. Constraint resolution, scratch
 lifetimes, memory operands, and condition-code outputs should be represented in
 target MIR and machine instruction nodes before any final assembly template is
 printed.
+Inline-asm operand homes, clobbers, and reserved scratch must route through
+`../ALLOCATION_CONTRACT.md` plus a later structured inline-asm contract; this
+surface must not revive standalone scratch allocation or callee-save repair.
 
 1. Establish target constraint classification and immediate validation.
-2. Rebuild scratch allocation with explicit lifetime and clobber rules.
+2. Rebuild scratch use as bounded target MIR records selected from the reserved
+   MIR scratch policy, with explicit lifetime and clobber rules.
 3. Rebuild memory operand resolution around direct alloca memory, pointer-slot
    indirection, and constant addresses.
 4. Rebuild input preload and output store paths with SP and FP/SIMD register

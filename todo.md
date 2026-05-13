@@ -8,46 +8,41 @@ Current Step Title: Align AArch64 Markdown Roadmap Artifacts
 
 ## Just Finished
 
-Step 3 of `plan.md` aligned the implemented AArch64 ABI, module, and codegen
-record surfaces with `src/backend/mir/aarch64/ALLOCATION_CONTRACT.md`.
+Step 4 of `plan.md` aligned AArch64 markdown roadmap artifacts with
+`src/backend/mir/aarch64/ALLOCATION_CONTRACT.md`.
 
-The ABI surface now exposes explicit AAPCS64 allocation pool vocabulary,
-reserved MIR scratch sets (`x9`/`x10`, `v16`/`v17`), special/forbidden
-classification, and long-lived home eligibility without implementing an
-allocator. Module target-register records now distinguish prepared snapshots,
-allocation results, and spill/reload scratch records, carry typed allocation
-pool classification when physical names parse as AArch64 registers, and mark
-stack offsets as prepared snapshots rather than frame-layout authority.
-Codegen record operands now have explicit allocation-result and reserved MIR
-scratch roles, while frame/memory byte offsets remain snapshot fields.
+`BACKEND_ENTRY_CONTRACT.md`, `BIR_PREPARED_GAP_LEDGER.md`, and
+`CLASSIFICATION_INDEX.md` now name the allocation contract as the authority for
+allocation-result shape, long-lived homes, structured spill-slot ids, reserved
+MIR scratch policy, call-preservation resources, and future virtual-register
+placeholders.
 
-Focused backend tests cover the new boundary behavior for ABI pools, module
-record snapshots, stack-offset snapshot markers, and codegen register roles.
+The codegen roadmap artifacts now route future scalar ALU, comparison/branch,
+cast, float, global address, i128/f128, intrinsic/vector, memory, call, return,
+variadic, inline-asm, asm-emitter, prologue, atomics, and record work through
+the shared allocation result instead of letting each slice allocate registers,
+invent spills, or patch calling-convention resources locally.
 
 ## Suggested Next
 
-Execute Step 4: align AArch64 markdown roadmap artifacts so future scalar,
-memory, branch, call, return, vector, assembler, and object work routes
-allocation-sensitive decisions through the shared allocation result contract
-instead of local register or spill ownership.
+Execute Step 5: review the Step 1 audit notes, implemented-surface alignment,
+and markdown roadmap updates for missing shared BIR/prepared allocation input
+or output carriers. If a required shared carrier is missing, create a separate
+`ideas/open/` gap idea; otherwise record that no separate gap blocks the
+allocation contract.
 
 ## Watchouts
 
-- The new ABI helpers classify register roles and candidate eligibility only;
-  they do not choose value homes or implement an allocation algorithm.
-- Module stack offsets remain copied prepared facts for inspection and
-  diagnostics. They are not final frame-layout authority.
-- Spill/reload records still preserve prepared spill-slot identity and optional
-  snapshot offsets only; this slice did not introduce reload/store pseudo
-  operations or machine-node emission.
-- `x8`, `x16`, `x17`, `x18`, `x30`, frame-pointer-reserved `x29`, `sp`, and
-  reserved MIR scratch registers remain unavailable as default long-lived BIR
-  value homes.
+- Historical fixed-register and stack-slot inventories remain in the markdown
+  as descriptive evidence; future-direction guidance now points allocation
+  authority back to `ALLOCATION_CONTRACT.md`.
+- This packet did not edit `ALLOCATION_CONTRACT.md`, implementation files, or
+  tests.
+- Step 5 should distinguish missing shared BIR/prepared carriers from missing
+  target-local AArch64 MIR records. Target-local records are expected later
+  work, not automatically shared-carrier gaps.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed. Proof output is preserved in `test_after.log`, including
-`100% tests passed, 0 tests failed out of 131`.
-
-`git diff --check` also passed.
+`git diff --check` passed. Proof output is preserved in `test_after.log`; the
+log is empty because the command produced no diagnostics.

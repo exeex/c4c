@@ -195,6 +195,9 @@ Variadic lowering should carry `va_list`, register-save, stack fallback, and
 helper-call requirements through structured target MIR and machine instruction
 nodes. Any assembly text for saves, loads, or runtime-helper calls is printer
 output after those facts are selected.
+The register-save area, stack fallback, helper-call resources, and long-lived
+homes must route through `../ALLOCATION_CONTRACT.md` and target ABI records;
+variadic lowering must not patch call resources or spill slots locally.
 
 1. Preserve the 32-byte AAPCS64 `va_list` record shape and signed offset
    semantics.

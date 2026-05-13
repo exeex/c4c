@@ -215,6 +215,10 @@ interacts with backend lowering, operands, clobbers, constraints, and side
 effects should be structured target MIR or machine-node facts before any final
 template formatting; parser recovery from emitted text must not supply codegen
 semantics.
+Register constraints, tied operands, clobbers, output homes, and temporary
+scratch must consume `../ALLOCATION_CONTRACT.md` and a later inline-asm
+contract. Inline asm must not run an independent register allocator or spill
+planner.
 
 1. Keep positional and named operand resolution separate, with a first-class
    GCC-number to internal-index map.

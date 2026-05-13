@@ -125,6 +125,9 @@ Floating-point lowering should model FP/SIMD register transitions in structured
 target MIR and machine instruction nodes before any `<mnemonic>` text is
 printed. Native FP operations and binary128 helper calls should remain typed
 node families rather than parser-recovered assembly strings.
+FP/SIMD homes and integer bridge temporaries must be selected by the allocation
+result and reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`; this
+surface must keep GPR and FPR/SIMD pools separate.
 
 1. Keep the integer-temporary bridge and FP/SIMD arithmetic body visibly
    separate.

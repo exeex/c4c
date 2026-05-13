@@ -40,6 +40,12 @@ Deferred behavior guardrails:
 - Scalar records do not own concrete AArch64 mnemonics, condition-code spelling,
   flag-setting behavior, immediate encoding legality, register allocation,
   assembly text, object encoding, memory lowering, calls, or returns.
+- Allocation-result records are the only target MIR authority for long-lived
+  physical homes, structured spill-slot ids, reserved MIR scratch use, call
+  preservation resources, and future virtual-register placeholders. Scalar,
+  branch, memory, call, return, vector, inline-asm, and prologue records may
+  consume that data, but must not recover it from rendered register names or
+  create local allocation policy.
 - Memory records carry prepared address facts and base/offset shape hints only;
   load/store instruction choice, addressing legality, and spill code are
   deferred.

@@ -141,6 +141,10 @@ Comparison lowering should first produce structured target MIR facts and then
 machine instruction nodes for compare, branch, select, and materialized-boolean
 forms. Condition-code spellings and final branch mnemonics belong to the `.s`
 printer or lower encoding records, not to parser-recovered semantic state.
+Compare operands, materialized boolean destinations, and branch-time scratch
+must consume allocation-result homes and reserved scratch policy from
+`../ALLOCATION_CONTRACT.md` instead of choosing registers inside branch or
+comparison lowering.
 
 1. Keep integer compare instruction selection and integer condition-code
    mapping in one shared AArch64 compare helper.

@@ -45,7 +45,10 @@ An accepted `PreparedBirModule` must provide these facts to the AArch64 route:
 - `liveness`, `register_group_overrides`, `regalloc`, `value_locations`, and
   `storage_plans`: value identity, register class or bank decisions, physical
   register or stack-slot homes, move bundles, spill/reload facts, and storage
-  encodings already prepared by the shared backend pipeline.
+  encodings already prepared by the shared backend pipeline. AArch64 lowering
+  must interpret these through `ALLOCATION_CONTRACT.md`; individual lowering
+  slices must not allocate long-lived registers, invent spill slots, or treat
+  final stack offsets as the allocation result.
 - `call_plans`: direct, extern, variadic, indirect, memory-return, argument,
   result, preserved-value, and clobber facts for call lowering.
 - `invariants` and `completed_phases`: proof that the configured prepare
@@ -132,6 +135,9 @@ structures are:
 - move, copy, spill, reload, and ABI-binding records sourced from
   `value_locations`, `regalloc`, `storage_plans`, and prepared control-flow
   parallel-copy bundles
+- allocation-result records that preserve physical homes, spill-slot ids,
+  reserved MIR scratch policy, call-preservation obligations, and future
+  virtual-register placeholders according to `ALLOCATION_CONTRACT.md`
 - a data/object side table for globals, string constants, symbol visibility,
   TLS, constants, initializers, and later relocation needs
 
@@ -156,6 +162,9 @@ The AArch64 rebuild explicitly rejects these routes:
   general semantic lowering rule
 - parser/assembler operand recovery as a substitute for target-local MIR
   operands
+- scalar, memory, branch, call, return, vector, inline-asm, or prologue slices
+  that choose long-lived homes, reserve scratch registers, invent spill slots,
+  or patch calling-convention resources outside `ALLOCATION_CONTRACT.md`
 - reviving `ArmCodegen` or old AArch64 direct text-emitter entry points as the
   new backend contract
 - built-in assembler or linker orchestration as an implied requirement of the
@@ -174,3 +183,9 @@ Use the index to decide which legacy notes can inform later target-ABI,
 instruction-selection, assembler, or binary-utils work. Do not use the index,
 or any extracted legacy markdown file, as proof that live AArch64 lowering,
 assembly, object emission, or linking exists.
+
+Use `ALLOCATION_CONTRACT.md` as the allocation-resource boundary for any future
+roadmap note that mentions register homes, spill slots, reserved scratch,
+caller/callee-save obligations, or call resources. Historical fixed-register
+examples remain descriptive only; future work must consume the shared
+allocation result before target MIR records become machine instruction nodes.

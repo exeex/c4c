@@ -110,6 +110,9 @@ Global and label materialization should publish structured target MIR facts and
 machine instruction nodes for address computation and relocation needs. Symbol
 spellings, `ADRP`/`ADD` printer text, and relocation syntax are downstream
 printer or encoding/object concerns, not lookup authority for codegen.
+Address-result homes and temporary materialization registers must come from the
+allocation result and reserved MIR scratch policy in
+`../ALLOCATION_CONTRACT.md`, not from a globals-local `x0` convention.
 
 1. Keep global, label, and thread-local address materialization as separate
    cases.

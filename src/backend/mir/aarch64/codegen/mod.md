@@ -99,3 +99,8 @@ The accepted rebuild route is structured target MIR records followed by
 machine instruction nodes. Assembly-text emission is a printer consumer of
 those nodes, and encoder/object work must consume nodes or lower structured
 encoding records instead of parsing codegen-emitted text.
+Allocation-sensitive work in any shard must consume
+`../ALLOCATION_CONTRACT.md` for long-lived homes, structured spill-slot ids,
+reserved MIR scratch, call-preservation resources, and future virtual-register
+placeholders. Shard-local lowering must not allocate registers or invent spill
+storage independently.

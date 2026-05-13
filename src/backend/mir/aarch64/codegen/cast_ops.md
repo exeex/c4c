@@ -156,6 +156,9 @@ Cast lowering should keep source and destination type facts in structured
 target MIR and machine instruction nodes. Concrete move, extend, convert, or
 helper-call mnemonics are downstream printer or encoding choices, not parsed
 semantic input.
+Source homes, destination homes, and any cross-register-file temporaries must
+come from the allocation result in `../ALLOCATION_CONTRACT.md`; cast lowering
+must not invent spill storage or merge GPR and FPR/SIMD allocation pools.
 
 1. Keep source materialization/storage separate from the AArch64 instruction
    body, as the old `emit_cast_impl` did through the default cast route.

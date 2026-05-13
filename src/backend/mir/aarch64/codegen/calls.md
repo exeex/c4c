@@ -227,11 +227,15 @@ Call lowering should publish target MIR call records and machine instruction
 nodes carrying callee identity, argument/result placement, preserved values,
 and clobbers. `bl`/`blr` spelling, relocation syntax, and final call sequence
 text belong to printer or encoding/object consumers.
+Argument/result homes, indirect-call scratch, function-pointer spill identity,
+and live-across-call preservation must be sourced from the shared allocation
+result in `../ALLOCATION_CONTRACT.md`, not patched by the call slice.
 
 1. Keep ABI classification separate from physical emission, but preserve the
    exact AArch64 policy bits listed above.
 2. Model outgoing stack layout explicitly, including 16-byte alignment for wide
-   scalar classes and the indirect-call function-pointer spill area.
+   scalar classes and the allocation-result spill slot for indirect-call
+   function pointers.
 3. Preserve the distinction between exact F128 source recovery and fallback
    double-to-F128 conversion.
 4. Keep register-argument staging ordered so source values survive moves into

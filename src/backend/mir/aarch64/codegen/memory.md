@@ -290,6 +290,9 @@ facts through target MIR memory operands and machine instruction nodes before
 any `.s` printing. Load/store mnemonics may be derived from nodes for printer
 or encoder consumers, but parsed mnemonic text must not become semantic
 authority.
+Pointer homes, loaded/stored value homes, spill-slot materialization, and
+address-computation scratch must consume the shared allocation result and
+reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`.
 
 1. Keep direct stack-slot, indirect pointer-slot, and over-aligned alloca
    addressing as distinct paths.
@@ -297,8 +300,9 @@ authority.
    AArch64 long-double ABI policy is defined.
 3. Make typed load/store width, sign-extension, and zero-extension decisions
    visible at the instruction-selection boundary.
-4. Keep address computation scratch-register ownership explicit, especially
-   `x9`, `x10`, `x17`, and source-preserving use of `x1`.
+4. Keep address computation scratch-register ownership explicit through the
+   reserved MIR scratch policy, especially `x9`, `x10`, `x17`, and
+   source-preserving use of `x1`.
 5. Treat large signed offsets and alignment masks as materialized-register
    cases rather than assuming immediate encodability.
 6. Prove direct, indirect, over-aligned, GEP, dynamic stack, F128, and memcpy

@@ -251,9 +251,12 @@ Rebuild this surface around an explicit pair-lowering contract:
 MIR and machine instruction nodes for arithmetic, shifts, helper calls, and
 transport. Final instruction spelling and helper-call text are printer or
 encoding/object concerns only.
+Pair homes, helper-call resources, and spill/reload materialization must be
+represented by the shared allocation result in `../ALLOCATION_CONTRACT.md` so
+the low/high lanes do not create a separate allocation policy.
 
-1. Keep pair layout and register ownership centralized so arithmetic, shifts,
-   helper calls, and storage agree on low/high ordering.
+1. Keep pair layout and allocation-result ownership centralized so arithmetic,
+   shifts, helper calls, and storage agree on low/high ordering.
 2. Separate semantic i128 lowering from generic stack and indirect pair
    transport when possible.
 3. Treat helper-call marshaling as ABI-sensitive code and test both argument

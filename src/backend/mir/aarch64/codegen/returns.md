@@ -135,12 +135,15 @@ The removed surface depended on these surrounding concepts:
 
 ## Rebuild Guidance
 
-Rebuild return lowering around ABI register ownership:
+Rebuild return lowering around ABI return-resource records:
 
 Return lowering should publish structured target MIR return facts and machine
 instruction nodes for value movement and control transfer. Final `ret`,
 register-spelling, and helper-call text belongs to printer or encoding/object
 consumers.
+Return value homes, helper-call resources, and control-transfer clobbers must
+come from the shared allocation result in `../ALLOCATION_CONTRACT.md`; return
+lowering must not assign ABI registers locally.
 
 1. Keep scalar integer, `i128`, scalar floating-point, and binary128 return
    register rules separate.

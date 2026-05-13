@@ -192,9 +192,9 @@ The removed surface depended on these surrounding concepts:
 - Rebuilding the pre-store optimization without the shared-register guard can
   create incorrect function-entry lifetimes for parameters whose original live
   ranges did not overlap.
-- Saving callee-saved registers before `used_callee_saved` is finalized would
-  miss registers introduced by inline assembly scratch allocation or register
-  allocation.
+- Saving callee-saved registers before allocation-result call-preservation and
+  inline-asm clobber facts are finalized would miss required save/restore
+  obligations.
 - Clearing caller-saved registers for `F128` operations is broad but
   intentional in the old surface; narrowing it requires proof that all F128
   lowering paths preserve temporary-register assumptions.
@@ -217,11 +217,15 @@ Frame setup and teardown should be represented as structured target MIR facts
 and machine instruction nodes for saves, restores, stack adjustment, and
 parameter homes. Pseudo-mnemonics and load/store spellings are printer or
 encoding details after those nodes exist.
+Frame/prologue work must consume allocation-result call-preservation facts,
+callee-save obligations, structured spill-slot ids, and reserved scratch policy
+from `../ALLOCATION_CONTRACT.md`. It must not run a local allocator or create
+new spill slots while building the frame.
 
 1. Establish stack-layout ownership for common locals, variadic save areas, and
    callee-saved spills.
-2. Rebuild register-allocation setup with explicit inline-asm clobber handling
-   and F128 temporary-register policy.
+2. Rebuild allocation-result consumption with explicit inline-asm clobber
+   handling and F128 temporary-register policy.
 3. Rebuild prologue/epilogue save and restore around the finalized
    `used_callee_saved` set.
 4. Rebuild parameter storage from ABI classes, including variadic saves and the

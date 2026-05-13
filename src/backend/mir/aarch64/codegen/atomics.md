@@ -177,9 +177,9 @@ The removed surface depended on these surrounding concepts:
 - Treating every `SeqCst` operation as only acquire or only release may be
   insufficient if the rebuilt backend adopts a stronger memory-ordering model
   than this legacy surface.
-- The fixed temporary-register convention can conflict with any later calling
-  convention or register allocator integration unless the rebuilt lowering owns
-  those clobbers explicitly.
+- The fixed temporary-register convention can conflict with later calling
+  convention or allocation-result integration unless the rebuilt lowering
+  consumes explicit clobber facts.
 
 ## Rebuild Guidance
 
@@ -189,6 +189,9 @@ Atomic lowering should model ordering, width, success/failure result mode, and
 exclusive-loop structure in target MIR and machine instruction nodes. Exclusive
 load/store mnemonics are derived printer or encoder data, not the source of
 atomic semantics.
+Pointer, value, result, and loop temporary registers must be consumed from the
+allocation result and reserved MIR scratch policy; atomic lowering must not
+establish a separate fixed-register allocator.
 
 1. Keep the old/result-value contract for RMW and compare-exchange separate
    from the store/retry mechanics.

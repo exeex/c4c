@@ -225,13 +225,16 @@ Integer operation lowering should select typed target MIR operations and then
 machine instruction nodes before any final mnemonic spelling is chosen.
 `arm_alu_mnemonic`-style names may survive as printer or encoding-table data,
 but they must not be the semantic carrier for codegen decisions.
+Destination homes, fallback accumulator use, and any temporary reload/store
+needs must come from the shared allocation result in `../ALLOCATION_CONTRACT.md`
+rather than from scalar ALU lowering assigning registers by itself.
 
 1. Keep unary integer helpers, bit-count helpers, byte-swap helpers, binary
    lowering, and i128 copy as separate routes.
 2. Preserve the unsigned power-of-two reductions only for unsigned division and
    remainder unless a signed equivalent is introduced with proof.
 3. Keep register-direct ALU emission limited to operations whose result can be
-   produced entirely in the assigned destination register.
+   produced entirely in the allocation-result destination register.
 4. Model 32-bit signed extension and unsigned zero-extension as deliberate
    post-operation behavior, not incidental register spelling.
 5. Prove accumulator fallback coverage for division, remainder, variable
