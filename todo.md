@@ -8,42 +8,51 @@ Current Step Title: Final Ledger And Broader Validation
 
 ## Just Finished
 
-Step 5 is complete. HIR-to-LIR call return, callee signature, call argument
-aggregate type-ref construction, and the remaining layout handoff sites now
-share the Step 5 stale rendered owner-miss fence. Const-init, va_arg,
-variadic aggregate args, indexed-GEP, field-chain, member access, aggregate
-value-type, and size/layout lookup paths fail closed after complete owner-key
-misses. No-owner rendered compatibility remains available, exact materialized
-template layout carriers remain accepted through
-`typespec_aggregate_complete_owner_key_missed`, and the accepted full-suite
-baseline candidate was 3137/3137.
+Step 6 final ledger is complete. The HIR legacy compatibility retirement
+acceptance evidence now records that metadata-rich HIR module, owner,
+consteval replay, lowerer, and HIR-to-LIR handoff routes fail closed after
+complete structured misses instead of recovering through rendered spelling.
+Remaining rendered-name state is limited to display/order, diagnostics,
+generated route-local bookkeeping, final output spelling, or explicit
+no-metadata compatibility.
+
+Focused stale-name coverage exists for registry/owner routes and
+replay/lowerer routes, including stale rendered module/owner lookup,
+consteval replay, and lowerer local/param/generated compatibility fences.
+Newly discovered retained bridges were either fenced or documented as
+legacy/deprecated compatibility with concrete removal conditions where the
+route must remain available for no-metadata callers.
+
+HIR-to-LIR may proceed without adding new rendered-name recovery fallbacks.
+Frontend-to-BIR handoff does not require new HIR rendered-name recovery
+fallbacks from this idea.
 
 ## Suggested Next
 
-Begin Step 6. Produce the final HIR compatibility retirement ledger, confirm
-the remaining rendered maps are display/order, diagnostics, generated
-route-local state, final output spelling, or explicit no-metadata
-compatibility, and run the supervisor-selected broader validation checkpoint.
+Hand control back to the supervisor for final acceptance handling. The next
+lifecycle action should be plan-owner review/closure of the active HIR
+compatibility retirement idea or explicit split if the supervisor finds a
+source-idea criterion still open.
 
 ## Watchouts
 
-- The shared `lookup_structured_layout` fence is intentionally duplicated at
-  the compatibility-decl and structured-name-id helpers so direct helper calls
-  cannot bypass the Step 5 complete-miss rule.
-- `field_chain_nested_aggregate` still has a no-metadata legacy compatibility
-  route for anonymous aggregate members, but only after the child TypeSpec is
-  not a complete owner-key miss.
-- `vaarg_aggregate_structured_name_id` now uses the cross-table-aware owner
-  helper; exact materialized template tags remain valid structured authority.
-- Step 6 should record whether HIR-to-LIR and frontend-to-BIR handoff may
-  proceed without new rendered-name recovery fallbacks; do not expand scope
-  beyond the active HIR compatibility retirement source idea.
+- Retained no-metadata compatibility is deliberate; do not treat display,
+  diagnostic, generated route-local, or final output spelling maps as semantic
+  lookup authority.
+- Exact materialized template layout carriers remain valid structured handoff
+  authority, while stale declaration-owner misses still fail closed before
+  rendered compatibility recovery.
+- This ledger does not claim BIR/backend compatibility retirement. It records
+  only that HIR and HIR-to-LIR handoff do not need new rendered-name recovery
+  fallbacks for the active source idea.
 
 ## Proof
 
-Step 5 passed the delegated proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|frontend_hir_lookup_tests)$"' > test_after.log 2>&1`
+No new command was required or run for this ledger-only packet.
 
-Accepted full-suite baseline candidate: 3137/3137.
+Accepted broader validation checkpoint recorded from committed evidence after
+`1d5352f1b`: `cmake --build --preset default && ctest --test-dir build -j
+--output-on-failure` passed 3137/3137, and the baseline candidate was
+accepted.
 
-Proof log: `test_after.log`
+Root proof logs were not touched by this packet.
