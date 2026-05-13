@@ -9,31 +9,32 @@ Current Step Title: Extract Old `.cpp` Surfaces To Markdown Artifacts
 ## Just Finished
 
 Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/float_ops.cpp` into
-`src/backend/mir/aarch64/codegen/float_ops.md` and removed the old `.cpp`
+`src/backend/mir/aarch64/codegen/globals.cpp` into
+`src/backend/mir/aarch64/codegen/globals.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old floating-point operation role, entry
-points, scalar `F32`/`F64` register-file transitions, `F128` soft-float
-delegation, dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old global, label, and thread-local address
+materialization contract, including GOT selection, direct `ADRP`/low-12
+addressing, `tpidr_el0` TLS handling, dependencies, hidden assumptions, and
+rebuild risks.
 
 ## Suggested Next
 
 Continue Step 2 with another old AArch64 backend `.cpp` extraction target,
-preferably `globals.cpp` because it is small and can preserve global symbol
-addressing behavior before moving on to larger surfaces such as `cast_ops.cpp`
-or `atomics.cpp`.
+preferably another small codegen surface such as `variadic.cpp` or
+`inline_asm.cpp` before moving on to larger surfaces such as `cast_ops.cpp` or
+`atomics.cpp`.
 
 ## Watchouts
 
-- `float_ops.cpp` was a fully commented translation surface rather than live
+- `globals.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: scalar `F32`/`F64` binary
-  ops bridge raw bits through `x0`, preserve the left operand in `x1` before
-  evaluating the right operand, move through `s`/`d` FP registers for native
-  arithmetic, explicitly zero-extend `F32` results with `mov w0, w0`, and keep
-  `F128` binary ops plus negation delegated to shared binary128 helpers.
+- The archived surface has several rebuild hazards: GOT-required globals must
+  load through `:got:`/`:got_lo12:`, direct globals and labels need both `ADRP`
+  and `:lo12:` `ADD`, TLS globals start from `tpidr_el0` and use
+  thread-pointer-relative relocations, and all paths leave the materialized
+  address in `x0` for `store_x0_to`.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 
