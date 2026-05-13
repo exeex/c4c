@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/207_aarch64_target_register_and_instruction_record_core.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Typed Register Vocabulary
+Current Step ID: 3
+Current Step Title: Add Prepared Register Conversion Helpers
 
 # Current Packet
 
