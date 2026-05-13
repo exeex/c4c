@@ -1,7 +1,8 @@
 # AArch64 AAPCS64 Call Return Frame MIR Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/211_aarch64_machine_instruction_node_contract.md`
@@ -67,6 +68,19 @@ scratch registers, and frame layout.
   separate ideas rather than bypassed in AArch64.
 - Later instruction-selection slices can rely on this contract instead of
   rediscovering AAPCS64 policy locally.
+
+## Completion Note
+
+Closed after the active runbook added the AAPCS64 target-MIR contract,
+reconciled the AArch64 gap ledger and codegen markdown consumers, and verified
+that no immediate target-MIR record-surface code changes were required. The
+accepted contract explicitly handles or defers direct and indirect calls,
+memory returns, return registers, stack arguments, caller/callee-save
+obligations, `x8`, `x16/x17`, `x29`, `x30`, reserved MIR scratch, outgoing call
+area facts, variadic metadata, and related deferred carriers. Docs/status proof
+found no material stale local ABI-policy claims, `git diff --check` passed, and
+the backend close regression guard passed in non-decreasing mode with no new
+failures.
 
 ## Reviewer Reject Signals
 
