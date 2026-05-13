@@ -128,6 +128,20 @@ std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
   return "unknown";
 }
 
+std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind) {
+  switch (kind) {
+    case ScalarCastOperationKind::SignExtend:
+      return "sign_extend";
+    case ScalarCastOperationKind::ZeroExtend:
+      return "zero_extend";
+    case ScalarCastOperationKind::Truncate:
+      return "truncate";
+    case ScalarCastOperationKind::Deferred:
+      return "deferred";
+  }
+  return "unknown";
+}
+
 std::string_view branch_condition_form_name(BranchConditionForm form) {
   switch (form) {
     case BranchConditionForm::Unconditional:
@@ -278,6 +292,26 @@ bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode) {
   return false;
 }
 
+bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::CastOpcode::SExt:
+    case c4c::backend::bir::CastOpcode::ZExt:
+    case c4c::backend::bir::CastOpcode::Trunc:
+      return true;
+    case c4c::backend::bir::CastOpcode::FPTrunc:
+    case c4c::backend::bir::CastOpcode::FPExt:
+    case c4c::backend::bir::CastOpcode::FPToSI:
+    case c4c::backend::bir::CastOpcode::FPToUI:
+    case c4c::backend::bir::CastOpcode::SIToFP:
+    case c4c::backend::bir::CastOpcode::UIToFP:
+    case c4c::backend::bir::CastOpcode::PtrToInt:
+    case c4c::backend::bir::CastOpcode::IntToPtr:
+    case c4c::backend::bir::CastOpcode::Bitcast:
+      return false;
+  }
+  return false;
+}
+
 ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -312,6 +346,29 @@ ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
       return ScalarAluOperationKind::Deferred;
   }
   return ScalarAluOperationKind::Deferred;
+}
+
+ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
+    c4c::backend::bir::CastOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::CastOpcode::SExt:
+      return ScalarCastOperationKind::SignExtend;
+    case c4c::backend::bir::CastOpcode::ZExt:
+      return ScalarCastOperationKind::ZeroExtend;
+    case c4c::backend::bir::CastOpcode::Trunc:
+      return ScalarCastOperationKind::Truncate;
+    case c4c::backend::bir::CastOpcode::FPTrunc:
+    case c4c::backend::bir::CastOpcode::FPExt:
+    case c4c::backend::bir::CastOpcode::FPToSI:
+    case c4c::backend::bir::CastOpcode::FPToUI:
+    case c4c::backend::bir::CastOpcode::SIToFP:
+    case c4c::backend::bir::CastOpcode::UIToFP:
+    case c4c::backend::bir::CastOpcode::PtrToInt:
+    case c4c::backend::bir::CastOpcode::IntToPtr:
+    case c4c::backend::bir::CastOpcode::Bitcast:
+      return ScalarCastOperationKind::Deferred;
+  }
+  return ScalarCastOperationKind::Deferred;
 }
 
 namespace {
@@ -584,6 +641,17 @@ ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) 
       .inputs = {alu.lhs, alu.rhs},
       .source_binary_opcode = alu.source_binary_opcode,
       .scalar_alu = alu,
+  };
+}
+
+ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast) {
+  return ScalarInstructionRecord{
+      .result_value_id = cast.result_value_id,
+      .result_value_name = cast.result_value_name,
+      .result_type = cast.result_type,
+      .inputs = {cast.source},
+      .source_cast_opcode = cast.source_cast_opcode,
+      .scalar_cast = cast,
   };
 }
 

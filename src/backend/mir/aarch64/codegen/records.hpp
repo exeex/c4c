@@ -79,6 +79,13 @@ enum class ScalarAluOperationKind {
   Deferred,
 };
 
+enum class ScalarCastOperationKind {
+  SignExtend,
+  ZeroExtend,
+  Truncate,
+  Deferred,
+};
+
 enum class BranchConditionForm {
   Unconditional,
   MaterializedBool,
@@ -297,6 +304,18 @@ struct ScalarAluRecord {
   bool supported_integer_operation = false;
 };
 
+struct ScalarCastRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  ScalarCastOperationKind operation = ScalarCastOperationKind::Deferred;
+  c4c::backend::bir::CastOpcode source_cast_opcode = c4c::backend::bir::CastOpcode::SExt;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  OperandRecord source;
+  bool supported_simple_integer_cast = false;
+};
+
 struct ScalarInstructionRecord {
   std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
@@ -305,6 +324,7 @@ struct ScalarInstructionRecord {
   std::optional<c4c::backend::bir::BinaryOpcode> source_binary_opcode;
   std::optional<c4c::backend::bir::CastOpcode> source_cast_opcode;
   std::optional<ScalarAluRecord> scalar_alu;
+  std::optional<ScalarCastRecord> scalar_cast;
 };
 
 struct PreparedScalarAluRecordResult {
@@ -381,6 +401,7 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
+[[nodiscard]] std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind);
 [[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
 [[nodiscard]] std::string_view branch_compare_candidate_kind_name(
     BranchCompareCandidateKind kind);
@@ -389,8 +410,11 @@ struct InstructionRecord {
     PreparedScalarAluRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode);
+[[nodiscard]] bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     c4c::backend::bir::BinaryOpcode opcode);
+[[nodiscard]] ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
+    c4c::backend::bir::CastOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);
 [[nodiscard]] OperandRecord make_immediate_operand(ImmediateOperand operand);
 [[nodiscard]] OperandRecord make_prepared_value_operand(PreparedValueOperand operand);
@@ -401,6 +425,7 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
+[[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
