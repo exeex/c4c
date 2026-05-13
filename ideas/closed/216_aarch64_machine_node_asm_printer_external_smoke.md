@@ -1,7 +1,8 @@
 # AArch64 Machine Node ASM Printer External Smoke
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/215_aarch64_first_machine_node_selection_slice.md`
@@ -106,3 +107,23 @@ assembler/object pipeline.
   selection work.
 - Tests prove only a single named fixture through hard-coded output rather than
   a general printer path for the accepted machine-node subset.
+
+## Closure Evidence
+
+Closed after Step 6 completion. The implemented public route is:
+
+```bash
+c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s
+```
+
+Committed proof recorded:
+
+- focused proof passed 5/5, including the external AArch64 assembly smoke
+  route
+- full backend proof passed 134/134
+- regression guard passed
+
+Close-time regression guard was rerun against the canonical backend logs and
+passed with no new failures. The guard compared `test_before.log` to
+`test_after.log` and reported before `134/134`, after `135/135`, result
+`PASS`.
