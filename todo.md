@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.3f
-Current Step Title: Extract encoder `neon.cpp` To Markdown Artifact
+Current Step ID: Step 2.3g
+Current Step Title: Extract encoder `system.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.3f: Extract encoder `neon.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/assembler/encoder/neon.cpp` into
-`src/backend/mir/aarch64/assembler/encoder/neon.md` and removed the old
+Step 2.3g: Extract encoder `system.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/assembler/encoder/system.cpp` into
+`src/backend/mir/aarch64/assembler/encoder/system.md` and removed the old
 `.cpp` from the live tree.
 
-The markdown artifact records the old AArch64 NEON/SIMD encoder surface,
-including vector arithmetic and logical forms, narrowing/widening shifts,
-saturating operations, compare/across-lane helpers, lane and element forms,
-structure load/store encodings, immediate moves, table/crypto helpers, scalar
-NEON paths, helper dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 system encoder surface,
+including barrier option mapping, MRS/MSR system-register tables, generic
+system-register parsing, MSR immediate forms, exception instructions, IC/AT/SYS
+raw-string encoders, TLBI operation tables, HINT/BTI mappings, DC cache
+maintenance forms, helper dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2.3 by extracting
-`src/backend/mir/aarch64/assembler/encoder/system.cpp` to markdown and
-removing that old `.cpp` from the live tree.
+Next coherent packet: finish Step 2.3 by extracting
+`src/backend/mir/aarch64/assembler/encoder/mod.cpp` to markdown and removing
+that old `.cpp` from the live tree.
 
 Step 2.3 covers these assembler encoder surfaces:
 `assembler/encoder/compare_branch.cpp`,
@@ -43,11 +43,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 ## Watchouts
 
 - Step 2.3 now has the bitfield, compare/branch, data-processing, scalar FP,
-  load/store, and NEON encoder artifacts; do not revisit those removed `.cpp`
-  files unless the supervisor opens a new packet.
-- `neon.md` documents the historical commented encoder formulas only. Treat its
-  opcode fields, arrangement mappings, lane-index formulas, immediate shift
-  encodings, structure load/store layouts, and scalar NEON forms as rebuild
+  load/store, NEON, and system encoder artifacts; do not revisit those removed
+  `.cpp` files unless the supervisor opens a new packet.
+- `system.md` documents the historical commented encoder formulas only. Treat
+  its system-register tables, raw-string operation parsers, TLBI/DC lookup
+  tables, immediate masking behavior, and base instruction words as rebuild
   guidance, not as proof that the built-in AArch64 assembler path is
   production-ready.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
@@ -63,9 +63,9 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 - Step 2.3 encoder extraction should stay descriptive. Do not repair encoder
   coverage, relocation behavior, or instruction semantics during the markdown
   extraction packets.
-- `system.cpp` is the next encoder-family surface. Keep it separate from the
-  NEON artifact even where system/crypto naming or register-class assumptions
-  intersect with SIMD operands.
+- `encoder/mod.cpp` is the final Step 2.3 encoder-family surface. Keep it as
+  the module/dispatch artifact rather than expanding it into implementation
+  repair.
 
 ## Proof
 
