@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/212_bir_mir_allocation_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Align Implemented AArch64 Surfaces
+Current Step ID: Step 4
+Current Step Title: Align AArch64 Markdown Roadmap Artifacts
 
 # Current Packet
 
