@@ -40,6 +40,12 @@ classification surface only; it should not be used as the owning file for
 feature-family responsibility, target-local records, carrier status, or first
 implementation routes.
 
+The memory carrier facts named by that ledger are the shared typed fields
+`PreparedMemoryAccess::address_space` and
+`PreparedMemoryAccess::is_volatile`. Legacy memory, assembler, object, linker,
+atomics, inline-asm, or alias-analysis markdown must not be used to infer or
+reconstruct those facts for target lowering.
+
 ## Artifact Index
 
 | Artifact | Classification | Contract influence | Legacy or deprecated note |
@@ -98,6 +104,10 @@ For Step 4, the only positive inputs from this index should be:
   variadic behavior, treated as hypotheses to verify.
 - Binary-utils candidates only when deciding whether codegen output requires a
   later object/relocation boundary.
+- Shared prepared memory carrier fields `PreparedMemoryAccess::address_space`
+  and `PreparedMemoryAccess::is_volatile`, treated as the only accepted source
+  for address-space and volatility facts before target-local memory operands
+  exist.
 
 Everything marked `obsolete route` or `delete/defer` is excluded from the new
 backend entry contract unless a later plan explicitly reopens it.

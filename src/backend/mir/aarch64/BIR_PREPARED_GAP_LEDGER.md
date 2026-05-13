@@ -57,7 +57,7 @@ initiative that may touch behavior after this markdown contract is accepted.
 | Join copies and parallel copies | `module/module.hpp` | Present prepared carriers: `PreparedParallelCopyBundle`, `PreparedMoveBundle`, `PreparedJoinTransfer`. | `ParallelCopyRecord`, `MoveRecord`. | Target MIR move/copy design over prepared bundles. |
 | Calls and indirect calls | `module/module.hpp` snapshots; later `abi/` owns AAPCS64 lowering policy | Present prepared carrier: `PreparedCallPlans`; target ABI completeness ambiguous. | `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, `CallPreservedValueRecord`. | AArch64 target ABI/call-frame design; do not synthesize calling convention locally. |
 | Returns | `abi/` contract for AAPCS64 policy, with `module/` call/result snapshots | BIR return terminators are present; prepared call result/storage facts exist; complete AAPCS64 return policy is ambiguous. | Existing `BlockRecord` terminator fields and `CallResultRecord`; a dedicated return record is not present. | Target ABI return-value design before return lowering. |
-| Memory and addressing | `module/module.hpp` for current snapshots; shared preparation owns missing facts | Prepared addressing exists for base/offset/size/alignment; volatility and address-space are missing from visible prepared memory access. | Existing `OperandRecord` address fields; a dedicated AArch64 memory operand record is still required before lowering. | Split shared prepared volatility/address-space carrier before memory lowering, then target MIR memory operand design. |
+| Memory and addressing | `module/module.hpp` for current snapshots; shared preparation owns typed memory facts | Prepared addressing exists for base/offset/size/alignment, with `PreparedMemoryAccess::address_space` and `PreparedMemoryAccess::is_volatile` carrying the shared address-space and volatility facts. | Existing `OperandRecord` address fields; a dedicated AArch64 memory operand record is still required before lowering. | Target MIR memory operand design; preserve the typed prepared fields instead of recovering facts from text. |
 | Globals, strings, data, symbols, relocation needs | `module/module.hpp`; later object/binary-utils contract owns encoding/emission | Present BIR carriers for globals/strings and link names; object relocation semantics deferred. | `GlobalDataRecord`, `StringDataRecord`, `DataRelocationNeedRecord`, `SymbolVisibilityRecordKind`, `DataRelocationNeedKind`. | Structured data/object boundary idea; no object writer behavior in this plan. |
 | Moves, ABI bindings, spills, reloads | `module/module.hpp` | Present prepared carriers: regalloc, value locations, storage plans, move bundles, spill/reload ops. | `MoveRecord`, `AbiBindingRecord`, `SpillReloadRecord`, `ParallelCopyRecord`. | Target MIR move/spill/reload design. |
 | Scalar integer operations and casts | Later `codegen/` after target MIR exists | BIR operation/type facts are present in retained module; no AArch64 instruction record/lowering owner yet. | Missing target instruction/operation record; do not use legacy `codegen/*.md` text patterns as records. | Target MIR instruction record design, then scalar instruction-selection idea. |
@@ -105,7 +105,7 @@ record. The status column is the current permission boundary for later work.
 | Calls and indirect calls | BIR call instructions and callee values. | `PreparedCallPlans`, `PreparedCallPlan`, `PreparedIndirectCalleePlan`, `PreparedCallArgumentPlan`, `PreparedCallResultPlan`, `PreparedCallPreservedValue`, `PreparedClobberedRegister`. | `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, `CallPreservedValueRecord`, `CalleeSaveRecord`. | `module/module.hpp` snapshots; later `abi/` owns AAPCS64 call-frame policy. | prepared carrier present, but AAPCS64 completeness is ambiguous for all direct, indirect, memory-return, preserved, clobbered, and variadic cases. |
 | Returns | BIR return terminators and return values. | `PreparedMoveBundle` with `PreparedMovePhase::BeforeReturn`; call/result storage plans where returns share ABI movement facts. | `BlockRecord` terminator fields plus `AbiBindingRecord`/`MoveRecord`; no dedicated return record. | Later `abi/` contract with `module/module.hpp` snapshots. | ambiguous; return-value placement and AAPCS64 completeness need target ABI design before lowering. |
 | Variadic call metadata | BIR extern/call shape. | `PreparedCallPlan::wrapper_kind` and `variadic_fpr_arg_register_count`. | `CallRecord` carries wrapper kind; no final AAPCS64 variadic-lowering record. | Later `abi/` contract. | ambiguous; known variadic metadata exists, but completeness for AAPCS64 call lowering is not accepted. |
-| Memory and addressing | BIR load/store/global/string/pointer operations and BIR types. | `PreparedAddressing`, `PreparedAddressingFunction`, `PreparedMemoryAccess`, `PreparedAddress`. | Address fields on `OperandRecord`; dedicated AArch64 memory operand record is still missing. | `module/module.hpp` snapshots; shared preparation owns missing carrier facts. | present for base/offset/size/alignment; missing volatility and address-space; no target workaround from printed BIR. |
+| Memory and addressing | BIR load/store/global/string/pointer operations and BIR types. | `PreparedAddressing`, `PreparedAddressingFunction`, `PreparedMemoryAccess`, `PreparedAddress`; `PreparedMemoryAccess::address_space` and `PreparedMemoryAccess::is_volatile` carry the typed shared address-space and volatility facts. | Address fields on `OperandRecord`; dedicated AArch64 memory operand record is still missing. | `module/module.hpp` snapshots; shared preparation owns typed carrier facts. | present for base/offset/size/alignment, volatility, and address space; no target workaround from printed BIR. |
 | Globals, strings, data, symbols | `bir::Module` globals, string constants, link names, initializers. | `PreparedNameTables` link/text names plus retained BIR data. | `GlobalDataRecord`, `StringDataRecord`, `DataRelocationNeedRecord`, `SymbolVisibilityRecordKind`, `DataRelocationNeedKind`. | `module/module.hpp`; later object/binary-utils contract owns emission. | present as data snapshots; object relocation and encoding behavior deferred. |
 | Moves, ABI bindings, spills, reloads | BIR value movement obligations after preparation. | `PreparedValueLocations`, `PreparedMoveBundle`, `PreparedAbiBinding`, `PreparedRegalloc`, `PreparedSpillReloadOp`, `PreparedStoragePlans`. | `MoveRecord`, `AbiBindingRecord`, `SpillReloadRecord`, `ParallelCopyRecord`. | `module/module.hpp`. | present as prepared snapshots; final instruction forms remain later work. |
 | Scalar integer operations and casts | Retained BIR instructions, operands, opcodes, and `TypeKind`. | `PreparedBirModule::module`; prepared value/storage/location facts. | missing target instruction/operation record. | Later `codegen/` after target MIR records. | missing target record; legacy `codegen/*.md` text patterns are not accepted records. |
@@ -136,7 +136,7 @@ record. The status column is the current permission boundary for later work.
 | Frame plan. | `PreparedFramePlan` records frame size/alignment, saved callee registers, frame-slot order, dynamic stack use, and fixed-slot frame-pointer policy. | present | shared preparation | AArch64 must map prepared saved register strings/banks into target physical register references. |
 | Dynamic stack plan. | `PreparedDynamicStackPlan` records stack-save, dynamic-alloca, and stack-restore operations with function/block/instruction identity. | present | shared preparation | AArch64 target MIR needs dynamic-stack operations before prologue/epilogue and instruction selection. |
 | Address bases for memory access. | `PreparedAddressing` and `PreparedAddress` carry frame-slot, global-symbol, pointer-value, and string-constant base kinds. | present | shared preparation | AArch64 memory operands can be selected from prepared base kind plus offset/size/alignment. |
-| Volatility and address-space facts for memory access. | `PreparedMemoryAccess` carries identity and `PreparedAddress`, but no explicit volatile or address-space fields are visible in the prepared access. | missing | shared preparation | Split or extend prepared addressing if AArch64 lowering must distinguish volatile or non-default address spaces. Do not recover these from printed BIR. |
+| Volatility and address-space facts for memory access. | `PreparedMemoryAccess::address_space` and `PreparedMemoryAccess::is_volatile` carry the shared typed address-space and volatility facts alongside identity and `PreparedAddress`. | present | shared preparation | AArch64 lowering must preserve these fields through the target-local memory operand model. Do not recover these facts from printed BIR. |
 | Liveness. | `PreparedLiveness` records per-function intervals, call points, block live-in/live-out, and value records. | present | shared preparation | May inform target-local validation and late insertion policy. |
 | Register group overrides. | `PreparedRegisterGroupOverrides` records per-function/value register class and contiguous width. | present | shared preparation | Target MIR must translate class/width into AArch64 register-class operands. |
 | Register allocation. | `PreparedRegalloc` records allocation constraints, interference, move resolution, spill/reload operations, and assigned register/stack homes. | present | shared preparation | AArch64 must consume prepared allocation instead of choosing caller/callee policy locally. |
@@ -154,7 +154,7 @@ record. The status column is the current permission boundary for later work.
 | Typed virtual or prepared-value operands retaining `PreparedValueId`, `ValueNameId`, and `TypeKind`. | No AArch64 operand model exists. | missing | AArch64 MIR design | Do not use rendered value names or old emitter register strings as semantic operands. |
 | Target register classes and physical register references separated from semantic value ids. | Prepared records carry register classes/banks and physical register strings; AArch64 has no typed target register reference layer. | missing | AArch64 MIR design | Add AArch64 register enum/class references or an equivalent typed target register surface. |
 | Frame, stack-slot, dynamic-stack, and callee-save MIR records sourced from prepared plans. | Prepared facts exist; AArch64 target records do not. | missing | AArch64 MIR design | MIR should copy ids/references from prepared plans, not recompute frame placement. |
-| Memory operands preserving base kind, frame-slot id, symbol `LinkNameId`, pointer value id/name, string identity, offset, size, alignment, volatility, and address space. | Prepared memory facts mostly exist, but volatility/address-space facts are missing and no AArch64 memory operand model exists. | missing | shared preparation | Carrier extension is required for volatility/address-space before full memory lowering; target MIR must then preserve those facts. |
+| Memory operands preserving base kind, frame-slot id, symbol `LinkNameId`, pointer value id/name, string identity, offset, size, alignment, volatility, and address space. | Prepared memory facts exist, including `PreparedMemoryAccess::address_space` and `PreparedMemoryAccess::is_volatile`; no AArch64 memory operand model exists. | missing | AArch64 MIR design | Target MIR must preserve the typed prepared address-space and volatility facts when the memory operand model is added. |
 | Branch and compare records sourced from prepared branch conditions and `BlockLabelId`. | Prepared branch facts exist; no AArch64 branch/compare MIR records exist. | missing | AArch64 MIR design | Lower compare/branch from `PreparedBranchCondition` into typed AArch64 MIR. |
 | Call records sourced from `call_plans`. | Prepared call plans exist; no AArch64 target call record model exists. | missing | target ABI work | AArch64 ABI design must map prepared call plans into target MIR call records. |
 | Move, copy, spill, reload, and ABI-binding records sourced from prepared value/regalloc/storage plans and parallel copies. | Prepared move/storage/regalloc facts exist; no AArch64 move/spill/reload MIR records exist. | missing | AArch64 MIR design | Target MIR needs explicit records before instruction selection. |
@@ -166,7 +166,7 @@ record. The status column is the current permission boundary for later work.
 
 | Item | Status | Owner | Reason |
 | --- | --- | --- | --- |
-| Volatile and non-default address-space preservation in prepared memory facts. | missing | shared preparation | The Step 4 contract requires these facts for memory operands, but the visible prepared memory access carrier does not expose them. |
+| Target-local memory operand preservation of volatile and non-default address-space facts. | deferred | AArch64 MIR design | The shared carrier now exposes `PreparedMemoryAccess::address_space` and `PreparedMemoryAccess::is_volatile`; target-local memory lowering remains blocked until an AArch64 memory operand model preserves them. |
 | Inline assembly operand substitution and clobber policy. | deferred | separate idea | Current markdown classifies old inline-asm routes as obsolete for this contract; rebuild requires an explicit structured inline-asm contract. |
 | NEON and broad vector instruction coverage. | deferred | separate idea | Classification marks NEON as delete/defer; do not expand Step 6 around it without a new source idea. |
 | F128 and i128 special lowering. | deferred | separate idea | Legacy notes are delete/defer or niche support risks, not entry-contract blockers. |
@@ -186,19 +186,20 @@ and parallel copies, scalar ALU/casts/float ops, atomics, intrinsics, inline
 asm, f128/i128, assembler, encoder, object writer, binary utilities, and
 linker surfaces.
 
-The only required shared BIR/prepared carrier gap discovered by this contract
-is volatile and non-default address-space preservation in
-`PreparedMemoryAccess` / `PreparedAddress`. That gap is split into
-`ideas/open/206_prepared_memory_volatility_address_space_carrier.md`; AArch64
-target code must not work around it by recovering volatility or address-space
-facts from rendered names, printed BIR, legacy examples, or assembly text.
+The required shared BIR/prepared carrier gap discovered by this contract was
+volatile and non-default address-space preservation in prepared memory facts.
+That gap is now covered by `PreparedMemoryAccess::address_space` and
+`PreparedMemoryAccess::is_volatile`. AArch64 target code must preserve those
+typed fields and must not recover volatility or address-space facts from
+rendered names, printed BIR, legacy examples, or assembly text.
 
 No other required BIR/prepared carrier gap blocks this layout contract. The
-remaining non-present items are either target-local AArch64 MIR records that
-belong to the next AArch64 design wave or deferred/ambiguous contracts already
-named here: AAPCS64 call/return/variadic completeness, target instruction
-records for scalar and floating-point lowering, f128/i128, atomics, intrinsics,
-inline asm, assembler/encoder, object/binary-utils, and linker behavior.
+remaining non-present items are target-local AArch64 MIR records that belong to
+the next AArch64 design wave or deferred/ambiguous contracts already named
+here: target-local memory lowering, AAPCS64 call/return/variadic completeness,
+target instruction records for scalar and floating-point lowering, f128/i128,
+atomics, intrinsics, inline asm, assembler/encoder, object/binary-utils, and
+linker behavior.
 
 ## Proceed Versus Split Decision
 
@@ -212,13 +213,14 @@ memory, branch, call, move, spill/reload, or data/object side-table model
 currently exists to consume `PreparedBirModule`.
 
 A separate shared BIR/prepared carrier initiative is not required before Step 6
-for most facts because `PreparedBirModule` already carries the contract's core
-module, identity, control-flow, frame, stack, liveness, regalloc, storage, and
-call plans. The one required shared carrier initiative is already recorded as
-`ideas/open/206_prepared_memory_volatility_address_space_carrier.md`. If the
-next wave chooses memory lowering as its first implementation slice, that gap
-idea is a prerequisite; otherwise proceed with AArch64 MIR design around the
-present prepared facts and keep full memory lowering blocked.
+because `PreparedBirModule` already carries the contract's core module,
+identity, control-flow, frame, stack, liveness, regalloc, storage, call plans,
+and typed memory address-space/volatility facts. If the next wave chooses
+memory lowering as its first implementation slice, it must design target-local
+memory operands that preserve `PreparedMemoryAccess::address_space` and
+`PreparedMemoryAccess::is_volatile`; otherwise proceed with AArch64 MIR design
+around the present prepared facts and keep full memory lowering blocked until
+that operand model exists.
 
 No target-local workaround is accepted for missing facts. In particular, do not
 recover backend facts from rendered names, printed BIR, legacy LIR type
