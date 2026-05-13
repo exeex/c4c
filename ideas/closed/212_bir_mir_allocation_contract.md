@@ -1,7 +1,8 @@
 # BIR MIR Allocation Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/205_aarch64_arm_reference_layout_contract.md`
