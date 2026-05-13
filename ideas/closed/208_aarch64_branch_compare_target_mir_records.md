@@ -1,10 +1,11 @@
 # AArch64 Branch Compare Target MIR Records
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
-- `ideas/open/207_aarch64_target_register_and_instruction_record_core.md`
+- `ideas/closed/207_aarch64_target_register_and_instruction_record_core.md`
 
 ## Goal
 
@@ -71,6 +72,16 @@ remaining smaller than calls or memory.
 - Focused tests or compile proof cover representative unconditional,
   conditional, and compare-backed branches.
 - No assembly emission or instruction selection is introduced.
+
+## Closure Notes
+
+Completed by the active runbook covering branch target and compare predicate
+vocabulary, prepared branch target conversion, materialized-boolean and
+fused-compare branch candidate records, focused backend tests, and local
+record-only documentation.
+
+Close-time backend regression guard passed with 123 passed, 0 failed, using
+the existing accepted `test_before.log` and a fresh matching `test_after.log`.
 
 ## Reviewer Reject Signals
 
