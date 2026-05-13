@@ -9,32 +9,29 @@ Current Step Title: Extract Old `.cpp` Surfaces To Markdown Artifacts
 ## Just Finished
 
 Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/emit.cpp` into
-`src/backend/mir/aarch64/codegen/emit.md` and removed the old `.cpp` from the
-live tree.
+`src/backend/mir/aarch64/codegen/asm_emitter.cpp` into
+`src/backend/mir/aarch64/codegen/asm_emitter.md` and removed the old `.cpp`
+from the live tree.
 
-The markdown artifact records the old public entry points, target-profile
-normalization behavior, BIR and LIR dispatch order, minimal slice recognizers,
-handwritten assembly emitters, broad `gen_*` general-LIR renderer surface,
-dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old inline-asm emitter role, entry points,
+constraint behavior, scratch register policy, operand movement rules, memory
+operand conventions, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
-Continue Step 2 with the next AArch64 codegen extraction target:
-`src/backend/mir/aarch64/codegen/asm_emitter.cpp`. It should clarify raw
-assembly text conventions after the central `emit.cpp` surface has been
-archived.
+Continue Step 2 with another old AArch64 backend `.cpp` extraction target,
+preferably a remaining codegen surface that depends on the archived `emit.md`
+and `asm_emitter.md` context.
 
 ## Watchouts
 
-- The old `emit.cpp` was not present in `build/compile_commands.json`, so the
-  compile-database clang query could not load it; extraction used targeted
-  structural searches and focused reads instead.
-- `emit.hpp` still declares the legacy AArch64 emitter entry points; this
-  packet did not own header/API cleanup.
-- The extracted surface shows strong overfit pressure: many narrow BIR/LIR
-  shape recognizers and stringly type parsers should not be regrown during the
-  rebuild.
+- `asm_emitter.cpp` was a fully commented translation surface rather than live
+  compiled C++; this packet archived its behavioral contract and deleted the
+  obsolete `.cpp`.
+- The archived surface has several rebuild hazards: incomplete condition-code
+  outputs, fixed `x9` bridge use, subtle logical-immediate validation, SP
+  special cases, pointer-slot memory operands, and callee-saved scratch
+  bookkeeping.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 
