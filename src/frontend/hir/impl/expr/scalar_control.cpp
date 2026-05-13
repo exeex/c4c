@@ -4,6 +4,8 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <unordered_set>
 #include <vector>
 
 namespace c4c::hir {
@@ -124,6 +126,18 @@ std::string structured_owner_name_from_qualified_ref(const Node* n,
     return n->qualifier_segments[owner_index];
   }
   return {};
+}
+
+bool rendered_compat_lookup_allowed(
+    TextId source_text_id,
+    std::string_view rendered_name,
+    const std::unordered_set<TextId>& explicit_text_ids,
+    const std::unordered_set<std::string>& no_metadata_names) {
+  if (source_text_id != kInvalidText) {
+    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end();
+  }
+  return no_metadata_names.find(std::string(rendered_name)) !=
+         no_metadata_names.end();
 }
 
 }  // namespace
@@ -590,11 +604,10 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       if (lit != ctx->local_ids_by_text_id.end()) {
         r.local = lit->second;
         has_local_binding = true;
-      } else if (ctx->rendered_compat_local_text_ids.find(
-                     n->unqualified_text_id) !=
-                     ctx->rendered_compat_local_text_ids.end() ||
-                 ctx->rendered_compat_local_names.find(r.name) !=
-                     ctx->rendered_compat_local_names.end()) {
+      } else if (rendered_compat_lookup_allowed(
+                     n->unqualified_text_id, r.name,
+                     ctx->rendered_compat_local_text_ids,
+                     ctx->rendered_compat_local_names)) {
         auto rendered_lit = ctx->locals.find(r.name);
         if (rendered_lit != ctx->locals.end()) {
           r.local = rendered_lit->second;
@@ -621,11 +634,10 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         auto pit = ctx->param_indices_by_text_id.find(n->unqualified_text_id);
         if (pit != ctx->param_indices_by_text_id.end()) {
           r.param_index = pit->second;
-        } else if (ctx->rendered_compat_param_text_ids.find(
-                       n->unqualified_text_id) !=
-                       ctx->rendered_compat_param_text_ids.end() ||
-                   ctx->rendered_compat_param_names.find(r.name) !=
-                       ctx->rendered_compat_param_names.end()) {
+        } else if (rendered_compat_lookup_allowed(
+                       n->unqualified_text_id, r.name,
+                       ctx->rendered_compat_param_text_ids,
+                       ctx->rendered_compat_param_names)) {
           auto rendered_pit = ctx->params.find(r.name);
           if (rendered_pit != ctx->params.end()) {
             r.param_index = rendered_pit->second;

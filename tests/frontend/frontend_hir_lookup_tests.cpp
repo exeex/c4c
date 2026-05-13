@@ -3843,6 +3843,7 @@ void test_var_expr_param_lookup_prefers_param_text_id_over_rendered_name() {
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.fn = &fn;
   ctx.params["value"] = 0;
+  ctx.rendered_compat_param_names.insert("value");
   ctx.param_indices_by_text_id[value_text_id] = 1;
 
   c4c::Node ref{};
@@ -3898,6 +3899,7 @@ void test_param_lookup_text_miss_rejects_rendered_fallback() {
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.fn = &fn;
   ctx.params["value"] = 0;
+  ctx.rendered_compat_param_names.insert("value");
 
   c4c::TypeSpec fallback_ts{};
   fallback_ts.base = c4c::TB_CHAR;
@@ -3969,7 +3971,7 @@ void test_param_lookup_marked_generated_text_id_uses_rendered_fallback() {
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.fn = &fn;
   ctx.params["this"] = 0;
-  ctx.rendered_compat_param_names.insert("this");
+  ctx.rendered_compat_param_text_ids.insert(generated_this_text_id);
 
   c4c::Node ref{};
   ref.kind = c4c::NK_VAR;
@@ -4047,6 +4049,7 @@ void test_local_lookup_text_miss_rejects_rendered_fallback() {
   const c4c::hir::LocalId rendered_local{5};
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.locals["value"] = rendered_local;
+  ctx.rendered_compat_local_names.insert("value");
   ctx.local_types.insert(rendered_local, int_ts);
 
   c4c::Node ref{};
@@ -4108,15 +4111,16 @@ void test_local_lookup_no_metadata_and_marked_generated_use_rendered_fallback() 
 
   c4c::hir::Lowerer::FunctionCtx generated_ctx;
   generated_ctx.locals["__generated_local"] = rendered_local;
-  generated_ctx.rendered_compat_local_names.insert("__generated_local");
   generated_ctx.local_types.insert(rendered_local, int_ts);
 
   c4c::Node generated_ref{};
   generated_ref.kind = c4c::NK_VAR;
   generated_ref.name = "__generated_local";
   generated_ref.unqualified_name = "__generated_local";
-  generated_ref.unqualified_text_id =
+  const c4c::TextId generated_local_text_id =
       module.link_name_texts->intern("generated_source_carrier");
+  generated_ref.unqualified_text_id = generated_local_text_id;
+  generated_ctx.rendered_compat_local_text_ids.insert(generated_local_text_id);
 
   const c4c::hir::ExprId generated_expr_id =
       lowerer.lower_var_expr(&generated_ctx, &generated_ref);
@@ -4175,6 +4179,7 @@ void test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback() {
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.param_fn_ptr_sigs["callback"] =
       make_returning_fn_ptr_sig(c4c::TB_INT);
+  ctx.rendered_compat_param_names.insert("callback");
 
   c4c::Node callee{};
   callee.kind = c4c::NK_VAR;
@@ -4246,6 +4251,30 @@ void test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback() {
       lowerer.infer_call_result_type_from_callee(&ctx, &callee);
   expect_true(ret.has_value() && ret->base == c4c::TB_INT,
               "no-metadata param fn-ptr calls should keep the rendered compatibility fallback");
+}
+
+void test_param_fn_ptr_sig_marked_text_id_uses_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId generated_callback_text_id =
+      module.link_name_texts->intern("generated_callback_source_carrier");
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.param_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+  ctx.rendered_compat_param_text_ids.insert(generated_callback_text_id);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = generated_callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(ret.has_value() && ret->base == c4c::TB_INT,
+              "explicit param TextId compatibility should keep rendered fn-ptr fallback");
 }
 
 void test_local_fn_ptr_sig_lookup_prefers_local_text_id_over_rendered_name() {
@@ -4337,6 +4366,7 @@ void test_local_fn_ptr_sig_text_miss_rejects_rendered_fallback() {
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.local_fn_ptr_sigs["callback"] =
       make_returning_fn_ptr_sig(c4c::TB_INT);
+  ctx.rendered_compat_local_names.insert("callback");
 
   c4c::Node callee{};
   callee.kind = c4c::NK_VAR;
@@ -4370,6 +4400,30 @@ void test_local_fn_ptr_sig_no_metadata_uses_rendered_fallback() {
       lowerer.infer_call_result_type_from_callee(&ctx, &callee);
   expect_true(ret.has_value() && ret->base == c4c::TB_INT,
               "no-metadata local fn-ptr calls should keep the rendered compatibility fallback");
+}
+
+void test_local_fn_ptr_sig_marked_text_id_uses_rendered_fallback() {
+  c4c::hir::Module module;
+  c4c::hir::Lowerer lowerer;
+  lowerer.module_ = &module;
+
+  const c4c::TextId generated_callback_text_id =
+      module.link_name_texts->intern("generated_local_callback_source_carrier");
+  c4c::hir::Lowerer::FunctionCtx ctx;
+  ctx.local_fn_ptr_sigs["callback"] =
+      make_returning_fn_ptr_sig(c4c::TB_INT);
+  ctx.rendered_compat_local_text_ids.insert(generated_callback_text_id);
+
+  c4c::Node callee{};
+  callee.kind = c4c::NK_VAR;
+  callee.name = "callback";
+  callee.unqualified_name = "callback";
+  callee.unqualified_text_id = generated_callback_text_id;
+
+  const std::optional<c4c::TypeSpec> ret =
+      lowerer.infer_call_result_type_from_callee(&ctx, &callee);
+  expect_true(ret.has_value() && ret->base == c4c::TB_INT,
+              "explicit local TextId compatibility should keep rendered fn-ptr fallback");
 }
 
 void test_callable_zero_sized_return_structured_miss_rejects_stale_tag() {
@@ -7017,11 +7071,13 @@ int main() {
   test_param_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_param_fn_ptr_sig_hit_without_signature_rejects_all_fallbacks();
   test_param_fn_ptr_sig_no_metadata_uses_rendered_fallback();
+  test_param_fn_ptr_sig_marked_text_id_uses_rendered_fallback();
   test_local_fn_ptr_sig_lookup_prefers_local_text_id_over_rendered_name();
   test_local_fn_ptr_sig_lookup_shadows_same_spelled_param_sig();
   test_local_fn_ptr_sig_complete_local_shadow_blocks_param_fallback();
   test_local_fn_ptr_sig_text_miss_rejects_rendered_fallback();
   test_local_fn_ptr_sig_no_metadata_uses_rendered_fallback();
+  test_local_fn_ptr_sig_marked_text_id_uses_rendered_fallback();
   test_callable_zero_sized_return_structured_miss_rejects_stale_tag();
   test_layout_type_lookup_canonicalizes_record_def_parser_owner_ids();
   test_callable_zero_return_canonicalizes_record_def_parser_owner_ids();

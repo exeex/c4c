@@ -8,30 +8,31 @@ Current Step Title: Fence Lowerer Local, Param, Static, Label, And Signature Mir
 
 ## Just Finished
 
-Step 3 is completed and committed. The consteval replay and pending identity
-name fences now have focused coverage proving stale rendered registry names do
-not redirect complete structured identity.
+Step 4 packet completed for lowerer local/param rendered-name compatibility.
+Value lookup, generic type inference, and function-pointer return inference now
+require explicit `rendered_compat_*_text_ids` for valid source `TextId`
+fallbacks; name-only compatibility remains limited to no-metadata references.
+Focused tests cover stale rendered-name rejection and retained explicit
+`TextId` compatibility for locals and params.
 
 ## Suggested Next
 
-Begin Step 4: inspect lowerer function-context compatibility maps, including
-rendered local, param, static-global, local const binding, label, and
-function-pointer signature mirrors. Select one lowerer rendered fallback
-surface, fence complete structured metadata misses so they fail closed, and
-preserve only route-local generated names or explicitly documented no-metadata
-legacy bridges.
+Continue Step 4 with the remaining lowerer compatibility mirrors: static/global
+bridges, local const binding maps, labels, and any function prototype or
+signature mirrors that still allow stale rendered names to override complete
+source metadata.
 
 ## Watchouts
 
-- Do not let stale rendered lowerer names override metadata-rich local, param,
-  static, label, local const, or function-pointer signature identity.
-- Keep route-local generated names only when they are not semantic fallback
-  authority.
-- Any retained no-metadata bridge needs `legacy` or `deprecated` documentation
-  naming owner, limitation, and removal condition.
+- The new helper treats a valid source `TextId` as complete enough to reject
+  name-only rendered compatibility; callers must insert the explicit
+  `rendered_compat_*_text_ids` entry when a valid-`TextId` generated bridge is
+  intentional.
+- Static/global and local const bridges already have nearby focused tests; keep
+  the next packet semantic rather than expectation-only.
 
 ## Proof
 
-No new validation was required for this lifecycle-only Step 4 handoff. Use the
-supervisor-selected lowerer-focused proof command for the next implementation
-packet.
+Passed: `bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_hir_lookup_tests$"' > test_after.log 2>&1`
+
+Proof log: `test_after.log`

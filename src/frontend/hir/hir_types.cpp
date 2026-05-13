@@ -18,6 +18,8 @@
 #include <set>
 #include <sstream>
 #include <stdexcept>
+#include <string_view>
+#include <unordered_set>
 
 namespace c4c::hir {
 
@@ -87,6 +89,18 @@ std::optional<ConstEvalStructuredNameKey> consteval_name_key_from_node(
   }
   return key.valid() ? std::optional<ConstEvalStructuredNameKey>(key)
                      : std::nullopt;
+}
+
+bool rendered_compat_lookup_allowed(
+    TextId source_text_id,
+    std::string_view rendered_name,
+    const std::unordered_set<TextId>& explicit_text_ids,
+    const std::unordered_set<std::string>& no_metadata_names) {
+  if (source_text_id != kInvalidText) {
+    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end();
+  }
+  return no_metadata_names.find(std::string(rendered_name)) !=
+         no_metadata_names.end();
 }
 
 template <typename SourceMap>
@@ -1325,11 +1339,10 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
         }
         return std::nullopt;
       }
-      if (ctx->rendered_compat_local_text_ids.find(
-              callee->unqualified_text_id) !=
-              ctx->rendered_compat_local_text_ids.end() ||
-          ctx->rendered_compat_local_names.find(name) !=
-              ctx->rendered_compat_local_names.end()) {
+      if (rendered_compat_lookup_allowed(
+              callee->unqualified_text_id, name,
+              ctx->rendered_compat_local_text_ids,
+              ctx->rendered_compat_local_names)) {
         const auto lit = ctx->local_fn_ptr_sigs.find(name);
         if (lit != ctx->local_fn_ptr_sigs.end()) return lit->second.return_type.spec;
       }
@@ -1346,11 +1359,10 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
           return sig_it->second.return_type.spec;
         }
         return std::nullopt;
-      } else if (ctx->rendered_compat_param_text_ids.find(
-                     callee->unqualified_text_id) !=
-                     ctx->rendered_compat_param_text_ids.end() ||
-                 ctx->rendered_compat_param_names.find(name) !=
-                     ctx->rendered_compat_param_names.end()) {
+      } else if (rendered_compat_lookup_allowed(
+                     callee->unqualified_text_id, name,
+                     ctx->rendered_compat_param_text_ids,
+                     ctx->rendered_compat_param_names)) {
         const auto pit = ctx->param_fn_ptr_sigs.find(name);
         if (pit != ctx->param_fn_ptr_sigs.end()) return pit->second.return_type.spec;
       }
@@ -3793,11 +3805,10 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
             if (ctx->local_types.contains(lit->second)) {
               return reference_value_ts(ctx->local_types.at(lit->second));
             }
-          } else if (ctx->rendered_compat_local_text_ids.find(
-                         n->unqualified_text_id) !=
-                         ctx->rendered_compat_local_text_ids.end() ||
-                     ctx->rendered_compat_local_names.find(name) !=
-                         ctx->rendered_compat_local_names.end()) {
+          } else if (rendered_compat_lookup_allowed(
+                         n->unqualified_text_id, name,
+                         ctx->rendered_compat_local_text_ids,
+                         ctx->rendered_compat_local_names)) {
             auto rendered_lit = ctx->locals.find(name);
             if (rendered_lit != ctx->locals.end() &&
                 ctx->local_types.contains(rendered_lit->second)) {
@@ -3818,11 +3829,10 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           if (pit != ctx->param_indices_by_text_id.end() && ctx->fn &&
               pit->second < ctx->fn->params.size()) {
             return reference_value_ts(ctx->fn->params[pit->second].type.spec);
-          } else if (ctx->rendered_compat_param_text_ids.find(
-                         n->unqualified_text_id) !=
-                         ctx->rendered_compat_param_text_ids.end() ||
-                     ctx->rendered_compat_param_names.find(name) !=
-                         ctx->rendered_compat_param_names.end()) {
+          } else if (rendered_compat_lookup_allowed(
+                         n->unqualified_text_id, name,
+                         ctx->rendered_compat_param_text_ids,
+                         ctx->rendered_compat_param_names)) {
             auto rendered_pit = ctx->params.find(name);
             if (rendered_pit != ctx->params.end() && ctx->fn &&
                 rendered_pit->second < ctx->fn->params.size()) {
