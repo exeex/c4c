@@ -19,6 +19,8 @@ Status terms:
 ## Source Surfaces
 
 - Contract: `src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md`.
+- Responsibility/classification index:
+  `src/backend/mir/aarch64/CLASSIFICATION_INDEX.md`.
 - Shared prepared carrier: `src/backend/prealloc/prealloc.hpp`
   `PreparedBirModule`.
 - Shared public backend staging: `src/backend/backend.hpp` and
@@ -31,6 +33,53 @@ Status terms:
 - Current AArch64 assembler/linker headers expose staged text/object/link
   surfaces under `src/backend/mir/aarch64/assembler/` and
   `src/backend/mir/aarch64/linker/`.
+
+## Layout Ownership Ledger
+
+This table is the Step 2 ownership contract. "Owner" names the first AArch64
+file or deferred contract allowed to own the family. "Target-local record"
+names the existing or required AArch64 record surface; it is not permission to
+add behavior in this plan. "First allowed route" is the first implementation
+initiative that may touch behavior after this markdown contract is accepted.
+
+| Feature family | Owner | Carrier status | Target-local record type | First allowed route |
+| --- | --- | --- | --- | --- |
+| Public prepared-module entry | `api/api.hpp`, `api/api.cpp` | Present prepared entry: `build_prepared_module(const PreparedBirModule&)`. Raw `bir::Module`, LIR text, and assembly text fallback are rejected. | `module::BuildResult` / `module::Module` returned through the public API. | AArch64 prepared-module target MIR boundary; no direct text emitter route. |
+| Target profile and handoff validation | `abi/abi.hpp`, `abi/abi.cpp` | Present prepared carrier: `PreparedBirModule::target_profile`; AArch64/AAPCS64 validation exists. | `abi::HandoffError`, `abi::HandoffErrorKind`. | AArch64 target ABI validation and diagnostics only; no lowering behavior. |
+| AAPCS64 ABI call/return/variadic policy | Later `abi/` contract plus `module/` snapshots | Prepared call plans are present, but target ABI completeness is ambiguous until AAPCS64 lowering policy is reviewed. | Existing snapshots: `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, `CallPreservedValueRecord`, `CalleeSaveRecord`, `AbiBindingRecord`. | AArch64 target ABI/call-frame design idea before instruction selection. |
+| Module/function/block containers | `module/module.hpp`, `module/module.cpp` | Present BIR and prepared carriers: retained BIR module plus `PreparedControlFlow`. | `Module`, `FunctionRecord`, `BlockRecord`. | AArch64 prepared-module target MIR boundary; containers stay module-owned. |
+| Semantic ids and name tables | `module/module.hpp`, with lookup authority from shared preparation | Present prepared carrier: `PreparedNameTables` and BIR ids. | Stored ids/labels inside `Module`, `FunctionRecord`, `BlockRecord`, `OperandRecord`, data records. | Target MIR boundary; labels are display-only, not semantic recovery. |
+| Operand/value identity | `module/module.hpp` | Present prepared carriers: `PreparedValueLocations`, `PreparedStoragePlans`, retained BIR value/type facts. | `OperandRecord`. | Target MIR operand model; no rendered-name or old register-string recovery. |
+| Register banks/classes and physical references | `module/module.hpp` for snapshots; later `abi/` or `codegen/` may define typed AArch64 registers | Present prepared carrier for banks/classes/assignments; target-specific typed register enum remains missing. | `TargetRegisterRecord` plus `CalleeSaveRecord` register fields. | Target MIR/register model idea before instruction selection. |
+| Frame layout, stack slots, prologue, and epilogue facts | `module/module.hpp` owns prepared snapshots; later `abi/` owns AAPCS64 prologue/epilogue policy | Present prepared carriers: `PreparedStackLayout`, `PreparedFramePlan`, saved-register plan. | `FrameRecord`, `FrameSlotRecord`, `CalleeSaveRecord`. | Target ABI frame/prologue design after target MIR records are accepted. |
+| Dynamic stack | `module/module.hpp` | Present prepared carrier: `PreparedDynamicStackPlan`. | `DynamicStackRecord` inside `FrameRecord`. | Target MIR dynamic-stack operation design. |
+| Branches, compares, block transfers | `module/module.hpp`; later `codegen/` owns lowering rules | Present prepared carriers: `PreparedControlFlow`, `PreparedBranchCondition`, `PreparedJoinTransfer`, branch labels. | `BranchRecord`, `BlockRecord`, `ParallelCopyRecord`. | Target MIR branch/compare model; instruction selection comes later. |
+| Join copies and parallel copies | `module/module.hpp` | Present prepared carriers: `PreparedParallelCopyBundle`, `PreparedMoveBundle`, `PreparedJoinTransfer`. | `ParallelCopyRecord`, `MoveRecord`. | Target MIR move/copy design over prepared bundles. |
+| Calls and indirect calls | `module/module.hpp` snapshots; later `abi/` owns AAPCS64 lowering policy | Present prepared carrier: `PreparedCallPlans`; target ABI completeness ambiguous. | `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, `CallPreservedValueRecord`. | AArch64 target ABI/call-frame design; do not synthesize calling convention locally. |
+| Returns | `abi/` contract for AAPCS64 policy, with `module/` call/result snapshots | BIR return terminators are present; prepared call result/storage facts exist; complete AAPCS64 return policy is ambiguous. | Existing `BlockRecord` terminator fields and `CallResultRecord`; a dedicated return record is not present. | Target ABI return-value design before return lowering. |
+| Memory and addressing | `module/module.hpp` for current snapshots; shared preparation owns missing facts | Prepared addressing exists for base/offset/size/alignment; volatility and address-space are missing from visible prepared memory access. | Existing `OperandRecord` address fields; a dedicated AArch64 memory operand record is still required before lowering. | Split shared prepared volatility/address-space carrier before memory lowering, then target MIR memory operand design. |
+| Globals, strings, data, symbols, relocation needs | `module/module.hpp`; later object/binary-utils contract owns encoding/emission | Present BIR carriers for globals/strings and link names; object relocation semantics deferred. | `GlobalDataRecord`, `StringDataRecord`, `DataRelocationNeedRecord`, `SymbolVisibilityRecordKind`, `DataRelocationNeedKind`. | Structured data/object boundary idea; no object writer behavior in this plan. |
+| Moves, ABI bindings, spills, reloads | `module/module.hpp` | Present prepared carriers: regalloc, value locations, storage plans, move bundles, spill/reload ops. | `MoveRecord`, `AbiBindingRecord`, `SpillReloadRecord`, `ParallelCopyRecord`. | Target MIR move/spill/reload design. |
+| Scalar integer operations and casts | Later `codegen/` after target MIR exists | BIR operation/type facts are present in retained module; no AArch64 instruction record/lowering owner yet. | Missing target instruction/operation record; do not use legacy `codegen/*.md` text patterns as records. | Target MIR instruction record design, then scalar instruction-selection idea. |
+| Floating-point scalar operations | Later `codegen/` after target MIR exists | BIR operation/type facts are present for supported types; no AArch64 FP instruction record/lowering owner yet. | Missing target FP instruction/operation record. | Target MIR instruction record design, then FP lowering idea. |
+| F128 and i128 special-width operations | Deferred contract | Support policy and complete carriers are deferred; legacy notes are `delete/defer`. | Deferred; no target-local record accepted in this plan. | Separate f128/i128 support policy idea before any lowering. |
+| Atomics | Deferred target ABI/codegen contract | BIR/prepare authority for ordering and target lowering completeness is not accepted here. | Deferred; no target-local atomic record accepted in this plan. | Separate atomics lowering idea with ABI and memory-order carrier review. |
+| Intrinsics | Deferred codegen contract | Intrinsic inventory and carriers are not accepted as part of this layout contract. | Deferred; no target-local intrinsic record accepted in this plan. | Separate intrinsic inventory/lowering idea. |
+| Inline assembly | Deferred structured inline-asm contract | Legacy string-substitution route is obsolete; no structured operand/clobber contract accepted. | Deferred; no target-local inline-asm record accepted in this plan. | Separate inline-asm contract idea; no parser/string recovery. |
+| Assembler parser and directives | Deferred assembler contract | Legacy parser exists only as a classified markdown candidate; parser operands cannot supply backend semantics. | Deferred assembler request/operand records, not current MIR records. | Explicit assembler-layer rebuild idea after target MIR/instruction records. |
+| Encoder families | Deferred assembler/encoder contract | Legacy encoder facts may be salvageable later; no codegen dependency is accepted now. | Deferred structured instruction/encoding records. | Encoder API rebuild over target instruction records. |
+| ELF object writer | Deferred object/binary-utils contract | Legacy object-writer notes are binary-utils candidates; no current AArch64 object writer behavior is owned here. | Deferred object/section/symbol/relocation records. | Shared binary-utils/object writer idea. |
+| Binary utilities | Deferred shared binary-utils contract | Useful only after object/relocation scope is selected. | Deferred shared records, not target MIR records. | Shared binary-utils contract idea. |
+| Linker input, symbols, relocations, PLT/GOT, static/dynamic/shared emission | Deferred linker contract | Legacy linker notes are not backend output requirements. | Deferred linker records. | Separate linker initiative; no AArch64 backend dependency. |
+
+Current `module/module.hpp` records remain module-owned when they are snapshots
+of accepted BIR or `PreparedBirModule` facts: module/function/block identity,
+operands, frame snapshots, branches, calls, moves, ABI bindings,
+spills/reloads, parallel copies, globals, strings, and relocation needs. They
+do not own final AAPCS64 policy, instruction selection, assembler encoding,
+object emission, binary utility behavior, or linker orchestration. Those
+families require later `abi/`, `codegen/`, `assembler/`, object/binary-utils,
+linker, or separate deferred contracts before behavior changes.
 
 ## Required Prepared Facts
 

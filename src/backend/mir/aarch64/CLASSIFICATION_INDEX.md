@@ -32,6 +32,14 @@ backend entry contract:
 - Any markdown-only surface as proof that live AArch64 codegen, assembly, or
   linking behavior currently exists.
 
+## Current Ownership Ledger
+
+The active ownership map for AArch64 feature families lives in
+`BIR_PREPARED_GAP_LEDGER.md`. This index remains a legacy-artifact
+classification surface only; it should not be used as the owning file for
+feature-family responsibility, target-local records, carrier status, or first
+implementation routes.
+
 ## Artifact Index
 
 | Artifact | Classification | Contract influence | Legacy or deprecated note |
