@@ -1,31 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.2c
-Current Step Title: Extract assembler `mod.cpp` To Markdown Artifact
+Current Step ID: Step 2.3a
+Current Step Title: Extract encoder `bitfield.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.2c: Extract assembler `mod.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/assembler/mod.cpp` into
-`src/backend/mir/aarch64/assembler/mod.md` and removed the old `.cpp` from the
-live tree.
+Step 2.3a: Extract encoder `bitfield.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/assembler/encoder/bitfield.cpp` into
+`src/backend/mir/aarch64/assembler/encoder/bitfield.md` and removed the old
+`.cpp` from the live tree.
 
-The markdown artifact records the old AArch64 assembler module surface,
-including literal-pool expansion, numeric-label resolution, the request-based
-assembly entry point, the private `write_elf_object` handoff, dependencies,
-hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 bitfield encoder surface,
+including bitfield aliases, raw `UBFM`/`SBFM`/`BFM` forms, `EXTR`,
+bit-manipulation and byte-reversal helpers, CRC32 mnemonic dispatch,
+dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.3 by extracting
-`src/backend/mir/aarch64/assembler/encoder/bitfield.cpp` to markdown and
+`src/backend/mir/aarch64/assembler/encoder/compare_branch.cpp` to markdown and
 removing that old `.cpp` from the live tree.
 
 Step 2.3 covers these assembler encoder surfaces:
-`assembler/encoder/bitfield.cpp`,
 `assembler/encoder/compare_branch.cpp`,
 `assembler/encoder/data_processing.cpp`,
 `assembler/encoder/fp_scalar.cpp`,
@@ -42,13 +41,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- Step 2.2 now has parser, ELF-writer, and assembler-module artifacts; do not
-  revisit assembler parser/writer files unless the supervisor opens a new
-  packet for them.
-- `mod.md` documents the historical orchestration layer only. Treat
-  literal-pool expansion and numeric-label resolution as legacy staging
-  behavior, not as proof that the built-in AArch64 assembler path is
-  production-ready.
+- Step 2.3 now has the bitfield encoder artifact; do not revisit
+  `bitfield.cpp` unless the supervisor opens a new packet for it.
+- `bitfield.md` documents the historical commented encoder formulas only.
+  Treat its alias mappings and CRC/vector notes as rebuild guidance, not as
+  proof that the built-in AArch64 assembler path is production-ready.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
@@ -62,6 +59,9 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 - Step 2.3 encoder extraction should stay descriptive. Do not repair encoder
   coverage, relocation behavior, or instruction semantics during the markdown
   extraction packets.
+- `compare_branch.cpp` should be handled as its own encoder-family surface;
+  do not merge it with the bitfield artifact just because both produce branch
+  or bit-test style encodings.
 
 ## Proof
 
