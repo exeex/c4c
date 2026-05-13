@@ -6,7 +6,7 @@ Created: 2026-05-13
 Depends On:
 - `ideas/closed/211_aarch64_machine_instruction_node_contract.md`
 - `ideas/closed/212_bir_mir_allocation_contract.md`
-- `ideas/open/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md`
+- `ideas/closed/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md`
 
 ## Goal
 
