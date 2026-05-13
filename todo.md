@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/213_aarch64_allocation_to_target_mir_move_spill_reload_records.md
 Source Plan Path: plan.md
-Current Step ID: Step 5
-Current Step Title: Update Ledgers And Markdown Consumers
+Current Step ID: Step 6
+Current Step Title: Add Focused Proof
 
 # Current Packet
 
