@@ -3,33 +3,36 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: none
-Current Step Title: none
+Current Step ID: 3
+Current Step Title: Define Target-Local MIR Module, Function, And Block Records
 
 ## Just Finished
 
-Step 2 added the AArch64 prepared-module handoff gate for `plan.md` Step 2.
-`c4c::backend::aarch64::api::build_prepared_module(const PreparedBirModule&)`
-now resolves the prepared target profile, rejects non-`TargetArch::Aarch64`
-targets and non-`BackendAbiKind::Aapcs64` ABI with typed handoff errors, and
-constructs only a minimal AArch64 module skeleton after the gate succeeds.
-Focused tests prove accepted AArch64/AAPCS64 input and rejected wrong-arch and
-wrong-ABI inputs.
+Step 3 defined the first AArch64 target-local MIR module, function, and block
+records for `plan.md` Step 3. `module::Module` now carries function records
+keyed by prepared `FunctionNameId`, and each function carries block records
+keyed by prepared `BlockLabelId`, with display labels kept as labels and source
+prepared BIR/control-flow pointers preserved for inspection. The builder
+populates records from `PreparedBirModule::control_flow` after the existing
+handoff gate succeeds and uses structured BIR block ids when associating source
+blocks. This refinement also makes structured BIR `link_name_id` authoritative
+for source-function association when present, with rendered function names kept
+as fallback/debug text only.
 
 ## Suggested Next
 
-Implement Step 3 by defining the first target-local AArch64 MIR module,
-function, and block records keyed by structured prepared ids. Recommended next
-owned files:
+Implement Step 4 by adding the first AArch64 operand and register skeleton
+records keyed by prepared value identities and target register references.
+Recommended next owned files:
 
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
-- `tests/backend/backend_aarch64_prepared_module_identity_test.cpp`
+- `tests/backend/backend_aarch64_prepared_operand_identity_test.cpp`
 - `tests/backend/CMakeLists.txt`
 
-The next packet should populate records from `PreparedBirModule::module` and
-`PreparedBirModule::control_flow` only after the existing handoff gate succeeds,
-while keeping display strings as debug labels rather than semantic keys.
+The next packet should populate representative operand records from prepared
+value names/ids and introduce target register-reference records without
+conflating semantic value identity with physical registers.
 
 ## Watchouts
 
@@ -37,24 +40,26 @@ while keeping display strings as debug labels rather than semantic keys.
   source intent itself proves wrong.
 - Do not add instruction selection, assembly text emission, assembler/object,
   linker, or executable production.
-- Do not route Step 2 through existing AArch64 `codegen/emit.hpp`; it still
-  exposes raw BIR/LIR/text paths and is outside the prepared MIR handoff.
+- Do not route the prepared MIR boundary through existing AArch64
+  `codegen/emit.hpp`; it still exposes raw BIR/LIR/text paths and is outside
+  the prepared MIR handoff.
 - Do not recover semantic facts from rendered names, printed BIR, legacy LIR
   text, assembly strings, parser operands, or markdown examples.
 - Do not weaken, skip, or reclassify tests to claim boundary progress.
 - `PreparedMemoryAccess` still lacks explicit volatility/address-space fields;
-  that is not a Step 2 gate blocker, but do not start memory lowering from it.
-- The new AArch64 module skeleton currently stores only the prepared-module
-  pointer and resolved target profile; Step 3 should extend that skeleton
-  without adding instruction selection.
+  that is not a current boundary blocker, but do not start memory lowering from
+  it.
+- Step 3 records deliberately stop at module/function/block identity. Do not
+  add instruction selection or assembly emission when extending them with
+  operands/registers.
 - Preserve unrelated dirty files and transient `review/` artifacts.
 
 ## Proof
 
-Delegated Step 2 proof command:
+Delegated Step 3 proof command:
 
 ```sh
-cmake --build --preset default --target backend_aarch64_prepared_handoff_gate_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_handoff_gate$' --output-on-failure >> test_after.log 2>&1
+cmake --build --preset default --target backend_aarch64_prepared_module_identity_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_module_identity$' --output-on-failure >> test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`.
