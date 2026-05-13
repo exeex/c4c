@@ -106,6 +106,17 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
   return nullptr;
 }
 
+[[nodiscard]] const c4c::backend::prepare::PreparedStackObject* find_stack_object(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    c4c::backend::prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] OperandRecord& ensure_operand(std::vector<OperandRecord>& operands,
                                             c4c::backend::prepare::PreparedValueId value_id,
                                             c4c::FunctionNameId function_name) {
@@ -288,6 +299,384 @@ void merge_storage_operand(
   return operands;
 }
 
+[[nodiscard]] CalleeSaveRecord build_callee_save_record(
+    const c4c::backend::prepare::PreparedSavedRegister& saved) {
+  return CalleeSaveRecord{
+      .bank = saved.bank,
+      .register_name = saved.register_name,
+      .contiguous_width = saved.contiguous_width,
+      .occupied_registers = register_name_views(saved.occupied_register_names),
+      .save_index = saved.save_index,
+      .source_saved_register = &saved,
+  };
+}
+
+[[nodiscard]] CalleeSaveRecord build_clobbered_register_record(
+    const c4c::backend::prepare::PreparedClobberedRegister& clobbered) {
+  return CalleeSaveRecord{
+      .bank = clobbered.bank,
+      .register_name = clobbered.register_name,
+      .contiguous_width = clobbered.contiguous_width,
+      .occupied_registers = register_name_views(clobbered.occupied_register_names),
+  };
+}
+
+[[nodiscard]] FrameSlotRecord build_frame_slot_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedFrameSlot& slot) {
+  const auto* object = find_stack_object(prepared.stack_layout, slot.object_id);
+  FrameSlotRecord record{
+      .slot_id = slot.slot_id,
+      .object_id = slot.object_id,
+      .function_name = slot.function_name,
+      .offset_bytes = slot.offset_bytes,
+      .size_bytes = slot.size_bytes,
+      .align_bytes = slot.align_bytes,
+      .fixed_location = slot.fixed_location,
+      .source_slot = &slot,
+      .source_object = object,
+  };
+  if (object != nullptr) {
+    record.slot_name = object->slot_name;
+    record.slot_label = c4c::backend::prepare::prepared_stack_object_slot_name(prepared.names,
+                                                                                *object);
+    record.value_name = object->value_name;
+    record.value_label = c4c::backend::prepare::prepared_stack_object_value_name(prepared.names,
+                                                                                  *object);
+    record.type = object->type;
+    record.address_exposed = object->address_exposed;
+    record.requires_home_slot = object->requires_home_slot;
+    record.permanent_home_slot = object->permanent_home_slot;
+  }
+  return record;
+}
+
+[[nodiscard]] DynamicStackRecord build_dynamic_stack_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedDynamicStackOp& op) {
+  DynamicStackRecord record{
+      .block_label = op.block_label,
+      .block_label_text = c4c::backend::prepare::prepared_block_label(prepared.names,
+                                                                       op.block_label),
+      .instruction_index = op.instruction_index,
+      .kind = op.kind,
+      .result_value_name = op.result_value_name,
+      .operand_value_name = op.operand_value_name,
+      .allocation_type_text = op.allocation_type_text,
+      .element_size_bytes = op.element_size_bytes,
+      .element_align_bytes = op.element_align_bytes,
+      .source_op = &op,
+  };
+  if (op.result_value_name.has_value()) {
+    record.result_label =
+        c4c::backend::prepare::prepared_value_name(prepared.names, *op.result_value_name);
+  }
+  if (op.operand_value_name.has_value()) {
+    record.operand_label =
+        c4c::backend::prepare::prepared_value_name(prepared.names, *op.operand_value_name);
+  }
+  return record;
+}
+
+[[nodiscard]] FrameRecord build_frame_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  const auto* frame_plan = c4c::backend::prepare::find_prepared_frame_plan(prepared,
+                                                                           function_name);
+  const auto* dynamic_stack = c4c::backend::prepare::find_prepared_dynamic_stack_plan(
+      prepared, function_name);
+  FrameRecord record{
+      .source_frame_plan = frame_plan,
+      .source_dynamic_stack = dynamic_stack,
+  };
+  if (frame_plan != nullptr) {
+    record.frame_size_bytes = frame_plan->frame_size_bytes;
+    record.frame_alignment_bytes = frame_plan->frame_alignment_bytes;
+    record.has_dynamic_stack = frame_plan->has_dynamic_stack;
+    record.uses_frame_pointer_for_fixed_slots = frame_plan->uses_frame_pointer_for_fixed_slots;
+    record.frame_slot_order = frame_plan->frame_slot_order;
+    record.callee_saves.reserve(frame_plan->saved_callee_registers.size());
+    for (const auto& saved : frame_plan->saved_callee_registers) {
+      record.callee_saves.push_back(build_callee_save_record(saved));
+    }
+  }
+  for (const auto& slot : prepared.stack_layout.frame_slots) {
+    if (slot.function_name == function_name) {
+      record.slots.push_back(build_frame_slot_record(prepared, slot));
+    }
+  }
+  if (dynamic_stack != nullptr) {
+    record.requires_stack_save_restore = dynamic_stack->requires_stack_save_restore;
+    if (dynamic_stack->uses_frame_pointer_for_fixed_slots) {
+      record.uses_frame_pointer_for_fixed_slots = true;
+    }
+    record.dynamic_stack.reserve(dynamic_stack->operations.size());
+    for (const auto& op : dynamic_stack->operations) {
+      record.dynamic_stack.push_back(build_dynamic_stack_record(prepared, op));
+    }
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<BranchRecord> build_branch_records(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+  std::vector<BranchRecord> branches;
+  branches.reserve(function.branch_conditions.size());
+  for (const auto& condition : function.branch_conditions) {
+    branches.push_back(BranchRecord{
+        .block_label = condition.block_label,
+        .block_label_text = c4c::backend::prepare::prepared_block_label(prepared.names,
+                                                                         condition.block_label),
+        .condition_kind = condition.kind,
+        .condition_value = condition.condition_value,
+        .predicate = condition.predicate,
+        .compare_type = condition.compare_type,
+        .lhs = condition.lhs,
+        .rhs = condition.rhs,
+        .can_fuse_with_branch = condition.can_fuse_with_branch,
+        .true_label = condition.true_label,
+        .false_label = condition.false_label,
+        .source_condition = &condition,
+    });
+  }
+  return branches;
+}
+
+[[nodiscard]] CallArgumentRecord build_call_argument_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+  CallArgumentRecord record{
+      .arg_index = argument.arg_index,
+      .value_bank = argument.value_bank,
+      .source_encoding = argument.source_encoding,
+      .source_value_id = argument.source_value_id,
+      .source_base_value_id = argument.source_base_value_id,
+      .source_literal = argument.source_literal,
+      .source_symbol_name_id = argument.source_symbol_name_id,
+      .source_slot_id = argument.source_slot_id,
+      .source_stack_offset_bytes = argument.source_stack_offset_bytes,
+      .source_base_value_name = argument.source_base_value_name,
+      .source_pointer_byte_delta = argument.source_pointer_byte_delta,
+      .destination_register = argument.destination_register_name.has_value()
+                                   ? std::string_view{*argument.destination_register_name}
+                                   : std::string_view{},
+      .destination_register_bank = argument.destination_register_bank,
+      .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+      .source_argument = &argument,
+  };
+  if (argument.source_symbol_name_id.has_value()) {
+    record.source_symbol_label = prepared.names.link_names.spelling(*argument.source_symbol_name_id);
+  } else if (argument.source_symbol_name.has_value()) {
+    record.source_symbol_label = *argument.source_symbol_name;
+  }
+  if (argument.source_base_value_name.has_value()) {
+    record.source_base_label =
+        c4c::backend::prepare::prepared_value_name(prepared.names,
+                                                   *argument.source_base_value_name);
+  }
+  return record;
+}
+
+[[nodiscard]] CallResultRecord build_call_result_record(
+    const c4c::backend::prepare::PreparedCallResultPlan& result) {
+  return CallResultRecord{
+      .value_bank = result.value_bank,
+      .source_storage_kind = result.source_storage_kind,
+      .destination_storage_kind = result.destination_storage_kind,
+      .destination_value_id = result.destination_value_id,
+      .source_register = result.source_register_name.has_value()
+                              ? std::string_view{*result.source_register_name}
+                              : std::string_view{},
+      .source_register_bank = result.source_register_bank,
+      .source_stack_offset_bytes = result.source_stack_offset_bytes,
+      .destination_register = result.destination_register_name.has_value()
+                                   ? std::string_view{*result.destination_register_name}
+                                   : std::string_view{},
+      .destination_register_bank = result.destination_register_bank,
+      .destination_slot_id = result.destination_slot_id,
+      .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
+      .source_result = &result,
+  };
+}
+
+[[nodiscard]] CallPreservedValueRecord build_call_preserved_value_record(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+  return CallPreservedValueRecord{
+      .value_id = preserved.value_id,
+      .value_name = preserved.value_name,
+      .value_label = c4c::backend::prepare::prepared_value_name(prepared.names,
+                                                                preserved.value_name),
+      .route = preserved.route,
+      .callee_saved_save_index = preserved.callee_saved_save_index,
+      .register_name = preserved.register_name.has_value()
+                           ? std::string_view{*preserved.register_name}
+                           : std::string_view{},
+      .register_bank = preserved.register_bank,
+      .slot_id = preserved.slot_id,
+      .stack_offset_bytes = preserved.stack_offset_bytes,
+      .source_preserved_value = &preserved,
+  };
+}
+
+[[nodiscard]] std::vector<CallRecord> build_call_records(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  std::vector<CallRecord> calls;
+  const auto* call_plans = c4c::backend::prepare::find_prepared_call_plans(prepared,
+                                                                           function_name);
+  if (call_plans == nullptr) {
+    return calls;
+  }
+  calls.reserve(call_plans->calls.size());
+  for (const auto& call : call_plans->calls) {
+    CallRecord record{
+        .block_index = call.block_index,
+        .instruction_index = call.instruction_index,
+        .wrapper_kind = call.wrapper_kind,
+        .is_indirect = call.is_indirect,
+        .direct_callee_name = call.direct_callee_name.has_value()
+                                  ? std::string_view{*call.direct_callee_name}
+                                  : std::string_view{},
+        .source_call = &call,
+    };
+    if (call.indirect_callee.has_value()) {
+      record.indirect_callee_value_name = call.indirect_callee->value_name;
+      record.indirect_callee_value_id = call.indirect_callee->value_id;
+    }
+    if (call.memory_return.has_value()) {
+      record.memory_return_slot_id = call.memory_return->slot_id;
+      record.memory_return_stack_offset_bytes = call.memory_return->stack_offset_bytes;
+    }
+    record.arguments.reserve(call.arguments.size());
+    for (const auto& argument : call.arguments) {
+      record.arguments.push_back(build_call_argument_record(prepared, argument));
+    }
+    if (call.result.has_value()) {
+      record.result = build_call_result_record(*call.result);
+    }
+    record.preserved_values.reserve(call.preserved_values.size());
+    for (const auto& preserved : call.preserved_values) {
+      record.preserved_values.push_back(build_call_preserved_value_record(prepared, preserved));
+    }
+    record.clobbered_registers.reserve(call.clobbered_registers.size());
+    for (const auto& clobbered : call.clobbered_registers) {
+      record.clobbered_registers.push_back(build_clobbered_register_record(clobbered));
+    }
+    calls.push_back(std::move(record));
+  }
+  return calls;
+}
+
+[[nodiscard]] MoveRecord build_move_record(
+    const c4c::backend::prepare::PreparedMoveBundle& bundle,
+    const c4c::backend::prepare::PreparedMoveResolution& move) {
+  return MoveRecord{
+      .phase = bundle.phase,
+      .authority_kind = move.authority_kind,
+      .from_value_id = move.from_value_id,
+      .to_value_id = move.to_value_id,
+      .destination_kind = move.destination_kind,
+      .destination_storage_kind = move.destination_storage_kind,
+      .destination_abi_index = move.destination_abi_index,
+      .destination_register = move.destination_register_name.has_value()
+                                  ? std::string_view{*move.destination_register_name}
+                                  : std::string_view{},
+      .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+      .block_index = move.block_index,
+      .instruction_index = move.instruction_index,
+      .uses_cycle_temp_source = move.uses_cycle_temp_source,
+      .coalesced_by_assigned_storage = move.coalesced_by_assigned_storage,
+      .source_parallel_copy_step_index = move.source_parallel_copy_step_index,
+      .source_immediate_i32 = move.source_immediate_i32,
+      .op_kind = move.op_kind,
+      .source_parallel_copy_predecessor_label = move.source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = move.source_parallel_copy_successor_label,
+      .reason = move.reason,
+      .source_bundle = &bundle,
+      .source_move = &move,
+  };
+}
+
+[[nodiscard]] AbiBindingRecord build_abi_binding_record(
+    const c4c::backend::prepare::PreparedMoveBundle& bundle,
+    const c4c::backend::prepare::PreparedAbiBinding& binding) {
+  return AbiBindingRecord{
+      .phase = bundle.phase,
+      .destination_kind = binding.destination_kind,
+      .destination_storage_kind = binding.destination_storage_kind,
+      .destination_abi_index = binding.destination_abi_index,
+      .destination_register = binding.destination_register_name.has_value()
+                                  ? std::string_view{*binding.destination_register_name}
+                                  : std::string_view{},
+      .destination_stack_offset_bytes = binding.destination_stack_offset_bytes,
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .source_bundle = &bundle,
+      .source_binding = &binding,
+  };
+}
+
+void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocationFunction* locations,
+                                 std::vector<MoveRecord>& moves,
+                                 std::vector<AbiBindingRecord>& abi_bindings) {
+  if (locations == nullptr) {
+    return;
+  }
+  for (const auto& bundle : locations->move_bundles) {
+    for (const auto& move : bundle.moves) {
+      moves.push_back(build_move_record(bundle, move));
+    }
+    for (const auto& binding : bundle.abi_bindings) {
+      abi_bindings.push_back(build_abi_binding_record(bundle, binding));
+    }
+  }
+}
+
+[[nodiscard]] std::vector<SpillReloadRecord> build_spill_reload_records(
+    const c4c::backend::prepare::PreparedRegallocFunction* regalloc) {
+  std::vector<SpillReloadRecord> records;
+  if (regalloc == nullptr) {
+    return records;
+  }
+  records.reserve(regalloc->spill_reload_ops.size());
+  for (const auto& op : regalloc->spill_reload_ops) {
+    records.push_back(SpillReloadRecord{
+        .value_id = op.value_id,
+        .op_kind = op.op_kind,
+        .block_index = op.block_index,
+        .instruction_index = op.instruction_index,
+        .register_bank = op.register_bank,
+        .register_name = op.register_name.has_value() ? std::string_view{*op.register_name}
+                                                       : std::string_view{},
+        .slot_id = op.slot_id,
+        .stack_offset_bytes = op.stack_offset_bytes,
+        .source_spill_reload = &op,
+    });
+  }
+  return records;
+}
+
+[[nodiscard]] std::vector<ParallelCopyRecord> build_parallel_copy_records(
+    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+  std::vector<ParallelCopyRecord> records;
+  records.reserve(function.parallel_copy_bundles.size());
+  for (const auto& bundle : function.parallel_copy_bundles) {
+    records.push_back(ParallelCopyRecord{
+        .predecessor_label = bundle.predecessor_label,
+        .successor_label = bundle.successor_label,
+        .execution_site = bundle.execution_site,
+        .execution_block_label = bundle.execution_block_label,
+        .has_cycle = bundle.has_cycle,
+        .move_count = bundle.moves.size(),
+        .step_count = bundle.steps.size(),
+        .source_bundle = &bundle,
+    });
+  }
+  return records;
+}
+
 [[nodiscard]] BlockRecord build_block_record(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::bir::Function* source_function,
@@ -315,6 +704,44 @@ void merge_storage_operand(
       .source_function = source_function,
       .control_flow = &function,
   };
+  const auto* locations =
+      c4c::backend::prepare::find_prepared_value_location_function(prepared,
+                                                                   function.function_name);
+  const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc,
+                                                         function.function_name);
+  record.frame = build_frame_record(prepared, function.function_name);
+  record.branches = build_branch_records(prepared, function);
+  record.calls = build_call_records(prepared, function.function_name);
+  append_value_location_moves(locations, record.moves, record.abi_bindings);
+  if (regalloc != nullptr) {
+    for (const auto& move : regalloc->move_resolution) {
+      record.moves.push_back(MoveRecord{
+          .authority_kind = move.authority_kind,
+          .from_value_id = move.from_value_id,
+          .to_value_id = move.to_value_id,
+          .destination_kind = move.destination_kind,
+          .destination_storage_kind = move.destination_storage_kind,
+          .destination_abi_index = move.destination_abi_index,
+          .destination_register = move.destination_register_name.has_value()
+                                      ? std::string_view{*move.destination_register_name}
+                                      : std::string_view{},
+          .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+          .block_index = move.block_index,
+          .instruction_index = move.instruction_index,
+          .uses_cycle_temp_source = move.uses_cycle_temp_source,
+          .coalesced_by_assigned_storage = move.coalesced_by_assigned_storage,
+          .source_parallel_copy_step_index = move.source_parallel_copy_step_index,
+          .source_immediate_i32 = move.source_immediate_i32,
+          .op_kind = move.op_kind,
+          .source_parallel_copy_predecessor_label = move.source_parallel_copy_predecessor_label,
+          .source_parallel_copy_successor_label = move.source_parallel_copy_successor_label,
+          .reason = move.reason,
+          .source_move = &move,
+      });
+    }
+  }
+  record.spill_reloads = build_spill_reload_records(regalloc);
+  record.parallel_copies = build_parallel_copy_records(function);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);
   record.blocks.reserve(function.blocks.size());
   for (const auto& block : function.blocks) {

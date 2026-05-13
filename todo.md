@@ -3,36 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: none
-Current Step Title: none
+Current Step ID: 5
+Current Step Title: Add Frame, Branch, Call, And Move Skeletons
 
 ## Just Finished
 
-Step 4 added the first AArch64 operand and target-register skeleton records for
-`plan.md` Step 4. `module::FunctionRecord` now carries semantic
-`OperandRecord`s keyed by prepared `PreparedValueId` plus prepared function and
-value-name IDs, with value names, BIR types, value kinds, frame-slot IDs,
-symbol/link-name IDs, pointer-base IDs, and carrier pointers preserved where
-already published by prepared value-location, regalloc, and storage-plan facts.
-Physical register spellings are represented as separate indexed
-`TargetRegisterRecord`s, so home, assigned, spill-authority, and storage-plan
-register references do not replace semantic value identity.
+Step 5 added descriptive AArch64 frame, branch, call, move, ABI-binding,
+spill/reload, and parallel-copy skeleton records for `plan.md` Step 5.
+`module::FunctionRecord` now preserves representative prepared frame-slot,
+stack-object, dynamic-stack, callee-save, compare-branch, call-plan,
+value-location move, regalloc move, spill/reload, ABI-binding, and parallel-copy
+carrier identities without selecting target instructions or emitting assembly.
 
 ## Suggested Next
 
-Implement Step 5 by adding frame, branch, call, and move skeleton records from
-prepared frame/control/call/value-location/regalloc/storage-plan facts without
-lowering them to target instructions.
+Implement Step 6 by adding data/object side-table skeleton records from
+prepared module-level data facts without starting assembly, object, relocation,
+or binary emission.
 Recommended next owned files:
 
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
-- `tests/backend/backend_aarch64_prepared_frame_control_test.cpp`
+- `tests/backend/backend_aarch64_prepared_data_identity_test.cpp`
 - `tests/backend/CMakeLists.txt`
 
-The next packet should preserve representative prepared frame slots, branch
-labels, call plan records, and move/spill/reload identities as descriptive MIR
-skeleton records only.
+The next packet should preserve representative prepared globals, strings,
+symbol visibility, TLS, constants, initializers, and future relocation identity
+as descriptive MIR side-table records only.
 
 ## Watchouts
 
@@ -58,14 +55,17 @@ skeleton records only.
 - Regalloc physical assignments currently expose register class but no
   register-bank carrier; Step 4 preserves the class and leaves bank as `None`
   for those records.
+- Step 5 records are descriptive only: route-local block/instruction indexes,
+  physical register names, and parallel-copy step indexes remain prepared-route
+  coordinates, not semantic identity or selected AArch64 instructions.
 - Preserve unrelated dirty files and transient `review/` artifacts.
 
 ## Proof
 
-Delegated Step 4 proof command:
+Delegated Step 5 proof command:
 
 ```sh
-cmake --build --preset default --target backend_aarch64_prepared_operand_identity_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_operand_identity$' --output-on-failure >> test_after.log 2>&1
+cmake --build --preset default --target backend_aarch64_prepared_frame_control_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_frame_control$' --output-on-failure >> test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`.
