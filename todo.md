@@ -1,56 +1,60 @@
 Status: Active
 Source Idea Path: ideas/open/217_c4cll_debug_flags_document_aarch64_asm_output.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Update the Debug-Flags Skill Recipes
+Current Step ID: 3
+Current Step Title: Verify the Documentation Against the Repo
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 updated `.codex/skills/c4cll-debug-flags/SKILL.md` with the landed
-AArch64 `.s` output route.
+Step 3 verified `.codex/skills/c4cll-debug-flags/SKILL.md` against the
+implemented CLI route and smoke workflow.
 
-Documented recipe coverage:
+Verification coverage:
 
-- exact implemented command shape:
-  `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
-- repo-local build form using `./build/c4cll`
-- external assembler/link smoke using `aarch64-linux-gnu-as` and `clang
-  --target=aarch64-linux-gnu`, aligned with the CMake helper split
-- the distinction between semantic BIR, prepared BIR, MIR route visibility,
-  backend-native machine-node `.s` printer output, and LLVM-route output
-- the explicit boundary that `.s` output is not an internal assembler, object
-  encoder, linker, or bridge that parses assembly back into backend semantics
+- `build/c4cll --help` documents `--codegen llvm|asm|compare`, `--target`, `-o`,
+  the AArch64 asm example, and the `.s` printer-output boundary.
+- `ctest --test-dir build -N -R 'backend_cli_aarch64_asm'` lists
+  `backend_cli_aarch64_asm_no_machine_nodes_fails` and
+  `backend_cli_aarch64_asm_external_return_zero_smoke`.
+- repo searches confirm the skill's documented
+  `--codegen asm --target aarch64-linux-gnu` command shape, the
+  `tests/backend/case/aarch64_return_zero_smoke.c` smoke source, and the
+  external `aarch64-linux-gnu-as` plus `clang --target=aarch64-linux-gnu`
+  workflow exist in the repo.
+- no documentation mismatch was found, so the debug-flags skill was not edited.
 
 ## Suggested Next
 
-Supervisor should review and commit this documentation-only Step 2 slice, then
-decide whether the active lifecycle state is complete.
+Supervisor should review this todo-only Step 3 verification slice, commit it if
+accepted, then route lifecycle completion or closure through the plan owner.
 
 ## Watchouts
 
-- External execution still depends on local cross-toolchain availability; the
-  skill documents the recipe but does not require this packet to run the
-  external smoke.
+- The focused AArch64 asm CTest route was feasible in this environment and
+  passed, including the external smoke.
 - `review/aarch64_allocation_record_step2_review.md` remains untouched.
 
 ## Proof
 
-No build required for this documentation-only packet.
+No build was required for this documentation-verification packet.
 
 Ran:
 
 ```bash
+build/c4cll --help
+ctest --test-dir build -N -R 'backend_cli_aarch64_asm'
+rg -n -- '--codegen asm --target aarch64-linux-gnu' src/apps/c4cll.cpp .codex/skills/c4cll-debug-flags/SKILL.md
+rg -n -- 'tests/backend/case/aarch64_return_zero_smoke\.c|aarch64_return_zero_smoke\.c' .codex/skills/c4cll-debug-flags/SKILL.md tests/backend/CMakeLists.txt
+rg -n -- 'backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_no_machine_nodes_fails' .codex/skills/c4cll-debug-flags/SKILL.md tests/backend/CMakeLists.txt
+rg -n -- 'aarch64-linux-gnu-as|clang --target=aarch64-linux-gnu|AARCH64_AS_EXECUTABLE|CLANG_EXECUTABLE' .codex/skills/c4cll-debug-flags/SKILL.md tests/backend/CMakeLists.txt
+ctest --test-dir build -j --output-on-failure -R 'backend_cli_aarch64_asm'
 git diff --check -- .codex/skills/c4cll-debug-flags/SKILL.md todo.md
-rg -n -- 'c4cll --codegen asm --target aarch64-linux-gnu input\.c -o out\.s' .codex/skills/c4cll-debug-flags/SKILL.md todo.md
-rg -n -- 'tests/backend/case/aarch64_return_zero_smoke\.c' .codex/skills/c4cll-debug-flags/SKILL.md
-rg -n -- 'not an internal assembler|not .*semantic bridge|parses? .*\.s .*back|\.s output is not' .codex/skills/c4cll-debug-flags/SKILL.md todo.md
 ```
 
 Results are written to `test_after.log`.
 
-The checks passed: diff whitespace validation succeeded, the documented command
-shape is present, the example path uses
-`tests/backend/case/aarch64_return_zero_smoke.c`, and the route-boundary text
-states `.s` output is not parsed back into backend semantics.
+The checks passed: the CLI help and skill agree on the documented route, the
+smoke source/helper paths and test names exist, the focused CTest route passed
+2/2 tests, and diff whitespace validation succeeded.
