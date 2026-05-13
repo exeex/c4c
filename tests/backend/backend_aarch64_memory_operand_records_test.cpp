@@ -175,6 +175,58 @@ int pointer_and_deferred_memory_records_are_explicit_record_only_data() {
   return 0;
 }
 
+int volatility_and_address_space_records_stay_distinct() {
+  const auto non_volatile_gs = aarch64_codegen::make_memory_operand(
+      aarch64_codegen::MemoryOperand{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+          .function_name = c4c::FunctionNameId{16},
+          .block_label = c4c::BlockLabelId{26},
+          .instruction_index = 9,
+          .base_kind = aarch64_codegen::MemoryBaseKind::Symbol,
+          .symbol_name = c4c::LinkNameId{56},
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Gs,
+          .is_volatile = false,
+      });
+  const auto volatile_tls = aarch64_codegen::make_memory_operand(
+      aarch64_codegen::MemoryOperand{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+          .function_name = c4c::FunctionNameId{16},
+          .block_label = c4c::BlockLabelId{26},
+          .instruction_index = 10,
+          .base_kind = aarch64_codegen::MemoryBaseKind::Symbol,
+          .symbol_name = c4c::LinkNameId{56},
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Tls,
+          .is_volatile = true,
+      });
+
+  const auto* non_volatile_memory =
+      std::get_if<aarch64_codegen::MemoryOperand>(&non_volatile_gs.payload);
+  const auto* volatile_memory =
+      std::get_if<aarch64_codegen::MemoryOperand>(&volatile_tls.payload);
+  if (non_volatile_memory == nullptr || volatile_memory == nullptr) {
+    return fail("expected volatility proof memory operands");
+  }
+  if (non_volatile_memory->address_space != bir::AddressSpace::Gs ||
+      non_volatile_memory->is_volatile) {
+    return fail("expected non-volatile GS memory record to preserve facts exactly");
+  }
+  if (volatile_memory->address_space != bir::AddressSpace::Tls ||
+      !volatile_memory->is_volatile) {
+    return fail("expected volatile TLS memory record to preserve facts exactly");
+  }
+  if (non_volatile_memory->address_space == volatile_memory->address_space ||
+      non_volatile_memory->is_volatile == volatile_memory->is_volatile) {
+    return fail("expected direct records to keep volatility and address space distinct");
+  }
+  return 0;
+}
+
 int memory_instruction_records_do_not_select_or_emit_load_store_behavior() {
   const auto instruction = aarch64_codegen::make_memory_instruction(
       aarch64_codegen::MemoryInstructionRecord{
@@ -236,6 +288,9 @@ int main() {
   }
   if (const int status = pointer_and_deferred_memory_records_are_explicit_record_only_data();
       status != 0) {
+    return status;
+  }
+  if (const int status = volatility_and_address_space_records_stay_distinct(); status != 0) {
     return status;
   }
   if (const int status = memory_instruction_records_do_not_select_or_emit_load_store_behavior();

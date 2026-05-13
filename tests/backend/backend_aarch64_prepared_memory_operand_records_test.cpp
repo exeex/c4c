@@ -480,6 +480,56 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   }
 
   fixture = make_fixture();
+  const bir::StoreGlobalInst volatility_mismatch_store{
+      .global_name_id = fixture.global_name,
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 16,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .byte_offset = 16,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = false,
+              .base_link_name_id = fixture.global_name,
+          },
+  };
+  const auto volatility_mismatch = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      3,
+      volatility_mismatch_store);
+  if (volatility_mismatch.record.has_value() ||
+      volatility_mismatch.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::AddressFactMismatch) {
+    return fail("expected BIR/prepared volatility mismatch to fail closed");
+  }
+
+  fixture = make_fixture();
+  const bir::StoreGlobalInst missing_structured_address_store{
+      .global_name_id = fixture.global_name,
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 16,
+      .align_bytes = 4,
+  };
+  const auto missing_structured_address = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      3,
+      missing_structured_address_store);
+  if (missing_structured_address.record.has_value() ||
+      missing_structured_address.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::AddressFactMismatch) {
+    return fail("expected missing structured volatility/address-space facts to fail closed");
+  }
+
+  fixture = make_fixture();
   fixture.locations.value_homes.pop_back();
   const bir::StoreLocalInst pointer_missing_home_store{
       .slot_id = c4c::SlotNameId{5},
