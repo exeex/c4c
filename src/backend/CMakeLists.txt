@@ -7,6 +7,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/backend.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/api/api.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/machine_printer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/records.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/module.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/abi/abi.cpp"
