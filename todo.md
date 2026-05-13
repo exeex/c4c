@@ -8,26 +8,25 @@ Current Step Title: Add Target Operand Records
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by adding prepared-register conversion helpers in
-`src/backend/mir/aarch64/abi/abi.hpp` and `.cpp`.
+Completed `plan.md` Step 4 by adding target-local AArch64 operand record
+surfaces under `src/backend/mir/aarch64/codegen/records.hpp` and `.cpp`.
 
 Work completed:
-- Added `parse_aarch64_register_name` and `convert_prepared_register` helpers
-  that validate prepared physical-register spellings into typed
-  `RegisterReference` values.
-- Added explicit conversion failure kinds for empty/unknown names, unsupported
-  views, bank mismatches, class mismatches, and expected-view mismatches.
-- Added conversion overloads for `PreparedPhysicalRegisterAssignment` and
-  `PreparedSavedRegister` carriers.
-- Added `backend_aarch64_prepared_register_conversion` coverage for
-  representative GP, SP, FP/SIMD successes plus unknown, unsupported-view,
-  bank-mismatch, class-mismatch, and expected-view mismatch failures.
+- Added target operand records for typed registers, immediates, prepared
+  values, frame slots, symbols/link names, branch targets, and memory operands.
+- Preserved prepared ids and typed facts as fields, including
+  `PreparedValueId`, `ValueNameId`, `PreparedFrameSlotId`, `LinkNameId`,
+  register bank/class, BIR type, address space, volatility, and offsets.
+- Marked branch-target and memory operands with `RecordSurfaceKind::RecordOnly`
+  so the Step 4 surface does not imply instruction selection or lowering.
+- Added `backend_aarch64_target_operand_records` coverage and wired
+  `records.cpp` into `c4c_backend`.
 
 ## Suggested Next
 
-Step 4 packet: add target operand record structs under the AArch64 target-record
-owner, using the typed register vocabulary and prepared-register conversion
-helpers as the register boundary.
+Step 5 packet: add target instruction record containers under the same
+`src/backend/mir/aarch64/codegen/` owner, using the Step 4 operand payloads but
+without selecting concrete AArch64 instructions or emitting assembly.
 
 ## Watchouts
 
@@ -44,6 +43,11 @@ helpers as the register boundary.
 - Avoid extending `src/backend/mir/aarch64/codegen/emit.hpp`; it still exposes
   raw BIR/LIR text-era surfaces and is not the target-record owner for this
   plan.
+- `records.hpp` is a target-record type surface only. It deliberately does not
+  parse prepared display strings, inspect retained BIR instructions, choose
+  opcodes, or format assembly.
+- Memory operands are placeholders that preserve prepared address facts for
+  later lowering; branch targets are structured `BlockLabelId` records only.
 
 ## Proof
 
@@ -54,6 +58,8 @@ Ran:
 ```
 
 Result: passed, including `backend_aarch64_register_vocabulary` and
-`backend_aarch64_prepared_register_conversion`.
+`backend_aarch64_prepared_register_conversion`; new
+`backend_aarch64_target_operand_records` is included and green. The delegated
+backend subset reported 117 executed tests, 0 failed.
 
 Proof log: `test_after.log`.
