@@ -1,59 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/214_aarch64_aapcs64_call_return_frame_mir_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Align Narrow Record Surface If Required
+Current Step ID: Step 5
+Current Step Title: Add Focused Proof
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 assessed whether the accepted AAPCS64 contract needs immediate narrow
-AArch64 module record-surface changes. No code change is required for this
-plan step.
+Step 5 completed docs-only focused proof for the accepted AArch64 AAPCS64
+call/return/frame target-MIR contract. The stale-claim searches found no
+material contradiction where current AArch64 call, return, frame, prologue,
+epilogue, memory-return, indirect-call, or variadic consumers still own local
+ABI policy instead of the contract.
 
-The current contract is representable over existing records and prepared facts:
-`CallRecord` preserves call site identity, direct/indirect kind, wrapper kind,
-arguments, results, memory-return slot snapshots, preserved values, clobbers,
-and `source_call` provenance; `CallArgumentRecord` and `CallResultRecord`
-preserve register/stack/source/destination snapshots; `MoveRecord` and
-`AbiBindingRecord` preserve `BeforeCall`, `AfterCall`, and `BeforeReturn`
-movement authority; `FrameRecord`, `FrameSlotRecord`, `CalleeSaveRecord`, and
-`DynamicStackRecord` preserve frame, callee-save, fixed-slot frame-pointer, and
-dynamic-stack obligations; `BlockRecord` preserves return terminator identity;
-and AArch64 ABI helpers identify `x8`, `x16`, `x17`, `x29`, and `x30`
-special-register roles.
-
-The only narrower carriers not directly exposed remain documented deferrals:
-a dedicated return-boundary record, direct `CallRecord` exposure of
-`variadic_fpr_arg_register_count`, a complete outgoing call-area carrier,
-explicit special-register role records, full variadic function-entry metadata,
-and broader target ABI classification/helper-call carriers. None blocks this
-contract because consumers can use existing prepared provenance and must fail
-closed or open a separate idea before relying on those deferred facts.
+The remaining search hits are expected: contract prohibitions, historical
+reference sections, explicit deferrals, or unrelated later surfaces such as
+allocation, memory, F128, atomics, intrinsics, and inline assembly. No code,
+test, implementation, plan, source-idea, docs, ledger, or review edits were
+required for this proof step.
 
 ## Suggested Next
 
-Proceed to Step 5 proof. Since Step 4 was assessment-only and made no record
-changes, proof can focus on stale-claim searches for old local ABI policy plus
-`git diff --check`; no focused structured test edits are required unless the
-supervisor chooses to add machine-verifiable coverage for a deferred carrier.
+All runbook steps are complete. Supervisor lifecycle review should decide
+whether to close, deactivate, or split the active plan; no executor packet is
+currently recommended before that review.
 
 ## Watchouts
 
-- Step 4 intentionally did not edit `module.hpp`, `module.cpp`, tests, docs,
-  `plan.md`, source ideas, or review artifacts.
-- `PreparedAbiBinding` still has no destination value id or slot id; current
-  `AbiBindingRecord` therefore exposes only direct prepared ABI destination
-  facts and source binding provenance.
-- `module::CallRecord` keeps full indirect-callee details and
-  `variadic_fpr_arg_register_count` through `source_call`, not direct fields.
-- A future implementation packet for direct `CallRecord` variadic count,
-  outgoing-area totals, or return-boundary records should include focused
-  module tests and backend proof.
+- No `test_after.log` was produced for Step 5 because the delegated proof was
+  docs/status-only and required no build or test run.
+- Direct `CallRecord` variadic count, outgoing-area totals, return-boundary
+  records, explicit special-register role records, full variadic entry
+  metadata, and broader target ABI classification/helper-call carriers remain
+  documented deferrals for later ideas, not blockers for this plan.
+- The existing untracked `review/aarch64_allocation_record_step2_review.md`
+  artifact was outside owned files and left untouched.
 
 ## Proof
 
-Assessment-only Step 4. No build required and no `test_after.log` produced per
-the delegated proof. Required proof: bounded record-surface inspection and
-`git diff --check`.
+Docs/status-only Step 5. No build or test run was required because Steps 2 and
+3 were docs-only and Step 4 required no code changes.
+
+Proof run:
+
+- `rg -n -i "\\b(local|locally|legacy|old)\\b.*\\b(ABI|AAPCS|policy|authority|choose|select|infer|rediscover)\\b|\\b(choose|select|infer|rediscover)\\b.*\\b(argument|result|scratch|stack|frame|save|restore|ABI|AAPCS|policy)\\b|assembly text.*\\b(authority|semantic|ABI|policy)\\b|\\b(bl|blr|ret|stp|ldp|str|ldr|mov)\\b.*\\b(authority|semantic|contract)\\b" src/backend/mir/aarch64 plan.md todo.md`
+- `rg -n -i "argument registers|result registers|scratch registers|stack arguments|outgoing call area|save/restore|frame layout|callee-save|caller-saved|x8|x16|x17|x29|x30|variadic" src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md src/backend/mir/aarch64/AAPCS64_CALL_RETURN_FRAME_CONTRACT.md src/backend/mir/aarch64/codegen/*.md todo.md`
+- `rg -n -i "must (emit|select|lower).*\\b(bl|blr|ret|stp|ldp|str|ldr|mov)\\b|\\b(bl|blr|ret|stp|ldp|str|ldr|mov)\\b.*must|final (call|return|prologue|epilogue|instruction)|instruction selection" src/backend/mir/aarch64/AAPCS64_CALL_RETURN_FRAME_CONTRACT.md src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md src/backend/mir/aarch64/codegen/*.md todo.md`
+- `git diff --check`
+
+Result: stale-claim searches found no material contradiction to the accepted
+AAPCS64 contract, and `git diff --check` passed.
