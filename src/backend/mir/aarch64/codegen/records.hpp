@@ -160,6 +160,11 @@ enum class PreparedMemoryOperandRecordError {
   MissingSymbolName,
   SymbolMismatch,
   AddressFactMismatch,
+  MissingPointerValueName,
+  MissingPointerValueHome,
+  AmbiguousPointerValueHome,
+  PointerValueMismatch,
+  StringIdentityMismatch,
   ResultValueMismatch,
   StoredValueMismatch,
 };

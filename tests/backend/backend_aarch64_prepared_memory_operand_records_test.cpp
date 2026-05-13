@@ -36,7 +36,10 @@ struct PreparedMemoryFixture {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   c4c::ValueNameId load_name = c4c::kInvalidValueName;
   c4c::ValueNameId stored_name = c4c::kInvalidValueName;
+  c4c::ValueNameId pointer_name = c4c::kInvalidValueName;
   c4c::LinkNameId global_name = c4c::kInvalidLinkName;
+  c4c::LinkNameId string_symbol_name = c4c::kInvalidLinkName;
+  c4c::TextId string_text_name = c4c::kInvalidText;
   prepare::PreparedValueLocationFunction locations;
   prepare::PreparedAddressingFunction addressing;
 };
@@ -47,7 +50,10 @@ PreparedMemoryFixture make_fixture() {
   fixture.block_label = fixture.names.block_labels.intern("entry");
   fixture.load_name = fixture.names.value_names.intern("%load");
   fixture.stored_name = fixture.names.value_names.intern("%stored");
+  fixture.pointer_name = fixture.names.value_names.intern("%ptr");
   fixture.global_name = fixture.names.link_names.intern("g.counter");
+  fixture.string_symbol_name = fixture.names.link_names.intern(".L.str0");
+  fixture.string_text_name = fixture.names.texts.find(".L.str0");
   fixture.locations = prepare::PreparedValueLocationFunction{
       .function_name = fixture.function_name,
       .value_homes =
@@ -60,6 +66,10 @@ PreparedMemoryFixture make_fixture() {
                             fixture.function_name,
                             fixture.stored_name,
                             "w1"),
+              register_home(prepare::PreparedValueId{12},
+                            fixture.function_name,
+                            fixture.pointer_name,
+                            "x2"),
           },
   };
   fixture.addressing = prepare::PreparedAddressingFunction{
@@ -99,6 +109,39 @@ PreparedMemoryFixture make_fixture() {
                           .byte_offset = 16,
                           .size_bytes = 4,
                           .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 4,
+                  .stored_value_name = fixture.stored_name,
+                  .address_space = bir::AddressSpace::Tls,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                          .pointer_value_name = fixture.pointer_name,
+                          .byte_offset = 24,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 5,
+                  .result_value_name = fixture.load_name,
+                  .address_space = bir::AddressSpace::Gs,
+                  .is_volatile = true,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
+                          .symbol_name = fixture.string_symbol_name,
+                          .byte_offset = 4,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
                           .can_use_base_plus_offset = true,
                       },
               },
@@ -193,6 +236,86 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
   return 0;
 }
 
+int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
+  auto fixture = make_fixture();
+  const bir::StoreLocalInst store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 24,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = named_value(bir::TypeKind::Ptr, "%ptr"),
+              .byte_offset = 24,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Tls,
+          },
+  };
+
+  const auto result = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names, fixture.locations, fixture.addressing, fixture.block_label, 4, store);
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected pointer-value prepared memory conversion to succeed");
+  }
+
+  const auto& memory = *result.record;
+  if (memory.base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      memory.pointer_value_name != fixture.pointer_name ||
+      memory.pointer_value_id != prepare::PreparedValueId{12} ||
+      memory.stored_value_id != prepare::PreparedValueId{11} ||
+      memory.stored_value_name != fixture.stored_name || memory.result_value_id.has_value() ||
+      memory.result_value_name.has_value() || memory.byte_offset != 24 ||
+      memory.size_bytes != 8 || memory.align_bytes != 8 ||
+      memory.address_space != bir::AddressSpace::Tls || memory.is_volatile ||
+      !memory.can_use_base_plus_offset) {
+    return fail("expected pointer-value record to preserve prepared and BIR facts");
+  }
+  return 0;
+}
+
+int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
+  auto fixture = make_fixture();
+  const bir::LoadGlobalInst load{
+      .result = named_value(bir::TypeKind::I32, "%load"),
+      .byte_offset = 4,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+              .base_name = ".L.str0",
+              .byte_offset = 4,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = true,
+          },
+  };
+
+  const auto result = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names, fixture.locations, fixture.addressing, fixture.block_label, 5, load);
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected string-constant prepared memory conversion to succeed");
+  }
+
+  const auto& memory = *result.record;
+  if (memory.base_kind != aarch64_codegen::MemoryBaseKind::StringConstant ||
+      memory.string_symbol_name != fixture.string_symbol_name ||
+      memory.string_name != fixture.string_text_name ||
+      memory.result_value_id != prepare::PreparedValueId{10} ||
+      memory.result_value_name != fixture.load_name || memory.stored_value_id.has_value() ||
+      memory.stored_value_name.has_value() || memory.byte_offset != 4 ||
+      memory.size_bytes != 8 || memory.align_bytes != 8 ||
+      memory.address_space != bir::AddressSpace::Gs || !memory.is_volatile ||
+      !memory.can_use_base_plus_offset) {
+    return fail("expected string-constant record to preserve prepared and BIR facts");
+  }
+  return 0;
+}
+
 int unsupported_or_mismatched_memory_facts_fail_closed() {
   auto fixture = make_fixture();
   const bir::LoadLocalInst load{
@@ -223,8 +346,9 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const auto unsupported = aarch64_codegen::make_prepared_memory_operand_record(
       fixture.names, fixture.locations, fixture.addressing, fixture.block_label, 2, load);
   if (unsupported.record.has_value() ||
-      unsupported.error != aarch64_codegen::PreparedMemoryOperandRecordError::UnsupportedBase) {
-    return fail("expected unsupported pointer base to fail closed in Step 3");
+      unsupported.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::MissingPointerValueName) {
+    return fail("expected incomplete pointer base to fail closed in Step 4");
   }
 
   fixture = make_fixture();
@@ -355,6 +479,116 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
     return fail("expected BIR/prepared address-space mismatch to fail closed");
   }
 
+  fixture = make_fixture();
+  fixture.locations.value_homes.pop_back();
+  const bir::StoreLocalInst pointer_missing_home_store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 24,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = named_value(bir::TypeKind::Ptr, "%ptr"),
+              .byte_offset = 24,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Tls,
+          },
+  };
+  const auto pointer_missing_home = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      4,
+      pointer_missing_home_store);
+  if (pointer_missing_home.record.has_value() ||
+      pointer_missing_home.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::MissingPointerValueHome ||
+      aarch64_codegen::prepared_memory_operand_record_error_name(pointer_missing_home.error) !=
+          "missing_pointer_value_home") {
+    return fail("expected missing pointer value home to fail closed");
+  }
+
+  fixture = make_fixture();
+  fixture.locations.value_homes.push_back(register_home(
+      prepare::PreparedValueId{13}, fixture.function_name, fixture.pointer_name, "x3"));
+  const auto pointer_ambiguous_home = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      4,
+      pointer_missing_home_store);
+  if (pointer_ambiguous_home.record.has_value() ||
+      pointer_ambiguous_home.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::AmbiguousPointerValueHome ||
+      aarch64_codegen::prepared_memory_operand_record_error_name(pointer_ambiguous_home.error) !=
+          "ambiguous_pointer_value_home") {
+    return fail("expected ambiguous pointer value home to fail closed");
+  }
+
+  fixture = make_fixture();
+  const bir::StoreLocalInst pointer_mismatch_store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 24,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = named_value(bir::TypeKind::Ptr, "%other.ptr"),
+              .byte_offset = 24,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Tls,
+          },
+  };
+  const auto pointer_mismatch = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      4,
+      pointer_mismatch_store);
+  if (pointer_mismatch.record.has_value() ||
+      pointer_mismatch.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::PointerValueMismatch) {
+    return fail("expected BIR/prepared pointer value mismatch to fail closed");
+  }
+
+  fixture = make_fixture();
+  const bir::LoadGlobalInst string_mismatch_load{
+      .result = named_value(bir::TypeKind::I32, "%load"),
+      .byte_offset = 4,
+      .align_bytes = 8,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+              .base_name = ".L.other",
+              .byte_offset = 4,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .address_space = bir::AddressSpace::Gs,
+              .is_volatile = true,
+          },
+  };
+  const auto string_mismatch = aarch64_codegen::make_prepared_memory_operand_record(
+      fixture.names,
+      fixture.locations,
+      fixture.addressing,
+      fixture.block_label,
+      5,
+      string_mismatch_load);
+  if (string_mismatch.record.has_value() ||
+      string_mismatch.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::StringIdentityMismatch ||
+      aarch64_codegen::prepared_memory_operand_record_error_name(string_mismatch.error) !=
+          "string_identity_mismatch") {
+    return fail("expected BIR/prepared string identity mismatch to fail closed");
+  }
+
   return 0;
 }
 
@@ -366,6 +600,14 @@ int main() {
     return status;
   }
   if (const int status = global_symbol_store_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = pointer_value_store_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = string_constant_load_conversion_preserves_prepared_and_bir_facts();
       status != 0) {
     return status;
   }
