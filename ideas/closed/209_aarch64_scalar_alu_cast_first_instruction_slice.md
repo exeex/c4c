@@ -1,7 +1,8 @@
 # AArch64 Scalar ALU Cast First Instruction Slice
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/open/207_aarch64_target_register_and_instruction_record_core.md`
@@ -71,6 +72,23 @@ records.
   and cast records plus an unsupported/deferred guard where appropriate.
 - No assembly text, object emission, memory lowering, or call lowering is
   added.
+
+## Closure Notes
+
+Closed after the active runbook completed all six steps. The accepted
+implementation added record-only AArch64 scalar ALU and simple integer cast
+target records under `src/backend/mir/aarch64/codegen/`, prepared conversion
+helpers for the selected forms, documentation, and contract tests.
+
+The completed slice covers integer ALU `Add`, `Sub`, `And`, `Or`, and `Xor`
+records plus simple integer cast `SExt`, `ZExt`, and `Trunc` records. Unsupported
+scalar opcodes and cast forms remain explicit deferred or fail-closed cases.
+
+Close validation used the backend proof scope:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
+
+Regression guard passed with `--allow-non-decreasing-passed`: 128 passed before,
+128 passed after, 0 failed.
 
 ## Reviewer Reject Signals
 
