@@ -1,54 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Build The Markdown Classification Index
+Current Step ID: Step 4
+Current Step Title: Define The Backend Entry Contract
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Build The Markdown Classification Index created
-`src/backend/mir/aarch64/CLASSIFICATION_INDEX.md` as the discoverable AArch64
-markdown review index.
+Step 4: Define The Backend Entry Contract created
+`src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md` as the discoverable AArch64
+backend entry contract.
 
-The index lists every extracted or inspected AArch64 markdown artifact under
-`src/backend/mir/aarch64/`, classifies each artifact, records legacy or
-deprecated owner/limitation/removal-condition notes, and calls out the stale
-routes that must not influence the new BIR / prepared-backend contract.
+The contract accepts `PreparedBirModule` as the target-local AArch64 entry
+type, rejects raw `bir::Module` as a lowering boundary except as upstream
+staging into preparation, records required prepared facts and structured-id
+identity rules, defines the target-local MIR/asm facts needed before lowering
+resumes, and explicitly rejects rendered-name recovery and string fallback
+routes.
 
 ## Suggested Next
 
-Next coherent packet: start Step 4 by defining the AArch64 backend entry
-contract against current structured BIR / `PreparedBirModule` facts.
+Next coherent packet: start Step 5 by building the gap ledger against
+`BACKEND_ENTRY_CONTRACT.md`.
 
-The Step 4 contract should decide whether the new route consumes
-`PreparedBirModule`, raw `bir::Module`, or a staged subset; specify how
-semantic identity is carried through structured ids; identify the target-local
-MIR/asm facts needed before lowering resumes; and explicitly reject rendered
-name recovery or assembly-string fallback routes.
+The Step 5 ledger should compare each required prepared fact and target-local
+MIR/asm structure against current BIR / `PreparedBirModule` availability,
+record missing or ambiguous facts, and identify whether each gap belongs in
+shared preparation, AArch64 MIR design, target ABI work, assembler/object
+work, or a separate idea.
 
 ## Watchouts
 
-- Use `CLASSIFICATION_INDEX.md` as a triage guide, not as proof of current live
-  AArch64 capability.
-- The index excludes legacy rendered assembly recovery, `ArmCodegen`, parser
-  operand recovery, built-in linker orchestration, and old feature-gated
-  assembler/linker routes from the Step 4 contract.
-- Target-ABI and binary-utils candidates in the index are hypotheses to verify
-  against current code, not accepted backend requirements.
-- Headers under `src/backend/mir/aarch64/` remain outside this docs-only packet.
+- `BACKEND_ENTRY_CONTRACT.md` is a contract, not implementation proof; it does
+  not establish live AArch64 lowering, assembly, object emission, or linking.
+- The contract intentionally accepts `PreparedBirModule`; Step 5 should treat
+  any needed narrower subset as a future typed prepared subset, not as raw BIR.
+- Use `CLASSIFICATION_INDEX.md` only to triage legacy markdown candidates while
+  building the gap ledger.
+- Do not fill Step 5 gaps by rendered-name recovery, printed-BIR parsing,
+  assembly-string parsing, or legacy shape recognizers.
 
 ## Proof
 
 Commands:
 
 ```bash
-find src/backend/mir/aarch64 -type f -name '*.md' | sort
-bash -lc 'missing=0; for f in $(find src/backend/mir/aarch64 -type f -name "*.md" | sort); do rel=${f#src/backend/mir/aarch64/}; if ! rg -Fq -- "$rel" src/backend/mir/aarch64/CLASSIFICATION_INDEX.md; then echo "missing $rel"; missing=1; fi; done; test -f src/backend/mir/aarch64/CLASSIFICATION_INDEX.md && test "$missing" -eq 0'
+test -f src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md
+rg -n "PreparedBirModule|bir::Module|structured ids|semantic identity|target-local MIR|assembly generation|rendered-name recovery|string fallback|CLASSIFICATION_INDEX.md" src/backend/mir/aarch64/BACKEND_ENTRY_CONTRACT.md
 ```
 
-Result: passed. The first command listed the AArch64 markdown artifacts,
-including `CLASSIFICATION_INDEX.md`. The second command confirmed the index
-exists and mentions every listed AArch64 markdown artifact. Docs-only packet;
-no build required and no proof log produced.
+Result: passed. The contract exists and explicitly mentions/decides
+`PreparedBirModule`, raw `bir::Module`, structured ids and semantic identity,
+target-local MIR and assembly generation needs, rejection of rendered-name
+recovery and string fallback routes, and `CLASSIFICATION_INDEX.md`.
+Docs-only packet; no build required and no proof log produced.
