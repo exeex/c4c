@@ -1,27 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.3c
-Current Step Title: Extract encoder `data_processing.cpp` To Markdown Artifact
+Current Step ID: Step 2.3d
+Current Step Title: Extract encoder `fp_scalar.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.3c: Extract encoder `data_processing.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/assembler/encoder/data_processing.cpp` into
-`src/backend/mir/aarch64/assembler/encoder/data_processing.md` and removed the
-old `.cpp` from the live tree.
+Step 2.3d: Extract encoder `fp_scalar.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/assembler/encoder/fp_scalar.cpp` into
+`src/backend/mir/aarch64/assembler/encoder/fp_scalar.md` and removed the old
+`.cpp` from the live tree.
 
-The markdown artifact records the old AArch64 data-processing encoder surface,
-including MOV and move-wide aliases, add/subtract forms, logical bitmask
-immediate handling, multiply/divide/carry forms, shifts, extension aliases,
-relocation dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old AArch64 scalar floating-point encoder
+surface, including FMOV transfer classes, arithmetic and one-source forms,
+fused multiply-add/subtract families, FCMP, float/integer conversions,
+precision conversions, helper dependencies, hidden assumptions, and rebuild
+risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.3 by extracting
-`src/backend/mir/aarch64/assembler/encoder/fp_scalar.cpp` to markdown and
+`src/backend/mir/aarch64/assembler/encoder/load_store.cpp` to markdown and
 removing that old `.cpp` from the live tree.
 
 Step 2.3 covers these assembler encoder surfaces:
@@ -41,13 +42,13 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- Step 2.3 now has the bitfield, compare/branch, and data-processing encoder
-  artifacts; do not revisit those removed `.cpp` files unless the supervisor
-  opens a new packet.
-- `data_processing.md` documents the historical commented encoder formulas
-  only. Treat its alias mappings, relocation notes, and NEON fallback notes as
-  rebuild guidance, not as proof that the built-in AArch64 assembler path is
-  production-ready.
+- Step 2.3 now has the bitfield, compare/branch, data-processing, and scalar
+  FP encoder artifacts; do not revisit those removed `.cpp` files unless the
+  supervisor opens a new packet.
+- `fp_scalar.md` documents the historical commented encoder formulas only.
+  Treat its FMOV transfer classes, rounding/conversion mappings, and precision
+  notes as rebuild guidance, not as proof that the built-in AArch64 assembler
+  path is production-ready.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
@@ -61,9 +62,9 @@ After Step 2.3, continue Step 2 through these bounded lanes:
 - Step 2.3 encoder extraction should stay descriptive. Do not repair encoder
   coverage, relocation behavior, or instruction semantics during the markdown
   extraction packets.
-- `fp_scalar.cpp` is the next encoder-family surface. Keep it separate from
-  the data-processing artifact even where scalar floating-point aliases or
-  register-width rules resemble integer data-processing forms.
+- `load_store.cpp` is the next encoder-family surface. Keep it separate from
+  the scalar FP artifact even where addressing diagnostics or register-width
+  rules intersect with floating-point load/store operands.
 
 ## Proof
 
