@@ -7,30 +7,33 @@ Status: Active baseline for `ideas/open/04_backend_binary_utils_contract_plan.md
 The current C++ port has a narrower active boundary than the reference Rust backend:
 
 1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen asm` through `backend::emit_module`.
-2. `src/backend/backend.cpp` selects the AArch64 backend emitter for `aarch64-*` triples.
-3. `src/backend/aarch64/codegen/emit.cpp` emits GNU-style AArch64 assembly text for the supported fallback slices.
-4. `src/apps/c4cll.cpp` writes that backend output to `-o` or stdout. It does not yet drive `.s -> .o -> executable` inside the app.
-5. External toolchain assembly and link validation currently lives in test harnesses under `tests/c/internal/cmake/`.
+2. `src/backend/backend.cpp` lowers LIR through semantic BIR, prepared BIR, the AArch64 prepared-module builder, and selected machine nodes for `aarch64-*` triples.
+3. `src/backend/mir/aarch64/codegen/machine_printer.cpp` prints supported selected machine nodes as GNU-style AArch64 `.s` text.
+4. `src/apps/c4cll.cpp` writes that `.s` printer output to `-o` or stdout. It does not drive `.s -> .o -> executable` inside the app.
+5. External toolchain assembly and link validation currently lives in focused backend tests for the public `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` route.
 
 That means the repo's current executable contract is:
 
-- production CLI seam: `HIR -> LIR -> AArch64 assembly text`
-- validation seam: `assembly text -> clang --target=aarch64-unknown-linux-gnu -> ELF object or executable`
+- production CLI seam: `HIR -> LIR -> semantic BIR -> prepared BIR -> AArch64 target module -> selected machine nodes -> .s printer output`
+- validation seam: `.s printer output -> external AArch64 assembler/linker toolchain -> ELF object or executable`
 
-The in-tree AArch64 assembler and linker subtrees are compiled into the build, but their top-level integration is not yet wired into `c4cll`:
+The in-tree AArch64 assembler and linker subtrees are present in the source
+tree, but their top-level object/link integration is not wired into `c4cll`:
 
-- `src/backend/aarch64/assembler/`
-- `src/backend/aarch64/linker/`
+- `src/backend/mir/aarch64/assembler/`
+- `src/backend/mir/aarch64/linker/`
 
 ## Current Assembler Inventory
 
-Step-1 inventory of the staged assembler boundary currently shows a text-first compile surface, not a structured internal assembler IR:
+Step-5 inventory of the staged assembler boundary currently shows a printer
+surface plus deferred text-first assembler stubs, not a structured internal
+assembler IR:
 
-- backend handoff today: `src/backend/aarch64/codegen/emit.cpp` returns GNU-style AArch64 assembly text for the currently supported fallback slices
-- parser entry today: `src/backend/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, and the current implementation preserves the full input text as one placeholder `AsmStatement`
-- assembler entry today: `src/backend/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns the raw input text as `staged_text`, preserves the requested `output_path`, and reports `object_emitted = false`
-- production handoff helper today: `src/backend/aarch64/codegen/emit.hpp` exposes `assemble_module(const LirModule&, output_path)` so one backend-emitted assembly slice now flows through the named assembler request/result seam in production code
-- target-local writer staging today: `src/backend/aarch64/assembler/elf_writer.cpp` contains relocation helpers and placeholder writer state, but does not yet emit ELF bytes
+- backend handoff today: `src/backend/backend.cpp` invokes the AArch64 prepared-module builder and prints selected function machine nodes.
+- printer entry today: `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes `print_machine_instruction_nodes(...)` for selected node records.
+- parser entry today: `src/backend/mir/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, but this is not used as the internal bridge from codegen to object emission.
+- assembler entry today: `src/backend/mir/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns staged text and reports `object_emitted = false`.
+- target-local writer staging today: `src/backend/mir/aarch64/assembler/elf_writer.md` records legacy writer notes, but there is no current AArch64 ELF object writer implementation in this route.
 - shared helper staging today:
   - `src/backend/asm_preprocess.cpp` is a mirrored placeholder for ref `asm_preprocess.rs`
   - `src/backend/asm_expr.cpp` is a mirrored placeholder for ref `asm_expr.rs`
@@ -39,13 +42,13 @@ Step-1 inventory of the staged assembler boundary currently shows a text-first c
 
 This means the current compile-integrated contract is now:
 
-- `backend text emission -> parse_asm(raw text) -> assemble(AssembleRequest{raw text, output path})`
-- `aarch64::assemble_module(module, output_path) -> emit_module(module) -> assemble(AssembleRequest{...})`
+- `PreparedBirModule -> AArch64 target module -> selected machine nodes -> .s printer output`
+- `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
 
 Later boundary work can narrow or replace that shape, but it should treat this
-text-first path as the current compatibility baseline only. It is not the
-accepted internal route for the AArch64 MIR rebuild: codegen-owned semantics
-must flow through structured target MIR records and AArch64 machine
+printer path as the current compatibility baseline only. It is not an internal
+assembler, parser roundtrip, encoder, object writer, or linker: codegen-owned
+semantics must flow through structured target MIR records and AArch64 machine
 instruction nodes. A future built-in encoder or object writer must consume
 those nodes or a lower structured encoding record derived from them, while
 `parse_asm(...)` remains an external assembly input path.
@@ -118,7 +121,9 @@ Locked by CTest:
 
 Fixture: `tests/c/internal/backend_toolchain_case/aarch64_call_extern_linux.s`
 
-This is not emitted by the current fallback backend slice today. It exists to pin the external-toolchain side of the AArch64 call relocation contract that later assembler and linker work must preserve.
+This is not emitted by the current selected-machine-node printer route today.
+It exists to pin the external-toolchain side of the AArch64 call relocation
+contract that later assembler and linker work must preserve.
 
 Expected object contract after external assembly:
 
@@ -139,14 +144,16 @@ These are the current staged C++ headers later binary-utils work should include 
 - `src/backend/target.hpp`
 - `src/backend/elf/mod.hpp`
 - `src/backend/linker_common/mod.hpp`
-- `src/backend/aarch64/assembler/mod.hpp`
-- `src/backend/aarch64/linker/mod.hpp`
+- `src/backend/mir/aarch64/assembler/mod.hpp`
+- `src/backend/mir/aarch64/linker/mod.hpp`
 
 These headers are intentionally narrow. They stage the include boundary for later compile-integration work without implying that full built-in assembler or linker behavior is implemented in this plan.
 
 ## Immediate Follow-On Note
 
-The fallback AArch64 emitter still returns LLVM IR for unsupported slices rather than assembly text. During this baseline capture, that showed up for cases such as extern-call lowering and pointer roundtrip cases. Later contract work should keep distinguishing:
+The AArch64 `.s` printer route fails closed for unsupported slices rather than
+falling back to LLVM-generated assembly or treating printed text as backend
+semantics. Later contract work should keep distinguishing:
 
-- backend slices that already emit GNU-style AArch64 assembly
-- cases that still fall back to LLVM IR and therefore are not yet part of the assembly-object compatibility baseline
+- backend slices that already produce selected printable machine nodes
+- cases that stop before selected printable machine nodes and therefore are not yet part of the assembly-object compatibility baseline

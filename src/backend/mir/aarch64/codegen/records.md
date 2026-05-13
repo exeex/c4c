@@ -10,13 +10,16 @@ assembly, object bytes, or linker input.
 Deferred behavior guardrails:
 
 - Branch records carry block labels and optional condition operands only; branch
-  lowering, layout decisions, and relocation choices are deferred.
+  lowering, layout decisions, and relocation choices remain outside the record
+  layer. The current `.s` printer may print selected branch nodes in the
+  supported subset, but printer syntax is not record identity.
 - Branch/compare target-MIR records preserve `BlockLabelId`,
   `PreparedValueId`, `ValueNameId`, BIR predicate, type, operand, and
   fusion-candidate metadata. Selected branch machine-node records may carry
   structured branch/conditional-branch/compare-branch opcode identity for the
-  accepted subset, but they still do not print `cmp`, `cset`, `b.cond`,
-  `cbz`, `cbnz`, `tbz`, `tbnz`, or any other assembly syntax.
+  accepted subset. Final syntax such as `cmp`, `cset`, `b.cond`, `cbz`,
+  `cbnz`, `tbz`, or `tbnz` belongs to the `.s` printer or lower encoding
+  records, not to parser-recovered semantic state.
 - Branch target pairs and compare candidates are structured ids plus source
   facts only. Assembly mnemonics, condition-code spelling, branch relaxation,
   encoding width, relocation records, object writing, and linker behavior are
@@ -94,9 +97,11 @@ Deferred behavior guardrails:
   defaults that hide upstream facts.
 - Memory instruction records wrap memory operand data as structured load/store
   intent. Selected memory machine-node records may choose `MachineOpcode::Load`
-  or `MachineOpcode::Store`, but they do not select `ldr`, `str`, register
-  width spelling, final addressing mode, writeback form, scratch registers,
-  assembly text, object encoding, relocation records, calls, or returns.
+  or `MachineOpcode::Store`. The current printer can print only the supported
+  selected store/spill/reload address forms and fails closed otherwise; register
+  width spelling, broader addressing modes, writeback forms, scratch registers,
+  object encoding, relocation records, calls, and returns remain outside this
+  record layer.
 - Call records carry callee, argument, result, memory-return, preserved-value,
   clobber, and calling convention metadata. AAPCS64 call-boundary authority is
   `../AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`; final call sequence emission,
@@ -126,7 +131,9 @@ pre-node records remain the prepared-fact snapshot layer. Selected branch,
 scalar, memory, and spill/reload records use the machine-instruction-node
 surface. Printer-output, encoder-input, object, and external-assembler-input
 surfaces are downstream consumers or future contracts, not sources for
-codegen-owned semantics. New fields here should keep prepared identities
+codegen-owned semantics. The public `.s` route prints from selected machine
+nodes; it does not route that assembly through the in-tree parser, encoder,
+object writer, or linker. New fields here should keep prepared identities
 structured and typed instead of parsing rendered names or growing
 `module/module.cpp`. `RecordSurfaceKind::RecordOnly` is only a compatibility
 spelling for the target-MIR/pre-node surface; new roadmap work should prefer

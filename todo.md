@@ -1,35 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/216_aarch64_machine_node_asm_printer_external_smoke.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Add External Toolchain Smoke Tests
+Current Step ID: Step 5
+Current Step Title: Reconcile Failure Boundaries And Documentation
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added external-toolchain smoke coverage for the public
-`c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` route.
+Step 5 reconciled the public AArch64 `.s` route wording in CLI help and nearby
+AArch64 backend documentation.
 
 Completed work:
-- Added the smallest real source-to-selected-machine-node path for AArch64
-  return terminators: source `.c` now lowers through HIR -> LIR -> semantic BIR
-  -> prepared BIR -> AArch64 module build -> `FunctionRecord::machine_nodes`
-  -> machine printer for `return 0`.
-- The public AArch64 `.s` route now emits a GNU assembler translation unit with
-  `.text`, function symbol metadata, selected node text, and `.note.GNU-stack`.
-- Added an external smoke that starts from `.c`, invokes public `c4cll`, checks
-  the generated `.s`, assembles it with `aarch64-linux-gnu-as`, links it with
-  `clang`, and runs the resulting executable on native AArch64 hosts.
-- Kept unsupported/no-node diagnostic coverage by moving the no-selected-node
-  CLI case to a global-only source that still reaches the printer boundary but
-  has no selected function machine nodes.
+- Updated `c4cll --help` wording to show the concrete command shape
+  `c4cll --codegen asm --target aarch64-linux-gnu test.c -o out.s`.
+- Documented that AArch64 asm output is `.s` printer output from selected
+  machine nodes.
+- Replaced stale docs that described future-only printer work or the old
+  fallback text-emitter path with the current selected-machine-node printer
+  route.
+- Preserved the boundaries that `c4cll` does not parse printed assembly back
+  into backend semantics and does not provide a built-in assembler, encoder,
+  object writer, or linker for this route.
 
 ## Suggested Next
 
-Supervisor should review and commit the Step 4 slice, then hand the active plan
-to plan-owner for close/deactivate/split decision if all todo items are now
-complete.
+Supervisor should review and commit the Step 5 wording/docs slice, then hand
+the active plan to plan-owner for close/deactivate/split decision if all todo
+items are complete.
 
 ## Watchouts
 
@@ -39,23 +37,20 @@ complete.
   when serving the public CLI route.
 - Do not implement an internal assembler, encoder, object writer, linker, or
   `.s` parser in this plan.
-- Keep smoke proof rooted in the public `c4cll` route and the external
-  toolchain when available.
-- Scalar records currently do not carry a destination register operand, and
-  load records currently do not carry a destination register operand; the
-  printer intentionally rejects those instead of guessing from value ids.
-- The selected return printer is intentionally narrow: it prints void returns
-  and small non-negative integer immediates to `w0`/`x0` followed by `ret`.
-- The public route still emits function-level assembly only for functions with
-  selected printable machine nodes; data-only inputs remain the no-node
-  diagnostic path.
+- The selected return printer remains intentionally narrow: it prints void
+  returns and small non-negative integer immediates to `w0`/`x0` followed by
+  `ret`.
 
 ## Proof
 
-Delegated proof passed and was written to `test_after.log`:
+Delegated docs/help proof was written to `test_after.log`:
 
-`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_aarch64_asm|backend_aarch64_machine_printer|backend_aarch64_prepared_frame_control|backend_aarch64_target_instruction_records)') > test_after.log 2>&1`
+`{ rg ... stale-claim searches; git diff --check; } > test_after.log 2>&1`
 
-Result: 5 tests matched and passed, including
-`backend_cli_aarch64_asm_external_return_zero_smoke` and
-`backend_cli_aarch64_asm_no_machine_nodes_fails`.
+Result: old fallback/text-emitter route searches, parser-roundtrip-as-implemented
+route searches, and implemented encoder/object/linker support searches produced
+no stale claims. The only parser-roundtrip hit is the explicit rejected route in
+`MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
+
+No focused help-text assertion test was found, so this packet used the
+delegated docs-only proof path rather than adding a broader build/test subset.

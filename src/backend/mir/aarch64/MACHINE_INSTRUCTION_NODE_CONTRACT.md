@@ -42,8 +42,9 @@ structured encoding record derived from those nodes.
   `InstructionRecord`, branch, scalar, memory, spill/reload, call, return,
   assembler, and object record variants. The accepted selected subset covers
   structured branch, integer scalar ALU/cast, memory load/store, and prepared
-  spill/reload pseudo nodes. This document still does not require printing,
-  encoding, object writing, or linking behavior.
+  spill/reload pseudo nodes. The live `.s` printer consumes only the selected
+  printable subset and fails closed for unsupported nodes; this document still
+  does not require encoding, object writing, or linking behavior.
 - `codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
   `assembler/types.hpp`, and `assembler/encoder/mod.hpp` remain compatibility,
   external-assembler, or legacy text-first surfaces until a later contract
@@ -157,10 +158,12 @@ Machine instruction nodes are the post-selection or selected-pseudo instruction
 representation. They are typed, ordered, provenance-bearing, and independent
 of assembly text.
 
-The `.s` printer is a consumer. It may turn machine instruction nodes into GNU
-or other target assembly syntax, choose final label spellings, and print
-register names, but it must not become the authority for later codegen or
-encoding facts.
+The `.s` printer is a consumer. The current public AArch64 route
+`c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` lowers
+through prepared BIR, target MIR, selected machine nodes, and then prints a
+GNU-style assembly translation unit for the selected printable subset. The
+printer may choose final label spellings and print register names, but it must
+not become the authority for later codegen or encoding facts.
 
 The encoder/object path is also a consumer. It may consume nodes directly or a
 lower structured encoding record derived from nodes. It must not consume
@@ -203,6 +206,8 @@ The current implemented records are aligned around these boundaries:
   external assembler surfaces must use their explicit surface names.
 - Selected machine nodes may carry `MachineOpcode`, `MachinePseudoKind`,
   `MachineNodeStatusRecord`, operands, def/use/clobber resources, and
-  side-effect metadata. They still do not emit or parse assembly text.
+  side-effect metadata. They are the source consumed by the `.s` printer for
+  supported node families, but they still do not parse assembly text or imply
+  encoder, object-writer, or linker support.
 - assembler, object, and inline-assembly record variants do not imply that
   text-first assembler parsing is the internal semantic route.

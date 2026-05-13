@@ -293,6 +293,8 @@ void print_usage(const char *argv0) {
       << "Code generation:\n"
 #if C4C_ENABLE_BACKEND
       << "  --codegen llvm|asm|compare Select codegen backend path\n"
+      << "                            asm emits selected backend-native machine\n"
+      << "                            nodes as assembly when supported\n"
       << "  --backend-bir-stage prepared|semantic\n"
       << "                            For --codegen asm only, choose prepared\n"
       << "                            backend lowering (default) or semantic\n"
@@ -322,11 +324,16 @@ void print_usage(const char *argv0) {
       << "  " << argv0 << " --dump-hir test.cpp\n"
 #if C4C_ENABLE_BACKEND
       << "  " << argv0 << " --dump-bir test.c\n"
-      << "  " << argv0 << " --codegen asm --backend-bir-stage semantic test.c\n"
+      << "  " << argv0 << " --codegen asm --target aarch64-linux-gnu test.c -o out.s\n"
 #endif
       << "\n"
       << "Notes:\n"
-      << "  Only one frontend inspection mode may be selected at a time.\n";
+      << "  Only one frontend inspection mode may be selected at a time.\n"
+#if C4C_ENABLE_BACKEND
+      << "  AArch64 asm output is .s printer output from selected machine nodes;\n"
+      << "  c4cll does not parse it back, encode objects, or link executables.\n"
+#endif
+      ;
 }
 
 void print_pp_diags(const std::vector<c4c::PreprocessorDiagnostic>& diags,

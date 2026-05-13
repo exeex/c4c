@@ -142,8 +142,11 @@ structures are:
   TLS, constants, initializers, and later relocation needs
 
 Instruction selection must publish structured AArch64 machine instruction
-nodes derived from those MIR records. Assembly generation may be added only as
-a `.s` printer over those nodes, and a built-in encoder or object writer may
+nodes derived from those MIR records. The current public
+`c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` route emits
+GNU-style `.s` text only by printing selected machine nodes. That printer is a
+terminal output consumer for supported node families; it is not the internal
+semantic input to later backend stages. A built-in encoder or object writer may
 consume only those nodes or a lower structured encoding record derived from
 them. Parser recovery from printed assembly text is not an accepted bridge
 between codegen and encoding/object emission. A string-emitting codegen
