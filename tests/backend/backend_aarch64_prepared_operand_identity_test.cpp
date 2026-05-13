@@ -32,6 +32,8 @@ prepare::PreparedBirModule prepared_operand_module() {
   const auto param_name = prepared.names.value_names.intern("param.semantic");
   const auto slot_name = prepared.names.value_names.intern("slot.semantic");
   const auto symbol_value_name = prepared.names.value_names.intern("symbol.ptr.semantic");
+  const auto deferred_name = prepared.names.value_names.intern("future.virtual.semantic");
+  const auto scratch_name = prepared.names.value_names.intern("scratch.semantic");
   const auto base_name = prepared.names.value_names.intern("base.semantic");
   const auto symbol_name = prepared.names.link_names.intern("global.identity");
 
@@ -56,6 +58,16 @@ prepare::PreparedBirModule prepared_operand_module() {
           .block_label = entry_label,
           .terminator_kind = bir::TerminatorKind::Return,
       }},
+  });
+
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = 3,
+      .object_id = 30,
+      .function_name = function_name,
+      .offset_bytes = 24,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
   });
 
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
@@ -123,6 +135,36 @@ prepare::PreparedBirModule prepared_operand_module() {
                           .offset_bytes = 24,
                       },
               },
+              prepare::PreparedRegallocValue{
+                  .value_id = 10,
+                  .function_name = function_name,
+                  .value_name = deferred_name,
+                  .type = bir::TypeKind::I64,
+                  .value_kind = prepare::PreparedValueKind::Temporary,
+                  .register_class = prepare::PreparedRegisterClass::General,
+                  .allocation_status = prepare::PreparedAllocationStatus::Unallocated,
+              },
+              prepare::PreparedRegallocValue{
+                  .value_id = 11,
+                  .function_name = function_name,
+                  .value_name = scratch_name,
+                  .type = bir::TypeKind::I64,
+                  .value_kind = prepare::PreparedValueKind::Temporary,
+                  .register_class = prepare::PreparedRegisterClass::General,
+                  .allocation_status = prepare::PreparedAllocationStatus::Spilled,
+                  .assigned_stack_slot =
+                      prepare::PreparedStackSlotAssignment{
+                          .slot_id = 3,
+                          .offset_bytes = 24,
+                      },
+                  .spill_register_authority =
+                      prepare::PreparedPhysicalRegisterAssignment{
+                          .reg_class = prepare::PreparedRegisterClass::General,
+                          .register_name = "x9",
+                          .contiguous_width = 1,
+                          .occupied_register_names = {"x9"},
+                      },
+              },
           },
   });
 
@@ -177,10 +219,10 @@ int records_preserve_operand_identity_and_separate_register_refs() {
     return fail("expected prepared operand module to build");
   }
   const auto& function = result.module->functions.front();
-  if (function.operands.size() != 3) {
-    return fail("expected three semantic operand records");
+  if (function.operands.size() != 5) {
+    return fail("expected five semantic operand records");
   }
-  if (function.target_registers.size() != 3) {
+  if (function.target_registers.size() != 4) {
     return fail("expected target register references to be recorded separately");
   }
 
@@ -200,6 +242,11 @@ int records_preserve_operand_identity_and_separate_register_refs() {
       function.target_registers[*param->assigned_register].physical_register != "x19" ||
       function.target_registers[*param->storage_register].physical_register != "x20") {
     return fail("expected physical register names to live in target register records");
+  }
+  if (!function.target_registers[*param->assigned_register].register_reference.has_value() ||
+      function.target_registers[*param->assigned_register].allocation_authority !=
+          aarch64_module::AllocationAuthorityKind::RegallocAssignment) {
+    return fail("expected assigned register records to carry typed allocation authority");
   }
   if (function.target_registers[*param->value_home_register].allocation_snapshot !=
           aarch64_module::AllocationSnapshotKind::PreparedSnapshot ||
@@ -229,6 +276,13 @@ int records_preserve_operand_identity_and_separate_register_refs() {
       !slot->stack_offset_bytes.has_value() || *slot->stack_offset_bytes != 24) {
     return fail("expected stack operand to preserve frame-slot identity and offset");
   }
+  if (slot->allocation_location != aarch64_module::AllocationLocationKind::SpillSlot ||
+      slot->allocation_authority != aarch64_module::AllocationAuthorityKind::RegallocAssignment ||
+      slot->spill_slot_id != prepare::PreparedFrameSlotId{3} ||
+      slot->spill_slot_size_bytes != std::size_t{8} ||
+      slot->spill_slot_align_bytes != std::size_t{8} || !slot->spill_slot_fixed_location) {
+    return fail("expected stack operand to preserve structured spill-slot metadata");
+  }
   if (!slot->stack_offset_is_prepared_snapshot) {
     return fail("expected stack offsets to be marked as prepared snapshots");
   }
@@ -245,6 +299,31 @@ int records_preserve_operand_identity_and_separate_register_refs() {
       symbol->pointer_base_label != "base.semantic" || !symbol->pointer_byte_delta.has_value() ||
       *symbol->pointer_byte_delta != 16) {
     return fail("expected pointer-base identity and byte delta to survive the handoff");
+  }
+  if (symbol->allocation_location != aarch64_module::AllocationLocationKind::NonRegister ||
+      symbol->allocation_authority != aarch64_module::AllocationAuthorityKind::StoragePlan) {
+    return fail("expected non-register operand location authority to stay explicit");
+  }
+
+  const auto* deferred = find_operand(function, 10);
+  if (deferred == nullptr ||
+      deferred->allocation_location !=
+          aarch64_module::AllocationLocationKind::FutureVirtualRegister ||
+      deferred->allocation_authority !=
+          aarch64_module::AllocationAuthorityKind::DeferredPlaceholder ||
+      deferred->allocation_status != prepare::PreparedAllocationStatus::Unallocated) {
+    return fail("expected unallocated prepared value to become a deferred virtual placeholder");
+  }
+
+  const auto* scratch = find_operand(function, 11);
+  if (scratch == nullptr || !scratch->spill_register_authority.has_value()) {
+    return fail("expected spilled operand to reference reserved scratch authority");
+  }
+  const auto& scratch_record = function.target_registers[*scratch->spill_register_authority];
+  if (scratch_record.physical_register != "x9" || !scratch_record.is_reserved_mir_scratch ||
+      scratch_record.may_be_long_lived_home ||
+      scratch_record.allocation_authority != aarch64_module::AllocationAuthorityKind::SpillAuthority) {
+    return fail("expected reserved scratch authority to be separate from long-lived homes");
   }
 
   return 0;

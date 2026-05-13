@@ -238,6 +238,8 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                                   prepare::PreparedMoveStorageKind::Register,
                               .destination_abi_index = std::size_t{0},
                               .destination_register_name = std::string{"x0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
                               .block_index = 0,
                               .instruction_index = 3,
                               .reason = "call argument",
@@ -296,6 +298,8 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
                   .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
                   .destination_register_name = std::string{"x0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x0"},
                   .block_index = 3,
                   .instruction_index = 1,
                   .source_immediate_i32 = std::int64_t{7},
@@ -311,6 +315,8 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .instruction_index = 4,
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
                   .register_name = std::string{"x20"},
+                  .contiguous_width = 1,
+                  .occupied_register_names = {"x20"},
                   .slot_id = 11,
                   .stack_offset_bytes = std::size_t{32},
               },
@@ -321,6 +327,8 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .instruction_index = 0,
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
                   .register_name = std::string{"x20"},
+                  .contiguous_width = 1,
+                  .occupied_register_names = {"x20"},
                   .slot_id = 11,
                   .stack_offset_bytes = std::size_t{32},
               },
@@ -458,6 +466,9 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.moves[0].phase != prepare::PreparedMovePhase::BeforeCall ||
       function.moves[0].destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
       function.moves[0].destination_register != "x0" ||
+      function.moves[0].destination_contiguous_width != 1 ||
+      function.moves[0].destination_occupied_registers.size() != 1 ||
+      function.moves[0].destination_occupied_registers.front() != "x0" ||
       function.moves[0].source_bundle !=
           &prepared.value_locations.functions.front().move_bundles.front()) {
     return fail("expected value-location move record to preserve call-argument move identity");
@@ -478,6 +489,9 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.spill_reloads.front().op_kind != prepare::PreparedSpillReloadOpKind::Spill ||
       function.spill_reloads.back().op_kind != prepare::PreparedSpillReloadOpKind::Reload ||
       function.spill_reloads.front().slot_id != 11 ||
+      function.spill_reloads.front().contiguous_width != 1 ||
+      function.spill_reloads.front().occupied_registers.size() != 1 ||
+      function.spill_reloads.front().occupied_registers.front() != "x20" ||
       !function.spill_reloads.front().stack_offset_is_prepared_snapshot) {
     return fail("expected spill/reload records to preserve frame-slot identity");
   }

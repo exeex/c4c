@@ -24,19 +24,39 @@ enum class AllocationSnapshotKind {
   DisplayOnly,
 };
 
+enum class AllocationLocationKind {
+  None,
+  PhysicalRegister,
+  SpillSlot,
+  NonRegister,
+  FutureVirtualRegister,
+};
+
+enum class AllocationAuthorityKind {
+  None,
+  ValueHome,
+  RegallocAssignment,
+  SpillAuthority,
+  StoragePlan,
+  DeferredPlaceholder,
+};
+
 struct TargetRegisterRecord {
   TargetRegisterReferenceKind reference_kind = TargetRegisterReferenceKind::ValueHome;
   AllocationSnapshotKind allocation_snapshot = AllocationSnapshotKind::PreparedSnapshot;
+  AllocationAuthorityKind allocation_authority = AllocationAuthorityKind::None;
   c4c::backend::prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   c4c::backend::prepare::PreparedRegisterClass register_class =
       c4c::backend::prepare::PreparedRegisterClass::None;
   c4c::backend::prepare::PreparedRegisterBank register_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
   std::optional<c4c::backend::aarch64::abi::AllocationRegisterPool> allocation_pool;
   std::string_view physical_register;
   std::size_t contiguous_width = 1;
   std::vector<std::string_view> occupied_registers;
+  bool is_reserved_mir_scratch = false;
   bool may_be_long_lived_home = false;
 };
 
@@ -114,12 +134,20 @@ struct OperandRecord {
       c4c::backend::prepare::PreparedValueHomeKind::None;
   c4c::backend::prepare::PreparedStorageEncodingKind storage_encoding =
       c4c::backend::prepare::PreparedStorageEncodingKind::None;
+  c4c::backend::prepare::PreparedAllocationStatus allocation_status =
+      c4c::backend::prepare::PreparedAllocationStatus::Unallocated;
+  AllocationLocationKind allocation_location = AllocationLocationKind::None;
+  AllocationAuthorityKind allocation_authority = AllocationAuthorityKind::None;
   c4c::backend::prepare::PreparedRegisterClass register_class =
       c4c::backend::prepare::PreparedRegisterClass::None;
   c4c::backend::prepare::PreparedRegisterBank storage_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
   std::size_t register_group_width = 1;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> spill_slot_id;
+  std::optional<std::size_t> spill_slot_size_bytes;
+  std::optional<std::size_t> spill_slot_align_bytes;
+  bool spill_slot_fixed_location = false;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;
   std::optional<std::int64_t> immediate_i32;
@@ -243,6 +271,8 @@ struct MoveRecord {
       c4c::backend::prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
   std::string_view destination_register;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string_view> destination_occupied_registers;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
@@ -269,6 +299,8 @@ struct AbiBindingRecord {
       c4c::backend::prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
   std::string_view destination_register;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<std::string_view> destination_occupied_registers;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
@@ -286,6 +318,8 @@ struct SpillReloadRecord {
   c4c::backend::prepare::PreparedRegisterBank register_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
   std::string_view register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string_view> occupied_registers;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;

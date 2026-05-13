@@ -117,6 +117,44 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
   return nullptr;
 }
 
+[[nodiscard]] const c4c::backend::prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
+    c4c::backend::prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] constexpr AllocationAuthorityKind allocation_authority_for_register_reference(
+    TargetRegisterReferenceKind reference_kind) {
+  switch (reference_kind) {
+    case TargetRegisterReferenceKind::ValueHome:
+      return AllocationAuthorityKind::ValueHome;
+    case TargetRegisterReferenceKind::RegallocAssignment:
+      return AllocationAuthorityKind::RegallocAssignment;
+    case TargetRegisterReferenceKind::SpillAuthority:
+      return AllocationAuthorityKind::SpillAuthority;
+    case TargetRegisterReferenceKind::StoragePlan:
+      return AllocationAuthorityKind::StoragePlan;
+  }
+  return AllocationAuthorityKind::None;
+}
+
+void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& prepared,
+                                c4c::backend::prepare::PreparedFrameSlotId slot_id,
+                                OperandRecord& operand) {
+  operand.spill_slot_id = slot_id;
+  if (const auto* slot = find_frame_slot_by_id(prepared.stack_layout, slot_id);
+      slot != nullptr) {
+    operand.spill_slot_size_bytes = slot->size_bytes;
+    operand.spill_slot_align_bytes = slot->align_bytes;
+    operand.spill_slot_fixed_location = slot->fixed_location;
+  }
+}
+
 [[nodiscard]] OperandRecord& ensure_operand(std::vector<OperandRecord>& operands,
                                             c4c::backend::prepare::PreparedValueId value_id,
                                             c4c::FunctionNameId function_name) {
@@ -146,10 +184,14 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
   const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(physical_register);
   registers.push_back(TargetRegisterRecord{.reference_kind = reference_kind,
                                            .allocation_snapshot = allocation_snapshot,
+                                           .allocation_authority =
+                                               allocation_authority_for_register_reference(
+                                                   reference_kind),
                                            .value_id = value_id,
                                            .value_name = value_name,
                                            .register_class = reg_class,
                                            .register_bank = reg_bank,
+                                           .register_reference = parsed,
                                            .allocation_pool =
                                                parsed.has_value()
                                                    ? std::optional{
@@ -159,6 +201,10 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
                                            .physical_register = physical_register,
                                            .contiguous_width = contiguous_width,
                                            .occupied_registers = std::move(occupied_registers),
+                                           .is_reserved_mir_scratch =
+                                               parsed.has_value() &&
+                                               c4c::backend::aarch64::abi::
+                                                   is_reserved_mir_scratch(*parsed),
                                            .may_be_long_lived_home =
                                                parsed.has_value() &&
                                                c4c::backend::aarch64::abi::
@@ -176,6 +222,7 @@ void merge_value_home_operand(
   operand.label = c4c::backend::prepare::prepared_value_name(prepared.names, home.value_name);
   operand.home_kind = home.kind;
   operand.frame_slot_id = home.slot_id;
+  operand.allocation_authority = AllocationAuthorityKind::ValueHome;
   if (home.offset_bytes.has_value()) {
     operand.stack_offset_bytes = home.offset_bytes;
     operand.stack_offset_is_prepared_snapshot = true;
@@ -189,6 +236,7 @@ void merge_value_home_operand(
   operand.pointer_byte_delta = home.pointer_byte_delta;
   operand.source_value_home = &home;
   if (home.register_name.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
     operand.value_home_register = append_register_record(registers,
                                                          TargetRegisterReferenceKind::ValueHome,
                                                          AllocationSnapshotKind::PreparedSnapshot,
@@ -201,6 +249,11 @@ void merge_value_home_operand(
                                                          *home.register_name,
                                                          1,
                                                          {});
+  } else if (home.slot_id.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    attach_spill_slot_metadata(prepared, *home.slot_id, operand);
+  } else if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::None) {
+    operand.allocation_location = AllocationLocationKind::NonRegister;
   }
 }
 
@@ -215,15 +268,21 @@ void merge_regalloc_operand(
   operand.type = value.type;
   operand.value_kind = value.value_kind;
   operand.stack_object_id = value.stack_object_id;
+  operand.allocation_status = value.allocation_status;
   operand.register_class = value.register_class;
   operand.register_group_width = value.register_group_width;
   operand.source_regalloc = &value;
   if (value.assigned_stack_slot.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
     operand.frame_slot_id = value.assigned_stack_slot->slot_id;
+    attach_spill_slot_metadata(prepared, value.assigned_stack_slot->slot_id, operand);
     operand.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
     operand.stack_offset_is_prepared_snapshot = true;
   }
   if (value.assigned_register.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
+    operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
     operand.assigned_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::RegallocAssignment,
@@ -238,6 +297,9 @@ void merge_regalloc_operand(
                                    value.assigned_register->occupied_register_names));
   }
   if (value.spill_register_authority.has_value()) {
+    if (operand.allocation_authority == AllocationAuthorityKind::None) {
+      operand.allocation_authority = AllocationAuthorityKind::SpillAuthority;
+    }
     operand.spill_register_authority =
         append_register_record(registers,
                                TargetRegisterReferenceKind::SpillAuthority,
@@ -250,6 +312,11 @@ void merge_regalloc_operand(
                                value.spill_register_authority->contiguous_width,
                                register_name_views(
                                    value.spill_register_authority->occupied_register_names));
+  }
+  if (!value.assigned_register.has_value() && !value.assigned_stack_slot.has_value() &&
+      value.allocation_status == c4c::backend::prepare::PreparedAllocationStatus::Unallocated) {
+    operand.allocation_location = AllocationLocationKind::FutureVirtualRegister;
+    operand.allocation_authority = AllocationAuthorityKind::DeferredPlaceholder;
   }
 }
 
@@ -265,6 +332,10 @@ void merge_storage_operand(
   operand.storage_encoding = value.encoding;
   operand.storage_bank = value.bank;
   operand.frame_slot_id = value.slot_id;
+  if (operand.allocation_authority == AllocationAuthorityKind::None ||
+      operand.allocation_authority == AllocationAuthorityKind::ValueHome) {
+    operand.allocation_authority = AllocationAuthorityKind::StoragePlan;
+  }
   operand.stack_offset_bytes = value.stack_offset_bytes;
   operand.stack_offset_is_prepared_snapshot = value.stack_offset_bytes.has_value();
   operand.immediate_i32 = value.immediate_i32;
@@ -274,6 +345,7 @@ void merge_storage_operand(
   }
   operand.source_storage = &value;
   if (value.register_name.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
     operand.storage_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::StoragePlan,
@@ -285,6 +357,11 @@ void merge_storage_operand(
                                *value.register_name,
                                value.contiguous_width,
                                register_name_views(value.occupied_register_names));
+  } else if (value.slot_id.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    attach_spill_slot_metadata(prepared, *value.slot_id, operand);
+  } else if (value.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::None) {
+    operand.allocation_location = AllocationLocationKind::NonRegister;
   }
 }
 
@@ -610,6 +687,9 @@ void merge_storage_operand(
       .destination_register = move.destination_register_name.has_value()
                                   ? std::string_view{*move.destination_register_name}
                                   : std::string_view{},
+      .destination_contiguous_width = move.destination_contiguous_width,
+      .destination_occupied_registers =
+          register_name_views(move.destination_occupied_register_names),
       .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
           move.destination_stack_offset_bytes.has_value(),
@@ -639,6 +719,9 @@ void merge_storage_operand(
       .destination_register = binding.destination_register_name.has_value()
                                   ? std::string_view{*binding.destination_register_name}
                                   : std::string_view{},
+      .destination_contiguous_width = binding.destination_contiguous_width,
+      .destination_occupied_registers =
+          register_name_views(binding.destination_occupied_register_names),
       .destination_stack_offset_bytes = binding.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
           binding.destination_stack_offset_bytes.has_value(),
@@ -681,6 +764,8 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
         .register_bank = op.register_bank,
         .register_name = op.register_name.has_value() ? std::string_view{*op.register_name}
                                                        : std::string_view{},
+        .contiguous_width = op.contiguous_width,
+        .occupied_registers = register_name_views(op.occupied_register_names),
         .slot_id = op.slot_id,
         .stack_offset_bytes = op.stack_offset_bytes,
         .stack_offset_is_prepared_snapshot = op.stack_offset_bytes.has_value(),
