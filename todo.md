@@ -9,14 +9,15 @@ Current Step Title: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifa
 ## Just Finished
 
 Step 2.1: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
-extracted `src/backend/mir/aarch64/codegen/variadic.cpp` into
-`src/backend/mir/aarch64/codegen/variadic.md` and removed the old `.cpp`
+extracted `src/backend/mir/aarch64/codegen/inline_asm.cpp` into
+`src/backend/mir/aarch64/codegen/inline_asm.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old AAPCS64 variadic ABI contract, including
-`va_start`, scalar and aggregate `va_arg`, `va_copy`, `va_list` field offsets,
-GP and FP/SIMD register-save offsets, stack fallback, F128 helper conversion,
-dependencies, hidden assumptions, and rebuild risks.
+The markdown artifact records the old inline assembly substitution contract,
+including positional and named operands, GCC-to-internal operand mapping,
+register modifiers, raw immediate formatting, `%a` memory-reference formatting,
+FP/SIMD register spelling, atomic exclusive helper notes, dependencies, hidden
+assumptions, and rebuild risks.
 
 ## Suggested Next
 
@@ -26,7 +27,6 @@ Extract the remaining old codegen surfaces under
 `src/backend/mir/aarch64/codegen/` before moving into assembler, encoder,
 linker, or module-entry files:
 
-- `inline_asm.cpp`
 - `alu.cpp`
 - `memory.cpp`
 - `calls.cpp`
@@ -59,14 +59,13 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `variadic.cpp` was a fully commented translation surface rather than live
+- `inline_asm.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: signed `__gr_offs` and
-  `__vr_offs` branch semantics, 8-byte GP slots versus 16-byte FP/SIMD slots,
-  whole-aggregate register-or-stack selection, stack fallback alignment, F128
-  `__trunctfdf2` conversion, and cache invalidation after helper/aggregate
-  paths.
+- The archived surface has several rebuild hazards: GCC operand numbering
+  versus internal operand indexes, raw immediates without `#`, `%a` bracketed
+  memory references, `r0`-`r30` alias normalization, no-modifier FP/SIMD
+  `vN` spelling, and acquire/release exclusive mnemonic selection.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
