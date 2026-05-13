@@ -1,52 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/208_aarch64_branch_compare_target_mir_records.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume Prepared Branch Target Facts
+Current Step ID: 4
+Current Step Title: Model Compare-Backed Branch Candidates
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: added record-only AArch64 branch target and
-compare predicate vocabulary under `src/backend/mir/aarch64/codegen/records.hpp`
-and `.cpp`.
+Completed Step 3 from `plan.md`: added record-only helpers that convert
+prepared control-flow branch facts and BIR terminators into AArch64 branch
+records.
 
 Concrete work completed:
-- Added `BranchConditionForm` to distinguish unconditional,
-  materialized-bool, and fused-compare branch forms without naming concrete
-  AArch64 instructions.
-- Added `BranchTargetPairRecord` for authoritative true/false
-  `BlockLabelId` pairs while preserving `FunctionNameId`.
-- Added `ComparePredicateRecord`, `CompareValueRecord`, and
-  `CompareOperandPairRecord` so BIR predicate opcode, compare type,
-  `PreparedValueId`, `ValueNameId`, and source `bir::Value` facts can survive
-  as target-record data.
-- Added `BranchConditionRecord` and extended `BranchInstructionRecord` with
-  optional target-pair and typed condition records while preserving the older
-  generic fields for existing tests.
-- Added `branch_condition_form_name(...)` and `is_compare_predicate(...)`
-  helpers.
-- Added focused `backend_aarch64_branch_compare_records` coverage proving
-  materialized-bool and fused-compare record shapes directly.
+- Added `PreparedBranchRecordError` and `PreparedBranchInstructionRecordResult`
+  so missing target, condition, compare, predicate, or value-home facts fail
+  closed with explicit result state.
+- Added `make_prepared_unconditional_branch_record(...)` for prepared
+  unconditional branch blocks, preserving `FunctionNameId` and target
+  `BlockLabelId` authority while validating the BIR terminator label id.
+- Added `make_prepared_conditional_branch_record(...)` for prepared conditional
+  branches, preserving target pairs, condition `PreparedValueId` /
+  `ValueNameId`, BIR condition type, BIR predicate/type facts, and compare
+  operand `bir::Value` payloads.
+- Added focused `backend_aarch64_prepared_branch_records` coverage for
+  unconditional branches, materialized-bool conditional branches, fused-compare
+  conditional branches, and fail-closed missing/mismatched facts.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add conversion helpers that populate the new
-record-only branch/compare vocabulary from prepared control-flow facts, using
-authoritative prepared ids and BIR values rather than rendered-name recovery.
+Execute Step 4 from `plan.md`: review the new prepared conversion helper
+surface against compare-backed branch candidate needs and add any remaining
+record-only candidate metadata/tests needed before documentation and final
+contract proof.
 
 ## Watchouts
 
-- Step 2 intentionally added record vocabulary only. No `cmp`, `cset`,
-  `b.cond`, `cbz`, `cbnz`, `tbz`, `tbnz`, assembler text, object emission, or
-  opcode selection was introduced.
-- Step 3 should consume prepared branch-condition facts without inventing
-  string recovery. Arbitrary `bir::Value` operands may still need lookup
-  through prepared value locations or storage plans.
-- Existing `BranchInstructionRecord::target`, `condition`, and `conditional`
-  remain for compatibility; new conversion should prefer `target_pair` and
-  `condition_record` for conditional branch authority.
+- Step 3 remains record-only. No `cmp`, `cset`, `b.cond`, `cbz`, `cbnz`,
+  `tbz`, `tbnz`, assembler text, object emission, or opcode selection was
+  introduced.
+- Named BIR compare operands now require matching prepared value homes to
+  preserve `PreparedValueId` / `ValueNameId`; immediate compare operands remain
+  valid without a prepared value id.
+- The helper validates structured BIR terminator label ids against prepared
+  control-flow labels and does not recover branch targets from rendered label
+  strings.
 
 ## Proof
 
@@ -54,6 +52,6 @@ authoritative prepared ids and BIR values rather than rendered-name recovery.
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log
 ```
 
-Result: passed. Backend subset reported 120 tests passed, 0 failed; new
-`backend_aarch64_branch_compare_records` is included and green. Proof log:
+Result: passed. Backend subset reported 121 tests passed, 0 failed; new
+`backend_aarch64_prepared_branch_records` is included and green. Proof log:
 `test_after.log`.

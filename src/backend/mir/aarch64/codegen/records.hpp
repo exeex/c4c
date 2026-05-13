@@ -76,6 +76,21 @@ enum class BranchConditionForm {
   FusedCompare,
 };
 
+enum class PreparedBranchRecordError {
+  None,
+  InvalidFunction,
+  InvalidSourceBlock,
+  TerminatorKindMismatch,
+  MissingBranchTarget,
+  TerminatorTargetMismatch,
+  MissingBranchCondition,
+  ConditionValueMismatch,
+  MissingConditionValueHome,
+  MissingCompareFacts,
+  UnsupportedComparePredicate,
+  MissingCompareValueHome,
+};
+
 struct RegisterOperand {
   c4c::backend::aarch64::abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
@@ -219,6 +234,11 @@ struct BranchInstructionRecord {
   bool conditional = false;
 };
 
+struct PreparedBranchInstructionRecordResult {
+  std::optional<BranchInstructionRecord> record;
+  PreparedBranchRecordError error = PreparedBranchRecordError::None;
+};
+
 struct ScalarInstructionRecord {
   std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
@@ -292,6 +312,7 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
+[[nodiscard]] std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);
 [[nodiscard]] OperandRecord make_immediate_operand(ImmediateOperand operand);
@@ -307,5 +328,15 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_object_instruction(ObjectInstructionRecord instruction);
+[[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
+    c4c::FunctionNameId function_name,
+    const c4c::backend::prepare::PreparedControlFlowBlock& block,
+    const c4c::backend::bir::Terminator& terminator);
+[[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedControlFlowBlock& block,
+    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
+    const c4c::backend::bir::Terminator& terminator);
 
 }  // namespace c4c::backend::aarch64::codegen
