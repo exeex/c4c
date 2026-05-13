@@ -36,6 +36,7 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
 
 std::optional<std::string> member_access_owner_tag_from_type(const c4c::hir::Module& mod,
                                                              const TypeSpec& ts) {
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) return std::nullopt;
   if (const std::optional<HirRecordOwnerKey> owner_key =
           typespec_aggregate_owner_key(ts, mod)) {
     const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);

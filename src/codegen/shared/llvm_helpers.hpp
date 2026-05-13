@@ -679,6 +679,7 @@ inline bool is_named_aggregate_value(const TypeSpec& ts) {
 inline const HirStructDef* find_typespec_aggregate_layout(const Module& mod,
                                                           const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0) return nullptr;
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) return nullptr;
   if (const std::optional<HirRecordOwnerKey> record_def_owner_key =
           typespec_record_def_owner_key(ts, mod)) {
     if (const HirStructDef* def =

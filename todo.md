@@ -9,35 +9,33 @@ Current Step Title: Audit HIR-To-LIR Handoff Compatibility Tags
 ## Just Finished
 
 Step 5 call handoff packet is complete. HIR-to-LIR call return, callee
-signature, and call argument aggregate type-ref construction now preserves the
-Step 5 stale rendered owner-miss fence while allowing materialized template
-aggregate tags to regain structured `StructNameId` call return and argument
-mirrors. Call targets retain raw rendered text after true complete owner misses,
-argument mirrors fail closed for stale declaration-owner misses, and no-owner
-compatibility still produces structured `StructNameId` mirrors.
+signature, call argument aggregate type-ref construction, and the remaining
+layout handoff sites now share the Step 5 stale rendered owner-miss fence.
+Const-init, va_arg, variadic aggregate args, indexed-GEP, field-chain, member
+access, aggregate value-type, and size/layout lookup paths fail closed after
+complete owner-key misses. No-owner rendered compatibility remains available,
+and exact materialized-template layout carriers remain accepted through
+`typespec_aggregate_complete_owner_key_missed`.
 
 ## Suggested Next
 
-Continue Step 5 by auditing the remaining HIR-to-LIR aggregate handoff paths
-outside call return/signature/argument construction, especially va_arg,
-const-init, lvalue/indexed-GEP, and field-chain helpers that still name
-`legacy-compat` layout sites.
+Supervisor should decide whether Step 5 is accepted and hand off to Step 6 for
+the final ledger and broader validation checkpoint.
 
 ## Watchouts
 
-- `typespec_aggregate_complete_owner_key_missed` is intentionally stricter
-  than the cross-table compatibility owner helper. It may accept exact
-  materialized template layout tags, but declaration-owner misses must still
-  block rendered fallback.
-- Call return mirrors may keep raw rendered text after a complete miss; call
-  argument mirrors use an empty `LirTypeRef` so `arg_type_refs` is omitted while
-  structured argument text remains available.
-- Do not broaden this packet into verifier policy changes; the focused tests
-  assert handoff construction behavior directly.
+- The shared `lookup_structured_layout` fence is intentionally duplicated at
+  the compatibility-decl and structured-name-id helpers so direct helper calls
+  cannot bypass the Step 5 complete-miss rule.
+- `field_chain_nested_aggregate` still has a no-metadata legacy compatibility
+  route for anonymous aggregate members, but only after the child TypeSpec is
+  not a complete owner-key miss.
+- `vaarg_aggregate_structured_name_id` now uses the cross-table-aware owner
+  helper; exact materialized template tags remain valid structured authority.
 
 ## Proof
 
 Passed the delegated proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|cpp_positive_sema_template_angle_bracket_validation_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|frontend_hir_lookup_tests)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`

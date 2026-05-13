@@ -313,6 +313,8 @@ static void record_structured_layout_observation(
 
 static const HirStructDef* lookup_structured_layout_compatibility_decl(
     const Module& mod, const TypeSpec& ts) {
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) return nullptr;
+
   auto find_compatibility_decl = [&](const std::optional<std::string>& tag)
       -> const HirStructDef* {
     if (!tag) return nullptr;
@@ -352,6 +354,10 @@ static bool legacy_layout_decl_matches_lir_name(const HirStructDef* legacy_decl,
 
 static StructNameId lookup_structured_name_id_by_owner_or_compatibility(
     const Module& mod, const LirModule& lir_module, const TypeSpec& ts) {
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) {
+    return kInvalidStructName;
+  }
+
   auto find_compatibility_name = [&](const std::optional<std::string>& tag)
       -> StructNameId {
     if (!tag) return kInvalidStructName;
@@ -384,6 +390,9 @@ StructuredLayoutLookup lookup_structured_layout(const Module& mod,
   StructuredLayoutLookup result;
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
       ts.array_rank != 0) {
+    return result;
+  }
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) {
     return result;
   }
 
@@ -783,6 +792,7 @@ std::optional<std::string> duplicate_template_instance_aggregate_ty(
 
 std::optional<std::string> duplicate_template_instance_aggregate_ty(
     const hir::Module& mod, const TypeSpec& ts) {
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) return std::nullopt;
   std::optional<std::string> tag = typespec_aggregate_final_spelling(ts);
   if (!tag) tag = typespec_aggregate_compatibility_tag(mod, ts);
   if (!tag) return std::nullopt;
@@ -795,6 +805,9 @@ std::optional<std::string> llvm_aggregate_value_ty(const hir::Module& mod,
                                                    const TypeSpec& ts) {
   if ((ts.base != TB_STRUCT && ts.base != TB_UNION) || ts.ptr_level != 0 ||
       ts.array_rank != 0) {
+    return std::nullopt;
+  }
+  if (typespec_aggregate_complete_owner_key_missed(ts, mod)) {
     return std::nullopt;
   }
   if (const HirStructDef* layout = find_typespec_aggregate_layout(mod, ts)) {

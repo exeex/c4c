@@ -60,7 +60,10 @@ FieldChainNestedAggregate field_chain_nested_aggregate(
   }
 
   // Secondary compatibility path for anonymous aggregate members whose LIR
-  // field metadata is not yet rich enough to name the child layout.
+  // field metadata is not yet rich enough to name the child layout. Complete
+  // owner-key misses are fenced so rendered tags remain no-metadata legacy
+  // compatibility, not secondary layout authority.
+  if (typespec_aggregate_complete_owner_key_missed(field.elem_type, mod)) return result;
   result.structured_name_id = kInvalidStructName;
   result.tag = typespec_aggregate_compatibility_tag(mod, field.elem_type);
   return result;
