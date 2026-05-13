@@ -520,13 +520,42 @@ inline std::optional<HirRecordOwnerKey> typespec_record_def_owner_key(
 
 inline bool typespec_aggregate_complete_owner_key_missed(const TypeSpec& ts,
                                                          const Module& mod) {
+  auto has_materialized_template_owner_for_spelling = [&]() {
+    std::string spelling_storage;
+    const std::string_view legacy_tag = typespec_legacy_tag_if_present(ts, 0);
+    std::string_view spelling = legacy_tag;
+    if (spelling.empty() && ts.record_def) {
+      if (ts.record_def->name && ts.record_def->name[0]) {
+        spelling_storage = ts.record_def->name;
+      } else if (ts.record_def->unqualified_name && ts.record_def->unqualified_name[0]) {
+        spelling_storage = ts.record_def->unqualified_name;
+      }
+      spelling = spelling_storage;
+    }
+    if (spelling.empty()) return false;
+    for (const auto& [owner_key, rendered] : mod.struct_def_owner_index) {
+      if (owner_key.kind == HirRecordOwnerKeyKind::TemplateInstantiation &&
+          std::string_view(rendered) == spelling) {
+        return true;
+      }
+    }
+    return false;
+  };
+  auto has_layout_for_own_tag_text = [&]() {
+    if (ts.tag_text_id == kInvalidText || !mod.link_name_texts) return false;
+    const std::string_view tag = mod.link_name_texts->lookup(ts.tag_text_id);
+    if (tag.empty()) return false;
+    return mod.struct_defs.find(std::string(tag)) != mod.struct_defs.end();
+  };
   if (const std::optional<HirRecordOwnerKey> record_def_owner_key =
           typespec_record_def_owner_key(ts, mod)) {
-    return mod.find_struct_def_tag_by_owner(*record_def_owner_key) == nullptr;
+    return mod.find_struct_def_tag_by_owner(*record_def_owner_key) == nullptr &&
+           !has_layout_for_own_tag_text() && !has_materialized_template_owner_for_spelling();
   }
   if (const std::optional<HirRecordOwnerKey> owner_key =
           typespec_aggregate_owner_key(ts)) {
-    return mod.find_struct_def_tag_by_owner(*owner_key) == nullptr;
+    return mod.find_struct_def_tag_by_owner(*owner_key) == nullptr &&
+           !has_layout_for_own_tag_text() && !has_materialized_template_owner_for_spelling();
   }
   return false;
 }

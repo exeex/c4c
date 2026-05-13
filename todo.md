@@ -9,11 +9,12 @@ Current Step Title: Audit HIR-To-LIR Handoff Compatibility Tags
 ## Just Finished
 
 Step 5 call handoff packet is complete. HIR-to-LIR call return, callee
-signature, and call argument aggregate type-ref construction now stops before
-rendered compatibility recovery when complete owner metadata is present but
-misses. Call targets retain raw rendered text after the miss, argument mirrors
-fail closed, and no-owner compatibility still produces structured
-`StructNameId` mirrors.
+signature, and call argument aggregate type-ref construction now preserves the
+Step 5 stale rendered owner-miss fence while allowing materialized template
+aggregate tags to regain structured `StructNameId` call return and argument
+mirrors. Call targets retain raw rendered text after true complete owner misses,
+argument mirrors fail closed for stale declaration-owner misses, and no-owner
+compatibility still produces structured `StructNameId` mirrors.
 
 ## Suggested Next
 
@@ -25,8 +26,9 @@ const-init, lvalue/indexed-GEP, and field-chain helpers that still name
 ## Watchouts
 
 - `typespec_aggregate_complete_owner_key_missed` is intentionally stricter
-  than the cross-table compatibility owner helper. Use it only where complete
-  owner misses must block rendered fallback.
+  than the cross-table compatibility owner helper. It may accept exact
+  materialized template layout tags, but declaration-owner misses must still
+  block rendered fallback.
 - Call return mirrors may keep raw rendered text after a complete miss; call
   argument mirrors use an empty `LirTypeRef` so `arg_type_refs` is omitted while
   structured argument text remains available.
@@ -36,6 +38,6 @@ const-init, lvalue/indexed-GEP, and field-chain helpers that still name
 ## Proof
 
 Passed the delegated proof command:
-`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)$"' > test_after.log 2>&1`
+`bash -lc 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^(frontend_lir_(global_type_ref|function_signature_type_ref|extern_decl_type_ref|call_type_ref)|cpp_positive_sema_template_angle_bracket_validation_cpp|cpp_positive_sema_template_struct_advanced_cpp|cpp_positive_sema_template_struct_nested_cpp)$"' > test_after.log 2>&1`
 
 Proof log: `test_after.log`
