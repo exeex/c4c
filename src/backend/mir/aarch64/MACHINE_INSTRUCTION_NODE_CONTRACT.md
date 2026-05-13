@@ -37,12 +37,13 @@ structured encoding record derived from those nodes.
   prepared physical-register spellings. `parse_aarch64_register_name(...)` is a
   conversion and diagnostic helper, not an assembler parser that supplies
   codegen semantics.
-- `codegen/records.hpp` owns the current data-only instruction and operand
-  record layer, including `InstructionFamily`, `OperandRecord`,
-  `InstructionRecord`, branch, scalar, memory, call, return, assembler, and
-  object record variants. Step 3 may align those names and fields to this
-  contract, but this document does not require instruction selection,
-  printing, encoding, object writing, or linking behavior.
+- `codegen/records.hpp` owns the current target-MIR record layer and the
+  selected machine-node layer, including `InstructionFamily`, `OperandRecord`,
+  `InstructionRecord`, branch, scalar, memory, spill/reload, call, return,
+  assembler, and object record variants. The accepted selected subset covers
+  structured branch, integer scalar ALU/cast, memory load/store, and prepared
+  spill/reload pseudo nodes. This document still does not require printing,
+  encoding, object writing, or linking behavior.
 - `codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
   `assembler/types.hpp`, and `assembler/encoder/mod.hpp` remain compatibility,
   external-assembler, or legacy text-first surfaces until a later contract
@@ -186,9 +187,9 @@ The following routes are rejected for AArch64 codegen:
   linker behavior before the relevant structured node or encoding contract is
   accepted
 
-## Step 3 Alignment Target
+## Current Alignment Boundary
 
-The current implemented records should be aligned so that:
+The current implemented records are aligned around these boundaries:
 
 - `InstructionFamily` remains family identity and can lead to concrete opcode
   identity without using mnemonic strings as authority.
@@ -196,8 +197,12 @@ The current implemented records should be aligned so that:
   contract.
 - `InstructionRecord` and family records retain function, block, instruction,
   prepared-value, memory, branch, call, and data provenance.
-- `RecordSurfaceKind::RecordOnly` is either kept as an explicit pre-node
-  marker or renamed to clarify whether a record is target MIR, machine node,
-  printer output, or encoder input.
+- `RecordSurfaceKind::RecordOnly` remains only as a compatibility spelling for
+  the target-MIR/pre-node surface. New structured selection output must use
+  `MachineInstructionNode`, while future printer, encoder, object, and
+  external assembler surfaces must use their explicit surface names.
+- Selected machine nodes may carry `MachineOpcode`, `MachinePseudoKind`,
+  `MachineNodeStatusRecord`, operands, def/use/clobber resources, and
+  side-effect metadata. They still do not emit or parse assembly text.
 - assembler, object, and inline-assembly record variants do not imply that
   text-first assembler parsing is the internal semantic route.

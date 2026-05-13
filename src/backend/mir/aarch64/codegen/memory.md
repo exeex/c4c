@@ -1,10 +1,13 @@
 # AArch64 Memory Legacy Surface
 
-Current target memory work lives in the record-only contract documented in
-`records.md`. `MemoryOperand` and `MemoryInstructionRecord` preserve prepared
-memory facts for later lowering; this file remains a legacy lowering reference
-and does not own the active record contract, load/store selection, assembly
-emission, object output, calls, or returns.
+Current target memory work lives in the target-MIR and selected machine-node
+contract documented in `records.md`. `MemoryOperand` and
+`MemoryInstructionRecord` preserve prepared memory facts before selection, and
+selected memory machine nodes carry structured load/store opcode identity,
+typed operands, def/use resources, and memory side effects for the accepted
+subset. This file remains a legacy lowering reference and does not own the
+active record contract, final addressing legality, assembly emission, object
+output, calls, or returns.
 
 This artifact preserves the useful production shape from the removed
 `memory.cpp` translation surface. The old file was not active C++; it was a
@@ -292,10 +295,10 @@ The removed surface depended on these surrounding concepts:
 Rebuild this surface around explicit prepared memory facts:
 
 Memory lowering should preserve prepared address, volatility, and address-space
-facts through target MIR memory operands and machine instruction nodes before
-any `.s` printing. Load/store mnemonics may be derived from nodes for printer
-or encoder consumers, but parsed mnemonic text must not become semantic
-authority.
+facts through target-MIR memory operands and selected machine instruction nodes
+before any `.s` printing. Load/store mnemonics may be derived from nodes for
+printer or encoder consumers, but parsed mnemonic text must not become
+semantic authority.
 Pointer homes, loaded/stored value homes, spill-slot materialization, and
 address-computation scratch must consume the shared allocation result and
 reserved MIR scratch policy in `../ALLOCATION_CONTRACT.md`, plus
