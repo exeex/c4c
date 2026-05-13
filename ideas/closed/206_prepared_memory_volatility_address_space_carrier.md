@@ -1,7 +1,8 @@
 # Prepared Memory Volatility And Address-Space Carrier
 
-Status: Open
+Status: Complete
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Discovered From:
 - `ideas/open/205_aarch64_arm_reference_layout_contract.md`
@@ -82,6 +83,21 @@ lowering. This gap belongs in the shared preparation boundary.
   compatible with current consumers.
 - Documentation names the exact prepared fields/helpers that targets should
   consume before implementing memory lowering.
+
+## Closure Notes
+
+Closed after the shared prepared memory carrier added typed
+`PreparedMemoryAccess::address_space` and
+`PreparedMemoryAccess::is_volatile` facts, threaded those fields through
+prepared stack-layout memory access builders, proved preservation with direct
+BIR fixtures for volatile and non-default address-space accesses across the
+representative prepared bases, and updated backend-facing AArch64 ledger/index
+documentation to name the implemented fields.
+
+Residual work remains out of scope for this idea: ordinary frontend/LIR
+load/store production still does not appear to publish volatile or non-default
+address-space facts into BIR, and target-local MIR/assembler/object/linker
+memory lowering remains deferred to later contracts.
 
 ## Reviewer Reject Signals
 
