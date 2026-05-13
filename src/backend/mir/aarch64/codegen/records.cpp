@@ -272,6 +272,33 @@ std::string_view prepared_scalar_cast_record_error_name(PreparedScalarCastRecord
   return "unknown";
 }
 
+std::string_view prepared_memory_operand_record_error_name(
+    PreparedMemoryOperandRecordError error) {
+  switch (error) {
+    case PreparedMemoryOperandRecordError::None:
+      return "none";
+    case PreparedMemoryOperandRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess:
+      return "missing_prepared_memory_access";
+    case PreparedMemoryOperandRecordError::UnsupportedBase:
+      return "unsupported_base";
+    case PreparedMemoryOperandRecordError::MissingFrameSlotId:
+      return "missing_frame_slot_id";
+    case PreparedMemoryOperandRecordError::MissingSymbolName:
+      return "missing_symbol_name";
+    case PreparedMemoryOperandRecordError::SymbolMismatch:
+      return "symbol_mismatch";
+    case PreparedMemoryOperandRecordError::AddressFactMismatch:
+      return "address_fact_mismatch";
+    case PreparedMemoryOperandRecordError::ResultValueMismatch:
+      return "result_value_mismatch";
+    case PreparedMemoryOperandRecordError::StoredValueMismatch:
+      return "stored_value_mismatch";
+  }
+  return "unknown";
+}
+
 bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Eq:
@@ -427,6 +454,11 @@ PreparedScalarCastRecordResult scalar_cast_record_error(PreparedScalarCastRecord
   return PreparedScalarCastRecordResult{.record = std::nullopt, .error = error};
 }
 
+PreparedMemoryOperandRecordResult memory_operand_record_error(
+    PreparedMemoryOperandRecordError error) {
+  return PreparedMemoryOperandRecordResult{.record = std::nullopt, .error = error};
+}
+
 PreparedScalarInstructionRecordResult scalar_instruction_record_error(
     PreparedScalarAluRecordError error) {
   return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
@@ -506,6 +538,192 @@ const c4c::backend::prepare::PreparedStoragePlanValue* find_storage_plan_value(
     }
   }
   return nullptr;
+}
+
+std::optional<c4c::backend::prepare::PreparedValueId> find_value_home_id(
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    c4c::ValueNameId value_name) {
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  for (const auto& home : value_locations.value_homes) {
+    if (home.value_name == value_name) {
+      return home.value_id;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<c4c::ValueNameId> named_value_id(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::bir::Value& value) {
+  if (value.kind != c4c::backend::bir::Value::Kind::Named || value.name.empty()) {
+    return std::nullopt;
+  }
+  const auto value_name = names.value_names.find(value.name);
+  if (value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  return value_name;
+}
+
+bool local_memory_address_matches_frame_slot(const c4c::backend::bir::MemoryAddress* address) {
+  return address == nullptr ||
+         address->base_kind == c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot;
+}
+
+PreparedMemoryOperandRecordError validate_structured_memory_address_facts(
+    const c4c::backend::bir::MemoryAddress& address,
+    const MemoryOperand& memory) {
+  if (address.byte_offset != memory.byte_offset ||
+      (address.size_bytes != 0 && address.size_bytes != memory.size_bytes) ||
+      (address.align_bytes != 0 && address.align_bytes != memory.align_bytes) ||
+      address.address_space != memory.address_space ||
+      address.is_volatile != memory.is_volatile) {
+    return PreparedMemoryOperandRecordError::AddressFactMismatch;
+  }
+  return PreparedMemoryOperandRecordError::None;
+}
+
+PreparedMemoryOperandRecordError validate_unstructured_memory_instruction_facts(
+    std::size_t instruction_byte_offset,
+    std::size_t instruction_align_bytes,
+    const MemoryOperand& memory) {
+  if (static_cast<std::int64_t>(instruction_byte_offset) != memory.byte_offset ||
+      (instruction_align_bytes != 0 && instruction_align_bytes != memory.align_bytes) ||
+      memory.size_bytes != 0 || memory.address_space != c4c::backend::bir::AddressSpace::Default ||
+      memory.is_volatile) {
+    return PreparedMemoryOperandRecordError::AddressFactMismatch;
+  }
+  return PreparedMemoryOperandRecordError::None;
+}
+
+PreparedMemoryOperandRecordError validate_memory_instruction_facts(
+    const c4c::backend::bir::MemoryAddress* address,
+    std::size_t instruction_byte_offset,
+    std::size_t instruction_align_bytes,
+    const MemoryOperand& memory) {
+  if (address != nullptr) {
+    return validate_structured_memory_address_facts(*address, memory);
+  }
+  return validate_unstructured_memory_instruction_facts(
+      instruction_byte_offset, instruction_align_bytes, memory);
+}
+
+std::optional<c4c::LinkNameId> global_symbol_id_from_address_or_inst(
+    const c4c::backend::bir::MemoryAddress* address,
+    c4c::LinkNameId fallback_link_name) {
+  if (address != nullptr) {
+    if (address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::GlobalSymbol) {
+      return std::nullopt;
+    }
+    if (address->base_link_name_id != c4c::kInvalidLinkName) {
+      return address->base_link_name_id;
+    }
+  }
+  if (fallback_link_name != c4c::kInvalidLinkName) {
+    return fallback_link_name;
+  }
+  return std::nullopt;
+}
+
+PreparedMemoryOperandRecordError apply_load_identity(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    const c4c::backend::bir::Value& result,
+    MemoryOperand& memory) {
+  if (!access.result_value_name.has_value() || access.stored_value_name.has_value()) {
+    return PreparedMemoryOperandRecordError::ResultValueMismatch;
+  }
+  const auto result_name = named_value_id(names, result);
+  if (!result_name.has_value() || *result_name != *access.result_value_name) {
+    return PreparedMemoryOperandRecordError::ResultValueMismatch;
+  }
+  memory.result_value_name = *result_name;
+  memory.result_value_id = find_value_home_id(value_locations, *result_name);
+  return PreparedMemoryOperandRecordError::None;
+}
+
+PreparedMemoryOperandRecordError apply_store_identity(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedMemoryAccess& access,
+    const c4c::backend::bir::Value& stored,
+    MemoryOperand& memory) {
+  if (access.result_value_name.has_value()) {
+    return PreparedMemoryOperandRecordError::StoredValueMismatch;
+  }
+  const auto stored_name = named_value_id(names, stored);
+  if (!stored_name.has_value()) {
+    if (access.stored_value_name.has_value()) {
+      return PreparedMemoryOperandRecordError::StoredValueMismatch;
+    }
+    return PreparedMemoryOperandRecordError::None;
+  }
+  if (!access.stored_value_name.has_value() || *stored_name != *access.stored_value_name) {
+    return PreparedMemoryOperandRecordError::StoredValueMismatch;
+  }
+  memory.stored_value_name = *stored_name;
+  memory.stored_value_id = find_value_home_id(value_locations, *stored_name);
+  return PreparedMemoryOperandRecordError::None;
+}
+
+PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (addressing.function_name == c4c::kInvalidFunctionName ||
+      value_locations.function_name != addressing.function_name) {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
+  }
+  const auto* access =
+      c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (access == nullptr || access->function_name != addressing.function_name) {
+    return memory_operand_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
+
+  MemoryOperand memory{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = access->function_name,
+      .block_label = access->block_label,
+      .instruction_index = access->inst_index,
+      .byte_offset = access->address.byte_offset,
+      .size_bytes = access->address.size_bytes,
+      .align_bytes = access->address.align_bytes,
+      .address_space = access->address_space,
+      .is_volatile = access->is_volatile,
+      .can_use_base_plus_offset = access->address.can_use_base_plus_offset,
+  };
+
+  switch (access->address.base_kind) {
+    case c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot:
+      if (!access->address.frame_slot_id.has_value()) {
+        return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingFrameSlotId);
+      }
+      memory.base_kind = MemoryBaseKind::FrameSlot;
+      memory.frame_slot_id = access->address.frame_slot_id;
+      break;
+    case c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol:
+      if (!access->address.symbol_name.has_value()) {
+        return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingSymbolName);
+      }
+      memory.base_kind = MemoryBaseKind::Symbol;
+      memory.symbol_name = access->address.symbol_name;
+      break;
+    case c4c::backend::prepare::PreparedAddressBaseKind::None:
+    case c4c::backend::prepare::PreparedAddressBaseKind::PointerValue:
+    case c4c::backend::prepare::PreparedAddressBaseKind::StringConstant:
+      return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+
+  return PreparedMemoryOperandRecordResult{
+      .record = memory,
+      .error = PreparedMemoryOperandRecordError::None,
+  };
 }
 
 std::optional<c4c::backend::aarch64::abi::RegisterView> scalar_register_view(
@@ -1094,6 +1312,184 @@ PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_
       .record = make_scalar_cast_instruction_record(*result.record),
       .error = PreparedScalarCastRecordError::None,
   };
+}
+
+PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load) {
+  auto result = make_memory_record_from_prepared_access(
+      value_locations, addressing, block_label, instruction_index);
+  if (!result.record.has_value()) {
+    return result;
+  }
+  if (result.record->base_kind == MemoryBaseKind::FrameSlot) {
+    if (!local_memory_address_matches_frame_slot(load.address ? &*load.address : nullptr)) {
+      return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+    }
+  } else if (result.record->base_kind == MemoryBaseKind::Symbol) {
+    const auto symbol =
+        global_symbol_id_from_address_or_inst(load.address ? &*load.address : nullptr,
+                                              c4c::kInvalidLinkName);
+    if (!symbol.has_value() || result.record->symbol_name != *symbol) {
+      return memory_operand_record_error(PreparedMemoryOperandRecordError::SymbolMismatch);
+    }
+  } else {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  if (const auto error = validate_memory_instruction_facts(
+          load.address ? &*load.address : nullptr,
+          load.byte_offset,
+          load.align_bytes,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  if (const auto error = apply_load_identity(
+          names,
+          value_locations,
+          *c4c::backend::prepare::find_prepared_memory_access(
+              addressing, block_label, instruction_index),
+          load.result,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  return result;
+}
+
+PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::StoreLocalInst& store) {
+  auto result = make_memory_record_from_prepared_access(
+      value_locations, addressing, block_label, instruction_index);
+  if (!result.record.has_value()) {
+    return result;
+  }
+  if (result.record->base_kind == MemoryBaseKind::FrameSlot) {
+    if (!local_memory_address_matches_frame_slot(store.address ? &*store.address : nullptr)) {
+      return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+    }
+  } else if (result.record->base_kind == MemoryBaseKind::Symbol) {
+    const auto symbol =
+        global_symbol_id_from_address_or_inst(store.address ? &*store.address : nullptr,
+                                              c4c::kInvalidLinkName);
+    if (!symbol.has_value() || result.record->symbol_name != *symbol) {
+      return memory_operand_record_error(PreparedMemoryOperandRecordError::SymbolMismatch);
+    }
+  } else {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  if (const auto error = validate_memory_instruction_facts(
+          store.address ? &*store.address : nullptr,
+          store.byte_offset,
+          store.align_bytes,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  if (const auto error = apply_store_identity(
+          names,
+          value_locations,
+          *c4c::backend::prepare::find_prepared_memory_access(
+              addressing, block_label, instruction_index),
+          store.value,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  return result;
+}
+
+PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadGlobalInst& load) {
+  auto result = make_memory_record_from_prepared_access(
+      value_locations, addressing, block_label, instruction_index);
+  if (!result.record.has_value()) {
+    return result;
+  }
+  if (result.record->base_kind != MemoryBaseKind::Symbol) {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  const auto symbol =
+      global_symbol_id_from_address_or_inst(load.address ? &*load.address : nullptr,
+                                            load.global_name_id);
+  if (!symbol.has_value() || result.record->symbol_name != *symbol) {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::SymbolMismatch);
+  }
+  if (const auto error = validate_memory_instruction_facts(
+          load.address ? &*load.address : nullptr,
+          load.byte_offset,
+          load.align_bytes,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  if (const auto error = apply_load_identity(
+          names,
+          value_locations,
+          *c4c::backend::prepare::find_prepared_memory_access(
+              addressing, block_label, instruction_index),
+          load.result,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  return result;
+}
+
+PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::StoreGlobalInst& store) {
+  auto result = make_memory_record_from_prepared_access(
+      value_locations, addressing, block_label, instruction_index);
+  if (!result.record.has_value()) {
+    return result;
+  }
+  if (result.record->base_kind != MemoryBaseKind::Symbol) {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  const auto symbol =
+      global_symbol_id_from_address_or_inst(store.address ? &*store.address : nullptr,
+                                            store.global_name_id);
+  if (!symbol.has_value() || result.record->symbol_name != *symbol) {
+    return memory_operand_record_error(PreparedMemoryOperandRecordError::SymbolMismatch);
+  }
+  if (const auto error = validate_memory_instruction_facts(
+          store.address ? &*store.address : nullptr,
+          store.byte_offset,
+          store.align_bytes,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  if (const auto error = apply_store_identity(
+          names,
+          value_locations,
+          *c4c::backend::prepare::find_prepared_memory_access(
+              addressing, block_label, instruction_index),
+          store.value,
+          *result.record);
+      error != PreparedMemoryOperandRecordError::None) {
+    return memory_operand_record_error(error);
+  }
+  return result;
 }
 
 }  // namespace c4c::backend::aarch64::codegen

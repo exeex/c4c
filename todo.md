@@ -1,40 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/210_aarch64_memory_operand_model_from_prepared_facts.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Convert Prepared Frame And Symbol Memory Bases
+Current Step ID: 4
+Current Step Title: Convert Prepared Pointer And String Memory Bases
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: tightened direct AArch64 memory operand
-record vocabulary so record-only memory operands can preserve prepared memory
-facts without selecting load/store instructions.
+Completed Step 3 from `plan.md`: added prepared/BIR-to-target memory operand
+conversion for frame-slot and global-symbol bases only.
 
 Concrete work completed:
-- Added `MemoryOperandSupportKind` with explicit `Prepared` and
-  `DeferredUnsupported` states plus
-  `memory_operand_support_kind_name(...)` diagnostics.
-- Extended `MemoryOperand` with prepared memory-access identity:
-  `function_name`, `block_label`, `instruction_index`, optional result
-  `PreparedValueId` / `ValueNameId`, and optional stored-value
-  `PreparedValueId` / `ValueNameId`.
-- Preserved existing base facts and added structured string-symbol identity
-  with `string_symbol_name` alongside existing `string_name`.
-- Kept pointer memory bases as name/id slots (`pointer_value_name` and
-  `pointer_value_id`) so later conversion can fill ids only from structured
-  prepared value-location facts.
-- Added `backend_aarch64_memory_operand_records` for direct frame-slot,
-  symbol, string, pointer, deferred, and memory-instruction record behavior.
-- Updated `backend_aarch64_target_operand_records` to cover the new access
-  identity fields on the existing memory operand surface.
+- Added `PreparedMemoryOperandRecordError`,
+  `PreparedMemoryOperandRecordResult`, and
+  `prepared_memory_operand_record_error_name(...)`.
+- Added `make_prepared_memory_operand_record(...)` overloads for
+  `bir::LoadLocalInst`, `bir::StoreLocalInst`, `bir::LoadGlobalInst`, and
+  `bir::StoreGlobalInst`.
+- Conversion now consumes structured BIR memory instructions plus matching
+  `PreparedAddressingFunction` / `PreparedMemoryAccess` facts keyed by
+  function, block label, and instruction index.
+- Frame-slot conversion preserves prepared frame-slot id, function/block/
+  instruction identity, result or stored value name/id where available, byte
+  offset, size, alignment, volatility, address space, and base-plus-offset
+  eligibility.
+- Global-symbol conversion preserves structured `LinkNameId` symbol identity
+  and fails closed on mismatched or missing structured symbol ids.
+- Conversion now validates structured BIR memory address facts against prepared
+  access/address facts for byte offset, available size, available alignment,
+  volatility, and address space before accepting the record.
+- Instructions without structured BIR addresses are accepted only for facts
+  carried by the legacy instruction fields: byte offset, alignment when
+  present, default address space, non-volatile access, and no prepared size.
+- Added `backend_aarch64_prepared_memory_operand_records` coverage for
+  successful frame-slot load and global-symbol store conversion plus guard
+  cases for missing prepared access, unsupported pointer base, result/store
+  mismatch, symbol mismatch, BIR/prepared byte-offset mismatch, and
+  BIR/prepared address-space mismatch.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: add conversion helpers that consume structured
-BIR memory instructions plus matching `PreparedAddressing` /
-`PreparedMemoryAccess` facts for frame-slot and global-symbol bases.
+Execute Step 4 from `plan.md`: extend prepared memory operand conversion to
+pointer-value and string-constant bases where structured prepared/BIR facts
+permit it.
 
 ## Watchouts
 
@@ -42,20 +51,21 @@ BIR memory instructions plus matching `PreparedAddressing` /
   encoding, object output, memory emission, calls, or returns.
 - Preserve volatility and address-space facts from prepared input; do not
   invent target-local defaults.
-- Step 2 intentionally added vocabulary and direct record proof only; no
-  prepared/BIR conversion helpers were added yet.
-- Step 3 should start with frame-slot and global-symbol bases. Pointer-value
-  and string-constant conversion belong to Step 4 unless the supervisor
-  explicitly narrows otherwise.
-- Do not parse rendered global, slot, string, or value names. Frame and symbol
-  conversion should use structured BIR ids plus prepared addressing facts, and
-  fail closed when facts are missing or mismatched.
+- Step 3 intentionally rejects pointer-value and string-constant prepared
+  bases; those are the Step 4 target.
+- Pointer-value conversion should join `PreparedAddress::pointer_value_name`
+  to prepared value-location facts for `PreparedValueId`; fail closed if the
+  join is missing or ambiguous.
+- String-constant conversion should preserve structured string identity without
+  parsing rendered string labels. Prepared string constants currently surface
+  as `PreparedAddress::symbol_name` / `LinkNameId`.
 
 ## Proof
 
 Proof passed:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
 
-Result: backend subset passed with `backend_aarch64_memory_operand_records`
-included and green: 129 tests passed, 0 failed; 12 disabled MIR trace tests
-were not run. Proof log path: `test_after.log`.
+Result: backend subset passed with
+`backend_aarch64_prepared_memory_operand_records` included and green: 130
+tests passed, 0 failed; 12 disabled MIR trace tests were not run. Proof log
+path: `test_after.log`.

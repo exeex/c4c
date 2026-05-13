@@ -151,6 +151,19 @@ enum class PreparedScalarCastRecordError {
   RegisterConversionFailed,
 };
 
+enum class PreparedMemoryOperandRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedMemoryAccess,
+  UnsupportedBase,
+  MissingFrameSlotId,
+  MissingSymbolName,
+  SymbolMismatch,
+  AddressFactMismatch,
+  ResultValueMismatch,
+  StoredValueMismatch,
+};
+
 struct RegisterOperand {
   c4c::backend::aarch64::abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
@@ -377,6 +390,11 @@ struct PreparedScalarCastInstructionRecordResult {
   PreparedScalarCastRecordError error = PreparedScalarCastRecordError::None;
 };
 
+struct PreparedMemoryOperandRecordResult {
+  std::optional<MemoryOperand> record;
+  PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
+};
+
 struct MemoryInstructionRecord {
   MemoryInstructionKind memory_kind = MemoryInstructionKind::Load;
   MemoryOperand address;
@@ -451,6 +469,8 @@ struct InstructionRecord {
     PreparedScalarAluRecordError error);
 [[nodiscard]] std::string_view prepared_scalar_cast_record_error_name(
     PreparedScalarCastRecordError error);
+[[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
+    PreparedMemoryOperandRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode);
@@ -505,5 +525,33 @@ make_prepared_scalar_cast_instruction_record(
     const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
     const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
     const c4c::backend::bir::CastInst& cast);
+[[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadLocalInst& load);
+[[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::StoreLocalInst& store);
+[[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::LoadGlobalInst& load);
+[[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const c4c::backend::bir::StoreGlobalInst& store);
 
 }  // namespace c4c::backend::aarch64::codegen
