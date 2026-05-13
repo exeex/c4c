@@ -7,7 +7,7 @@ Depends On:
 - `ideas/closed/205_aarch64_arm_reference_layout_contract.md`
 - `ideas/closed/206_prepared_memory_volatility_address_space_carrier.md`
 - `ideas/closed/207_aarch64_target_register_and_instruction_record_core.md`
-- `ideas/open/211_aarch64_machine_instruction_node_contract.md`
+- `ideas/closed/211_aarch64_machine_instruction_node_contract.md`
 
 ## Goal
 
