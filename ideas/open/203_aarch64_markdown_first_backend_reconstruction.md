@@ -37,9 +37,10 @@ new target backend shape.
 
 - Inventory the existing AArch64 files under `src/backend/mir/aarch64`,
   including codegen, assembler, linker, and top-level module entry files.
-- Move or copy selected failed implementation `.cpp` content into `.md`
-  review artifacts so the old route can be studied without keeping it as live
-  production code.
+- Remove every existing old `.cpp` file under `src/backend/mir/aarch64` from
+  the live implementation surface and abstract its relevant content into `.md`
+  review artifacts. The old route must not remain available as production
+  `.cpp` while this reconstruction is active.
 - Build a markdown index that classifies each old AArch64 file as:
   salvageable design note, obsolete route, binary-utils candidate,
   target-ABI candidate, assembler/linker candidate, or delete/defer.
@@ -53,7 +54,7 @@ new target backend shape.
   from BIR or `PreparedBirModule`, stop backend implementation and create a
   separate BIR/prepared gap idea before continuing.
 - After the markdown review converges, choose the first tiny implementation
-  slice to grow back into `.cpp`.
+  slice to grow back into new `.cpp` under the accepted contract.
 
 ## Out Of Scope
 
@@ -73,6 +74,9 @@ new target backend shape.
 - The old AArch64 implementation surface has a markdown review index that
   explains which files are retained as design notes, deferred, or candidates
   for future code regeneration.
+- All pre-existing old `.cpp` files under `src/backend/mir/aarch64` are gone
+  from the live tree, and their useful content has been abstracted into `.md`
+  review artifacts rather than preserved as compilable production code.
 - Live `.cpp` backend work is not expanded before the interface study is
   complete.
 - The proposed backend entry contract states whether the new route consumes
@@ -89,6 +93,9 @@ new target backend shape.
 
 - The route starts debugging or expanding AArch64 `.cpp` files before the
   markdown interface ledger is complete.
+- Any pre-existing old `.cpp` file under `src/backend/mir/aarch64` remains in
+  the live implementation tree after the markdown extraction is claimed
+  complete.
 - The markdown conversion becomes a blind file rename without design
   classification or backend contract analysis.
 - The proposed backend route adds rendered-string lookup or name recovery
