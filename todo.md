@@ -9,30 +9,32 @@ Current Step Title: Extract Old `.cpp` Surfaces To Markdown Artifacts
 ## Just Finished
 
 Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/prologue.cpp` into
-`src/backend/mir/aarch64/codegen/prologue.md` and removed the old `.cpp`
+`src/backend/mir/aarch64/codegen/comparison.cpp` into
+`src/backend/mir/aarch64/codegen/comparison.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old prologue/epilogue role, entry points,
-stack layout behavior, variadic save-area accounting, callee-saved register
-save policy, parameter storage and `ParamRef` behavior, dependencies, hidden
-assumptions, and rebuild risks.
+The markdown artifact records the old comparison role, entry points,
+floating-point and integer comparison behavior, fused compare-branch shape,
+select behavior, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Continue Step 2 with another old AArch64 backend `.cpp` extraction target,
-preferably a remaining codegen surface that depends on the archived `emit.md`,
-`asm_emitter.md`, and `prologue.md` context.
+preferably `returns.cpp` or `float_ops.cpp` because each is small enough to
+archive cleanly while preserving useful ABI/result-lowering context for the
+later rebuild.
 
 ## Watchouts
 
-- `prologue.cpp` was a fully commented translation surface rather than live
+- `comparison.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: sret/variadic GP register
-  accounting, callee-saved pre-store lifetime extension, F128 caller-saved pool
-  suppression, stack-passed parameter addressing via `frame_size + offset`, and
-  signed narrow load selection.
+- The archived surface has several rebuild hazards: float comparison condition
+  mapping is separate from integer condition-code mapping, the left float
+  operand must be preserved before materializing the right operand, `F128`
+  comparison delegates to shared soft-float support, fused branch lowering
+  uses an inverted branch-around shape, and select invalidates accumulator
+  cache after `csel`.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 
