@@ -173,6 +173,33 @@ record. The status column is the current permission boundary for later work.
 | Local assembler parser operand recovery. | deferred | assembler/object work | Parser facts may inform later assembler work, but must not substitute for target MIR operands. |
 | Built-in linker orchestration. | deferred | separate idea | Linker work is explicitly outside the backend entry boundary. |
 
+## Final Contract Validation
+
+This ledger is the responsibility-boundary output for
+`ideas/open/205_aarch64_arm_reference_layout_contract.md`. It covers the
+required feature families from that source idea: public prepared-module entry,
+target ABI and AAPCS64 facts, module/function/block containers, operands and
+value identity, registers and register classes, frame/prologue/epilogue and
+callee-save records, branch/compare records, call/return/variadic records,
+memory/addressing records, globals/string/data records, moves/spills/reloads
+and parallel copies, scalar ALU/casts/float ops, atomics, intrinsics, inline
+asm, f128/i128, assembler, encoder, object writer, binary utilities, and
+linker surfaces.
+
+The only required shared BIR/prepared carrier gap discovered by this contract
+is volatile and non-default address-space preservation in
+`PreparedMemoryAccess` / `PreparedAddress`. That gap is split into
+`ideas/open/206_prepared_memory_volatility_address_space_carrier.md`; AArch64
+target code must not work around it by recovering volatility or address-space
+facts from rendered names, printed BIR, legacy examples, or assembly text.
+
+No other required BIR/prepared carrier gap blocks this layout contract. The
+remaining non-present items are either target-local AArch64 MIR records that
+belong to the next AArch64 design wave or deferred/ambiguous contracts already
+named here: AAPCS64 call/return/variadic completeness, target instruction
+records for scalar and floating-point lowering, f128/i128, atomics, intrinsics,
+inline asm, assembler/encoder, object/binary-utils, and linker behavior.
+
 ## Proceed Versus Split Decision
 
 Backend implementation must not proceed directly to AArch64 instruction
@@ -187,11 +214,11 @@ currently exists to consume `PreparedBirModule`.
 A separate shared BIR/prepared carrier initiative is not required before Step 6
 for most facts because `PreparedBirModule` already carries the contract's core
 module, identity, control-flow, frame, stack, liveness, regalloc, storage, and
-call plans. However, memory volatility and address-space facts are missing from
-the visible prepared memory carrier. If Step 6 chooses memory lowering as its
-first implementation slice, split a shared-preparation carrier extension first;
-otherwise record that gap and proceed with the AArch64 MIR design around the
-present prepared facts.
+call plans. The one required shared carrier initiative is already recorded as
+`ideas/open/206_prepared_memory_volatility_address_space_carrier.md`. If the
+next wave chooses memory lowering as its first implementation slice, that gap
+idea is a prerequisite; otherwise proceed with AArch64 MIR design around the
+present prepared facts and keep full memory lowering blocked.
 
 No target-local workaround is accepted for missing facts. In particular, do not
 recover backend facts from rendered names, printed BIR, legacy LIR type
