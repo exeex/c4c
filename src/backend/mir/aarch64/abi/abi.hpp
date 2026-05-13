@@ -26,10 +26,36 @@ enum class RegisterView {
   V,
 };
 
+enum class PreparedRegisterConversionErrorKind {
+  EmptyRegisterName,
+  UnknownRegisterName,
+  UnsupportedRegisterView,
+  RegisterBankMismatch,
+  RegisterClassMismatch,
+  RegisterViewMismatch,
+};
+
 struct RegisterReference {
   RegisterBank bank = RegisterBank::GeneralPurpose;
   RegisterView view = RegisterView::X;
   std::uint8_t index = 0;
+};
+
+struct PreparedRegisterConversionError {
+  PreparedRegisterConversionErrorKind kind =
+      PreparedRegisterConversionErrorKind::UnknownRegisterName;
+  std::string register_name;
+  std::optional<c4c::backend::prepare::PreparedRegisterBank> prepared_bank;
+  std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class;
+  std::optional<RegisterView> expected_view;
+  std::string message;
+};
+
+struct PreparedRegisterConversionResult {
+  std::optional<RegisterReference> reg;
+  std::optional<PreparedRegisterConversionError> error;
+
+  [[nodiscard]] bool has_value() const { return reg.has_value(); }
 };
 
 enum class HandoffErrorKind {
@@ -81,6 +107,22 @@ struct HandoffError {
 [[nodiscard]] std::string register_name(RegisterReference reg);
 [[nodiscard]] std::string_view register_bank_name(RegisterBank bank);
 [[nodiscard]] std::string_view register_view_name(RegisterView view);
+[[nodiscard]] std::string_view prepared_register_conversion_error_kind_name(
+    PreparedRegisterConversionErrorKind kind);
+[[nodiscard]] std::optional<RegisterReference> parse_aarch64_register_name(
+    std::string_view register_name);
+[[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
+    std::string_view register_name,
+    std::optional<c4c::backend::prepare::PreparedRegisterBank> prepared_bank,
+    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view);
+[[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
+    const c4c::backend::prepare::PreparedPhysicalRegisterAssignment& assignment,
+    std::optional<RegisterView> expected_view);
+[[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
+    const c4c::backend::prepare::PreparedSavedRegister& saved_register,
+    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view);
 [[nodiscard]] c4c::TargetProfile resolve_target_profile(
     const c4c::backend::prepare::PreparedBirModule& module);
 [[nodiscard]] bool is_aarch64_target(const c4c::TargetProfile& target_profile);

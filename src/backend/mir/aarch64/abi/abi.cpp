@@ -1,10 +1,14 @@
 #include "abi.hpp"
 
 #include <cassert>
+#include <charconv>
+#include <system_error>
 
 namespace c4c::backend::aarch64::abi {
 
 namespace {
+
+namespace prepare = c4c::backend::prepare;
 
 constexpr bool is_gp_view(RegisterView view) {
   return view == RegisterView::X || view == RegisterView::W;
@@ -13,6 +17,14 @@ constexpr bool is_gp_view(RegisterView view) {
 constexpr bool is_fp_simd_view(RegisterView view) {
   return view == RegisterView::S || view == RegisterView::D || view == RegisterView::Q ||
          view == RegisterView::V;
+}
+
+constexpr bool is_float_view(RegisterView view) {
+  return view == RegisterView::S || view == RegisterView::D;
+}
+
+constexpr bool is_vector_view(RegisterView view) {
+  return view == RegisterView::Q || view == RegisterView::V;
 }
 
 template <std::size_t Count>
@@ -44,6 +56,109 @@ constexpr char view_prefix(RegisterView view) {
       break;
   }
   return '?';
+}
+
+std::optional<std::uint8_t> parse_register_index(std::string_view digits,
+                                                 std::uint8_t max_index) {
+  if (digits.empty()) {
+    return std::nullopt;
+  }
+  if (digits.size() > 1 && digits.front() == '0') {
+    return std::nullopt;
+  }
+  unsigned parsed = 0;
+  const char* begin = digits.data();
+  const char* end = digits.data() + digits.size();
+  const auto result = std::from_chars(begin, end, parsed);
+  if (result.ec != std::errc{} || result.ptr != end || parsed > max_index) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint8_t>(parsed);
+}
+
+std::string conversion_message(PreparedRegisterConversionErrorKind kind,
+                               std::string_view register_name) {
+  return std::string(prepared_register_conversion_error_kind_name(kind)) +
+         " for prepared register `" + std::string(register_name) + "`";
+}
+
+PreparedRegisterConversionResult conversion_failure(
+    PreparedRegisterConversionErrorKind kind,
+    std::string_view register_name,
+    std::optional<prepare::PreparedRegisterBank> prepared_bank,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view) {
+  return PreparedRegisterConversionResult{
+      .reg = std::nullopt,
+      .error = PreparedRegisterConversionError{
+          .kind = kind,
+          .register_name = std::string(register_name),
+          .prepared_bank = prepared_bank,
+          .prepared_class = prepared_class,
+          .expected_view = expected_view,
+          .message = conversion_message(kind, register_name),
+      },
+  };
+}
+
+bool prepared_bank_group_matches_register(prepare::PreparedRegisterBank bank,
+                                          RegisterReference reg) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return reg.bank == RegisterBank::GeneralPurpose;
+    case prepare::PreparedRegisterBank::Fpr:
+    case prepare::PreparedRegisterBank::Vreg:
+      return reg.bank == RegisterBank::FpSimd;
+    case prepare::PreparedRegisterBank::None:
+      return false;
+  }
+  return false;
+}
+
+bool prepared_class_group_matches_register(prepare::PreparedRegisterClass reg_class,
+                                           RegisterReference reg) {
+  switch (reg_class) {
+    case prepare::PreparedRegisterClass::General:
+    case prepare::PreparedRegisterClass::AggregateAddress:
+      return reg.bank == RegisterBank::GeneralPurpose;
+    case prepare::PreparedRegisterClass::Float:
+    case prepare::PreparedRegisterClass::Vector:
+      return reg.bank == RegisterBank::FpSimd;
+    case prepare::PreparedRegisterClass::None:
+      return false;
+  }
+  return false;
+}
+
+bool bank_supports_view(prepare::PreparedRegisterBank bank, RegisterView view) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return view == RegisterView::X || view == RegisterView::W;
+    case prepare::PreparedRegisterBank::Fpr:
+      return is_float_view(view);
+    case prepare::PreparedRegisterBank::Vreg:
+      return is_vector_view(view);
+    case prepare::PreparedRegisterBank::None:
+      return false;
+  }
+  return false;
+}
+
+bool class_supports_view(prepare::PreparedRegisterClass reg_class, RegisterView view) {
+  switch (reg_class) {
+    case prepare::PreparedRegisterClass::General:
+    case prepare::PreparedRegisterClass::AggregateAddress:
+      return view == RegisterView::X || view == RegisterView::W;
+    case prepare::PreparedRegisterClass::Float:
+      return is_float_view(view);
+    case prepare::PreparedRegisterClass::Vector:
+      return is_vector_view(view);
+    case prepare::PreparedRegisterClass::None:
+      return false;
+  }
+  return false;
 }
 
 std::string explicit_target_triple(const c4c::backend::prepare::PreparedBirModule& module) {
@@ -288,6 +403,160 @@ std::string_view register_view_name(RegisterView view) {
       return "v";
   }
   return "unknown";
+}
+
+std::string_view prepared_register_conversion_error_kind_name(
+    PreparedRegisterConversionErrorKind kind) {
+  switch (kind) {
+    case PreparedRegisterConversionErrorKind::EmptyRegisterName:
+      return "empty_register_name";
+    case PreparedRegisterConversionErrorKind::UnknownRegisterName:
+      return "unknown_register_name";
+    case PreparedRegisterConversionErrorKind::UnsupportedRegisterView:
+      return "unsupported_register_view";
+    case PreparedRegisterConversionErrorKind::RegisterBankMismatch:
+      return "register_bank_mismatch";
+    case PreparedRegisterConversionErrorKind::RegisterClassMismatch:
+      return "register_class_mismatch";
+    case PreparedRegisterConversionErrorKind::RegisterViewMismatch:
+      return "register_view_mismatch";
+  }
+  return "unknown";
+}
+
+std::optional<RegisterReference> parse_aarch64_register_name(std::string_view register_name) {
+  if (register_name == "sp") {
+    return stack_pointer_register();
+  }
+  if (register_name.size() < 2) {
+    return std::nullopt;
+  }
+
+  const char prefix = register_name.front();
+  const std::string_view digits = register_name.substr(1);
+  switch (prefix) {
+    case 'x':
+      if (const auto index = parse_register_index(digits, 30); index.has_value()) {
+        return gp_register(*index, RegisterView::X);
+      }
+      return std::nullopt;
+    case 'w':
+      if (const auto index = parse_register_index(digits, 30); index.has_value()) {
+        return gp_register(*index, RegisterView::W);
+      }
+      return std::nullopt;
+    case 's':
+      if (const auto index = parse_register_index(digits, 31); index.has_value()) {
+        return fp_simd_register(*index, RegisterView::S);
+      }
+      return std::nullopt;
+    case 'd':
+      if (const auto index = parse_register_index(digits, 31); index.has_value()) {
+        return fp_simd_register(*index, RegisterView::D);
+      }
+      return std::nullopt;
+    case 'q':
+      if (const auto index = parse_register_index(digits, 31); index.has_value()) {
+        return fp_simd_register(*index, RegisterView::Q);
+      }
+      return std::nullopt;
+    case 'v':
+      if (const auto index = parse_register_index(digits, 31); index.has_value()) {
+        return fp_simd_register(*index, RegisterView::V);
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+PreparedRegisterConversionResult convert_prepared_register(
+    std::string_view register_name,
+    std::optional<prepare::PreparedRegisterBank> prepared_bank,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view) {
+  if (register_name.empty()) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::EmptyRegisterName,
+                              register_name,
+                              prepared_bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  const auto parsed = parse_aarch64_register_name(register_name);
+  if (!parsed.has_value()) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::UnknownRegisterName,
+                              register_name,
+                              prepared_bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  if (expected_view.has_value() && parsed->view != *expected_view) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::RegisterViewMismatch,
+                              register_name,
+                              prepared_bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  if (prepared_bank.has_value()) {
+    if (!prepared_bank_group_matches_register(*prepared_bank, *parsed)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::RegisterBankMismatch,
+                                register_name,
+                                prepared_bank,
+                                prepared_class,
+                                expected_view);
+    }
+    if (!bank_supports_view(*prepared_bank, parsed->view)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::UnsupportedRegisterView,
+                                register_name,
+                                prepared_bank,
+                                prepared_class,
+                                expected_view);
+    }
+  }
+
+  if (prepared_class.has_value()) {
+    if (!prepared_class_group_matches_register(*prepared_class, *parsed)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::RegisterClassMismatch,
+                                register_name,
+                                prepared_bank,
+                                prepared_class,
+                                expected_view);
+    }
+    if (!class_supports_view(*prepared_class, parsed->view)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::UnsupportedRegisterView,
+                                register_name,
+                                prepared_bank,
+                                prepared_class,
+                                expected_view);
+    }
+  }
+
+  return PreparedRegisterConversionResult{
+      .reg = *parsed,
+      .error = std::nullopt,
+  };
+}
+
+PreparedRegisterConversionResult convert_prepared_register(
+    const prepare::PreparedPhysicalRegisterAssignment& assignment,
+    std::optional<RegisterView> expected_view) {
+  return convert_prepared_register(assignment.register_name,
+                                   std::nullopt,
+                                   assignment.reg_class,
+                                   expected_view);
+}
+
+PreparedRegisterConversionResult convert_prepared_register(
+    const prepare::PreparedSavedRegister& saved_register,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view) {
+  return convert_prepared_register(saved_register.register_name,
+                                   saved_register.bank,
+                                   prepared_class,
+                                   expected_view);
 }
 
 c4c::TargetProfile resolve_target_profile(

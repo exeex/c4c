@@ -8,39 +8,37 @@ Current Step Title: Add Prepared Register Conversion Helpers
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by adding the typed AArch64 register vocabulary in
+Completed `plan.md` Step 3 by adding prepared-register conversion helpers in
 `src/backend/mir/aarch64/abi/abi.hpp` and `.cpp`.
 
 Work completed:
-- Added typed `RegisterReference` values with explicit GP, stack-pointer, and
-  FP/SIMD banks plus `x`, `w`, `sp`, `s`, `d`, `q`, and `v` views.
-- Added constructors and validators for GP `x0`-`x30` / `w0`-`w30`, `sp`, and
-  FP/SIMD `s0`-`s31`, `d0`-`d31`, `q0`-`q31`, and `v0`-`v31`.
-- Added role helpers and predicates for frame pointer, link register, stack
-  pointer, sret, indirect-call scratch, platform-reserved, caller-saved, and
-  callee-saved AAPCS64 groups.
-- Added `backend_aarch64_register_vocabulary` coverage for representative GP,
-  SP, FP/SIMD, special-role, caller-saved, and callee-saved classification.
+- Added `parse_aarch64_register_name` and `convert_prepared_register` helpers
+  that validate prepared physical-register spellings into typed
+  `RegisterReference` values.
+- Added explicit conversion failure kinds for empty/unknown names, unsupported
+  views, bank mismatches, class mismatches, and expected-view mismatches.
+- Added conversion overloads for `PreparedPhysicalRegisterAssignment` and
+  `PreparedSavedRegister` carriers.
+- Added `backend_aarch64_prepared_register_conversion` coverage for
+  representative GP, SP, FP/SIMD successes plus unknown, unsupported-view,
+  bank-mismatch, class-mismatch, and expected-view mismatch failures.
 
 ## Suggested Next
 
-Step 3 packet: add prepared-register conversion helpers in the AArch64 ABI
-owner that parse/validate prepared physical-register strings, banks, classes,
-and views into the typed `RegisterReference` vocabulary, failing closed on
-unknown names or mismatches.
-
-Recommended proof can stay focused on the new conversion test plus the existing
-backend subset selected by the supervisor.
+Step 4 packet: add target operand record structs under the AArch64 target-record
+owner, using the typed register vocabulary and prepared-register conversion
+helpers as the register boundary.
 
 ## Watchouts
 
 - Keep `module/` as a prepared/BIR snapshot boundary.
 - Do not add instruction selection, assembly emission, object output, or linker
   behavior.
-- Step 2 intentionally does not parse prepared physical-register strings.
-  Step 3 should be the first point that treats prepared strings/banks/classes
-  as candidates for typed AArch64 registers, and it should fail closed on
-  unknown or mismatched facts.
+- Prepared register conversion accepts aggregate-address class/bank metadata for
+  GP physical registers because those prepared facts still name AArch64 address
+  registers.
+- The conversion layer rejects uppercase aliases, zero-padded names, `x31`, and
+  prepared `sp` with GP/FPR/VREG bank metadata.
 - `x18` is exposed as platform-reserved and is excluded from caller/callee
   saved groups.
 - Avoid extending `src/backend/mir/aarch64/codegen/emit.hpp`; it still exposes
@@ -55,6 +53,7 @@ Ran:
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log
 ```
 
-Result: passed, including `backend_aarch64_register_vocabulary`.
+Result: passed, including `backend_aarch64_register_vocabulary` and
+`backend_aarch64_prepared_register_conversion`.
 
 Proof log: `test_after.log`.
