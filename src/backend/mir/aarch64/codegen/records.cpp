@@ -80,6 +80,16 @@ std::string_view memory_base_kind_name(MemoryBaseKind kind) {
   return "unknown";
 }
 
+std::string_view memory_operand_support_kind_name(MemoryOperandSupportKind kind) {
+  switch (kind) {
+    case MemoryOperandSupportKind::Prepared:
+      return "prepared";
+    case MemoryOperandSupportKind::DeferredUnsupported:
+      return "deferred_unsupported";
+  }
+  return "unknown";
+}
+
 std::string_view instruction_family_name(InstructionFamily family) {
   switch (family) {
     case InstructionFamily::Branch:

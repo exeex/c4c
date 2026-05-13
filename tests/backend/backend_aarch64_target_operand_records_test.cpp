@@ -126,6 +126,12 @@ int branch_and_memory_operands_are_record_only_surfaces() {
   const auto memory = aarch64_codegen::make_memory_operand(
       aarch64_codegen::MemoryOperand{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+          .function_name = c4c::FunctionNameId{3},
+          .block_label = c4c::BlockLabelId{13},
+          .instruction_index = 4,
+          .stored_value_id = prepare::PreparedValueId{24},
+          .stored_value_name = c4c::ValueNameId{11},
           .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
           .frame_slot_id = prepare::PreparedFrameSlotId{5},
           .pointer_value_name = c4c::ValueNameId{12},
@@ -147,7 +153,12 @@ int branch_and_memory_operands_are_record_only_surfaces() {
     return fail("expected branch target operand to be a structured record-only surface");
   }
   if (mem == nullptr || aarch64_codegen::memory_base_kind_name(mem->base_kind) != "frame_slot" ||
+      aarch64_codegen::memory_operand_support_kind_name(mem->support) != "prepared" ||
       aarch64_codegen::record_surface_kind_name(mem->surface) != "record_only" ||
+      mem->function_name != c4c::FunctionNameId{3} ||
+      mem->block_label != c4c::BlockLabelId{13} || mem->instruction_index != 4 ||
+      mem->stored_value_id != prepare::PreparedValueId{24} ||
+      mem->stored_value_name != c4c::ValueNameId{11} ||
       mem->frame_slot_id != prepare::PreparedFrameSlotId{5} ||
       mem->pointer_value_id != prepare::PreparedValueId{26} || !mem->is_volatile ||
       !mem->can_use_base_plus_offset) {

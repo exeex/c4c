@@ -1,92 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/210_aarch64_memory_operand_model_from_prepared_facts.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Confirm Memory Inputs And Existing Owners
+Current Step ID: 3
+Current Step Title: Convert Prepared Frame And Symbol Memory Bases
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 from `plan.md`: inspected existing AArch64 memory record
-owners, shared prepared memory facts, BIR memory inputs, and representative
-backend fixtures before code changes.
+Completed Step 2 from `plan.md`: tightened direct AArch64 memory operand
+record vocabulary so record-only memory operands can preserve prepared memory
+facts without selecting load/store instructions.
 
-Existing owner files:
-- `src/backend/mir/aarch64/codegen/records.hpp` / `.cpp` own the target
-  record-only memory operand surface: `MemoryBaseKind`, `MemoryOperand`,
-  `MemoryInstructionRecord`, `make_memory_operand(...)`,
-  `make_memory_instruction(...)`, and diagnostic names.
-- `src/backend/mir/aarch64/codegen/memory.md` is legacy lowering reference
-  only; it documents old load/store/address-materialization behavior and
-  scratch registers, not an implementation owner for this plan.
-- `src/backend/mir/aarch64/module/module.hpp` / `.cpp` own prepared/BIR
-  snapshots such as `FrameSlotRecord`, data records, and generic prepared
-  operand snapshots. They should remain snapshot owners, not target memory
-  operand conversion owners.
-- Shared preparation owns source memory facts in `src/backend/prealloc/`,
-  especially `PreparedAddressing`, `PreparedAddressingFunction`,
-  `PreparedMemoryAccess`, and `PreparedAddress`.
-
-Usable prepared and BIR inputs:
-- BIR `MemoryAddress` carries `BaseKind::{LocalSlot, GlobalSymbol,
-  PointerValue, StringConstant}`, `base_value`, `byte_offset`, `size_bytes`,
-  `align_bytes`, `address_space`, `is_volatile`, and structured ids where
-  present (`base_link_name_id`, `base_slot_id`).
-- BIR load/store inputs include `LoadLocalInst`, `StoreLocalInst`,
-  `LoadGlobalInst`, and `StoreGlobalInst`; prepared builders already consume
-  these instead of printed BIR.
-- Prepared `PreparedMemoryAccess` carries `function_name`, `block_label`,
-  `inst_index`, optional `result_value_name` / `stored_value_name`,
-  `address_space`, `is_volatile`, and nested `PreparedAddress`.
-- Prepared `PreparedAddress` carries `base_kind`, optional `frame_slot_id`,
-  optional symbol `LinkNameId`, optional pointer `ValueNameId`, `byte_offset`,
-  `size_bytes`, `align_bytes`, and `can_use_base_plus_offset`.
-- `PreparedBirModule::addressing` plus
-  `find_prepared_addressing(...)` /
-  `find_prepared_memory_access(...)` are the lookup entry points for
-  function/block/instruction-index addressing facts.
-
-Unsupported or missing inputs to preserve in later packets:
-- Existing `MemoryOperand` has no prepared memory-access identity fields
-  (`function_name`, `block_label`, `instruction_index`, result/stored value
-  ids/names). Step 2 should add or tighten those before conversion.
-- Existing `MemoryOperand` has `string_name` as `TextId`, while prepared
-  string-constant bases currently appear through `PreparedAddress::symbol_name`
-  / `LinkNameId`; Step 2 should decide how to represent this without parsing
-  rendered string labels.
-- Prepared pointer-value addresses carry `pointer_value_name` but not a direct
-  `PreparedValueId`; later conversion can fill `pointer_value_id` only by
-  joining through prepared value-location facts, and must fail closed if that
-  join is missing or ambiguous.
-- `PreparedAddressBaseKind::None`, BIR `MemoryAddress::BaseKind::Label`, and
-  atomics/vector/inline-asm memory effects are outside this slice and should
-  fail closed or stay deferred.
-- `PreparedMemoryAccess` does not itself carry a load/store kind; conversion
-  should derive load/store shape from the matching structured BIR instruction
-  plus result/stored value fields.
-
-Representative fixture candidates:
-- `tests/backend/backend_aarch64_target_operand_records_test.cpp` already
-  checks direct `MemoryOperand` construction with frame-slot fields,
-  volatility, and base-plus-offset.
-- `tests/backend/backend_aarch64_target_instruction_records_test.cpp` already
-  checks `MemoryInstructionRecord` as a record-only instruction payload.
-- `tests/backend/backend_prepare_stack_layout_test.cpp` has direct prepared
-  fixture coverage for frame-slot, global-symbol, string-constant, and
-  pointer-value bases, including volatile and non-default address-space facts
-  (`Fs`, `Gs`, `Tls`).
-- `check_prepared_addressing_contract_activation()` in that test provides a
-  compact hand-built prepared-addressing fixture for frame-slot and
-  string-constant facts.
+Concrete work completed:
+- Added `MemoryOperandSupportKind` with explicit `Prepared` and
+  `DeferredUnsupported` states plus
+  `memory_operand_support_kind_name(...)` diagnostics.
+- Extended `MemoryOperand` with prepared memory-access identity:
+  `function_name`, `block_label`, `instruction_index`, optional result
+  `PreparedValueId` / `ValueNameId`, and optional stored-value
+  `PreparedValueId` / `ValueNameId`.
+- Preserved existing base facts and added structured string-symbol identity
+  with `string_symbol_name` alongside existing `string_name`.
+- Kept pointer memory bases as name/id slots (`pointer_value_name` and
+  `pointer_value_id`) so later conversion can fill ids only from structured
+  prepared value-location facts.
+- Added `backend_aarch64_memory_operand_records` for direct frame-slot,
+  symbol, string, pointer, deferred, and memory-instruction record behavior.
+- Updated `backend_aarch64_target_operand_records` to cover the new access
+  identity fields on the existing memory operand surface.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: tighten the `codegen/records.hpp` memory
-operand vocabulary so direct record construction can preserve prepared memory
-access identity, base kind, frame-slot id, symbol/string identity,
-pointer-value name/id slots, byte offset, size, alignment, volatility, and
-address space without load/store selection.
+Execute Step 3 from `plan.md`: add conversion helpers that consume structured
+BIR memory instructions plus matching `PreparedAddressing` /
+`PreparedMemoryAccess` facts for frame-slot and global-symbol bases.
 
 ## Watchouts
 
@@ -94,12 +42,20 @@ address space without load/store selection.
   encoding, object output, memory emission, calls, or returns.
 - Preserve volatility and address-space facts from prepared input; do not
   invent target-local defaults.
-- Keep `module/` as the prepared/BIR snapshot owner. New target-local memory
-  operand vocabulary and helpers should stay under `codegen/`.
-- Do not parse rendered global, slot, string, or value names. If pointer ids or
-  string identity cannot be obtained from structured prepared/BIR facts, fail
-  closed and record the gap.
+- Step 2 intentionally added vocabulary and direct record proof only; no
+  prepared/BIR conversion helpers were added yet.
+- Step 3 should start with frame-slot and global-symbol bases. Pointer-value
+  and string-constant conversion belong to Step 4 unless the supervisor
+  explicitly narrows otherwise.
+- Do not parse rendered global, slot, string, or value names. Frame and symbol
+  conversion should use structured BIR ids plus prepared addressing facts, and
+  fail closed when facts are missing or mismatched.
 
 ## Proof
 
-No validation run. This was an inspection-only packet.
+Proof passed:
+`(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
+
+Result: backend subset passed with `backend_aarch64_memory_operand_records`
+included and green: 129 tests passed, 0 failed; 12 disabled MIR trace tests
+were not run. Proof log path: `test_after.log`.

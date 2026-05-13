@@ -70,6 +70,11 @@ enum class MemoryInstructionKind {
   Store,
 };
 
+enum class MemoryOperandSupportKind {
+  Prepared,
+  DeferredUnsupported,
+};
+
 enum class ScalarAluOperationKind {
   Add,
   Sub,
@@ -266,6 +271,14 @@ struct BranchConditionRecord {
 
 struct MemoryOperand {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  MemoryOperandSupportKind support = MemoryOperandSupportKind::Prepared;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  std::optional<c4c::ValueNameId> result_value_name;
+  std::optional<c4c::backend::prepare::PreparedValueId> stored_value_id;
+  std::optional<c4c::ValueNameId> stored_value_name;
   MemoryBaseKind base_kind = MemoryBaseKind::None;
   std::optional<RegisterOperand> base_register;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
@@ -273,6 +286,7 @@ struct MemoryOperand {
   std::optional<c4c::ValueNameId> pointer_value_name;
   std::optional<c4c::backend::prepare::PreparedValueId> pointer_value_id;
   std::optional<c4c::TextId> string_name;
+  std::optional<c4c::LinkNameId> string_symbol_name;
   std::int64_t byte_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
@@ -424,6 +438,7 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view register_operand_role_name(RegisterOperandRole role);
 [[nodiscard]] std::string_view immediate_kind_name(ImmediateKind kind);
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);
+[[nodiscard]] std::string_view memory_operand_support_kind_name(MemoryOperandSupportKind kind);
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
