@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4i
-Current Step Title: Extract linker `types.cpp` To Markdown Artifact
+Current Step ID: Step 2.4j
+Current Step Title: Extract linker `mod.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4i: Extract linker `types.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/types.cpp` into
-`src/backend/mir/aarch64/linker/types.md` and removed the old `.cpp`
-from the live tree.
+Step 2.4j: Extract linker `mod.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/mod.cpp` into
+`src/backend/mir/aarch64/linker/mod.md` and removed the old `.cpp` from the
+live tree.
 
-The markdown artifact records the old linker type surface, including the
-AArch64 interpreter/base/page constants, `GlobalSymbol` fields,
-`GlobalSymbolOps` accessors and constructors, common/BSS mutation behavior,
-dynamic symbol state, replacement policy, cross-surface dependencies,
-assumptions, and rebuild risks.
+The markdown artifact records the old linker module index, including the
+AArch64 linker role, submodule list, `link_builtin`/`link_shared` re-export
+surface, `linker_common` ownership assumptions, cross-surface dependencies,
+hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/mod.cpp` to markdown and removing that old
-`.cpp` from the live tree.
+Next coherent packet: continue Step 2 by extracting
+`src/backend/mir/aarch64/mod.cpp` to markdown and removing that old `.cpp`
+from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/compare_branch.cpp`,
@@ -32,19 +31,18 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/load_store.cpp`, `assembler/encoder/neon.cpp`,
 `assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
 
-After Step 2.3, continue Step 2 through these bounded lanes:
-- Step 2.4: remaining linker surface: `linker/mod.cpp`.
+After Step 2.3, continue Step 2 through this bounded lane:
 - Step 2.5: top-level module entry surface: `mod.cpp`.
 
 ## Watchouts
 
-- Step 2.4 now has the linker ELF facade, dynamic executable emission,
-  shared-library emission, first static executable image, input-loading, and
-  first static link orchestration artifacts; do not
+- Step 2.4 now has the linker module index, ELF facade, dynamic executable
+  emission, shared-library emission, first static executable image,
+  input-loading, and first static link orchestration artifacts; do not
   revisit the removed `linker/elf.cpp`, `linker/emit_dynamic.cpp`,
   `linker/emit_shared.cpp`, `linker/emit_static.cpp`, `linker/input.cpp`,
-  `linker/link.cpp`, `linker/plt_got.cpp`, or `linker/reloc.cpp` unless the
-  supervisor opens a new packet.
+  `linker/link.cpp`, `linker/plt_got.cpp`, `linker/reloc.cpp`, or
+  `linker/mod.cpp` unless the supervisor opens a new packet.
 - `linker/emit_dynamic.md` documents the old dynamic executable emitter,
   including PLT/GOT, `.dynamic`, `.gnu.hash`, dynamic relocations, copy
   relocations, and TLS layout. Treat it as rebuild guidance, not as proof that
@@ -87,6 +85,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   sentinel, and the dynamic-symbol replacement policy. Treat it as rebuild
   guidance, not as proof that the live C++ backend has a complete AArch64
   linker symbol model.
+- `linker/mod.md` documents the old linker module index, including the
+  AArch64 linker shard list, default-linker feature assumption,
+  `link_builtin`/`link_shared` re-export surface, and `linker_common`
+  responsibility boundary. Treat it as rebuild guidance, not as proof that the
+  live C++ backend has a complete AArch64 linker integration.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
