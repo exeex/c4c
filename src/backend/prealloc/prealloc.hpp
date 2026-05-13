@@ -444,6 +444,8 @@ struct PreparedMemoryAccess {
   std::size_t inst_index = 0;
   std::optional<ValueNameId> result_value_name;
   std::optional<ValueNameId> stored_value_name;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
+  bool is_volatile = false;
   PreparedAddress address;
 };
 

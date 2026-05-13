@@ -19,6 +19,16 @@ struct ResolvedFrameSlot {
   std::int64_t byte_offset_adjust = 0;
 };
 
+[[nodiscard]] bir::AddressSpace prepared_memory_address_space(
+    const std::optional<bir::MemoryAddress>& address) {
+  return address.has_value() ? address->address_space : bir::AddressSpace::Default;
+}
+
+[[nodiscard]] bool prepared_memory_is_volatile(
+    const std::optional<bir::MemoryAddress>& address) {
+  return address.has_value() && address->is_volatile;
+}
+
 [[nodiscard]] BlockLabelId intern_preferred_block_label(PreparedNameTables& names,
                                                         const bir::NameTables& bir_names,
                                                         BlockLabelId block_label_id,
@@ -179,6 +189,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .result_value_name = prepared_named_value_id(names, inst.result),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
@@ -231,6 +243,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address =
           PreparedAddress{
               .base_kind = PreparedAddressBaseKind::FrameSlot,
@@ -358,6 +372,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .result_value_name = prepared_named_value_id(names, inst.result),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -396,6 +412,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -438,6 +456,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .result_value_name = prepared_named_value_id(names, inst.result),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -480,6 +500,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -530,6 +552,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .result_value_name = prepared_named_value_id(names, inst.result),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -560,6 +584,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -590,6 +616,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .result_value_name = prepared_named_value_id(names, inst.result),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }
@@ -620,6 +648,8 @@ struct ResolvedFrameSlot {
       .block_label = block_label_id,
       .inst_index = inst_index,
       .stored_value_name = prepared_named_value_id(names, inst.value),
+      .address_space = prepared_memory_address_space(inst.address),
+      .is_volatile = prepared_memory_is_volatile(inst.address),
       .address = std::move(*address),
   };
 }

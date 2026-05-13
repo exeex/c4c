@@ -275,16 +275,39 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
       .slot_name = "lv.live",
       .value = bir::Value::named(bir::TypeKind::I32, "coalesced"),
       .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "lv.live",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Fs,
+          .is_volatile = true,
+      },
   });
   entry.insts.push_back(bir::LoadLocalInst{
       .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
       .slot_name = "lv.live",
       .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "lv.live",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Gs,
+      },
   });
   entry.insts.push_back(bir::StoreGlobalInst{
       .global_name = "g.counter",
       .value = bir::Value::named(bir::TypeKind::I32, "loaded"),
       .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+          .base_name = "g.counter",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Tls,
+          .is_volatile = true,
+      },
   });
   entry.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::Ptr, "message.ptr"),
@@ -295,6 +318,33 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
           .base_name = ".L.str0",
           .size_bytes = 8,
           .align_bytes = 8,
+          .address_space = bir::AddressSpace::Fs,
+          .is_volatile = true,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "lv.live",
+      .value = bir::Value::named(bir::TypeKind::I32, "loaded"),
+      .align_bytes = 4,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+          .base_name = "g.counter",
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .address_space = bir::AddressSpace::Gs,
+          .is_volatile = true,
+      },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "local.message.ptr"),
+      .slot_name = "lv.live",
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::StringConstant,
+          .base_name = ".L.str0",
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .address_space = bir::AddressSpace::Tls,
       },
   });
   entry.insts.push_back(bir::BinaryInst{
@@ -338,7 +388,7 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       function_addressing->frame_alignment_bytes != 4) {
     return fail("expected prepared addressing frame facts to mirror stack-layout metrics");
   }
-  if (function_addressing->accesses.size() != 4) {
+  if (function_addressing->accesses.size() != 6) {
     return fail("expected prepared addressing to publish both direct frame-slot and symbol-backed accesses");
   }
 
@@ -371,7 +421,9 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       store_access->address.byte_offset != 0 ||
       store_access->address.size_bytes != 4 ||
       store_access->address.align_bytes != 4 ||
-      !store_access->address.can_use_base_plus_offset) {
+      !store_access->address.can_use_base_plus_offset ||
+      store_access->address_space != bir::AddressSpace::Fs ||
+      !store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the direct live-slot store facts");
   }
 
@@ -389,7 +441,9 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       load_access->address.byte_offset != 0 ||
       load_access->address.size_bytes != 4 ||
       load_access->address.align_bytes != 4 ||
-      !load_access->address.can_use_base_plus_offset) {
+      !load_access->address.can_use_base_plus_offset ||
+      load_access->address_space != bir::AddressSpace::Gs ||
+      load_access->is_volatile) {
     return fail("expected prepared addressing to preserve the direct live-slot load facts");
   }
 
@@ -407,7 +461,9 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       global_store_access->address.byte_offset != 0 ||
       global_store_access->address.size_bytes != 4 ||
       global_store_access->address.align_bytes != 4 ||
-      !global_store_access->address.can_use_base_plus_offset) {
+      !global_store_access->address.can_use_base_plus_offset ||
+      global_store_access->address_space != bir::AddressSpace::Tls ||
+      !global_store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the direct global-symbol store facts");
   }
 
@@ -425,8 +481,54 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
       string_load_access->address.byte_offset != 0 ||
       string_load_access->address.size_bytes != 8 ||
       string_load_access->address.align_bytes != 8 ||
-      !string_load_access->address.can_use_base_plus_offset) {
+      !string_load_access->address.can_use_base_plus_offset ||
+      string_load_access->address_space != bir::AddressSpace::Fs ||
+      !string_load_access->is_volatile) {
     return fail("expected prepared addressing to preserve the direct string-constant load facts");
+  }
+
+  const auto* local_symbol_store_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 6);
+  if (local_symbol_store_access == nullptr) {
+    return fail("expected prepared addressing to record the local-inst global-symbol store");
+  }
+  if (local_symbol_store_access->result_value_name.has_value() ||
+      !local_symbol_store_access->stored_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *local_symbol_store_access->stored_value_name) !=
+          "loaded" ||
+      local_symbol_store_access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !local_symbol_store_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *local_symbol_store_access->address.symbol_name) !=
+          "g.counter" ||
+      local_symbol_store_access->address.byte_offset != 0 ||
+      local_symbol_store_access->address.size_bytes != 4 ||
+      local_symbol_store_access->address.align_bytes != 4 ||
+      !local_symbol_store_access->address.can_use_base_plus_offset ||
+      local_symbol_store_access->address_space != bir::AddressSpace::Gs ||
+      !local_symbol_store_access->is_volatile) {
+    return fail("expected prepared addressing to preserve local-inst global-symbol store facts");
+  }
+
+  const auto* local_string_load_access =
+      prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 7);
+  if (local_string_load_access == nullptr) {
+    return fail("expected prepared addressing to record the local-inst string-constant load");
+  }
+  if (!local_string_load_access->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *local_string_load_access->result_value_name) !=
+          "local.message.ptr" ||
+      local_string_load_access->stored_value_name.has_value() ||
+      local_string_load_access->address.base_kind != prepare::PreparedAddressBaseKind::StringConstant ||
+      !local_string_load_access->address.symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *local_string_load_access->address.symbol_name) !=
+          ".L.str0" ||
+      local_string_load_access->address.byte_offset != 0 ||
+      local_string_load_access->address.size_bytes != 8 ||
+      local_string_load_access->address.align_bytes != 8 ||
+      !local_string_load_access->address.can_use_base_plus_offset ||
+      local_string_load_access->address_space != bir::AddressSpace::Tls ||
+      local_string_load_access->is_volatile) {
+    return fail("expected prepared addressing to preserve local-inst string-constant load facts");
   }
 
   if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0) != nullptr ||
@@ -1673,6 +1775,8 @@ prepare::PreparedBirModule prepare_pointer_addressed_local_slot_module() {
           .base_value = bir::Value::named(bir::TypeKind::Ptr, "lv.ptr.addr.alias"),
           .size_bytes = 4,
           .align_bytes = 4,
+          .address_space = bir::AddressSpace::Gs,
+          .is_volatile = true,
       },
   });
   entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
@@ -1730,6 +1834,8 @@ prepare::PreparedBirModule prepare_global_pointer_addressed_local_slot_module() 
           .base_value = bir::Value::named(bir::TypeKind::Ptr, "lv.global.ptr.addr.alias"),
           .size_bytes = 4,
           .align_bytes = 4,
+          .address_space = bir::AddressSpace::Fs,
+          .is_volatile = true,
       },
   });
   entry.insts.push_back(bir::LoadGlobalInst{
@@ -1741,6 +1847,7 @@ prepare::PreparedBirModule prepare_global_pointer_addressed_local_slot_module() 
           .base_value = bir::Value::named(bir::TypeKind::Ptr, "lv.global.ptr.addr.alias"),
           .size_bytes = 4,
           .align_bytes = 4,
+          .address_space = bir::AddressSpace::Tls,
       },
   });
   entry.terminator = bir::ReturnTerminator{
@@ -3235,7 +3342,9 @@ int check_pointer_addressed_local_slot_activation(const prepare::PreparedBirModu
       pointer_store_access->address.byte_offset != 0 ||
       pointer_store_access->address.size_bytes != 4 ||
       pointer_store_access->address.align_bytes != 4 ||
-      !pointer_store_access->address.can_use_base_plus_offset) {
+      !pointer_store_access->address.can_use_base_plus_offset ||
+      pointer_store_access->address_space != bir::AddressSpace::Gs ||
+      !pointer_store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect local store facts");
   }
 
@@ -3297,7 +3406,9 @@ int check_global_pointer_addressed_local_slot_activation(
       pointer_store_access->address.byte_offset != 0 ||
       pointer_store_access->address.size_bytes != 4 ||
       pointer_store_access->address.align_bytes != 4 ||
-      !pointer_store_access->address.can_use_base_plus_offset) {
+      !pointer_store_access->address.can_use_base_plus_offset ||
+      pointer_store_access->address_space != bir::AddressSpace::Fs ||
+      !pointer_store_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect global store facts");
   }
 
@@ -3319,7 +3430,9 @@ int check_global_pointer_addressed_local_slot_activation(
       pointer_load_access->address.byte_offset != 0 ||
       pointer_load_access->address.size_bytes != 4 ||
       pointer_load_access->address.align_bytes != 4 ||
-      !pointer_load_access->address.can_use_base_plus_offset) {
+      !pointer_load_access->address.can_use_base_plus_offset ||
+      pointer_load_access->address_space != bir::AddressSpace::Tls ||
+      pointer_load_access->is_volatile) {
     return fail("expected prepared addressing to preserve the pointer-indirect global load facts");
   }
 
@@ -3608,6 +3721,8 @@ int check_prepared_addressing_contract_activation() {
                   .block_label = block_label,
                   .inst_index = 2,
                   .stored_value_name = t1_name,
+                  .address_space = bir::AddressSpace::Gs,
+                  .is_volatile = true,
                   .address =
                       prepare::PreparedAddress{
                           .base_kind = prepare::PreparedAddressBaseKind::StringConstant,
@@ -3642,7 +3757,9 @@ int check_prepared_addressing_contract_activation() {
       !frame_access->address.frame_slot_id.has_value() || *frame_access->address.frame_slot_id != 4 ||
       frame_access->address.byte_offset != 8 || frame_access->address.size_bytes != 4 ||
       frame_access->address.align_bytes != 4 ||
-      !frame_access->address.can_use_base_plus_offset) {
+      !frame_access->address.can_use_base_plus_offset ||
+      frame_access->address_space != bir::AddressSpace::Default ||
+      frame_access->is_volatile) {
     return fail("expected prepared addressing to preserve direct frame-slot access facts");
   }
 
@@ -3657,7 +3774,9 @@ int check_prepared_addressing_contract_activation() {
       !symbol_access->address.symbol_name.has_value() ||
       prepare::prepared_link_name(prepared.names, *symbol_access->address.symbol_name) != ".L.str0" ||
       symbol_access->address.frame_slot_id.has_value() ||
-      symbol_access->address.pointer_value_name.has_value()) {
+      symbol_access->address.pointer_value_name.has_value() ||
+      symbol_access->address_space != bir::AddressSpace::Gs ||
+      !symbol_access->is_volatile) {
     return fail("expected prepared addressing to preserve symbol-backed access facts");
   }
 
