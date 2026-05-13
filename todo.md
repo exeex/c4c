@@ -8,29 +8,22 @@ Current Step Title: Add Focused Proof
 
 ## Just Finished
 
-Step 5 updated the AArch64 prepared gap ledger and markdown consumers so they
-reflect the implemented target-MIR allocation/move/spill/reload record layer.
+Step 6 proved the AArch64 allocation/move/spill/reload record layer with
+focused structured-record backend coverage.
 
 Completed work:
 
-- Updated `src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md` so the
-  prepared-module entry, module/function/block containers, operands, target
-  register records, frame records, move/ABI-binding/parallel-copy records, and
-  spill/reload records are marked as present structured records instead of
-  missing AArch64-local design gaps.
-- Pointed later scalar, memory, branch, call, return, prologue, printer,
-  encoder, and object work at `module::Module`, `codegen::records`, and
-  `ALLOCATION_CONTRACT.md` instead of local allocation, spill-slot invention,
-  or assembly-text recovery.
-- Updated relevant `codegen/*.md` rebuild guidance for emit, records,
-  prologue, memory, calls, returns, and globals to consume structured records
-  and treat missing prepared carriers as separate open-idea candidates.
+- Confirmed existing focused tests cover physical-register homes, spill-slot
+  homes, spill/reload records, prepared moves, parallel-copy records, and
+  ABI-binding records through structured target-MIR assertions.
+- Required no test changes for this proof packet.
+- Regenerated the canonical executor proof log at `test_after.log`.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet only after review of the Step 5
-markdown slice. A coherent next implementation packet would be a later
-consumer over the existing structured records, not another markdown correction.
+All runbook steps are now complete. Supervisor should route the active plan for
+lifecycle review/close decision rather than delegating another implementation
+packet under this runbook.
 
 ## Watchouts
 
@@ -54,5 +47,6 @@ consumer over the existing structured records, not another markdown correction.
 
 ## Proof
 
-No build required. This packet was docs-only and touched only markdown plus
-`todo.md`, per the delegated proof contract. No `test_after.log` was produced.
+Ran `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`.
+The delegated backend subset passed: 100% tests passed for the enabled
+`^backend_` tests. Proof log: `test_after.log`.
