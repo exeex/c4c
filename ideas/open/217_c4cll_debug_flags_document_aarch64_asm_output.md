@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-13
 
 Depends On:
-- `ideas/open/216_aarch64_machine_node_asm_printer_external_smoke.md`
+- `ideas/closed/216_aarch64_machine_node_asm_printer_external_smoke.md`
 
 ## Goal
 
