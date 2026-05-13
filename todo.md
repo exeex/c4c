@@ -1,29 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4c
-Current Step Title: Extract linker `emit_shared.cpp` To Markdown Artifact
+Current Step ID: Step 2.4d
+Current Step Title: Extract linker `emit_static.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4c: Extract linker `emit_shared.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/emit_shared.cpp` into
-`src/backend/mir/aarch64/linker/emit_shared.md` and removed the old `.cpp`
+Step 2.4d: Extract linker `emit_static.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/emit_static.cpp` into
+`src/backend/mir/aarch64/linker/emit_static.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old AArch64 shared-library emission surface,
-including the `emit_shared_library` entry point, dynamic symbol/string table
-construction, GNU hash undefined/export partitioning, ELF/program-header and
-section-header layout, PLT/GOT and `.dynamic` emission, relocation behavior,
-linker-provided symbols, dependencies, assumptions, and rebuild risks.
+The markdown artifact records the old first static executable image surface,
+including the `emit_first_static_executable_image` entry point, minimal ELF64
+`ET_EXEC` layout, one read/execute `PT_LOAD` segment, fixed `.text` placement,
+validation behavior, dependencies on the first static link slice, assumptions,
+and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/emit_static.cpp` to markdown and removing that
-old `.cpp` from the live tree.
+`src/backend/mir/aarch64/linker/input.cpp` to markdown and removing that old
+`.cpp` from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/compare_branch.cpp`,
@@ -33,18 +33,18 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
 
 After Step 2.3, continue Step 2 through these bounded lanes:
-- Step 2.4: remaining linker surfaces:
-  `linker/emit_static.cpp`, `linker/input.cpp`, `linker/link.cpp`,
+- Step 2.4: remaining linker surfaces: `linker/input.cpp`, `linker/link.cpp`,
   `linker/plt_got.cpp`, `linker/reloc.cpp`, `linker/types.cpp`, and
   `linker/mod.cpp`.
 - Step 2.5: top-level module entry surface: `mod.cpp`.
 
 ## Watchouts
 
-- Step 2.4 now has the linker ELF facade, dynamic executable emission, and
-  shared-library emission artifacts; do not revisit the removed
-  `linker/elf.cpp`, `linker/emit_dynamic.cpp`, or `linker/emit_shared.cpp`
-  unless the supervisor opens a new packet.
+- Step 2.4 now has the linker ELF facade, dynamic executable emission,
+  shared-library emission, and first static executable image artifacts; do not
+  revisit the removed `linker/elf.cpp`, `linker/emit_dynamic.cpp`,
+  `linker/emit_shared.cpp`, or `linker/emit_static.cpp` unless the supervisor
+  opens a new packet.
 - `linker/emit_dynamic.md` documents the old dynamic executable emitter,
   including PLT/GOT, `.dynamic`, `.gnu.hash`, dynamic relocations, copy
   relocations, and TLS layout. Treat it as rebuild guidance, not as proof that
@@ -54,6 +54,11 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   `.rela.dyn`, `.rela.plt`, SONAME/NEEDED tags, init/fini arrays, TLS, and
   section headers. Treat it as rebuild guidance, not as proof that the live
   C++ backend can emit AArch64 shared libraries.
+- `linker/emit_static.md` documents the old first static executable image
+  writer, including the minimal `ET_EXEC` header, single `PT_LOAD`, fixed text
+  offset, text-only entry validation, and lack of section/dynamic/data
+  segments. Treat it as rebuild guidance, not as proof that the live C++
+  backend has a complete AArch64 static linker.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
