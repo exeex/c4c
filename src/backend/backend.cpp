@@ -1,6 +1,8 @@
 #include "backend.hpp"
 
 #include "bir/bir.hpp"
+#include "mir/aarch64/api/api.hpp"
+#include "mir/aarch64/codegen/machine_printer.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
@@ -12,6 +14,7 @@
 #include <sstream>
 #include <type_traits>
 #include <unordered_set>
+#include <vector>
 
 namespace c4c::backend {
 
@@ -64,6 +67,10 @@ bool is_x86_target(const c4c::TargetProfile& target_profile) {
          target_profile.arch == c4c::TargetArch::I686;
 }
 
+bool is_aarch64_target(const c4c::TargetProfile& target_profile) {
+  return target_profile.arch == c4c::TargetArch::Aarch64;
+}
+
 void require_x86_module_entry_target(const c4c::TargetProfile& target_profile,
                                      std::string_view api_name) {
   if (is_x86_target(target_profile)) {
@@ -73,10 +80,33 @@ void require_x86_module_entry_target(const c4c::TargetProfile& target_profile,
                               " requires an x86 target profile");
 }
 
+void require_aarch64_module_entry_target(const c4c::TargetProfile& target_profile,
+                                         std::string_view api_name) {
+  if (is_aarch64_target(target_profile)) {
+    return;
+  }
+  throw std::invalid_argument(std::string(api_name) +
+                              " requires an AArch64 target profile");
+}
+
 std::string make_x86_lir_handoff_failure_message(
     const c4c::backend::BirLoweringResult& lowering) {
   std::string message =
       "x86 backend emit path requires semantic lir_to_bir lowering before the canonical prepared-module handoff";
+  for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
+    if (it->phase == "module" || it->phase == "function") {
+      message += ": ";
+      message += it->message;
+      break;
+    }
+  }
+  return message;
+}
+
+std::string make_aarch64_lir_handoff_failure_message(
+    const c4c::backend::BirLoweringResult& lowering) {
+  std::string message =
+      "AArch64 backend assembly route requires semantic lir_to_bir lowering before the prepared-module handoff";
   for (auto it = lowering.notes.rbegin(); it != lowering.notes.rend(); ++it) {
     if (it->phase == "module" || it->phase == "function") {
       message += ": ";
@@ -123,6 +153,39 @@ c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
     const c4c::backend::bir::Module& module,
     const c4c::TargetProfile& target_profile) {
   return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target_profile);
+}
+
+std::string print_aarch64_prepared_machine_nodes(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  const auto built = c4c::backend::aarch64::api::build_prepared_module(prepared);
+  if (!built.module.has_value()) {
+    std::string message = "AArch64 backend assembly route could not build a prepared module";
+    if (built.error.has_value() && !built.error->message.empty()) {
+      message += ": ";
+      message += built.error->message;
+    }
+    throw std::invalid_argument(message);
+  }
+
+  std::vector<c4c::backend::aarch64::codegen::InstructionRecord> machine_nodes;
+  for (const auto& function : built.module->functions) {
+    machine_nodes.insert(machine_nodes.end(),
+                         function.machine_nodes.begin(),
+                         function.machine_nodes.end());
+  }
+  if (machine_nodes.empty()) {
+    throw std::invalid_argument(
+        "AArch64 backend assembly route reached the machine-node printer, but no selected printable machine nodes are available for this source input");
+  }
+
+  const auto printed =
+      c4c::backend::aarch64::codegen::print_machine_instruction_nodes(machine_nodes);
+  if (!printed.ok) {
+    throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
+                                "but printing failed: " +
+                                printed.diagnostic);
+  }
+  return printed.assembly;
 }
 
 // Step 5 fence: route-debug focus options are public dump filters over rendered
@@ -1294,10 +1357,20 @@ std::string emit_x86_bir_module_entry(const bir::Module& module,
   return c4c::backend::x86::api::emit_prepared_module(prepared);
 }
 
+std::string emit_aarch64_bir_module_entry(const bir::Module& module,
+                                          const c4c::TargetProfile& target_profile) {
+  require_aarch64_module_entry_target(target_profile, "emit_aarch64_bir_module_entry");
+  const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
+  return print_aarch64_prepared_machine_nodes(prepared);
+}
+
 std::string emit_target_bir_module(const bir::Module& module,
                                    const c4c::TargetProfile& target_profile) {
   if (is_x86_target(target_profile)) {
     return emit_x86_bir_module_entry(module, target_profile);
+  }
+  if (is_aarch64_target(target_profile)) {
+    return emit_aarch64_bir_module_entry(module, target_profile);
   }
 
   const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
@@ -1316,10 +1389,26 @@ std::string emit_x86_lir_module_entry(const c4c::codegen::lir::LirModule& module
   throw std::invalid_argument(make_x86_lir_handoff_failure_message(lowering));
 }
 
+std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& module,
+                                          const c4c::TargetProfile& target_profile) {
+  require_aarch64_module_entry_target(target_profile, "emit_aarch64_lir_module_entry");
+  c4c::backend::BirLoweringOptions lowering_options{};
+  lowering_options.preserve_dynamic_alloca = true;
+  auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
+  if (lowering.module.has_value()) {
+    const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
+    return print_aarch64_prepared_machine_nodes(prepared_bir);
+  }
+  throw std::invalid_argument(make_aarch64_lir_handoff_failure_message(lowering));
+}
+
 std::string emit_target_lir_module(const c4c::codegen::lir::LirModule& module,
                                    const c4c::TargetProfile& target_profile) {
   if (is_x86_target(target_profile)) {
     return emit_x86_lir_module_entry(module, target_profile);
+  }
+  if (is_aarch64_target(target_profile)) {
+    return emit_aarch64_lir_module_entry(module, target_profile);
   }
 
   c4c::backend::BirLoweringOptions lowering_options{};
@@ -1376,6 +1465,9 @@ std::string emit_module(const BackendModuleInput& input,
     if (is_x86_target(target_profile)) {
       return emit_x86_bir_module_entry(input.bir_module(), target_profile);
     }
+    if (is_aarch64_target(target_profile)) {
+      return emit_aarch64_bir_module_entry(input.bir_module(), target_profile);
+    }
     return emit_target_bir_module(input.bir_module(), target_profile);
   }
 
@@ -1384,6 +1476,9 @@ std::string emit_module(const BackendModuleInput& input,
 
   if (!options.emit_semantic_bir && is_x86_target(target_profile)) {
     return emit_x86_lir_module_entry(lir_module, target_profile);
+  }
+  if (!options.emit_semantic_bir && is_aarch64_target(target_profile)) {
+    return emit_aarch64_lir_module_entry(lir_module, target_profile);
   }
 
   c4c::backend::BirLoweringOptions lowering_options{};

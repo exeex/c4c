@@ -1030,6 +1030,20 @@ set_tests_properties(backend_cli_trace_mir_reports_lane_detail PROPERTIES
 c4c_disable_backend_test_when_x86_tests_off(backend_cli_trace_mir_reports_lane_detail)
 
 add_test(
+  NAME backend_cli_aarch64_asm_no_machine_nodes_fails
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=aarch64-linux-gnu
+          -DSRC=${BACKEND_CASE_ROOT}/aarch64_no_selected_machine_nodes.c
+          -DOUT_TEXT=${CMAKE_CURRENT_BINARY_DIR}/aarch64_no_selected_machine_nodes.s
+          "-DEXPECTED_DIAGNOSTICS=AArch64 backend assembly route reached the machine-node printer|no selected printable machine nodes"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_codegen_failure_case.cmake"
+)
+set_tests_properties(backend_cli_aarch64_asm_no_machine_nodes_fails PROPERTIES
+  LABELS "backend;internal;cli;aarch64"
+)
+
+add_test(
   NAME backend_cli_dump_bir_00204_stdarg_semantic_handoff
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>
