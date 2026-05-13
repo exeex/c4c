@@ -1,5 +1,11 @@
 # AArch64 Memory Legacy Surface
 
+Current target memory work lives in the record-only contract documented in
+`records.md`. `MemoryOperand` and `MemoryInstructionRecord` preserve prepared
+memory facts for later lowering; this file remains a legacy lowering reference
+and does not own the active record contract, load/store selection, assembly
+emission, object output, calls, or returns.
+
 This artifact preserves the useful production shape from the removed
 `memory.cpp` translation surface. The old file was not active C++; it was a
 line-commented mirror of the reference Rust implementation at

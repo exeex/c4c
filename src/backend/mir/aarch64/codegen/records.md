@@ -43,6 +43,32 @@ Deferred behavior guardrails:
 - Memory records carry prepared address facts and base/offset shape hints only;
   load/store instruction choice, addressing legality, and spill code are
   deferred.
+- Memory operand records support prepared frame-slot, global-symbol,
+  pointer-value, and string-constant bases when structured prepared/BIR facts
+  provide matching identity. They preserve function, block, instruction,
+  result/stored value ids, base ids, byte offset, size, alignment,
+  volatility, address space, and base-plus-offset eligibility as data.
+- Prepared pointer-value memory records must join
+  `PreparedAddress::pointer_value_name` to a unique prepared value-location
+  home before recording `PreparedValueId`. Missing, mismatched, or ambiguous
+  pointer homes fail closed instead of falling back to rendered names.
+- Prepared string-constant memory records preserve structured string symbol
+  identity through `LinkNameId` and preserve `TextId` when the prepared text
+  table provides it. They do not parse labels from formatted assembly or BIR
+  dumps.
+- Volatility and address space are upstream facts. Direct records preserve
+  `is_volatile` and `bir::AddressSpace` exactly, including non-default address
+  spaces. Prepared conversion rejects mismatched BIR/prepared volatility,
+  address-space, offset, size, or alignment facts, and rejects missing
+  structured BIR address facts when prepared facts require them.
+- Unsupported memory bases and incomplete prepared facts use explicit
+  `PreparedMemoryOperandRecordError` results or `DeferredUnsupported` record
+  vocabulary. This layer must fail closed instead of inventing target-local
+  defaults that hide upstream facts.
+- Memory instruction records wrap memory operand data as load/store intent
+  only. They do not select `ldr`, `str`, register width, addressing mode,
+  writeback form, scratch registers, assembly text, object encoding,
+  relocation records, calls, or returns.
 - Call records carry callee, argument, result, and calling convention metadata;
   AAPCS64 argument assignment, call sequence emission, and variadic policy are
   deferred.

@@ -8,26 +8,27 @@ Current Step Title: Document Memory Operand Contract And Close Readiness
 
 ## Just Finished
 
-Completed Step 5 from `plan.md`: proved volatility and address-space
-preservation across the AArch64 target memory operand model.
+Completed Step 6 from `plan.md`: documented the AArch64 memory operand record
+contract and added close-readiness proof.
 
 Concrete work completed:
-- Added direct memory operand proof that non-volatile `Gs` and volatile `Tls`
-  records remain distinct and preserve non-default address spaces without
-  target-local defaults.
-- Extended prepared memory conversion proof so non-default `Gs`/`Tls` address
-  spaces and volatile/non-volatile facts are preserved on successful
-  frame-slot, global-symbol, pointer-value, and string-constant conversions.
-- Added guard coverage for BIR/prepared volatility mismatch and for missing
-  structured BIR address facts when prepared facts require size,
-  non-default address space, or volatile behavior.
-- Kept the slice record-only; no load/store selection, emission, object,
-  call, or return behavior was added.
+- Updated `records.md` with the supported memory operand bases, preserved
+  prepared/BIR facts, volatility and address-space contract, fail-closed
+  conversion behavior, and deferred load/store lowering boundary.
+- Updated `memory.md` to point current memory record work at `records.md` and
+  keep the file as a legacy lowering reference rather than active selection or
+  emission ownership.
+- Added `backend_aarch64_memory_operand_contract` to prove supported memory
+  base vocabulary, structured identities, volatility/address-space
+  preservation, explicit unsupported/fail-closed diagnostics, and record-only
+  memory instruction ownership.
+- Verified the memory operand contract does not own branch/scalar/call/return,
+  assembler, object, load/store selection, assembly, or object behavior.
 
 ## Suggested Next
 
-Execute Step 6 from `plan.md`: document the memory record contract and close
-readiness, including supported/deferred surfaces and proof boundaries.
+Hand off to the plan owner to review close readiness for
+`ideas/open/210_aarch64_memory_operand_model_from_prepared_facts.md`.
 
 ## Watchouts
 
@@ -35,14 +36,9 @@ readiness, including supported/deferred surfaces and proof boundaries.
   encoding, object output, memory emission, calls, or returns.
 - Preserve volatility and address-space facts from prepared input; do not
   invent target-local defaults.
-- Step 6 should keep documentation scoped to record contracts and readiness;
-  do not add wrappers, selection, assembly, encoding, object output, calls, or
-  returns.
-- The current conversion intentionally fails closed when prepared facts depend
-  on structured BIR address facts that are absent or mismatched.
-- String conversion preserves `TextId` only when the prepared text table has a
-  matching symbol spelling; `LinkNameId` remains the structured identity
-  carrier.
+- This Step 6 packet is docs/test only. Implementation files were not changed.
+- Close-readiness review should compare the completed runbook against the
+  source idea and decide whether to close, extend, or split follow-up work.
 
 ## Proof
 
@@ -50,7 +46,6 @@ Proof passed:
 `(cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log`
 
 Result: backend subset passed with
-`backend_aarch64_memory_operand_records` and
-`backend_aarch64_prepared_memory_operand_records` volatility/address-space
-coverage included and green: 130 tests passed, 0 failed; 12 disabled MIR trace
-tests were not run. Proof log path: `test_after.log`.
+`backend_aarch64_memory_operand_contract` included and green: 131 tests
+passed, 0 failed; 12 disabled MIR trace tests were not run. Proof log path:
+`test_after.log`.
