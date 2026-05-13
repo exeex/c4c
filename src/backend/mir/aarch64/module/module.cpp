@@ -135,6 +135,7 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
 [[nodiscard]] std::size_t append_register_record(
     std::vector<TargetRegisterRecord>& registers,
     TargetRegisterReferenceKind reference_kind,
+    AllocationSnapshotKind allocation_snapshot,
     c4c::backend::prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
     c4c::backend::prepare::PreparedRegisterClass reg_class,
@@ -142,14 +143,26 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
     std::string_view physical_register,
     std::size_t contiguous_width,
     std::vector<std::string_view> occupied_registers) {
+  const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(physical_register);
   registers.push_back(TargetRegisterRecord{.reference_kind = reference_kind,
+                                           .allocation_snapshot = allocation_snapshot,
                                            .value_id = value_id,
                                            .value_name = value_name,
                                            .register_class = reg_class,
                                            .register_bank = reg_bank,
+                                           .allocation_pool =
+                                               parsed.has_value()
+                                                   ? std::optional{
+                                                         c4c::backend::aarch64::abi::
+                                                             allocation_register_pool(*parsed)}
+                                                   : std::nullopt,
                                            .physical_register = physical_register,
                                            .contiguous_width = contiguous_width,
-                                           .occupied_registers = std::move(occupied_registers)});
+                                           .occupied_registers = std::move(occupied_registers),
+                                           .may_be_long_lived_home =
+                                               parsed.has_value() &&
+                                               c4c::backend::aarch64::abi::
+                                                   is_long_lived_allocatable_candidate(*parsed)});
   return registers.size() - 1U;
 }
 
@@ -165,6 +178,7 @@ void merge_value_home_operand(
   operand.frame_slot_id = home.slot_id;
   if (home.offset_bytes.has_value()) {
     operand.stack_offset_bytes = home.offset_bytes;
+    operand.stack_offset_is_prepared_snapshot = true;
   }
   operand.immediate_i32 = home.immediate_i32;
   operand.pointer_base_value_name = home.pointer_base_value_name;
@@ -177,6 +191,7 @@ void merge_value_home_operand(
   if (home.register_name.has_value()) {
     operand.value_home_register = append_register_record(registers,
                                                          TargetRegisterReferenceKind::ValueHome,
+                                                         AllocationSnapshotKind::PreparedSnapshot,
                                                          home.value_id,
                                                          home.value_name,
                                                          c4c::backend::prepare::
@@ -206,11 +221,13 @@ void merge_regalloc_operand(
   if (value.assigned_stack_slot.has_value()) {
     operand.frame_slot_id = value.assigned_stack_slot->slot_id;
     operand.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
+    operand.stack_offset_is_prepared_snapshot = true;
   }
   if (value.assigned_register.has_value()) {
     operand.assigned_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::RegallocAssignment,
+                               AllocationSnapshotKind::AllocationResult,
                                value.value_id,
                                value.value_name,
                                value.assigned_register->reg_class,
@@ -224,6 +241,7 @@ void merge_regalloc_operand(
     operand.spill_register_authority =
         append_register_record(registers,
                                TargetRegisterReferenceKind::SpillAuthority,
+                               AllocationSnapshotKind::SpillReloadScratch,
                                value.value_id,
                                value.value_name,
                                value.spill_register_authority->reg_class,
@@ -248,6 +266,7 @@ void merge_storage_operand(
   operand.storage_bank = value.bank;
   operand.frame_slot_id = value.slot_id;
   operand.stack_offset_bytes = value.stack_offset_bytes;
+  operand.stack_offset_is_prepared_snapshot = value.stack_offset_bytes.has_value();
   operand.immediate_i32 = value.immediate_i32;
   operand.symbol_name = value.symbol_name;
   if (value.symbol_name.has_value()) {
@@ -258,6 +277,7 @@ void merge_storage_operand(
     operand.storage_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::StoragePlan,
+                               AllocationSnapshotKind::PreparedSnapshot,
                                value.value_id,
                                value.value_name,
                                register_class_from_bank(value.bank),
@@ -456,6 +476,7 @@ void merge_storage_operand(
       .source_symbol_name_id = argument.source_symbol_name_id,
       .source_slot_id = argument.source_slot_id,
       .source_stack_offset_bytes = argument.source_stack_offset_bytes,
+      .source_stack_offset_is_prepared_snapshot = argument.source_stack_offset_bytes.has_value(),
       .source_base_value_name = argument.source_base_value_name,
       .source_pointer_byte_delta = argument.source_pointer_byte_delta,
       .destination_register = argument.destination_register_name.has_value()
@@ -463,6 +484,8 @@ void merge_storage_operand(
                                    : std::string_view{},
       .destination_register_bank = argument.destination_register_bank,
       .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          argument.destination_stack_offset_bytes.has_value(),
       .source_argument = &argument,
   };
   if (argument.source_symbol_name_id.has_value()) {
@@ -490,12 +513,15 @@ void merge_storage_operand(
                               : std::string_view{},
       .source_register_bank = result.source_register_bank,
       .source_stack_offset_bytes = result.source_stack_offset_bytes,
+      .source_stack_offset_is_prepared_snapshot = result.source_stack_offset_bytes.has_value(),
       .destination_register = result.destination_register_name.has_value()
                                    ? std::string_view{*result.destination_register_name}
                                    : std::string_view{},
       .destination_register_bank = result.destination_register_bank,
       .destination_slot_id = result.destination_slot_id,
       .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          result.destination_stack_offset_bytes.has_value(),
       .source_result = &result,
   };
 }
@@ -516,6 +542,7 @@ void merge_storage_operand(
       .register_bank = preserved.register_bank,
       .slot_id = preserved.slot_id,
       .stack_offset_bytes = preserved.stack_offset_bytes,
+      .stack_offset_is_prepared_snapshot = preserved.stack_offset_bytes.has_value(),
       .source_preserved_value = &preserved,
   };
 }
@@ -584,6 +611,8 @@ void merge_storage_operand(
                                   ? std::string_view{*move.destination_register_name}
                                   : std::string_view{},
       .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          move.destination_stack_offset_bytes.has_value(),
       .block_index = move.block_index,
       .instruction_index = move.instruction_index,
       .uses_cycle_temp_source = move.uses_cycle_temp_source,
@@ -611,6 +640,8 @@ void merge_storage_operand(
                                   ? std::string_view{*binding.destination_register_name}
                                   : std::string_view{},
       .destination_stack_offset_bytes = binding.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          binding.destination_stack_offset_bytes.has_value(),
       .block_index = bundle.block_index,
       .instruction_index = bundle.instruction_index,
       .source_bundle = &bundle,
@@ -652,6 +683,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
                                                        : std::string_view{},
         .slot_id = op.slot_id,
         .stack_offset_bytes = op.stack_offset_bytes,
+        .stack_offset_is_prepared_snapshot = op.stack_offset_bytes.has_value(),
         .source_spill_reload = &op,
     });
   }
@@ -726,6 +758,8 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedValueLocat
                                       ? std::string_view{*move.destination_register_name}
                                       : std::string_view{},
           .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+          .destination_stack_offset_is_prepared_snapshot =
+              move.destination_stack_offset_bytes.has_value(),
           .block_index = move.block_index,
           .instruction_index = move.instruction_index,
           .uses_cycle_temp_source = move.uses_cycle_temp_source,

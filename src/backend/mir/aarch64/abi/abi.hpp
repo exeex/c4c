@@ -26,6 +26,14 @@ enum class RegisterView {
   V,
 };
 
+enum class AllocationRegisterPool {
+  ArgumentReturn,
+  CallerSavedTemp,
+  CalleeSaved,
+  ReservedMirScratch,
+  SpecialOrForbidden,
+};
+
 enum class PreparedRegisterConversionErrorKind {
   EmptyRegisterName,
   UnknownRegisterName,
@@ -89,6 +97,8 @@ struct HandoffError {
 [[nodiscard]] RegisterReference sret_register();
 [[nodiscard]] RegisterReference platform_reserved_register();
 [[nodiscard]] std::array<RegisterReference, 2> indirect_call_scratch_registers();
+[[nodiscard]] std::array<RegisterReference, 2> reserved_mir_scratch_gp_registers();
+[[nodiscard]] std::array<RegisterReference, 2> reserved_mir_scratch_fp_simd_registers();
 [[nodiscard]] std::array<RegisterReference, 19> caller_saved_gp_registers();
 [[nodiscard]] std::array<RegisterReference, 11> callee_saved_gp_registers();
 [[nodiscard]] std::array<RegisterReference, 24> caller_saved_fp_simd_registers();
@@ -102,11 +112,20 @@ struct HandoffError {
 [[nodiscard]] bool is_sret_register(RegisterReference reg);
 [[nodiscard]] bool is_platform_reserved(RegisterReference reg);
 [[nodiscard]] bool is_indirect_call_scratch(RegisterReference reg);
+[[nodiscard]] bool is_reserved_mir_scratch(RegisterReference reg);
+[[nodiscard]] bool is_special_or_forbidden(RegisterReference reg,
+                                           bool frame_pointer_reserved = true);
 [[nodiscard]] bool is_caller_saved(RegisterReference reg);
 [[nodiscard]] bool is_callee_saved(RegisterReference reg);
+[[nodiscard]] bool is_long_lived_allocatable_candidate(RegisterReference reg,
+                                                       bool frame_pointer_reserved = true);
+[[nodiscard]] AllocationRegisterPool allocation_register_pool(
+    RegisterReference reg,
+    bool frame_pointer_reserved = true);
 [[nodiscard]] std::string register_name(RegisterReference reg);
 [[nodiscard]] std::string_view register_bank_name(RegisterBank bank);
 [[nodiscard]] std::string_view register_view_name(RegisterView view);
+[[nodiscard]] std::string_view allocation_register_pool_name(AllocationRegisterPool pool);
 [[nodiscard]] std::string_view prepared_register_conversion_error_kind_name(
     PreparedRegisterConversionErrorKind kind);
 [[nodiscard]] std::optional<RegisterReference> parse_aarch64_register_name(

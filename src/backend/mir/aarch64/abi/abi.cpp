@@ -267,6 +267,14 @@ std::array<RegisterReference, 2> indirect_call_scratch_registers() {
   return {x_register(16), x_register(17)};
 }
 
+std::array<RegisterReference, 2> reserved_mir_scratch_gp_registers() {
+  return {x_register(9), x_register(10)};
+}
+
+std::array<RegisterReference, 2> reserved_mir_scratch_fp_simd_registers() {
+  return {v_register(16), v_register(17)};
+}
+
 std::array<RegisterReference, 19> caller_saved_gp_registers() {
   return {x_register(0),  x_register(1),  x_register(2),  x_register(3),  x_register(4),
           x_register(5),  x_register(6),  x_register(7),  x_register(8),  x_register(9),
@@ -337,6 +345,30 @@ bool is_indirect_call_scratch(RegisterReference reg) {
   return contains_register(indirect_call_scratch_registers(), reg);
 }
 
+bool is_reserved_mir_scratch(RegisterReference reg) {
+  if (!is_valid_register_reference(reg)) {
+    return false;
+  }
+  if (reg.bank == RegisterBank::GeneralPurpose) {
+    return contains_register(reserved_mir_scratch_gp_registers(), reg);
+  }
+  if (reg.bank == RegisterBank::FpSimd) {
+    return contains_register(reserved_mir_scratch_fp_simd_registers(), v_register(reg.index));
+  }
+  return false;
+}
+
+bool is_special_or_forbidden(RegisterReference reg, bool frame_pointer_reserved) {
+  if (!is_valid_register_reference(reg)) {
+    return true;
+  }
+  if (is_stack_pointer(reg) || is_sret_register(reg) || is_platform_reserved(reg) ||
+      is_link_register(reg) || is_indirect_call_scratch(reg)) {
+    return true;
+  }
+  return frame_pointer_reserved && is_frame_pointer(reg);
+}
+
 bool is_caller_saved(RegisterReference reg) {
   if (!is_valid_register_reference(reg)) {
     return false;
@@ -361,6 +393,33 @@ bool is_callee_saved(RegisterReference reg) {
     return contains_register(callee_saved_fp_simd_registers(), v_register(reg.index));
   }
   return false;
+}
+
+bool is_long_lived_allocatable_candidate(RegisterReference reg, bool frame_pointer_reserved) {
+  return is_valid_register_reference(reg) && !is_reserved_mir_scratch(reg) &&
+         !is_special_or_forbidden(reg, frame_pointer_reserved) &&
+         (reg.bank == RegisterBank::GeneralPurpose || reg.bank == RegisterBank::FpSimd);
+}
+
+AllocationRegisterPool allocation_register_pool(RegisterReference reg,
+                                                bool frame_pointer_reserved) {
+  if (is_reserved_mir_scratch(reg)) {
+    return AllocationRegisterPool::ReservedMirScratch;
+  }
+  if (is_special_or_forbidden(reg, frame_pointer_reserved)) {
+    return AllocationRegisterPool::SpecialOrForbidden;
+  }
+  if ((reg.bank == RegisterBank::GeneralPurpose && reg.index <= 7) ||
+      (reg.bank == RegisterBank::FpSimd && reg.index <= 7)) {
+    return AllocationRegisterPool::ArgumentReturn;
+  }
+  if (is_callee_saved(reg)) {
+    return AllocationRegisterPool::CalleeSaved;
+  }
+  if (is_caller_saved(reg)) {
+    return AllocationRegisterPool::CallerSavedTemp;
+  }
+  return AllocationRegisterPool::SpecialOrForbidden;
 }
 
 std::string register_name(RegisterReference reg) {
@@ -401,6 +460,22 @@ std::string_view register_view_name(RegisterView view) {
       return "q";
     case RegisterView::V:
       return "v";
+  }
+  return "unknown";
+}
+
+std::string_view allocation_register_pool_name(AllocationRegisterPool pool) {
+  switch (pool) {
+    case AllocationRegisterPool::ArgumentReturn:
+      return "argument_return";
+    case AllocationRegisterPool::CallerSavedTemp:
+      return "caller_saved_temp";
+    case AllocationRegisterPool::CalleeSaved:
+      return "callee_saved";
+    case AllocationRegisterPool::ReservedMirScratch:
+      return "reserved_mir_scratch";
+    case AllocationRegisterPool::SpecialOrForbidden:
+      return "special_or_forbidden";
   }
   return "unknown";
 }

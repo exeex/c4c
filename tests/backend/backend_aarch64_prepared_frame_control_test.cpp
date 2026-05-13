@@ -407,6 +407,7 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.frame.frame_slot_order.size() != 1 || function.frame.frame_slot_order.front() != 11 ||
       function.frame.slots.size() != 1 || function.frame.slots.front().slot_label != "local.slot" ||
       function.frame.slots.front().value_label != "local.value" ||
+      !function.frame.slots.front().offset_is_prepared_snapshot ||
       function.frame.slots.front().source_slot != &prepared.stack_layout.frame_slots.front() ||
       function.frame.slots.front().source_object != &prepared.stack_layout.objects.front()) {
     return fail("expected frame-slot record to preserve slot/object identity");
@@ -470,12 +471,14 @@ int records_preserve_frame_control_call_and_move_identity() {
   }
   if (function.abi_bindings.front().destination_kind !=
           prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      function.abi_bindings.front().destination_stack_offset_bytes != 16) {
+      function.abi_bindings.front().destination_stack_offset_bytes != 16 ||
+      !function.abi_bindings.front().destination_stack_offset_is_prepared_snapshot) {
     return fail("expected ABI binding record to preserve stack destination");
   }
   if (function.spill_reloads.front().op_kind != prepare::PreparedSpillReloadOpKind::Spill ||
       function.spill_reloads.back().op_kind != prepare::PreparedSpillReloadOpKind::Reload ||
-      function.spill_reloads.front().slot_id != 11) {
+      function.spill_reloads.front().slot_id != 11 ||
+      !function.spill_reloads.front().stack_offset_is_prepared_snapshot) {
     return fail("expected spill/reload records to preserve frame-slot identity");
   }
 

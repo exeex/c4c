@@ -113,6 +113,36 @@ int fp_simd_preservation_roles_are_classified_by_register_number() {
   return 0;
 }
 
+int allocation_pools_reserve_mir_scratch_apart_from_long_lived_homes() {
+  if (!aarch64_abi::is_reserved_mir_scratch(aarch64_abi::x_register(9)) ||
+      !aarch64_abi::is_reserved_mir_scratch(aarch64_abi::x_register(10)) ||
+      !aarch64_abi::is_reserved_mir_scratch(aarch64_abi::v_register(16)) ||
+      !aarch64_abi::is_reserved_mir_scratch(aarch64_abi::v_register(17))) {
+    return fail("expected first-pass MIR scratch registers to be reserved explicitly");
+  }
+  if (aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::x_register(9)) ||
+      aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::v_register(16)) ||
+      aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::x_register(16)) ||
+      aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::sret_register())) {
+    return fail("expected MIR scratch and special registers to be unavailable as long-lived homes");
+  }
+  if (!aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::x_register(19)) ||
+      !aarch64_abi::is_long_lived_allocatable_candidate(aarch64_abi::v_register(18))) {
+    return fail("expected ordinary callee-saved and caller-temp registers to remain candidates");
+  }
+  if (aarch64_abi::allocation_register_pool_name(aarch64_abi::allocation_register_pool(
+          aarch64_abi::x_register(9))) != "reserved_mir_scratch" ||
+      aarch64_abi::allocation_register_pool_name(aarch64_abi::allocation_register_pool(
+          aarch64_abi::x_register(19))) != "callee_saved" ||
+      aarch64_abi::allocation_register_pool_name(aarch64_abi::allocation_register_pool(
+          aarch64_abi::x_register(16))) != "special_or_forbidden" ||
+      aarch64_abi::allocation_register_pool_name(aarch64_abi::allocation_register_pool(
+          aarch64_abi::v_register(18))) != "caller_saved_temp") {
+    return fail("expected allocation pool names to reflect AAPCS64 roles");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -126,6 +156,10 @@ int main() {
     return status;
   }
   if (const int status = fp_simd_preservation_roles_are_classified_by_register_number();
+      status != 0) {
+    return status;
+  }
+  if (const int status = allocation_pools_reserve_mir_scratch_apart_from_long_lived_homes();
       status != 0) {
     return status;
   }

@@ -17,17 +17,27 @@ enum class TargetRegisterReferenceKind {
   StoragePlan,
 };
 
+enum class AllocationSnapshotKind {
+  PreparedSnapshot,
+  AllocationResult,
+  SpillReloadScratch,
+  DisplayOnly,
+};
+
 struct TargetRegisterRecord {
   TargetRegisterReferenceKind reference_kind = TargetRegisterReferenceKind::ValueHome;
+  AllocationSnapshotKind allocation_snapshot = AllocationSnapshotKind::PreparedSnapshot;
   c4c::backend::prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   c4c::backend::prepare::PreparedRegisterClass register_class =
       c4c::backend::prepare::PreparedRegisterClass::None;
   c4c::backend::prepare::PreparedRegisterBank register_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
+  std::optional<c4c::backend::aarch64::abi::AllocationRegisterPool> allocation_pool;
   std::string_view physical_register;
   std::size_t contiguous_width = 1;
   std::vector<std::string_view> occupied_registers;
+  bool may_be_long_lived_home = false;
 };
 
 struct FrameSlotRecord {
@@ -40,6 +50,7 @@ struct FrameSlotRecord {
   std::string_view value_label;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   std::size_t offset_bytes = 0;
+  bool offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool fixed_location = false;
@@ -110,6 +121,7 @@ struct OperandRecord {
   std::size_t register_group_width = 1;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  bool stack_offset_is_prepared_snapshot = false;
   std::optional<std::int64_t> immediate_i32;
   std::optional<c4c::LinkNameId> symbol_name;
   std::string_view symbol_label;
@@ -154,12 +166,14 @@ struct CallArgumentRecord {
   std::string_view source_symbol_label;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> source_slot_id;
   std::optional<std::size_t> source_stack_offset_bytes;
+  bool source_stack_offset_is_prepared_snapshot = false;
   std::optional<c4c::ValueNameId> source_base_value_name;
   std::string_view source_base_label;
   std::optional<std::int64_t> source_pointer_byte_delta;
   std::string_view destination_register;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  bool destination_stack_offset_is_prepared_snapshot = false;
   const c4c::backend::prepare::PreparedCallArgumentPlan* source_argument = nullptr;
 };
 
@@ -174,10 +188,12 @@ struct CallResultRecord {
   std::string_view source_register;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> source_register_bank;
   std::optional<std::size_t> source_stack_offset_bytes;
+  bool source_stack_offset_is_prepared_snapshot = false;
   std::string_view destination_register;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  bool destination_stack_offset_is_prepared_snapshot = false;
   const c4c::backend::prepare::PreparedCallResultPlan* source_result = nullptr;
 };
 
@@ -192,6 +208,7 @@ struct CallPreservedValueRecord {
   std::optional<c4c::backend::prepare::PreparedRegisterBank> register_bank;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  bool stack_offset_is_prepared_snapshot = false;
   const c4c::backend::prepare::PreparedCallPreservedValue* source_preserved_value = nullptr;
 };
 
@@ -227,6 +244,7 @@ struct MoveRecord {
   std::optional<std::size_t> destination_abi_index;
   std::string_view destination_register;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bool uses_cycle_temp_source = false;
@@ -252,6 +270,7 @@ struct AbiBindingRecord {
   std::optional<std::size_t> destination_abi_index;
   std::string_view destination_register;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   const c4c::backend::prepare::PreparedMoveBundle* source_bundle = nullptr;
@@ -269,6 +288,7 @@ struct SpillReloadRecord {
   std::string_view register_name;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  bool stack_offset_is_prepared_snapshot = false;
   const c4c::backend::prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
 };
 

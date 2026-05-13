@@ -57,6 +57,10 @@ std::string_view register_operand_role_name(RegisterOperandRole role) {
       return "physical";
     case RegisterOperandRole::PreparedAssignment:
       return "prepared_assignment";
+    case RegisterOperandRole::AllocationResult:
+      return "allocation_result";
+    case RegisterOperandRole::ReservedMirScratch:
+      return "reserved_mir_scratch";
     case RegisterOperandRole::ValueHome:
       return "value_home";
     case RegisterOperandRole::SpillAuthority:

@@ -39,6 +39,8 @@ enum class RecordSurfaceKind {
 enum class RegisterOperandRole {
   Physical,
   PreparedAssignment,
+  AllocationResult,
+  ReservedMirScratch,
   ValueHome,
   SpillAuthority,
   StoragePlan,
@@ -226,6 +228,7 @@ struct FrameSlotOperand {
   std::optional<c4c::ValueNameId> value_name;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
   std::size_t offset_bytes = 0;
+  bool offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool fixed_location = false;
@@ -315,6 +318,7 @@ struct MemoryOperand {
   std::optional<c4c::TextId> string_name;
   std::optional<c4c::LinkNameId> string_symbol_name;
   std::int64_t byte_offset = 0;
+  bool byte_offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   c4c::backend::bir::AddressSpace address_space = c4c::backend::bir::AddressSpace::Default;

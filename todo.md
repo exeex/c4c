@@ -1,47 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/212_bir_mir_allocation_contract.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Commit The Allocation Contract
+Current Step ID: Step 3
+Current Step Title: Align Implemented AArch64 Surfaces
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` added
-`src/backend/mir/aarch64/ALLOCATION_CONTRACT.md` as the canonical
-BIR/prepared-to-target-MIR allocation-boundary contract.
+Step 3 of `plan.md` aligned the implemented AArch64 ABI, module, and codegen
+record surfaces with `src/backend/mir/aarch64/ALLOCATION_CONTRACT.md`.
 
-The contract defines finite AAPCS64 GPR and FPR/SIMD register budgets, separate
-long-lived, argument/return, caller-saved temp, reserved MIR scratch, and
-special/forbidden pools, physical allocation result shapes, structured
-spill-slot ids, future virtual-register placeholders, call-clobber and
-callee-save obligations, reload/store pseudo plan placement, and portable
-x86/x86-64 correctness carriers for fixed operands, flags, subregister aliases,
-width effects, ABI variants, and ABI stack resources.
+The ABI surface now exposes explicit AAPCS64 allocation pool vocabulary,
+reserved MIR scratch sets (`x9`/`x10`, `v16`/`v17`), special/forbidden
+classification, and long-lived home eligibility without implementing an
+allocator. Module target-register records now distinguish prepared snapshots,
+allocation results, and spill/reload scratch records, carry typed allocation
+pool classification when physical names parse as AArch64 registers, and mark
+stack offsets as prepared snapshots rather than frame-layout authority.
+Codegen record operands now have explicit allocation-result and reserved MIR
+scratch roles, while frame/memory byte offsets remain snapshot fields.
+
+Focused backend tests cover the new boundary behavior for ABI pools, module
+record snapshots, stack-offset snapshot markers, and codegen register roles.
 
 ## Suggested Next
 
-Execute Step 3: align implemented AArch64 ABI, module, and codegen record
-surfaces so they explicitly consume, expose, or avoid allocation ownership
-without introducing an allocator, concrete frame offsets, reload/store
-instruction emission, or machine-node opcode expansion.
+Execute Step 4: align AArch64 markdown roadmap artifacts so future scalar,
+memory, branch, call, return, vector, assembler, and object work routes
+allocation-sensitive decisions through the shared allocation result contract
+instead of local register or spill ownership.
 
 ## Watchouts
 
-- Step 3 should keep `abi/` helpers as target register facts and conversion
-  utilities, not as allocation algorithms.
-- Module records currently expose prepared register names and concrete stack
-  offsets; Step 3 should document or narrow those as prepared snapshots, not
-  allocation authority.
-- Record builders should continue to fail closed for unsupported stack/spill
-  homes until a structured allocation-result or reload/store pseudo plan is
-  represented.
-- Keep reserved MIR scratch registers unavailable for long-lived BIR value
-  homes.
+- The new ABI helpers classify register roles and candidate eligibility only;
+  they do not choose value homes or implement an allocation algorithm.
+- Module stack offsets remain copied prepared facts for inspection and
+  diagnostics. They are not final frame-layout authority.
+- Spill/reload records still preserve prepared spill-slot identity and optional
+  snapshot offsets only; this slice did not introduce reload/store pseudo
+  operations or machine-node emission.
+- `x8`, `x16`, `x17`, `x18`, `x30`, frame-pointer-reserved `x29`, `sp`, and
+  reserved MIR scratch registers remain unavailable as default long-lived BIR
+  value homes.
 
 ## Proof
 
-`git diff --check` passed for this Step 2 markdown contract slice. Proof
-output was preserved in `test_after.log`; the file is empty because the
-command produced no diagnostics.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+passed. Proof output is preserved in `test_after.log`, including
+`100% tests passed, 0 tests failed out of 131`.
+
+`git diff --check` also passed.

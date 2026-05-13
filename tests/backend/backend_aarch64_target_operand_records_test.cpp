@@ -44,6 +44,36 @@ int typed_register_operands_preserve_prepared_facts() {
   return 0;
 }
 
+int register_operand_roles_name_allocation_boundary_surfaces() {
+  const auto allocation_result = aarch64_codegen::make_register_operand(
+      aarch64_codegen::RegisterOperand{
+          .reg = aarch64_abi::x_register(19),
+          .role = aarch64_codegen::RegisterOperandRole::AllocationResult,
+          .value_id = prepare::PreparedValueId{31},
+          .prepared_class = prepare::PreparedRegisterClass::General,
+          .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+          .expected_view = aarch64_abi::RegisterView::X,
+      });
+  const auto mir_scratch = aarch64_codegen::make_register_operand(
+      aarch64_codegen::RegisterOperand{
+          .reg = aarch64_abi::x_register(9),
+          .role = aarch64_codegen::RegisterOperandRole::ReservedMirScratch,
+          .prepared_class = prepare::PreparedRegisterClass::General,
+          .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+          .expected_view = aarch64_abi::RegisterView::X,
+      });
+
+  const auto* allocated =
+      std::get_if<aarch64_codegen::RegisterOperand>(&allocation_result.payload);
+  const auto* scratch = std::get_if<aarch64_codegen::RegisterOperand>(&mir_scratch.payload);
+  if (allocated == nullptr || scratch == nullptr ||
+      aarch64_codegen::register_operand_role_name(allocated->role) != "allocation_result" ||
+      aarch64_codegen::register_operand_role_name(scratch->role) != "reserved_mir_scratch") {
+    return fail("expected register operand roles to name allocation result and scratch uses");
+  }
+  return 0;
+}
+
 int prepared_value_immediate_frame_and_symbol_operands_are_structured() {
   const auto value = aarch64_codegen::make_prepared_value_operand(
       aarch64_codegen::PreparedValueOperand{
@@ -105,7 +135,7 @@ int prepared_value_immediate_frame_and_symbol_operands_are_structured() {
   }
   if (slot == nullptr || slot->slot_id != prepare::PreparedFrameSlotId{5} ||
       slot->object_id != prepare::PreparedObjectId{7} || slot->offset_bytes != 16 ||
-      !slot->fixed_location) {
+      !slot->fixed_location || !slot->offset_is_prepared_snapshot) {
     return fail("expected frame slot operand to retain prepared slot identity");
   }
   if (sym == nullptr || sym->link_name != c4c::LinkNameId{6} || !sym->is_extern ||
@@ -171,6 +201,10 @@ int branch_and_memory_operands_are_target_mir_record_surfaces() {
 
 int main() {
   if (const int status = typed_register_operands_preserve_prepared_facts(); status != 0) {
+    return status;
+  }
+  if (const int status = register_operand_roles_name_allocation_boundary_surfaces();
+      status != 0) {
     return status;
   }
   if (const int status = prepared_value_immediate_frame_and_symbol_operands_are_structured();

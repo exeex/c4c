@@ -201,6 +201,19 @@ int records_preserve_operand_identity_and_separate_register_refs() {
       function.target_registers[*param->storage_register].physical_register != "x20") {
     return fail("expected physical register names to live in target register records");
   }
+  if (function.target_registers[*param->value_home_register].allocation_snapshot !=
+          aarch64_module::AllocationSnapshotKind::PreparedSnapshot ||
+      function.target_registers[*param->assigned_register].allocation_snapshot !=
+          aarch64_module::AllocationSnapshotKind::AllocationResult ||
+      function.target_registers[*param->storage_register].allocation_snapshot !=
+          aarch64_module::AllocationSnapshotKind::PreparedSnapshot) {
+    return fail("expected target register records to classify prepared snapshots vs allocation results");
+  }
+  if (function.target_registers[*param->value_home_register].may_be_long_lived_home ||
+      !function.target_registers[*param->assigned_register].may_be_long_lived_home ||
+      !function.target_registers[*param->assigned_register].allocation_pool.has_value()) {
+    return fail("expected long-lived home eligibility to come from typed allocation pools");
+  }
   if (function.target_registers[*param->assigned_register].value_name != param->value_name ||
       function.target_registers[*param->assigned_register].physical_register == param->label) {
     return fail("expected target register reference not to replace semantic value identity");
@@ -215,6 +228,9 @@ int records_preserve_operand_identity_and_separate_register_refs() {
   if (slot == nullptr || !slot->frame_slot_id.has_value() || *slot->frame_slot_id != 3 ||
       !slot->stack_offset_bytes.has_value() || *slot->stack_offset_bytes != 24) {
     return fail("expected stack operand to preserve frame-slot identity and offset");
+  }
+  if (!slot->stack_offset_is_prepared_snapshot) {
+    return fail("expected stack offsets to be marked as prepared snapshots");
   }
   if (slot->storage_encoding != prepare::PreparedStorageEncodingKind::FrameSlot) {
     return fail("expected stack operand to preserve storage-plan encoding");
