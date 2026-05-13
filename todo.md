@@ -8,22 +8,15 @@ Current Step Title: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifa
 
 ## Just Finished
 
-Step 2: Extract Old `.cpp` Surfaces To Markdown Artifacts extracted
-`src/backend/mir/aarch64/codegen/globals.cpp` into
-`src/backend/mir/aarch64/codegen/globals.md` and removed the old `.cpp`
+Step 2.1: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
+extracted `src/backend/mir/aarch64/codegen/variadic.cpp` into
+`src/backend/mir/aarch64/codegen/variadic.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old global, label, and thread-local address
-materialization contract, including GOT selection, direct `ADRP`/low-12
-addressing, `tpidr_el0` TLS handling, dependencies, hidden assumptions, and
-rebuild risks.
-
-Plan review accepted the reviewer finding in
-`review/aarch64_step2_route_review.md`: Step 2 remains aligned with the source
-idea, but the remaining extraction surface is too broad for one generic
-execution packet. Keep the split at the `todo.md` execution layer; `plan.md`
-and `ideas/open/203_aarch64_markdown_first_backend_reconstruction.md` still
-carry the correct durable intent.
+The markdown artifact records the old AAPCS64 variadic ABI contract, including
+`va_start`, scalar and aggregate `va_arg`, `va_copy`, `va_list` field offsets,
+GP and FP/SIMD register-save offsets, stack fallback, F128 helper conversion,
+dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
@@ -33,7 +26,6 @@ Extract the remaining old codegen surfaces under
 `src/backend/mir/aarch64/codegen/` before moving into assembler, encoder,
 linker, or module-entry files:
 
-- `variadic.cpp`
 - `inline_asm.cpp`
 - `alu.cpp`
 - `memory.cpp`
@@ -67,14 +59,14 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `globals.cpp` was a fully commented translation surface rather than live
+- `variadic.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived surface has several rebuild hazards: GOT-required globals must
-  load through `:got:`/`:got_lo12:`, direct globals and labels need both `ADRP`
-  and `:lo12:` `ADD`, TLS globals start from `tpidr_el0` and use
-  thread-pointer-relative relocations, and all paths leave the materialized
-  address in `x0` for `store_x0_to`.
+- The archived surface has several rebuild hazards: signed `__gr_offs` and
+  `__vr_offs` branch semantics, 8-byte GP slots versus 16-byte FP/SIMD slots,
+  whole-aggregate register-or-stack selection, stack fallback alignment, F128
+  `__trunctfdf2` conversion, and cache invalidation after helper/aggregate
+  paths.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
