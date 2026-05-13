@@ -5127,7 +5127,7 @@ void test_static_global_bridge_rendered_compat_uses_rendered_map() {
 
   c4c::hir::Lowerer::FunctionCtx ctx;
   ctx.static_globals["__generated_static"] = c4c::hir::GlobalId{110};
-  ctx.rendered_compat_static_global_names.insert("__generated_static");
+  ctx.rendered_compat_static_global_text_ids.insert(generated_text);
 
   c4c::Node ref{};
   ref.kind = c4c::NK_VAR;

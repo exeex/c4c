@@ -128,13 +128,17 @@ std::string structured_owner_name_from_qualified_ref(const Node* n,
   return {};
 }
 
-bool rendered_compat_lookup_allowed(
+bool explicit_text_or_no_metadata_name_allowed(
     TextId source_text_id,
+    TextId canonical_name_text_id,
     std::string_view rendered_name,
     const std::unordered_set<TextId>& explicit_text_ids,
     const std::unordered_set<std::string>& no_metadata_names) {
   if (source_text_id != kInvalidText) {
-    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end();
+    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end() ||
+           (canonical_name_text_id != kInvalidText &&
+            explicit_text_ids.find(canonical_name_text_id) !=
+                explicit_text_ids.end());
   }
   return no_metadata_names.find(std::string(rendered_name)) !=
          no_metadata_names.end();
@@ -604,8 +608,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
       if (lit != ctx->local_ids_by_text_id.end()) {
         r.local = lit->second;
         has_local_binding = true;
-      } else if (rendered_compat_lookup_allowed(
-                     n->unqualified_text_id, r.name,
+      } else if (explicit_text_or_no_metadata_name_allowed(
+                     n->unqualified_text_id, r.name_text_id, r.name,
                      ctx->rendered_compat_local_text_ids,
                      ctx->rendered_compat_local_names)) {
         auto rendered_lit = ctx->locals.find(r.name);
@@ -634,8 +638,8 @@ ExprId Lowerer::lower_var_expr(FunctionCtx* ctx, const Node* n) {
         auto pit = ctx->param_indices_by_text_id.find(n->unqualified_text_id);
         if (pit != ctx->param_indices_by_text_id.end()) {
           r.param_index = pit->second;
-        } else if (rendered_compat_lookup_allowed(
-                       n->unqualified_text_id, r.name,
+        } else if (explicit_text_or_no_metadata_name_allowed(
+                       n->unqualified_text_id, r.name_text_id, r.name,
                        ctx->rendered_compat_param_text_ids,
                        ctx->rendered_compat_param_names)) {
           auto rendered_pit = ctx->params.find(r.name);

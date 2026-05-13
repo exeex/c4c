@@ -483,9 +483,19 @@ void Lowerer::lower_range_for_stmt(FunctionCtx& ctx, const Node* n) {
       } else {
         ld.init = deref_expr;
       }
-      ctx.locals[ld.name] = ld.id;
-      ctx.rendered_compat_local_names.insert(ld.name);
-      ctx.local_types.insert(ld.id, var_ts);
+      const LocalId range_var_id = ld.id;
+      const std::string range_var_name = ld.name;
+      ctx.locals[range_var_name] = range_var_id;
+      if (decl_node->unqualified_text_id != kInvalidText) {
+        ctx.local_ids_by_text_id[decl_node->unqualified_text_id] =
+            range_var_id;
+        ctx.rendered_compat_local_text_ids.erase(
+            decl_node->unqualified_text_id);
+        ctx.rendered_compat_local_names.erase(range_var_name);
+      } else {
+        ctx.rendered_compat_local_names.insert(range_var_name);
+      }
+      ctx.local_types.insert(range_var_id, var_ts);
       append_stmt(ctx, Stmt{StmtPayload{std::move(ld)}, make_span(n)});
     }
   }

@@ -91,13 +91,17 @@ std::optional<ConstEvalStructuredNameKey> consteval_name_key_from_node(
                      : std::nullopt;
 }
 
-bool rendered_compat_lookup_allowed(
+bool explicit_text_or_no_metadata_name_allowed(
     TextId source_text_id,
+    TextId canonical_name_text_id,
     std::string_view rendered_name,
     const std::unordered_set<TextId>& explicit_text_ids,
     const std::unordered_set<std::string>& no_metadata_names) {
   if (source_text_id != kInvalidText) {
-    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end();
+    return explicit_text_ids.find(source_text_id) != explicit_text_ids.end() ||
+           (canonical_name_text_id != kInvalidText &&
+            explicit_text_ids.find(canonical_name_text_id) !=
+                explicit_text_ids.end());
   }
   return no_metadata_names.find(std::string(rendered_name)) !=
          no_metadata_names.end();
@@ -1329,6 +1333,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
   }
   const std::string name = callee->name;
   if (ctx) {
+    const TextId canonical_name_text_id = make_unqualified_text_id(
+        callee, module_ ? module_->link_name_texts.get() : nullptr);
     if (callee->unqualified_text_id != kInvalidText) {
       const auto local_it =
           ctx->local_ids_by_text_id.find(callee->unqualified_text_id);
@@ -1339,8 +1345,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
         }
         return std::nullopt;
       }
-      if (rendered_compat_lookup_allowed(
-              callee->unqualified_text_id, name,
+      if (explicit_text_or_no_metadata_name_allowed(
+              callee->unqualified_text_id, canonical_name_text_id, name,
               ctx->rendered_compat_local_text_ids,
               ctx->rendered_compat_local_names)) {
         const auto lit = ctx->local_fn_ptr_sigs.find(name);
@@ -1359,8 +1365,8 @@ std::optional<TypeSpec> Lowerer::infer_call_result_type_from_callee(
           return sig_it->second.return_type.spec;
         }
         return std::nullopt;
-      } else if (rendered_compat_lookup_allowed(
-                     callee->unqualified_text_id, name,
+      } else if (explicit_text_or_no_metadata_name_allowed(
+                     callee->unqualified_text_id, canonical_name_text_id, name,
                      ctx->rendered_compat_param_text_ids,
                      ctx->rendered_compat_param_names)) {
         const auto pit = ctx->param_fn_ptr_sigs.find(name);
@@ -1396,11 +1402,12 @@ std::optional<GlobalId> Lowerer::lookup_static_global_bridge(
     if (structured_it != ctx.static_global_ids_by_text_id.end()) {
       return structured_it->second;
     }
-    if (ctx.rendered_compat_static_global_text_ids.find(
-            n->unqualified_text_id) ==
-            ctx.rendered_compat_static_global_text_ids.end() &&
-        ctx.rendered_compat_static_global_names.find(name) ==
-            ctx.rendered_compat_static_global_names.end()) {
+    const TextId canonical_name_text_id = make_unqualified_text_id(
+        n, module_ ? module_->link_name_texts.get() : nullptr);
+    if (!explicit_text_or_no_metadata_name_allowed(
+            n->unqualified_text_id, canonical_name_text_id, name,
+            ctx.rendered_compat_static_global_text_ids,
+            ctx.rendered_compat_static_global_names)) {
       return std::nullopt;
     }
   }
@@ -3799,14 +3806,16 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
         if (find_struct_def_for_layout_type(tmp_ts)) return tmp_ts;
       }
       if (ctx) {
+        const TextId canonical_name_text_id = make_unqualified_text_id(
+            n, module_ ? module_->link_name_texts.get() : nullptr);
         if (n->unqualified_text_id != kInvalidText) {
           auto lit = ctx->local_ids_by_text_id.find(n->unqualified_text_id);
           if (lit != ctx->local_ids_by_text_id.end()) {
             if (ctx->local_types.contains(lit->second)) {
               return reference_value_ts(ctx->local_types.at(lit->second));
             }
-          } else if (rendered_compat_lookup_allowed(
-                         n->unqualified_text_id, name,
+          } else if (explicit_text_or_no_metadata_name_allowed(
+                         n->unqualified_text_id, canonical_name_text_id, name,
                          ctx->rendered_compat_local_text_ids,
                          ctx->rendered_compat_local_names)) {
             auto rendered_lit = ctx->locals.find(name);
@@ -3829,8 +3838,8 @@ TypeSpec Lowerer::infer_generic_ctrl_type(FunctionCtx* ctx, const Node* n) {
           if (pit != ctx->param_indices_by_text_id.end() && ctx->fn &&
               pit->second < ctx->fn->params.size()) {
             return reference_value_ts(ctx->fn->params[pit->second].type.spec);
-          } else if (rendered_compat_lookup_allowed(
-                         n->unqualified_text_id, name,
+          } else if (explicit_text_or_no_metadata_name_allowed(
+                         n->unqualified_text_id, canonical_name_text_id, name,
                          ctx->rendered_compat_param_text_ids,
                          ctx->rendered_compat_param_names)) {
             auto rendered_pit = ctx->params.find(name);
