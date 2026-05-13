@@ -8,25 +8,28 @@ Current Step Title: Add Target Instruction Record Containers
 
 ## Just Finished
 
-Completed `plan.md` Step 4 by adding target-local AArch64 operand record
-surfaces under `src/backend/mir/aarch64/codegen/records.hpp` and `.cpp`.
+Completed `plan.md` Step 5 by adding target-local AArch64 instruction record
+containers under `src/backend/mir/aarch64/codegen/records.hpp` and `.cpp`.
 
 Work completed:
-- Added target operand records for typed registers, immediates, prepared
-  values, frame slots, symbols/link names, branch targets, and memory operands.
-- Preserved prepared ids and typed facts as fields, including
-  `PreparedValueId`, `ValueNameId`, `PreparedFrameSlotId`, `LinkNameId`,
-  register bank/class, BIR type, address space, volatility, and offsets.
-- Marked branch-target and memory operands with `RecordSurfaceKind::RecordOnly`
-  so the Step 4 surface does not imply instruction selection or lowering.
-- Added `backend_aarch64_target_operand_records` coverage and wired
-  `records.cpp` into `c4c_backend`.
+- Added explicit record-only instruction families for branch, scalar, memory,
+  call, return, assembler, and object placeholder slices.
+- Reused Step 4 typed operand records inside instruction payloads so prepared
+  value ids, value names, frame slots, link names, block labels, and BIR type
+  facts can flow into later lowering work without parsing display strings.
+- Preserved BIR source facts only as record metadata, such as scalar binary/cast
+  opcodes, memory load/store kind, and call calling convention; no concrete
+  AArch64 opcode, assembly spelling, object output, or linker behavior was
+  selected.
+- Added `backend_aarch64_target_instruction_records` coverage and wired it into
+  the backend test set.
 
 ## Suggested Next
 
-Step 5 packet: add target instruction record containers under the same
-`src/backend/mir/aarch64/codegen/` owner, using the Step 4 operand payloads but
-without selecting concrete AArch64 instructions or emitting assembly.
+Step 6 packet: begin the next target-record slice by consuming these record-only
+instruction containers at the target-record boundary selected by the supervisor,
+without widening into assembly emission, object/linker output, or concrete
+instruction selection unless that step explicitly owns it.
 
 ## Watchouts
 
@@ -48,6 +51,9 @@ without selecting concrete AArch64 instructions or emitting assembly.
   opcodes, or format assembly.
 - Memory operands are placeholders that preserve prepared address facts for
   later lowering; branch targets are structured `BlockLabelId` records only.
+- Instruction records remain `RecordSurfaceKind::RecordOnly`; even when they
+  carry BIR source opcodes or calling convention metadata, that does not imply
+  selected AArch64 opcodes or valid assembly/object output.
 
 ## Proof
 
@@ -57,9 +63,7 @@ Ran:
 (cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_') 2>&1 | tee test_after.log
 ```
 
-Result: passed, including `backend_aarch64_register_vocabulary` and
-`backend_aarch64_prepared_register_conversion`; new
-`backend_aarch64_target_operand_records` is included and green. The delegated
-backend subset reported 117 executed tests, 0 failed.
+Result: passed. New `backend_aarch64_target_instruction_records` is included
+and green. The delegated backend subset reported 118 executed tests, 0 failed.
 
 Proof log: `test_after.log`.

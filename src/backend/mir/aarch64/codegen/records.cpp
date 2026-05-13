@@ -80,6 +80,36 @@ std::string_view memory_base_kind_name(MemoryBaseKind kind) {
   return "unknown";
 }
 
+std::string_view instruction_family_name(InstructionFamily family) {
+  switch (family) {
+    case InstructionFamily::Branch:
+      return "branch";
+    case InstructionFamily::Scalar:
+      return "scalar";
+    case InstructionFamily::Memory:
+      return "memory";
+    case InstructionFamily::Call:
+      return "call";
+    case InstructionFamily::Return:
+      return "return";
+    case InstructionFamily::Assembler:
+      return "assembler";
+    case InstructionFamily::Object:
+      return "object";
+  }
+  return "unknown";
+}
+
+std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
+  switch (kind) {
+    case MemoryInstructionKind::Load:
+      return "load";
+    case MemoryInstructionKind::Store:
+      return "store";
+  }
+  return "unknown";
+}
+
 OperandRecord make_register_operand(RegisterOperand operand) {
   return OperandRecord{.kind = OperandKind::Register, .payload = operand};
 }
@@ -106,6 +136,62 @@ OperandRecord make_branch_target_operand(BranchTargetOperand operand) {
 
 OperandRecord make_memory_operand(MemoryOperand operand) {
   return OperandRecord{.kind = OperandKind::Memory, .payload = operand};
+}
+
+InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Branch,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Scalar,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Memory,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Call,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Return,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_object_instruction(ObjectInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::Object,
+      .surface = RecordSurfaceKind::RecordOnly,
+      .payload = instruction,
+  };
 }
 
 }  // namespace c4c::backend::aarch64::codegen
