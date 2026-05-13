@@ -2,10 +2,35 @@
 
 #include "../../../backend.hpp"
 
+#include <array>
+#include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace c4c::backend::aarch64::abi {
+
+enum class RegisterBank {
+  GeneralPurpose,
+  StackPointer,
+  FpSimd,
+};
+
+enum class RegisterView {
+  X,
+  W,
+  Sp,
+  S,
+  D,
+  Q,
+  V,
+};
+
+struct RegisterReference {
+  RegisterBank bank = RegisterBank::GeneralPurpose;
+  RegisterView view = RegisterView::X;
+  std::uint8_t index = 0;
+};
 
 enum class HandoffErrorKind {
   UnsupportedTargetArch,
@@ -18,6 +43,44 @@ struct HandoffError {
   std::string message;
 };
 
+[[nodiscard]] bool operator==(const RegisterReference& lhs,
+                              const RegisterReference& rhs);
+[[nodiscard]] bool operator!=(const RegisterReference& lhs,
+                              const RegisterReference& rhs);
+[[nodiscard]] std::optional<RegisterReference> gp_register(std::uint8_t index,
+                                                           RegisterView view);
+[[nodiscard]] std::optional<RegisterReference> fp_simd_register(std::uint8_t index,
+                                                                RegisterView view);
+[[nodiscard]] RegisterReference x_register(std::uint8_t index);
+[[nodiscard]] RegisterReference w_register(std::uint8_t index);
+[[nodiscard]] RegisterReference s_register(std::uint8_t index);
+[[nodiscard]] RegisterReference d_register(std::uint8_t index);
+[[nodiscard]] RegisterReference q_register(std::uint8_t index);
+[[nodiscard]] RegisterReference v_register(std::uint8_t index);
+[[nodiscard]] RegisterReference frame_pointer_register();
+[[nodiscard]] RegisterReference link_register();
+[[nodiscard]] RegisterReference stack_pointer_register();
+[[nodiscard]] RegisterReference sret_register();
+[[nodiscard]] RegisterReference platform_reserved_register();
+[[nodiscard]] std::array<RegisterReference, 2> indirect_call_scratch_registers();
+[[nodiscard]] std::array<RegisterReference, 19> caller_saved_gp_registers();
+[[nodiscard]] std::array<RegisterReference, 11> callee_saved_gp_registers();
+[[nodiscard]] std::array<RegisterReference, 24> caller_saved_fp_simd_registers();
+[[nodiscard]] std::array<RegisterReference, 8> callee_saved_fp_simd_registers();
+[[nodiscard]] bool is_valid_register_reference(RegisterReference reg);
+[[nodiscard]] bool is_gp_register(RegisterReference reg);
+[[nodiscard]] bool is_stack_pointer(RegisterReference reg);
+[[nodiscard]] bool is_fp_simd_register(RegisterReference reg);
+[[nodiscard]] bool is_frame_pointer(RegisterReference reg);
+[[nodiscard]] bool is_link_register(RegisterReference reg);
+[[nodiscard]] bool is_sret_register(RegisterReference reg);
+[[nodiscard]] bool is_platform_reserved(RegisterReference reg);
+[[nodiscard]] bool is_indirect_call_scratch(RegisterReference reg);
+[[nodiscard]] bool is_caller_saved(RegisterReference reg);
+[[nodiscard]] bool is_callee_saved(RegisterReference reg);
+[[nodiscard]] std::string register_name(RegisterReference reg);
+[[nodiscard]] std::string_view register_bank_name(RegisterBank bank);
+[[nodiscard]] std::string_view register_view_name(RegisterView view);
 [[nodiscard]] c4c::TargetProfile resolve_target_profile(
     const c4c::backend::prepare::PreparedBirModule& module);
 [[nodiscard]] bool is_aarch64_target(const c4c::TargetProfile& target_profile);
