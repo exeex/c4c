@@ -8,26 +8,24 @@ Current Step Title: Extract `cast_ops.cpp` To Markdown Artifact
 
 ## Just Finished
 
-Step 2.1: Extract Remaining Codegen `.cpp` Surfaces To Markdown Artifacts
-extracted `src/backend/mir/aarch64/codegen/calls.cpp` into
-`src/backend/mir/aarch64/codegen/calls.md` and removed the old `.cpp`
+Step 2.1a: Extract `cast_ops.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/codegen/cast_ops.cpp` into
+`src/backend/mir/aarch64/codegen/cast_ops.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old call-lowering contract, including AArch64
-ABI configuration, stack argument staging, register argument helper sequencing,
-direct and indirect call emission, stack cleanup, I128 and F128 result storage,
-softfloat helper interactions, dependencies, hidden assumptions, and rebuild
-risks.
+The markdown artifact records the old scalar cast-lowering contract, including
+the shared `CastKind` classification routes, integer accumulator convention,
+FP/SIMD register-file bridges, width normalization rules, F128 soft-float
+delegation, dependencies, hidden assumptions, and rebuild risks.
 
 ## Suggested Next
 
-Current execution packet: Step 2.1a, extract
-`src/backend/mir/aarch64/codegen/cast_ops.cpp` to a markdown artifact and
+Next coherent packet: stay within Step 2.1 and extract
+`src/backend/mir/aarch64/codegen/atomics.cpp` to a markdown artifact, then
 remove that old `.cpp` from the live tree.
 
-Stay within Step 2.1, the remaining codegen extraction lane. After
-`cast_ops.cpp`, continue the lane through these old codegen surfaces before
-moving into assembler, encoder, linker, or module-entry files:
+Continue the remaining codegen extraction lane through these old codegen
+surfaces before moving into assembler, encoder, linker, or module-entry files:
 
 - `atomics.cpp`
 - `intrinsics.cpp`
@@ -57,17 +55,16 @@ After Step 2.1, continue Step 2 through these bounded lanes:
 
 ## Watchouts
 
-- `calls.cpp` was a fully commented translation surface rather than live
+- `cast_ops.cpp` was a fully commented translation surface rather than live
   compiled C++; this packet archived its behavioral contract and deleted the
   obsolete `.cpp`.
-- The archived calls surface has several rebuild hazards: the AArch64 ABI
-  config must preserve eight GP and eight FP argument registers, F128-in-FP
-  policy, I128 pair alignment, large-struct-by-reference behavior, and
-  dedicated sret policy; source stack-slot loads need outgoing-stack adjustment
-  when dynamic alloca is absent; I128 and F128 stack arguments require 16-byte
-  alignment; indirect calls load a spilled function pointer from the outgoing
-  stack area; and F128 result handling must preserve both full `q0` storage and
-  the `__trunctfdf2` accumulator update.
+- The archived cast surface has several rebuild hazards: scalar floating casts
+  require `fmov` bridges between the integer accumulator and FP/SIMD registers;
+  signed narrow and signed 32-bit results need explicit sign-extension;
+  unsigned narrow and unsigned 32-bit results need masking or `mov w0, w0`
+  normalization; signed-to-float must extend narrow signed sources before
+  conversion; and F128 casts must stay on the soft-float route rather than this
+  scalar instruction body.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
