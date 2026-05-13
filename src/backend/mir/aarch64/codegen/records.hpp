@@ -76,6 +76,13 @@ enum class BranchConditionForm {
   FusedCompare,
 };
 
+enum class BranchCompareCandidateKind {
+  None,
+  MaterializedBoolCondition,
+  FusedCompareAndBranch,
+  NonFusableCompare,
+};
+
 enum class PreparedBranchRecordError {
   None,
   InvalidFunction,
@@ -185,6 +192,18 @@ struct CompareOperandPairRecord {
   c4c::backend::bir::TypeKind compare_type = c4c::backend::bir::TypeKind::Void;
 };
 
+struct BranchCompareCandidateRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  BranchCompareCandidateKind kind = BranchCompareCandidateKind::None;
+  std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
+  c4c::ValueNameId condition_value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind condition_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<ComparePredicateRecord> predicate;
+  std::optional<CompareOperandPairRecord> compare_operands;
+  std::optional<BranchTargetPairRecord> target_pair;
+  bool can_fuse_with_branch = false;
+};
+
 struct BranchConditionRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   BranchConditionForm form = BranchConditionForm::Unconditional;
@@ -193,6 +212,7 @@ struct BranchConditionRecord {
   c4c::backend::bir::TypeKind condition_type = c4c::backend::bir::TypeKind::Void;
   std::optional<ComparePredicateRecord> predicate;
   std::optional<CompareOperandPairRecord> compare_operands;
+  std::optional<BranchCompareCandidateRecord> compare_branch_candidate;
   bool can_fuse_with_branch = false;
 };
 
@@ -312,6 +332,8 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
+[[nodiscard]] std::string_view branch_compare_candidate_kind_name(
+    BranchCompareCandidateKind kind);
 [[nodiscard]] std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);

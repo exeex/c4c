@@ -146,8 +146,16 @@ int conditional_branch_record_preserves_materialized_bool_facts() {
       record.condition_record->condition_value_name != condition_name ||
       record.condition_record->condition_type != bir::TypeKind::I1 ||
       record.condition_record->predicate.has_value() ||
-      record.condition_record->compare_operands.has_value()) {
+      record.condition_record->compare_operands.has_value() ||
+      !record.condition_record->compare_branch_candidate.has_value() ||
+      record.condition_record->compare_branch_candidate->kind !=
+          aarch64_codegen::BranchCompareCandidateKind::MaterializedBoolCondition) {
     return fail("expected materialized bool condition ids to be preserved");
+  }
+  if (record.condition_record->compare_branch_candidate->predicate.has_value() ||
+      record.condition_record->compare_branch_candidate->compare_operands.has_value() ||
+      !record.condition_record->compare_branch_candidate->target_pair.has_value()) {
+    return fail("expected materialized bool candidate to keep compare facts absent");
   }
   if (record.target_pair->true_target.block_label != true_label ||
       record.target_pair->false_target.block_label != false_label ||
@@ -201,8 +209,16 @@ int conditional_branch_record_preserves_fused_compare_facts() {
   const auto& condition = *result.record->condition_record;
   if (condition.form != aarch64_codegen::BranchConditionForm::FusedCompare ||
       !condition.can_fuse_with_branch || !condition.predicate.has_value() ||
-      !condition.compare_operands.has_value()) {
+      !condition.compare_operands.has_value() ||
+      !condition.compare_branch_candidate.has_value() ||
+      condition.compare_branch_candidate->kind !=
+          aarch64_codegen::BranchCompareCandidateKind::FusedCompareAndBranch) {
     return fail("expected fused compare condition record");
+  }
+  if (!condition.compare_branch_candidate->target_pair.has_value() ||
+      !condition.compare_branch_candidate->predicate.has_value() ||
+      !condition.compare_branch_candidate->compare_operands.has_value()) {
+    return fail("expected fused compare candidate to preserve target and compare facts");
   }
   if (condition.predicate->source_predicate != bir::BinaryOpcode::Slt ||
       condition.predicate->compare_type != bir::TypeKind::I64 ||

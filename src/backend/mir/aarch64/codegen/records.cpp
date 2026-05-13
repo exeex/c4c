@@ -122,6 +122,20 @@ std::string_view branch_condition_form_name(BranchConditionForm form) {
   return "unknown";
 }
 
+std::string_view branch_compare_candidate_kind_name(BranchCompareCandidateKind kind) {
+  switch (kind) {
+    case BranchCompareCandidateKind::None:
+      return "none";
+    case BranchCompareCandidateKind::MaterializedBoolCondition:
+      return "materialized_bool_condition";
+    case BranchCompareCandidateKind::FusedCompareAndBranch:
+      return "fused_compare_and_branch";
+    case BranchCompareCandidateKind::NonFusableCompare:
+      return "non_fusable_compare";
+  }
+  return "unknown";
+}
+
 std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error) {
   switch (error) {
     case PreparedBranchRecordError::None:
@@ -458,6 +472,22 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
           branch_condition.function_name, branch_condition.true_label, condition_value_id),
       .false_target = make_prepared_branch_target(
           branch_condition.function_name, branch_condition.false_label, condition_value_id),
+  };
+  condition.compare_branch_candidate = BranchCompareCandidateRecord{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .kind =
+          branch_condition.kind == c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare
+              ? (branch_condition.can_fuse_with_branch
+                     ? BranchCompareCandidateKind::FusedCompareAndBranch
+                     : BranchCompareCandidateKind::NonFusableCompare)
+              : BranchCompareCandidateKind::MaterializedBoolCondition,
+      .condition_value_id = condition.condition_value_id,
+      .condition_value_name = condition.condition_value_name,
+      .condition_type = condition.condition_type,
+      .predicate = condition.predicate,
+      .compare_operands = condition.compare_operands,
+      .target_pair = target_pair,
+      .can_fuse_with_branch = condition.can_fuse_with_branch,
   };
 
   return PreparedBranchInstructionRecordResult{
