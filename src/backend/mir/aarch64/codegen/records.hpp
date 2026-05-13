@@ -70,6 +70,12 @@ enum class MemoryInstructionKind {
   Store,
 };
 
+enum class BranchConditionForm {
+  Unconditional,
+  MaterializedBool,
+  FusedCompare,
+};
+
 struct RegisterOperand {
   c4c::backend::aarch64::abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
@@ -137,6 +143,44 @@ struct BranchTargetOperand {
   std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
 };
 
+struct BranchTargetPairRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  BranchTargetOperand true_target;
+  BranchTargetOperand false_target;
+};
+
+struct CompareValueRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::Value source_value;
+};
+
+struct ComparePredicateRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  c4c::backend::bir::BinaryOpcode source_predicate = c4c::backend::bir::BinaryOpcode::Eq;
+  c4c::backend::bir::TypeKind compare_type = c4c::backend::bir::TypeKind::Void;
+};
+
+struct CompareOperandPairRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  CompareValueRecord lhs;
+  CompareValueRecord rhs;
+  c4c::backend::bir::TypeKind compare_type = c4c::backend::bir::TypeKind::Void;
+};
+
+struct BranchConditionRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  BranchConditionForm form = BranchConditionForm::Unconditional;
+  std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
+  c4c::ValueNameId condition_value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind condition_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<ComparePredicateRecord> predicate;
+  std::optional<CompareOperandPairRecord> compare_operands;
+  bool can_fuse_with_branch = false;
+};
+
 struct MemoryOperand {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   MemoryBaseKind base_kind = MemoryBaseKind::None;
@@ -169,7 +213,9 @@ struct OperandRecord {
 
 struct BranchInstructionRecord {
   BranchTargetOperand target;
+  std::optional<BranchTargetPairRecord> target_pair;
   std::optional<OperandRecord> condition;
+  std::optional<BranchConditionRecord> condition_record;
   bool conditional = false;
 };
 
@@ -245,6 +291,8 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
+[[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
+[[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);
 [[nodiscard]] OperandRecord make_immediate_operand(ImmediateOperand operand);
 [[nodiscard]] OperandRecord make_prepared_value_operand(PreparedValueOperand operand);

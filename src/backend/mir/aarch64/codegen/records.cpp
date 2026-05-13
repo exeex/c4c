@@ -110,6 +110,49 @@ std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
   return "unknown";
 }
 
+std::string_view branch_condition_form_name(BranchConditionForm form) {
+  switch (form) {
+    case BranchConditionForm::Unconditional:
+      return "unconditional";
+    case BranchConditionForm::MaterializedBool:
+      return "materialized_bool";
+    case BranchConditionForm::FusedCompare:
+      return "fused_compare";
+  }
+  return "unknown";
+}
+
+bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case c4c::backend::bir::BinaryOpcode::Eq:
+    case c4c::backend::bir::BinaryOpcode::Ne:
+    case c4c::backend::bir::BinaryOpcode::Slt:
+    case c4c::backend::bir::BinaryOpcode::Sle:
+    case c4c::backend::bir::BinaryOpcode::Sgt:
+    case c4c::backend::bir::BinaryOpcode::Sge:
+    case c4c::backend::bir::BinaryOpcode::Ult:
+    case c4c::backend::bir::BinaryOpcode::Ule:
+    case c4c::backend::bir::BinaryOpcode::Ugt:
+    case c4c::backend::bir::BinaryOpcode::Uge:
+      return true;
+    case c4c::backend::bir::BinaryOpcode::Add:
+    case c4c::backend::bir::BinaryOpcode::Sub:
+    case c4c::backend::bir::BinaryOpcode::Mul:
+    case c4c::backend::bir::BinaryOpcode::And:
+    case c4c::backend::bir::BinaryOpcode::Or:
+    case c4c::backend::bir::BinaryOpcode::Xor:
+    case c4c::backend::bir::BinaryOpcode::Shl:
+    case c4c::backend::bir::BinaryOpcode::LShr:
+    case c4c::backend::bir::BinaryOpcode::AShr:
+    case c4c::backend::bir::BinaryOpcode::SDiv:
+    case c4c::backend::bir::BinaryOpcode::UDiv:
+    case c4c::backend::bir::BinaryOpcode::SRem:
+    case c4c::backend::bir::BinaryOpcode::URem:
+      return false;
+  }
+  return false;
+}
+
 OperandRecord make_register_operand(RegisterOperand operand) {
   return OperandRecord{.kind = OperandKind::Register, .payload = operand};
 }
