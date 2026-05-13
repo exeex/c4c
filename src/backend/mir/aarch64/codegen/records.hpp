@@ -130,6 +130,22 @@ enum class PreparedScalarAluRecordError {
   RegisterConversionFailed,
 };
 
+enum class PreparedScalarCastRecordError {
+  None,
+  InvalidFunction,
+  UnsupportedOpcode,
+  UnsupportedResultValue,
+  MissingResultValueHome,
+  MissingResultStorage,
+  UnsupportedResultStorage,
+  UnsupportedOperandValue,
+  MissingOperandValueHome,
+  MissingOperandStorage,
+  UnsupportedOperandStorage,
+  UnsupportedOperandType,
+  RegisterConversionFailed,
+};
+
 struct RegisterOperand {
   c4c::backend::aarch64::abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
@@ -332,9 +348,19 @@ struct PreparedScalarAluRecordResult {
   PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
 };
 
+struct PreparedScalarCastRecordResult {
+  std::optional<ScalarCastRecord> record;
+  PreparedScalarCastRecordError error = PreparedScalarCastRecordError::None;
+};
+
 struct PreparedScalarInstructionRecordResult {
   std::optional<ScalarInstructionRecord> record;
   PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
+};
+
+struct PreparedScalarCastInstructionRecordResult {
+  std::optional<ScalarInstructionRecord> record;
+  PreparedScalarCastRecordError error = PreparedScalarCastRecordError::None;
 };
 
 struct MemoryInstructionRecord {
@@ -408,6 +434,8 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view prepared_branch_record_error_name(PreparedBranchRecordError error);
 [[nodiscard]] std::string_view prepared_scalar_alu_record_error_name(
     PreparedScalarAluRecordError error);
+[[nodiscard]] std::string_view prepared_scalar_cast_record_error_name(
+    PreparedScalarCastRecordError error);
 [[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode);
@@ -451,5 +479,16 @@ struct InstructionRecord {
     const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
     const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
     const c4c::backend::bir::BinaryInst& binary);
+[[nodiscard]] PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::CastInst& cast);
+[[nodiscard]] PreparedScalarCastInstructionRecordResult
+make_prepared_scalar_cast_instruction_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::CastInst& cast);
 
 }  // namespace c4c::backend::aarch64::codegen

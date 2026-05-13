@@ -230,6 +230,38 @@ std::string_view prepared_scalar_alu_record_error_name(PreparedScalarAluRecordEr
   return "unknown";
 }
 
+std::string_view prepared_scalar_cast_record_error_name(PreparedScalarCastRecordError error) {
+  switch (error) {
+    case PreparedScalarCastRecordError::None:
+      return "none";
+    case PreparedScalarCastRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedScalarCastRecordError::UnsupportedOpcode:
+      return "unsupported_opcode";
+    case PreparedScalarCastRecordError::UnsupportedResultValue:
+      return "unsupported_result_value";
+    case PreparedScalarCastRecordError::MissingResultValueHome:
+      return "missing_result_value_home";
+    case PreparedScalarCastRecordError::MissingResultStorage:
+      return "missing_result_storage";
+    case PreparedScalarCastRecordError::UnsupportedResultStorage:
+      return "unsupported_result_storage";
+    case PreparedScalarCastRecordError::UnsupportedOperandValue:
+      return "unsupported_operand_value";
+    case PreparedScalarCastRecordError::MissingOperandValueHome:
+      return "missing_operand_value_home";
+    case PreparedScalarCastRecordError::MissingOperandStorage:
+      return "missing_operand_storage";
+    case PreparedScalarCastRecordError::UnsupportedOperandStorage:
+      return "unsupported_operand_storage";
+    case PreparedScalarCastRecordError::UnsupportedOperandType:
+      return "unsupported_operand_type";
+    case PreparedScalarCastRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+  }
+  return "unknown";
+}
+
 bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode) {
   switch (opcode) {
     case c4c::backend::bir::BinaryOpcode::Eq:
@@ -381,9 +413,51 @@ PreparedScalarAluRecordResult scalar_alu_record_error(PreparedScalarAluRecordErr
   return PreparedScalarAluRecordResult{.record = std::nullopt, .error = error};
 }
 
+PreparedScalarCastRecordResult scalar_cast_record_error(PreparedScalarCastRecordError error) {
+  return PreparedScalarCastRecordResult{.record = std::nullopt, .error = error};
+}
+
 PreparedScalarInstructionRecordResult scalar_instruction_record_error(
     PreparedScalarAluRecordError error) {
   return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
+}
+
+PreparedScalarCastInstructionRecordResult scalar_cast_instruction_record_error(
+    PreparedScalarCastRecordError error) {
+  return PreparedScalarCastInstructionRecordResult{.record = std::nullopt, .error = error};
+}
+
+PreparedScalarCastRecordError scalar_cast_operand_error_from_alu_error(
+    PreparedScalarAluRecordError error) {
+  switch (error) {
+    case PreparedScalarAluRecordError::None:
+      return PreparedScalarCastRecordError::None;
+    case PreparedScalarAluRecordError::UnsupportedOperandValue:
+      return PreparedScalarCastRecordError::UnsupportedOperandValue;
+    case PreparedScalarAluRecordError::MissingOperandValueHome:
+      return PreparedScalarCastRecordError::MissingOperandValueHome;
+    case PreparedScalarAluRecordError::MissingOperandStorage:
+      return PreparedScalarCastRecordError::MissingOperandStorage;
+    case PreparedScalarAluRecordError::UnsupportedOperandStorage:
+      return PreparedScalarCastRecordError::UnsupportedOperandStorage;
+    case PreparedScalarAluRecordError::UnsupportedOperandType:
+      return PreparedScalarCastRecordError::UnsupportedOperandType;
+    case PreparedScalarAluRecordError::RegisterConversionFailed:
+      return PreparedScalarCastRecordError::RegisterConversionFailed;
+    case PreparedScalarAluRecordError::InvalidFunction:
+      return PreparedScalarCastRecordError::InvalidFunction;
+    case PreparedScalarAluRecordError::UnsupportedOpcode:
+      return PreparedScalarCastRecordError::UnsupportedOpcode;
+    case PreparedScalarAluRecordError::UnsupportedResultValue:
+      return PreparedScalarCastRecordError::UnsupportedResultValue;
+    case PreparedScalarAluRecordError::MissingResultValueHome:
+      return PreparedScalarCastRecordError::MissingResultValueHome;
+    case PreparedScalarAluRecordError::MissingResultStorage:
+      return PreparedScalarCastRecordError::MissingResultStorage;
+    case PreparedScalarAluRecordError::UnsupportedResultStorage:
+      return PreparedScalarCastRecordError::UnsupportedResultStorage;
+  }
+  return PreparedScalarCastRecordError::UnsupportedOperandType;
 }
 
 BranchTargetOperand make_prepared_branch_target(c4c::FunctionNameId function_name,
@@ -935,6 +1009,80 @@ PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_recor
   return PreparedScalarInstructionRecordResult{
       .record = make_scalar_alu_instruction_record(*result.record),
       .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::CastInst& cast) {
+  if (value_locations.function_name == c4c::kInvalidFunctionName ||
+      storage_plan.function_name != value_locations.function_name) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::InvalidFunction);
+  }
+  if (!is_simple_integer_cast_opcode(cast.opcode)) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOpcode);
+  }
+  if (cast.result.kind != c4c::backend::bir::Value::Kind::Named || cast.result.name.empty()) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultValue);
+  }
+  if (!scalar_register_view(cast.result.type).has_value() ||
+      !scalar_register_view(cast.operand.type).has_value()) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandType);
+  }
+
+  const auto* result_home = find_named_value_home(names, value_locations, cast.result);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::MissingResultValueHome);
+  }
+  const auto* result_storage = find_storage_plan_value(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::MissingResultStorage);
+  }
+  if (result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
+      !result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
+      *result_home->register_name != *result_storage->register_name) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultStorage);
+  }
+
+  OperandRecord source;
+  if (const auto error =
+          make_prepared_scalar_operand(names, value_locations, storage_plan, cast.operand, source);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_cast_record_error(scalar_cast_operand_error_from_alu_error(error));
+  }
+
+  return PreparedScalarCastRecordResult{
+      .record =
+          ScalarCastRecord{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .operation = scalar_cast_operation_from_cast_opcode(cast.opcode),
+              .source_cast_opcode = cast.opcode,
+              .source_type = cast.operand.type,
+              .result_value_id = result_home->value_id,
+              .result_value_name = result_home->value_name,
+              .result_type = cast.result.type,
+              .source = source,
+              .supported_simple_integer_cast = true,
+          },
+      .error = PreparedScalarCastRecordError::None,
+  };
+}
+
+PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_record(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
+    const c4c::backend::bir::CastInst& cast) {
+  const auto result = make_prepared_scalar_cast_record(names, value_locations, storage_plan, cast);
+  if (!result.record.has_value()) {
+    return scalar_cast_instruction_record_error(result.error);
+  }
+  return PreparedScalarCastInstructionRecordResult{
+      .record = make_scalar_cast_instruction_record(*result.record),
+      .error = PreparedScalarCastRecordError::None,
   };
 }
 
