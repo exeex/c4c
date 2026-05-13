@@ -1,28 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/203_aarch64_markdown_first_backend_reconstruction.md
 Source Plan Path: plan.md
-Current Step ID: Step 2.4h
-Current Step Title: Extract linker `reloc.cpp` To Markdown Artifact
+Current Step ID: Step 2.4i
+Current Step Title: Extract linker `types.cpp` To Markdown Artifact
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.4h: Extract linker `reloc.cpp` To Markdown Artifact extracted
-`src/backend/mir/aarch64/linker/reloc.cpp` into
-`src/backend/mir/aarch64/linker/reloc.md` and removed the old `.cpp`
+Step 2.4i: Extract linker `types.cpp` To Markdown Artifact extracted
+`src/backend/mir/aarch64/linker/types.cpp` into
+`src/backend/mir/aarch64/linker/types.md` and removed the old `.cpp`
 from the live tree.
 
-The markdown artifact records the old static text relocation application
-surface, including the `apply_first_static_text_relocations` entry point,
-first-slice relocation allowlist, byte and instruction patch helpers, address
-model, encoding rules, diagnostics, dependencies, assumptions, incomplete
-relocation-engine behavior, and rebuild risks.
+The markdown artifact records the old linker type surface, including the
+AArch64 interpreter/base/page constants, `GlobalSymbol` fields,
+`GlobalSymbolOps` accessors and constructors, common/BSS mutation behavior,
+dynamic symbol state, replacement policy, cross-surface dependencies,
+assumptions, and rebuild risks.
 
 ## Suggested Next
 
 Next coherent packet: continue Step 2.4 by extracting
-`src/backend/mir/aarch64/linker/types.cpp` to markdown and removing that old
+`src/backend/mir/aarch64/linker/mod.cpp` to markdown and removing that old
 `.cpp` from the live tree.
 
 Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
@@ -33,8 +33,7 @@ Step 2.3 now has markdown artifacts for these assembler encoder surfaces:
 `assembler/encoder/system.cpp`, and `assembler/encoder/mod.cpp`.
 
 After Step 2.3, continue Step 2 through these bounded lanes:
-- Step 2.4: remaining linker surfaces: `linker/types.cpp` and
-  `linker/mod.cpp`.
+- Step 2.4: remaining linker surface: `linker/mod.cpp`.
 - Step 2.5: top-level module entry surface: `mod.cpp`.
 
 ## Watchouts
@@ -82,6 +81,12 @@ After Step 2.3, continue Step 2 through these bounded lanes:
   historical `279` alias hazard, and address-model risks. Treat it as rebuild
   guidance, not as proof that the live C++ backend has a complete AArch64
   relocation engine.
+- `linker/types.md` documents the old linker type surface, including
+  `GlobalSymbol`, AArch64 interpreter/base/page constants, dynamic symbol
+  state, PLT/GOT and copy-relocation bookkeeping fields, the common/BSS
+  sentinel, and the dynamic-symbol replacement policy. Treat it as rebuild
+  guidance, not as proof that the live C++ backend has a complete AArch64
+  linker symbol model.
 - Continue keeping Step 2 descriptive. Do not patch or expand remaining old
   AArch64 `.cpp` files while extracting them to markdown.
 - Treat the Step 2 lane labels above as execution-state substeps, not durable
