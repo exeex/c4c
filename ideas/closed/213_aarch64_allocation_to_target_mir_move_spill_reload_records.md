@@ -1,7 +1,8 @@
 # AArch64 Allocation To Target MIR Move Spill Reload Records
 
-Status: Open
+Status: Closed
 Created: 2026-05-13
+Closed: 2026-05-13
 
 Depends On:
 - `ideas/closed/210_aarch64_memory_operand_model_from_prepared_facts.md`
@@ -83,6 +84,18 @@ materialize reload/store behavior locally.
   instead of allocating registers or inventing spill materialization locally.
 - Focused tests or compile proof cover representative records without assembly
   text parsing.
+
+## Completion Note
+
+Closed after the active runbook added structured AArch64 target-MIR records for
+allocation locations, moves, parallel copies, ABI bindings, and spill/reload
+pseudo operations, updated the allocation-sensitive markdown consumers, and
+proved the representative record surfaces with backend structured-record tests.
+
+Close-time regression guard used the backend scope:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+The monotonic checker passed in documented non-decreasing mode with 131 passed
+tests before and after, no new failures, and no suspicious timeouts.
 
 ## Reviewer Reject Signals
 
