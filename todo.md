@@ -3,51 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/204_aarch64_prepared_module_mir_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Prepared/AArch64 Boundary Surfaces
+Current Step ID: 2
+Current Step Title: Add Prepared-Module Handoff Gate
 
 ## Just Finished
 
-Step 1 inspected the prepared-module and backend boundary surfaces for
-`plan.md` Step 1. `PreparedBirModule` already carries the target profile,
-prepared name tables, control-flow, value locations, stack/frame/dynamic-stack
-plans, addressing, liveness, regalloc, call plans, storage plans, invariants,
-and completed phases needed for an AArch64 MIR handoff gate. The x86 precedent
-is a thin prepared-module API (`src/backend/mir/x86/api/api.hpp`), ABI/profile
-resolver (`src/backend/mir/x86/abi/abi.hpp`), and module consumer
-(`src/backend/mir/x86/module/module.hpp`); AArch64 currently has only
-text-oriented `codegen/emit.hpp` entrypoints and no prepared MIR consumer.
+Step 2 added the AArch64 prepared-module handoff gate for `plan.md` Step 2.
+`c4c::backend::aarch64::api::build_prepared_module(const PreparedBirModule&)`
+now resolves the prepared target profile, rejects non-`TargetArch::Aarch64`
+targets and non-`BackendAbiKind::Aapcs64` ABI with typed handoff errors, and
+constructs only a minimal AArch64 module skeleton after the gate succeeds.
+Focused tests prove accepted AArch64/AAPCS64 input and rejected wrong-arch and
+wrong-ABI inputs.
 
 ## Suggested Next
 
-Implement Step 2 as a compile-proven AArch64 prepared-module handoff gate.
-Recommended files:
+Implement Step 3 by defining the first target-local AArch64 MIR module,
+function, and block records keyed by structured prepared ids. Recommended next
+owned files:
 
-- `src/backend/mir/aarch64/abi/abi.hpp`
-- `src/backend/mir/aarch64/abi/abi.cpp`
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
-- `src/backend/mir/aarch64/api/api.hpp`
-- `src/backend/mir/aarch64/api/api.cpp`
-- `tests/backend/backend_aarch64_prepared_handoff_gate_test.cpp`
-- `src/backend/CMakeLists.txt`
+- `tests/backend/backend_aarch64_prepared_module_identity_test.cpp`
 - `tests/backend/CMakeLists.txt`
 
-The Step 2 API should expose a prepared-module entry such as
-`c4c::backend::aarch64::api::build_prepared_module(const PreparedBirModule&)`
-or an equivalent target-local builder. The gate should resolve
-`PreparedBirModule::target_profile`, reject non-`TargetArch::Aarch64`, require
-`BackendAbiKind::Aapcs64`, and return/throw a typed backend handoff failure
-before constructing any instruction-selection or assembly-text records. The
-first focused test target should be
-`backend_aarch64_prepared_handoff_gate_test`, registered as CTest
-`backend_aarch64_prepared_handoff_gate`.
-
-Exact Step 2 proof command:
-
-```sh
-cmake --build --preset default --target backend_aarch64_prepared_handoff_gate_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_handoff_gate$' --output-on-failure >> test_after.log 2>&1
-```
+The next packet should populate records from `PreparedBirModule::module` and
+`PreparedBirModule::control_flow` only after the existing handoff gate succeeds,
+while keeping display strings as debug labels rather than semantic keys.
 
 ## Watchouts
 
@@ -62,14 +44,17 @@ cmake --build --preset default --target backend_aarch64_prepared_handoff_gate_te
 - Do not weaken, skip, or reclassify tests to claim boundary progress.
 - `PreparedMemoryAccess` still lacks explicit volatility/address-space fields;
   that is not a Step 2 gate blocker, but do not start memory lowering from it.
+- The new AArch64 module skeleton currently stores only the prepared-module
+  pointer and resolved target profile; Step 3 should extend that skeleton
+  without adding instruction selection.
 - Preserve unrelated dirty files and transient `review/` artifacts.
 
 ## Proof
 
-Delegated Step 1 proof command:
+Delegated Step 2 proof command:
 
 ```sh
-cmake --build --preset default > test_after.log 2>&1
+cmake --build --preset default --target backend_aarch64_prepared_handoff_gate_test > test_after.log 2>&1 && ctest --test-dir build -R '^backend_aarch64_prepared_handoff_gate$' --output-on-failure >> test_after.log 2>&1
 ```
 
 Proof log: `test_after.log`.

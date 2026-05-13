@@ -257,6 +257,28 @@ set_tests_properties(backend_aarch64_signature_metadata PROPERTIES
   LABELS "backend;internal;cpp"
 )
 
+add_executable(backend_aarch64_prepared_handoff_gate_test
+    "${BACKEND_TEST_ROOT}/backend_aarch64_prepared_handoff_gate_test.cpp"
+)
+target_include_directories(backend_aarch64_prepared_handoff_gate_test PRIVATE
+    "${PROJECT_SOURCE_DIR}"
+)
+target_link_libraries(backend_aarch64_prepared_handoff_gate_test PRIVATE
+    c4c_backend
+)
+set_target_properties(backend_aarch64_prepared_handoff_gate_test PROPERTIES
+    CXX_STANDARD 17
+    CXX_STANDARD_REQUIRED ON
+)
+
+add_test(
+  NAME backend_aarch64_prepared_handoff_gate
+  COMMAND $<TARGET_FILE:backend_aarch64_prepared_handoff_gate_test>
+)
+set_tests_properties(backend_aarch64_prepared_handoff_gate PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 add_executable(backend_prepare_liveness_test
     "${BACKEND_TEST_ROOT}/backend_prepare_liveness_test.cpp"
 )
