@@ -88,8 +88,24 @@ int scalar_records_preserve_bir_prepared_identity_and_make_machine_nodes() {
       scalar_cast.family != aarch64_codegen::InstructionFamily::Scalar ||
       scalar_alu.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
       scalar_cast.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      scalar_alu.opcode != aarch64_codegen::MachineOpcode::Add ||
+      scalar_cast.opcode != aarch64_codegen::MachineOpcode::SignExtend ||
+      aarch64_codegen::machine_opcode_name(scalar_cast.opcode) != "sign_extend" ||
+      scalar_alu.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      scalar_cast.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      scalar_alu.operands.size() != 2 || scalar_cast.operands.size() != 1 ||
+      scalar_alu.defs.size() != 1 || scalar_cast.defs.size() != 1 ||
+      scalar_alu.uses.size() != 2 || scalar_cast.uses.size() != 1 ||
       alu_payload == nullptr || cast_payload == nullptr) {
     return fail("expected scalar ALU and cast instructions to be machine-node wrappers");
+  }
+  if (scalar_alu.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::PreparedValue ||
+      scalar_alu.defs.front().value_id != prepare::PreparedValueId{30} ||
+      scalar_alu.uses.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      scalar_alu.uses.front().reg != aarch64_abi::x_register(1) ||
+      aarch64_codegen::machine_effect_resource_kind_name(scalar_alu.uses.front().kind) !=
+          "register") {
+    return fail("expected scalar machine node to publish def/use register metadata");
   }
 
   if (!alu_payload->scalar_alu.has_value() || alu_payload->scalar_cast.has_value() ||
@@ -214,6 +230,8 @@ int scalar_records_do_not_own_other_instruction_families() {
   }
   if (aarch64_codegen::instruction_family_name(scalar_alu.family) != "scalar" ||
       aarch64_codegen::record_surface_kind_name(scalar_alu.surface) != "machine_instruction_node" ||
+      aarch64_codegen::machine_opcode_name(scalar_alu.opcode) == "unspecified" ||
+      aarch64_codegen::machine_pseudo_kind_name(scalar_alu.pseudo) != "none" ||
       aarch64_codegen::instruction_family_name(scalar_cast.family) != "scalar" ||
       aarch64_codegen::record_surface_kind_name(scalar_cast.surface) !=
           "machine_instruction_node") {

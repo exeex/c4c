@@ -259,6 +259,12 @@ int memory_instruction_records_do_not_select_or_emit_load_store_behavior() {
       std::get_if<aarch64_codegen::MemoryInstructionRecord>(&instruction.payload);
   if (instruction.family != aarch64_codegen::InstructionFamily::Memory ||
       instruction.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::Store ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) != "store" ||
+      instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.operands.size() != 2 || instruction.uses.size() != 2 ||
+      !instruction.defs.empty() || instruction.side_effects.size() != 1 ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite ||
       memory == nullptr ||
       aarch64_codegen::memory_instruction_kind_name(memory->memory_kind) != "store" ||
       memory->address.function_name != c4c::FunctionNameId{15} ||
@@ -271,6 +277,37 @@ int memory_instruction_records_do_not_select_or_emit_load_store_behavior() {
       std::holds_alternative<aarch64_codegen::AssemblerInstructionRecord>(instruction.payload) ||
       std::holds_alternative<aarch64_codegen::ObjectInstructionRecord>(instruction.payload)) {
     return fail("expected memory records not to own call, return, assembler, or object behavior");
+  }
+  return 0;
+}
+
+int unsupported_machine_node_status_fails_closed_without_text() {
+  const auto unsupported = aarch64_codegen::make_unsupported_machine_instruction(
+      aarch64_codegen::InstructionFamily::Memory,
+      aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported,
+      "global/string memory selection is deferred");
+
+  if (unsupported.family != aarch64_codegen::InstructionFamily::Memory ||
+      unsupported.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      unsupported.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      unsupported.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      unsupported.selection.diagnostic != "global/string memory selection is deferred" ||
+      !unsupported.operands.empty() || !unsupported.defs.empty() ||
+      !unsupported.uses.empty() || !unsupported.clobbers.empty() ||
+      !unsupported.side_effects.empty()) {
+    return fail("expected unsupported machine node status to fail closed structurally");
+  }
+  if (aarch64_codegen::machine_node_selection_status_name(unsupported.selection.status) !=
+          "deferred_unsupported" ||
+      aarch64_codegen::machine_opcode_name(unsupported.opcode) != "unspecified" ||
+      aarch64_codegen::machine_opcode_name(aarch64_codegen::MachineOpcode::SpillToSlot) !=
+          "spill_to_slot" ||
+      aarch64_codegen::machine_pseudo_kind_name(aarch64_codegen::MachinePseudoKind::ReloadFromSlot) !=
+          "reload_from_slot" ||
+      aarch64_codegen::machine_side_effect_kind_name(
+          aarch64_codegen::MachineSideEffectKind::MemoryWrite) != "memory_write") {
+    return fail("expected unsupported diagnostics to avoid assembly text identity");
   }
   return 0;
 }
@@ -294,6 +331,10 @@ int main() {
     return status;
   }
   if (const int status = memory_instruction_records_do_not_select_or_emit_load_store_behavior();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unsupported_machine_node_status_fails_closed_without_text();
       status != 0) {
     return status;
   }

@@ -86,6 +86,58 @@ enum class MemoryOperandSupportKind {
   DeferredUnsupported,
 };
 
+enum class MachineOpcode {
+  Unspecified,
+  Branch,
+  ConditionalBranch,
+  CompareBranch,
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+  SignExtend,
+  ZeroExtend,
+  Truncate,
+  Load,
+  Store,
+  SpillToSlot,
+  ReloadFromSlot,
+};
+
+enum class MachinePseudoKind {
+  None,
+  SpillToSlot,
+  ReloadFromSlot,
+};
+
+enum class MachineNodeSelectionStatus {
+  Selected,
+  DeferredUnsupported,
+  MissingRequiredFacts,
+};
+
+enum class MachineEffectResourceKind {
+  PreparedValue,
+  Register,
+  Memory,
+  FrameSlot,
+  Symbol,
+  BranchTarget,
+  Flags,
+};
+
+enum class MachineSideEffectKind {
+  ControlFlowTransfer,
+  MemoryRead,
+  MemoryWrite,
+  VolatileMemoryAccess,
+  Call,
+  Return,
+  InlineAssembly,
+  ObjectEmission,
+};
+
 enum class ScalarAluOperationKind {
   Add,
   Sub,
@@ -339,6 +391,22 @@ struct OperandRecord {
   OperandPayload payload = RegisterOperand{};
 };
 
+struct MachineEffectResource {
+  MachineEffectResourceKind kind = MachineEffectResourceKind::PreparedValue;
+  std::optional<OperandRecord> operand;
+  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> reg;
+  std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<c4c::LinkNameId> symbol_name;
+  std::optional<c4c::BlockLabelId> block_label;
+};
+
+struct MachineNodeStatusRecord {
+  MachineNodeSelectionStatus status = MachineNodeSelectionStatus::Selected;
+  std::string_view diagnostic;
+};
+
 struct BranchInstructionRecord {
   BranchTargetOperand target;
   std::optional<BranchTargetPairRecord> target_pair;
@@ -462,10 +530,18 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
 struct InstructionRecord {
   InstructionFamily family = InstructionFamily::Scalar;
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  MachineOpcode opcode = MachineOpcode::Unspecified;
+  MachinePseudoKind pseudo = MachinePseudoKind::None;
+  MachineNodeStatusRecord selection;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  std::vector<MachineEffectResource> clobbers;
+  std::vector<MachineSideEffectKind> side_effects;
   InstructionPayload payload = ScalarInstructionRecord{};
 };
 
@@ -479,6 +555,13 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);
 [[nodiscard]] std::string_view memory_operand_support_kind_name(MemoryOperandSupportKind kind);
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
+[[nodiscard]] std::string_view machine_opcode_name(MachineOpcode opcode);
+[[nodiscard]] std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo);
+[[nodiscard]] std::string_view machine_node_selection_status_name(
+    MachineNodeSelectionStatus status);
+[[nodiscard]] std::string_view machine_effect_resource_kind_name(
+    MachineEffectResourceKind kind);
+[[nodiscard]] std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
 [[nodiscard]] std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind);
@@ -515,6 +598,10 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_object_instruction(ObjectInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_unsupported_machine_instruction(
+    InstructionFamily family,
+    MachineNodeSelectionStatus status,
+    std::string_view diagnostic);
 [[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
     c4c::FunctionNameId function_name,
     const c4c::backend::prepare::PreparedControlFlowBlock& block,

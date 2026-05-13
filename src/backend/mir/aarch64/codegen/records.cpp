@@ -135,6 +135,110 @@ std::string_view instruction_family_name(InstructionFamily family) {
   return "unknown";
 }
 
+std::string_view machine_opcode_name(MachineOpcode opcode) {
+  switch (opcode) {
+    case MachineOpcode::Unspecified:
+      return "unspecified";
+    case MachineOpcode::Branch:
+      return "branch";
+    case MachineOpcode::ConditionalBranch:
+      return "conditional_branch";
+    case MachineOpcode::CompareBranch:
+      return "compare_branch";
+    case MachineOpcode::Add:
+      return "add";
+    case MachineOpcode::Sub:
+      return "sub";
+    case MachineOpcode::And:
+      return "and";
+    case MachineOpcode::Or:
+      return "or";
+    case MachineOpcode::Xor:
+      return "xor";
+    case MachineOpcode::SignExtend:
+      return "sign_extend";
+    case MachineOpcode::ZeroExtend:
+      return "zero_extend";
+    case MachineOpcode::Truncate:
+      return "truncate";
+    case MachineOpcode::Load:
+      return "load";
+    case MachineOpcode::Store:
+      return "store";
+    case MachineOpcode::SpillToSlot:
+      return "spill_to_slot";
+    case MachineOpcode::ReloadFromSlot:
+      return "reload_from_slot";
+  }
+  return "unknown";
+}
+
+std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo) {
+  switch (pseudo) {
+    case MachinePseudoKind::None:
+      return "none";
+    case MachinePseudoKind::SpillToSlot:
+      return "spill_to_slot";
+    case MachinePseudoKind::ReloadFromSlot:
+      return "reload_from_slot";
+  }
+  return "unknown";
+}
+
+std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus status) {
+  switch (status) {
+    case MachineNodeSelectionStatus::Selected:
+      return "selected";
+    case MachineNodeSelectionStatus::DeferredUnsupported:
+      return "deferred_unsupported";
+    case MachineNodeSelectionStatus::MissingRequiredFacts:
+      return "missing_required_facts";
+  }
+  return "unknown";
+}
+
+std::string_view machine_effect_resource_kind_name(MachineEffectResourceKind kind) {
+  switch (kind) {
+    case MachineEffectResourceKind::PreparedValue:
+      return "prepared_value";
+    case MachineEffectResourceKind::Register:
+      return "register";
+    case MachineEffectResourceKind::Memory:
+      return "memory";
+    case MachineEffectResourceKind::FrameSlot:
+      return "frame_slot";
+    case MachineEffectResourceKind::Symbol:
+      return "symbol";
+    case MachineEffectResourceKind::BranchTarget:
+      return "branch_target";
+    case MachineEffectResourceKind::Flags:
+      return "flags";
+  }
+  return "unknown";
+}
+
+std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind) {
+  switch (kind) {
+    case MachineSideEffectKind::ControlFlowTransfer:
+      return "control_flow_transfer";
+    case MachineSideEffectKind::MemoryRead:
+      return "memory_read";
+    case MachineSideEffectKind::MemoryWrite:
+      return "memory_write";
+    case MachineSideEffectKind::VolatileMemoryAccess:
+      return "volatile_memory_access";
+    case MachineSideEffectKind::Call:
+      return "call";
+    case MachineSideEffectKind::Return:
+      return "return";
+    case MachineSideEffectKind::InlineAssembly:
+      return "inline_assembly";
+    case MachineSideEffectKind::ObjectEmission:
+      return "object_emission";
+  }
+  return "unknown";
+}
+
 std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
   switch (kind) {
     case MemoryInstructionKind::Load:
@@ -1042,6 +1146,203 @@ std::optional<CompareValueRecord> make_compare_value_record(
   return record;
 }
 
+MachineOpcode machine_opcode_from_scalar_alu(ScalarAluOperationKind operation) {
+  switch (operation) {
+    case ScalarAluOperationKind::Add:
+      return MachineOpcode::Add;
+    case ScalarAluOperationKind::Sub:
+      return MachineOpcode::Sub;
+    case ScalarAluOperationKind::And:
+      return MachineOpcode::And;
+    case ScalarAluOperationKind::Or:
+      return MachineOpcode::Or;
+    case ScalarAluOperationKind::Xor:
+      return MachineOpcode::Xor;
+    case ScalarAluOperationKind::Deferred:
+      return MachineOpcode::Unspecified;
+  }
+  return MachineOpcode::Unspecified;
+}
+
+MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation) {
+  switch (operation) {
+    case ScalarCastOperationKind::SignExtend:
+      return MachineOpcode::SignExtend;
+    case ScalarCastOperationKind::ZeroExtend:
+      return MachineOpcode::ZeroExtend;
+    case ScalarCastOperationKind::Truncate:
+      return MachineOpcode::Truncate;
+    case ScalarCastOperationKind::Deferred:
+      return MachineOpcode::Unspecified;
+  }
+  return MachineOpcode::Unspecified;
+}
+
+MachineOpcode machine_opcode_from_scalar_instruction(const ScalarInstructionRecord& instruction) {
+  if (instruction.scalar_alu.has_value()) {
+    return machine_opcode_from_scalar_alu(instruction.scalar_alu->operation);
+  }
+  if (instruction.scalar_cast.has_value()) {
+    return machine_opcode_from_scalar_cast(instruction.scalar_cast->operation);
+  }
+  return MachineOpcode::Unspecified;
+}
+
+MachineOpcode machine_opcode_from_branch_instruction(const BranchInstructionRecord& instruction) {
+  if (!instruction.conditional) {
+    return MachineOpcode::Branch;
+  }
+  if (instruction.condition_record.has_value() &&
+      instruction.condition_record->form == BranchConditionForm::FusedCompare) {
+    return MachineOpcode::CompareBranch;
+  }
+  return MachineOpcode::ConditionalBranch;
+}
+
+MachineOpcode machine_opcode_from_memory_instruction(const MemoryInstructionRecord& instruction) {
+  switch (instruction.memory_kind) {
+    case MemoryInstructionKind::Load:
+      return MachineOpcode::Load;
+    case MemoryInstructionKind::Store:
+      return MachineOpcode::Store;
+  }
+  return MachineOpcode::Unspecified;
+}
+
+MachineEffectResource effect_from_operand(const OperandRecord& operand) {
+  MachineEffectResource resource;
+  resource.operand = operand;
+  switch (operand.kind) {
+    case OperandKind::Register: {
+      const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Register;
+      if (reg != nullptr) {
+        resource.value_id = reg->value_id;
+        resource.value_name = reg->value_name;
+        resource.reg = reg->reg;
+      }
+      break;
+    }
+    case OperandKind::Immediate: {
+      const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::PreparedValue;
+      if (immediate != nullptr) {
+        resource.value_id = immediate->source_value_id;
+        resource.value_name = immediate->source_value_name;
+      }
+      break;
+    }
+    case OperandKind::PreparedValue: {
+      const auto* value = std::get_if<PreparedValueOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::PreparedValue;
+      if (value != nullptr) {
+        resource.value_id = value->value_id;
+        resource.value_name = value->value_name;
+      }
+      break;
+    }
+    case OperandKind::FrameSlot: {
+      const auto* slot = std::get_if<FrameSlotOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::FrameSlot;
+      if (slot != nullptr) {
+        resource.frame_slot_id = slot->slot_id;
+        if (slot->value_name.has_value()) {
+          resource.value_name = *slot->value_name;
+        }
+      }
+      break;
+    }
+    case OperandKind::Symbol: {
+      const auto* symbol = std::get_if<SymbolOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Symbol;
+      if (symbol != nullptr) {
+        resource.symbol_name = symbol->link_name;
+      }
+      break;
+    }
+    case OperandKind::BranchTarget: {
+      const auto* target = std::get_if<BranchTargetOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::BranchTarget;
+      if (target != nullptr) {
+        resource.value_id = target->condition_value_id;
+        resource.block_label = target->block_label;
+      }
+      break;
+    }
+    case OperandKind::Memory: {
+      const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Memory;
+      if (memory != nullptr) {
+        resource.value_id = memory->result_value_id.has_value() ? memory->result_value_id
+                                                                : memory->stored_value_id;
+        if (memory->result_value_name.has_value()) {
+          resource.value_name = *memory->result_value_name;
+        } else if (memory->stored_value_name.has_value()) {
+          resource.value_name = *memory->stored_value_name;
+        }
+        resource.frame_slot_id = memory->frame_slot_id;
+        resource.symbol_name = memory->symbol_name.has_value() ? memory->symbol_name
+                                                               : memory->string_symbol_name;
+      }
+      break;
+    }
+  }
+  return resource;
+}
+
+MachineEffectResource prepared_value_def(
+    std::optional<c4c::backend::prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name) {
+  return MachineEffectResource{
+      .kind = MachineEffectResourceKind::PreparedValue,
+      .value_id = value_id,
+      .value_name = value_name,
+  };
+}
+
+std::vector<OperandRecord> branch_instruction_operands(const BranchInstructionRecord& instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.target_pair.has_value()) {
+    operands.push_back(OperandRecord{
+        .kind = OperandKind::BranchTarget,
+        .payload = instruction.target_pair->true_target,
+    });
+    operands.push_back(OperandRecord{
+        .kind = OperandKind::BranchTarget,
+        .payload = instruction.target_pair->false_target,
+    });
+  } else {
+    operands.push_back(OperandRecord{.kind = OperandKind::BranchTarget,
+                                     .payload = instruction.target});
+  }
+  if (instruction.condition.has_value()) {
+    operands.push_back(*instruction.condition);
+  }
+  return operands;
+}
+
+std::vector<MachineEffectResource> effects_from_operands(
+    const std::vector<OperandRecord>& operands) {
+  std::vector<MachineEffectResource> effects;
+  effects.reserve(operands.size());
+  for (const auto& operand : operands) {
+    effects.push_back(effect_from_operand(operand));
+  }
+  return effects;
+}
+
+std::vector<MachineSideEffectKind> memory_side_effects(
+    const MemoryInstructionRecord& instruction) {
+  std::vector<MachineSideEffectKind> side_effects;
+  side_effects.push_back(instruction.memory_kind == MemoryInstructionKind::Load
+                             ? MachineSideEffectKind::MemoryRead
+                             : MachineSideEffectKind::MemoryWrite);
+  if (instruction.address.is_volatile) {
+    side_effects.push_back(MachineSideEffectKind::VolatileMemoryAccess);
+  }
+  return side_effects;
+}
+
 }  // namespace
 
 OperandRecord make_register_operand(RegisterOperand operand) {
@@ -1073,17 +1374,34 @@ OperandRecord make_memory_operand(MemoryOperand operand) {
 }
 
 InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
+  const auto operands = branch_instruction_operands(instruction);
   return InstructionRecord{
       .family = InstructionFamily::Branch,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_branch_instruction(instruction),
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = instruction.target.function_name,
+      .block_label = instruction.target.block_label,
+      .operands = operands,
+      .uses = effects_from_operands(operands),
+      .side_effects = {MachineSideEffectKind::ControlFlowTransfer},
       .payload = instruction,
   };
 }
 
 InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_value_id.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+  }
   return InstructionRecord{
       .family = InstructionFamily::Scalar,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_scalar_instruction(instruction),
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .operands = instruction.inputs,
+      .defs = defs,
+      .uses = effects_from_operands(instruction.inputs),
       .payload = instruction,
   };
 }
@@ -1111,25 +1429,66 @@ ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cas
 }
 
 InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
+  std::vector<OperandRecord> operands = {make_memory_operand(instruction.address)};
+  if (instruction.value.has_value()) {
+    operands.push_back(*instruction.value);
+  }
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses = effects_from_operands(operands);
+  if (instruction.memory_kind == MemoryInstructionKind::Load) {
+    defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+  }
   return InstructionRecord{
       .family = InstructionFamily::Memory,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_memory_instruction(instruction),
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = instruction.address.function_name,
+      .block_label = instruction.address.block_label,
+      .instruction_index = instruction.address.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = uses,
+      .side_effects = memory_side_effects(instruction),
       .payload = instruction,
   };
 }
 
 InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
+  std::vector<OperandRecord> operands = instruction.arguments;
+  if (instruction.indirect_callee.has_value()) {
+    operands.insert(operands.begin(), *instruction.indirect_callee);
+  } else if (instruction.direct_callee.has_value()) {
+    operands.insert(operands.begin(), make_symbol_operand(*instruction.direct_callee));
+  }
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result.has_value()) {
+    defs.push_back(effect_from_operand(*instruction.result));
+  }
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
+      .side_effects = {MachineSideEffectKind::Call},
       .payload = instruction,
   };
 }
 
 InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.value.has_value()) {
+    operands.push_back(*instruction.value);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Return,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .operands = operands,
+      .uses = effects_from_operands(operands),
+      .side_effects = {MachineSideEffectKind::Return, MachineSideEffectKind::ControlFlowTransfer},
       .payload = instruction,
   };
 }
@@ -1138,15 +1497,50 @@ InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruct
   return InstructionRecord{
       .family = InstructionFamily::Assembler,
       .surface = RecordSurfaceKind::ExternalAssemblerInput,
+      .selection =
+          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                  .diagnostic = "external assembler input is not a selected node"},
+      .operands = instruction.operands,
+      .uses = effects_from_operands(instruction.operands),
+      .side_effects = instruction.side_effects
+                          ? std::vector<MachineSideEffectKind>{
+                                MachineSideEffectKind::InlineAssembly}
+                          : std::vector<MachineSideEffectKind>{},
       .payload = instruction,
   };
 }
 
 InstructionRecord make_object_instruction(ObjectInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.symbol.has_value()) {
+    operands.push_back(make_symbol_operand(*instruction.symbol));
+  }
+  if (instruction.frame_slot.has_value()) {
+    operands.push_back(make_frame_slot_operand(*instruction.frame_slot));
+  }
+  if (instruction.value.has_value()) {
+    operands.push_back(*instruction.value);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Object,
       .surface = RecordSurfaceKind::EncoderInput,
+      .selection =
+          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                  .diagnostic = "object records are future encoder input"},
+      .operands = operands,
+      .uses = effects_from_operands(operands),
+      .side_effects = {MachineSideEffectKind::ObjectEmission},
       .payload = instruction,
+  };
+}
+
+InstructionRecord make_unsupported_machine_instruction(InstructionFamily family,
+                                                       MachineNodeSelectionStatus status,
+                                                       std::string_view diagnostic) {
+  return InstructionRecord{
+      .family = family,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .selection = MachineNodeStatusRecord{.status = status, .diagnostic = diagnostic},
   };
 }
 

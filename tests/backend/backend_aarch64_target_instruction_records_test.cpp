@@ -97,6 +97,12 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
   if (branch.family != aarch64_codegen::InstructionFamily::Branch ||
       aarch64_codegen::instruction_family_name(branch.family) != "branch" ||
       branch.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      branch.opcode != aarch64_codegen::MachineOpcode::ConditionalBranch ||
+      aarch64_codegen::machine_opcode_name(branch.opcode) != "conditional_branch" ||
+      branch.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      branch.operands.size() != 2 || branch.uses.size() != 2 || !branch.defs.empty() ||
+      branch.side_effects.size() != 1 ||
+      branch.side_effects.front() != aarch64_codegen::MachineSideEffectKind::ControlFlowTransfer ||
       !aarch64_codegen::is_structured_downstream_surface(branch.surface) ||
       branch_payload == nullptr || !branch_payload->conditional ||
       branch_payload->target.block_label != c4c::BlockLabelId{7} ||
@@ -107,7 +113,12 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
   if (scalar_payload == nullptr || scalar_payload->result_value_id != prepare::PreparedValueId{11} ||
       scalar_payload->inputs.size() != 2 ||
       scalar_payload->source_binary_opcode != bir::BinaryOpcode::Add ||
-      aarch64_codegen::instruction_family_name(scalar.family) != "scalar") {
+      aarch64_codegen::instruction_family_name(scalar.family) != "scalar" ||
+      scalar.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      scalar.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      scalar.operands.size() != 2 || scalar.uses.size() != 2 ||
+      scalar.defs.size() != 1 ||
+      scalar.defs.front().value_id != prepare::PreparedValueId{11}) {
     return fail("expected scalar instruction record to retain BIR opcode and operand records");
   }
 
@@ -115,7 +126,11 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       aarch64_codegen::memory_instruction_kind_name(memory_payload->memory_kind) != "load" ||
       memory_payload->address.frame_slot_id != prepare::PreparedFrameSlotId{9} ||
       memory_payload->address.pointer_value_id != prepare::PreparedValueId{14} ||
-      memory_payload->result_value_id != prepare::PreparedValueId{15}) {
+      memory_payload->result_value_id != prepare::PreparedValueId{15} ||
+      memory.opcode != aarch64_codegen::MachineOpcode::Load ||
+      memory.operands.size() != 1 || memory.uses.size() != 1 || memory.defs.size() != 1 ||
+      memory.side_effects.size() != 1 ||
+      memory.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryRead) {
     return fail("expected memory instruction record to preserve prepared address facts");
   }
 
@@ -174,6 +189,9 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   if (call_payload == nullptr ||
       aarch64_codegen::instruction_family_name(call.family) != "call" ||
       call.surface != aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      call.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      call.operands.size() != 2 || call.defs.size() != 1 || call.side_effects.size() != 1 ||
+      call.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
       !call_payload->direct_callee.has_value() ||
       call_payload->direct_callee->link_name != c4c::LinkNameId{4} ||
       call_payload->arguments.size() != 1 || !call_payload->result.has_value()) {
@@ -181,12 +199,18 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   }
   if (return_payload == nullptr ||
       aarch64_codegen::instruction_family_name(ret.family) != "return" ||
+      ret.side_effects.size() != 2 ||
+      ret.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Return ||
       !return_payload->value.has_value() || return_payload->value_type != bir::TypeKind::I64) {
     return fail("expected return family to be an explicit machine-node placeholder");
   }
   if (assembler_payload == nullptr ||
       aarch64_codegen::instruction_family_name(assembler.family) != "assembler" ||
       assembler.surface != aarch64_codegen::RecordSurfaceKind::ExternalAssemblerInput ||
+      assembler.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      aarch64_codegen::machine_node_selection_status_name(assembler.selection.status) !=
+          "deferred_unsupported" ||
       !aarch64_codegen::is_text_first_external_input_surface(assembler.surface) ||
       assembler_payload->operands.size() != 1 || !assembler_payload->has_inline_asm_payload ||
       !assembler_payload->side_effects) {
@@ -195,6 +219,8 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   if (object_payload == nullptr ||
       aarch64_codegen::instruction_family_name(object.family) != "object" ||
       object.surface != aarch64_codegen::RecordSurfaceKind::EncoderInput ||
+      object.selection.status ==
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       !aarch64_codegen::is_structured_downstream_surface(object.surface) ||
       !object_payload->symbol.has_value() ||
       object_payload->symbol->link_name != c4c::LinkNameId{5} ||
