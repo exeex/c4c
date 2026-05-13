@@ -8,30 +8,31 @@ Current Step Title: Align AArch64 Markdown Roadmap Artifacts
 
 ## Just Finished
 
-Step 3 of `plan.md` aligned the implemented AArch64 codegen record surface
-with `MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
+Step 4 of `plan.md` aligned the AArch64 markdown roadmap artifacts with
+`MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
 
-`RecordSurfaceKind` now distinguishes target MIR records, structured machine
-instruction nodes, printer output, structured encoder input, and external
-assembler input. Existing `RecordOnly` initializers remain as a compatibility
-alias for target MIR/pre-node records.
+The roadmap docs now route internal backend semantics through structured target
+MIR records and AArch64 machine instruction nodes. `.s` output is documented
+as printer output, parser surfaces are documented as external assembly input,
+and encoder/object/linker surfaces are documented as downstream consumers of
+machine nodes or lower structured encoding/object records.
 
-The instruction record factories now mark branch, scalar, memory, call, and
-return wrappers as structured downstream machine-instruction-node records.
-Assembler wrappers are marked as external assembler input, and object wrappers
-are marked as structured encoder input. Payload records still preserve prepared
-ids, BIR opcodes, typed operands, branch targets, memory facts, call facts, and
-data/symbol identity without adding selection, printing, encoding, object
-writing, linking, or text parsing.
+The update preserved historical inventories while changing future-direction
+language that could otherwise imply `codegen -> assembly text -> parse_asm ->
+encoder/object writer` as an accepted internal route.
 
-Focused backend record tests were updated to cover the new surface spellings
-and helper predicates.
+A follow-up tightening pass also aligned the remaining `codegen/*.md` rebuild
+guidance blocks for ALU, comparison, memory, calls, casts, FP, prologue,
+returns, variadic, atomics, intrinsics, i128, f128, globals, inline asm,
+asm-emitter, and emit surfaces so future work routes through structured target
+MIR and machine instruction nodes before `.s` printing or encoding/object
+consumers.
 
 ## Suggested Next
 
-Execute Step 4: align AArch64 markdown roadmap artifacts with the structured
-machine-node pipeline. Keep `.s` printing and external assembler parsing as
-consumers or external-input paths, not internal semantic handoff routes.
+Execute Step 5: add or run focused proof for the contract and implemented
+records. Prefer the supervisor-selected narrow backend proof; add tests only if
+there is an appropriate local pattern and no expectation downgrade is needed.
 
 ## Watchouts
 
@@ -39,13 +40,16 @@ consumers or external-input paths, not internal semantic handoff routes.
   spelling for target MIR/pre-node records; new tests should prefer
   `TargetMirRecord`, `MachineInstructionNode`, `EncoderInput`, or
   `ExternalAssemblerInput`.
-- This slice did not edit the text-first assembler/parser/encoder
-  implementation surfaces; Step 4 should handle roadmap markdown language for
-  those paths.
-- Module display labels remain display/diagnostic fields and were not promoted
-  as lookup authority.
+- This slice did not edit implementation `.cpp/.hpp` files or
+  `MACHINE_INSTRUCTION_NODE_CONTRACT.md`.
+- `BINARY_UTILS_CONTRACT.md` still records the current compatibility
+  text-first path as existing behavior, but now marks it as compatibility only,
+  not the accepted AArch64 MIR rebuild route.
+- Historical inventory sections still describe removed direct emission,
+  mnemonic selection, and parser behavior as history; the tightened text is in
+  future/rebuild guidance.
+- Module display labels remain display/diagnostic fields, not lookup authority.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
-passed. Proof log: `test_after.log`.
+`git diff --check` passed. Proof log: `test_after.log`.

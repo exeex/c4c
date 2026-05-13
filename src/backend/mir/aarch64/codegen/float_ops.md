@@ -121,6 +121,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit register-file transitions:
 
+Floating-point lowering should model FP/SIMD register transitions in structured
+target MIR and machine instruction nodes before any `<mnemonic>` text is
+printed. Native FP operations and binary128 helper calls should remain typed
+node families rather than parser-recovered assembly strings.
+
 1. Keep the integer-temporary bridge and FP/SIMD arithmetic body visibly
    separate.
 2. Preserve distinct `F32`, `F64`, and `F128` routes.

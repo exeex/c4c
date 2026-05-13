@@ -106,7 +106,7 @@ when a structured id is available. Physical register strings inside prepared
 records describe target-local physical resources after shared preparation; they
 do not replace semantic value identity.
 
-## Target-Local MIR And Assembly Needs
+## Target-Local MIR, Machine Nodes, And Assembly Needs
 
 Before AArch64 instruction selection resumes, the target must define a
 target-local MIR boundary that consumes `PreparedBirModule` facts without
@@ -135,8 +135,12 @@ structures are:
 - a data/object side table for globals, string constants, symbol visibility,
   TLS, constants, initializers, and later relocation needs
 
-Assembly generation may be added only after those MIR records exist or after an
-explicit assembler/object boundary is documented. A string-emitting codegen
+Instruction selection must publish structured AArch64 machine instruction
+nodes derived from those MIR records. Assembly generation may be added only as
+a `.s` printer over those nodes, and a built-in encoder or object writer may
+consume only those nodes or a lower structured encoding record derived from
+them. Parser recovery from printed assembly text is not an accepted bridge
+between codegen and encoding/object emission. A string-emitting codegen
 function must not become the first rebuilt AArch64 lowering API.
 
 ## Rejected Routes
@@ -170,4 +174,3 @@ Use the index to decide which legacy notes can inform later target-ABI,
 instruction-selection, assembler, or binary-utils work. Do not use the index,
 or any extracted legacy markdown file, as proof that live AArch64 lowering,
 assembly, object emission, or linking exists.
-

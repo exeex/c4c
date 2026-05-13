@@ -224,4 +224,7 @@ Use this artifact as the historical map for scalar data-processing encoder
 behavior. A rebuilt live encoder should separate alias lowering from field
 packing, centralize width and immediate validation, share logical-immediate
 recognition with bitfield/alias users, and keep relocation creation explicit at
-the assembler/linker boundary.
+the assembler/linker boundary. For backend-owned output, scalar operation
+identity and operands should arrive as structured machine instruction nodes or
+lower encoding records, not mnemonic strings and comma-split operands recovered
+from printed `.s` text.

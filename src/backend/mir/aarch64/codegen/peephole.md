@@ -226,8 +226,10 @@ module file only retained a commented Rust-style `peephole` module line.
 
 ## Future Ownership Boundary
 
-A rebuilt AArch64 peephole route should own only post-codegen assembly cleanup.
+A rebuilt AArch64 peephole route should own only optional `.s` printer-output
+cleanup after structured machine instruction nodes have already been selected.
 It should not become a place for semantic lowering, frame-layout repair,
-register-allocation policy, ABI decisions, encoder work, or testcase-shaped
-recovery. If stronger optimization is needed, prefer a structured assembly or
-CFG-aware representation over expanding raw string heuristics.
+register-allocation policy, ABI decisions, encoder work, object writing, or
+testcase-shaped recovery. If stronger optimization is needed, prefer a typed
+machine-node, encoding-record, or CFG-aware representation over expanding raw
+string heuristics.

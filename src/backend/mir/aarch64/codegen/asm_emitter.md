@@ -200,6 +200,12 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this behavior from semantic groups rather than line-for-line:
 
+This surface should become a structured inline-assembly or printer-consumer
+boundary, not a direct semantic emitter. Constraint resolution, scratch
+lifetimes, memory operands, and condition-code outputs should be represented in
+target MIR and machine instruction nodes before any final assembly template is
+printed.
+
 1. Establish target constraint classification and immediate validation.
 2. Rebuild scratch allocation with explicit lifetime and clobber rules.
 3. Rebuild memory operand resolution around direct alloca memory, pointer-slot

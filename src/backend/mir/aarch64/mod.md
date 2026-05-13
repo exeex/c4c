@@ -108,4 +108,8 @@ without first defining the current repository's target-selection contract.
 Use this artifact as the Step 2.5 top-level AArch64 directory map. Future live
 AArch64 work should define the driver-facing target entry point first, then
 pull codegen, assembler, and linker behavior from their detailed markdown
-artifacts according to an explicit toolchain-selection policy.
+artifacts according to an explicit toolchain-selection policy. The codegen
+side of that entry must route prepared target MIR facts into structured machine
+instruction nodes; `.s` printing, external assembler parsing, encoding,
+object writing, and linking are downstream consumers or external-input paths,
+not internal semantic recovery routes.

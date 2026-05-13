@@ -42,7 +42,13 @@ This means the current compile-integrated contract is now:
 - `backend text emission -> parse_asm(raw text) -> assemble(AssembleRequest{raw text, output path})`
 - `aarch64::assemble_module(module, output_path) -> emit_module(module) -> assemble(AssembleRequest{...})`
 
-Later boundary work can narrow or replace that shape, but it should treat this text-first path as the current compatibility baseline.
+Later boundary work can narrow or replace that shape, but it should treat this
+text-first path as the current compatibility baseline only. It is not the
+accepted internal route for the AArch64 MIR rebuild: codegen-owned semantics
+must flow through structured target MIR records and AArch64 machine
+instruction nodes. A future built-in encoder or object writer must consume
+those nodes or a lower structured encoding record derived from them, while
+`parse_asm(...)` remains an external assembly input path.
 
 ## Repo-Local Baseline Cases
 

@@ -174,4 +174,7 @@ Use this artifact as the historical map for compare and branch encoder
 behavior. A rebuilt live encoder should share explicit field-packers for the
 conditional-select family, a small alias-lowering layer for compare and
 conditional-select aliases, and relocation constructors that make target range
-and scaling rules visible at the assembler/linker boundary.
+and scaling rules visible at the assembler/linker boundary. For backend-owned
+output, branch and compare facts should arrive as structured machine
+instruction nodes or lower encoding records, not parser operands recovered from
+printed `.s` text.

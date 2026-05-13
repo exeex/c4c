@@ -231,4 +231,7 @@ target seams. Recommended extraction targets after this file are the smaller
 codegen shards, starting with `src/backend/mir/aarch64/codegen/asm_emitter.cpp`
 or `src/backend/mir/aarch64/codegen/prologue.cpp`, because they should help
 separate raw assembly text conventions and function-frame policy before any
-new AArch64 lowering is rebuilt.
+new AArch64 lowering is rebuilt. New lowering should enter structured target
+MIR and machine instruction nodes first; this entry surface may later call a
+`.s` printer, but it must not restore direct text emission or parsed text as
+the semantic backend route.

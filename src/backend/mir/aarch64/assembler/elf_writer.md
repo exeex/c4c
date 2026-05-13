@@ -153,8 +153,10 @@ open, or file write failure.
 ## Rebuild Guidance
 
 Use this artifact as the historical contract for the assembler object-writer
-lane: parse backend-owned assembly statements into sections, symbols,
-relocations, and ELF64 object bytes. A new live writer should separate directive
-semantics, encoder integration, relocation modeling, ELF layout, and diagnostic
-reporting so unsupported syntax and invalid relocation states are explicit
-rather than silent `false` results.
+lane: turn structured assembler input into sections, symbols, relocations, and
+ELF64 object bytes. A new live writer should separate directive semantics,
+encoder integration, relocation modeling, ELF layout, and diagnostic reporting
+so unsupported syntax and invalid relocation states are explicit rather than
+silent `false` results. For backend-owned output, the writer should consume
+machine instruction nodes or lower structured encoding/object records, not
+reparse printed `.s` text.

@@ -95,3 +95,7 @@ implementation.
 Use this artifact as a directory map only. Rebuild decisions should come from
 the detailed markdown artifacts for each shard plus the later top-level
 AArch64 module-entry surface, not from this commented module file by itself.
+The accepted rebuild route is structured target MIR records followed by
+machine instruction nodes. Assembly-text emission is a printer consumer of
+those nodes, and encoder/object work must consume nodes or lower structured
+encoding records instead of parsing codegen-emitted text.

@@ -213,6 +213,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this behavior from ABI responsibilities rather than line-for-line:
 
+Frame setup and teardown should be represented as structured target MIR facts
+and machine instruction nodes for saves, restores, stack adjustment, and
+parameter homes. Pseudo-mnemonics and load/store spellings are printer or
+encoding details after those nodes exist.
+
 1. Establish stack-layout ownership for common locals, variadic save areas, and
    callee-saved spills.
 2. Rebuild register-allocation setup with explicit inline-asm clobber handling

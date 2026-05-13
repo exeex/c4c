@@ -161,4 +161,6 @@ for mixed-width forms and did not cross-check source register widths.
 Use this artifact as the historical map for bitfield-like encoder behavior.
 Rebuild the live encoder around structured instruction families, shared
 field-packers, and explicit alias validation before reconnecting it to the
-assembler or backend output path.
+assembler or backend output path. For backend-owned output, the input should be
+machine instruction nodes or lower structured encoding records, not mnemonic
+strings recovered from printed `.s` text.

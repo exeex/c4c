@@ -247,6 +247,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around an explicit pair-lowering contract:
 
+`i128` lowering should carry low/high pair identity through structured target
+MIR and machine instruction nodes for arithmetic, shifts, helper calls, and
+transport. Final instruction spelling and helper-call text are printer or
+encoding/object concerns only.
+
 1. Keep pair layout and register ownership centralized so arithmetic, shifts,
    helper calls, and storage agree on low/high ordering.
 2. Separate semantic i128 lowering from generic stack and indirect pair

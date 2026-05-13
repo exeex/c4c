@@ -276,4 +276,7 @@ Use this artifact as the historical map for load/store and memory-operation
 encoder behavior. A rebuilt live encoder should split address-mode parsing,
 transfer-width classification, relocation construction, and field packing into
 small helpers so diagnostics and relocation scaling rules are visible at the
-assembler/linker boundary.
+assembler/linker boundary. For backend-owned output, memory facts should arrive
+through structured machine instruction nodes or lower encoding records that
+preserve prepared address, volatility, and address-space facts, not through
+parser operands recovered from printed `.s` text.

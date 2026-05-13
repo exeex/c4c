@@ -226,6 +226,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit intrinsic families:
 
+Intrinsic lowering should map each accepted intrinsic family to structured
+target MIR and machine instruction nodes before printer or encoder handling.
+Feature-gated mnemonic choices such as CRC or cache maintenance must be node
+identity or encoding-table data, not parser-recovered assembly text.
+
 1. Separate scalar builtins, barriers/cache hints, vector memory operations,
    vector arithmetic, CRC, and unsupported x86-only intrinsic policy.
 2. Preserve the pointer-based 128-bit vector operand contract unless a later IR

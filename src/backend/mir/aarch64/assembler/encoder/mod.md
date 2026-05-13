@@ -115,6 +115,15 @@ The surface depended on:
 It did not create relocations, multi-word encodings, labels, symbol references,
 or diagnostic information.
 
+## Structured Rebuild Boundary
+
+A rebuilt encoder may preserve these historical opcode and field-packing facts,
+but its codegen-facing input must be structured AArch64 machine instruction
+nodes or lower structured encoding records. `mnemonic`, `Operand::text`, and
+`raw_operands` are acceptable only on an external assembler-input lane after a
+real assembler parser has produced diagnostics; they are not the semantic
+handoff from codegen to encoding or object writing.
+
 ## Rebuild Risks
 
 - The file name suggests central dispatch, but the removed implementation was

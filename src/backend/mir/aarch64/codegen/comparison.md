@@ -137,6 +137,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild comparison lowering around explicit ownership boundaries:
 
+Comparison lowering should first produce structured target MIR facts and then
+machine instruction nodes for compare, branch, select, and materialized-boolean
+forms. Condition-code spellings and final branch mnemonics belong to the `.s`
+printer or lower encoding records, not to parser-recovered semantic state.
+
 1. Keep integer compare instruction selection and integer condition-code
    mapping in one shared AArch64 compare helper.
 2. Keep float compare condition mapping separate from integer signedness

@@ -175,4 +175,6 @@ Use this artifact as the historical map for scalar floating-point encoder
 behavior. A rebuilt live encoder should separate operand classification from
 field packing, keep FMOV transfer classes distinct from arithmetic operations,
 and centralize scalar FP precision validation before packing instruction
-words.
+words. For backend-owned output, FP operation identity and operands should
+arrive as structured machine instruction nodes or lower encoding records, not
+parser operands recovered from printed `.s` text.

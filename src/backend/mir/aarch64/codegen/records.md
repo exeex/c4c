@@ -79,6 +79,12 @@ Deferred behavior guardrails:
 - Object records carry symbol, frame-slot, value, and type facts only; object
   encoding, relocation writing, and linker behavior are deferred.
 
-`RecordSurfaceKind::RecordOnly` is the contract for this layer. New fields here
+Current records are classified by their explicit surface kind. Target MIR and
+pre-node records remain the prepared-fact snapshot layer, while downstream
+branch, scalar, memory, call, return, object, and assembler-wrapper records are
+structured machine-instruction-node or consumer/input records. New fields here
 should keep prepared identities structured and typed instead of parsing rendered
-names or growing `module/module.cpp`.
+names or growing `module/module.cpp`. `RecordSurfaceKind::RecordOnly` is only a
+compatibility spelling for the target MIR/pre-node surface; new roadmap work
+should prefer explicit target MIR, machine-node, printer-output, encoder-input,
+or external-assembler-input names.

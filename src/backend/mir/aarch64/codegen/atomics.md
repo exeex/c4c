@@ -185,6 +185,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit atomic operation contracts:
 
+Atomic lowering should model ordering, width, success/failure result mode, and
+exclusive-loop structure in target MIR and machine instruction nodes. Exclusive
+load/store mnemonics are derived printer or encoder data, not the source of
+atomic semantics.
+
 1. Keep the old/result-value contract for RMW and compare-exchange separate
    from the store/retry mechanics.
 2. Centralize exclusive instruction selection so width, ordering, and register

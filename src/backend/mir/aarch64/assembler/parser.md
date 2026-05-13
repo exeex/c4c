@@ -98,8 +98,10 @@ not encode instructions, resolve symbols, expand literal pools, or emit ELF.
 
 ## Rebuild Guidance
 
-Use this artifact as the legacy contract for the parser lane: a lightweight
-normalizer from backend-owned assembly text into `AsmStatement` values. A new
-live parser should define which syntax it accepts, where diagnostics are
-reported, and which directive/expression forms are parsed structurally before
-object emission.
+Use this artifact as the historical contract for an external assembler input
+lane. A new live parser should define which user- or tool-provided assembly
+syntax it accepts, where diagnostics are reported, and which
+directive/expression forms are parsed structurally before object emission. It
+must not be the internal bridge from AArch64 codegen to the encoder or object
+writer; codegen-owned facts must arrive there as structured machine
+instruction nodes or lower structured encoding records.

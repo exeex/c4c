@@ -221,6 +221,11 @@ The removed surface depended on these surrounding concepts:
 Rebuild this surface around explicit result-width and destination-carrier
 decisions:
 
+Integer operation lowering should select typed target MIR operations and then
+machine instruction nodes before any final mnemonic spelling is chosen.
+`arm_alu_mnemonic`-style names may survive as printer or encoding-table data,
+but they must not be the semantic carrier for codegen decisions.
+
 1. Keep unary integer helpers, bit-count helpers, byte-swap helpers, binary
    lowering, and i128 copy as separate routes.
 2. Preserve the unsigned power-of-two reductions only for unsigned division and

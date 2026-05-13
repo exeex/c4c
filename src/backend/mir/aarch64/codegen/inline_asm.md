@@ -210,6 +210,12 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit inline-assembly operand records:
 
+Inline assembly remains a separately owned external/textual boundary. When it
+interacts with backend lowering, operands, clobbers, constraints, and side
+effects should be structured target MIR or machine-node facts before any final
+template formatting; parser recovery from emitted text must not supply codegen
+semantics.
+
 1. Keep positional and named operand resolution separate, with a first-class
    GCC-number to internal-index map.
 2. Preserve immediate symbols and integer immediates as structured facts before

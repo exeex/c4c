@@ -271,3 +271,6 @@ code used `Rt = 0`.
   field ranges before packing.
 - Add range diagnostics for immediates instead of silently masking exception,
   HINT, and PSTATE fields.
+- For backend-owned output, system-operation facts should arrive as structured
+  machine instruction nodes or lower encoding records, not raw strings
+  recovered from printed `.s` text.

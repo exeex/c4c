@@ -126,4 +126,7 @@ behavioral details.
 Use this artifact as the Step 2.4 linker directory map. Any future live AArch64
 linker work should start from a narrow tested integration surface, then pull
 behavior from the extracted shard artifacts according to the shared
-`linker_common` boundary and the desired output mode.
+`linker_common` boundary and the desired output mode. It must remain downstream
+of object/relocation records produced from structured machine instruction nodes
+or lower encoding records; linker work is not a reason for codegen to route
+through printed assembly text and parser recovery.

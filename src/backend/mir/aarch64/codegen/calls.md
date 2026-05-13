@@ -223,6 +223,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around structured call-lowering facts:
 
+Call lowering should publish target MIR call records and machine instruction
+nodes carrying callee identity, argument/result placement, preserved values,
+and clobbers. `bl`/`blr` spelling, relocation syntax, and final call sequence
+text belong to printer or encoding/object consumers.
+
 1. Keep ABI classification separate from physical emission, but preserve the
    exact AArch64 policy bits listed above.
 2. Model outgoing stack layout explicitly, including 16-byte alignment for wide

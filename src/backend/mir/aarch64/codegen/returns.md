@@ -137,6 +137,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild return lowering around ABI register ownership:
 
+Return lowering should publish structured target MIR return facts and machine
+instruction nodes for value movement and control transfer. Final `ret`,
+register-spelling, and helper-call text belongs to printer or encoding/object
+consumers.
+
 1. Keep scalar integer, `i128`, scalar floating-point, and binary128 return
    register rules separate.
 2. Preserve the distinction between raw-bit moves into FP/SIMD registers and

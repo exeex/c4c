@@ -106,6 +106,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around an explicit address-kind decision:
 
+Global and label materialization should publish structured target MIR facts and
+machine instruction nodes for address computation and relocation needs. Symbol
+spellings, `ADRP`/`ADD` printer text, and relocation syntax are downstream
+printer or encoding/object concerns, not lookup authority for codegen.
+
 1. Keep global, label, and thread-local address materialization as separate
    cases.
 2. Preserve the GOT decision as target relocation policy, not as a string

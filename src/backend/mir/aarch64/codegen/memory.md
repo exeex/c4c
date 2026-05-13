@@ -285,6 +285,12 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit prepared memory facts:
 
+Memory lowering should preserve prepared address, volatility, and address-space
+facts through target MIR memory operands and machine instruction nodes before
+any `.s` printing. Load/store mnemonics may be derived from nodes for printer
+or encoder consumers, but parsed mnemonic text must not become semantic
+authority.
+
 1. Keep direct stack-slot, indirect pointer-slot, and over-aligned alloca
    addressing as distinct paths.
 2. Preserve F128 as an explicit helper-routed special case until the final

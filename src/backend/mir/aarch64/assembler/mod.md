@@ -162,8 +162,11 @@ ELF writer, which then integrated with the old encoder surface.
 ## Rebuild Guidance
 
 Use this artifact as the historical contract for the assembler orchestration
-lane. A new live module should keep parsing, pseudo-instruction lowering,
-numeric-label resolution, object writing, and diagnostics as explicit stages
-with inspectable intermediate state. Literal-pool placement and numeric labels
-should be implemented through structured operands or expressions rather than
-raw text rewrites.
+lane. A new live module should keep external-input parsing, pseudo-instruction
+lowering, numeric-label resolution, object writing, and diagnostics as explicit
+stages with inspectable intermediate state. It must not serve as the internal
+codegen-to-encoder route. Backend-owned lowering should publish structured
+machine instruction nodes; literal-pool placement, numeric labels, object
+writing, and encoding should consume those nodes or lower structured records
+when they are reached from codegen, and structured assembler operands or
+expressions when they are reached from external assembly input.

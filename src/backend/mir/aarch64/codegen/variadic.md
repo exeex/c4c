@@ -191,6 +191,11 @@ The removed surface depended on these surrounding concepts:
 
 Rebuild this surface around explicit prepared variadic ABI facts:
 
+Variadic lowering should carry `va_list`, register-save, stack fallback, and
+helper-call requirements through structured target MIR and machine instruction
+nodes. Any assembly text for saves, loads, or runtime-helper calls is printer
+output after those facts are selected.
+
 1. Preserve the 32-byte AAPCS64 `va_list` record shape and signed offset
    semantics.
 2. Keep GP and FP/SIMD register-save paths separate, with 8-byte and 16-byte
