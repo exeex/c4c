@@ -1,9 +1,10 @@
 # AArch64 Module Phoenix Stage 3 Replacement Drafts
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 Parent Context: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Requires: ideas/closed/226_aarch64_module_phoenix_review_replacement_layout.md
+Closed: 2026-05-14
 
 ## Intent
 
@@ -79,6 +80,14 @@ non-helper `.hpp` except for allowed `helper.hpp`, any required replacement
 index `.md` exists, each draft states its ownership contract, and the
 draft-review artifact says the draft set is coherent enough for implementation
 conversion.
+
+## Closure Note
+
+Closed after Step 7 review accepted the complete Stage 3 replacement draft set
+for implementation conversion. The required draft files and review artifact
+exist, no extra public header draft was introduced, and the close gate passed
+the matching `ccc_review_` CTest regression guard with 9 passed before and
+after.
 
 ## Reviewer Reject Signals
 
