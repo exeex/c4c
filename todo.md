@@ -8,42 +8,41 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time extended return-selected
-scalar add/sub lowering from one immediate binary operation to a same-block
-linear scalar ALU chain. The AArch64 module lowering now keeps block-local
-emitted scalar value registers, derives the return ABI accumulator from the
-prepared before-return move authority, retargets that register through linear
-same-block add/sub results, and makes the final return consume the emitted
-register instead of rematerializing over the selected chain.
+Step 5: Implement One Lowering Family At A Time added the first AArch64
+branch/control module lowering slice. Prepared unconditional BIR branch
+terminators now lower through the existing
+`codegen::make_prepared_unconditional_branch_record` authority into selected
+canonical MIR `Branch` machine instructions with `BirTerminator` origin, source
+block identity on the instruction record, and prepared destination label
+identity preserved in the branch payload.
 
-The slice proves `tests/backend/case/return_add_sub_chain.c` through the public
-AArch64 asm smoke without named-case matching: generated assembly contains
-`mov w0, #2`, `add w0, w0, #3`, `sub w0, w0, #1`, and `ret`, and the external
-run expects rc 4.
+The slice adds a small `branch_control_lowering.cpp` seam, wires it into module
+dispatch, and keeps conditional/fused compare branch control fail-closed for a
+later packet. It does not restore legacy module records or use source-text or
+testcase-name matching.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 5 scalar-chain slice, then continue
-with the next bounded AArch64 lowering family.
+Supervisor can review and commit this Step 5 unconditional branch-control slice,
+then continue with the next bounded AArch64 lowering family, likely conditional
+materialized-bool branch lowering or the next prepared scalar/control family.
 
 ## Watchouts
 
-- The current repo has no `MachineOpcode::Return`; this slice uses the existing
-  selected return representation: `InstructionRecord` family `Return` with a
-  `ReturnInstructionRecord` payload. The generic MIR opcode remains the target
-  record's current opcode value.
-- The return-chain fallback is intentionally narrow: it only retargets the
-  prepared return ABI register through a same-block linear add/sub chain ending
-  at the block return. It still fails closed for non-scalar, non-linear, or
-  non-return-selected shapes.
-- Compatibility `machine_nodes` still intentionally exclude return nodes but
-  carry selected non-return scalar records for the existing compatibility test
-  surface.
+- `codegen::make_branch_instruction` derives its initial record location from
+  the target payload; module lowering overwrites the selected instruction's
+  `function_name`, `block_label`, and `block_index` with the source block
+  identity while leaving the branch payload target untouched.
+- Unconditional branch lowering requires retained BIR terminator authority so
+  the prepared target label and BIR `BranchTerminator::target_label_id` can be
+  checked by the existing record API.
+- Conditional and fused-compare branch records already exist, but module
+  lowering intentionally does not select them in this packet.
 
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_scalar_alu_records|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_branch_records|backend_aarch64_branch_compare_records|backend_aarch64_branch_compare_contract|backend_aarch64_branch_control_lowering|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
 
-Result: passed; focused subset ran 10/10 tests. Proof output is preserved in
+Result: passed; focused subset ran 13/13 tests. Proof output is preserved in
 `test_after.log`.

@@ -123,6 +123,11 @@ set_tests_properties(backend_aarch64_prepared_branch_records PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
+c4c_add_aarch64_cpp_test(backend_aarch64_branch_control_lowering)
+set_tests_properties(backend_aarch64_branch_control_lowering PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_target_record_core_contract)
 set_tests_properties(backend_aarch64_target_record_core_contract PROPERTIES
   LABELS "backend;internal;cpp;aarch64"

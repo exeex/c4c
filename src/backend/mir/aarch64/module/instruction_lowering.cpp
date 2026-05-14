@@ -594,6 +594,11 @@ InstructionDispatchResult dispatch_prepared_block(
     if (auto record = make_return_record(context, scalar_state, diagnostics)) {
       block.instructions.push_back(make_return_instruction(context, std::move(*record)));
     }
+  } else if (context.control_flow_block->terminator_kind ==
+             c4c::backend::bir::TerminatorKind::Branch) {
+    if (auto lowered = lower_prepared_branch_terminator(context, diagnostics)) {
+      block.instructions.push_back(std::move(*lowered));
+    }
   } else {
     append_block_diagnostic(
         diagnostics,

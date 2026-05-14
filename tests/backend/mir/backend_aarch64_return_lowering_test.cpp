@@ -283,21 +283,23 @@ prepare::PreparedBirModule prepared_with_return_selected_scalar_chain() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_branch_block() {
+prepare::PreparedBirModule prepared_with_conditional_branch_block() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
 
   const auto function_name = prepared.names.function_names.intern("branch.fn");
   const auto entry_label = prepared.names.block_labels.intern("branch.entry");
-  const auto exit_label = prepared.names.block_labels.intern("branch.exit");
+  const auto then_label = prepared.names.block_labels.intern("branch.then");
+  const auto else_label = prepared.names.block_labels.intern("branch.else");
 
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
       .blocks = {prepare::PreparedControlFlowBlock{
           .block_label = entry_label,
-          .terminator_kind = bir::TerminatorKind::Branch,
-          .branch_target_label = exit_label,
+          .terminator_kind = bir::TerminatorKind::CondBranch,
+          .true_label = then_label,
+          .false_label = else_label,
       }},
   });
   return prepared;
@@ -507,8 +509,8 @@ int module_build_selects_scalar_chain_before_return() {
   return 0;
 }
 
-int unsupported_branch_terminator_stays_diagnostic_only() {
-  auto prepared = prepared_with_branch_block();
+int unsupported_conditional_branch_terminator_stays_diagnostic_only() {
+  auto prepared = prepared_with_conditional_branch_block();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_module::make_function_lowering_context(
@@ -523,14 +525,14 @@ int unsupported_branch_terminator_stays_diagnostic_only() {
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 0 || !block.instructions.empty()) {
-    return fail("expected unsupported branch terminator to emit no machine instruction");
+    return fail("expected unsupported conditional branch terminator to emit no machine instruction");
   }
   if (diagnostics.entries.size() != 1 ||
       diagnostics.entries.front().kind !=
           aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily ||
       diagnostics.entries.front().function_name != function_cf.function_name ||
       diagnostics.entries.front().block_label != block_cf.block_label) {
-    return fail("expected unsupported branch to remain a typed diagnostic");
+    return fail("expected unsupported conditional branch to remain a typed diagnostic");
   }
   return 0;
 }
@@ -564,7 +566,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = unsupported_branch_terminator_stays_diagnostic_only();
+  if (const int status = unsupported_conditional_branch_terminator_stays_diagnostic_only();
       status != 0) {
     return status;
   }

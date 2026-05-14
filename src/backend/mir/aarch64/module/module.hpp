@@ -47,6 +47,7 @@ enum class InstructionLoweringFamily {
   Select,
   Memory,
   Call,
+  BranchControl,
 };
 
 enum class ModuleLoweringDiagnosticKind {
@@ -152,6 +153,9 @@ struct BuildResult {
 [[nodiscard]] InstructionDispatchResult dispatch_prepared_block(
     const BlockLoweringContext& context,
     MachineBlock& block,
+    ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<MachineInstruction> lower_prepared_branch_terminator(
+    const BlockLoweringContext& context,
     ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
     prepare::PreparedValueId value_id,
