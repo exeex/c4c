@@ -2,6 +2,7 @@
 #include "src/backend/mir/printer.hpp"
 
 #include <iostream>
+#include <initializer_list>
 #include <string>
 #include <string_view>
 
@@ -35,6 +36,22 @@ int expect_assembly(std::string_view actual,
                 " helper-derived assembly drifted from canonical expected spelling");
   }
   return expect_equal(actual, expected_from_helpers, context);
+}
+
+mir::MachinePrintResult print_common_instruction_nodes(
+    std::initializer_list<aarch64_codegen::InstructionRecord> instructions) {
+  mir::MachineFunction<aarch64_codegen::InstructionRecord> function;
+  function.function_name = c4c::FunctionNameId{2};
+  auto& block = function.blocks.emplace_back();
+  block.block_label = c4c::BlockLabelId{3};
+  block.index = 0;
+  for (const auto& instruction : instructions) {
+    block.instructions.push_back(
+        mir::MachineInstruction<aarch64_codegen::InstructionRecord>{.target = instruction});
+  }
+
+  const auto target_printer = aarch64_codegen::MachineInstructionPrinter{};
+  return mir::print_machine_function(function, target_printer);
 }
 
 aarch64_codegen::RegisterOperand xreg(unsigned index) {
@@ -115,7 +132,7 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
               reinterpret_cast<const prepare::PreparedSpillReloadOp*>(&source_op),
       });
 
-  const auto result = aarch64_codegen::print_machine_instruction_nodes({spill, reload});
+  const auto result = print_common_instruction_nodes({spill, reload});
   if (!result.ok || !result.diagnostic.empty()) {
     return fail("expected selected spill/reload nodes to print canonical AArch64 text");
   }
@@ -128,7 +145,7 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
   if (const int check = expect_assembly(result.assembly,
                                         expected,
                                         "    str x9, [sp, #16]\n    ldr x9, [sp, #16]\n",
-                                        "spill/reload helper-printer drift guard");
+                                        "spill/reload common-printer drift guard");
       check != 0) {
     return check;
   }
@@ -197,7 +214,7 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
           .value_type = bir::TypeKind::I64,
       });
 
-  const auto result = aarch64_codegen::print_machine_instruction_nodes({branch, store});
+  const auto result = print_common_instruction_nodes({branch, store});
   if (!result.ok) {
     return fail("expected branch and store nodes to print from structured operands: " +
                 result.diagnostic);
@@ -216,7 +233,7 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
                                         "    cbnz x1, .LBB2_7\n"
                                         "    b .LBB2_8\n"
                                         "    str x10, [sp, #24]\n",
-                                        "branch/store helper-printer drift guard");
+                                        "branch/store common-printer drift guard");
       check != 0) {
     return check;
   }
@@ -275,7 +292,7 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
           .value_type = bir::TypeKind::I32,
       });
 
-  const auto result = aarch64_codegen::print_machine_instruction_nodes({add, sub, ret});
+  const auto result = print_common_instruction_nodes({add, sub, ret});
   if (!result.ok) {
     return fail("expected scalar add/sub and register return to print from structured operands: " +
                 result.diagnostic);
@@ -292,7 +309,7 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
                                         "    add x0, x1, x2\n"
                                         "    sub w0, w1, w2\n"
                                         "    ret\n",
-                                        "scalar add/sub helper-printer drift guard");
+                                        "scalar add/sub common-printer drift guard");
       check != 0) {
     return check;
   }
@@ -322,7 +339,7 @@ int selected_immediate_return_node_prints_callable_epilogue() {
           .value_type = bir::TypeKind::I32,
       });
 
-  const auto result = aarch64_codegen::print_machine_instruction_nodes({ret});
+  const auto result = print_common_instruction_nodes({ret});
   if (!result.ok) {
     return fail("expected selected immediate return node to print AArch64 return text: " +
                 result.diagnostic);
@@ -335,7 +352,7 @@ int selected_immediate_return_node_prints_callable_epilogue() {
   if (const int check = expect_assembly(result.assembly,
                                         expected,
                                         "    mov w0, #0\n    ret\n",
-                                        "return helper-printer drift guard");
+                                        "return common-printer drift guard");
       check != 0) {
     return check;
   }
@@ -429,7 +446,7 @@ int selected_scalar_add_with_immediate_operands_prints_structured_add() {
           .value_type = bir::TypeKind::I32,
       });
 
-  const auto result = aarch64_codegen::print_machine_instruction_nodes({add, ret});
+  const auto result = print_common_instruction_nodes({add, ret});
   if (!result.ok) {
     return fail("expected scalar add with immediate operands to print structured add: " +
                 result.diagnostic);
@@ -446,7 +463,7 @@ int selected_scalar_add_with_immediate_operands_prints_structured_add() {
                                         "    mov w0, #2\n"
                                         "    add w0, w0, #3\n"
                                         "    ret\n",
-                                        "scalar immediate add helper-printer drift guard");
+                                        "scalar immediate add common-printer drift guard");
       check != 0) {
     return check;
   }
@@ -473,7 +490,7 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
           .supported_integer_operation = true,
       }));
   const auto out_of_range_result =
-      aarch64_codegen::print_machine_instruction_node(add_out_of_range);
+      aarch64_codegen::print_machine_instruction_line_payloads(add_out_of_range);
   if (out_of_range_result.ok ||
       out_of_range_result.diagnostic.find("plain #imm encoding range 0..4095") ==
           std::string::npos) {
@@ -498,7 +515,8 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
           }),
           .supported_integer_operation = true,
       }));
-  const auto negative_result = aarch64_codegen::print_machine_instruction_node(sub_negative);
+  const auto negative_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(sub_negative);
   if (negative_result.ok ||
       negative_result.diagnostic.find("plain #imm encoding range 0..4095") ==
           std::string::npos) {
@@ -511,7 +529,8 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
-  const auto assembler_result = aarch64_codegen::print_machine_instruction_node(assembler);
+  const auto assembler_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(assembler);
   if (assembler_result.ok ||
       assembler_result.diagnostic.find("surface machine_instruction_node") ==
           std::string::npos) {
@@ -523,7 +542,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported,
       "fixture unsupported");
   const auto unsupported_result =
-      aarch64_codegen::print_machine_instruction_node(unsupported);
+      aarch64_codegen::print_machine_instruction_line_payloads(unsupported);
   if (unsupported_result.ok ||
       unsupported_result.diagnostic.find("deferred_unsupported: fixture unsupported") ==
           std::string::npos) {
@@ -543,7 +562,8 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
           .rhs = aarch64_codegen::make_register_operand(xreg(3)),
           .supported_integer_operation = true,
       }));
-  const auto scalar_result = aarch64_codegen::print_machine_instruction_node(scalar);
+  const auto scalar_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(scalar);
   if (scalar_result.ok ||
       scalar_result.diagnostic.find("missing a structured destination register operand") ==
           std::string::npos) {
@@ -569,7 +589,8 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
           .supported_integer_operation = true,
       }));
   const auto scalar_with_unprintable_sub_operands_result =
-      aarch64_codegen::print_machine_instruction_node(scalar_with_unprintable_sub_operands);
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          scalar_with_unprintable_sub_operands);
   if (scalar_with_unprintable_sub_operands_result.ok ||
       scalar_with_unprintable_sub_operands_result.diagnostic.find(
           "scalar sub with an immediate lhs and register rhs is not printable") ==

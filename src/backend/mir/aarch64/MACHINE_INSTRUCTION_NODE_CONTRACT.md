@@ -44,10 +44,9 @@ structured encoding record derived from those nodes.
   `alu.*`, `comparison.*`, `emit.*`, and `compatibility_projection.*`.
   The accepted selected subset covers structured branch, integer scalar
   ALU/cast, memory load/store, and prepared spill/reload pseudo nodes. The live
-  `.s` printer is only the temporary terminal compatibility printer deferred to
-  idea 224 for replacement by common MIR traversal plus target rendering hooks;
-  this document still does not require encoding, object writing, or linking
-  behavior.
+  `.s` printer now walks the common MIR carrier and delegates target spelling to
+  AArch64 printer hooks; this document still does not require encoding, object
+  writing, or linking behavior.
 - `codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
   `assembler/types.hpp`, and `assembler/encoder/mod.hpp` remain compatibility,
   external-assembler, or legacy text-first surfaces until a later contract
@@ -345,13 +344,17 @@ are added.
 ## Focused Guard Decision
 
 The current live AArch64 `--codegen asm` route has no live route that feeds
-printed `.s` from the temporary terminal machine printer into the in-tree
-parser/encoder/object/linker path. The backend builds prepared machine nodes,
-prints terminal assembly text with `print_machine_instruction_nodes(...)`, and
-returns that text to the caller. The staged AArch64 `parse_asm`, `assemble`,
-`encode_instruction`, object, and linker surfaces remain external-input or
-future structured-record boundaries, not live internal consumers of that
-printed output.
+printed `.s` from the shared MIR printer into the in-tree
+parser/encoder/object/linker path. The backend builds the AArch64 target
+module, walks each `module::MachineFunction` through the shared MIR printer,
+and uses
+`MachineInstructionPrinter` / `print_machine_instruction_line_payloads(...)` as
+the target spelling hook before returning assembly text to the caller. Any
+`machine_nodes` flat views are compatibility-only projections and are not
+authoritative terminal printer input. The staged AArch64 `parse_asm`,
+`assemble`, `encode_instruction`, object, and linker surfaces remain
+external-input or future structured-record boundaries, not live internal
+consumers of that printed output.
 
 Because there is no accidental call chain from printed `.s` into AArch64
 parser/encoder/object/linker code, this contract slice does not need a focused

@@ -3,43 +3,38 @@
 Status: Active
 Source Idea Path: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Route Public AArch64 Assembly Through The Common Printer
+Current Step ID: 6
+Current Step Title: Retire Or Fence Temporary Display And Flat-Printer Paths
 
 ## Just Finished
 
-Completed `plan.md` Step 5 by routing the public AArch64 assembly helper
-through the shared hierarchical MIR printer. The route now passes each built
-`MachineFunction` directly to `mir::print_machine_function(...)` with
-`aarch64_codegen::MachineInstructionPrinter`, preserving the existing `.text`,
-function symbol/type/size scaffolding, GNU-stack footer, and unsupported
-diagnostic shape.
+Completed `plan.md` Step 6 by retiring the AArch64 flat terminal assembly
+helpers from `machine_printer.*`. AST-backed symbol checks plus repository
+reference checks showed the flat `print_machine_instruction_node(s)` entrypoints
+were no longer used by production code; the remaining AArch64 printer API is the
+target line-payload hook consumed by the shared MIR printer.
 
-The public route no longer flattens `function.mir` into a temporary vector of
-target instruction records just to print terminal assembly. Flat compatibility
-views remain available for existing non-terminal compatibility callers.
+`FunctionRecord::machine_nodes` and the compatibility projection derivation are
+now explicitly fenced as compatibility-only flat views, with terminal assembly
+ownership documented on `module::MachineFunction` plus the shared MIR printer.
+The machine-printer test now prints selected records through a local
+`mir::MachineFunction` and `MachineInstructionPrinter` instead of the removed
+flat-vector helper.
 
 ## Suggested Next
 
-Supervisor should decide the next packet from the active runbook. A coherent
-follow-up would be review/closeout validation for idea 224, because the public
-AArch64 assembly route now uses the common MIR printer while keeping the focused
-CLI smoke output green.
+Supervisor should run Step 7 broader validation and handoff/closeout review for
+idea 224, because public AArch64 assembly routing now walks the shared MIR
+printer and the remaining flat views are fenced as non-authoritative
+compatibility projections.
 
 ## Watchouts
 
-- The delegated owned-files list did not name `src/backend/backend.cpp`, but
-  AST lookup showed it is the only public AArch64 assembly call site and both
-  public AArch64 BIR/LIR entries call through it. The slice made the minimal
-  required route-boundary edit there.
-- The preserved failure text still says "machine-node printer" for compatibility
-  with existing diagnostics, even though traversal now flows through the shared
-  MIR printer.
-- `FunctionRecord::machine_nodes` and other flat views remain compatibility
-  projections; this packet did not alter those projections or broaden AArch64
-  instruction coverage.
-- Keep idea 229 as a follow-up markdown-shard conversion route unless the
-  supervisor changes lifecycle direction.
+- No AArch64 instruction coverage was broadened; tests were rerouted to the
+  shared MIR traversal boundary and still exercise the same selected spelling
+  families and fail-closed diagnostics.
+- `clang-format` is not installed in this environment, so formatting was kept
+  manual for this slice.
 
 ## Proof
 

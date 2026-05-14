@@ -88,6 +88,9 @@ struct FunctionRecord {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::string_view label;
   MachineFunction mir;
+  // Compatibility-only flat projection of selected MIR target records. The
+  // authoritative stream is `mir`; terminal assembly must not print from this
+  // vector.
   std::vector<codegen::InstructionRecord> machine_nodes;
 };
 

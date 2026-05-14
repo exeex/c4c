@@ -10,30 +10,12 @@ namespace c4c::backend::aarch64::codegen {
 
 namespace {
 
-MachineAssemblyPrintResult unsupported(std::string diagnostic) {
-  return MachineAssemblyPrintResult{.ok = false, .diagnostic = std::move(diagnostic)};
-}
-
-MachineAssemblyPrintResult printed(std::string assembly) {
-  return MachineAssemblyPrintResult{.ok = true, .assembly = std::move(assembly)};
-}
-
 mir::TargetInstructionPrintResult target_unsupported(std::string diagnostic) {
   return mir::target_instruction_unsupported(std::move(diagnostic));
 }
 
 mir::TargetInstructionPrintResult target_printed(std::vector<std::string> lines) {
   return mir::target_instruction_lines_printed(std::move(lines));
-}
-
-std::string instruction_lines_to_assembly(const std::vector<std::string>& lines) {
-  std::string assembly;
-  for (const auto& line : lines) {
-    assembly += "    ";
-    assembly += line;
-    assembly += "\n";
-  }
-  return assembly;
 }
 
 std::string block_label(c4c::FunctionNameId function_name, c4c::BlockLabelId block_label) {
@@ -398,27 +380,6 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   return target_unsupported(bad_header(instruction) +
                             "instruction family is not in the printable subset");
-}
-
-MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecord& instruction) {
-  const auto result = print_machine_instruction_line_payloads(instruction);
-  if (!result.ok) {
-    return unsupported(result.diagnostic);
-  }
-  return printed(instruction_lines_to_assembly(result.instruction_lines));
-}
-
-MachineAssemblyPrintResult print_machine_instruction_nodes(
-    const std::vector<InstructionRecord>& instructions) {
-  std::ostringstream out;
-  for (std::size_t index = 0; index < instructions.size(); ++index) {
-    const auto result = print_machine_instruction_node(instructions[index]);
-    if (!result.ok) {
-      return unsupported("instruction " + std::to_string(index) + ": " + result.diagnostic);
-    }
-    out << result.assembly;
-  }
-  return printed(out.str());
 }
 
 }  // namespace c4c::backend::aarch64::codegen

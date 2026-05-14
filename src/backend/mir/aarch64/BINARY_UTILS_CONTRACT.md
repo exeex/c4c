@@ -8,13 +8,17 @@ The current C++ port has a narrower active boundary than the reference Rust back
 
 1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen asm` through `backend::emit_module`.
 2. `src/backend/backend.cpp` lowers LIR through semantic BIR, prepared BIR, the AArch64 prepared-module builder, and selected machine nodes for `aarch64-*` triples.
-3. The temporary terminal printer in `src/backend/mir/aarch64/codegen/machine_printer.cpp` prints supported selected machine nodes as GNU-style AArch64 `.s` text; idea 224 owns replacing this target-local terminal with common MIR traversal plus target rendering hooks.
+3. The shared MIR printer walks the AArch64 target module and uses
+   `MachineInstructionPrinter` plus
+   `print_machine_instruction_line_payloads(...)` in
+   `src/backend/mir/aarch64/codegen/machine_printer.cpp` as the target
+   spelling hook for GNU-style AArch64 `.s` text.
 4. `src/apps/c4cll.cpp` writes that `.s` printer output to `-o` or stdout. It does not drive `.s -> .o -> executable` inside the app.
 5. External toolchain assembly and link validation currently lives in focused backend tests for the public `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` route.
 
 That means the repo's current executable contract is:
 
-- production CLI seam: `HIR -> LIR -> semantic BIR -> prepared BIR -> AArch64 target module -> selected machine nodes -> .s printer output`
+- production CLI seam: `HIR -> LIR -> semantic BIR -> prepared BIR -> AArch64 target module -> shared MIR printer + AArch64 target spelling hook -> .s printer output`
 - validation seam: `.s printer output -> external AArch64 assembler/linker toolchain -> ELF object or executable`
 
 The in-tree AArch64 assembler and linker subtrees are present in the source
@@ -25,12 +29,19 @@ tree, but their top-level object/link integration is not wired into `c4cll`:
 
 ## Current Assembler Inventory
 
-Step-5 inventory of the staged assembler boundary currently shows a printer
+Current inventory of the staged assembler boundary shows a shared MIR printer
 surface plus deferred text-first assembler stubs, not a structured internal
 assembler IR:
 
-- backend handoff today: `src/backend/backend.cpp` invokes the AArch64 prepared-module builder and prints selected function machine nodes.
-- printer entry today: `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes `print_machine_instruction_nodes(...)` for selected node records as the temporary terminal compatibility printer deferred to idea 224.
+- backend handoff today: `src/backend/backend.cpp` invokes the AArch64
+  prepared-module builder and prints each `module::MachineFunction` through the
+  shared MIR printer.
+- printer entry today:
+  `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes
+  `MachineInstructionPrinter` and
+  `print_machine_instruction_line_payloads(...)` as the AArch64 target spelling
+  hook consumed by the shared MIR printer. Flat `machine_nodes` views are
+  compatibility-only projections and are not terminal printer authority.
 - parser entry today: `src/backend/mir/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, but this is not used as the internal bridge from codegen to object emission.
 - assembler entry today: `src/backend/mir/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns staged text and reports `object_emitted = false`.
 - target-local writer staging today: `src/backend/mir/aarch64/assembler/elf_writer.md` records legacy writer notes, but there is no current AArch64 ELF object writer implementation in this route.
@@ -42,16 +53,18 @@ assembler IR:
 
 This means the current compile-integrated contract is now:
 
-- `PreparedBirModule -> AArch64 target module -> selected machine nodes -> .s printer output`
+- `PreparedBirModule -> AArch64 target module -> shared MIR printer + AArch64 target spelling hook -> .s printer output`
 - `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
 
 Later boundary work can narrow or replace that shape, but it should treat this
-printer path as the current compatibility baseline only. It is not an internal
-assembler, parser roundtrip, encoder, object writer, or linker: codegen-owned
-semantics must flow through structured target MIR records and AArch64 machine
-instruction nodes. A future built-in encoder or object writer must consume
-those nodes or a lower structured encoding record derived from them, while
-`parse_asm(...)` remains an external assembly input path.
+printer path as the current public assembly baseline only. It is not an
+internal assembler, parser roundtrip, encoder, object writer, or linker:
+codegen-owned semantics must flow through structured target MIR records and
+AArch64 machine instruction nodes. Flat `machine_nodes` projections remain
+compatibility-only/non-authoritative. A future built-in encoder or object
+writer must consume the canonical MIR stream or a lower structured encoding
+record derived from it, while `parse_asm(...)` remains an external assembly
+input path.
 
 ## Repo-Local Baseline Cases
 
