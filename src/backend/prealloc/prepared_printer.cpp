@@ -360,6 +360,29 @@ std::string maybe_register_bank(std::optional<PreparedRegisterBank> bank) {
   return std::string(prepared_register_bank_name(*bank));
 }
 
+void append_register_placement(std::ostringstream& out,
+                               std::string_view label,
+                               const std::optional<PreparedRegisterPlacement>& placement) {
+  if (!placement.has_value()) {
+    return;
+  }
+  out << " " << label << "="
+      << prepared_register_bank_name(placement->bank) << ":"
+      << prepared_register_slot_pool_name(placement->pool)
+      << "#" << placement->slot_index
+      << "/w" << placement->contiguous_width;
+}
+
+void append_spill_slot_placement(std::ostringstream& out,
+                                 std::string_view label,
+                                 const std::optional<PreparedSpillSlotPlacement>& placement) {
+  if (!placement.has_value()) {
+    return;
+  }
+  out << " " << label << "=slot#" << placement->slot_id
+      << "+stack" << placement->offset_bytes;
+}
+
 std::string prepared_join_transfer_ownership_name(const PreparedJoinTransfer& transfer) {
   if (transfer.source_branch_block_label.has_value()) {
     return "authoritative_branch_pair";
@@ -494,6 +517,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         out << "  saved " << prepared_register_bank_name(saved.bank)
             << ":" << saved.register_name
             << " order=" << saved.save_index;
+        append_register_placement(out, "placement", saved.placement);
         append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
         out << "\n";
       }
@@ -600,6 +624,8 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           if (preserved.callee_saved_save_index.has_value()) {
             out << " save_index=" << *preserved.callee_saved_save_index;
           }
+          append_register_placement(out, "placement", preserved.register_placement);
+          append_spill_slot_placement(out, "spill_slot", preserved.spill_slot_placement);
           if (preserved.register_name.has_value()) {
             out << " reg=" << *preserved.register_name;
           }
@@ -632,6 +658,8 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         out << "  storage " << maybe_value_name(module.names, value.value_name)
             << " " << storage_encoding_kind_name(value.encoding)
             << " bank=" << prepared_register_bank_name(value.bank);
+        append_register_placement(out, "placement", value.register_placement);
+        append_spill_slot_placement(out, "spill_slot", value.spill_slot_placement);
         if (value.register_name.has_value()) {
           out << " reg=" << *value.register_name;
         }
@@ -917,8 +945,9 @@ void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module)
         << (function_plan.uses_frame_pointer_for_fixed_slots ? "yes" : "no")
         << "\n";
     for (const auto& saved : function_plan.saved_callee_registers) {
-      out << "  saved_register bank=" << prepared_register_bank_name(saved.bank)
-          << " reg=" << saved.register_name
+      out << "  saved_register bank=" << prepared_register_bank_name(saved.bank);
+      append_register_placement(out, "placement", saved.placement);
+      out << " reg=" << saved.register_name
           << " save_index=" << saved.save_index;
       append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
       out << "\n";
@@ -1009,6 +1038,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
             out << " source_symbol_id=" << *arg.source_symbol_name_id;
           }
         }
+        append_register_placement(out, "source_placement", arg.source_register_placement);
         if (arg.source_register_name.has_value()) {
           out << " source_reg=" << *arg.source_register_name;
         }
@@ -1026,6 +1056,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (arg.source_pointer_byte_delta.has_value()) {
           out << " source_delta=" << *arg.source_pointer_byte_delta;
         }
+        append_register_placement(out, "dest_placement", arg.destination_register_placement);
         if (arg.destination_register_name.has_value()) {
           out << " dest_reg=" << *arg.destination_register_name;
         }
@@ -1050,6 +1081,7 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (result.destination_value_id.has_value()) {
           out << " destination_value_id=" << *result.destination_value_id;
         }
+        append_register_placement(out, "source_placement", result.source_register_placement);
         if (result.source_register_name.has_value()) {
           out << " source_reg=" << *result.source_register_name;
         }
@@ -1063,6 +1095,10 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
                                     result.source_occupied_register_names);
         }
         out << " source_bank=" << maybe_register_bank(result.source_register_bank);
+        append_register_placement(out, "dest_placement", result.destination_register_placement);
+        append_spill_slot_placement(out,
+                                    "dest_spill_slot",
+                                    result.destination_spill_slot_placement);
         if (result.destination_register_name.has_value()) {
           out << " dest_reg=" << *result.destination_register_name;
         }
@@ -1088,6 +1124,8 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         if (preserved.callee_saved_save_index.has_value()) {
           out << " save_index=" << *preserved.callee_saved_save_index;
         }
+        append_register_placement(out, "placement", preserved.register_placement);
+        append_spill_slot_placement(out, "spill_slot", preserved.spill_slot_placement);
         if (preserved.register_name.has_value()) {
           out << " reg=" << *preserved.register_name;
         }
@@ -1101,8 +1139,9 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         out << "\n";
       }
       for (const auto& clobbered : call.clobbered_registers) {
-        out << "    clobber bank=" << prepared_register_bank_name(clobbered.bank)
-            << " reg=" << clobbered.register_name;
+        out << "    clobber bank=" << prepared_register_bank_name(clobbered.bank);
+        append_register_placement(out, "placement", clobbered.placement);
+        out << " reg=" << clobbered.register_name;
         append_register_occupancy(out,
                                   clobbered.contiguous_width,
                                   clobbered.occupied_register_names);
@@ -1122,6 +1161,8 @@ void append_storage_plans(std::ostringstream& out, const PreparedBirModule& modu
           << " value_id=" << value.value_id
           << " encoding=" << storage_encoding_kind_name(value.encoding)
           << " bank=" << prepared_register_bank_name(value.bank);
+      append_register_placement(out, "placement", value.register_placement);
+      append_spill_slot_placement(out, "spill_slot", value.spill_slot_placement);
       if (value.register_name.has_value()) {
         out << " reg=" << *value.register_name;
       }
@@ -1158,6 +1199,8 @@ void append_regalloc(std::ostringstream& out, const PreparedBirModule& module) {
       out << " block_index=" << op.block_index
           << " inst_index=" << op.instruction_index
           << " bank=" << prepared_register_bank_name(op.register_bank);
+      append_register_placement(out, "placement", op.register_placement);
+      append_spill_slot_placement(out, "spill_slot", op.spill_slot_placement);
       if (op.register_name.has_value()) {
         out << " reg=" << *op.register_name;
       }

@@ -1,25 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/223_bir_mir_abstract_slot_contract_reject_string_names.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Structured Prepared Placement Types
+Current Step ID: 3
+Current Step Title: Migrate Prepared Allocation Records Away From Authoritative Strings
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the first structured prepared placement identity surface for idea 223 without migrating all legacy consumers. `PreparedRegisterPlacement` now carries bank, slot pool, slot index, and contiguous width; `PreparedSpillSlotPlacement` carries spill frame-slot identity. Target-register profile helpers now publish structured candidate-span placement and ABI arg/result placement helpers while keeping legacy spelling helpers intact.
+Step 3 started the prepared-printer consumer migration by rendering structured placement identity on representative prepared allocation records before the legacy register or slot spelling. `prepared_printer` now prints register placement (`bank:pool#slot/wN`) and spill-slot placement (`slot#N+stackOFFSET`) for saved registers, call argument/result records, clobbers, preserved values, storage plans, and spill/reload records while leaving existing `reg=`, `units=`, `slot_id=`, and stack-offset compatibility text in place.
 
-Representative prepared publications now carry structured placement alongside compatibility spelling fields: register candidate spans, assigned/spill-authority registers, assigned stack slots, frame saved registers, call clobbers as reserved scratch, ABI argument/result call plans, storage-plan register homes, and spill/reload frame-slot placement. Focused prepared tests now assert abstract placement for argument, return, caller-temp/callee spans, reserved scratch, long-lived callee assignment, and spill placement.
+Focused prepared-printer tests now fail if representative call argument/result, clobber, preserved-value, storage-plan, or spill/reload records lack the structured placement fields.
 
 ## Suggested Next
 
-Next coherent packet: migrate one narrow prepared consumer family to inspect `PreparedRegisterPlacement`/`PreparedSpillSlotPlacement` first, leaving legacy spelling fields as compatibility display or fallback. Keep this limited to pre-target prepared surfaces unless the supervisor explicitly opens an AArch64 handoff packet.
+Next coherent packet: migrate another narrow prepared consumer family to inspect `PreparedRegisterPlacement`/`PreparedSpillSlotPlacement` first, leaving legacy spelling fields as compatibility display or fallback. Keep this limited to pre-target prepared surfaces unless the supervisor explicitly opens a target handoff packet.
 
 ## Watchouts
 
-- This packet intentionally did not rewrite `regalloc.cpp` or downstream AArch64 consumers; legacy spelling fields remain compatibility authority for existing paths.
-- `publish_contract_plans()` now enriches regalloc output with placement identity before frame/call/storage plan publication. Manual tests that inspect placement after a direct `run_regalloc()` need to publish contract plans first.
+- This packet intentionally did not rewrite `regalloc.cpp`, target profiles, or downstream target consumers; legacy spelling fields remain compatibility display for existing paths.
+- Prepared-printer summary/detail text now includes extra `placement=` or `spill_slot=` tokens; future string checks should assert those structured tokens for migrated records instead of relying only on `reg=` or `slot_id=`.
 - `PreparedRegisterSlotPool::ReservedScratch` is currently used for published call clobbers, derived from caller-saved spans, not as a full scratch allocator migration.
 - Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
@@ -27,18 +27,18 @@ Next coherent packet: migrate one narrow prepared consumer family to inspect `Pr
 
 Ran delegated proof:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_prepare_(liveness|frame_stack_call_contract)" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_(prepared_printer|prepare_frame_stack_call_contract)$" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains a successful incremental build and both focused tests passing: `backend_prepare_liveness` and `backend_prepare_frame_stack_call_contract`.
+Result: passed. `test_after.log` contains a successful incremental build and both focused tests passing: `backend_prepare_frame_stack_call_contract` and `backend_prepared_printer`.
 
 Supervisor-side regression check on the matching focused before/after logs before the broader validation below replaced `test_after.log`:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: passed; before 2/2, after 2/2, no new failing tests. The default strict-increase guard mode reported only that the pass count did not increase, which is expected for this assertion-strengthening slice.
+Result: passed; before 2/2, after 2/2, no new failing tests.
 
 Supervisor-side broader prepared validation now preserved in `test_after.log`:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_|^backend_prepared_printer$" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed; 7/7 `backend_prepare_` tests passed.
+Result: passed; 8/8 prepared tests passed.

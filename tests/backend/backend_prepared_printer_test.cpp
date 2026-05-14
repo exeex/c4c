@@ -1853,9 +1853,16 @@ std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
 
 std::string clobber_detail(const prepare::PreparedClobberedRegister& clobber) {
   std::string detail = "clobber bank=" +
-                       std::string(prepare::prepared_register_bank_name(clobber.bank)) +
-                       " reg=" + clobber.register_name + " width=" +
-                       std::to_string(clobber.contiguous_width);
+                       std::string(prepare::prepared_register_bank_name(clobber.bank));
+  if (clobber.placement.has_value()) {
+    detail += " placement=" +
+              std::string(prepare::prepared_register_bank_name(clobber.placement->bank)) +
+              ":" + std::string(prepare::prepared_register_slot_pool_name(clobber.placement->pool)) +
+              "#" + std::to_string(clobber.placement->slot_index) + "/w" +
+              std::to_string(clobber.placement->contiguous_width);
+  }
+  detail += " reg=" + clobber.register_name;
+  detail += " width=" + std::to_string(clobber.contiguous_width);
   if (!clobber.occupied_register_names.empty()) {
     detail += " units=";
     for (std::size_t index = 0; index < clobber.occupied_register_names.size(); ++index) {
@@ -1866,6 +1873,29 @@ std::string clobber_detail(const prepare::PreparedClobberedRegister& clobber) {
     }
   }
   return detail;
+}
+
+std::string register_placement_text(
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
+    std::string_view label = "placement") {
+  if (!placement.has_value()) {
+    return std::string(label) + "=<missing>";
+  }
+  return std::string(label) + "=" +
+         std::string(prepare::prepared_register_bank_name(placement->bank)) + ":" +
+         std::string(prepare::prepared_register_slot_pool_name(placement->pool)) + "#" +
+         std::to_string(placement->slot_index) + "/w" +
+         std::to_string(placement->contiguous_width);
+}
+
+std::string spill_slot_placement_text(
+    const std::optional<prepare::PreparedSpillSlotPlacement>& placement,
+    std::string_view label = "spill_slot") {
+  if (!placement.has_value()) {
+    return std::string(label) + "=<missing>";
+  }
+  return std::string(label) + "=slot#" + std::to_string(placement->slot_id) +
+         "+stack" + std::to_string(placement->offset_bytes);
 }
 
 const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
@@ -2304,6 +2334,10 @@ int main() {
     std::cerr << "[FAIL] missing published save authority for s1 in cross-call dump fixture\n";
     return EXIT_FAILURE;
   }
+  if (!cross_call_saved_it->placement.has_value()) {
+    std::cerr << "[FAIL] missing structured saved-register placement for s1 in cross-call dump fixture\n";
+    return EXIT_FAILURE;
+  }
   const std::size_t cross_call_save_index = cross_call_saved_it->save_index;
   const std::string cross_call_dump = prepare::print(cross_call_prepared);
   if (!expect_contains(cross_call_dump,
@@ -2316,7 +2350,9 @@ int main() {
   if (!expect_contains(cross_call_dump,
                        "preserve value=carry value_id=" + std::to_string(cross_call_carry->value_id) +
                            " route=callee_saved_register save_index=" +
-                           std::to_string(cross_call_save_index) + " reg=s1 bank=gpr units=s1",
+                           std::to_string(cross_call_save_index) + " " +
+                           register_placement_text(cross_call_saved_it->placement) +
+                           " reg=s1 bank=gpr units=s1",
                        "cross-call preservation detail")) {
     return EXIT_FAILURE;
   }
@@ -2337,7 +2373,8 @@ int main() {
       });
   if (stack_preserved_it == stack_cross_call.preserved_values.end() ||
       !stack_preserved_it->slot_id.has_value() ||
-      !stack_preserved_it->stack_offset_bytes.has_value()) {
+      !stack_preserved_it->stack_offset_bytes.has_value() ||
+      !stack_preserved_it->spill_slot_placement.has_value()) {
     std::cerr << "[FAIL] missing stack-slot preservation authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -2351,6 +2388,16 @@ int main() {
   if (!expect_contains(stack_cross_call_dump,
                        stack_preserved_summary,
                        "stack-preserved call-slot summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(stack_cross_call_dump,
+                       "preserve value=" +
+                           std::string(prepare::prepared_value_name(stack_cross_call_prepared.names,
+                                                                    stack_preserved_it->value_name)) +
+                           " value_id=" + std::to_string(stack_preserved_it->value_id) +
+                           " route=stack_slot " +
+                           spill_slot_placement_text(stack_preserved_it->spill_slot_placement),
+                       "stack-preserved structured spill-slot detail")) {
     return EXIT_FAILURE;
   }
 
@@ -2387,7 +2434,8 @@ int main() {
       });
   if (grouped_preserved_it == grouped_cross_call.preserved_values.end() ||
       !grouped_preserved_it->register_name.has_value() ||
-      !grouped_preserved_it->callee_saved_save_index.has_value()) {
+      !grouped_preserved_it->callee_saved_save_index.has_value() ||
+      !grouped_preserved_it->register_placement.has_value()) {
     std::cerr << "[FAIL] missing grouped preserved-value authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -2399,6 +2447,11 @@ int main() {
       });
   if (grouped_saved_it == grouped_cross_call_frame_plan->saved_callee_registers.end()) {
     std::cerr << "[FAIL] missing grouped saved-register span authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!grouped_saved_it->placement.has_value() ||
+      !grouped_cross_call_carry->register_placement.has_value()) {
+    std::cerr << "[FAIL] missing grouped structured placement identity in dump fixture\n";
     return EXIT_FAILURE;
   }
   const std::string grouped_cross_call_dump = prepare::print(grouped_cross_call_prepared);
@@ -2416,6 +2469,7 @@ int main() {
                            std::to_string(grouped_preserved_it->value_id) +
                            " route=callee_saved_register save_index=" +
                            std::to_string(*grouped_preserved_it->callee_saved_save_index) +
+                           " " + register_placement_text(grouped_preserved_it->register_placement) +
                            " reg=" + *grouped_preserved_it->register_name +
                            " width=2 bank=vreg units=" +
                            grouped_saved_it->occupied_register_names.front() + "," +
@@ -2426,7 +2480,9 @@ int main() {
   if (!expect_contains(grouped_cross_call_dump,
                        "storage carry.pre value_id=" +
                            std::to_string(grouped_cross_call_carry->value_id) +
-                           " encoding=register bank=vreg reg=" +
+                           " encoding=register bank=vreg " +
+                           register_placement_text(grouped_cross_call_carry->register_placement) +
+                           " reg=" +
                            *grouped_cross_call_carry->register_name +
                            " width=2 units=" +
                            grouped_cross_call_carry->occupied_register_names.front() + "," +
@@ -2444,6 +2500,10 @@ int main() {
       });
   if (grouped_clobber_it == grouped_cross_call.clobbered_registers.end()) {
     std::cerr << "[FAIL] missing grouped clobber span authority in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!grouped_clobber_it->placement.has_value()) {
+    std::cerr << "[FAIL] missing grouped clobber structured placement in dump fixture\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(grouped_cross_call_dump,
@@ -2486,7 +2546,9 @@ int main() {
           : std::string(prepare::prepared_value_name(grouped_spill_reload_prepared.names,
                                                      grouped_spill_value->value_name));
   if (grouped_spill_value == nullptr ||
-      !grouped_spill_it->slot_id.has_value() || !grouped_spill_it->stack_offset_bytes.has_value()) {
+      !grouped_spill_it->slot_id.has_value() || !grouped_spill_it->stack_offset_bytes.has_value() ||
+      !grouped_spill_it->register_placement.has_value() ||
+      !grouped_spill_it->spill_slot_placement.has_value()) {
     std::cerr << "[FAIL] missing grouped spill slot authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -2498,7 +2560,10 @@ int main() {
                            std::to_string(grouped_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(grouped_spill_it->instruction_index) +
-                           " bank=vreg reg=v0 width=16 units=v0,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15 slot_id=#" +
+                           " bank=vreg " +
+                           register_placement_text(grouped_spill_it->register_placement) +
+                           " " + spill_slot_placement_text(grouped_spill_it->spill_slot_placement) +
+                           " reg=v0 width=16 units=v0,v1,v2,v3,v4,v5,v6,v7,v8,v9,v10,v11,v12,v13,v14,v15 slot_id=#" +
                            std::to_string(*grouped_spill_it->slot_id) +
                            " stack_offset=" +
                            std::to_string(*grouped_spill_it->stack_offset_bytes),
@@ -2546,7 +2611,10 @@ int main() {
                                                      general_spill_value->value_name));
   if (general_spill_value == nullptr || general_storage_carry == nullptr ||
       !general_spill_it->slot_id.has_value() ||
-      !general_spill_it->stack_offset_bytes.has_value()) {
+      !general_spill_it->stack_offset_bytes.has_value() ||
+      !general_spill_it->register_placement.has_value() ||
+      !general_spill_it->spill_slot_placement.has_value() ||
+      !general_storage_carry->spill_slot_placement.has_value()) {
     std::cerr << "[FAIL] missing grouped general spill slot authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -2559,7 +2627,10 @@ int main() {
                            std::to_string(general_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(general_spill_it->instruction_index) +
-                           " bank=gpr reg=s1 width=2 units=s1,s2 slot_id=#" +
+                           " bank=gpr " +
+                           register_placement_text(general_spill_it->register_placement) +
+                           " " + spill_slot_placement_text(general_spill_it->spill_slot_placement) +
+                           " reg=s1 width=2 units=s1,s2 slot_id=#" +
                            std::to_string(*general_spill_it->slot_id) +
                            " stack_offset=" +
                            std::to_string(*general_spill_it->stack_offset_bytes),
@@ -2576,7 +2647,9 @@ int main() {
   if (!expect_contains(general_grouped_spill_reload_dump,
                        "storage carry value_id=" +
                            std::to_string(general_storage_carry->value_id) +
-                           " encoding=frame_slot bank=gpr width=2 slot_id=#" +
+                           " encoding=frame_slot bank=gpr " +
+                           spill_slot_placement_text(general_storage_carry->spill_slot_placement) +
+                           " width=2 slot_id=#" +
                            std::to_string(*general_storage_carry->slot_id) +
                            " stack_offset=" +
                            std::to_string(*general_storage_carry->stack_offset_bytes),
@@ -2615,7 +2688,10 @@ int main() {
           : std::string(prepare::prepared_value_name(float_grouped_spill_reload_prepared.names,
                                                      float_spill_value->value_name));
   if (float_spill_value == nullptr || float_storage_carry == nullptr ||
-      !float_spill_it->slot_id.has_value() || !float_spill_it->stack_offset_bytes.has_value()) {
+      !float_spill_it->slot_id.has_value() || !float_spill_it->stack_offset_bytes.has_value() ||
+      !float_spill_it->register_placement.has_value() ||
+      !float_spill_it->spill_slot_placement.has_value() ||
+      !float_storage_carry->spill_slot_placement.has_value()) {
     std::cerr << "[FAIL] missing grouped float spill slot authority in dump fixture\n";
     return EXIT_FAILURE;
   }
@@ -2628,7 +2704,10 @@ int main() {
                            std::to_string(float_spill_it->block_index) +
                            " inst_index=" +
                            std::to_string(float_spill_it->instruction_index) +
-                           " bank=fpr reg=fs1 width=2 units=fs1,fs2 slot_id=#" +
+                           " bank=fpr " +
+                           register_placement_text(float_spill_it->register_placement) +
+                           " " + spill_slot_placement_text(float_spill_it->spill_slot_placement) +
+                           " reg=fs1 width=2 units=fs1,fs2 slot_id=#" +
                            std::to_string(*float_spill_it->slot_id) +
                            " stack_offset=" +
                            std::to_string(*float_spill_it->stack_offset_bytes),
@@ -2645,7 +2724,9 @@ int main() {
   if (!expect_contains(float_grouped_spill_reload_dump,
                        "storage carry value_id=" +
                            std::to_string(float_storage_carry->value_id) +
-                           " encoding=frame_slot bank=fpr width=2 slot_id=#" +
+                           " encoding=frame_slot bank=fpr " +
+                           spill_slot_placement_text(float_storage_carry->spill_slot_placement) +
+                           " width=2 slot_id=#" +
                            std::to_string(*float_storage_carry->slot_id) +
                            " stack_offset=" +
                            std::to_string(*float_storage_carry->stack_offset_bytes),
@@ -2658,6 +2739,34 @@ int main() {
   if (call_wrapper_call_plans == nullptr || call_wrapper_call_plans->calls.size() < 2 ||
       call_wrapper_call_plans->calls[1].clobbered_registers.empty()) {
     std::cerr << "[FAIL] missing prepared clobber fixture for call wrapper dump\n";
+    return EXIT_FAILURE;
+  }
+  const auto& fixed_call = call_wrapper_call_plans->calls[1];
+  if (fixed_call.arguments.empty() ||
+      !fixed_call.arguments.front().destination_register_name.has_value() ||
+      !fixed_call.arguments.front().destination_register_placement.has_value() ||
+      !fixed_call.result.has_value() ||
+      !fixed_call.result->destination_value_id.has_value() ||
+      !fixed_call.result->source_register_name.has_value() ||
+      !fixed_call.result->source_register_placement.has_value()) {
+    std::cerr << "[FAIL] missing structured call arg/result placement in call wrapper dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       register_placement_text(fixed_call.arguments.front().destination_register_placement,
+                                               "dest_placement") +
+                           " dest_reg=" + *fixed_call.arguments.front().destination_register_name,
+                       "call argument structured destination placement")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "result value_bank=gpr source_storage=register destination_storage=register "
+                           "destination_value_id=" +
+                           std::to_string(*fixed_call.result->destination_value_id) + " " +
+                           register_placement_text(fixed_call.result->source_register_placement,
+                                                   "source_placement") +
+                           " source_reg=" + *fixed_call.result->source_register_name,
+                       "call result structured source placement")) {
     return EXIT_FAILURE;
   }
   const std::string fixed_call_clobber_summary =
