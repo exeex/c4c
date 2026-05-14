@@ -1,7 +1,8 @@
 # AArch64 Module Phoenix Stage 2 Extraction Review And Replacement Layout
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 Parent Context: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Requires: ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md
 
@@ -95,6 +96,21 @@ defines the replacement layout, explicitly judges the parent 224 failure
 family, declares the mandatory stage-3 draft artifact map, and the
 stage-2-to-stage-3 handoff exists with enough concrete constraints that a
 stage-3 executor can start without re-deriving the architecture.
+
+## Completion Notes
+
+Closed after Stage 2 acceptance verified:
+
+- `src/backend/mir/aarch64/module/stage2_review_layout.md` exists and covers
+  current subsystem shape, extraction quality/no-repair status, replacement
+  layout, parent 224 judgment, and the Stage 3 draft artifact map.
+- `src/backend/mir/aarch64/module/stage2_to_stage3_handoff.md` exists and
+  matches the layout, mandatory draft map, no-repair evidence status, and
+  route constraints.
+- Stage 2 did not authorize implementation edits, build rewiring, test
+  expectation changes, or replacement draft contents.
+- `src/backend/mir/aarch64/module/module.cpp` remains compiled legacy evidence
+  until replacement implementation plus build wiring exist in a later stage.
 
 ## Reviewer Reject Signals
 
