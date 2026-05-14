@@ -1,9 +1,34 @@
 #include "module.hpp"
 
 #include <cstddef>
+#include <string_view>
 #include <utility>
 
 namespace c4c::backend::aarch64::module {
+namespace {
+
+[[nodiscard]] const c4c::backend::bir::Function* find_bir_function(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function) {
+  if (function.function_name == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+
+  const std::string_view prepared_function_name =
+      prepare::prepared_function_name(prepared.names, function.function_name);
+  if (prepared_function_name.empty()) {
+    return nullptr;
+  }
+
+  for (const auto& bir_function : prepared.module.functions) {
+    if (std::string_view{bir_function.name} == prepared_function_name) {
+      return &bir_function;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
 
 FunctionLoweringContext make_function_lowering_context(
     const prepare::PreparedBirModule& prepared,
@@ -13,6 +38,7 @@ FunctionLoweringContext make_function_lowering_context(
       .prepared = &prepared,
       .target_profile = &target_profile,
       .control_flow = &function,
+      .bir_function = find_bir_function(prepared, function),
       .value_locations =
           prepare::find_prepared_value_location_function(prepared, function.function_name),
       .storage_plan = prepare::find_prepared_storage_plan(prepared, function.function_name),
@@ -36,7 +62,8 @@ std::vector<MachineFunction> lower_prepared_functions(
   functions.reserve(prepared.control_flow.functions.size());
 
   for (const auto& prepared_function : prepared.control_flow.functions) {
-    (void)make_function_lowering_context(prepared, target_profile, prepared_function);
+    const auto function_context =
+        make_function_lowering_context(prepared, target_profile, prepared_function);
 
     MachineFunction function{
         .function_name = prepared_function.function_name,
@@ -52,6 +79,9 @@ std::vector<MachineFunction> lower_prepared_functions(
           .index = block_index,
           .instructions = {},
       });
+      const auto block_context =
+          make_block_lowering_context(function_context, prepared_block, block_index);
+      (void)dispatch_prepared_block(block_context, function.blocks.back(), diagnostics);
     }
 
     if (prepared_function.function_name == c4c::kInvalidFunctionName) {

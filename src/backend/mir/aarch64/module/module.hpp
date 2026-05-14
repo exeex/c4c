@@ -4,6 +4,7 @@
 #include "../codegen/records.hpp"
 #include "../../mir.hpp"
 
+#include <cstddef>
 #include <cstdint>
 #include <optional>
 #include <string>
@@ -39,6 +40,15 @@ enum class OperandAuthority {
   TargetRegister,
 };
 
+enum class InstructionLoweringFamily {
+  Unknown,
+  Phi,
+  Scalar,
+  Select,
+  Memory,
+  Call,
+};
+
 enum class ModuleLoweringDiagnosticKind {
   MissingFunctionContext,
   MissingValueAuthority,
@@ -46,12 +56,18 @@ enum class ModuleLoweringDiagnosticKind {
   RegisterConversionFailed,
   UnsupportedValueHome,
   UnsupportedStoragePlan,
+  MissingBlockContext,
+  MissingInstructionBlockMapping,
+  UnsupportedInstructionFamily,
+  UnsupportedTerminatorFamily,
 };
 
 struct ModuleLoweringDiagnostic {
   ModuleLoweringDiagnosticKind kind = ModuleLoweringDiagnosticKind::MissingValueAuthority;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::optional<std::size_t> instruction_index;
+  InstructionLoweringFamily instruction_family = InstructionLoweringFamily::Unknown;
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   std::string message;
@@ -67,9 +83,23 @@ struct FunctionLoweringContext {
   const prepare::PreparedBirModule* prepared = nullptr;
   const c4c::TargetProfile* target_profile = nullptr;
   const prepare::PreparedControlFlowFunction* control_flow = nullptr;
+  const c4c::backend::bir::Function* bir_function = nullptr;
   const prepare::PreparedValueLocationFunction* value_locations = nullptr;
   const prepare::PreparedStoragePlanFunction* storage_plan = nullptr;
   const prepare::PreparedRegallocFunction* regalloc = nullptr;
+};
+
+struct BlockLoweringContext {
+  FunctionLoweringContext function;
+  const prepare::PreparedControlFlowBlock* control_flow_block = nullptr;
+  const c4c::backend::bir::Block* bir_block = nullptr;
+  std::size_t block_index = 0;
+};
+
+struct InstructionDispatchResult {
+  std::size_t visited_operations = 0;
+  bool visited_terminator = false;
+  std::size_t emitted_instructions = 0;
 };
 
 struct ResolvedOperand {
@@ -115,6 +145,14 @@ struct BuildResult {
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
     const prepare::PreparedControlFlowFunction& function);
+[[nodiscard]] BlockLoweringContext make_block_lowering_context(
+    FunctionLoweringContext function,
+    const prepare::PreparedControlFlowBlock& block,
+    std::size_t block_index);
+[[nodiscard]] InstructionDispatchResult dispatch_prepared_block(
+    const BlockLoweringContext& context,
+    MachineBlock& block,
+    ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
     prepare::PreparedValueId value_id,
     const FunctionLoweringContext& context,
