@@ -233,6 +233,53 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
   return target_printed({out.str()});
 }
 
+mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instruction,
+                                              const FrameInstructionRecord& frame) {
+  if (frame.source_frame == nullptr) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame node is missing prepared frame provenance");
+  }
+  if (frame.function_name == c4c::kInvalidFunctionName) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame node is missing function identity");
+  }
+  if (frame.frame_alignment_bytes == 0) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame node is missing prepared frame alignment");
+  }
+  if (frame.has_dynamic_stack) {
+    return target_unsupported(bad_header(instruction) +
+                              "dynamic-stack frame node is outside the printable subset");
+  }
+  if (!frame.saved_callee_registers.empty() || frame.callee_save.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "callee-save frame node is outside the printable subset");
+  }
+
+  if (frame.frame_kind != FrameInstructionKind::PrologueSetup &&
+      frame.frame_kind != FrameInstructionKind::EpilogueTeardown) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame node kind is outside the printable subset");
+  }
+  if (frame.frame_size_bytes == 0) {
+    return target_printed({});
+  }
+  if (frame.frame_size_bytes > 4095) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame adjustment immediate is outside the plain #imm "
+                              "encoding range 0..4095");
+  }
+
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) + "frame mnemonic is not printable");
+  }
+
+  std::ostringstream out;
+  out << mnemonic << " sp, sp, #" << frame.frame_size_bytes;
+  return target_printed({out.str()});
+}
+
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
                                                const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
@@ -392,6 +439,9 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* memory = std::get_if<MemoryInstructionRecord>(&instruction.payload)) {
     return print_memory(instruction, *memory);
+  }
+  if (const auto* frame = std::get_if<FrameInstructionRecord>(&instruction.payload)) {
+    return print_frame(instruction, *frame);
   }
   if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
     return print_call(instruction, *call);

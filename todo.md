@@ -8,44 +8,48 @@ Current Step Title: Add Call And Frame Machine Records
 
 ## Just Finished
 
-Completed Step 2, Add Call And Frame Machine Records, first direct-call slice.
+Continued Step 2, Add Call And Frame Machine Records, with the frame/prologue/
+epilogue record-carrier slice.
 
-Implemented the minimum structured AArch64 call machine-record/provenance
-surface:
+Implemented structured AArch64 frame machine-record/provenance surface without
+emitting frame setup from traversal:
 
-- Threaded `PreparedFramePlanFunction`, `PreparedDynamicStackPlanFunction`, and
-  `PreparedCallPlansFunction` through `FunctionLoweringContext`.
-- Added explicit direct/indirect call opcodes and printer mnemonic kinds.
-- Extended `CallInstructionRecord` with prepared call provenance:
-  direct callee label, wrapper kind, variadic FP argument-register count,
-  memory return, prepared arguments, prepared result, preserved values,
-  clobbered registers, and `source_call`.
-- Added direct-call dispatch plumbing that looks up `PreparedCallPlan` by block
-  and instruction index, emits a selected direct-call node for prepared direct
-  calls, and records an explicit `MissingPreparedCallPlan` diagnostic when the
-  prepared call fact is absent.
-- Added direct-call printer support for `bl <prepared-direct-callee-label>`.
-  The printer rejects selected call nodes that lack prepared callee provenance.
-- Updated focused AArch64 tests for record preservation, fail-closed dispatch,
-  and direct-call printer output.
+- Added explicit frame instruction family, frame instruction kinds, frame setup/
+  teardown and callee-save opcodes, frame setup/teardown side-effect names, and
+  central mnemonic mapping for simple setup/teardown.
+- Added `FrameInstructionRecord` and `CalleeSaveInstructionRecord` carriers that
+  preserve prepared frame facts from `PreparedFramePlanFunction`: function
+  identity, frame size/alignment, frame-slot order, saved callee-register list,
+  dynamic-stack flag, frame-pointer fixed-slot flag, callee-save slot/offset
+  snapshot, and `source_frame` provenance.
+- Added `make_frame_instruction` with fail-closed selection diagnostics for
+  missing prepared frame facts and incomplete callee-save records.
+- Added conservative printer support for only complete simple fixed-frame
+  setup/teardown records with no dynamic stack and no callee-save records:
+  `sub sp, sp, #N` and `add sp, sp, #N`.
+- Added fail-closed printer diagnostics for missing prepared frame provenance,
+  missing alignment, dynamic-stack frames, callee-save frames, unprintable frame
+  kinds, and frame adjustments outside the current plain immediate subset.
+- Updated focused AArch64 tests for frame record preservation, central mnemonic
+  coverage, simple frame printer output, and fail-closed frame diagnostics.
 
 What this slice intentionally did not do:
 
-- It did not place call arguments/results, choose ABI registers, allocate stack
-  arguments, choose outgoing call area size, select sret storage, or borrow
-  scratch registers.
-- It did not implement indirect calls, memory-return lowering, preserved-value
-  moves, clobber handling beyond record preservation, or frame prologue/
-  epilogue records.
-- It did not add richer C++ frame records yet; frame plans are only threaded
-  through context for later owned packets.
+- It did not emit frame setup/teardown from traversal or dispatch.
+- It did not invent frame size, callee-save slots, frame-pointer policy,
+  dynamic-stack anchoring, ABI register choices, scratch-register choices, or
+  save/restore instruction forms inside AArch64 lowering.
+- It did not implement printable callee-save stores/loads yet; those records are
+  structured carriers and printer-fail closed until the later lowering packet
+  owns those facts.
 
 ## Suggested Next
 
-Continue Step 2 with either structured frame/prologue record definitions or
-call-boundary move/ABI-binding records. Keep the next packet narrow: consume
-prepared movement facts into records before trying to place call arguments or
-collect results.
+Continue Step 2 by wiring prepared frame facts into dispatch/traversal only as
+records if the supervisor wants the machine-node stream to carry prologue/
+epilogue placeholders, or move to the next call-boundary record slice. Keep the
+next packet narrow and do not lower callee-save save/restore text until the
+prepared slot/offset ownership is explicit.
 
 ## Watchouts
 
@@ -63,6 +67,9 @@ collect results.
   Relocation/linker/object behavior remains outside this packet.
 - Missing prepared call facts now fail through `MissingPreparedCallPlan`; do not
   reopen a fallback that derives call ABI shape from retained BIR alone.
+- Simple fixed-frame printer output is intentionally narrow and only covers
+  complete no-save/no-dynamic records. Callee-save and dynamic-stack records
+  preserve prepared facts but fail closed in the printer.
 
 ## Proof
 

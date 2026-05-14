@@ -74,10 +74,18 @@ enum class InstructionFamily {
   Branch,
   Scalar,
   Memory,
+  Frame,
   Call,
   Return,
   Assembler,
   Object,
+};
+
+enum class FrameInstructionKind {
+  PrologueSetup,
+  EpilogueTeardown,
+  CalleeSaveStore,
+  CalleeSaveLoad,
 };
 
 enum class MemoryInstructionKind {
@@ -97,6 +105,10 @@ enum class MachineOpcode {
   CompareBranch,
   DirectCall,
   IndirectCall,
+  FrameSetup,
+  FrameTeardown,
+  CalleeSaveStore,
+  CalleeSaveLoad,
   Add,
   Sub,
   And,
@@ -154,6 +166,8 @@ enum class MachineSideEffectKind {
   VolatileMemoryAccess,
   Call,
   Return,
+  FrameSetup,
+  FrameTeardown,
   InlineAssembly,
   ObjectEmission,
 };
@@ -533,6 +547,27 @@ struct SpillReloadInstructionRecord {
   const prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
 };
 
+struct CalleeSaveInstructionRecord {
+  prepare::PreparedSavedRegister saved_register;
+  std::optional<RegisterOperand> register_operand;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  bool stack_offset_is_prepared_snapshot = false;
+};
+
+struct FrameInstructionRecord {
+  FrameInstructionKind frame_kind = FrameInstructionKind::PrologueSetup;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  std::size_t frame_size_bytes = 0;
+  std::size_t frame_alignment_bytes = 0;
+  std::vector<prepare::PreparedFrameSlotId> frame_slot_order;
+  std::vector<prepare::PreparedSavedRegister> saved_callee_registers;
+  bool has_dynamic_stack = false;
+  bool uses_frame_pointer_for_fixed_slots = false;
+  std::optional<CalleeSaveInstructionRecord> callee_save;
+  const prepare::PreparedFramePlanFunction* source_frame = nullptr;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::string_view direct_callee_label;
@@ -575,6 +610,7 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         MemoryInstructionRecord,
                                         SpillReloadInstructionRecord,
+                                        FrameInstructionRecord,
                                         CallInstructionRecord,
                                         ReturnInstructionRecord,
                                         AssemblerInstructionRecord,
@@ -630,6 +666,7 @@ struct InstructionRecord {
     MachineEffectResourceKind kind);
 [[nodiscard]] std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
+[[nodiscard]] std::string_view frame_instruction_kind_name(FrameInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
 [[nodiscard]] std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind);
 [[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
@@ -663,6 +700,7 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
     SpillReloadInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_frame_instruction(FrameInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);

@@ -127,6 +127,8 @@ std::string_view instruction_family_name(InstructionFamily family) {
       return "scalar";
     case InstructionFamily::Memory:
       return "memory";
+    case InstructionFamily::Frame:
+      return "frame";
     case InstructionFamily::Call:
       return "call";
     case InstructionFamily::Return:
@@ -153,6 +155,14 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "direct_call";
     case MachineOpcode::IndirectCall:
       return "indirect_call";
+    case MachineOpcode::FrameSetup:
+      return "frame_setup";
+    case MachineOpcode::FrameTeardown:
+      return "frame_teardown";
+    case MachineOpcode::CalleeSaveStore:
+      return "callee_save_store";
+    case MachineOpcode::CalleeSaveLoad:
+      return "callee_save_load";
     case MachineOpcode::Add:
       return "add";
     case MachineOpcode::Sub:
@@ -231,6 +241,10 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::DirectCall;
     case MachineOpcode::IndirectCall:
       return MachinePrinterMnemonicKind::IndirectCall;
+    case MachineOpcode::FrameSetup:
+      return MachinePrinterMnemonicKind::Sub;
+    case MachineOpcode::FrameTeardown:
+      return MachinePrinterMnemonicKind::Add;
     case MachineOpcode::Add:
       return MachinePrinterMnemonicKind::Add;
     case MachineOpcode::Sub:
@@ -243,6 +257,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Store;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
+    case MachineOpcode::CalleeSaveStore:
+    case MachineOpcode::CalleeSaveLoad:
     case MachineOpcode::And:
     case MachineOpcode::Or:
     case MachineOpcode::Xor:
@@ -344,6 +360,10 @@ std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind) {
       return "call";
     case MachineSideEffectKind::Return:
       return "return";
+    case MachineSideEffectKind::FrameSetup:
+      return "frame_setup";
+    case MachineSideEffectKind::FrameTeardown:
+      return "frame_teardown";
     case MachineSideEffectKind::InlineAssembly:
       return "inline_assembly";
     case MachineSideEffectKind::ObjectEmission:
@@ -358,6 +378,20 @@ std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
       return "load";
     case MemoryInstructionKind::Store:
       return "store";
+  }
+  return "unknown";
+}
+
+std::string_view frame_instruction_kind_name(FrameInstructionKind kind) {
+  switch (kind) {
+    case FrameInstructionKind::PrologueSetup:
+      return "prologue_setup";
+    case FrameInstructionKind::EpilogueTeardown:
+      return "epilogue_teardown";
+    case FrameInstructionKind::CalleeSaveStore:
+      return "callee_save_store";
+    case FrameInstructionKind::CalleeSaveLoad:
+      return "callee_save_load";
   }
   return "unknown";
 }
@@ -1612,6 +1646,35 @@ std::vector<MachineSideEffectKind> spill_reload_side_effects(
   return {};
 }
 
+MachineOpcode machine_opcode_from_frame_instruction(const FrameInstructionRecord& instruction) {
+  switch (instruction.frame_kind) {
+    case FrameInstructionKind::PrologueSetup:
+      return MachineOpcode::FrameSetup;
+    case FrameInstructionKind::EpilogueTeardown:
+      return MachineOpcode::FrameTeardown;
+    case FrameInstructionKind::CalleeSaveStore:
+      return MachineOpcode::CalleeSaveStore;
+    case FrameInstructionKind::CalleeSaveLoad:
+      return MachineOpcode::CalleeSaveLoad;
+  }
+  return MachineOpcode::Unspecified;
+}
+
+std::vector<MachineSideEffectKind> frame_side_effects(
+    const FrameInstructionRecord& instruction) {
+  switch (instruction.frame_kind) {
+    case FrameInstructionKind::PrologueSetup:
+      return {MachineSideEffectKind::FrameSetup};
+    case FrameInstructionKind::EpilogueTeardown:
+      return {MachineSideEffectKind::FrameTeardown};
+    case FrameInstructionKind::CalleeSaveStore:
+      return {MachineSideEffectKind::MemoryWrite};
+    case FrameInstructionKind::CalleeSaveLoad:
+      return {MachineSideEffectKind::MemoryRead};
+  }
+  return {};
+}
+
 MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& instruction,
                                                 const std::vector<OperandRecord>& operands) {
   if (!instruction.conditional) {
@@ -1735,6 +1798,24 @@ MachineNodeStatusRecord spill_reload_selection_status(
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "spill/reload node is missing slot or scratch facts"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord frame_selection_status(const FrameInstructionRecord& instruction) {
+  if (instruction.source_frame == nullptr ||
+      instruction.function_name == c4c::kInvalidFunctionName ||
+      instruction.frame_alignment_bytes == 0) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "frame node is missing prepared frame facts"};
+  }
+  if ((instruction.frame_kind == FrameInstructionKind::CalleeSaveStore ||
+       instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) &&
+      !instruction.callee_save.has_value()) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "callee-save frame node is missing prepared save facts"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -1894,6 +1975,38 @@ InstructionRecord make_spill_reload_instruction(SpillReloadInstructionRecord ins
       .defs = defs,
       .uses = uses,
       .side_effects = spill_reload_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.callee_save.has_value() &&
+      instruction.callee_save->register_operand.has_value()) {
+    const auto reg_operand = make_register_operand(*instruction.callee_save->register_operand);
+    if (instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) {
+      defs.push_back(effect_from_operand(reg_operand));
+    } else {
+      uses.push_back(effect_from_operand(reg_operand));
+    }
+  }
+  if (instruction.callee_save.has_value() &&
+      instruction.callee_save->slot_id.has_value()) {
+    uses.push_back(MachineEffectResource{
+        .kind = MachineEffectResourceKind::FrameSlot,
+        .frame_slot_id = instruction.callee_save->slot_id,
+    });
+  }
+  return InstructionRecord{
+      .family = InstructionFamily::Frame,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_frame_instruction(instruction),
+      .selection = frame_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .defs = defs,
+      .uses = uses,
+      .side_effects = frame_side_effects(instruction),
       .payload = instruction,
   };
 }

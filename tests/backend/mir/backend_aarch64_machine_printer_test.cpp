@@ -560,6 +560,47 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
                          "direct-call common-printer drift guard");
 }
 
+int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
+  const prepare::PreparedFramePlanFunction prepared_frame{
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
+  const auto setup = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+  const auto teardown = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+
+  const auto result = print_common_instruction_nodes({setup, teardown});
+  if (!result.ok) {
+    return fail("expected simple fixed frame nodes to print from prepared frame facts: " +
+                result.diagnostic);
+  }
+  const auto setup_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(setup);
+  const auto teardown_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(teardown);
+  const std::string expected =
+      "    " + std::string(setup_mnemonic) + " sp, sp, #32\n" +
+      "    " + std::string(teardown_mnemonic) + " sp, sp, #32\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    sub sp, sp, #32\n"
+                         "    add sp, sp, #32\n",
+                         "simple frame common-printer drift guard");
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -651,6 +692,76 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected direct call without prepared provenance to fail closed");
   }
 
+  const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 32,
+          .frame_alignment_bytes = 16,
+      });
+  const auto frame_missing_provenance_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(frame_missing_provenance);
+  if (frame_missing_provenance_result.ok ||
+      frame_missing_provenance_result.diagnostic.find("prepared frame facts") ==
+          std::string::npos) {
+    return fail("expected selected frame without prepared provenance to fail closed");
+  }
+
+  const prepare::PreparedFramePlanFunction saved_frame{
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {
+              prepare::PreparedSavedRegister{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .register_name = "x19",
+                  .contiguous_width = 1,
+                  .occupied_register_names = {"x19"},
+                  .save_index = 0,
+              },
+          },
+  };
+  const auto frame_with_saved_register = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = saved_frame.function_name,
+          .frame_size_bytes = saved_frame.frame_size_bytes,
+          .frame_alignment_bytes = saved_frame.frame_alignment_bytes,
+          .saved_callee_registers = saved_frame.saved_callee_registers,
+          .source_frame = &saved_frame,
+      });
+  const auto saved_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(frame_with_saved_register);
+  if (saved_result.ok ||
+      saved_result.diagnostic.find("callee-save frame node is outside the printable subset") ==
+          std::string::npos) {
+    return fail("expected frame with callee-save facts to fail closed");
+  }
+
+  const prepare::PreparedFramePlanFunction dynamic_frame{
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .has_dynamic_stack = true,
+  };
+  const auto dynamic_stack_frame = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = dynamic_frame.function_name,
+          .frame_size_bytes = dynamic_frame.frame_size_bytes,
+          .frame_alignment_bytes = dynamic_frame.frame_alignment_bytes,
+          .has_dynamic_stack = dynamic_frame.has_dynamic_stack,
+          .source_frame = &dynamic_frame,
+      });
+  const auto dynamic_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(dynamic_stack_frame);
+  if (dynamic_result.ok ||
+      dynamic_result.diagnostic.find("dynamic-stack frame node is outside the printable subset") ==
+          std::string::npos) {
+    return fail("expected dynamic-stack frame to fail closed");
+  }
+
   return 0;
 }
 
@@ -686,6 +797,11 @@ int main() {
     return result;
   }
   if (const int result = selected_direct_call_prints_from_prepared_call_provenance();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts();
       result != 0) {
     return result;
   }

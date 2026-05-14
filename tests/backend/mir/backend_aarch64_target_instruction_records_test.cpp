@@ -342,6 +342,122 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   return 0;
 }
 
+int frame_instruction_records_preserve_prepared_frame_facts() {
+  const prepare::PreparedFramePlanFunction prepared_frame{
+      .function_name = c4c::FunctionNameId{6},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers =
+          {
+              prepare::PreparedSavedRegister{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .register_name = "x19",
+                  .contiguous_width = 1,
+                  .occupied_register_names = {"x19"},
+                  .save_index = 0,
+              },
+          },
+      .frame_slot_order = {prepare::PreparedFrameSlotId{12}},
+      .has_dynamic_stack = true,
+      .uses_frame_pointer_for_fixed_slots = true,
+  };
+  const auto prologue = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .frame_slot_order = prepared_frame.frame_slot_order,
+          .saved_callee_registers = prepared_frame.saved_callee_registers,
+          .has_dynamic_stack = prepared_frame.has_dynamic_stack,
+          .uses_frame_pointer_for_fixed_slots =
+              prepared_frame.uses_frame_pointer_for_fixed_slots,
+          .source_frame = &prepared_frame,
+      });
+  const auto epilogue = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+  const auto callee_save = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::CalleeSaveStore,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .saved_callee_registers = prepared_frame.saved_callee_registers,
+          .callee_save =
+              aarch64_codegen::CalleeSaveInstructionRecord{
+                  .saved_register = prepared_frame.saved_callee_registers.front(),
+                  .register_operand = value_register(prepare::PreparedValueId{50},
+                                                     c4c::ValueNameId{51},
+                                                     19),
+                  .slot_id = prepare::PreparedFrameSlotId{12},
+                  .stack_offset_bytes = std::size_t{16},
+                  .stack_offset_is_prepared_snapshot = true,
+              },
+          .source_frame = &prepared_frame,
+      });
+
+  const auto* prologue_payload =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&prologue.payload);
+  const auto* epilogue_payload =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&epilogue.payload);
+  const auto* callee_save_payload =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&callee_save.payload);
+
+  if (prologue_payload == nullptr ||
+      aarch64_codegen::instruction_family_name(prologue.family) != "frame" ||
+      prologue.opcode != aarch64_codegen::MachineOpcode::FrameSetup ||
+      aarch64_codegen::machine_opcode_name(prologue.opcode) != "frame_setup" ||
+      prologue.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      prologue.side_effects.size() != 1 ||
+      prologue.side_effects.front() != aarch64_codegen::MachineSideEffectKind::FrameSetup ||
+      aarch64_codegen::machine_side_effect_kind_name(prologue.side_effects.front()) !=
+          "frame_setup" ||
+      prologue_payload->source_frame != &prepared_frame ||
+      prologue_payload->frame_size_bytes != 32 ||
+      prologue_payload->frame_alignment_bytes != 16 ||
+      !prologue_payload->has_dynamic_stack ||
+      !prologue_payload->uses_frame_pointer_for_fixed_slots ||
+      prologue_payload->frame_slot_order.size() != 1 ||
+      prologue_payload->frame_slot_order.front() != prepare::PreparedFrameSlotId{12} ||
+      prologue_payload->saved_callee_registers.size() != 1 ||
+      prologue_payload->saved_callee_registers.front().register_name != "x19" ||
+      aarch64_codegen::frame_instruction_kind_name(prologue_payload->frame_kind) !=
+          "prologue_setup") {
+    return fail("expected frame prologue record to preserve prepared frame facts");
+  }
+  if (epilogue_payload == nullptr ||
+      epilogue.opcode != aarch64_codegen::MachineOpcode::FrameTeardown ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(epilogue) != "add" ||
+      epilogue.side_effects.size() != 1 ||
+      epilogue.side_effects.front() != aarch64_codegen::MachineSideEffectKind::FrameTeardown ||
+      aarch64_codegen::frame_instruction_kind_name(epilogue_payload->frame_kind) !=
+          "epilogue_teardown") {
+    return fail("expected frame epilogue record to preserve teardown identity");
+  }
+  if (callee_save_payload == nullptr ||
+      callee_save.opcode != aarch64_codegen::MachineOpcode::CalleeSaveStore ||
+      aarch64_codegen::machine_opcode_name(callee_save.opcode) != "callee_save_store" ||
+      aarch64_codegen::frame_instruction_kind_name(callee_save_payload->frame_kind) !=
+          "callee_save_store" ||
+      !callee_save_payload->callee_save.has_value() ||
+      callee_save_payload->callee_save->saved_register.register_name != "x19" ||
+      callee_save_payload->callee_save->slot_id != prepare::PreparedFrameSlotId{12} ||
+      !callee_save_payload->callee_save->stack_offset_is_prepared_snapshot ||
+      callee_save.uses.empty() ||
+      callee_save.side_effects.size() != 1 ||
+      callee_save.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected callee-save frame record to carry prepared save provenance");
+  }
+
+  return 0;
+}
+
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
@@ -545,6 +661,27 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .calling_convention = bir::CallingConv::C,
       });
+  const prepare::PreparedFramePlanFunction prepared_frame{
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+  };
+  const auto frame_setup = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+  const auto frame_teardown = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
 
   if (aarch64_codegen::machine_printer_mnemonic_kind_name(
           aarch64_codegen::MachinePrinterMnemonicKind::None) != "" ||
@@ -559,7 +696,9 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(immediate_ret) != "ret" ||
       aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(immediate_ret) != "mov" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(scalar) != "add" ||
-      aarch64_codegen::machine_instruction_primary_printer_mnemonic(sub_scalar) != "sub") {
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(sub_scalar) != "sub" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(frame_setup) != "sub" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(frame_teardown) != "add") {
     return fail("expected supported printer mnemonics to come from the central helper");
   }
 
@@ -574,6 +713,10 @@ int main() {
     return status;
   }
   if (const int status = call_return_assembler_and_object_families_are_explicit_placeholders();
+      status != 0) {
+    return status;
+  }
+  if (const int status = frame_instruction_records_preserve_prepared_frame_facts();
       status != 0) {
     return status;
   }
