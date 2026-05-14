@@ -42,3 +42,11 @@ Supervisor-side broader prepared validation now preserved in `test_after.log`:
 `bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_|^backend_prepared_printer$" --output-on-failure' > test_after.log 2>&1`
 
 Result: passed; 8/8 prepared tests passed.
+
+Post-commit baseline review found the full-suite candidate regressed two prepared BIR CLI dump snippet tests because the new structured `placement=` token now appears between `bank=gpr` and the legacy `reg=` text. The candidate baseline was rejected, and the CLI expectations were updated to assert the structured placement identity instead of weakening the checks.
+
+Supervisor-side prepared BIR CLI dump validation now preserved in `test_after.log`:
+
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build --output-on-failure -R "^backend_cli_dump_prepared_bir_"' > test_after.log 2>&1`
+
+Result: passed; 10/10 prepared BIR CLI dump tests passed.

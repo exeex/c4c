@@ -993,7 +993,7 @@ add_test(
           -DDUMP_FLAG=--dump-prepared-bir
           "-DEXTRA_ARGS=--mir-focus-function;main"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/backend/case/local_arg_call.c
-          "-DREQUIRED_SNIPPETS=--- prepared-function-summaries ---|prepared.summary @main stable_base=rsp frame_size=4 frame_alignment=4 has_dynamic_stack=no|callsite block=0 inst=2 wrapper=same_module callee=add_one variadic_fpr_args=0 args=1 result_bank=gpr|arg0 bank=gpr from=register:r11 to=rdi|result bank=gpr from=register:rax to=register:rbx|storage %t0 register bank=gpr reg=r11|storage %t1 register bank=gpr reg=rbx|--- prepared-call-plans ---|prepared.func @main|call block_index=0 inst_index=2 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=add_one|--- prepared-storage-plans ---|storage %t0 value_id=2 encoding=register bank=gpr reg=r11|storage %t1 value_id=3 encoding=register bank=gpr reg=rbx"
+          "-DREQUIRED_SNIPPETS=--- prepared-function-summaries ---|prepared.summary @main stable_base=rsp frame_size=4 frame_alignment=4 has_dynamic_stack=no|callsite block=0 inst=2 wrapper=same_module callee=add_one variadic_fpr_args=0 args=1 result_bank=gpr|arg0 bank=gpr from=register:r11 to=rdi|result bank=gpr from=register:rax to=register:rbx|storage %t0 register bank=gpr placement=gpr:caller_saved#0/w1 reg=r11|storage %t1 register bank=gpr placement=gpr:callee_saved#0/w1 reg=rbx|--- prepared-call-plans ---|prepared.func @main|call block_index=0 inst_index=2 wrapper_kind=same_module variadic_fpr_arg_register_count=0 indirect=no callee=add_one|--- prepared-storage-plans ---|storage %t0 value_id=2 encoding=register bank=gpr placement=gpr:caller_saved#0/w1 reg=r11|storage %t1 value_id=3 encoding=register bank=gpr placement=gpr:callee_saved#0/w1 reg=rbx"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
 set_tests_properties(backend_cli_dump_prepared_bir_local_arg_call_contract PROPERTIES
@@ -1252,7 +1252,7 @@ add_test(
           -DDUMP_FLAG=--dump-prepared-bir
           "-DEXTRA_ARGS=--mir-focus-function;stdarg;--mir-focus-value;t1"
           -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
-          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.summary @stdarg|calls=1|storage_values=1|callsite block=0 inst=0 wrapper=direct_extern_variadic|storage %t1 register bank=gpr reg=r11|home %t1 value_id=|move_bundle phase=after_call authority=none block_index=0 instruction_index=0|move from_value_id="
+          "-DREQUIRED_SNIPPETS=focus function: stdarg|focus value: %t1|focused functions matched: 1|focused semantic value-owned lines matched: 1|prepared.module target=x86_64-unknown-linux-gnu route=semantic_bir_shared|bir.func @stdarg() -> void {|entry:|%t1 = bir.call i32 printf(ptr @.str48)|prepared.summary @stdarg|calls=1|storage_values=1|callsite block=0 inst=0 wrapper=direct_extern_variadic|storage %t1 register bank=gpr placement=gpr:caller_saved#0/w1 reg=r11|home %t1 value_id=|move_bundle phase=after_call authority=none block_index=0 instruction_index=0|move from_value_id="
           "-DFORBIDDEN_SNIPPETS=bir.call void myprintf(ptr @.str49|callsite block=0 inst=129|storage %t3.global.aggregate.load.0|access block=entry"
           -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
 )
