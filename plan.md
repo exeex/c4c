@@ -52,6 +52,17 @@ review should reconstruct the current prepared-BIR, prepared authority record,
 codegen record, public assembly, and API exposure flow, then define a new
 direct lowering layout around MIR machine-node production.
 
+Stage 2 Step 2 and Step 3 work must carry the MIR/printer replacement contract:
+`prepare::PreparedBirModule` is the MIR lowering input; lowering produces MIR
+nodes directly from that prepared module; those nodes must be enough for one
+shared, platform-independent `mir_printer` to scan once and emit `.s` text for
+`gcc` / `as`; the printer calls target-owned AArch64 instruction, operand,
+register, and other target-form print/render methods instead of encoding target
+syntax; instruction and operand nodes each need their own printable
+representation; operands include immediates, registers, and other target forms;
+and the target-owned representation idea must not become a C++ API named
+`__repr__`.
+
 The layout must explicitly judge the parent 224 failure family:
 
 - common MIR carrier confusion
@@ -114,6 +125,10 @@ Actions:
   exposure from the evidence.
 - Trace dependencies on prepared BIR, prepared authority records, codegen
   records, public assembly, and MIR/module emission.
+- Preserve the replacement contract while reconstructing current behavior:
+  current records and public assembly are evidence to replace, while the target
+  design lowers from `prepare::PreparedBirModule` into printable MIR nodes for
+  the shared `mir_printer`.
 - Identify responsibility buckets and hidden cross-helper state.
 - Classify special cases as core lowering, optional fast path, legacy
   compatibility, or overfit to reject.
@@ -134,6 +149,12 @@ Actions:
 - Specify which components own module dispatch, function traversal, value or
   operand resolution, instruction lowering, branch/control lowering, call
   lowering, public assembly bridging, and compatibility behavior if needed.
+- Define the printer boundary around a single platform-independent
+  `mir_printer` pass over MIR nodes. Target syntax belongs to AArch64
+  instruction, operand, register, and other target-form print/render methods;
+  instruction and operand printable representations must be separate, operands
+  must cover immediates, registers, and target-specific forms, and no C++ API
+  may be named `__repr__`.
 - State what each component may know, what it must not know, and what it
   outputs.
 - Explain how the layout addresses the parent 224 failure family.

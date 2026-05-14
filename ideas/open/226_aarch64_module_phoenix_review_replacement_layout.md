@@ -60,6 +60,23 @@ stage and consumes the handoff as its intake contract.
   which require correction first, which replacement draft files are mandatory,
   and what route constraints must be preserved.
 
+## Stage 2 MIR/Printer Contract
+
+- Replacement layout work must treat `prepare::PreparedBirModule` as the input
+  to MIR lowering.
+- Lowering must produce MIR nodes directly from that prepared module, not
+  rebuild the legacy module-emitter record accumulation shape.
+- Those MIR nodes must be sufficient for one shared, platform-independent
+  `mir_printer` to scan once and emit `.s` text consumable by `gcc` / `as`.
+- The shared `mir_printer` must not encode target assembly syntax. It should
+  call target-owned print/render methods on AArch64 instructions, operands,
+  registers, and other target forms.
+- Instruction and operand nodes each need their own printable representation.
+  Operands include immediates, registers, and any other target-specific operand
+  forms required by the layout.
+- Target-owned printing should be similar in spirit to a language object
+  representation hook, but the C++ API must not be named `__repr__`.
+
 ## Boundaries
 
 - Do not draft replacement component contents before the layout and handoff

@@ -18,8 +18,19 @@ single-pass emitter.
 ## Suggested Next
 
 Delegate Step 2 layout work using the repaired Stage 1 evidence as the
-boundary: design around prepared BIR to target MIR nodes plus the shared
-printer interface, rather than around the legacy module-record pile.
+boundary: reconstruct the current subsystem only as evidence for the contract
+that `prepare::PreparedBirModule` lowers directly into MIR nodes. Those nodes
+must be printable by one shared, platform-independent `mir_printer` that scans
+once and emits `.s` for `gcc` / `as`, calling target-owned AArch64
+instruction, operand, register, and other target-form print/render methods
+instead of encoding target syntax.
+
+The next executor should keep Step 2 on current-shape reconstruction, but use
+this contract as the route constraint that Step 3 must satisfy. Instruction and
+operand nodes each need their own printable representation; operands include
+immediates, registers, and other target forms; target-owned printing may be
+similar in spirit to object representation hooks, but the C++ API must not be
+named `__repr__`.
 
 ## Watchouts
 
