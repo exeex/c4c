@@ -140,6 +140,14 @@ spelling for the target-MIR/pre-node surface; new roadmap work should prefer
 explicit target-MIR, selected machine-node, printer-output, encoder-input, or
 external-assembler-input names.
 
+Current guard decision: there is no live route from AArch64
+`machine_printer.cpp` printed `.s` into the in-tree
+parser/encoder/object/linker path, so this docs-only plan does not require a
+focused guard test. If a future compile-through route needs built-in object or
+linker output, it should consume selected machine nodes or lower structured
+asm/encoding records instead of reusing terminal printer text as semantic
+input.
+
 Minimum future structured asm/encoding records are a downstream stream derived
 from selected machine instruction nodes. The accepted families are a
 translation-unit record, section record, label record,

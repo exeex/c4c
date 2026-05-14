@@ -313,6 +313,23 @@ types, so no live enum helper or implementation mapping is required in this
 slice. The contract applies to the future C++ records when those enum surfaces
 are added.
 
+## Focused Guard Decision
+
+The current live AArch64 `--codegen asm` route has no live route that feeds
+printed `.s` from `machine_printer.cpp` into the in-tree
+parser/encoder/object/linker path. The backend builds prepared machine nodes,
+prints terminal assembly text with `print_machine_instruction_nodes(...)`, and
+returns that text to the caller. The staged AArch64 `parse_asm`, `assemble`,
+`encode_instruction`, object, and linker surfaces remain external-input or
+future structured-record boundaries, not live internal consumers of that
+printed output.
+
+Because there is no accidental call chain from printed `.s` into AArch64
+parser/encoder/object/linker code, this contract slice does not need a focused
+guard test. A future implementation that creates such a live bridge must add
+the narrow guard at that call chain or replace the bridge with structured
+machine-node or asm/encoding records.
+
 ## Rejected Internal Routes
 
 The following routes are rejected for AArch64 codegen:
