@@ -1,8 +1,9 @@
 # AArch64 Module Phoenix Stage 1 Legacy Evidence Extraction
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 Parent Context: ideas/open/224_common_mir_container_and_target_printer_boundary.md
+Closed: 2026-05-14
 
 ## Intent
 
@@ -88,6 +89,15 @@ has more than one non-helper `.hpp`, Stage 1 explicitly records that
 owns teardown plus build rewiring, and reviewers can understand the module
 emitter responsibilities from the extracted evidence without treating the live
 source as the replacement design.
+
+## Closure Note
+
+Closed after Stage 1 produced `module.cpp.md`, `module.hpp.md`, and the
+directory-level `module.md` evidence index. `module.cpp` remains compiled
+legacy evidence for the current build; physical teardown is deferred until a
+later phoenix stage owns replacement implementation and build-system rewiring.
+The next stage is
+`ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md`.
 
 ## Reviewer Reject Signals
 
