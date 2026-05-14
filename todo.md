@@ -8,35 +8,19 @@ Current Step Title: Draft Replacement Index And Header Contract
 
 ## Just Finished
 
-Stage 3 activation created the active runbook from idea 227 and the accepted
-Stage 2 handoff artifacts. No implementation, build, test, or Stage 2 artifact
-files were edited.
+Completed plan Step 1 by rewriting
+`src/backend/mir/aarch64/module/module.md` as the Stage 3 replacement
+directory index and `src/backend/mir/aarch64/module/module.hpp.md` as the
+single public header contract draft. The drafts establish the direct
+prepared-BIR-to-typed-MIR boundary, canonical carrier vocabulary, lightweight
+provenance model, compatibility-projection boundary, target-owned printable
+surfaces, mandatory Stage 3 artifact map, no-extra-public-header rule, and
+`helper.hpp` exception conditions.
 
 ## Suggested Next
 
-Delegate Step 1 to an executor.
-
-Owned files:
-
-- `src/backend/mir/aarch64/module/module.md`
-- `src/backend/mir/aarch64/module/module.hpp.md`
-
-Required read-first files:
-
-- `.codex/skills/phoenix-rebuild/SKILL.md`
-- `ideas/open/227_aarch64_module_phoenix_replacement_drafts.md`
-- `src/backend/mir/aarch64/module/stage2_review_layout.md`
-- `src/backend/mir/aarch64/module/stage2_to_stage3_handoff.md`
-- `src/backend/mir/aarch64/module/module.cpp.md`
-- `src/backend/mir/aarch64/module/module.hpp.md`
-- `src/backend/mir/aarch64/module/module.md`
-
-Packet goal:
-
-- Convert `module.md` and `module.hpp.md` from Stage 1 extraction/evidence
-  artifacts into Stage 3 replacement drafts that establish the directory index,
-  public header contract, canonical MIR carrier vocabulary, provenance model,
-  compatibility-projection boundaries, and target-owned printable surfaces.
+Delegate Step 2 to draft `module.cpp.md` and `function_traversal.cpp.md`
+against the Step 1 vocabulary.
 
 ## Watchouts
 
@@ -49,7 +33,11 @@ Packet goal:
 - Do not introduce a target render API named `__repr__`.
 - If the Stage 2 artifact map appears wrong, stop and report a Stage 2 contract
   repair blocker instead of silently adding or removing files.
+- Step 2 drafts should use the Step 1 `MachineModule`, `MachineFunction`,
+  `MachineBlock`, `MachineInstruction`, `MachineOperand`, `Provenance`, and
+  `CompatibilityProjection` vocabulary instead of inventing a second carrier.
 
 ## Proof
 
-Lifecycle-only activation. No build or test proof required for this packet.
+Markdown-only proof written to `test_after.log` with concise `rg` checks over
+`module.md` and `module.hpp.md`. No build was required by the delegated proof.

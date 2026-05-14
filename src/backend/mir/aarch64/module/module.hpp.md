@@ -1,198 +1,312 @@
-# `src/backend/mir/aarch64/module/module.hpp` Extraction
+# `src/backend/mir/aarch64/module/module.hpp` Replacement Draft
 
-## Purpose And Current Responsibility
+## Purpose
 
-This header is the non-helper directory index surface for `backend/mir/aarch64/module`.
-It exposes the public AArch64 MIR module build product and the single entry point that
-turns a prepared BIR module into that product.
+`module.hpp` is the single non-helper public header for the AArch64 module
+replacement. It declares the stable public build entry point, the public module
+product, the durable canonical MIR carrier vocabulary, lightweight provenance,
+compatibility projections, and target-owned printable surfaces.
 
-The file is almost entirely a schema boundary. It does not implement lowering, but it
-defines the records that downstream AArch64 MIR/codegen clients inspect after lowering:
-allocation provenance, frame layout, calls, moves, spill/reload plans, parallel-copy
-execution, globals, strings, blocks, functions, and the top-level module.
+This draft is a Stage 3 contract only. It does not describe the legacy header
+as the desired implementation, and it does not authorize edits to real `.hpp`,
+`.cpp`, build, or test files.
 
-Treat these structures as evidence of the current contract shape, not as the desired
-rebuild design. The current surface mixes durable module facts, debug/provenance fields,
-compatibility views, source pointers, backend allocation authority, and partially lowered
-machine-node state in one exported namespace.
+## Public Entry Point
 
-## Important APIs And Contract Surfaces
+The public entry point remains:
 
-The only function API is the module builder:
+```cpp
+[[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
+```
+
+`build` accepts prepared BIR as the authority for the AArch64 module handoff.
+It returns a completed module product when the prepared target profile and
+AArch64 ABI handoff validate, otherwise it returns `abi::HandoffError`.
 
 ```cpp
 struct BuildResult {
   std::optional<Module> module;
   std::optional<abi::HandoffError> error;
 };
-
-[[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
 ```
 
-The top-level product retains the prepared-module pointer, target profile, and all
-materialized data/function records:
+`BuildResult` is a transport result only. It must not expose partially lowered
+record piles as a fallback product.
+
+## Public Module Product
+
+The public module product keeps the stable module handoff while making the
+canonical MIR carrier the durable output.
 
 ```cpp
 struct Module {
-  const prepare::PreparedBirModule* prepared;
   c4c::TargetProfile target_profile;
+  MachineModule mir;
+  ModuleDataRecords data;
+  CompatibilityProjection compatibility;
+};
+```
+
+`Module` may retain enough diagnostic provenance to explain where facts came
+from, but the replacement contract should not require raw prepared/source
+object ownership or `std::string_view` lifetime coupling as semantic
+authority. Any retained raw pointers or views belong in compatibility and
+diagnostic projection records with explicit lifetime notes.
+
+## Canonical MIR Carrier
+
+The canonical output is hierarchical typed MIR:
+
+```cpp
+struct MachineModule {
+  std::vector<MachineFunction> functions;
+  std::vector<ModuleDataItem> data_items;
+  std::vector<RelocationNeed> relocation_needs;
+};
+
+struct MachineFunction {
+  c4c::FunctionNameId function_name;
+  LabelSymbol label;
+  std::vector<MachineBlock> blocks;
+  Provenance provenance;
+};
+
+struct MachineBlock {
+  c4c::BlockLabelId block_label;
+  LabelSymbol label;
+  std::vector<MachineInstruction> instructions;
+  std::vector<BlockSuccessor> successors;
+  Provenance provenance;
+};
+```
+
+The exact container spelling can follow the shared MIR library, but the
+semantic shape is fixed: module contains functions, functions contain blocks,
+and blocks contain ordered AArch64 machine instructions or control nodes.
+`FunctionRecord::machine_nodes` and any other flat vector are compatibility
+views only.
+
+## Target Instruction And Operand Surfaces
+
+AArch64 owns the printable target surfaces consumed by the shared
+`mir_printer`:
+
+```cpp
+struct MachineInstruction {
+  AArch64Opcode opcode;
+  std::vector<MachineOperand> operands;
+  InstructionProvenance provenance;
+
+  void render_instruction(TargetRenderSink& sink) const;
+};
+
+struct MachineOperand {
+  MachineOperandKind kind;
+  OperandStorage storage;
+  OperandProvenance provenance;
+
+  void render_operand(TargetRenderSink& sink) const;
+};
+
+struct MachineRegister {
+  RegisterBank bank;
+  uint32_t number;
+  RegisterWidth width;
+
+  void render_register(TargetRenderSink& sink) const;
+};
+```
+
+Printable target objects cover instructions, operands, registers, memory
+references, labels, symbols, immediates, and relocation-aware forms. Instruction
+rendering and operand rendering remain separate surfaces so the shared printer
+does not learn AArch64 syntax.
+
+Target-owned render APIs use ordinary C++ names such as
+`render_instruction`, `render_operand`, and `render_register`. The replacement
+must not introduce a C++ method or public API named `__repr__`.
+
+## Operand Authority Vocabulary
+
+Operand resolution produces a typed location model before instruction, branch,
+or call lowering consumes operands:
+
+```cpp
+enum class OperandAuthority {
+  PreparedValueHome,
+  StoragePlan,
+  RegallocAssignment,
+  FrameSlot,
+  SpillSlot,
+  AbiLocation,
+  Immediate,
+  Symbol,
+  Label,
+  CompatibilityFallback
+};
+
+struct OperandStorage {
+  OperandAuthority authority;
+  std::variant<
+      MachineRegister,
+      FrameSlotRef,
+      SpillSlotRef,
+      ImmediateValue,
+      MemoryReference,
+      LabelSymbol,
+      GlobalSymbol> value;
+};
+```
+
+Downstream lowering components consume `MachineOperand` and `MachineRegister`
+values instead of rechecking broad prepared tables or public records. Storage
+precedence belongs to operand resolution. Register spelling fallback is
+fail-closed compatibility behavior and cannot override structured prepared
+facts.
+
+## Provenance Model
+
+Provenance is the `MachineOrigin`-equivalent lightweight metadata attached to
+module, function, block, instruction, operand, and compatibility records:
+
+```cpp
+struct Provenance {
+  std::optional<c4c::FunctionNameId> function_name;
+  std::optional<c4c::BlockLabelId> block_label;
+  std::optional<c4c::ValueNameId> value_name;
+  std::optional<size_t> prepared_index;
+  std::optional<SourceLocationRef> source_location;
+  ProvenanceReason reason;
+};
+```
+
+Allowed provenance data includes stable IDs, indices, labels, durable source
+locations, and reason tags that identify the prepared authority used. The
+replacement model must not make raw prepared/source ownership, cached display
+strings, or source spelling recovery the authority for lowering.
+
+## Module Data Records
+
+Module data remains a public product, but it is not a second lowering path:
+
+```cpp
+struct ModuleDataRecords {
   std::vector<GlobalDataRecord> globals;
   std::vector<StringDataRecord> strings;
   std::vector<DataRelocationNeedRecord> relocation_needs;
-  std::vector<FunctionRecord> functions;
 };
 ```
 
-`FunctionRecord` is the largest contract surface. It aggregates source identity, prepared
-control-flow linkage, frame data, branch/call/move/spill/parallel-copy side records,
-operand/register views, the canonical MIR function, a compatibility flat machine-node
-view, and block metadata.
+Data records come from prepared module data and relocation requirements. The
+public assembly bridge passes canonical module data to the shared printer
+through target-owned hooks; AArch64 does not own common section traversal or
+file emission structure.
+
+## Compatibility Projection Boundary
+
+Compatibility projections exist for migration and diagnostics after canonical
+MIR lowering completes:
 
 ```cpp
+struct CompatibilityProjection {
+  std::vector<FunctionRecord> functions;
+  std::vector<DiagnosticRecord> diagnostics;
+};
+
 struct FunctionRecord {
   c4c::FunctionNameId function_name;
-  std::string_view label;
-  const bir::Function* source_function;
-  const prepare::PreparedControlFlowFunction* control_flow;
-  FrameRecord frame;
-  std::vector<BranchRecord> branches;
-  std::vector<CallRecord> calls;
-  std::vector<MoveRecord> moves;
-  std::vector<AbiBindingRecord> abi_bindings;
-  std::vector<SpillReloadRecord> spill_reloads;
-  std::vector<ParallelCopyRecord> parallel_copies;
-  std::vector<OperandRecord> operands;
-  std::vector<TargetRegisterRecord> target_registers;
-  mir::Function<mir::MachineNode<codegen::InstructionRecord>> mir;
+  MachineFunctionView mir;
   std::vector<codegen::InstructionRecord> machine_nodes;
-  std::vector<BlockRecord> blocks;
+  FunctionInspectionRecords inspection;
 };
 ```
 
-Core record families:
+Compatibility may include `FunctionRecord::machine_nodes`, broad inspection
+records, source/prepared pointer views, label views, legacy register-string
+diagnostics, frame/call/move/spill/parallel-copy inspection records, and other
+legacy shapes needed by existing clients. These records are derived from
+`MachineModule`, typed operands, prepared ABI facts, and lightweight
+provenance after lowering.
 
-- Allocation/register contract: `TargetRegisterRecord`, `OperandRecord`, and enums for
-  register reference kind, allocation snapshot, allocation location, and allocation
-  authority.
-- Frame contract: `FrameRecord`, `FrameSlotRecord`, `CalleeSaveRecord`, and
-  `DynamicStackRecord`.
-- Control-flow and instruction-adjacent contract: `BlockRecord`, `BranchRecord`,
-  `MoveRecord`, `AbiBindingRecord`, `SpillReloadRecord`, `ParallelCopyRecord`, and its
-  move/step children.
-- ABI call contract: `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, and
-  `CallPreservedValueRecord`.
-- Data contract: `GlobalDataRecord`, `StringDataRecord`, `DataRelocationNeedRecord`, and
-  visibility/relocation enums.
+Compatibility projections must not:
 
-## Dependency Direction And Hidden Inputs
+- drive instruction, branch, call, or operand lowering
+- choose among optional broad fields to satisfy a testcase
+- become the primary print or validation carrier
+- make flat `machine_nodes` equivalent to canonical MIR blocks
+- use cached display strings or spelling recovery as semantic authority
 
-Public dependency direction is from this module surface to:
+## Shared Printer Contract
 
-- `../abi/abi.hpp` for register references, allocation pools, and handoff errors.
-- `../codegen/records.hpp` for machine instruction records.
-- `../../mir.hpp` for the target MIR function and machine-node container.
-- `backend::prepare` records via `PreparedBirModule` and many prepared-plan references.
-- `backend::bir` value/type/global/function/block shapes.
-- shared ID namespaces such as `ValueNameId`, `FunctionNameId`, `LinkNameId`,
-  `BlockLabelId`, `SlotNameId`, `TextId`, and `TargetProfile`.
+The shared `mir_printer` owns traversal and common emission mechanics:
+function order, block order, label placement, sections, data traversal,
+spacing mechanics, and `.s` file structure. AArch64 owns the concrete text for
+target instructions, operands, registers, memory references, labels, symbols,
+immediates, opcodes, and target data hooks.
 
-The hidden inputs are the lifetime and semantic stability of the prepared objects. Many
-records keep raw `const prepare::*` or `const bir::*` source pointers. The contract
-therefore assumes the built `Module` is inspected while the originating prepared/BIR
-storage remains alive. It also assumes `std::string_view` labels outlive the module
-record, usually through upstream interning or prepared-module storage.
+The header should expose only the target-owned printable concepts required by
+that printer bridge. It must not make the printer call into compatibility
+records or flat machine-node vectors.
 
-Several records carry duplicated facts with different authority labels. For example an
-operand can expose value home, regalloc assignment, spill authority, storage plan,
-physical register text, stack offsets, frame/spill slot IDs, immediates, symbols, and
-pointer-base information at once. The consumer must infer which fields are authoritative
-from enum tags rather than from type separation.
+## Owned Inputs
 
-## Responsibility Buckets
+- `prepare::PreparedBirModule`
+- prepared target profile and AArch64 handoff records
+- prepared control-flow functions and blocks
+- prepared frame, storage, value home, regalloc, spill/reload,
+  parallel-copy, call-plan, global, string, and relocation facts
+- shared ID namespaces and source-location references when already durable
+- shared MIR container and printer concepts
 
-### Directory Index Surface
+## Owned Outputs
 
-This header is the single non-helper `.hpp` for the directory and should remain the
-formal index surface in a phoenix rebuild. It should describe what the module builder
-exports, but not become the implementation home for every internal lowering concern.
+- `BuildResult`
+- `Module`
+- `MachineModule`, `MachineFunction`, `MachineBlock`, and
+  `MachineInstruction` or equivalent typed MIR concepts
+- AArch64 `MachineOperand`, `MachineRegister`, memory, label, symbol,
+  immediate, and opcode printable surfaces
+- lightweight `Provenance`
+- `ModuleDataRecords`
+- `CompatibilityProjection`
 
-### Prepared Evidence Projection
+## Indirect Queries
 
-Most records are a projection of prepared lowering facts into target-facing evidence:
-prepared value IDs, value homes, storage encoding, frame objects, control-flow blocks,
-call plans, move bundles, spill/reload plans, and dynamic stack plans.
+The public header may name ABI, prepared BIR, shared MIR, codegen record, and
+ID types needed to express the public contract. It should not require clients
+to understand private lowering contexts, helper state, or component internals
+from module dispatch, traversal, operand resolution, instruction lowering,
+branch/control lowering, call lowering, public assembly bridging, or
+compatibility projection.
 
-### Target ABI Projection
+## Forbidden Knowledge
 
-AArch64 ABI-specific fields appear throughout the records: register references,
-contiguous register widths, occupied physical registers, callee-save save indices,
-destination/source register banks, and stack offsets. These are important contract data,
-but they are currently repeated across call, move, spill, operand, and register records.
+The header must not encode:
 
-### Machine MIR Product
+- operation-specific lowering algorithms
+- register-allocation policy or frame planning policy
+- call ABI planning internals beyond public projection shapes
+- branch fusion implementation details
+- spill/reload or parallel-copy scheduling algorithms
+- printer traversal or `.s` file structure
+- broad optional public records as semantic input
+- cached display strings, source spelling recovery, or flat vectors as the
+  lowering authority
 
-The actual target MIR product is held inside `FunctionRecord::mir` as a typed MIR
-function over `codegen::InstructionRecord`. This is the durable product that rebuilt
-clients should prefer.
+## Header Policy
 
-### Compatibility And Inspection Views
+`module.hpp` remains the only non-helper public header draft for this
+directory. Stage 3 must not add component-level public headers for the
+implementation seams.
 
-`FunctionRecord::machine_nodes` is explicitly a compatibility flat view while clients
-migrate to `mir.blocks[].instructions`. Many source pointer and label fields also serve
-inspection/debug use cases more than semantic lowering.
+`helper.hpp` is the only allowed exception. It may be drafted only after a
+later packet explicitly proves all of these conditions:
 
-## Fast Paths, Compatibility Paths, And Overfit Pressure
+- the declarations are private to this replacement directory
+- multiple implementation drafts must share the declarations
+- placing the declarations in one `.cpp.md` would create hidden two-way
+  coupling or duplicate incompatible private contracts
+- the helper does not become a second public index and does not expose
+  lowering internals to external clients
 
-- Core lowering: `Module`, `FunctionRecord::mir`, frame/call/move/spill/parallel-copy
-  records are legitimate outputs if they reflect general prepared-plan semantics.
-- Optional fast path: branch records carry `can_fuse_with_branch`, predicate, compare
-  type, lhs, and rhs, allowing branch fusion when a prepared condition can be consumed
-  directly.
-- Legacy compatibility: `FunctionRecord::machine_nodes` duplicates machine
-  instructions as a flat vector and should be treated as a migration bridge, not a
-  rebuilt primary surface.
-- Legacy compatibility: pervasive `source_*` raw pointers preserve traceability to BIR
-  and prepared plans. They are useful for diagnostics but make lifetime and ownership
-  implicit.
-- Overfit pressure: authority is often represented by optional fields plus enum tags in
-  broad records instead of smaller typed variants. This invites narrow consumers to read
-  whichever field happens to be populated for a testcase.
-- Overfit pressure: repeated register/stack destination shapes across call arguments,
-  call results, ABI bindings, moves, preserved values, and spill/reloads can encourage
-  local shape patches instead of one semantic storage-location model.
-- Overfit pressure: `offset_is_prepared_snapshot` and similar snapshot booleans appear
-  in several records, exposing transitional offset authority rather than a single frame
-  layout contract.
-
-## Rebuild Ownership Guidance
-
-This file should own the directory index contract: the public module build entry point,
-the exported module/function/data record vocabulary, and the narrow set of durable types
-that downstream clients are expected to consume.
-
-For the replacement boundary, the public entry point still receives
-`prepare::PreparedBirModule`, but the durable product should be target MIR
-nodes lowered directly from that prepared module. The header should not describe
-an intermediate accumulation of broad module records as the thing later stages
-must interpret. Its exported shape should make clear that prepared BIR evidence
-is transformed into MIR instructions, operands, and registers that already know
-how they print for the target.
-
-The MIR node vocabulary must be rich enough for a shared `mir_printer` to scan
-once and emit `.s` for `gcc`/`as` without learning AArch64-specific syntax.
-That printer is the platform-independent traversal and emission layer. It calls
-target-owned print/render methods on instruction, operand, and register objects
-when a concrete assembly spelling is needed.
-
-The target-owned printable representation should cover instructions plus their
-operands, including immediates, registers, memory forms, labels, symbols, and
-other target operands introduced by lowering. This keeps AArch64 spelling rules
-near AArch64 instruction/operand/register types, while keeping the common
-printer reusable across targets.
-
-It should not own lowering algorithms, register-allocation policy, frame planning,
-parallel-copy resolution, call ABI planning, spill/reload selection, target
-assembly syntax, or compatibility storage for clients that can consume canonical
-MIR blocks directly. In a rebuild, keep this header as the directory index
-surface, but push repeated storage-location shapes, debug provenance, and
-compatibility views behind clearer typed seams.
+No `helper.hpp.md` is mandatory in Stage 3.
