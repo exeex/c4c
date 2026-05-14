@@ -3,31 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add The Shared MIR Printer Boundary
+Current Step ID: 4
+Current Step Title: Adapt AArch64 Spelling To The Target Printer Interface
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by adding the shared MIR printer boundary under
-`src/backend/mir/printer.*`. The common printer now walks
-`MachineModule -> MachineFunction -> MachineBlock -> MachineInstruction`,
-passes structural print context to a target-owned spelling interface, accepts
-only unindented instruction line payloads from that interface, owns instruction
-indentation and newline joining, and fails closed with a structural diagnostic
-instead of returning partial assembly when target spelling is unsupported or
-preformatted.
+Completed `plan.md` Step 4 by moving AArch64 instruction spelling behind a
+production target-printer adapter surface. `machine_printer.*` now exposes
+`MachineInstructionPrinter`, which implements
+`mir::TargetInstructionPrinter<InstructionRecord>`, plus
+`print_machine_instruction_line_payloads(...)` for unindented target-owned
+instruction payloads. The existing `print_machine_instruction_node(s)` APIs
+remain compatibility wrappers that apply the legacy indentation/newline shape,
+so public AArch64 assembly routing is still unchanged for Step 5.
 
-Focused coverage now instantiates the boundary with both a fake target printer
-and an AArch64-facing temporary bridge that strips the existing target
-`print_machine_instruction_node(...)` output back to line payloads before the
-common printer applies indentation/newlines; public AArch64 assembly routing
-remains unchanged for the later Step 5 packet.
+Existing selected-node validation, target-owned mnemonic/register/immediate/
+memory/branch-label spelling, and unsupported-family diagnostics were preserved.
+The focused machine-printer coverage now uses the production adapter directly
+instead of a test-local bridge that stripped legacy assembly back into payloads.
 
 ## Suggested Next
 
-Execute Step 4 as the next narrow packet: add or adjust the target adapter
-surface needed before Step 5 can route public AArch64 assembly through the
-common MIR printer.
+Execute Step 5 as the next narrow packet: route public AArch64 assembly through
+the shared MIR printer using the new production AArch64 target spelling
+adapter, while preserving existing section/function scaffolding behavior.
 
 ## Watchouts
 
@@ -39,7 +38,7 @@ common MIR printer.
 - Treat `FunctionRecord::machine_nodes` and other flat views as compatibility
   projections, not as the desired public assembly carrier.
 - `backend.cpp` currently owns public function/section scaffolding while
-  `machine_printer.*` owns target instruction line spelling; Step 3/5 should
+  `machine_printer.*` owns target instruction line spelling; Step 5 should
   preserve that distinction when moving traversal/newline/indent policy under
   shared MIR.
 - `compatibility_projection.cpp` currently excludes return records from

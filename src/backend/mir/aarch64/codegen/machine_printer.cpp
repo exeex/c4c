@@ -3,6 +3,8 @@
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -14,6 +16,24 @@ MachineAssemblyPrintResult unsupported(std::string diagnostic) {
 
 MachineAssemblyPrintResult printed(std::string assembly) {
   return MachineAssemblyPrintResult{.ok = true, .assembly = std::move(assembly)};
+}
+
+mir::TargetInstructionPrintResult target_unsupported(std::string diagnostic) {
+  return mir::target_instruction_unsupported(std::move(diagnostic));
+}
+
+mir::TargetInstructionPrintResult target_printed(std::vector<std::string> lines) {
+  return mir::target_instruction_lines_printed(std::move(lines));
+}
+
+std::string instruction_lines_to_assembly(const std::vector<std::string>& lines) {
+  std::string assembly;
+  for (const auto& line : lines) {
+    assembly += "    ";
+    assembly += line;
+    assembly += "\n";
+  }
+  return assembly;
 }
 
 std::string block_label(c4c::FunctionNameId function_name, c4c::BlockLabelId block_label) {
@@ -84,68 +104,70 @@ std::optional<std::string> validate_selected_machine_node(const InstructionRecor
   return std::nullopt;
 }
 
-MachineAssemblyPrintResult print_spill_reload(const InstructionRecord& instruction,
-                                              const SpillReloadInstructionRecord& spill_reload) {
+mir::TargetInstructionPrintResult print_spill_reload(
+    const InstructionRecord& instruction,
+    const SpillReloadInstructionRecord& spill_reload) {
   if (!spill_reload.scratch.has_value()) {
-    return unsupported(bad_header(instruction) + "spill/reload node is missing scratch register");
+    return target_unsupported(bad_header(instruction) +
+                              "spill/reload node is missing scratch register");
   }
   if (!spill_reload.stack_offset_bytes.has_value() || !spill_reload.stack_offset_is_prepared_snapshot ||
       !spill_reload.slot_id.has_value()) {
-    return unsupported(bad_header(instruction) +
-                       "spill/reload node is missing prepared stack-slot offset");
+    return target_unsupported(bad_header(instruction) +
+                              "spill/reload node is missing prepared stack-slot offset");
   }
   if (spill_reload.slot.support != MemoryOperandSupportKind::Prepared ||
       spill_reload.slot.base_kind != MemoryBaseKind::FrameSlot ||
       !spill_reload.slot.can_use_base_plus_offset) {
-    return unsupported(bad_header(instruction) +
-                       "spill/reload node is not a prepared frame-slot address");
+    return target_unsupported(bad_header(instruction) +
+                              "spill/reload node is not a prepared frame-slot address");
   }
 
   const auto address = memory_address(spill_reload.slot);
   if (address.empty()) {
-    return unsupported(bad_header(instruction) + "spill/reload address is not printable");
+    return target_unsupported(bad_header(instruction) +
+                              "spill/reload address is not printable");
   }
 
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
-    return unsupported(bad_header(instruction) + "spill/reload pseudo kind is unsupported");
+    return target_unsupported(bad_header(instruction) +
+                              "spill/reload pseudo kind is unsupported");
   }
 
   std::ostringstream out;
-  out << "    " << mnemonic << " " << register_name(*spill_reload.scratch) << ", " << address
-      << "\n";
-  return printed(out.str());
+  out << mnemonic << " " << register_name(*spill_reload.scratch) << ", " << address;
+  return target_printed({out.str()});
 }
 
-MachineAssemblyPrintResult print_branch(const InstructionRecord& instruction,
-                                        const BranchInstructionRecord& branch) {
+mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruction,
+                                               const BranchInstructionRecord& branch) {
   if (branch.target.function_name == c4c::kInvalidFunctionName ||
       branch.target.block_label == c4c::kInvalidBlockLabel) {
-    return unsupported(bad_header(instruction) + "branch target identity is missing");
+    return target_unsupported(bad_header(instruction) + "branch target identity is missing");
   }
   if (!branch.conditional) {
     const auto mnemonic = required_primary_mnemonic(instruction);
     if (mnemonic.empty()) {
-      return unsupported(bad_header(instruction) + "branch mnemonic is not printable");
+      return target_unsupported(bad_header(instruction) + "branch mnemonic is not printable");
     }
     std::ostringstream out;
-    out << "    " << mnemonic << " "
-        << block_label(branch.target.function_name, branch.target.block_label) << "\n";
-    return printed(out.str());
+    out << mnemonic << " " << block_label(branch.target.function_name, branch.target.block_label);
+    return target_printed({out.str()});
   }
   if (!branch.target_pair.has_value() || !branch.condition.has_value()) {
-    return unsupported(bad_header(instruction) +
-                       "conditional branch is missing target pair or condition operand");
+    return target_unsupported(bad_header(instruction) +
+                              "conditional branch is missing target pair or condition operand");
   }
   const auto* condition = std::get_if<RegisterOperand>(&branch.condition->payload);
   if (branch.condition->kind != OperandKind::Register || condition == nullptr) {
-    return unsupported(bad_header(instruction) +
-                       "materialized-bool branch condition is not a register operand");
+    return target_unsupported(bad_header(instruction) +
+                              "materialized-bool branch condition is not a register operand");
   }
   if (branch.condition_record.has_value() &&
       branch.condition_record->form != BranchConditionForm::MaterializedBool) {
-    return unsupported(bad_header(instruction) +
-                       "only materialized-bool conditional branches are printable");
+    return target_unsupported(bad_header(instruction) +
+                              "only materialized-bool conditional branches are printable");
   }
 
   const auto& targets = *branch.target_pair;
@@ -153,68 +175,76 @@ MachineAssemblyPrintResult print_branch(const InstructionRecord& instruction,
       targets.true_target.block_label == c4c::kInvalidBlockLabel ||
       targets.false_target.function_name == c4c::kInvalidFunctionName ||
       targets.false_target.block_label == c4c::kInvalidBlockLabel) {
-    return unsupported(bad_header(instruction) + "conditional branch target identity is missing");
+    return target_unsupported(bad_header(instruction) +
+                              "conditional branch target identity is missing");
   }
 
   const auto condition_mnemonic = required_primary_mnemonic(instruction);
   const auto branch_mnemonic = required_branch_mnemonic();
   if (condition_mnemonic.empty() || branch_mnemonic.empty()) {
-    return unsupported(bad_header(instruction) + "branch mnemonic is not printable");
+    return target_unsupported(bad_header(instruction) + "branch mnemonic is not printable");
   }
 
-  std::ostringstream out;
-  out << "    " << condition_mnemonic << " " << register_name(*condition) << ", "
-      << block_label(targets.true_target.function_name, targets.true_target.block_label) << "\n"
-      << "    " << branch_mnemonic << " "
-      << block_label(targets.false_target.function_name, targets.false_target.block_label) << "\n";
-  return printed(out.str());
+  std::ostringstream condition_line;
+  condition_line << condition_mnemonic << " " << register_name(*condition) << ", "
+                 << block_label(targets.true_target.function_name,
+                                targets.true_target.block_label);
+  std::ostringstream branch_line;
+  branch_line << branch_mnemonic << " "
+              << block_label(targets.false_target.function_name,
+                             targets.false_target.block_label);
+  return target_printed({condition_line.str(), branch_line.str()});
 }
 
-MachineAssemblyPrintResult print_memory(const InstructionRecord& instruction,
-                                        const MemoryInstructionRecord& memory) {
+mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruction,
+                                               const MemoryInstructionRecord& memory) {
   if (memory.memory_kind == MemoryInstructionKind::Load) {
-    return unsupported(bad_header(instruction) +
-                       "load node is missing a structured destination register operand");
+    return target_unsupported(bad_header(instruction) +
+                              "load node is missing a structured destination register operand");
   }
   if (!memory.value.has_value()) {
-    return unsupported(bad_header(instruction) + "store node is missing stored value operand");
+    return target_unsupported(bad_header(instruction) +
+                              "store node is missing stored value operand");
   }
   const auto* value = std::get_if<RegisterOperand>(&memory.value->payload);
   if (memory.value->kind != OperandKind::Register || value == nullptr) {
-    return unsupported(bad_header(instruction) + "store value is not a register operand");
+    return target_unsupported(bad_header(instruction) + "store value is not a register operand");
   }
   if (memory.address.support != MemoryOperandSupportKind::Prepared ||
       !memory.address.can_use_base_plus_offset) {
-    return unsupported(bad_header(instruction) + "store address is not a prepared base+offset");
+    return target_unsupported(bad_header(instruction) +
+                              "store address is not a prepared base+offset");
   }
   const auto address = memory_address(memory.address);
   if (address.empty()) {
-    return unsupported(bad_header(instruction) + "store address is not printable");
+    return target_unsupported(bad_header(instruction) + "store address is not printable");
   }
 
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
-    return unsupported(bad_header(instruction) + "store mnemonic is not printable");
+    return target_unsupported(bad_header(instruction) + "store mnemonic is not printable");
   }
 
   std::ostringstream out;
-  out << "    " << mnemonic << " " << register_name(*value) << ", " << address << "\n";
-  return printed(out.str());
+  out << mnemonic << " " << register_name(*value) << ", " << address;
+  return target_printed({out.str()});
 }
 
-MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction,
-                                        const ScalarInstructionRecord& scalar) {
+mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
+                                               const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
-    return unsupported(bad_header(instruction) +
-                       "scalar node is missing a structured destination register operand");
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar node is missing a structured destination register operand");
   }
   if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
-    return unsupported(bad_header(instruction) +
-                       "scalar node opcode is outside the printable add/sub subset");
+    return target_unsupported(bad_header(instruction) +
+                              "scalar node opcode is outside the printable add/sub subset");
   }
   if (scalar.inputs.size() != 2) {
-    return unsupported(bad_header(instruction) +
-                       "scalar add/sub node requires exactly two register or immediate operands");
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar add/sub node requires exactly two register or immediate operands");
   }
 
   const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
@@ -230,68 +260,78 @@ MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction,
   const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
                                 rhs_immediate != nullptr;
   if ((!lhs_is_register && !lhs_is_immediate) || (!rhs_is_register && !rhs_is_immediate)) {
-    return unsupported(bad_header(instruction) +
-                       "scalar add/sub node requires register or immediate operands");
+    return target_unsupported(bad_header(instruction) +
+                              "scalar add/sub node requires register or immediate operands");
   }
   if ((lhs_is_immediate && !is_plain_add_sub_immediate(*lhs_immediate)) ||
       (rhs_is_immediate && !is_plain_add_sub_immediate(*rhs_immediate))) {
-    return unsupported(bad_header(instruction) +
-                       "scalar add/sub immediate operand is outside the plain #imm encoding "
-                       "range 0..4095");
+    return target_unsupported(bad_header(instruction) +
+                              "scalar add/sub immediate operand is outside the plain #imm "
+                              "encoding range 0..4095");
   }
 
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
-    return unsupported(bad_header(instruction) + "scalar add/sub mnemonic is not printable");
+    return target_unsupported(bad_header(instruction) +
+                              "scalar add/sub mnemonic is not printable");
   }
 
-  std::ostringstream out;
+  std::vector<std::string> lines;
   const auto result = register_name(*scalar.result_register);
   if (lhs_is_register && rhs_is_register) {
-    out << "    " << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
-        << register_name(*rhs_register) << "\n";
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
+        << register_name(*rhs_register);
+    lines.push_back(out.str());
   } else if (lhs_is_register && rhs_is_immediate) {
-    out << "    " << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
-        << immediate_name(*rhs_immediate) << "\n";
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
+        << immediate_name(*rhs_immediate);
+    lines.push_back(out.str());
   } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
-    out << "    " << mnemonic << " " << result << ", " << register_name(*rhs_register) << ", "
-        << immediate_name(*lhs_immediate) << "\n";
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << register_name(*rhs_register) << ", "
+        << immediate_name(*lhs_immediate);
+    lines.push_back(out.str());
   } else if (lhs_is_immediate && rhs_is_immediate) {
     const auto move_mnemonic =
         machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
-    out << "    " << move_mnemonic << " " << result << ", " << immediate_name(*lhs_immediate)
-        << "\n";
-    out << "    " << mnemonic << " " << result << ", " << result << ", "
-        << immediate_name(*rhs_immediate) << "\n";
+    std::ostringstream move_line;
+    move_line << move_mnemonic << " " << result << ", " << immediate_name(*lhs_immediate);
+    lines.push_back(move_line.str());
+    std::ostringstream add_line;
+    add_line << mnemonic << " " << result << ", " << result << ", "
+             << immediate_name(*rhs_immediate);
+    lines.push_back(add_line.str());
   } else {
-    return unsupported(bad_header(instruction) +
-                       "scalar sub with an immediate lhs and register rhs is not printable");
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar sub with an immediate lhs and register rhs is not printable");
   }
-  return printed(out.str());
+  return target_printed(std::move(lines));
 }
 
-MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
-                                        const ReturnInstructionRecord& ret) {
-  std::ostringstream out;
+mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruction,
+                                               const ReturnInstructionRecord& ret) {
+  std::vector<std::string> lines;
   if (ret.value.has_value()) {
     const auto* immediate = std::get_if<ImmediateOperand>(&ret.value->payload);
     const auto* reg = std::get_if<RegisterOperand>(&ret.value->payload);
     if (ret.value->kind == OperandKind::Register && reg != nullptr) {
       const auto return_mnemonic = required_primary_mnemonic(instruction);
       if (return_mnemonic.empty()) {
-        return unsupported(bad_header(instruction) + "return mnemonic is not printable");
+        return target_unsupported(bad_header(instruction) + "return mnemonic is not printable");
       }
-      out << "    " << return_mnemonic << "\n";
-      return printed(out.str());
+      return target_printed({std::string(return_mnemonic)});
     }
     if (ret.value->kind != OperandKind::Immediate || immediate == nullptr) {
-      return unsupported(bad_header(instruction) +
-                         "return value is not a printable immediate operand");
+      return target_unsupported(bad_header(instruction) +
+                                "return value is not a printable immediate operand");
     }
     if (immediate->kind != ImmediateKind::SignedInteger ||
         immediate->signed_value < 0 || immediate->signed_value > 65535) {
-      return unsupported(bad_header(instruction) +
-                         "return immediate is outside the selected printable subset");
+      return target_unsupported(bad_header(instruction) +
+                                "return immediate is outside the selected printable subset");
     }
 
     const char* result_register = nullptr;
@@ -306,29 +346,38 @@ MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
         result_register = "x0";
         break;
       default:
-        return unsupported(bad_header(instruction) +
-                           "return type is outside the selected printable subset");
+        return target_unsupported(bad_header(instruction) +
+                                  "return type is outside the selected printable subset");
     }
     const auto move_mnemonic = required_auxiliary_mnemonic(instruction);
     if (move_mnemonic.empty()) {
-      return unsupported(bad_header(instruction) + "return move mnemonic is not printable");
+      return target_unsupported(bad_header(instruction) +
+                                "return move mnemonic is not printable");
     }
-    out << "    " << move_mnemonic << " " << result_register << ", #"
-        << immediate->signed_value << "\n";
+    std::ostringstream move_line;
+    move_line << move_mnemonic << " " << result_register << ", #" << immediate->signed_value;
+    lines.push_back(move_line.str());
   }
   const auto return_mnemonic = required_primary_mnemonic(instruction);
   if (return_mnemonic.empty()) {
-    return unsupported(bad_header(instruction) + "return mnemonic is not printable");
+    return target_unsupported(bad_header(instruction) + "return mnemonic is not printable");
   }
-  out << "    " << return_mnemonic << "\n";
-  return printed(out.str());
+  lines.emplace_back(return_mnemonic);
+  return target_printed(std::move(lines));
 }
 
 }  // namespace
 
-MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecord& instruction) {
+mir::TargetInstructionPrintResult MachineInstructionPrinter::print_instruction(
+    const mir::MachinePrintContext&,
+    const mir::MachineInstruction<InstructionRecord>& instruction) const {
+  return print_machine_instruction_line_payloads(instruction.target);
+}
+
+mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
+    const InstructionRecord& instruction) {
   if (const auto invalid = validate_selected_machine_node(instruction); invalid.has_value()) {
-    return unsupported(*invalid);
+    return target_unsupported(*invalid);
   }
 
   if (const auto* spill_reload =
@@ -347,7 +396,16 @@ MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecor
   if (const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload)) {
     return print_return(instruction, *ret);
   }
-  return unsupported(bad_header(instruction) + "instruction family is not in the printable subset");
+  return target_unsupported(bad_header(instruction) +
+                            "instruction family is not in the printable subset");
+}
+
+MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecord& instruction) {
+  const auto result = print_machine_instruction_line_payloads(instruction);
+  if (!result.ok) {
+    return unsupported(result.diagnostic);
+  }
+  return printed(instruction_lines_to_assembly(result.instruction_lines));
 }
 
 MachineAssemblyPrintResult print_machine_instruction_nodes(

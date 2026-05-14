@@ -2,10 +2,8 @@
 #include "src/backend/mir/printer.hpp"
 
 #include <iostream>
-#include <optional>
 #include <string>
 #include <string_view>
-#include <vector>
 
 namespace {
 
@@ -14,49 +12,6 @@ namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
-
-std::optional<std::vector<std::string>> strip_legacy_aarch64_instruction_lines(
-    std::string_view assembly) {
-  std::vector<std::string> lines;
-  std::size_t offset = 0;
-  while (offset < assembly.size()) {
-    const auto newline = assembly.find('\n', offset);
-    const auto end = newline == std::string_view::npos ? assembly.size() : newline;
-    const auto line = assembly.substr(offset, end - offset);
-    if (!line.empty()) {
-      if (line.size() < 4 || line.substr(0, 4) != "    ") {
-        return std::nullopt;
-      }
-      lines.emplace_back(line.substr(4));
-    }
-    if (newline == std::string_view::npos) {
-      break;
-    }
-    offset = newline + 1;
-  }
-  return lines;
-}
-
-class Aarch64MirTargetPrinter final
-    : public mir::TargetInstructionPrinter<aarch64_codegen::InstructionRecord> {
- public:
-  [[nodiscard]] mir::TargetInstructionPrintResult print_instruction(
-      const mir::MachinePrintContext&,
-      const mir::MachineInstruction<aarch64_codegen::InstructionRecord>& instruction)
-      const override {
-    const auto printed =
-        aarch64_codegen::print_machine_instruction_node(instruction.target);
-    if (!printed.ok) {
-      return mir::target_instruction_unsupported(printed.diagnostic);
-    }
-    auto lines = strip_legacy_aarch64_instruction_lines(printed.assembly);
-    if (!lines.has_value()) {
-      return mir::target_instruction_unsupported(
-          "legacy AArch64 printer returned text outside the temporary common-MIR bridge shape");
-    }
-    return mir::target_instruction_lines_printed(std::move(*lines));
-  }
-};
 
 int fail(const std::string& message) {
   std::cerr << message << "\n";
@@ -422,13 +377,20 @@ int common_mir_printer_can_delegate_to_aarch64_target_spelling_adapter() {
           },
   });
 
-  const auto result = mir::print_machine_function(function, Aarch64MirTargetPrinter{});
+  const auto target_printer = aarch64_codegen::MachineInstructionPrinter{};
+  const auto result = mir::print_machine_function(function, target_printer);
   if (!result.ok) {
     return fail("expected common MIR printer to delegate AArch64 target spelling: " +
                 result.diagnostic);
   }
   const auto move_mnemonic = aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret);
   const auto return_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret);
+  const auto line_payloads = aarch64_codegen::print_machine_instruction_line_payloads(ret);
+  if (!line_payloads.ok || line_payloads.instruction_lines.size() != 2 ||
+      line_payloads.instruction_lines[0] != "mov w0, #7" ||
+      line_payloads.instruction_lines[1] != "ret") {
+    return fail("expected AArch64 target spelling hook to return unindented line payloads");
+  }
   const std::string expected =
       "    " + std::string(move_mnemonic) + " w0, #7\n" +
       "    " + std::string(return_mnemonic) + "\n";
