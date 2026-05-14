@@ -409,6 +409,21 @@ int returned_scalar_add_sub_build_selected_machine_nodes() {
     if (function.machine_nodes.size() != 2) {
       return fail("expected scalar ALU node followed by return node");
     }
+    if (function.mir.name != *function_name || function.mir.blocks.size() != 1 ||
+        function.mir.blocks.front().label != *block_label ||
+        function.mir.blocks.front().instructions.size() != 2) {
+      return fail("expected assembly-shaped MIR block stream to own selected nodes");
+    }
+    const auto& mir_scalar_node = function.mir.blocks.front().instructions.front();
+    if (mir_scalar_node.opcode !=
+            static_cast<c4c::backend::mir::TargetOpcode>(test_case.machine_opcode) ||
+        mir_scalar_node.operands.size() != 2 ||
+        !std::holds_alternative<c4c::backend::mir::PhysicalRegister>(
+            mir_scalar_node.operands[0].payload) ||
+        !std::holds_alternative<c4c::backend::mir::PhysicalRegister>(
+            mir_scalar_node.operands[1].payload)) {
+      return fail("expected common MIR scalar node to expose printable opcode and operands");
+    }
 
     const auto& scalar_node = function.machine_nodes[0];
     const auto* scalar =

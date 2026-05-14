@@ -2,6 +2,7 @@
 
 #include "../abi/abi.hpp"
 #include "../codegen/records.hpp"
+#include "../../mir.hpp"
 
 #include <cstddef>
 #include <cstdint>
@@ -108,15 +109,11 @@ struct CalleeSaveRecord {
 
 struct DynamicStackRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
-  std::string_view block_label_text;
   std::size_t instruction_index = 0;
   prepare::PreparedDynamicStackOpKind kind =
       prepare::PreparedDynamicStackOpKind::StackSave;
   std::optional<c4c::ValueNameId> result_value_name;
-  std::string_view result_label;
   std::optional<c4c::ValueNameId> operand_value_name;
-  std::string_view operand_label;
-  std::string_view allocation_type_text;
   std::size_t element_size_bytes = 0;
   std::size_t element_align_bytes = 0;
   const prepare::PreparedDynamicStackOp* source_op = nullptr;
@@ -182,7 +179,6 @@ struct OperandRecord {
 
 struct BranchRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
-  std::string_view block_label_text;
   prepare::PreparedBranchConditionKind condition_kind =
       prepare::PreparedBranchConditionKind::MaterializedBool;
   bir::Value condition_value;
@@ -508,6 +504,8 @@ struct FunctionRecord {
   std::vector<ParallelCopyRecord> parallel_copies;
   std::vector<OperandRecord> operands;
   std::vector<TargetRegisterRecord> target_registers;
+  c4c::backend::mir::Function<c4c::backend::mir::MachineNode<codegen::InstructionRecord>> mir;
+  // Compatibility flat view while clients migrate to `mir.blocks[].instructions`.
   std::vector<codegen::InstructionRecord> machine_nodes;
   std::vector<BlockRecord> blocks;
 };

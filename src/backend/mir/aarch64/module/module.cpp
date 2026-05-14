@@ -765,29 +765,17 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] DynamicStackRecord build_dynamic_stack_record(
-    const prepare::PreparedBirModule& prepared,
     const prepare::PreparedDynamicStackOp& op) {
   DynamicStackRecord record{
       .block_label = op.block_label,
-      .block_label_text = prepare::prepared_block_label(prepared.names,
-                                                                       op.block_label),
       .instruction_index = op.instruction_index,
       .kind = op.kind,
       .result_value_name = op.result_value_name,
       .operand_value_name = op.operand_value_name,
-      .allocation_type_text = op.allocation_type_text,
       .element_size_bytes = op.element_size_bytes,
       .element_align_bytes = op.element_align_bytes,
       .source_op = &op,
   };
-  if (op.result_value_name.has_value()) {
-    record.result_label =
-        prepare::prepared_value_name(prepared.names, *op.result_value_name);
-  }
-  if (op.operand_value_name.has_value()) {
-    record.operand_label =
-        prepare::prepared_value_name(prepared.names, *op.operand_value_name);
-  }
   return record;
 }
 
@@ -825,22 +813,19 @@ void merge_storage_operand(
     }
     record.dynamic_stack.reserve(dynamic_stack->operations.size());
     for (const auto& op : dynamic_stack->operations) {
-      record.dynamic_stack.push_back(build_dynamic_stack_record(prepared, op));
+      record.dynamic_stack.push_back(build_dynamic_stack_record(op));
     }
   }
   return record;
 }
 
 [[nodiscard]] std::vector<BranchRecord> build_branch_records(
-    const prepare::PreparedBirModule& prepared,
     const prepare::PreparedControlFlowFunction& function) {
   std::vector<BranchRecord> branches;
   branches.reserve(function.branch_conditions.size());
   for (const auto& condition : function.branch_conditions) {
     branches.push_back(BranchRecord{
         .block_label = condition.block_label,
-        .block_label_text = prepare::prepared_block_label(prepared.names,
-                                                                         condition.block_label),
         .condition_kind = condition.kind,
         .condition_value = condition.condition_value,
         .predicate = condition.predicate,
@@ -1760,6 +1745,112 @@ build_return_machine_nodes(
   return nodes;
 }
 
+[[nodiscard]] c4c::backend::mir::PhysicalRegister mir_register(
+    abi::RegisterReference reg) {
+  return c4c::backend::mir::PhysicalRegister{
+      .bank = static_cast<c4c::backend::mir::RegisterBankId>(reg.bank),
+      .view = static_cast<c4c::backend::mir::RegisterViewId>(reg.view),
+      .index = reg.index,
+  };
+}
+
+[[nodiscard]] c4c::backend::mir::Immediate mir_immediate(
+    const codegen::ImmediateOperand& operand) {
+  c4c::backend::mir::ImmediateKind kind = c4c::backend::mir::ImmediateKind::Signed;
+  switch (operand.kind) {
+    case codegen::ImmediateKind::SignedInteger:
+      kind = c4c::backend::mir::ImmediateKind::Signed;
+      break;
+    case codegen::ImmediateKind::UnsignedInteger:
+      kind = c4c::backend::mir::ImmediateKind::Unsigned;
+      break;
+    case codegen::ImmediateKind::Boolean:
+      kind = c4c::backend::mir::ImmediateKind::Boolean;
+      break;
+    case codegen::ImmediateKind::NullPointer:
+      kind = c4c::backend::mir::ImmediateKind::NullPointer;
+      break;
+  }
+  return c4c::backend::mir::Immediate{
+      .kind = kind,
+      .signed_value = operand.signed_value,
+      .unsigned_value = operand.unsigned_value,
+  };
+}
+
+[[nodiscard]] c4c::backend::mir::Operand mir_operand(const codegen::OperandRecord& operand) {
+  if (const auto* reg = std::get_if<codegen::RegisterOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Register && reg != nullptr) {
+    return c4c::backend::mir::Operand{.payload = mir_register(reg->reg)};
+  }
+  if (const auto* imm = std::get_if<codegen::ImmediateOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Immediate && imm != nullptr) {
+    return c4c::backend::mir::Operand{.payload = mir_immediate(*imm)};
+  }
+  if (const auto* symbol = std::get_if<codegen::SymbolOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Symbol && symbol != nullptr) {
+    return c4c::backend::mir::Operand{.payload = c4c::backend::mir::Symbol{
+                                          .name = symbol->link_name,
+                                          .addend = symbol->byte_offset,
+                                      }};
+  }
+  if (const auto* target = std::get_if<codegen::BranchTargetOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::BranchTarget && target != nullptr) {
+    return c4c::backend::mir::Operand{.payload = c4c::backend::mir::Label{
+                                          .label = target->block_label,
+                                      }};
+  }
+  if (const auto* memory = std::get_if<codegen::MemoryOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Memory && memory != nullptr) {
+    c4c::backend::mir::Memory mir_memory{
+        .displacement = memory->byte_offset,
+    };
+    if (memory->base_register.has_value()) {
+      mir_memory.base = mir_register(memory->base_register->reg);
+    }
+    return c4c::backend::mir::Operand{.payload = mir_memory};
+  }
+  return c4c::backend::mir::Operand{};
+}
+
+[[nodiscard]] c4c::backend::mir::MachineNode<codegen::InstructionRecord> mir_node(
+    const codegen::InstructionRecord& node) {
+  c4c::backend::mir::MachineNode<codegen::InstructionRecord> mir{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(node.opcode),
+      .target = node,
+  };
+  mir.operands.reserve(node.operands.size());
+  for (const auto& operand : node.operands) {
+    mir.operands.push_back(mir_operand(operand));
+  }
+  return mir;
+}
+
+[[nodiscard]] c4c::backend::mir::Function<
+    c4c::backend::mir::MachineNode<codegen::InstructionRecord>>
+build_mir_function(
+    const prepare::PreparedControlFlowFunction& function,
+    const std::vector<codegen::InstructionRecord>& machine_nodes) {
+  c4c::backend::mir::Function<c4c::backend::mir::MachineNode<codegen::InstructionRecord>> mir{
+      .name = function.function_name,
+  };
+  mir.blocks.reserve(function.blocks.size());
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    mir.blocks.push_back(c4c::backend::mir::Block<
+                         c4c::backend::mir::MachineNode<codegen::InstructionRecord>>{
+        .label = function.blocks[block_index].block_label,
+        .index = block_index,
+    });
+  }
+  for (const auto& node : machine_nodes) {
+    c4c::backend::mir::append_instruction(mir,
+                                          node.block_label,
+                                          node.block_index,
+                                          mir_node(node));
+  }
+  return mir;
+}
+
 [[nodiscard]] ParallelCopyMoveRecord build_parallel_copy_move_record(
     const prepare::PreparedParallelCopyMove& move) {
   return ParallelCopyMoveRecord{
@@ -1909,7 +2000,7 @@ build_return_machine_nodes(
   const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc,
                                                          function.function_name);
   record.frame = build_frame_record(prepared, function.function_name);
-  record.branches = build_branch_records(prepared, function);
+  record.branches = build_branch_records(function);
   record.calls = build_call_records(prepared, function.function_name);
   append_value_location_moves(prepared, locations, record.moves, record.abi_bindings);
   if (regalloc != nullptr) {
@@ -1985,6 +2076,7 @@ build_return_machine_nodes(
   record.machine_nodes.insert(record.machine_nodes.end(),
                               std::make_move_iterator(return_nodes.begin()),
                               std::make_move_iterator(return_nodes.end()));
+  record.mir = build_mir_function(function, record.machine_nodes);
   record.parallel_copies =
       build_parallel_copy_records(prepared, function, source_function, locations);
   record.operands = build_operands(prepared, function.function_name, record.target_registers);

@@ -171,16 +171,22 @@ std::string print_aarch64_prepared_machine_nodes(
   assembly << "    .text\n";
   std::size_t machine_node_count = 0;
   for (const auto& function : built.module->functions) {
-    if (function.machine_nodes.empty()) {
+    if (c4c::backend::mir::empty(function.mir)) {
       continue;
     }
     ++machine_node_count;
     assembly << "    .globl " << function.label << "\n"
              << "    .type " << function.label << ", %function\n"
              << function.label << ":\n";
+    const auto mir_nodes = c4c::backend::mir::flatten_instructions(function.mir);
+    std::vector<c4c::backend::aarch64::codegen::InstructionRecord> machine_nodes;
+    machine_nodes.reserve(mir_nodes.size());
+    for (const auto& node : mir_nodes) {
+      machine_nodes.push_back(node.target);
+    }
     const auto printed =
         c4c::backend::aarch64::codegen::print_machine_instruction_nodes(
-            function.machine_nodes);
+            machine_nodes);
     if (!printed.ok) {
       throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
                                   "but printing failed: " +

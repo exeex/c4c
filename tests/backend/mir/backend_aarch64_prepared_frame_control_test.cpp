@@ -562,6 +562,12 @@ prepare::PreparedBirModule prepared_frame_control_module() {
 int records_preserve_frame_control_call_and_move_identity() {
   auto prepared = prepared_frame_control_module();
   const auto source_name = prepared.names.value_names.intern("source.value");
+  const auto entry_label =
+      prepare::resolve_prepared_block_label_id(prepared.names, "entry");
+  const auto alloca_result_name =
+      prepare::resolve_prepared_value_name_id(prepared.names, "dyn.ptr");
+  const auto alloca_count_name =
+      prepare::resolve_prepared_value_name_id(prepared.names, "dyn.count");
 
   const auto result = aarch64_api::build_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
@@ -597,9 +603,19 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.frame.dynamic_stack.size() != 1 ||
       function.frame.dynamic_stack.front().kind !=
           prepare::PreparedDynamicStackOpKind::DynamicAlloca ||
-      function.frame.dynamic_stack.front().block_label_text != "entry" ||
-      function.frame.dynamic_stack.front().result_label != "dyn.ptr" ||
-      function.frame.dynamic_stack.front().operand_label != "dyn.count") {
+      !entry_label.has_value() || !alloca_result_name.has_value() ||
+      !alloca_count_name.has_value() ||
+      function.frame.dynamic_stack.front().block_label != *entry_label ||
+      function.frame.dynamic_stack.front().result_value_name != *alloca_result_name ||
+      function.frame.dynamic_stack.front().operand_value_name != *alloca_count_name ||
+      function.frame.dynamic_stack.front().source_op !=
+          &prepared.dynamic_stack_plan.functions.front().operations.front() ||
+      prepare::prepared_value_name(prepared.names,
+                                   *function.frame.dynamic_stack.front().result_value_name) !=
+          "dyn.ptr" ||
+      prepare::prepared_value_name(prepared.names,
+                                   *function.frame.dynamic_stack.front().operand_value_name) !=
+          "dyn.count") {
     return fail("expected dynamic-stack record to preserve operation identities");
   }
 
