@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/220_backend_test_tree_split_bir_mir_and_prune_legacy.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Backend Test Ownership
+Current Step ID: 2
+Current Step Title: Create BIR Test Tree And Move BIR-Owned Tests
 
 # Current Packet
 
