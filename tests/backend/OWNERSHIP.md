@@ -10,6 +10,11 @@ machine nodes, machine printers, and AArch64 `.c -> .s` smoke proof are
 MIR-owned. Files in `tests/backend/case/` are fixture inputs only; their
 presence is not active backend coverage unless a CMake test consumes them.
 
+CTest selectors mirror this ownership split. Use `ctest -L bir` for the
+BIR-owned backend subset and `ctest -L mir` for the MIR-owned backend subset.
+These labels are additive; existing selectors such as `backend`, `internal`,
+`cpp`, `cli`, `aarch64`, `x86`, and `backend_route` remain available.
+
 ## BIR-Live
 
 - `tests/backend/bir/backend_prepare_*_test.cpp`

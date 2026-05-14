@@ -203,3 +203,8 @@ else()
   message(WARNING
     "clang or AArch64 assembler not found: backend_cli_aarch64_asm_external_return_zero_smoke and backend_cli_aarch64_asm_external_return_add_smoke will be skipped")
 endif()
+
+get_property(C4C_MIR_BACKEND_TESTS DIRECTORY PROPERTY TESTS)
+foreach(test_name IN LISTS C4C_MIR_BACKEND_TESTS)
+  set_property(TEST "${test_name}" APPEND PROPERTY LABELS mir)
+endforeach()

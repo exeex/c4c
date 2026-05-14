@@ -1444,3 +1444,8 @@ c4c_add_backend_codegen_route_test(
   REQUIRED_SNIPPETS "bir.func @main() -> i32 {|bir.store_local %lv.pairs.0, i32 1|bir.store_local %lv.pairs.12, i32 4|%t12 = bir.load_local i32 %lv.i|%t13 = bir.sext i32 %t12 to i64|%t14 = bir.select eq i64 %t13, 0, ptr %t14.elt0, %t14.elt1|bir.call i32 get_y(ptr %t14)|bir.ret i32 %t15"
   FORBIDDEN_SNIPPETS "define i32 @main()|call i32 (ptr) @get_y|getelementptr [2 x %struct.Pair], ptr"
 )
+
+get_property(C4C_BIR_BACKEND_TESTS DIRECTORY PROPERTY TESTS)
+foreach(test_name IN LISTS C4C_BIR_BACKEND_TESTS)
+  set_property(TEST "${test_name}" APPEND PROPERTY LABELS bir)
+endforeach()
