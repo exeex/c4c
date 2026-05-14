@@ -241,12 +241,82 @@ enum class PreparedRegisterBank {
   return "unknown";
 }
 
+enum class PreparedRegisterSlotPool {
+  None,
+  CallerSaved,
+  CalleeSaved,
+  CallArgument,
+  CallResult,
+  ReservedScratch,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_register_slot_pool_name(
+    PreparedRegisterSlotPool pool) {
+  switch (pool) {
+    case PreparedRegisterSlotPool::None:
+      return "none";
+    case PreparedRegisterSlotPool::CallerSaved:
+      return "caller_saved";
+    case PreparedRegisterSlotPool::CalleeSaved:
+      return "callee_saved";
+    case PreparedRegisterSlotPool::CallArgument:
+      return "call_argument";
+    case PreparedRegisterSlotPool::CallResult:
+      return "call_result";
+    case PreparedRegisterSlotPool::ReservedScratch:
+      return "reserved_scratch";
+  }
+  return "unknown";
+}
+
+struct PreparedRegisterPlacement {
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  PreparedRegisterSlotPool pool = PreparedRegisterSlotPool::None;
+  std::size_t slot_index = 0;
+  std::size_t contiguous_width = 1;
+
+  friend bool operator==(const PreparedRegisterPlacement& lhs,
+                         const PreparedRegisterPlacement& rhs) {
+    return lhs.bank == rhs.bank && lhs.pool == rhs.pool &&
+           lhs.slot_index == rhs.slot_index &&
+           lhs.contiguous_width == rhs.contiguous_width;
+  }
+
+  friend bool operator!=(const PreparedRegisterPlacement& lhs,
+                         const PreparedRegisterPlacement& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
+[[nodiscard]] inline bool has_prepared_register_placement(
+    const PreparedRegisterPlacement& placement) {
+  return placement.bank != PreparedRegisterBank::None &&
+         placement.pool != PreparedRegisterSlotPool::None &&
+         placement.contiguous_width > 0;
+}
+
+struct PreparedSpillSlotPlacement {
+  PreparedFrameSlotId slot_id = 0;
+  std::size_t offset_bytes = 0;
+
+  friend bool operator==(const PreparedSpillSlotPlacement& lhs,
+                         const PreparedSpillSlotPlacement& rhs) {
+    return lhs.slot_id == rhs.slot_id && lhs.offset_bytes == rhs.offset_bytes;
+  }
+
+  friend bool operator!=(const PreparedSpillSlotPlacement& lhs,
+                         const PreparedSpillSlotPlacement& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
 struct PreparedSavedRegister {
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::string register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string> occupied_register_names;
   std::size_t save_index = 0;
+  std::optional<PreparedRegisterPlacement> placement;
 };
 
 struct PreparedFramePlanFunction {
@@ -698,17 +768,20 @@ struct PreparedPhysicalRegisterAssignment {
   std::string register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> placement;
 };
 
 struct PreparedRegisterCandidateSpan {
   std::string register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> placement;
 };
 
 struct PreparedStackSlotAssignment {
   PreparedFrameSlotId slot_id = 0;
   std::size_t offset_bytes = 0;
+  std::optional<PreparedSpillSlotPlacement> placement;
 };
 
 struct PreparedAllocationConstraint {
@@ -784,6 +857,7 @@ struct PreparedMoveResolution {
   std::optional<BlockLabelId> source_parallel_copy_predecessor_label;
   std::optional<BlockLabelId> source_parallel_copy_successor_label;
   std::string reason;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
 };
 
 struct PreparedAbiBinding {
@@ -794,6 +868,7 @@ struct PreparedAbiBinding {
   std::size_t destination_contiguous_width = 1;
   std::vector<std::string> destination_occupied_register_names;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
 };
 
 struct PreparedSpillReloadOp {
@@ -807,6 +882,8 @@ struct PreparedSpillReloadOp {
   std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
 
 struct PreparedRegallocValue {
@@ -971,6 +1048,8 @@ struct PreparedCallArgumentPlan {
   std::vector<std::string> destination_occupied_register_names;
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> source_register_placement;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
 };
 
 struct PreparedCallResultPlan {
@@ -990,6 +1069,9 @@ struct PreparedCallResultPlan {
   std::optional<PreparedRegisterBank> destination_register_bank;
   std::optional<PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> source_register_placement;
+  std::optional<PreparedRegisterPlacement> destination_register_placement;
+  std::optional<PreparedSpillSlotPlacement> destination_spill_slot_placement;
 };
 
 struct PreparedClobberedRegister {
@@ -997,6 +1079,7 @@ struct PreparedClobberedRegister {
   std::string register_name;
   std::size_t contiguous_width = 1;
   std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> placement;
 };
 
 enum class PreparedCallPreservationRoute {
@@ -1029,6 +1112,8 @@ struct PreparedCallPreservedValue {
   std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
 
 enum class PreparedCallWrapperKind {
@@ -1064,6 +1149,7 @@ struct PreparedIndirectCalleePlan {
   std::optional<std::int64_t> immediate_i32;
   std::optional<ValueNameId> pointer_base_value_name;
   std::optional<std::int64_t> pointer_byte_delta;
+  std::optional<PreparedRegisterPlacement> register_placement;
 };
 
 struct PreparedMemoryReturnPlan {
@@ -1112,6 +1198,8 @@ struct PreparedStoragePlanValue {
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::int64_t> immediate_i32;
   std::optional<LinkNameId> symbol_name;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
 
 struct PreparedStoragePlanFunction {

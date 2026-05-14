@@ -71,6 +71,71 @@ namespace {
   return PreparedRegisterBank::None;
 }
 
+[[nodiscard]] std::optional<PreparedSpillSlotPlacement> make_spill_slot_placement(
+    std::optional<PreparedFrameSlotId> slot_id,
+    std::optional<std::size_t> offset_bytes) {
+  if (!slot_id.has_value() || !offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedSpillSlotPlacement{
+      .slot_id = *slot_id,
+      .offset_bytes = *offset_bytes,
+  };
+}
+
+[[nodiscard]] std::optional<PreparedRegisterPlacement> find_register_pool_placement(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    std::size_t contiguous_width,
+    const std::vector<std::string>& occupied_register_names,
+    bool caller_pool) {
+  if (occupied_register_names.empty()) {
+    return std::nullopt;
+  }
+  const auto spans = caller_pool ? caller_saved_register_spans(target_profile, reg_class, contiguous_width)
+                                 : callee_saved_register_spans(target_profile, reg_class, contiguous_width);
+  for (const auto& span : spans) {
+    if (span.occupied_register_names == occupied_register_names) {
+      return span.placement;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<PreparedRegisterPlacement> find_register_placement(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterClass reg_class,
+    std::size_t contiguous_width,
+    const std::vector<std::string>& occupied_register_names) {
+  if (const auto callee_saved =
+          find_register_pool_placement(target_profile, reg_class, contiguous_width, occupied_register_names, false);
+      callee_saved.has_value()) {
+    return callee_saved;
+  }
+  return find_register_pool_placement(target_profile, reg_class, contiguous_width, occupied_register_names, true);
+}
+
+[[nodiscard]] std::optional<PreparedRegisterPlacement> assignment_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const PreparedPhysicalRegisterAssignment& assignment) {
+  if (assignment.placement.has_value()) {
+    return assignment.placement;
+  }
+  return find_register_placement(target_profile,
+                                 assignment.reg_class,
+                                 assignment.contiguous_width,
+                                 assignment.occupied_register_names);
+}
+
+[[nodiscard]] std::optional<PreparedRegisterPlacement> as_reserved_scratch_placement(
+    std::optional<PreparedRegisterPlacement> placement) {
+  if (!placement.has_value()) {
+    return std::nullopt;
+  }
+  placement->pool = PreparedRegisterSlotPool::ReservedScratch;
+  return placement;
+}
+
 [[nodiscard]] std::optional<ValueNameId> maybe_named_value_id(const PreparedNameTables& names,
                                                               const bir::Value& value) {
   if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
@@ -357,6 +422,7 @@ struct DirectCalleeResolution {
 }
 
 [[nodiscard]] PreparedStoragePlanValue build_storage_plan_value(
+    const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function,
     const PreparedValueHome& home,
     bir::TypeKind type) {
@@ -370,6 +436,7 @@ struct DirectCalleeResolution {
   std::size_t contiguous_width = 1;
   PreparedRegisterBank bank = register_bank_from_type(type);
   std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> register_placement;
   if (home.register_name.has_value()) {
     occupied_register_names.push_back(*home.register_name);
   }
@@ -381,6 +448,8 @@ struct DirectCalleeResolution {
     if (home_is_assigned_register) {
       contiguous_width = regalloc_value->assigned_register->contiguous_width;
       occupied_register_names = regalloc_value->assigned_register->occupied_register_names;
+      register_placement =
+          assignment_register_placement(target_profile, *regalloc_value->assigned_register);
     } else if (home.kind != PreparedValueHomeKind::Register) {
       contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
       bank = register_bank_from_class(regalloc_value->register_class);
@@ -398,11 +467,14 @@ struct DirectCalleeResolution {
       .stack_offset_bytes = home.offset_bytes,
       .immediate_i32 = home.immediate_i32,
       .symbol_name = std::nullopt,
+      .register_placement = register_placement,
+      .spill_slot_placement = make_spill_slot_placement(home.slot_id, home.offset_bytes),
   };
 }
 
 [[nodiscard]] std::optional<PreparedIndirectCalleePlan> build_indirect_callee_plan(
     const PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function,
     const PreparedValueLocationFunction* value_locations,
     const bir::CallInst& call) {
@@ -426,6 +498,7 @@ struct DirectCalleeResolution {
       .immediate_i32 = std::nullopt,
       .pointer_base_value_name = std::nullopt,
       .pointer_byte_delta = std::nullopt,
+      .register_placement = std::nullopt,
   };
 
   if (value_locations == nullptr) {
@@ -441,6 +514,16 @@ struct DirectCalleeResolution {
     plan.immediate_i32 = home->immediate_i32;
     plan.pointer_base_value_name = home->pointer_base_value_name;
     plan.pointer_byte_delta = home->pointer_byte_delta;
+    if (home->register_name.has_value() && regalloc_function != nullptr) {
+      if (const auto* regalloc_value =
+              find_regalloc_value_by_name(*regalloc_function, *value_name_id);
+          regalloc_value != nullptr && regalloc_value->assigned_register.has_value() &&
+          home->register_name ==
+              std::optional<std::string>{regalloc_value->assigned_register->register_name}) {
+        plan.register_placement =
+            assignment_register_placement(target_profile, *regalloc_value->assigned_register);
+      }
+    }
   }
 
   return plan;
@@ -572,6 +655,7 @@ struct DirectCalleeResolution {
           .register_name = register_span.register_name,
           .contiguous_width = register_span.contiguous_width,
           .occupied_register_names = register_span.occupied_register_names,
+          .placement = as_reserved_scratch_placement(register_span.placement),
       });
     }
   };
@@ -679,6 +763,8 @@ struct DirectCalleeResolution {
         .occupied_register_names = {},
         .slot_id = std::nullopt,
         .stack_offset_bytes = std::nullopt,
+        .register_placement = std::nullopt,
+        .spill_slot_placement = std::nullopt,
     };
 
     const PreparedValueHome* value_home =
@@ -687,6 +773,8 @@ struct DirectCalleeResolution {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value_home->slot_id;
       preserved.stack_offset_bytes = value_home->offset_bytes;
+      preserved.spill_slot_placement =
+          make_spill_slot_placement(value_home->slot_id, value_home->offset_bytes);
     } else if (value.stack_object_id.has_value()) {
       if (const auto* frame_slot =
               find_prepared_frame_slot(prepared.stack_layout, *value.stack_object_id);
@@ -694,16 +782,24 @@ struct DirectCalleeResolution {
         preserved.route = PreparedCallPreservationRoute::StackSlot;
         preserved.slot_id = frame_slot->slot_id;
         preserved.stack_offset_bytes = frame_slot->offset_bytes;
+        preserved.spill_slot_placement = PreparedSpillSlotPlacement{
+            .slot_id = frame_slot->slot_id,
+            .offset_bytes = frame_slot->offset_bytes,
+        };
       }
     } else if (value.assigned_stack_slot.has_value()) {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value.assigned_stack_slot->slot_id;
       preserved.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
+      preserved.spill_slot_placement =
+          make_spill_slot_placement(preserved.slot_id, preserved.stack_offset_bytes);
     } else if (value.assigned_register.has_value()) {
       preserved.register_name = value.assigned_register->register_name;
       preserved.register_bank = register_bank_from_class(value.register_class);
       preserved.contiguous_width = value.assigned_register->contiguous_width;
       preserved.occupied_register_names = value.assigned_register->occupied_register_names;
+      preserved.register_placement =
+          assignment_register_placement(prepared.target_profile, *value.assigned_register);
       if (is_callee_saved_register_assignment(prepared.target_profile, value)) {
         preserved.route = PreparedCallPreservationRoute::CalleeSavedRegister;
         preserved.callee_saved_save_index = find_saved_callee_save_index(frame_plan, value);
@@ -796,6 +892,7 @@ void populate_frame_plan(PreparedBirModule& prepared) {
             .contiguous_width = value.assigned_register->contiguous_width,
             .occupied_register_names = value.assigned_register->occupied_register_names,
             .save_index = *save_index,
+            .placement = assignment_register_placement(prepared.target_profile, *value.assigned_register),
         });
       }
     }
@@ -831,6 +928,41 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         plan.has_dynamic_stack && !plan.frame_slot_order.empty();
 
     prepared.frame_plan.functions.push_back(std::move(plan));
+  }
+}
+
+void populate_regalloc_placement_identity(PreparedBirModule& prepared) {
+  for (auto& function : prepared.regalloc.functions) {
+    for (auto& value : function.values) {
+      if (value.assigned_register.has_value()) {
+        value.assigned_register->placement =
+            assignment_register_placement(prepared.target_profile, *value.assigned_register);
+      }
+      if (value.spill_register_authority.has_value()) {
+        value.spill_register_authority->placement =
+            assignment_register_placement(prepared.target_profile, *value.spill_register_authority);
+      }
+      if (value.assigned_stack_slot.has_value()) {
+        value.assigned_stack_slot->placement = PreparedSpillSlotPlacement{
+            .slot_id = value.assigned_stack_slot->slot_id,
+            .offset_bytes = value.assigned_stack_slot->offset_bytes,
+        };
+      }
+    }
+
+    for (auto& op : function.spill_reload_ops) {
+      const auto* value = find_regalloc_value_by_id(function, op.value_id);
+      if (value != nullptr) {
+        const auto& published_register = value->assigned_register.has_value()
+                                             ? value->assigned_register
+                                             : value->spill_register_authority;
+        if (published_register.has_value()) {
+          op.register_placement =
+              assignment_register_placement(prepared.target_profile, *published_register);
+        }
+      }
+      op.spill_slot_placement = make_spill_slot_placement(op.slot_id, op.stack_offset_bytes);
+    }
   }
 }
 
@@ -932,7 +1064,8 @@ void populate_storage_plans(PreparedBirModule& prepared) {
           type = regalloc_value->type;
         }
       }
-      function_plan.values.push_back(build_storage_plan_value(regalloc_function, home, type));
+      function_plan.values.push_back(
+          build_storage_plan_value(prepared.target_profile, regalloc_function, home, type));
     }
 
     if (!function_plan.values.empty()) {
@@ -984,7 +1117,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
                     ? std::optional<std::string>{std::string{*direct_callee.name}}
                     : std::nullopt,
             .indirect_callee =
-                build_indirect_callee_plan(prepared.names, regalloc_function, value_locations, *call),
+                build_indirect_callee_plan(prepared.names,
+                                           prepared.target_profile,
+                                           regalloc_function,
+                                           value_locations,
+                                           *call),
             .memory_return =
                 build_memory_return_plan(prepared.names,
                                          prepared.module.names,
@@ -1039,6 +1176,8 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_occupied_register_names = {},
               .destination_register_bank = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
+              .source_register_placement = std::nullopt,
+              .destination_register_placement = std::nullopt,
           };
 
           if (const auto* binding = find_call_abi_binding(before_call_bundle,
@@ -1052,6 +1191,16 @@ void populate_call_plans(PreparedBirModule& prepared) {
             arg_plan.destination_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
               arg_plan.destination_register_bank = arg_plan.value_bank;
+              arg_plan.destination_register_placement =
+                  binding->destination_register_placement;
+              if (!arg_plan.destination_register_placement.has_value() &&
+                  arg_index < call->arg_abi.size()) {
+                arg_plan.destination_register_placement =
+                    call_arg_destination_register_placement(prepared.target_profile,
+                                                            call->arg_abi[arg_index],
+                                                            arg_index,
+                                                            arg_plan.destination_contiguous_width);
+              }
             }
           }
           if (!arg_plan.destination_register_name.has_value()) {
@@ -1066,6 +1215,16 @@ void populate_call_plans(PreparedBirModule& prepared) {
               arg_plan.destination_occupied_register_names =
                   register_binding->destination_occupied_register_names;
               arg_plan.destination_register_bank = arg_plan.value_bank;
+              arg_plan.destination_register_placement =
+                  register_binding->destination_register_placement;
+              if (!arg_plan.destination_register_placement.has_value() &&
+                  arg_index < call->arg_abi.size()) {
+                arg_plan.destination_register_placement =
+                    call_arg_destination_register_placement(prepared.target_profile,
+                                                            call->arg_abi[arg_index],
+                                                            arg_index,
+                                                            arg_plan.destination_contiguous_width);
+              }
             }
           }
 
@@ -1101,10 +1260,18 @@ void populate_call_plans(PreparedBirModule& prepared) {
               if (regalloc_function != nullptr) {
                 if (const auto* regalloc_value =
                         find_regalloc_value_by_name(*regalloc_function, *value_name_id);
-                    regalloc_value != nullptr) {
+                  regalloc_value != nullptr) {
                   arg_plan.source_value_id = regalloc_value->value_id;
                   arg_plan.source_register_bank =
                       register_bank_from_class(regalloc_value->register_class);
+                  if (regalloc_value->assigned_register.has_value() &&
+                      arg_plan.source_register_name ==
+                          std::optional<std::string>{
+                              regalloc_value->assigned_register->register_name}) {
+                    arg_plan.source_register_placement =
+                        assignment_register_placement(prepared.target_profile,
+                                                      *regalloc_value->assigned_register);
+                  }
                 }
               }
               const auto symbol_name =
@@ -1158,6 +1325,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .destination_register_bank = std::nullopt,
               .destination_slot_id = std::nullopt,
               .destination_stack_offset_bytes = std::nullopt,
+              .source_register_placement = std::nullopt,
+              .destination_register_placement = std::nullopt,
+              .destination_spill_slot_placement = std::nullopt,
           };
 
           if (const auto* binding = find_call_abi_binding(after_call_bundle,
@@ -1172,6 +1342,14 @@ void populate_call_plans(PreparedBirModule& prepared) {
             result_plan.source_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
               result_plan.source_register_bank = result_plan.value_bank;
+              result_plan.source_register_placement = binding->destination_register_placement;
+              if (!result_plan.source_register_placement.has_value() &&
+                  call->result_abi.has_value()) {
+                result_plan.source_register_placement =
+                    call_result_destination_register_placement(prepared.target_profile,
+                                                               *call->result_abi,
+                                                               result_plan.source_contiguous_width);
+              }
             }
           }
 
@@ -1186,12 +1364,22 @@ void populate_call_plans(PreparedBirModule& prepared) {
               if (home->register_name.has_value()) {
                 result_plan.destination_register_bank = result_plan.value_bank;
               }
+              result_plan.destination_spill_slot_placement =
+                  make_spill_slot_placement(home->slot_id, home->offset_bytes);
             }
             if (regalloc_function != nullptr) {
               if (const auto* regalloc_value =
                       find_regalloc_value_by_name(*regalloc_function, *value_name_id);
                   regalloc_value != nullptr) {
                 result_plan.destination_value_id = regalloc_value->value_id;
+                if (regalloc_value->assigned_register.has_value() &&
+                    result_plan.destination_register_name ==
+                        std::optional<std::string>{
+                            regalloc_value->assigned_register->register_name}) {
+                  result_plan.destination_register_placement =
+                      assignment_register_placement(prepared.target_profile,
+                                                    *regalloc_value->assigned_register);
+                }
               }
             }
           }
@@ -1306,6 +1494,7 @@ PreparedBirModule BirPreAlloc::run() {
 
 void BirPreAlloc::publish_contract_plans() {
   publish_prepared_bir_label_identity(prepared_);
+  populate_regalloc_placement_identity(prepared_);
   populate_frame_plan(prepared_);
   populate_dynamic_stack_plan(prepared_);
   populate_call_plans(prepared_);

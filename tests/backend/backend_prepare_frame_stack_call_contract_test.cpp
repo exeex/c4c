@@ -2720,11 +2720,28 @@ int check_call_contract() {
       call_plan.arguments.front().destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call contract: call_plans lost immediate integer argument authority");
   }
+  if (!call_plan.arguments.front().destination_register_placement.has_value() ||
+      call_plan.arguments.front().destination_register_placement->bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      call_plan.arguments.front().destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      call_plan.arguments.front().destination_register_placement->slot_index != 0 ||
+      call_plan.arguments.front().destination_register_placement->contiguous_width != 1) {
+    return fail("call contract: argument ABI destination lost structured placement identity");
+  }
   if (call_plan.result->value_bank != prepare::PreparedRegisterBank::Gpr ||
       call_plan.result->source_storage_kind != prepare::PreparedMoveStorageKind::Register ||
       !call_plan.result->source_register_name.has_value() ||
       call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr) {
     return fail("call contract: call_plans lost integer result ABI source");
+  }
+  if (!call_plan.result->source_register_placement.has_value() ||
+      call_plan.result->source_register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      call_plan.result->source_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallResult ||
+      call_plan.result->source_register_placement->slot_index != 0 ||
+      call_plan.result->source_register_placement->contiguous_width != 1) {
+    return fail("call contract: result ABI source lost structured placement identity");
   }
   if (call_plan.clobbered_registers.empty()) {
     return fail("call contract: call_plans lost the clobber contract");
@@ -2733,6 +2750,12 @@ int check_call_contract() {
     if (clobber.contiguous_width != 1 || clobber.occupied_register_names.size() != 1 ||
         clobber.occupied_register_names.front() != clobber.register_name) {
       return fail("call contract: clobber metadata no longer publishes singleton occupancy");
+    }
+    if (!clobber.placement.has_value() ||
+        clobber.placement->pool != prepare::PreparedRegisterSlotPool::ReservedScratch ||
+        clobber.placement->bank != clobber.bank ||
+        clobber.placement->contiguous_width != clobber.contiguous_width) {
+      return fail("call contract: clobber metadata lost reserved scratch placement identity");
     }
   }
   const std::string prepared_dump = prepare::print(prepared);
@@ -2748,6 +2771,11 @@ int check_call_contract() {
       tmp_call->bank != prepare::PreparedRegisterBank::Gpr ||
       !tmp_call->register_name.has_value()) {
     return fail("call contract: storage_plans lost the tmp.call register home");
+  }
+  if (!tmp_call->register_placement.has_value() ||
+      tmp_call->register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      tmp_call->register_placement->contiguous_width != 1) {
+    return fail("call contract: storage_plans lost structured register-home placement identity");
   }
   if (call_plan.result->destination_value_id !=
       std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
@@ -2842,6 +2870,16 @@ int check_stack_result_slot_contract() {
       result.source_register_bank !=
           std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
     return fail("stack-result slot contract: call_plans lost call-result ABI source while publishing slot home");
+  }
+  if (!result.source_register_placement.has_value() ||
+      result.source_register_placement->pool != prepare::PreparedRegisterSlotPool::CallResult ||
+      !result.destination_spill_slot_placement.has_value() ||
+      result.destination_spill_slot_placement->slot_id != *spilled_result->slot_id ||
+      result.destination_spill_slot_placement->offset_bytes != *spilled_result->stack_offset_bytes ||
+      !spilled_result->spill_slot_placement.has_value() ||
+      spilled_result->spill_slot_placement->slot_id != *spilled_result->slot_id ||
+      spilled_result->spill_slot_placement->offset_bytes != *spilled_result->stack_offset_bytes) {
+    return fail("stack-result slot contract: spilled result lost structured source or slot placement");
   }
   if (result.destination_value_id != std::optional<prepare::PreparedValueId>{spilled_result->value_id}) {
     return fail("stack-result slot contract: call_plans lost direct spilled-result source identity");

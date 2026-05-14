@@ -1,54 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/223_bir_mir_abstract_slot_contract_reject_string_names.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory String Placement Identity
+Current Step ID: 2
+Current Step Title: Add Structured Prepared Placement Types
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inventory completed for idea 223. Search proof found 812 string-placement hits across prealloc, AArch64 prepared handoff, and focused tests.
+Step 2 added the first structured prepared placement identity surface for idea 223 without migrating all legacy consumers. `PreparedRegisterPlacement` now carries bank, slot pool, slot index, and contiguous width; `PreparedSpillSlotPlacement` carries spill frame-slot identity. Target-register profile helpers now publish structured candidate-span placement and ABI arg/result placement helpers while keeping legacy spelling helpers intact.
 
-Authoritative string placement paths:
-- `src/backend/prealloc/prealloc.hpp`: semantic register identity fields live in `PreparedSavedRegister::{register_name, occupied_register_names}`, `PreparedPhysicalRegisterAssignment::{register_name, occupied_register_names}`, `PreparedRegisterCandidateSpan::{register_name, occupied_register_names}`, `PreparedAllocationConstraint::{fixed_register_name, preferred_register_names, forbidden_register_names}`, `PreparedMoveResolution::{destination_register_name, destination_occupied_register_names}`, `PreparedAbiBinding::{destination_register_name, destination_occupied_register_names}`, `PreparedSpillReloadOp::{register_name, occupied_register_names}`, `PreparedCallArgumentPlan::{source_register_name, destination_register_name, destination_occupied_register_names}`, `PreparedCallResultPlan::{source_register_name, source_occupied_register_names, destination_register_name, destination_occupied_register_names}`, `PreparedClobberedRegister::{register_name, occupied_register_names}`, `PreparedCallPreservedValue::{register_name, occupied_register_names}`, `PreparedIndirectCalleePlan::register_name`, and `PreparedStoragePlanValue::{register_name, occupied_register_names}`.
-- `src/backend/prealloc/target_register_profile.hpp` and `.cpp`: ABI and register-pool helpers publish spelling-derived `call_arg_destination_register_name`, `call_result_destination_register_name`, caller/callee saved register name lists, and indexed/numeric register-name sequences.
-- `src/backend/prealloc/regalloc.cpp`: producers and equality/dedup paths materialize names into assignments, constraints, move destinations, ABI bindings, call result/return moves, active assignment overlap checks, spill/reload authority, and value homes.
-- `src/backend/prealloc/prealloc.cpp`: prepared-frame/call/storage assembly copies those names into frame saves, preserved/clobbered records, call argument/result plans, move plans, spill/reload ops, and storage plans.
-- `src/backend/mir/aarch64/module/module.hpp` and `.cpp`: prepared-to-AArch64 module records retain `std::string_view` spellings such as `physical_register`, `register_name`, `occupied_registers`, `destination_register`, `source_register`, and `target_destination_register`, then parse/copy prepared names during handoff.
-- `src/backend/mir/aarch64/codegen/records.cpp`: scalar record construction uses prepared `home.register_name` and `storage.register_name` equality plus `convert_prepared_register(...)` to derive `RegisterOperand`, so prepared spelling is still semantic input to MIR records.
-- `src/backend/mir/aarch64/abi/abi.hpp` and `.cpp`: `parse_aarch64_register_name(...)` and `convert_prepared_register(...)` are target-layer spelling conversion helpers; today they are also the bridge from prepared strings to `RegisterReference`.
-
-Display/provenance-only or compatibility exceptions:
-- `src/backend/prealloc/prepared_printer.cpp` prints `reg=`, `dest_reg=`, `source_reg=`, and occupied-register lists. This is display output and should remain only as derived text after structured placement exists.
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp` and `src/backend/mir/aarch64/abi::register_name(RegisterReference)` are final target spelling/printer routes and should remain target-layer spelling.
-- `src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md` documents that parsing prepared spellings is a transition seam; it is not an implementation authority.
-- Test helper names such as `register_name_for_type(...)` are fixture conveniences, but many assertions still make those strings semantic and need conversion to abstract slot assertions in pre-target tests or `RegisterReference` assertions in AArch64 tests.
-
-Affected focused tests:
-- Pre-target prepared tests asserting string identity: `tests/backend/backend_prepare_liveness_test.cpp` and `tests/backend/backend_prepare_frame_stack_call_contract_test.cpp`, especially assigned registers, constraints, grouped spans, ABI arg/result destinations, spill/reload authority, indirect callees, and vector-width occupancy.
-- AArch64 prepared tests consuming prepared spellings as input fixtures or asserting handoff identity: `tests/backend/backend_aarch64_prepared_register_conversion_test.cpp`, `backend_aarch64_prepared_operand_identity_test.cpp`, `backend_aarch64_prepared_module_identity_test.cpp`, `backend_aarch64_prepared_frame_control_test.cpp`, `backend_aarch64_prepared_scalar_alu_records_test.cpp`, `backend_aarch64_prepared_scalar_cast_records_test.cpp`, and `backend_aarch64_prepared_memory_operand_records_test.cpp`.
+Representative prepared publications now carry structured placement alongside compatibility spelling fields: register candidate spans, assigned/spill-authority registers, assigned stack slots, frame saved registers, call clobbers as reserved scratch, ABI argument/result call plans, storage-plan register homes, and spill/reload frame-slot placement. Focused prepared tests now assert abstract placement for argument, return, caller-temp/callee spans, reserved scratch, long-lived callee assignment, and spill placement.
 
 ## Suggested Next
 
-First implementation packet: Step 2, add structured prepared placement identity types without changing external target spelling behavior. Own `src/backend/prealloc/prealloc.hpp`, `src/backend/prealloc/prealloc.cpp`, `src/backend/prealloc/target_register_profile.hpp`, `src/backend/prealloc/target_register_profile.cpp`, and focused prealloc tests. Add an abstract placement model for register bank, slot pool, slot index, contiguous width, and spill slot placement, plus helpers that can derive current legacy spellings for compatibility during migration. Start with representative unit coverage in the prepared test bucket; do not rewrite all consumers in this packet.
-
-Recommended narrow proof command: `bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_prepare_(liveness|frame_stack_call_contract)" --output-on-failure'`
+Next coherent packet: migrate one narrow prepared consumer family to inspect `PreparedRegisterPlacement`/`PreparedSpillSlotPlacement` first, leaving legacy spelling fields as compatibility display or fallback. Keep this limited to pre-target prepared surfaces unless the supervisor explicitly opens an AArch64 handoff packet.
 
 ## Watchouts
 
-- Do not let BIR/prepared placement facts choose or require target register spellings before target MIR mapping.
-- Reject renaming string fields as progress unless the semantic contract moves to structured abstract slots.
-- Do not enable unrelated AArch64 backend cases or weaken existing expectations.
-- `PreparedRegisterBank` already exists, but the missing authority is slot pool/index/width identity; do not treat bank plus spelling as the new abstraction.
-- `occupied_register_names` encodes both width and exact physical spelling. Preserve width semantics while moving physical identity to an abstract slot range.
-- AArch64 `abi::parse_aarch64_register_name(...)` and `register_name(RegisterReference)` are legitimate target-layer spelling functions. The bug is prepared/pre-MIR depending on them for placement identity.
-- `src/backend/prealloc/prepared_printer.cpp` can keep human-readable names only if they are derived display text, not the stored authority used by later lowering.
+- This packet intentionally did not rewrite `regalloc.cpp` or downstream AArch64 consumers; legacy spelling fields remain compatibility authority for existing paths.
+- `publish_contract_plans()` now enriches regalloc output with placement identity before frame/call/storage plan publication. Manual tests that inspect placement after a direct `run_regalloc()` need to publish contract plans first.
+- `PreparedRegisterSlotPool::ReservedScratch` is currently used for published call clobbers, derived from caller-saved spans, not as a full scratch allocator migration.
+- Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
 ## Proof
 
-Inspection proof only, per delegated packet. Ran:
+Ran delegated proof:
 
-`bash -lc 'set -o pipefail; { rg -n "register_name|occupied_register_names|source_register_name|source_occupied_register_names|destination_register_name|destination_occupied_register_names|fixed_register_name|preferred_register_names|forbidden_register_names|std::string_view.*register|register.*std::string_view" src/backend/prealloc src/backend/mir/aarch64 tests/backend/backend_prepare_* tests/backend/backend_aarch64_prepared_*; }' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_prepare_(liveness|frame_stack_call_contract)" --output-on-failure' > test_after.log 2>&1`
 
-Result: command completed successfully and wrote `test_after.log` with 812 matching lines. No build was required because this was an inventory-only packet with no implementation edits.
+Result: passed. `test_after.log` contains a successful incremental build and both focused tests passing: `backend_prepare_liveness` and `backend_prepare_frame_stack_call_contract`.
+
+Supervisor-side regression check on the matching focused before/after logs before the broader validation below replaced `test_after.log`:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed; before 2/2, after 2/2, no new failing tests. The default strict-increase guard mode reported only that the pass count did not increase, which is expected for this assertion-strengthening slice.
+
+Supervisor-side broader prepared validation now preserved in `test_after.log`:
+
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_" --output-on-failure' > test_after.log 2>&1`
+
+Result: passed; 7/7 `backend_prepare_` tests passed.

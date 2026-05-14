@@ -16,9 +16,20 @@ namespace c4c::backend::prepare {
     const bir::CallArgAbiInfo& abi,
     std::size_t arg_index);
 
+[[nodiscard]] std::optional<PreparedRegisterPlacement> call_arg_destination_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallArgAbiInfo& abi,
+    std::size_t arg_index,
+    std::size_t contiguous_width = 1);
+
 [[nodiscard]] std::optional<std::string> call_result_destination_register_name(
     const c4c::TargetProfile& target_profile,
     const bir::CallResultAbiInfo& abi);
+
+[[nodiscard]] std::optional<PreparedRegisterPlacement> call_result_destination_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallResultAbiInfo& abi,
+    std::size_t contiguous_width = 1);
 
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> caller_saved_register_spans(
     const c4c::TargetProfile& target_profile,

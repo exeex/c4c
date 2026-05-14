@@ -56,6 +56,63 @@ template <std::size_t N>
   }
 }
 
+[[nodiscard]] PreparedRegisterBank register_bank_from_class(PreparedRegisterClass reg_class) {
+  switch (reg_class) {
+    case PreparedRegisterClass::General:
+      return PreparedRegisterBank::Gpr;
+    case PreparedRegisterClass::Float:
+      return PreparedRegisterBank::Fpr;
+    case PreparedRegisterClass::Vector:
+      return PreparedRegisterBank::Vreg;
+    case PreparedRegisterClass::AggregateAddress:
+      return PreparedRegisterBank::AggregateAddress;
+    case PreparedRegisterClass::None:
+      return PreparedRegisterBank::None;
+  }
+  return PreparedRegisterBank::None;
+}
+
+[[nodiscard]] PreparedRegisterBank register_bank_from_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return PreparedRegisterBank::Gpr;
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return PreparedRegisterBank::Fpr;
+    case bir::TypeKind::I128:
+      return PreparedRegisterBank::Vreg;
+    case bir::TypeKind::Void:
+      return PreparedRegisterBank::None;
+  }
+  return PreparedRegisterBank::None;
+}
+
+[[nodiscard]] PreparedRegisterBank register_bank_from_arg_abi(const bir::CallArgAbiInfo& abi) {
+  if (is_float_abi_class(abi.primary_class)) {
+    return PreparedRegisterBank::Fpr;
+  }
+  if (abi.primary_class == bir::AbiValueClass::Memory && abi.type == bir::TypeKind::Ptr) {
+    return PreparedRegisterBank::AggregateAddress;
+  }
+  return register_bank_from_type(abi.type);
+}
+
+[[nodiscard]] PreparedRegisterBank register_bank_from_result_abi(
+    const bir::CallResultAbiInfo& abi) {
+  if (is_float_abi_class(abi.primary_class)) {
+    return PreparedRegisterBank::Fpr;
+  }
+  if (abi.primary_class == bir::AbiValueClass::Memory && abi.type == bir::TypeKind::Ptr) {
+    return PreparedRegisterBank::AggregateAddress;
+  }
+  return register_bank_from_type(abi.type);
+}
+
 [[nodiscard]] std::optional<std::string> aarch64_float_register_name(
     bir::TypeKind type,
     std::size_t index) {
@@ -203,14 +260,23 @@ template <std::size_t N>
 }
 
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> singleton_spans(
-    const std::vector<std::string_view>& register_names) {
+    const std::vector<std::string_view>& register_names,
+    PreparedRegisterBank bank,
+    PreparedRegisterSlotPool pool) {
   std::vector<PreparedRegisterCandidateSpan> spans;
   spans.reserve(register_names.size());
-  for (const std::string_view register_name : register_names) {
+  for (std::size_t index = 0; index < register_names.size(); ++index) {
+    const std::string_view register_name = register_names[index];
     spans.push_back(PreparedRegisterCandidateSpan{
         .register_name = std::string(register_name),
         .contiguous_width = 1,
         .occupied_register_names = {std::string(register_name)},
+        .placement = PreparedRegisterPlacement{
+            .bank = bank,
+            .pool = pool,
+            .slot_index = index,
+            .contiguous_width = 1,
+        },
     });
   }
   return spans;
@@ -218,7 +284,9 @@ template <std::size_t N>
 
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> contiguous_group_spans(
     const std::vector<std::string>& units,
-    std::size_t contiguous_width) {
+    std::size_t contiguous_width,
+    PreparedRegisterBank bank,
+    PreparedRegisterSlotPool pool) {
   if (contiguous_width == 0 || units.size() < contiguous_width) {
     return {};
   }
@@ -229,6 +297,12 @@ template <std::size_t N>
         .register_name = units[base_index],
         .contiguous_width = contiguous_width,
         .occupied_register_names = {},
+        .placement = PreparedRegisterPlacement{
+            .bank = bank,
+            .pool = pool,
+            .slot_index = base_index,
+            .contiguous_width = contiguous_width,
+        },
     };
     span.occupied_register_names.reserve(contiguous_width);
     for (std::size_t offset = 0; offset < contiguous_width; ++offset) {
@@ -261,12 +335,14 @@ template <std::size_t N>
 
 [[nodiscard]] std::vector<PreparedRegisterCandidateSpan> contiguous_pool_spans(
     const std::vector<std::string_view>& register_names,
-    std::size_t contiguous_width) {
+    std::size_t contiguous_width,
+    PreparedRegisterBank bank,
+    PreparedRegisterSlotPool pool) {
   if (contiguous_width == 0 || register_names.size() < contiguous_width) {
     return {};
   }
   if (contiguous_width == 1) {
-    return singleton_spans(register_names);
+    return singleton_spans(register_names, bank, pool);
   }
 
   std::vector<PreparedRegisterCandidateSpan> spans;
@@ -280,6 +356,12 @@ template <std::size_t N>
         .register_name = std::string(register_names[base_index]),
         .contiguous_width = contiguous_width,
         .occupied_register_names = {},
+        .placement = PreparedRegisterPlacement{
+            .bank = bank,
+            .pool = pool,
+            .slot_index = base_index,
+            .contiguous_width = contiguous_width,
+        },
     };
     span.occupied_register_names.reserve(contiguous_width);
     span.occupied_register_names.push_back(std::string(register_names[base_index]));
@@ -309,28 +391,39 @@ template <std::size_t N>
   if (contiguous_width == 0) {
     return {};
   }
+  const PreparedRegisterBank bank = register_bank_from_class(reg_class);
+  const PreparedRegisterSlotPool pool = caller_pool ? PreparedRegisterSlotPool::CallerSaved
+                                                    : PreparedRegisterSlotPool::CalleeSaved;
   if (reg_class == PreparedRegisterClass::Vector) {
     switch (target_profile.arch) {
       case c4c::TargetArch::X86_64:
         return contiguous_group_spans(
             caller_pool ? contiguous_vector_units("ymm", 0, 16)
                         : contiguous_vector_units("ymm", 16, 16),
-            contiguous_width);
+            contiguous_width,
+            bank,
+            pool);
       case c4c::TargetArch::I686:
         return contiguous_group_spans(
             caller_pool ? contiguous_vector_units("ymm", 0, 8)
                         : contiguous_vector_units("ymm", 8, 8),
-            contiguous_width);
+            contiguous_width,
+            bank,
+            pool);
       case c4c::TargetArch::Aarch64:
         return contiguous_group_spans(
             caller_pool ? contiguous_vector_units("v", 0, 16)
                         : contiguous_vector_units("v", 16, 16),
-            contiguous_width);
+            contiguous_width,
+            bank,
+            pool);
       case c4c::TargetArch::Riscv64:
         return contiguous_group_spans(
             caller_pool ? contiguous_vector_units("v", 0, 16)
                         : contiguous_vector_units("v", 16, 16),
-            contiguous_width);
+            contiguous_width,
+            bank,
+            pool);
       case c4c::TargetArch::Unknown:
         return {};
     }
@@ -338,7 +431,7 @@ template <std::size_t N>
 
   const auto registers = caller_pool ? caller_saved_registers(target_profile, reg_class)
                                      : callee_saved_registers(target_profile, reg_class);
-  return contiguous_pool_spans(registers, contiguous_width);
+  return contiguous_pool_spans(registers, contiguous_width, bank, pool);
 }
 
 }  // namespace
@@ -391,6 +484,22 @@ std::optional<std::string> call_arg_destination_register_name(
   return std::nullopt;
 }
 
+std::optional<PreparedRegisterPlacement> call_arg_destination_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallArgAbiInfo& abi,
+    std::size_t arg_index,
+    std::size_t contiguous_width) {
+  if (!call_arg_destination_register_name(target_profile, abi, arg_index).has_value()) {
+    return std::nullopt;
+  }
+  return PreparedRegisterPlacement{
+      .bank = register_bank_from_arg_abi(abi),
+      .pool = PreparedRegisterSlotPool::CallArgument,
+      .slot_index = arg_index,
+      .contiguous_width = std::max<std::size_t>(contiguous_width, 1),
+  };
+}
+
 std::optional<std::string> call_result_destination_register_name(
     const c4c::TargetProfile& target_profile,
     const bir::CallResultAbiInfo& abi) {
@@ -422,6 +531,21 @@ std::optional<std::string> call_result_destination_register_name(
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+std::optional<PreparedRegisterPlacement> call_result_destination_register_placement(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallResultAbiInfo& abi,
+    std::size_t contiguous_width) {
+  if (!call_result_destination_register_name(target_profile, abi).has_value()) {
+    return std::nullopt;
+  }
+  return PreparedRegisterPlacement{
+      .bank = register_bank_from_result_abi(abi),
+      .pool = PreparedRegisterSlotPool::CallResult,
+      .slot_index = 0,
+      .contiguous_width = std::max<std::size_t>(contiguous_width, 1),
+  };
 }
 
 std::vector<PreparedRegisterCandidateSpan> caller_saved_register_spans(

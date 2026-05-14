@@ -2174,6 +2174,7 @@ prepare::PreparedBirModule prepare_grouped_evicted_spill_module_with_regalloc() 
   options.run_regalloc = true;
   prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
   regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
 }
 
@@ -2325,6 +2326,7 @@ prepare::PreparedBirModule prepare_general_grouped_evicted_spill_module_with_reg
   options.run_regalloc = true;
   prepare::BirPreAlloc regalloc_planner(std::move(seeded), options);
   regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
 }
 
@@ -4020,6 +4022,13 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
       hot->assigned_register->occupied_register_names != std::vector<std::string>{"s1", "s2"}) {
     return fail("expected the hotter grouped general value to keep the only legal callee span");
   }
+  if (!hot->assigned_register->placement.has_value() ||
+      hot->assigned_register->placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      hot->assigned_register->placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      hot->assigned_register->placement->slot_index != 0 ||
+      hot->assigned_register->placement->contiguous_width != 2) {
+    return fail("expected grouped general callee value to publish structured slot placement");
+  }
 
   const auto grouped_spill_it = std::find_if(
       function->spill_reload_ops.begin(),
@@ -4035,6 +4044,14 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
   if (grouped_spill_it == function->spill_reload_ops.end()) {
     return fail("expected a grouped general spill to publish the full callee span");
   }
+  if (!grouped_spill_it->register_placement.has_value() ||
+      grouped_spill_it->register_placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      grouped_spill_it->register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      grouped_spill_it->register_placement->slot_index != 0 ||
+      grouped_spill_it->register_placement->contiguous_width != 2) {
+    return fail("expected grouped general spill to publish structured register placement");
+  }
   if (carry->allocation_status != prepare::PreparedAllocationStatus::AssignedStackSlot ||
       !carry->assigned_stack_slot.has_value() || carry->assigned_register.has_value() ||
       !carry->spill_register_authority.has_value() ||
@@ -4044,6 +4061,13 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
       carry->spill_register_authority->occupied_register_names !=
           grouped_spill_it->occupied_register_names) {
     return fail("expected the grouped general spilled value to keep truthful spill-register authority");
+  }
+  if (!carry->assigned_stack_slot->placement.has_value() ||
+      carry->assigned_stack_slot->placement->slot_id != carry->assigned_stack_slot->slot_id ||
+      carry->assigned_stack_slot->placement->offset_bytes != carry->assigned_stack_slot->offset_bytes ||
+      !carry->spill_register_authority->placement.has_value() ||
+      carry->spill_register_authority->placement != grouped_spill_it->register_placement) {
+    return fail("expected grouped general spilled value to publish structured spill placement");
   }
 
   int spill_count = 0;
@@ -4059,6 +4083,11 @@ int check_general_grouped_evicted_value_spill_ops(const prepare::PreparedBirModu
         op.stack_offset_bytes !=
             std::optional<std::size_t>{carry->assigned_stack_slot->offset_bytes}) {
       return fail("expected grouped general spill/reload ops to publish span and stack-slot authority");
+    }
+    if (!op.spill_slot_placement.has_value() ||
+        op.spill_slot_placement->slot_id != carry->assigned_stack_slot->slot_id ||
+        op.spill_slot_placement->offset_bytes != carry->assigned_stack_slot->offset_bytes) {
+      return fail("expected grouped general spill/reload ops to publish structured spill slot placement");
     }
     if (op.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
       ++spill_count;
@@ -5354,6 +5383,15 @@ int check_vector_span_candidate_legality() {
       m2_spans[1].occupied_register_names != std::vector<std::string>{"v2", "v3"}) {
     return fail("expected LMUL=2 vector candidates to stay contiguous and width-aligned");
   }
+  if (!m2_spans[0].placement.has_value() ||
+      m2_spans[0].placement->bank != prepare::PreparedRegisterBank::Vreg ||
+      m2_spans[0].placement->pool != prepare::PreparedRegisterSlotPool::CallerSaved ||
+      m2_spans[0].placement->slot_index != 0 ||
+      m2_spans[0].placement->contiguous_width != 2 ||
+      !m2_spans[1].placement.has_value() ||
+      m2_spans[1].placement->slot_index != 2) {
+    return fail("expected caller vector candidates to publish structured caller-temp placement");
+  }
   if (m4_spans[0].register_name != "v0" ||
       m4_spans[0].occupied_register_names !=
           std::vector<std::string>{"v0", "v1", "v2", "v3"}) {
@@ -5362,6 +5400,12 @@ int check_vector_span_candidate_legality() {
   if (callee_m2_spans[0].register_name != "v16" ||
       callee_m2_spans[0].occupied_register_names != std::vector<std::string>{"v16", "v17"}) {
     return fail("expected callee vector candidates to start from the disjoint callee pool");
+  }
+  if (!callee_m2_spans[0].placement.has_value() ||
+      callee_m2_spans[0].placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      callee_m2_spans[0].placement->slot_index != 0 ||
+      callee_m2_spans[0].placement->contiguous_width != 2) {
+    return fail("expected callee vector candidates to publish structured callee placement");
   }
 
   return 0;
@@ -5378,9 +5422,23 @@ int check_scalar_grouped_span_candidate_legality() {
       general_spans[0].occupied_register_names != std::vector<std::string>{"s1", "s2"}) {
     return fail("expected grouped general candidate spans to preserve contiguous callee units");
   }
+  if (!general_spans[0].placement.has_value() ||
+      general_spans[0].placement->bank != prepare::PreparedRegisterBank::Gpr ||
+      general_spans[0].placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      general_spans[0].placement->slot_index != 0 ||
+      general_spans[0].placement->contiguous_width != 2) {
+    return fail("expected grouped general candidates to publish structured callee placement");
+  }
   if (float_spans.size() != 1 ||
       float_spans[0].occupied_register_names != std::vector<std::string>{"fs1", "fs2"}) {
     return fail("expected grouped float candidate spans to preserve contiguous callee units");
+  }
+  if (!float_spans[0].placement.has_value() ||
+      float_spans[0].placement->bank != prepare::PreparedRegisterBank::Fpr ||
+      float_spans[0].placement->pool != prepare::PreparedRegisterSlotPool::CalleeSaved ||
+      float_spans[0].placement->slot_index != 0 ||
+      float_spans[0].placement->contiguous_width != 2) {
+    return fail("expected grouped float candidates to publish structured callee placement");
   }
 
   return 0;
