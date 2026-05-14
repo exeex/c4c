@@ -24,6 +24,17 @@ int expect_equal(std::string_view actual, std::string_view expected, std::string
   return 0;
 }
 
+int expect_assembly(std::string_view actual,
+                    std::string_view expected_from_helpers,
+                    std::string_view expected_canonical,
+                    std::string_view context) {
+  if (expected_from_helpers != expected_canonical) {
+    return fail(std::string(context) +
+                " helper-derived assembly drifted from canonical expected spelling");
+  }
+  return expect_equal(actual, expected_from_helpers, context);
+}
+
 aarch64_codegen::RegisterOperand xreg(unsigned index) {
   return aarch64_codegen::RegisterOperand{
       .reg = aarch64_abi::x_register(static_cast<std::uint8_t>(index)),
@@ -90,21 +101,29 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
       });
 
   const auto result = aarch64_codegen::print_machine_instruction_nodes({spill, reload});
-  const std::string expected = "    str x9, [sp, #16]\n    ldr x9, [sp, #16]\n";
-  if (!result.ok || result.assembly != expected || !result.diagnostic.empty()) {
+  if (!result.ok || !result.diagnostic.empty()) {
     return fail("expected selected spill/reload nodes to print canonical AArch64 text");
   }
-  if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_primary_printer_mnemonic(spill),
-          "str",
-          "spill helper mnemonic");
+  const auto spill_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(spill);
+  const auto reload_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(reload);
+  const std::string expected =
+      "    " + std::string(spill_mnemonic) + " x9, [sp, #16]\n" +
+      "    " + std::string(reload_mnemonic) + " x9, [sp, #16]\n";
+  if (const int check = expect_assembly(result.assembly,
+                                        expected,
+                                        "    str x9, [sp, #16]\n    ldr x9, [sp, #16]\n",
+                                        "spill/reload helper-printer drift guard");
       check != 0) {
     return check;
   }
   if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_primary_printer_mnemonic(reload),
-          "ldr",
-          "reload helper mnemonic");
+          spill_mnemonic, "str", "spill helper mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          reload_mnemonic, "ldr", "reload helper mnemonic");
       check != 0) {
     return check;
   }
@@ -164,33 +183,42 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
       });
 
   const auto result = aarch64_codegen::print_machine_instruction_nodes({branch, store});
-  const std::string expected =
-      "    cbnz x1, .LBB2_7\n"
-      "    b .LBB2_8\n"
-      "    str x10, [sp, #24]\n";
-  if (!result.ok || result.assembly != expected) {
+  if (!result.ok) {
     return fail("expected branch and store nodes to print from structured operands: " +
                 result.diagnostic);
   }
-  if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_primary_printer_mnemonic(branch),
-          "cbnz",
-          "conditional branch helper mnemonic");
+  const auto conditional_branch_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(branch);
+  const auto unconditional_branch_mnemonic = aarch64_codegen::machine_printer_mnemonic_kind_name(
+      aarch64_codegen::MachinePrinterMnemonicKind::Branch);
+  const auto store_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(store);
+  const std::string expected =
+      "    " + std::string(conditional_branch_mnemonic) + " x1, .LBB2_7\n" +
+      "    " + std::string(unconditional_branch_mnemonic) + " .LBB2_8\n" +
+      "    " + std::string(store_mnemonic) + " x10, [sp, #24]\n";
+  if (const int check = expect_assembly(result.assembly,
+                                        expected,
+                                        "    cbnz x1, .LBB2_7\n"
+                                        "    b .LBB2_8\n"
+                                        "    str x10, [sp, #24]\n",
+                                        "branch/store helper-printer drift guard");
       check != 0) {
     return check;
   }
   if (const int check = expect_equal(
-          aarch64_codegen::machine_printer_mnemonic_kind_name(
-              aarch64_codegen::MachinePrinterMnemonicKind::Branch),
+          conditional_branch_mnemonic, "cbnz", "conditional branch helper mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          unconditional_branch_mnemonic,
           "b",
           "unconditional branch helper mnemonic");
       check != 0) {
     return check;
   }
   if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_primary_printer_mnemonic(store),
-          "str",
-          "store helper mnemonic");
+          store_mnemonic, "str", "store helper mnemonic");
       check != 0) {
     return check;
   }
@@ -210,22 +238,29 @@ int selected_immediate_return_node_prints_callable_epilogue() {
       });
 
   const auto result = aarch64_codegen::print_machine_instruction_nodes({ret});
-  const std::string expected = "    mov w0, #0\n    ret\n";
-  if (!result.ok || result.assembly != expected) {
+  if (!result.ok) {
     return fail("expected selected immediate return node to print AArch64 return text: " +
                 result.diagnostic);
   }
-  if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret),
-          "mov",
-          "return helper auxiliary mnemonic");
+  const auto move_mnemonic = aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret);
+  const auto return_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret);
+  const std::string expected =
+      "    " + std::string(move_mnemonic) + " w0, #0\n" +
+      "    " + std::string(return_mnemonic) + "\n";
+  if (const int check = expect_assembly(result.assembly,
+                                        expected,
+                                        "    mov w0, #0\n    ret\n",
+                                        "return helper-printer drift guard");
       check != 0) {
     return check;
   }
   if (const int check = expect_equal(
-          aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret),
-          "ret",
-          "return helper primary mnemonic");
+          move_mnemonic, "mov", "return helper auxiliary mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          return_mnemonic, "ret", "return helper primary mnemonic");
       check != 0) {
     return check;
   }

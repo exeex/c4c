@@ -1,6 +1,7 @@
 #include "src/backend/mir/aarch64/codegen/records.hpp"
 
 #include <iostream>
+#include <string_view>
 #include <variant>
 
 namespace {
@@ -13,6 +14,14 @@ namespace prepare = c4c::backend::prepare;
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+int expect_equal(std::string_view actual, std::string_view expected, const char* context) {
+  if (actual != expected) {
+    std::cerr << context << " expected '" << expected << "', got '" << actual << "'\n";
+    return 1;
+  }
+  return 0;
 }
 
 aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId value_id,
@@ -267,6 +276,55 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
 }
 
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Store),
+          "str",
+          "store mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Load),
+          "ldr",
+          "load mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::ConditionalBranchNonZero),
+          "cbnz",
+          "conditional branch mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Branch),
+          "b",
+          "branch mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Move),
+          "mov",
+          "move mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Return),
+          "ret",
+          "return mnemonic kind");
+      status != 0) {
+    return status;
+  }
+
   const auto condition = make_value_register(prepare::PreparedValueId{30},
                                              c4c::ValueNameId{12},
                                              1);
