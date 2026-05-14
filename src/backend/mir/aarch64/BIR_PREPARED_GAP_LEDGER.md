@@ -230,6 +230,22 @@ authority in
 must not recover facts from rendered names, printed BIR, legacy LIR strings,
 assembly text, parser operand recovery, or stale markdown examples.
 
+Structured asm/encoding and later object records must preserve prepared
+authority instead of duplicating it. `PreparedLiveness`,
+`PreparedLiveInterval`, `PreparedRegalloc`, `PreparedRegallocValue`,
+`PreparedInterferenceEdge`, `PreparedMoveResolution`,
+`PreparedSpillReloadOp`, `PreparedValueLocations`,
+`PreparedCallPreservedValue`, and `PreparedClobberedRegister` remain the
+authority for live intervals, value homes, interference, move resolution,
+spill/reload authority, preserved values, and call-clobbered registers. A
+selected machine node or derived encoding record may add only the facts that
+exist after opcode selection: implicit register uses/defs, selected opcode
+clobber effects, condition flags, selected scratch lifetimes, operator side
+effects, and section/relocation ownership for object-facing output. Those
+post-selection facts still sit below the machine instruction node semantic
+boundary and above printer, encoder, object, linker, or external assembler
+consumers.
+
 A separate shared BIR/prepared carrier initiative is not required for the
 current target-MIR allocation/move/spill record layer because
 `PreparedBirModule` already carries the contract's core module, identity,

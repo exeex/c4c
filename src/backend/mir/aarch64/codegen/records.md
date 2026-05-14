@@ -165,3 +165,23 @@ operand came from allocation. Clobber and side-effect metadata remains
 separate on the operator/instruction or effect record so register reference,
 register use, value provenance, allocation provenance, and clobber/effect
 metadata do not collapse into a catch-all operand.
+
+Structured asm/encoding records are downstream of the selected machine-node
+surface and downstream of prepared authority. They may reference
+`PreparedLiveness`, `PreparedLiveInterval`, `PreparedRegalloc`,
+`PreparedRegallocValue`, `PreparedInterferenceEdge`,
+`PreparedMoveResolution`, `PreparedSpillReloadOp`,
+`PreparedValueLocations`, `PreparedCallPreservedValue`, and
+`PreparedClobberedRegister` as provenance for value homes, interference,
+move resolution, spill/reload records, call-preserved values, and clobbered
+registers. They must not invent local allocation, liveness, preservation, or
+spill policy.
+
+The additional information owned by the selected machine-node or lower
+encoding surface is the post-selection machine effect set: implicit register
+uses/defs, selected opcode clobber facts, flags, target scratch lifetimes,
+operator side effects, final section placement, and section/relocation
+ownership for object-facing records. That effect set remains attached to
+machine instruction nodes or derived structured records, preserving machine
+instruction nodes as the semantic boundary before any printer, encoder,
+object writer, linker, or external assembler parser consumes the stream.

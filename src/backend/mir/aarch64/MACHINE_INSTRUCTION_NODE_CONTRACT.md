@@ -272,6 +272,26 @@ space, side effects, clobbers, source machine-node ids, prepared value/frame
 ids, allocation provenance, and diagnostic spelling as non-authoritative
 display metadata.
 
+Prepared facts remain the upstream authority for long-lived semantic state.
+Structured asm/encoding records may carry provenance back to
+`PreparedLiveness`, `PreparedLiveInterval`, `PreparedRegalloc`,
+`PreparedRegallocValue`, `PreparedInterferenceEdge`,
+`PreparedMoveResolution`, `PreparedSpillReloadOp`,
+`PreparedValueLocations`, `PreparedCallPreservedValue`, and
+`PreparedClobberedRegister`, but they must not replace those facts with a
+second allocation, liveness, call-preservation, or spill/reload policy. Those
+prepared records decide value homes, interference, move obligations,
+spill/reload authority, call-preserved values, and call-clobbered registers.
+
+The structured asm/encoding layer adds only post-selection machine-level
+effects that do not exist as prepared authority: implicit register uses and
+defs introduced by the selected opcode, selected opcode clobber metadata,
+condition flags, scratch lifetimes consumed by a selected lowering, final
+operator side effects, and section/relocation ownership for the downstream
+object stream. These additions attach to machine instruction nodes or lower
+encoding records; they do not move semantic authority out of the machine
+instruction node boundary and they do not authorize assembly-text recovery.
+
 ## Rejected Internal Routes
 
 The following routes are rejected for AArch64 codegen:

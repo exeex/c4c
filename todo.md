@@ -3,43 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/218_aarch64_structured_asm_encoder_linker_contract.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Define Structured ASM/Encoding Record Surface
+Current Step ID: 4
+Current Step Title: Tie Structured Records To Prepared And Machine-Level Facts
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: defined the minimum future structured
-asm/encoding record surface in the accepted AArch64 contract docs.
+Completed Step 4 from `plan.md`: tied structured asm/encoding records to
+prepared lifecycle authority and post-selection machine-level effects in the
+accepted AArch64 contract docs.
 
 Updated contract docs:
 
 - `src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md`: added the
-  accepted translation-unit, section, label, operator/instruction, directive,
-  data, typed operand, and `RelocationNeed`-style record families; included
-  the concrete `AsmRegisterRef`, `AsmRegisterUseKind`, `AsmRegisterUse`,
-  `AsmValueProvenance`, `AsmAllocationProvenance`, and `AsmRegisterOperand`
-  decomposition; and named the semantic payload that must survive toward
-  object/linker records.
-- `src/backend/mir/aarch64/codegen/records.md`: mirrored the minimum record
-  families and register operand separation so the current record-core roadmap
-  points future encoder/object work at readable structured records instead of
-  a catch-all operand payload.
+  prepared authority boundary for liveness, regalloc, move resolution,
+  spill/reload, preserved-value, and clobber facts; clarified that structured
+  asm/encoding records add only post-selection implicit register uses/defs,
+  selected opcode clobbers, flags, scratch lifetimes, operator effects, and
+  section/relocation ownership.
+- `src/backend/mir/aarch64/codegen/records.md`: mirrored the same prepared
+  authority and post-selection effect split for future record-core work while
+  preserving selected machine nodes as the semantic boundary.
+- `src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md`: recorded the
+  proceed/split boundary that prepared carriers remain authority and lower
+  structured records only add machine-level facts that exist after opcode
+  selection.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: tie structured asm/encoding records to prepared
-lifecycle authority and post-selection machine-level effects.
+Execute the next supervisor-selected plan step after Step 4, keeping the
+structured node/record boundary intact and staying in docs or code only as
+delegated.
 
 ## Watchouts
 
-- Keep Step 4 in contract/design wording unless the supervisor explicitly
-  delegates a live code surface.
 - Preserve the separation between terminal printer output, external assembler
   input, structured encoder/object records, and linker object inputs.
-- Prepared lifecycle facts are upstream authority, but structured
-  asm/encoding records still need post-selection target-machine effects such
-  as implicit register uses/defs, flags, scratch lifetimes, selected opcode
-  clobbers, and section/relocation ownership.
+- Prepared lifecycle facts remain upstream authority; do not let future
+  structured asm/encoding records duplicate allocation, liveness,
+  call-preservation, or spill/reload policy.
+- Future behavior work must attach post-selection machine effects to selected
+  machine nodes or derived structured records, not to printed assembly text or
+  parser-recovered operands.
 - Do not edit the source idea for routine execution details; record packet
   state here instead.
 
@@ -48,7 +52,8 @@ lifecycle authority and post-selection machine-level effects.
 Delegated proof completed successfully and wrote `test_after.log`:
 
 ```bash
-bash -lc 'set -o pipefail; rg -n "AsmRegisterRef|AsmRegisterUseKind|AsmValueProvenance|AsmAllocationProvenance|AsmRegisterOperand|translation-unit|RelocationNeed|structured asm/encoding" src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md src/backend/mir/aarch64/codegen/records.md todo.md > test_after.log 2>&1; test -s test_after.log'
+bash -lc 'set -o pipefail; rg -n "PreparedLiveness|PreparedLiveInterval|PreparedRegalloc|PreparedRegallocValue|PreparedInterferenceEdge|PreparedMoveResolution|PreparedSpillReloadOp|PreparedValueLocations|PreparedCallPreservedValue|PreparedClobberedRegister|implicit register|selected opcode clobber|scratch|section/relocation ownership" src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md src/backend/mir/aarch64/codegen/records.md src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md todo.md > test_after.log 2>&1; test -s test_after.log'
 ```
 
-Proof result: required structured asm/encoding contract vocabulary is present.
+Proof result: required prepared-authority and post-selection machine-effect
+contract vocabulary is present.
