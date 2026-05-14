@@ -8,11 +8,11 @@ Current Step Title: Migrate Prepared Allocation Records Away From Authoritative 
 
 ## Just Finished
 
-Step 3 continued the prepared record migration by publishing structured `PreparedRegisterPlacement` on move-resolution and ABI-binding records at creation time. `regalloc` now carries placement identity through value moves, immediate materialization moves, call argument/result moves, function return moves, and call-site ABI bindings, and duplicate/no-op checks prefer placement equality when both sides have structured placement.
+Step 3 continued the prepared record migration by publishing structured `PreparedRegisterPlacement` on move-resolution, ABI-binding, and allocation-constraint records at creation time. `regalloc` now carries placement identity through value moves, immediate materialization moves, call argument/result moves, function return moves, call-site ABI bindings, and fixed/preferred/forbidden allocation constraint pools. Duplicate/no-op checks prefer placement equality when both sides have structured placement.
 
 `prepared_printer` now prints those move/binding placement fields before legacy `reg=` text, keeping the spelling as display/compatibility output.
 
-Focused frame/call and printer tests now fail if call-site ABI bindings or call-result moves lose the structured placement field.
+Focused liveness, frame/call, and printer tests now fail if call-site ABI bindings, call-result moves, or call-crossing allocation constraints lose the structured placement fields.
 
 ## Suggested Next
 
@@ -22,7 +22,7 @@ Next coherent packet: either finish Step 3 with a targeted audit of remaining pr
 
 - This packet intentionally did not rewrite target profiles or downstream target consumers; legacy spelling fields remain compatibility display for existing paths.
 - Prepared-printer summary/detail text now includes extra `placement=` or `spill_slot=` tokens; future string checks should assert those structured tokens for migrated records instead of relying only on `reg=` or `slot_id=`.
-- Move-resolution records still preserve legacy `destination_register_name` and occupied-name vectors for compatibility, but call/return coalescing no longer relies on the string when both structured placements are available.
+- Move-resolution and allocation-constraint records still preserve legacy register-name vectors for compatibility, but call/return coalescing no longer relies on the string when both structured placements are available.
 - `PreparedRegisterSlotPool::ReservedScratch` is currently used for published call clobbers, derived from caller-saved spans, not as a full scratch allocator migration.
 - Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
@@ -61,6 +61,12 @@ Ran focused proof for move/binding placement migration:
 Result: passed; both focused tests passed after adding assertions for structured ABI-binding and call-result move placement.
 
 Ran broader prepared plus prepared BIR CLI dump validation, now preserved in `test_after.log`:
+
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_|^backend_prepared_printer$|^backend_cli_dump_prepared_bir_" --output-on-failure' > test_after.log 2>&1`
+
+Result: passed; 18/18 tests passed.
+
+Ran the same broader validation after adding structured allocation-constraint placement companions:
 
 `bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_|^backend_prepared_printer$|^backend_cli_dump_prepared_bir_" --output-on-failure' > test_after.log 2>&1`
 

@@ -794,6 +794,9 @@ struct PreparedAllocationConstraint {
   std::optional<std::string> fixed_register_name;
   std::vector<std::string> preferred_register_names;
   std::vector<std::string> forbidden_register_names;
+  std::optional<PreparedRegisterPlacement> fixed_register_placement;
+  std::vector<PreparedRegisterPlacement> preferred_register_placements;
+  std::vector<PreparedRegisterPlacement> forbidden_register_placements;
 };
 
 struct PreparedInterferenceEdge {

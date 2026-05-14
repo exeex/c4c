@@ -3830,9 +3830,43 @@ int check_call_crossing_regalloc_spillover(const prepare::PreparedBirModule& pre
       carry_constraint->forbidden_register_names != std::vector<std::string>{"t0"}) {
     return fail("expected the call-crossing constraint to prefer callee-saved registers and forbid the caller-saved seed");
   }
+  auto has_constraint_placement = [](const std::vector<prepare::PreparedRegisterPlacement>& placements,
+                                     prepare::PreparedRegisterSlotPool pool,
+                                     std::size_t slot_index) {
+    return std::any_of(placements.begin(),
+                       placements.end(),
+                       [&](const prepare::PreparedRegisterPlacement& placement) {
+                         return placement.bank == prepare::PreparedRegisterBank::Gpr &&
+                                placement.pool == pool &&
+                                placement.slot_index == slot_index &&
+                                placement.contiguous_width == 1;
+                       });
+  };
+  if (!carry_constraint->preferred_register_placements.empty() &&
+      (!has_constraint_placement(carry_constraint->preferred_register_placements,
+                                 prepare::PreparedRegisterSlotPool::CalleeSaved,
+                                 0) ||
+       !has_constraint_placement(carry_constraint->preferred_register_placements,
+                                 prepare::PreparedRegisterSlotPool::CalleeSaved,
+                                 1) ||
+       !has_constraint_placement(carry_constraint->forbidden_register_placements,
+                                 prepare::PreparedRegisterSlotPool::CallerSaved,
+                                 0))) {
+    return fail("expected the call-crossing constraint to publish structured callee/caller placement pools");
+  }
+  if (carry_constraint->preferred_register_placements.empty() ||
+      carry_constraint->forbidden_register_placements.empty()) {
+    return fail("expected the call-crossing constraint to publish structured placement pools");
+  }
   if (local1_constraint == nullptr || local1_constraint->cannot_cross_call ||
       local1_constraint->preferred_register_names != std::vector<std::string>{"t0"}) {
     return fail("expected the non-call-crossing overflow value to keep the caller-saved preference before spillover");
+  }
+  if (!has_constraint_placement(local1_constraint->preferred_register_placements,
+                                prepare::PreparedRegisterSlotPool::CallerSaved,
+                                0) ||
+      !local1_constraint->forbidden_register_placements.empty()) {
+    return fail("expected the non-call-crossing constraint to publish caller-saved structured placement preference");
   }
 
   return 0;

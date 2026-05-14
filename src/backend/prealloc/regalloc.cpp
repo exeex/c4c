@@ -172,6 +172,18 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return materialized;
 }
 
+[[nodiscard]] std::vector<PreparedRegisterPlacement> materialize_register_placements(
+    const std::vector<PreparedRegisterCandidateSpan>& spans) {
+  std::vector<PreparedRegisterPlacement> placements;
+  placements.reserve(spans.size());
+  for (const auto& span : spans) {
+    if (span.placement.has_value()) {
+      placements.push_back(*span.placement);
+    }
+  }
+  return placements;
+}
+
 [[nodiscard]] std::size_t published_register_group_width(const PreparedRegallocValue& value) {
   if (value.assigned_register.has_value()) {
     return std::max<std::size_t>(value.assigned_register->contiguous_width, 1);
@@ -2445,6 +2457,10 @@ void BirPreAlloc::run_regalloc() {
                                         : 0U);
       const auto caller_saved_names = caller_saved_registers(prepared_.target_profile, register_class);
       const auto callee_saved_names = callee_saved_registers(prepared_.target_profile, register_class);
+      const auto caller_saved_spans =
+          caller_saved_register_spans(prepared_.target_profile, register_class, register_group_width);
+      const auto callee_saved_spans =
+          callee_saved_register_spans(prepared_.target_profile, register_class, register_group_width);
 
       regalloc_function.values.push_back(PreparedRegallocValue{
           .value_id = liveness_value.value_id,
@@ -2486,6 +2502,14 @@ void BirPreAlloc::run_regalloc() {
           .forbidden_register_names = materialize_register_names(liveness_value.crosses_call
                                                                      ? caller_saved_names
                                                                      : std::vector<std::string_view>{}),
+          .fixed_register_placement = std::nullopt,
+          .preferred_register_placements =
+              materialize_register_placements(liveness_value.crosses_call ? callee_saved_spans
+                                                                          : caller_saved_spans),
+          .forbidden_register_placements =
+              liveness_value.crosses_call
+                  ? materialize_register_placements(caller_saved_spans)
+                  : std::vector<PreparedRegisterPlacement>{},
       });
     }
 
