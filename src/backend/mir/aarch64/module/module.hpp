@@ -92,8 +92,10 @@ struct FrameSlotRecord {
 struct CalleeSaveRecord {
   c4c::backend::prepare::PreparedRegisterBank bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
   std::string_view register_name;
   std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   std::size_t save_index = 0;
   const c4c::backend::prepare::PreparedSavedRegister* source_saved_register = nullptr;
@@ -255,8 +257,12 @@ struct CallPreservedValueRecord {
   c4c::backend::prepare::PreparedCallPreservationRoute route =
       c4c::backend::prepare::PreparedCallPreservationRoute::Unknown;
   std::optional<std::size_t> callee_saved_save_index;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
   std::string_view register_name;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> register_bank;
+  std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<std::string_view> occupied_registers;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;

@@ -211,6 +211,13 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .contiguous_width = 1,
                   .occupied_register_names = {"x19"},
                   .save_index = 2,
+                  .placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
               },
           },
       .frame_slot_order = {11},
@@ -531,9 +538,16 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                       {
                           prepare::PreparedClobberedRegister{
                               .bank = prepare::PreparedRegisterBank::Gpr,
-                              .register_name = "x0",
+                              .register_name = "x7",
                               .contiguous_width = 1,
                               .occupied_register_names = {"x0"},
+                              .placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                                      .slot_index = 0,
+                                      .contiguous_width = 1,
+                                  },
                           },
                       },
               },
@@ -569,7 +583,14 @@ int records_preserve_frame_control_call_and_move_identity() {
     return fail("expected frame-slot record to preserve slot/object identity");
   }
   if (function.frame.callee_saves.size() != 1 ||
+      function.frame.callee_saves.front().register_reference != aarch64_abi::x_register(19) ||
       function.frame.callee_saves.front().register_name != "x19" ||
+      function.frame.callee_saves.front().contiguous_width != 1 ||
+      function.frame.callee_saves.front().occupied_register_references.size() != 1 ||
+      function.frame.callee_saves.front().occupied_register_references.front() !=
+          aarch64_abi::x_register(19) ||
+      function.frame.callee_saves.front().occupied_registers.size() != 1 ||
+      function.frame.callee_saves.front().occupied_registers.front() != "x19" ||
       function.frame.callee_saves.front().save_index != 2) {
     return fail("expected callee-save record to preserve save register identity");
   }
@@ -618,9 +639,26 @@ int records_preserve_frame_control_call_and_move_identity() {
       call.result->source_occupied_registers.size() != 1 ||
       call.result->source_occupied_registers.front() != "x0" ||
       call.preserved_values.front().value_label != "source.value" ||
+      call.preserved_values.front().register_reference != aarch64_abi::x_register(20) ||
       call.preserved_values.front().register_name != "x20" ||
+      call.preserved_values.front().contiguous_width != 1 ||
+      call.preserved_values.front().occupied_register_references.size() != 1 ||
+      call.preserved_values.front().occupied_register_references.front() !=
+          aarch64_abi::x_register(20) ||
+      call.preserved_values.front().occupied_registers.size() != 1 ||
+      call.preserved_values.front().occupied_registers.front() != "x20" ||
       call.preserved_values.front().callee_saved_save_index != std::size_t{2}) {
     return fail("expected call record to preserve structured call argument/result/preservation facts");
+  }
+  if (call.clobbered_registers.front().register_reference != aarch64_abi::x_register(0) ||
+      call.clobbered_registers.front().register_name != "x0" ||
+      call.clobbered_registers.front().contiguous_width != 1 ||
+      call.clobbered_registers.front().occupied_register_references.size() != 1 ||
+      call.clobbered_registers.front().occupied_register_references.front() !=
+          aarch64_abi::x_register(0) ||
+      call.clobbered_registers.front().occupied_registers.size() != 1 ||
+      call.clobbered_registers.front().occupied_registers.front() != "x0") {
+    return fail("expected call record to preserve typed clobbered register identity");
   }
 
   if (function.moves.size() != 4 || function.abi_bindings.size() != 2 ||

@@ -687,11 +687,21 @@ void merge_storage_operand(
 
 [[nodiscard]] CalleeSaveRecord build_callee_save_record(
     const c4c::backend::prepare::PreparedSavedRegister& saved) {
+  const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
+      saved,
+      register_class_from_bank(saved.bank),
+      std::nullopt);
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, saved.occupied_register_names);
   return CalleeSaveRecord{
       .bank = saved.bank,
-      .register_name = saved.register_name,
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value() ? stable_register_name(*converted.reg)
+                                                  : std::string_view{saved.register_name},
       .contiguous_width = saved.contiguous_width,
-      .occupied_registers = register_name_views(saved.occupied_register_names),
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, saved.occupied_register_names),
       .save_index = saved.save_index,
       .source_saved_register = &saved,
   };
@@ -699,11 +709,22 @@ void merge_storage_operand(
 
 [[nodiscard]] CalleeSaveRecord build_clobbered_register_record(
     const c4c::backend::prepare::PreparedClobberedRegister& clobbered) {
+  const auto converted =
+      convert_prepared_register_reference(clobbered.placement,
+                                          std::optional<std::string>{clobbered.register_name},
+                                          clobbered.bank,
+                                          register_class_from_bank(clobbered.bank));
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, clobbered.occupied_register_names);
   return CalleeSaveRecord{
       .bank = clobbered.bank,
-      .register_name = clobbered.register_name,
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value() ? stable_register_name(*converted.reg)
+                                                  : std::string_view{clobbered.register_name},
       .contiguous_width = clobbered.contiguous_width,
-      .occupied_registers = register_name_views(clobbered.occupied_register_names),
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, clobbered.occupied_register_names),
   };
 }
 
@@ -956,6 +977,17 @@ void merge_storage_operand(
 [[nodiscard]] CallPreservedValueRecord build_call_preserved_value_record(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+  const auto register_bank =
+      preserved.register_bank.value_or(preserved.register_placement.has_value()
+                                           ? preserved.register_placement->bank
+                                           : c4c::backend::prepare::PreparedRegisterBank::None);
+  const auto converted =
+      convert_prepared_register_reference(preserved.register_placement,
+                                          preserved.register_name,
+                                          register_bank,
+                                          register_class_from_bank(register_bank));
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, preserved.occupied_register_names);
   return CallPreservedValueRecord{
       .value_id = preserved.value_id,
       .value_name = preserved.value_name,
@@ -963,10 +995,16 @@ void merge_storage_operand(
                                                                 preserved.value_name),
       .route = preserved.route,
       .callee_saved_save_index = preserved.callee_saved_save_index,
-      .register_name =
-          resolved_prepared_register_name(preserved.register_placement,
-                                         preserved.register_name),
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value()
+                           ? stable_register_name(*converted.reg)
+                           : resolved_prepared_register_name(preserved.register_placement,
+                                                            preserved.register_name),
       .register_bank = preserved.register_bank,
+      .contiguous_width = preserved.contiguous_width,
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, preserved.occupied_register_names),
       .slot_id = preserved.slot_id,
       .stack_offset_bytes = preserved.stack_offset_bytes,
       .stack_offset_is_prepared_snapshot = preserved.stack_offset_bytes.has_value(),
