@@ -1,32 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Check Stage 1 Close Readiness
+Current Step ID: 4
+Current Step Title: Check Build-Preserving Stage 1 Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Check Stage 1 Close Readiness completed for the AArch64 module
-extraction set. Verified `module.cpp.md`, `module.hpp.md`, and `module.md`
-exist; verified `module.cpp` is absent; verified exactly one non-helper `.hpp`
-remains in `src/backend/mir/aarch64/module`; and verified `module.md`
-references both companion artifacts. Stage 1 does not satisfy the active source
-idea completion signal because that signal requires `module.cpp` to remain
-compiled legacy evidence until a later replacement stage owns teardown plus
-build rewiring.
+Step 4: Check Build-Preserving Stage 1 Close Readiness completed for the
+AArch64 module extraction set. Verified `module.cpp.md`, `module.hpp.md`, and
+`module.md` exist; verified exactly one non-helper `.hpp` remains in
+`src/backend/mir/aarch64/module`; verified `module.md` references both
+companion artifacts; and verified `module.cpp` remains present as compiled
+legacy evidence for the current build.
 
 ## Suggested Next
 
-Route this back to the plan owner for lifecycle repair or source/plan
-reconciliation before activating Stage 2.
+Proceed with Step 5 handoff: record that physical teardown is deferred until a
+later phoenix stage owns replacement implementation and build-system wiring.
 
 ## Watchouts
 
-- The delegated teardown filesystem state is consistent, but it conflicts with
-  the active source idea and plan text for Stage 1.
-- Treat deleted `module.cpp` as legacy evidence, not the design to patch.
+- Treat `module.cpp` as compiled legacy evidence, not the design to patch.
 - Prepared BIR should lower directly to MIR machine nodes in the rebuilt
   route.
 - Stage 1 owns evidence extraction and build-preserving handoff only under the
@@ -43,9 +39,7 @@ reconciliation before activating Stage 2.
 ## Proof
 
 Ran the supervisor-selected filesystem close-readiness proof and wrote
-`test_after.log`. No build was run because this packet was delegated as
-close-readiness over phoenix evidence and intentional teardown state. Proof
-found the artifact checks green, but close-readiness is blocked against the
-active source idea completion signal because `module.cpp` is absent while the
-source idea and runbook require it to remain compiled legacy evidence for Stage
-1.
+`test_after.log`. No build was run because this packet verifies markdown
+evidence and build-preserving state only. Proof found the markdown artifact,
+header-invariant, index-reference, and `module.cpp` presence checks green;
+Stage 1 is ready for handoff under the current source idea.
