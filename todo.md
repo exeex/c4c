@@ -8,20 +8,22 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time completed the first real
-return-lowering packet. Prepared `Return` terminators now lower to one
-canonical selected return `MachineInstruction`, while branch/non-return
-terminators remain diagnostic-only and emit no nodes.
+Step 5: Implement One Lowering Family At A Time fixed the return-value
+regression from the first return-lowering commit. Retained BIR return values
+now feed `ReturnInstructionRecord::value`: void returns stay bare, immediate
+integer returns materialize through typed immediate operands, and named returns
+resolve through prepared value homes/storage/register authority.
 
-The focused tests now cover direct dispatch, `build_prepared_module`, module
-skeleton traversal, and function traversal. They continue to require
-compatibility `machine_nodes` to stay empty; selected return nodes live only in
-canonical MIR block instructions.
+The slice also selects the existing scalar add/sub record for return-selected
+scalar results when prepared return ABI register authority exists, so generated
+AArch64 assembly again emits the value-producing `mov`/`add` sequence before
+`ret`. Compatibility `machine_nodes` now expose selected non-return nodes needed
+by existing scalar coverage while return nodes remain canonical MIR-only.
 
 ## Suggested Next
 
-Supervisor can review and commit the coherent Step 5 return-lowering slice, or
-delegate the next Step 5 lowering family once the commit boundary is accepted.
+Supervisor can review and commit this regression-fix slice, then continue with
+the next Step 5 lowering family.
 
 ## Watchouts
 
@@ -32,13 +34,15 @@ delegate the next Step 5 lowering family once the commit boundary is accepted.
 - `src/backend/mir/aarch64/module/branch_control_lowering.cpp` was delegated
   but does not exist as a real source file in this checkout, so no branch-control
   source split was made.
-- Compatibility `machine_nodes` remain empty; selected return nodes live only in
-  canonical MIR block instructions.
+- Compatibility `machine_nodes` intentionally exclude return nodes but now carry
+  selected non-return records such as return-selected scalar ALU nodes for the
+  existing compatibility test surface.
 
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_scalar_alu_records|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke'`
 
-Result: passed; focused subset ran 6/6 tests. Proof output is preserved in
-`test_after.log`.
+Result: passed; focused subset ran 9/9 tests. The generated smoke assembly
+contains `mov w0, #0` for return-zero and `mov w0, #2` plus `add w0, w0, #3`
+for return-add. Proof output is preserved in `test_after.log`.

@@ -5,6 +5,7 @@
 
 #include <iostream>
 #include <string_view>
+#include <utility>
 #include <variant>
 
 namespace {
@@ -32,6 +33,142 @@ prepare::PreparedBirModule prepared_with_return_block() {
       .blocks = {prepare::PreparedControlFlowBlock{
           .block_label = entry_label,
           .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_immediate_return_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(7)};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_named_rematerialized_return_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto value_name = prepared.names.value_names.intern("%answer");
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%answer")};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{4},
+          .function_name = function_name,
+          .value_name = value_name,
+          .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+          .immediate_i32 = 9,
+      }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{4},
+          .value_name = value_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Immediate,
+          .immediate_i32 = 9,
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedRegisterPlacement call_result_gpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallResult,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
+  };
+}
+
+prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto result_name = prepared.names.value_names.intern("%sum");
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%sum")};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{5},
+          .function_name = function_name,
+          .value_name = result_name,
+          .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+          .immediate_i32 = 5,
+      }},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeReturn,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{5},
+              .to_value_id = prepare::PreparedValueId{5},
+              .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_contiguous_width = 1,
+              .destination_register_placement = call_result_gpr(0),
+          }},
+      }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{5},
+          .value_name = result_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Immediate,
+          .immediate_i32 = 5,
       }},
   });
   return prepared;
@@ -126,6 +263,92 @@ int module_build_lowers_prepared_return_without_flat_compatibility_nodes() {
   return 0;
 }
 
+int direct_dispatch_attaches_immediate_return_value() {
+  auto prepared = prepared_with_immediate_return_value();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_module::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      !diagnostics.empty()) {
+    return fail("expected immediate return value dispatch to emit one selected return");
+  }
+  const auto* ret = std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+      &block.instructions.front().target.payload);
+  if (ret == nullptr || !ret->value.has_value() ||
+      ret->value_type != bir::TypeKind::I32) {
+    return fail("expected immediate return to carry typed return payload");
+  }
+  const auto* immediate =
+      std::get_if<aarch64_module::codegen::ImmediateOperand>(&ret->value->payload);
+  if (ret->value->kind != aarch64_module::codegen::OperandKind::Immediate ||
+      immediate == nullptr || immediate->signed_value != 7 ||
+      immediate->type != bir::TypeKind::I32) {
+    return fail("expected immediate return payload to preserve integer value");
+  }
+  return 0;
+}
+
+int module_build_attaches_named_rematerialized_return_value() {
+  auto prepared = prepared_with_named_rematerialized_return_value();
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected named rematerialized return module to build");
+  }
+  const auto& instruction =
+      result.module->mir.functions.front().blocks.front().instructions.front();
+  const auto* ret =
+      std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(&instruction.target.payload);
+  if (ret == nullptr || !ret->value.has_value()) {
+    return fail("expected named rematerialized return to carry a value");
+  }
+  const auto* immediate =
+      std::get_if<aarch64_module::codegen::ImmediateOperand>(&ret->value->payload);
+  if (immediate == nullptr || immediate->signed_value != 9 ||
+      immediate->source_value_id != prepare::PreparedValueId{4}) {
+    return fail("expected named rematerialized return to resolve through prepared value authority");
+  }
+  return 0;
+}
+
+int module_build_selects_scalar_result_before_return() {
+  auto prepared = prepared_with_return_selected_scalar_value();
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected return-selected scalar module to build");
+  }
+  const auto& instructions = result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() != 2) {
+    return fail("expected scalar result and return instructions");
+  }
+  if (instructions[0].target.family != aarch64_module::codegen::InstructionFamily::Scalar ||
+      instructions[1].target.family != aarch64_module::codegen::InstructionFamily::Return) {
+    return fail("expected scalar instruction to precede return instruction");
+  }
+  const auto* ret =
+      std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+          &instructions[1].target.payload);
+  if (ret == nullptr || !ret->value.has_value()) {
+    return fail("expected scalar result return to carry a value");
+  }
+  const auto* immediate =
+      std::get_if<aarch64_module::codegen::ImmediateOperand>(&ret->value->payload);
+  if (immediate == nullptr || immediate->signed_value != 5 ||
+      result.module->functions.front().machine_nodes.size() != 1 ||
+      result.module->functions.front().machine_nodes.front().family !=
+          aarch64_module::codegen::InstructionFamily::Scalar) {
+    return fail("expected scalar return to attach rematerialized value and selected scalar node");
+  }
+  return 0;
+}
+
 int unsupported_branch_terminator_stays_diagnostic_only() {
   auto prepared = prepared_with_branch_block();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -164,6 +387,18 @@ int main() {
   }
   if (const int status =
           module_build_lowers_prepared_return_without_flat_compatibility_nodes();
+      status != 0) {
+    return status;
+  }
+  if (const int status = direct_dispatch_attaches_immediate_return_value();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_attaches_named_rematerialized_return_value();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_selects_scalar_result_before_return();
       status != 0) {
     return status;
   }
