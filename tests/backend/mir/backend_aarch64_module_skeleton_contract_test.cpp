@@ -70,11 +70,23 @@ int skeleton_validates_handoff_and_returns_empty_canonical_product() {
       module.target_profile.backend_abi != c4c::BackendAbiKind::Aapcs64) {
     return fail("expected skeleton product to publish resolved AArch64/AAPCS64 target profile");
   }
-  if (!module.mir.functions.empty()) {
-    return fail("expected skeleton to leave canonical machine module empty until traversal lands");
+  if (module.mir.functions.size() != 1) {
+    return fail("expected skeleton to publish one canonical traversed function");
   }
-  if (!module.functions.empty() || !module.compatibility.functions.empty()) {
-    return fail("expected skeleton compatibility projections to remain empty");
+  const auto& function = module.mir.functions.front();
+  if (function.function_name != prepared.control_flow.functions.front().function_name ||
+      function.blocks.size() != 1) {
+    return fail("expected skeleton to preserve prepared function and block traversal");
+  }
+  const auto& block = function.blocks.front();
+  if (block.block_label != prepared.control_flow.functions.front().blocks.front().block_label ||
+      block.index != 0 || !block.instructions.empty()) {
+    return fail("expected skeleton traversal to leave the block instruction vector empty");
+  }
+  if (module.functions.size() != 1 || module.compatibility.functions.size() != 1 ||
+      !module.functions.front().machine_nodes.empty() ||
+      !module.compatibility.functions.front().machine_nodes.empty()) {
+    return fail("expected compatibility projections to remain minimal derived mirrors");
   }
   return 0;
 }

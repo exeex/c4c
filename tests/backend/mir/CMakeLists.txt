@@ -133,8 +133,18 @@ set_tests_properties(backend_aarch64_module_skeleton_contract PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
+c4c_add_aarch64_cpp_test(backend_aarch64_function_traversal)
+set_tests_properties(backend_aarch64_function_traversal PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_mir_carrier)
 set_tests_properties(backend_aarch64_mir_carrier PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
+c4c_add_aarch64_cpp_test(backend_aarch64_operand_resolution)
+set_tests_properties(backend_aarch64_operand_resolution PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 

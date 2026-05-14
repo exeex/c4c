@@ -19,6 +19,17 @@ BuildResult build(const prepare::PreparedBirModule& prepared) {
       .compatibility = CompatibilityProjection{},
       .functions = {},
   };
+  ModuleLoweringDiagnostics diagnostics;
+  module.mir.functions = lower_prepared_functions(prepared, target_profile, diagnostics);
+  for (const auto& function : module.mir.functions) {
+    module.functions.push_back(FunctionRecord{
+        .function_name = function.function_name,
+        .label = prepare::prepared_function_name(prepared.names, function.function_name),
+        .mir = function,
+        .machine_nodes = {},
+    });
+  }
+  module.compatibility.functions = module.functions;
   return BuildResult{.module = std::move(module), .error = std::nullopt};
 }
 

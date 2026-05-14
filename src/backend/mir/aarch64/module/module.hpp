@@ -4,7 +4,9 @@
 #include "../codegen/records.hpp"
 #include "../../mir.hpp"
 
+#include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -22,6 +24,61 @@ using MachineFunction =
 using MachineModule = c4c::backend::mir::MachineModule<codegen::InstructionRecord>;
 
 struct ModuleDataRecords {
+};
+
+enum class OperandAuthority {
+  None,
+  RegallocAssignment,
+  StoragePlan,
+  PreparedValueHome,
+  FrameSlot,
+  SpillSlot,
+  Immediate,
+  Symbol,
+  Label,
+  TargetRegister,
+};
+
+enum class ModuleLoweringDiagnosticKind {
+  MissingFunctionContext,
+  MissingValueAuthority,
+  MissingTypedRegisterAuthority,
+  RegisterConversionFailed,
+  UnsupportedValueHome,
+  UnsupportedStoragePlan,
+};
+
+struct ModuleLoweringDiagnostic {
+  ModuleLoweringDiagnosticKind kind = ModuleLoweringDiagnosticKind::MissingValueAuthority;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  std::string message;
+};
+
+struct ModuleLoweringDiagnostics {
+  std::vector<ModuleLoweringDiagnostic> entries;
+
+  [[nodiscard]] bool empty() const { return entries.empty(); }
+};
+
+struct FunctionLoweringContext {
+  const prepare::PreparedBirModule* prepared = nullptr;
+  const c4c::TargetProfile* target_profile = nullptr;
+  const prepare::PreparedControlFlowFunction* control_flow = nullptr;
+  const prepare::PreparedValueLocationFunction* value_locations = nullptr;
+  const prepare::PreparedStoragePlanFunction* storage_plan = nullptr;
+  const prepare::PreparedRegallocFunction* regalloc = nullptr;
+};
+
+struct ResolvedOperand {
+  c4c::backend::mir::Operand operand;
+  OperandAuthority authority = OperandAuthority::None;
+  std::optional<abi::RegisterReference> register_reference;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<prepare::PreparedValueId> value_id;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
 };
 
 struct FunctionRecord {
@@ -50,5 +107,22 @@ struct BuildResult {
 };
 
 [[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
+[[nodiscard]] std::vector<MachineFunction> lower_prepared_functions(
+    const prepare::PreparedBirModule& prepared,
+    const c4c::TargetProfile& target_profile,
+    ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] FunctionLoweringContext make_function_lowering_context(
+    const prepare::PreparedBirModule& prepared,
+    const c4c::TargetProfile& target_profile,
+    const prepare::PreparedControlFlowFunction& function);
+[[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
+    prepare::PreparedValueId value_id,
+    const FunctionLoweringContext& context,
+    ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] ResolvedOperand resolve_immediate_operand(
+    c4c::backend::mir::Immediate immediate);
+[[nodiscard]] ResolvedOperand resolve_label_operand(c4c::BlockLabelId label);
+[[nodiscard]] ResolvedOperand resolve_symbol_operand(c4c::LinkNameId symbol,
+                                                     std::int64_t addend = 0);
 
 }  // namespace c4c::backend::aarch64::module
