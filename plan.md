@@ -24,8 +24,10 @@ live and covered by matching proof.
 
 - `.codex/skills/phoenix-rebuild/SKILL.md`
 - `ideas/open/228_aarch64_module_phoenix_drafts_to_implementation.md`
+- `ideas/open/224_common_mir_container_and_target_printer_boundary.md`
 - `ideas/closed/227_aarch64_module_phoenix_replacement_drafts.md`
 - `src/backend/mir/aarch64/module/stage3_draft_review.md`
+- `src/backend/mir/mir.hpp`
 - `src/backend/mir/aarch64/module/module.md`
 - `src/backend/mir/aarch64/module/module.hpp.md`
 - `src/backend/mir/aarch64/module/module.cpp.md`
@@ -41,6 +43,7 @@ live and covered by matching proof.
 
 Implementation conversion targets from the reviewed Stage 3 draft map:
 
+- `src/backend/mir/mir.hpp`
 - `src/backend/mir/aarch64/module.hpp`
 - `src/backend/mir/aarch64/module.cpp`
 - `src/backend/mir/aarch64/module/function_traversal.cpp`
@@ -75,6 +78,8 @@ Implementation conversion targets from the reviewed Stage 3 draft map:
   projection.
 - Canonical output is hierarchical typed MIR: module, function, block, and
   instruction or equivalent typed concepts.
+- The common carrier lives under `src/backend/mir/` and AArch64 supplies
+  target-owned instruction, operand, register, and rendering surfaces.
 - `FunctionRecord::machine_nodes` and broad inspection records are derived
   compatibility surfaces after canonical lowering.
 - Cached display strings, source spellings, broad public records, raw prepared
@@ -87,6 +92,9 @@ Implementation conversion targets from the reviewed Stage 3 draft map:
 
 - Migrate in behavior-preserving slices that each state what responsibility
   moved, what remains in legacy code, and what proof covers the moved seam.
+- Establish the common MIR carrier before translating the AArch64 public
+  module skeleton, so the target header does not become the canonical
+  container owner.
 - Translate the Stage 3 drafts in dependency order instead of preserving the
   legacy catch-all assembler first.
 - Keep the legacy path available until a replacement seam is compiled, routed,
@@ -101,10 +109,36 @@ Implementation conversion targets from the reviewed Stage 3 draft map:
 
 ## Ordered Steps
 
-### Step 1: Establish Header And Carrier Skeleton
+### Step 1: Establish Common Hierarchical MIR Carrier
 
-Goal: create the real public module surface and foundational MIR carrier types
-without routing behavior through them yet.
+Goal: make the shared MIR carrier explicitly model module, function, block,
+and instruction hierarchy before AArch64 module implementation depends on it.
+
+Primary target:
+
+- `src/backend/mir/mir.hpp`
+
+Actions:
+
+- Refine the shared carrier around module -> function -> block -> ordered
+  instruction storage.
+- Require durable BIR function identity on `MachineFunction`.
+- Require durable BIR block identity on `MachineBlock`.
+- Keep instruction/node provenance lightweight and optional.
+- Preserve existing behavior and keep any flat instruction views as helpers or
+  compatibility utilities, not the canonical carrier.
+
+Completion check:
+
+- The project builds with the common hierarchical MIR carrier.
+- AArch64 module code can depend on the shared carrier without making
+  target-local vectors the canonical MIR shape.
+- No dispatcher path relies on incomplete replacement lowering for behavior.
+
+### Step 2: Establish AArch64 Header And Module Skeleton
+
+Goal: create the real public AArch64 module surface on top of the shared MIR
+carrier without routing behavior through incomplete lowering yet.
 
 Primary targets:
 
@@ -116,8 +150,10 @@ Primary targets:
 Actions:
 
 - Convert the reviewed `module.hpp.md` vocabulary into real declarations for
-  build results, module/function/block/instruction carriers, operands,
-  registers, provenance, printer hooks, and compatibility projection surfaces.
+  build results, AArch64 target-owned operands, registers, provenance, printer
+  hooks, and compatibility projection surfaces.
+- Map `Module` and AArch64 lowering products onto the shared MIR carrier from
+  Step 1 instead of declaring a separate canonical target-local container.
 - Keep `module.hpp` as the single non-helper public header.
 - Add only minimal implementation scaffolding needed to compile the new
   surface beside the legacy route.
@@ -125,11 +161,11 @@ Actions:
 
 Completion check:
 
-- The project builds with the new carrier/header skeleton.
+- The project builds with the new AArch64 header/module skeleton.
 - No dispatcher path relies on incomplete replacement lowering for behavior.
 - No component-level public header has been introduced.
 
-### Step 2: Implement Function Traversal And Operand Resolution
+### Step 3: Implement Function Traversal And Operand Resolution
 
 Goal: make prepared function/block traversal and typed AArch64 operand
 resolution usable by later lowering families.
@@ -138,7 +174,7 @@ Primary targets:
 
 - `src/backend/mir/aarch64/module/function_traversal.cpp`
 - `src/backend/mir/aarch64/module/operand_resolution.cpp`
-- any private declarations needed by the Step 1 header contract
+- any private declarations needed by the Step 2 header contract
 
 Actions:
 
@@ -158,7 +194,7 @@ Completion check:
 - Instruction, branch, and call code can consume typed operands without
   reaching back into cached display strings or broad prepared/source records.
 
-### Step 3: Implement One Lowering Family At A Time
+### Step 4: Implement One Lowering Family At A Time
 
 Goal: move semantic target lowering into reviewed component owners while
 keeping each packet narrow enough to prove.
@@ -187,7 +223,7 @@ Completion check:
   plus backend proof.
 - Compatibility records are not used as semantic lowering inputs.
 
-### Step 4: Implement Public Bridge And Compatibility Projection
+### Step 5: Implement Public Bridge And Compatibility Projection
 
 Goal: expose completed canonical MIR through the shared printer and derive
 legacy compatibility surfaces after lowering.
@@ -217,7 +253,7 @@ Completion check:
   lowering authority.
 - Focused backend proof covers the public bridge and compatibility projection.
 
-### Step 5: Rewire Dispatch And Retire Dead Legacy Ownership
+### Step 6: Rewire Dispatch And Retire Dead Legacy Ownership
 
 Goal: make the reviewed replacement path the active owner for the migrated
 surface, then delete or retire unreachable legacy code.
@@ -245,7 +281,7 @@ Completion check:
 - Legacy code is deleted, disconnected, or explicitly classified.
 - Backend validation passes with no expectation downgrades.
 
-### Step 6: Closure Review And Final Proof
+### Step 7: Closure Review And Final Proof
 
 Goal: prove Stage 4 completion against the source idea and phoenix reject
 signals.
