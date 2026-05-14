@@ -1,7 +1,8 @@
 # AArch64 Call And Frame Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 
@@ -52,3 +53,22 @@ frame setup/teardown as real AArch64 codegen gaps.
 - A function with saved callee registers emits matched prologue/epilogue
   saves/restores from prepared frame facts.
 - A memory-return call consumes prepared sret storage and result records.
+
+## Closure Summary
+
+Closed under the implemented prepared-fact boundary after Step 6 validation.
+The backend proof was:
+
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+
+CTest passed 139/139. The close-time regression guard passed in documented
+non-decreasing mode for this validation/todo-only milestone:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+The guard reported before 139/0/139 and after 139/0/139, with no new failures
+and no new slow tests.
+
+Durable follow-up scope remains open in separate prepared-authority ideas:
+`ideas/open/241_prepared_callee_save_slot_placement.md` and
+`ideas/open/242_prepared_stack_slot_preserved_value_extent.md`.
