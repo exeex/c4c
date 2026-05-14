@@ -101,7 +101,7 @@ function(c4c_add_backend_runtime_case test_name)
 endfunction()
 
 add_executable(backend_prepare_phi_materialize_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_phi_materialize_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_phi_materialize_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
@@ -128,7 +128,7 @@ set_tests_properties(backend_prepare_phi_materialize PROPERTIES
 )
 
 add_executable(backend_prepare_block_only_control_flow_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_block_only_control_flow_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_block_only_control_flow_test.cpp"
 )
 target_include_directories(backend_prepare_block_only_control_flow_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -150,7 +150,7 @@ set_tests_properties(backend_prepare_block_only_control_flow PROPERTIES
 )
 
 add_executable(backend_prepare_authoritative_join_ownership_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_authoritative_join_ownership_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_authoritative_join_ownership_test.cpp"
 )
 target_include_directories(backend_prepare_authoritative_join_ownership_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -172,7 +172,7 @@ set_tests_properties(backend_prepare_authoritative_join_ownership PROPERTIES
 )
 
 add_executable(backend_lir_to_bir_notes_test
-    "${BACKEND_TEST_ROOT}/backend_lir_to_bir_notes_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_lir_to_bir_notes_test.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/bir_validate.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/bir/lir_to_bir.cpp"
@@ -215,7 +215,7 @@ set_tests_properties(backend_lir_to_bir_notes PROPERTIES
 )
 
 add_executable(backend_prepare_structured_context_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_structured_context_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_structured_context_test.cpp"
 )
 target_include_directories(backend_prepare_structured_context_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -765,7 +765,7 @@ set_tests_properties(backend_aarch64_prepared_data_identity PROPERTIES
 )
 
 add_executable(backend_prepare_liveness_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_liveness_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_liveness_test.cpp"
 )
 target_include_directories(backend_prepare_liveness_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -787,7 +787,7 @@ set_tests_properties(backend_prepare_liveness PROPERTIES
 )
 
 add_executable(backend_prepare_stack_layout_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_stack_layout_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_stack_layout_test.cpp"
 )
 target_include_directories(backend_prepare_stack_layout_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -809,7 +809,7 @@ set_tests_properties(backend_prepare_stack_layout PROPERTIES
 )
 
 add_executable(backend_prepare_frame_stack_call_contract_test
-    "${BACKEND_TEST_ROOT}/backend_prepare_frame_stack_call_contract_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepare_frame_stack_call_contract_test.cpp"
 )
 target_include_directories(backend_prepare_frame_stack_call_contract_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -831,7 +831,7 @@ set_tests_properties(backend_prepare_frame_stack_call_contract PROPERTIES
 )
 
 add_executable(backend_prepared_printer_test
-    "${BACKEND_TEST_ROOT}/backend_prepared_printer_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_prepared_printer_test.cpp"
 )
 target_include_directories(backend_prepared_printer_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
@@ -853,7 +853,7 @@ set_tests_properties(backend_prepared_printer PROPERTIES
 )
 
 add_executable(backend_x86_prepared_handoff_label_authority_test
-    "${BACKEND_TEST_ROOT}/backend_x86_prepared_handoff_label_authority_test.cpp"
+    "${BACKEND_TEST_ROOT}/bir/backend_x86_prepared_handoff_label_authority_test.cpp"
 )
 target_include_directories(backend_x86_prepared_handoff_label_authority_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
