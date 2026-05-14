@@ -1,45 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/220_backend_test_tree_split_bir_mir_and_prune_legacy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create BIR Test Tree And Move BIR-Owned Tests
+Current Step ID: 3
+Current Step Title: Create MIR Test Tree And Move MIR-Owned Tests
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 BIR semantic-route ownership packet completed. Moved the unambiguous
-x86 prepared-route C++ tests and riscv/x86 semantic-BIR codegen route test
-definitions from root backend ownership into `tests/backend/bir`. Target names,
-test names, labels, route snippets, and behavior were left unchanged.
+Step 3 first MIR ownership packet completed. Created `tests/backend/mir`,
+moved the current unambiguous AArch64 MIR-owned C++ unit/model tests there,
+and moved the live AArch64 `.c -> .s` smoke/failure CMake registrations under
+MIR CMake ownership. Target names, test names, labels, snippets, and behavior
+were preserved; only source path ownership changed.
 
 ## Suggested Next
 
-Next Step 2 recommendation: inspect the remaining root backend CMake ownership
-for MIR/debug-route or target-owned tests and delegate the next mechanical
-ownership split only where the assertion target is unambiguous.
+Next Step 3 or Step 4 recommendation: inspect the remaining root MIR dump/trace
+CLI placeholders and backend case fixtures, then delegate either a narrow MIR
+debug-route ownership packet or the fixture/legacy classification packet only
+where ownership is unambiguous.
 
 ## Watchouts
 
-- The BIR CLI dump/prepared-dump and BIR C++ executable/test definitions now
-  live under BIR CMake ownership.
-- The x86 handoff-boundary and route-debug source files now live under
-  `tests/backend/bir/` because their assertions inspect semantic BIR,
-  prepared-BIR, or prepared route-debug surfaces.
-- The riscv/x86 `backend_codegen_route_*` semantic-BIR tests now live under
-  BIR CMake ownership; root backend CMake no longer has `semantic_bir`,
-  `dump_bir`, `dump_prepared_bir`, x86 handoff-boundary, or x86 route-debug
-  registrations.
-- Do not move AArch64 tests, case fixtures, disabled MIR placeholders, or
-  implementation files as part of Step 2.
-- Disabled MIR dump/trace placeholders are still a pruning concern, not a move
-  target.
+- `tests/backend/CMakeLists.txt` now delegates AArch64 MIR test ownership to
+  `tests/backend/mir/CMakeLists.txt`; root backend CMake no longer directly
+  owns `backend_aarch64_*` or `backend_cli_aarch64_asm_*` registrations.
+- The two AArch64 `.c` files stayed in `tests/backend/case/` as fixture inputs,
+  not proof ownership moves.
+- Existing labels were intentionally preserved for this packet. Independent
+  `mir` label/selectors remain a Step 5 normalization concern.
+- Root `backend_cli_dump_mir_*` and `backend_cli_trace_mir_*` x86 debug-route
+  placeholders were left untouched; their ownership/pruning still needs a
+  separate classification packet.
 
 ## Proof
 
 Delegated proof command:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^(backend_x86_handoff_boundary|backend_x86_route_debug|backend_codegen_route_x86_64_|backend_codegen_route_riscv64_|backend_cli_dump_bir|backend_cli_dump_prepared_bir)" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^(backend_aarch64_|backend_cli_aarch64_asm_)" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed. CMake regenerated, the moved x86 route executables built from
-`tests/backend/bir`, and the focused CTest subset passed 95/95 tests. Proof log
+Result: passed. CMake regenerated, the moved AArch64 executables built from
+`tests/backend/mir`, and the focused CTest subset passed 27/27 tests. Proof log
 path is `test_after.log`.
