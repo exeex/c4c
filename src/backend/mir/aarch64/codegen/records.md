@@ -139,3 +139,29 @@ structured and typed instead of parsing rendered names or growing
 spelling for the target-MIR/pre-node surface; new roadmap work should prefer
 explicit target-MIR, selected machine-node, printer-output, encoder-input, or
 external-assembler-input names.
+
+Minimum future structured asm/encoding records are a downstream stream derived
+from selected machine instruction nodes. The accepted families are a
+translation-unit record, section record, label record,
+operator/instruction record, directive record, data record, typed operand
+records, and a `RelocationNeed`-style relocation-need record. These records
+preserve semantic payload for object and linker work: typed operands,
+register/immediate facts, symbol ids, `LinkNameId`, relocation kind/addend,
+section and data ownership, branch and data references, volatility,
+address-space facts, side effects, clobbers, and provenance back to prepared
+values, frame slots, allocation facts, and selected machine nodes.
+
+Register operands in that structured asm/encoding layer must stay decomposed
+instead of becoming one broad register-shaped payload. The contract names the
+minimum pieces as `AsmRegisterRef`, `AsmRegisterUseKind`, `AsmRegisterUse`,
+`AsmValueProvenance`, `AsmAllocationProvenance`, and `AsmRegisterOperand`.
+`AsmRegisterRef` owns the physical AArch64 register reference and view.
+`AsmRegisterUseKind` and `AsmRegisterUse` describe input, output, inout,
+scratch, clobber, address-base, call-argument, return-value, and implicit-use
+roles. `AsmValueProvenance` owns prepared value id, value name, and type when
+the register carries a prepared value. `AsmAllocationProvenance` owns prepared
+register class or bank, contiguous width, and occupied registers when the
+operand came from allocation. Clobber and side-effect metadata remains
+separate on the operator/instruction or effect record so register reference,
+register use, value provenance, allocation provenance, and clobber/effect
+metadata do not collapse into a catch-all operand.

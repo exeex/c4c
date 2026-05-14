@@ -175,6 +175,103 @@ tool-provided assembly text when a later assembler contract accepts that work,
 but it is not the bridge from AArch64 codegen to the built-in encoder/object
 writer.
 
+## Structured ASM/Encoding Record Surface
+
+A future compile-through encoder/object route may introduce a deliberately
+lower structured asm/encoding stream between machine instruction nodes and
+object records. That stream is still structured data, not printed assembly
+text. Its minimum accepted record families are:
+
+- translation-unit record: owns the ordered stream, target triple or ABI
+  identity, object-format policy, symbol table references, section table
+  references, and provenance back to the prepared module.
+- section record: owns section name or id, kind, flags, alignment, placement
+  policy, contained labels/operators/directives/data, and section-local
+  relocation needs.
+- label record: owns structured function, block, data, local, or temporary
+  label identity. Printed label spelling is display data only.
+- operator/instruction record: owns opcode or pseudo identity, ordered typed
+  operands, implicit defs/uses, clobbers, side effects, condition/predicate
+  facts, and source machine-node provenance.
+- directive record: owns structured assembler/object directives such as
+  alignment, symbol visibility, symbol type/size, CFI-like metadata when
+  accepted by a later contract, and object emission policy.
+- data record: owns bytes, strings, zero-fill, constants, symbol associations,
+  type/size/alignment facts, initializer provenance, and relocation needs.
+- typed operand records: purpose-specific register, immediate, memory, symbol,
+  label, condition, data-reference, and frame/value operands.
+- relocation-need record: owns `RelocationNeed`-style target symbol/link-name
+  identity, relocation kind, addend, offset owner, section owner, width, and
+  provenance needed by object and linker records.
+
+Typed operands may use a dispatch wrapper, but the semantic payload must remain
+readable and purpose-oriented. A single broad catch-all operand payload is not
+an accepted structured asm/encoding surface.
+
+The accepted register operand decomposition preserves separate concerns. A
+future implementation may choose different final C++ names, but it must retain
+the split represented by this sketch:
+
+```cpp
+struct AsmRegisterRef {
+  c4c::backend::aarch64::abi::RegisterReference reg;
+  c4c::backend::aarch64::abi::RegisterView view;
+};
+
+enum class AsmRegisterUseKind {
+  Input,
+  Output,
+  InOut,
+  Scratch,
+  Clobber,
+  AddressBase,
+  CallArgument,
+  ReturnValue,
+};
+
+struct AsmRegisterUse {
+  AsmRegisterUseKind kind;
+  bool implicit = false;
+};
+
+struct AsmValueProvenance {
+  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+};
+
+struct AsmAllocationProvenance {
+  c4c::backend::prepare::PreparedRegisterClass prepared_class =
+      c4c::backend::prepare::PreparedRegisterClass::None;
+  c4c::backend::prepare::PreparedRegisterBank prepared_bank =
+      c4c::backend::prepare::PreparedRegisterBank::None;
+  std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_registers;
+};
+
+struct AsmRegisterOperand {
+  AsmRegisterRef reg;
+  AsmRegisterUse use;
+  std::optional<AsmValueProvenance> value;
+  std::optional<AsmAllocationProvenance> allocation;
+};
+```
+
+Clobber and effect metadata must not be flattened into the register reference
+or value provenance. It belongs on the operator/instruction record or on
+purpose-specific effect records that describe whether a register is implicitly
+read, written, clobbered, scratch-owned, call-preserved, call-clobbered, flag
+affecting, memory affecting, volatile, trapping, returning, branching, or
+externally visible.
+
+The semantic payload that survives toward object/linker work includes typed
+operands, register reference and use facts, immediate width/signedness/range
+facts, symbol ids, `LinkNameId`, relocation kind and addend facts,
+section/data ownership, branch and data references, volatility, BIR address
+space, side effects, clobbers, source machine-node ids, prepared value/frame
+ids, allocation provenance, and diagnostic spelling as non-authoritative
+display metadata.
+
 ## Rejected Internal Routes
 
 The following routes are rejected for AArch64 codegen:
