@@ -8,45 +8,41 @@ Current Step Title: Lower Prepared Frame Facts
 
 ## Just Finished
 
-Started Step 3, Lower Prepared Frame Facts, with simple fixed-frame traversal
-emission.
+Continued Step 3, Lower Prepared Frame Facts, by inspecting whether callee-save
+save/restore lowering has explicit prepared slot and offset facts.
 
-Implemented prepared fixed-frame lowering into structured machine nodes:
+No callee-save lowering code was added in this packet because the required
+prepared fact is missing:
 
-- Added traversal helpers that recognize a complete simple fixed frame only
-  when `PreparedFramePlanFunction` exists, matches the prepared function, has
-  nonzero frame size and alignment, has no dynamic stack plan/flag, and has no
-  saved callee-register requirements.
-- Inserted a structured `FrameInstructionRecord` prologue setup at the start of
-  the first block for that function.
-- Inserted structured `FrameInstructionRecord` epilogue teardown nodes before
-  lowered return instructions in prepared return blocks.
-- Preserved `PreparedFramePlanFunction` provenance, function/block identity,
-  frame size, frame alignment, frame-slot order, saved-register list, dynamic
-  flag, and frame-pointer flag through the existing frame records.
-- Kept dynamic-stack and callee-save frame plans explicitly deferred: traversal
-  does not emit fake setup/teardown and does not invent save/restore slots or
-  dynamic-stack anchoring.
-- Updated focused dispatch/traversal coverage to prove setup/teardown ordering
-  around the machine stream and deferred behavior for dynamic-stack/callee-save
-  frame plans.
+- `PreparedSavedRegister` currently carries the saved register identity
+  (`bank`, `register_name`, `contiguous_width`, `occupied_register_names`,
+  `save_index`) plus optional register placement.
+- `PreparedFramePlanFunction` carries `saved_callee_registers` and a general
+  `frame_slot_order`.
+- `PreparedFrameSlot` carries `slot_id`, `object_id`, `function_name`,
+  `offset_bytes`, size, alignment, and fixed-location state.
+- There is no explicit prepared mapping from each `PreparedSavedRegister` to a
+  `PreparedFrameSlotId` and stack offset, and `PreparedFrameSlot` is not tagged
+  as a callee-save slot for a specific saved register.
+- Lowering callee-save stores/loads from `save_index`, `frame_slot_order`, or
+  generic frame-slot offsets would invent ABI/frame-layout policy locally, so
+  this packet leaves callee-save lowering deferred.
 
 What this slice intentionally did not do:
 
-- It did not lower callee-save stores/loads, frame-pointer setup, dynamic-stack
-  anchoring, outgoing call areas, or any call-boundary moves.
-- It did not invent frame size, alignment, save slots, stack offsets, scratch
-  registers, or ABI placement policy locally.
-- It did not add new text-only frame output paths; traversal emits structured
-  frame machine nodes that the existing printer can handle for simple fixed
-  frames.
+- It did not derive saved-register frame slots from ordering or register names.
+- It did not add testcase-shaped save/restore records or rendered-string
+  payloads.
+- It did not change dynamic-stack anchoring, frame-pointer policy, outgoing call
+  areas, or call-boundary moves.
 
 ## Suggested Next
 
-Continue Step 3 by lowering exactly one additional prepared frame family, most
-likely callee-save save/restore records if the prepared slot/offset facts are
-available. Keep dynamic-stack anchoring and frame-pointer policy deferred until
-their prepared facts are explicitly consumed.
+Add a prepared callee-save slot-placement fact before lowering save/restore
+records. The narrow source-side shape should explicitly connect each saved
+register to a frame slot and offset, for example in `PreparedSavedRegister` or a
+dedicated frame-plan child record. After that, traversal can emit structured
+`CalleeSaveStore` and `CalleeSaveLoad` records without inventing layout.
 
 ## Watchouts
 
@@ -73,6 +69,9 @@ their prepared facts are explicitly consumed.
 - Current frame traversal skips zero-byte frames. If later policy needs explicit
   zero-frame records, that should be a separate contract decision rather than
   inferred here.
+- Callee-save lowering is blocked on an explicit saved-register-to-frame-slot
+  and offset prepared fact. Do not infer it from `save_index` or
+  `frame_slot_order`.
 
 ## Proof
 
@@ -82,10 +81,5 @@ Command run exactly:
 
 `(cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_prepare_frame_stack_call_contract_test -j2 && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_prepare_frame_stack_call_contract)$') > test_after.log 2>&1`
 
-Result: green. The build completed and CTest reported `100% tests passed, 0
-tests failed out of 4` for:
-
-- `backend_aarch64_instruction_dispatch`
-- `backend_aarch64_target_instruction_records`
-- `backend_aarch64_machine_printer`
-- `backend_prepare_frame_stack_call_contract`
+Result: not rerun in this packet because no code changed. The existing
+`test_after.log` remains from the prior Step 3 proof and was not refreshed.
