@@ -7,6 +7,7 @@
 #include "src/target_profile.hpp"
 
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <variant>
@@ -105,6 +106,70 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .direct_callee_name = std::string{"actual_function"},
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.indirect");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.indirect.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.indirect.entry");
+  const auto callee_name = prepared.names.value_names.intern("%callee");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.indirect",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.indirect.entry",
+          .insts = {bir::CallInst{
+              .callee_value = bir::Value::named(bir::TypeKind::Ptr, "%callee"),
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+              .is_indirect = true,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::Indirect,
+          .is_indirect = true,
+          .indirect_callee =
+              prepare::PreparedIndirectCalleePlan{
+                  .value_name = callee_name,
+                  .value_id = prepare::PreparedValueId{31},
+                  .encoding = register_callee
+                                  ? prepare::PreparedStorageEncodingKind::Register
+                                  : prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .register_name = register_callee
+                                       ? std::optional<std::string>{"x9"}
+                                       : std::nullopt,
+                  .slot_id = register_callee
+                                 ? std::nullopt
+                                 : std::optional<prepare::PreparedFrameSlotId>{4},
+                  .stack_offset_bytes = register_callee
+                                            ? std::nullopt
+                                            : std::optional<std::size_t>{24},
+              },
       }},
   });
   return prepared;
@@ -359,6 +424,77 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
   return 0;
 }
 
+int block_dispatch_lowers_prepared_indirect_call_only_with_register_authority() {
+  auto prepared = prepared_with_indirect_call_plan(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected prepared register indirect call dispatch to emit call plus return");
+  }
+
+  const auto& call_instruction = block.instructions.front();
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &call_instruction.target.payload);
+  if (call == nullptr ||
+      call_instruction.target.family != aarch64_module::codegen::InstructionFamily::Call ||
+      call_instruction.target.opcode != aarch64_module::codegen::MachineOpcode::IndirectCall ||
+      call_instruction.target.function_name != function_cf.function_name ||
+      call_instruction.target.block_label != block_cf.block_label ||
+      call_instruction.target.instruction_index != 0 ||
+      !call->is_indirect ||
+      !call->indirect_callee.has_value() ||
+      !call->prepared_indirect_callee.has_value() ||
+      call->prepared_indirect_callee->register_name != std::optional<std::string>{"x9"} ||
+      call->source_call != &function_context.call_plans->calls.front()) {
+    return fail("expected indirect call node to preserve prepared register callee provenance");
+  }
+  const auto* callee =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(&call->indirect_callee->payload);
+  if (call->indirect_callee->kind != aarch64_module::codegen::OperandKind::Register ||
+      callee == nullptr || callee->reg != aarch64_module::abi::x_register(9) ||
+      callee->role != aarch64_module::codegen::RegisterOperandRole::CallAbi ||
+      callee->value_id != prepare::PreparedValueId{31}) {
+    return fail("expected indirect call callee to use prepared x9 register authority");
+  }
+
+  auto stack_callee_prepared = prepared_with_indirect_call_plan(false);
+  const auto& stack_function_cf = stack_callee_prepared.control_flow.functions.front();
+  const auto& stack_block_cf = stack_function_cf.blocks.front();
+  const auto stack_function_context = aarch64_codegen::make_function_lowering_context(
+      stack_callee_prepared, stack_callee_prepared.target_profile, stack_function_cf);
+  const auto stack_block_context =
+      aarch64_codegen::make_block_lowering_context(stack_function_context, stack_block_cf, 0);
+  aarch64_module::MachineBlock stack_block;
+  aarch64_module::ModuleLoweringDiagnostics stack_diagnostics;
+  const auto stack_result = aarch64_codegen::dispatch_prepared_block(
+      stack_block_context, stack_block, stack_diagnostics);
+  if (stack_result.visited_operations != 1 || !stack_result.visited_terminator ||
+      stack_result.emitted_instructions != 1 || stack_block.instructions.size() != 1 ||
+      stack_diagnostics.entries.size() != 1 ||
+      stack_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+      stack_diagnostics.entries.front().message.find("explicit prepared GPR callee register") ==
+          std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          stack_block.instructions.front().target.payload)) {
+    return fail("expected stack indirect callee to fail closed without scratch selection");
+  }
+
+  return 0;
+}
+
 int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   auto prepared = prepared_with_reordered_retained_bir();
   const auto& function_cf = prepared.control_flow.functions[1];
@@ -557,6 +693,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_indirect_call_only_with_register_authority();
       status != 0) {
     return status;
   }

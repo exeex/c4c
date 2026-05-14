@@ -1,5 +1,6 @@
 #include "dispatch.hpp"
 
+#include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "comparison.hpp"
 #include "returns.hpp"
@@ -156,7 +157,56 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return nullptr;
 }
 
-[[nodiscard]] std::optional<module::MachineInstruction> lower_direct_call_instruction(
+[[nodiscard]] std::optional<RegisterOperand> make_indirect_callee_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedIndirectCalleePlan& callee,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (callee.encoding != prepare::PreparedStorageEncodingKind::Register ||
+      !callee.register_name.has_value() || callee.bank != prepare::PreparedRegisterBank::Gpr ||
+      callee.slot_id.has_value() || callee.stack_offset_bytes.has_value() ||
+      callee.immediate_i32.has_value() || callee.pointer_base_value_name.has_value() ||
+      callee.pointer_byte_delta.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 indirect call lowering requires an explicit prepared GPR callee register");
+    return std::nullopt;
+  }
+
+  const auto converted = abi::convert_prepared_register(
+      *callee.register_name,
+      callee.bank,
+      prepare::PreparedRegisterClass::General,
+      abi::RegisterView::X);
+  if (!converted.reg.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        converted.error.has_value()
+            ? converted.error->message
+            : "prepared indirect callee register could not be converted");
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = callee.value_id,
+      .value_name = callee.value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = callee.bank,
+      .expected_view = abi::RegisterView::X,
+      .contiguous_width = 1,
+      .occupied_registers = {*callee.register_name},
+  };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,
     std::size_t instruction_index,
@@ -168,52 +218,61 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
         module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan,
         context,
         instruction_index,
-        "AArch64 direct call lowering requires an authoritative PreparedCallPlan");
-    return std::nullopt;
-  }
-  if (call_plan->is_indirect || !call_plan->direct_callee_name.has_value()) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-        context,
-        instruction_index,
-        "AArch64 call lowering only selects prepared direct calls in this slice");
-    return std::nullopt;
-  }
-  if (call_inst.is_indirect) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-        context,
-        instruction_index,
-        "AArch64 call lowering rejected a retained BIR indirect call for the direct-call route");
+        "AArch64 call lowering requires an authoritative PreparedCallPlan");
     return std::nullopt;
   }
 
   CallInstructionRecord call_record{
-      .direct_callee =
-          SymbolOperand{
-              .link_name = call_inst.callee_link_name_id,
-              .type = bir::TypeKind::Ptr,
-              .is_extern =
-                  call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::SameModule,
-          },
-      .direct_callee_label = *call_plan->direct_callee_name,
       .wrapper_kind = call_plan->wrapper_kind,
       .variadic_fpr_arg_register_count = call_plan->variadic_fpr_arg_register_count,
       .memory_return = call_plan->memory_return,
+      .prepared_indirect_callee = call_plan->indirect_callee,
       .prepared_arguments = call_plan->arguments,
       .prepared_result = call_plan->result,
       .preserved_values = call_plan->preserved_values,
       .clobbered_registers = call_plan->clobbered_registers,
       .source_call = call_plan,
       .calling_convention = call_inst.calling_convention,
-      .is_indirect = false,
+      .is_indirect = call_plan->is_indirect,
       .is_variadic =
           call_plan->wrapper_kind == prepare::PreparedCallWrapperKind::DirectExternVariadic ||
           call_inst.is_variadic,
       .is_noreturn = call_inst.is_noreturn,
   };
+
+  if (call_plan->is_indirect) {
+    if (!call_inst.is_indirect || !call_plan->indirect_callee.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 indirect call lowering requires matching retained BIR and prepared indirect callee facts");
+      return std::nullopt;
+    }
+    auto callee = make_indirect_callee_register(
+        context, *call_plan->indirect_callee, instruction_index, diagnostics);
+    if (!callee.has_value()) {
+      return std::nullopt;
+    }
+    call_record.indirect_callee = make_register_operand(*callee);
+  } else {
+    if (call_inst.is_indirect || !call_plan->direct_callee_name.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 direct call lowering requires matching retained BIR and prepared direct callee facts");
+      return std::nullopt;
+    }
+    call_record.direct_callee = SymbolOperand{
+        .link_name = call_inst.callee_link_name_id,
+        .type = bir::TypeKind::Ptr,
+        .is_extern = call_plan->wrapper_kind != prepare::PreparedCallWrapperKind::SameModule,
+    };
+    call_record.direct_callee_label = *call_plan->direct_callee_name;
+  }
 
   InstructionRecord target = make_call_instruction(std::move(call_record));
   target.function_name = context.function.control_flow != nullptr
@@ -290,7 +349,7 @@ InstructionDispatchResult dispatch_prepared_block(
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
-        if (auto lowered = lower_direct_call_instruction(
+        if (auto lowered = lower_call_instruction(
                 context, *call, instruction_index, diagnostics)) {
           block.instructions.push_back(std::move(*lowered));
         }

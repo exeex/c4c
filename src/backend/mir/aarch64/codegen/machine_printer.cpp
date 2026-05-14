@@ -219,8 +219,19 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
     return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");
   }
   if (call.is_indirect) {
-    return target_unsupported(bad_header(instruction) +
-                              "indirect call node is outside the printable subset");
+    if (!call.indirect_callee.has_value() ||
+        !call.prepared_indirect_callee.has_value() || call.source_call == nullptr) {
+      return target_unsupported(bad_header(instruction) +
+                                "indirect call node is missing prepared callee provenance");
+    }
+    const auto* callee = std::get_if<RegisterOperand>(&call.indirect_callee->payload);
+    if (call.indirect_callee->kind != OperandKind::Register || callee == nullptr) {
+      return target_unsupported(bad_header(instruction) +
+                                "indirect call callee is not a register operand");
+    }
+    std::ostringstream out;
+    out << mnemonic << " " << register_name(*callee);
+    return target_printed({out.str()});
   }
   if (!call.direct_callee.has_value() || call.direct_callee_label.empty() ||
       call.source_call == nullptr || !call.wrapper_kind.has_value()) {

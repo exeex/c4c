@@ -560,6 +560,55 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
                          "direct-call common-printer drift guard");
 }
 
+int selected_indirect_call_prints_from_prepared_register_callee() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::Indirect,
+      .is_indirect = true,
+      .indirect_callee =
+          prepare::PreparedIndirectCalleePlan{
+              .value_name = c4c::ValueNameId{52},
+              .value_id = prepare::PreparedValueId{51},
+              .encoding = prepare::PreparedStorageEncodingKind::Register,
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = std::string{"x9"},
+          },
+  };
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .indirect_callee =
+              aarch64_codegen::make_register_operand(aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(9),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{51},
+                  .value_name = c4c::ValueNameId{52},
+                  .prepared_class = prepare::PreparedRegisterClass::General,
+                  .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                  .expected_view = aarch64_abi::RegisterView::X,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"x9"},
+              }),
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .prepared_indirect_callee = prepared_call.indirect_callee,
+          .source_call = &prepared_call,
+          .calling_convention = bir::CallingConv::C,
+          .is_indirect = true,
+      });
+
+  const auto result = print_common_instruction_nodes({call});
+  if (!result.ok) {
+    return fail("expected indirect call node to print from prepared register callee: " +
+                result.diagnostic);
+  }
+  const auto call_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(call);
+  const std::string expected = "    " + std::string(call_mnemonic) + " x9\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    blr x9\n",
+                         "indirect-call common-printer drift guard");
+}
+
 int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{2},
@@ -690,6 +739,25 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       call_missing_provenance_result.diagnostic.find("missing prepared callee provenance") ==
           std::string::npos) {
     return fail("expected selected direct call without prepared provenance to fail closed");
+  }
+
+  const auto indirect_call_missing_provenance = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .indirect_callee =
+              aarch64_codegen::make_register_operand(aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(9),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+              }),
+          .calling_convention = bir::CallingConv::C,
+          .is_indirect = true,
+      });
+  const auto indirect_call_missing_provenance_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          indirect_call_missing_provenance);
+  if (indirect_call_missing_provenance_result.ok ||
+      indirect_call_missing_provenance_result.diagnostic.find(
+          "missing prepared callee provenance") == std::string::npos) {
+    return fail("expected selected indirect call without prepared provenance to fail closed");
   }
 
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
@@ -874,6 +942,10 @@ int main() {
     return result;
   }
   if (const int result = selected_direct_call_prints_from_prepared_call_provenance();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_indirect_call_prints_from_prepared_register_callee();
       result != 0) {
     return result;
   }
