@@ -36,9 +36,9 @@ diagnostic-only rather than falling back to legacy records or rendered text.
 - Retained BIR instruction traversal is only an optional operation dispatch
   source; unsupported families remain diagnostic-only and must not create
   placeholder `MachineInstruction` nodes.
-- Retained BIR mapping currently follows prepared traversal indexes and
-  requires non-invalid retained BIR ids before dispatch. Do not reintroduce
-  label-spelling or raw source-name recovery as authority.
+- Retained BIR mapping must stay identity/spelling based. Do not reintroduce
+  vector-index matching between prepared control-flow and retained BIR
+  functions or blocks.
 - Missing prepared block-to-BIR mapping may be diagnostic when a retained BIR
   function exists, but it must not suppress prepared terminator dispatch.
 - Unsupported operations and terminators intentionally record diagnostics while
@@ -53,8 +53,7 @@ diagnostic-only rather than falling back to legacy records or rendered text.
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_instruction_lowering'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch'`
 
-Result: passed; focused subset ran 3/3 tests. Regression guard compared the
-matching `test_before.log` and `test_after.log` and passed. Proof output is
-preserved in `test_after.log`.
+Result: passed; focused subset ran 5/5 tests. Proof output is preserved in
+`test_after.log`.

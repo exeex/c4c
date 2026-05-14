@@ -60,28 +60,56 @@ prepare::PreparedBirModule prepared_with_unsupported_instructions() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_mismatched_retained_bir_labels() {
+prepare::PreparedBirModule prepared_with_reordered_retained_bir() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
 
   const auto first_function = prepared.names.function_names.intern("dispatch.first");
+  const auto second_function = prepared.names.function_names.intern("dispatch.second");
   const auto first_entry = prepared.names.block_labels.intern("first.entry");
+  const auto second_entry = prepared.names.block_labels.intern("second.entry");
+  const auto second_late = prepared.names.block_labels.intern("second.late");
 
-  const auto bir_first_entry =
-      prepared.module.names.block_labels.intern("raw.display.only.entry");
+  const auto bir_first_entry = prepared.module.names.block_labels.intern("first.entry");
+  const auto bir_second_entry = prepared.module.names.block_labels.intern("second.entry");
+  const auto bir_second_late = prepared.module.names.block_labels.intern("second.late");
 
   prepared.module.functions.push_back(bir::Function{
-      .name = "raw.display.only.function",
+      .name = "dispatch.second",
       .return_type = bir::TypeKind::I32,
       .blocks = {bir::Block{
-          .label = "raw.display.only.label",
-          .insts = {bir::BinaryInst{
-              .opcode = bir::BinaryOpcode::Add,
-              .result = bir::Value::named(bir::TypeKind::I32, "first_sum"),
-              .operand_type = bir::TypeKind::I32,
-              .lhs = bir::Value::immediate_i32(1),
-              .rhs = bir::Value::immediate_i32(2),
+                     .label = "second.late",
+                     .insts = {bir::CallInst{
+                         .result = bir::Value::named(bir::TypeKind::I32, "late_call"),
+                         .callee = "external",
+                         .return_type = bir::TypeKind::I32,
+                     }},
+                     .terminator = bir::Terminator{bir::ReturnTerminator{}},
+                     .label_id = bir_second_late,
+                 },
+                 bir::Block{
+                     .label = "second.entry",
+                     .insts = {bir::BinaryInst{
+                         .opcode = bir::BinaryOpcode::Mul,
+                         .result = bir::Value::named(bir::TypeKind::I32, "entry_product"),
+                         .operand_type = bir::TypeKind::I32,
+                         .lhs = bir::Value::immediate_i32(3),
+                         .rhs = bir::Value::immediate_i32(4),
+                     }},
+                     .terminator = bir::Terminator{bir::ReturnTerminator{}},
+                     .label_id = bir_second_entry,
+                 }},
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.first",
+      .return_type = bir::TypeKind::I32,
+      .blocks = {bir::Block{
+          .label = "first.entry",
+          .insts = {bir::CallInst{
+              .result = bir::Value::named(bir::TypeKind::I32, "first_call"),
+              .callee = "external",
+              .return_type = bir::TypeKind::I32,
           }},
           .terminator = bir::Terminator{bir::ReturnTerminator{}},
           .label_id = bir_first_entry,
@@ -95,7 +123,17 @@ prepare::PreparedBirModule prepared_with_mismatched_retained_bir_labels() {
           .terminator_kind = bir::TerminatorKind::Return,
       }},
   });
-
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = second_function,
+      .blocks = {prepare::PreparedControlFlowBlock{
+                     .block_label = second_entry,
+                     .terminator_kind = bir::TerminatorKind::Return,
+                 },
+                 prepare::PreparedControlFlowBlock{
+                     .block_label = second_late,
+                     .terminator_kind = bir::TerminatorKind::Return,
+                 }},
+  });
   return prepared;
 }
 
@@ -201,16 +239,17 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
   return 0;
 }
 
-int block_dispatch_maps_retained_bir_by_index_not_label_spelling() {
-  auto prepared = prepared_with_mismatched_retained_bir_labels();
-  const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks[0];
+int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
+  auto prepared = prepared_with_reordered_retained_bir();
+  const auto& function_cf = prepared.control_flow.functions[1];
+  const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
-  if (block_context.bir_block == nullptr) {
-    return fail("expected block context to map retained BIR by prepared index");
+  if (block_context.bir_block == nullptr ||
+      block_context.bir_block->label != "second.entry") {
+    return fail("expected block context to map retained BIR by prepared identity");
   }
 
   aarch64_module::MachineBlock block;
@@ -219,7 +258,7 @@ int block_dispatch_maps_retained_bir_by_index_not_label_spelling() {
       aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 1) {
-    return fail("expected retained BIR dispatch to visit the indexed block instruction");
+    return fail("expected retained BIR dispatch to visit the identity-mapped block instruction");
   }
   if (!result.visited_terminator) {
     return fail("expected retained BIR dispatch to visit the prepared terminator");
@@ -228,22 +267,22 @@ int block_dispatch_maps_retained_bir_by_index_not_label_spelling() {
     return fail("expected retained BIR dispatch not to emit fake instructions");
   }
   if (diagnostics.entries.size() != 2) {
-    return fail("expected index-mapped retained BIR dispatch to record two diagnostics");
+    return fail("expected identity-mapped retained BIR dispatch to record two diagnostics");
   }
   if (diagnostics.entries[0].kind !=
       aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily) {
-    return fail("expected index-mapped retained BIR dispatch instruction diagnostic");
+    return fail("expected identity-mapped retained BIR dispatch instruction diagnostic");
   }
   if (diagnostics.entries[0].instruction_family !=
       aarch64_module::InstructionLoweringFamily::Scalar) {
-    return fail("expected index-mapped retained BIR dispatch to classify the instruction");
+    return fail("expected identity-mapped retained BIR dispatch to classify the instruction");
   }
   if (diagnostics.entries[0].block_label != block_cf.block_label) {
-    return fail("expected index-mapped retained BIR dispatch diagnostic block identity");
+    return fail("expected identity-mapped retained BIR dispatch diagnostic block identity");
   }
   if (diagnostics.entries[1].kind !=
       aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily) {
-    return fail("expected index-mapped retained BIR dispatch diagnostics");
+    return fail("expected identity-mapped retained BIR dispatch diagnostics");
   }
   return 0;
 }
@@ -314,7 +353,7 @@ int main() {
     return status;
   }
   if (const int status =
-          block_dispatch_maps_retained_bir_by_index_not_label_spelling();
+          block_dispatch_maps_retained_bir_by_prepared_identity_not_index();
       status != 0) {
     return status;
   }
