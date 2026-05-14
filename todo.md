@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/227_aarch64_module_phoenix_replacement_drafts.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Draft Dispatch And Traversal Seams
+Current Step ID: 3
+Current Step Title: Draft Operand Authority
 
 # Current Packet
 
