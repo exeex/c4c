@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Normalize The Common MIR Stream Contract
+Current Step ID: 3
+Current Step Title: Add The Shared MIR Printer Boundary
 
 ## Just Finished
 
