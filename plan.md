@@ -33,12 +33,19 @@ before claiming capability progress.
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
 - `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/emit.hpp`
 - `src/backend/mir/aarch64/codegen/traversal.cpp`
+- `src/backend/mir/aarch64/codegen/traversal.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.hpp`
 - `src/backend/mir/aarch64/codegen/operands.cpp`
+- `src/backend/mir/aarch64/codegen/operands.hpp`
 - `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/alu.hpp`
 - `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `src/backend/mir/aarch64/codegen/comparison.hpp`
 - `src/backend/mir/aarch64/codegen/returns.cpp`
+- `src/backend/mir/aarch64/codegen/returns.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp`
 
@@ -51,16 +58,53 @@ as compiled C++ surfaces:
 - `src/backend/mir/aarch64/module/module.hpp`
 - `src/backend/mir/aarch64/module/module.cpp`
 - `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/emit.hpp`
 - `src/backend/mir/aarch64/codegen/traversal.cpp`
+- `src/backend/mir/aarch64/codegen/traversal.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.hpp`
 - `src/backend/mir/aarch64/codegen/operands.cpp`
+- `src/backend/mir/aarch64/codegen/operands.hpp`
 - `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/alu.hpp`
 - `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `src/backend/mir/aarch64/codegen/comparison.hpp`
 - `src/backend/mir/aarch64/codegen/returns.cpp`
+- `src/backend/mir/aarch64/codegen/returns.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/compatibility_projection.hpp` and
+  `src/backend/mir/aarch64/codegen/compatibility_projection.cpp`, if the
+  compatibility projection is split out of `emit.cpp`
 - related build wiring only when needed to compile and route the converted
   implementation
+
+## Current State Context
+
+The Stage 3 module implementation drafts and intermediate module-subdirectory
+surfaces have already been retired. Do not look for or recreate deleted files
+such as `module/function_traversal.cpp`, `module/operand_resolution.cpp`,
+`module/instruction_lowering.cpp`, `module/branch_control_lowering.cpp`, or
+`module/call_lowering.cpp`.
+
+Current implementation ownership is in the AArch64 codegen surfaces under
+`src/backend/mir/aarch64/codegen/`:
+
+- traversal and module/function/block walking:
+  `codegen/traversal.*`
+- operand and location conversion: `codegen/operands.*`
+- dispatch and top-level lowering selection: `codegen/dispatch.*`
+- scalar ALU, comparison, and return lowering:
+  `codegen/alu.*`, `codegen/comparison.*`, and `codegen/returns.*`
+- typed target instruction records: `codegen/instruction.*`
+- public module build/emit entrypoint and current compatibility projection:
+  `codegen/emit.*`
+
+Earlier extraction, skeleton migration, and initial lowering-family migration
+are current-state context for this active runbook, not future work to repeat.
+The next executable ownership question is whether the compatibility projection
+currently inside `codegen/emit.cpp` should be split into
+`codegen/compatibility_projection.*` or clearly classified in place.
 
 ## Non-Goals
 
@@ -223,9 +267,12 @@ resolution usable by later lowering families.
 
 Primary targets:
 
-- `src/backend/mir/aarch64/module/function_traversal.cpp`
-- `src/backend/mir/aarch64/module/operand_resolution.cpp`
-- any private declarations needed by the Step 2 header contract
+- `src/backend/mir/aarch64/codegen/traversal.cpp`
+- `src/backend/mir/aarch64/codegen/traversal.hpp`
+- `src/backend/mir/aarch64/codegen/operands.cpp`
+- `src/backend/mir/aarch64/codegen/operands.hpp`
+- private declarations in adjacent `codegen/*` headers only when needed by
+  the current target-private contract
 
 Actions:
 
@@ -244,6 +291,9 @@ Completion check:
   surfaces that were migrated.
 - Instruction, branch, and call code can consume typed operands without
   reaching back into cached display strings or broad prepared/source records.
+- Current-state note: this work now lives in the `codegen/traversal.*` and
+  `codegen/operands.*` surfaces; do not recreate the retired module draft
+  filenames.
 
 ### Step 5: Implement One Lowering Family At A Time
 
@@ -252,9 +302,16 @@ keeping each packet narrow enough to prove.
 
 Primary targets:
 
-- `src/backend/mir/aarch64/module/instruction_lowering.cpp`
-- `src/backend/mir/aarch64/module/branch_control_lowering.cpp`
-- `src/backend/mir/aarch64/module/call_lowering.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.hpp`
+- `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/alu.hpp`
+- `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `src/backend/mir/aarch64/codegen/comparison.hpp`
+- `src/backend/mir/aarch64/codegen/returns.cpp`
+- `src/backend/mir/aarch64/codegen/returns.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
 
 Actions:
 
@@ -273,36 +330,52 @@ Completion check:
 - Each migrated family lowers into canonical MIR nodes and has matching build
   plus backend proof.
 - Compatibility records are not used as semantic lowering inputs.
+- Current-state note: migrated lowering families now live in `codegen/alu.*`,
+  `codegen/comparison.*`, `codegen/returns.*`, `codegen/dispatch.*`, and
+  `codegen/instruction.*`; do not recreate retired module draft filenames.
 
-### Step 6: Implement Public Bridge And Compatibility Projection
+### Step 6: Split Or Classify Compatibility Projection
 
-Goal: expose completed canonical MIR through the shared printer and derive
-legacy compatibility surfaces after lowering.
+Goal: keep legacy compatibility projection derived after lowering without
+making it semantic lowering authority; classify or split the projection now
+that initial codegen extraction is live.
 
 Primary targets:
 
-- `src/backend/mir/aarch64/module/public_assembly_bridge.cpp`
-- `src/backend/mir/aarch64/module/compatibility_projection.cpp`
-- `src/backend/mir/aarch64/module.cpp`
+- `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/emit.hpp`
+- `src/backend/mir/aarch64/codegen/compatibility_projection.hpp`, if split
+- `src/backend/mir/aarch64/codegen/compatibility_projection.cpp`, if split
+- build wiring required for any new `compatibility_projection.*` files
 
 Actions:
 
-- Route public assembly emission from canonical MIR functions and module data
-  into shared `mir_printer` traversal.
-- Keep AArch64 ownership limited to target rendering hooks and target data
-  forms.
-- Derive `FunctionRecord::machine_nodes`, broad inspection records, raw
+- Inspect the compatibility projection currently embedded in `codegen/emit.cpp`
+  and decide whether it should become target-private
+  `codegen/compatibility_projection.*`.
+- If split, move only projection derivation out of `emit.cpp`; keep lowering,
+  dispatch, traversal, and printer routing in their current owners.
+- If not split, classify the in-place projection clearly in `todo.md` and make
+  sure `emit.cpp` names it as derived compatibility, not lowering authority.
+- Keep `FunctionRecord::machine_nodes`, broad inspection records, raw
   source/prepared provenance views, label views, and fail-closed legacy
-  register diagnostics after canonical lowering.
+  register diagnostics derived after canonical lowering.
 - Document remaining compatibility surfaces and removal conditions in
   `todo.md` during execution.
+- Explicitly defer shared MIR printer routing to idea 224. `machine_printer.*`
+  remains the current temporary terminal assembly route and must not be grown
+  into the 228 semantic owner.
 
 Completion check:
 
-- Printing is routed through the shared printer.
 - Compatibility records are derived projections and cannot become fallback
   lowering authority.
-- Focused backend proof covers the public bridge and compatibility projection.
+- The compatibility projection is either split into
+  `codegen/compatibility_projection.*` with build wiring, or classified in
+  place with a clear reason in `todo.md`.
+- Focused backend proof covers the compatibility projection route.
+- Shared printer routing remains deferred to idea 224 and is not required for
+  228 closure.
 
 ### Step 7: Rewire Dispatch And Retire Dead Legacy Ownership
 
@@ -312,24 +385,30 @@ surface, then delete or retire unreachable legacy code.
 Primary targets:
 
 - `src/backend/mir/aarch64/module.cpp`
+- `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
 - CMake/build wiring for the replacement component files
-- legacy module-emitter code only after replacement ownership is live and
-  proved
+- retained legacy surfaces only after replacement ownership is live and proved
 
 Actions:
 
 - Rewire dispatch so prepared BIR flows through the replacement module,
-  traversal, operand, lowering, bridge, and compatibility components.
+- traversal, operand, lowering, emit, and compatibility projection components.
 - Keep any retained old code explicitly classified as compatibility or
   follow-up scope.
 - Delete or disconnect dead legacy code only after matching proof shows the
   replacement owner is active.
+- Keep `codegen/machine_printer.*` classified as follow-up scope owned by idea
+  224 unless an executor finds dead/unreachable code that can be removed
+  without replacing shared printer routing.
 - Run broader backend validation after dispatch/build wiring changes.
 
 Completion check:
 
 - The new ownership seams are actually in use for the migrated surface.
 - Legacy code is deleted, disconnected, or explicitly classified.
+- Shared printer routing is explicitly deferred to idea 224 rather than treated
+  as a 228 closure dependency.
 - Backend validation passes with no expectation downgrades.
 
 ### Step 8: Closure Review And Final Proof
@@ -350,12 +429,19 @@ Actions:
 - Run broad enough validation for a closure-quality milestone.
 - Record any residual legacy compatibility or target-printer follow-up as
   explicit follow-up scope instead of hiding it in the completed idea.
+- Confirm the compatibility projection split/classification from Step 6 is
+  complete and cannot act as semantic lowering authority.
+- Confirm idea 224 still owns shared MIR printer replacement for
+  `codegen/machine_printer.*`; do not require that replacement for 228 closure.
 
 Completion check:
 
 - The reviewed draft set has been converted into real implementation.
 - The new ownership seams are active.
 - Remaining legacy code is classified as compatibility or follow-up.
+- Compatibility projection is split or explicitly classified.
+- Shared printer routing is recorded as idea 224 follow-up scope, not hidden
+  228 work.
 - Proof shows migrated capability families still work.
 
 ## Acceptance
@@ -364,5 +450,7 @@ The active idea is complete only when the reviewed draft set has been converted
 into real implementation, the new ownership seams are actually in use,
 remaining legacy code is explicitly classified as compatibility or follow-up
 scope, direct prepared-BIR-to-MIR machine-node lowering is the active route for
-the migrated surface, and proof shows the migrated capability families still
-work.
+the migrated surface, compatibility projection is split or explicitly
+classified as derived state, shared MIR printer replacement is deferred to
+idea 224 when still needed, and proof shows the migrated capability families
+still work.
