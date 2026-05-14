@@ -1,9 +1,10 @@
 # AArch64 Module Phoenix Stage 4 Drafts To Implementation
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 Parent Context: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Requires: ideas/closed/227_aarch64_module_phoenix_replacement_drafts.md
+Closed: 2026-05-14
 
 ## Intent
 
@@ -87,6 +88,28 @@ real implementation, the new ownership seams are actually in use, remaining
 legacy code is explicitly classified as compatibility or follow-up scope,
 direct prepared-BIR-to-MIR machine-node lowering is the active route for the
 migrated surface, and proof shows the migrated capability families still work.
+
+## Closure Ledger
+
+Closed after Stage 4 implementation converted the reviewed AArch64 module
+drafts into compiled module facade and codegen ownership surfaces. The active
+route now sends prepared BIR through codegen traversal, dispatch, operands,
+lowering families, emit orchestration, and derived compatibility projection
+instead of restoring the deleted legacy module emitter or broad record-pile
+owner.
+
+Closure proof:
+
+- full CTest proof in `test_after.log`: `3167/3167` passed
+- regression guard comparison against `test_before.log`: no new failures and
+  no pass-count loss; closure was accepted with an equal-pass-count lifecycle
+  guard because this final slice is lifecycle-only
+
+Residual scope is explicitly outside this idea: `codegen/machine_printer.*`
+remains a temporary terminal compatibility printer until idea 224 replaces it
+with the shared MIR printer boundary. The compatibility projection under
+`codegen/compatibility_projection.*` is derived-only compatibility state and is
+not semantic lowering authority.
 
 ## Reviewer Reject Signals
 
