@@ -532,6 +532,16 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
       .instruction_index = 1,
       .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
       .direct_callee_name = std::string{"actual_function"},
+      .preserved_values = {prepare::PreparedCallPreservedValue{
+          .value_id = prepare::PreparedValueId{77},
+          .value_name = c4c::ValueNameId{14},
+          .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+          .callee_saved_save_index = std::size_t{0},
+          .contiguous_width = 1,
+          .register_name = std::string{"x19"},
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .occupied_register_names = {"x19"},
+      }},
       .clobbered_registers = {prepare::PreparedClobberedRegister{
           .bank = prepare::PreparedRegisterBank::Gpr,
           .register_name = "x13",
@@ -549,11 +559,17 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
               },
           .direct_callee_label = "actual_function",
           .wrapper_kind = prepared_call.wrapper_kind,
+          .preserved_values = prepared_call.preserved_values,
           .clobbered_registers = prepared_call.clobbered_registers,
           .source_call = &prepared_call,
           .calling_convention = bir::CallingConv::C,
       });
 
+  if (call.preserves.size() != 1 ||
+      call.preserves.front().reg != aarch64_abi::x_register(19) ||
+      call.preserves.front().value_id != prepare::PreparedValueId{77}) {
+    return fail("expected direct-call printer fixture to carry prepared preserved-value effect");
+  }
   if (call.clobbers.size() != 1 ||
       call.clobbers.front().reg != aarch64_abi::x_register(13)) {
     return fail("expected direct-call printer fixture to carry prepared clobber effect");

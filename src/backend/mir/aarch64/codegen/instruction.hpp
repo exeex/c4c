@@ -668,6 +668,7 @@ struct InstructionRecord {
   std::vector<MachineEffectResource> defs;
   std::vector<MachineEffectResource> uses;
   std::vector<MachineEffectResource> clobbers;
+  std::vector<MachineEffectResource> preserves;
   std::vector<MachineSideEffectKind> side_effects;
   InstructionPayload payload = ScalarInstructionRecord{};
 };

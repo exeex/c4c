@@ -216,6 +216,24 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
           .destination_value_id = prepare::PreparedValueId{21},
           .source_register_name = std::string{"x0"},
       },
+      .preserved_values =
+          {prepare::PreparedCallPreservedValue{
+               .value_id = prepare::PreparedValueId{40},
+               .value_name = c4c::ValueNameId{12},
+               .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+               .callee_saved_save_index = std::size_t{0},
+               .contiguous_width = 1,
+               .register_name = std::string{"x19"},
+               .register_bank = prepare::PreparedRegisterBank::Gpr,
+               .occupied_register_names = {"x19"},
+           },
+           prepare::PreparedCallPreservedValue{
+               .value_id = prepare::PreparedValueId{41},
+               .value_name = c4c::ValueNameId{13},
+               .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+               .contiguous_width = 1,
+               .register_bank = prepare::PreparedRegisterBank::Gpr,
+           }},
       .clobbered_registers = {prepare::PreparedClobberedRegister{
                                   .bank = prepare::PreparedRegisterBank::Gpr,
                                   .register_name = "x0",
@@ -250,6 +268,7 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
           .wrapper_kind = prepared_call.wrapper_kind,
           .prepared_arguments = prepared_call.arguments,
           .prepared_result = prepared_call.result,
+          .preserved_values = prepared_call.preserved_values,
           .clobbered_registers = prepared_call.clobbered_registers,
           .source_call = &prepared_call,
           .calling_convention = bir::CallingConv::C,
@@ -308,9 +327,28 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
       call_payload->source_call != &prepared_call ||
       call_payload->prepared_arguments.size() != 1 ||
       !call_payload->prepared_result.has_value() ||
+      call_payload->preserved_values.size() != 2 ||
       call_payload->clobbered_registers.size() != 3 ||
       call_payload->arguments.size() != 1 || !call_payload->result.has_value()) {
     return fail("expected call record to preserve explicit callee, argument, and result operands");
+  }
+  if (call.preserves.size() != 1 ||
+      call.preserves.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      call.preserves.front().reg != aarch64_abi::x_register(19) ||
+      call.preserves.front().value_id != prepare::PreparedValueId{40} ||
+      call.preserves.front().value_name != c4c::ValueNameId{12} ||
+      !call.preserves.front().operand.has_value()) {
+    return fail("expected call node to expose only explicit prepared preserved-value effects");
+  }
+  const auto* preserved_effect =
+      std::get_if<aarch64_codegen::RegisterOperand>(&call.preserves.front().operand->payload);
+  if (preserved_effect == nullptr ||
+      preserved_effect->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      preserved_effect->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      preserved_effect->reg != aarch64_abi::x_register(19) ||
+      preserved_effect->value_id != prepare::PreparedValueId{40} ||
+      preserved_effect->value_name != c4c::ValueNameId{12}) {
+    return fail("expected preserved-value effect operand to retain prepared register carrier");
   }
   if (call.clobbers.size() != 2 ||
       call.clobbers[0].kind != aarch64_codegen::MachineEffectResourceKind::Register ||

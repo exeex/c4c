@@ -106,6 +106,17 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .direct_callee_name = std::string{"actual_function"},
+          .preserved_values =
+              {prepare::PreparedCallPreservedValue{
+                  .value_id = prepare::PreparedValueId{42},
+                  .value_name = c4c::ValueNameId{17},
+                  .route = prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                  .callee_saved_save_index = std::size_t{0},
+                  .contiguous_width = 1,
+                  .register_name = std::string{"x19"},
+                  .register_bank = prepare::PreparedRegisterBank::Gpr,
+                  .occupied_register_names = {"x19"},
+              }},
           .clobbered_registers = {prepare::PreparedClobberedRegister{
               .bank = prepare::PreparedRegisterBank::Vreg,
               .register_name = "v13",
@@ -726,9 +737,31 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
       call->direct_callee_label != "actual_function" ||
       call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
       call->source_call != &function_context.call_plans->calls.front() ||
+      call->preserved_values.size() != 1 ||
       call->clobbered_registers.size() != 1 ||
       !call->arguments.empty() || call->result.has_value()) {
     return fail("expected direct call node to preserve prepared call provenance");
+  }
+  if (call_instruction.target.preserves.size() != 1 ||
+      call_instruction.target.preserves.front().kind !=
+          aarch64_module::codegen::MachineEffectResourceKind::Register ||
+      call_instruction.target.preserves.front().reg != aarch64_module::abi::x_register(19) ||
+      call_instruction.target.preserves.front().value_id != prepare::PreparedValueId{42} ||
+      call_instruction.target.preserves.front().value_name != c4c::ValueNameId{17} ||
+      !call_instruction.target.preserves.front().operand.has_value()) {
+    return fail("expected direct call node to expose prepared preserved-value register effect");
+  }
+  const auto* preserved = std::get_if<aarch64_module::codegen::RegisterOperand>(
+      &call_instruction.target.preserves.front().operand->payload);
+  if (preserved == nullptr ||
+      preserved->role != aarch64_module::codegen::RegisterOperandRole::CallAbi ||
+      preserved->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      preserved->value_id != prepare::PreparedValueId{42} ||
+      preserved->value_name != c4c::ValueNameId{17} ||
+      preserved->occupied_register_references.size() != 1 ||
+      preserved->occupied_register_references.front() !=
+          aarch64_module::abi::x_register(19)) {
+    return fail("expected preserved-value effect to retain prepared value and register facts");
   }
   if (call_instruction.target.clobbers.size() != 1 ||
       call_instruction.target.clobbers.front().kind !=
