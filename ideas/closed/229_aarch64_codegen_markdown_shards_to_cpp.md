@@ -1,7 +1,8 @@
 # AArch64 Codegen Markdown Shard Reconciliation
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 Parent Context: ideas/closed/228_aarch64_module_phoenix_drafts_to_implementation.md
 
 ## Intent
@@ -184,6 +185,20 @@ a clear proof contract.
 
 Completion does not require eliminating all markdown files or creating
 same-named C++ files for every shard.
+
+## Closure Note
+
+Closed after the active runbook recorded exactly one primary classification for
+all 20 listed source markdown shards. The final ledger inventory classified 5
+shards as already-converted/reconcile-ledger, 3 shards as stale/reject-retire,
+and 12 shards as real-missing-feature with focused follow-up ideas under
+`ideas/open/231` through `ideas/open/240`; the full-scan follow-up remains in
+`ideas/open/230`.
+
+No implementation changes were required for closeout. Existing full-suite
+regression logs passed the close guard under maintenance semantics:
+`test_before.log` and `test_after.log` both recorded 3167 passing tests and 0
+failures.
 
 ## Reviewer Reject Signals
 
