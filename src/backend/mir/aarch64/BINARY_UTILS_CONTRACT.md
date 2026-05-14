@@ -8,7 +8,7 @@ The current C++ port has a narrower active boundary than the reference Rust back
 
 1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen asm` through `backend::emit_module`.
 2. `src/backend/backend.cpp` lowers LIR through semantic BIR, prepared BIR, the AArch64 prepared-module builder, and selected machine nodes for `aarch64-*` triples.
-3. `src/backend/mir/aarch64/codegen/machine_printer.cpp` prints supported selected machine nodes as GNU-style AArch64 `.s` text.
+3. The temporary terminal printer in `src/backend/mir/aarch64/codegen/machine_printer.cpp` prints supported selected machine nodes as GNU-style AArch64 `.s` text; idea 224 owns replacing this target-local terminal with common MIR traversal plus target rendering hooks.
 4. `src/apps/c4cll.cpp` writes that `.s` printer output to `-o` or stdout. It does not drive `.s -> .o -> executable` inside the app.
 5. External toolchain assembly and link validation currently lives in focused backend tests for the public `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` route.
 
@@ -30,7 +30,7 @@ surface plus deferred text-first assembler stubs, not a structured internal
 assembler IR:
 
 - backend handoff today: `src/backend/backend.cpp` invokes the AArch64 prepared-module builder and prints selected function machine nodes.
-- printer entry today: `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes `print_machine_instruction_nodes(...)` for selected node records.
+- printer entry today: `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes `print_machine_instruction_nodes(...)` for selected node records as the temporary terminal compatibility printer deferred to idea 224.
 - parser entry today: `src/backend/mir/aarch64/assembler/parser.hpp` exposes `parse_asm(const std::string&)`, but this is not used as the internal bridge from codegen to object emission.
 - assembler entry today: `src/backend/mir/aarch64/assembler/mod.hpp` exposes a named `AssembleRequest -> AssembleResult` text-first seam, plus a compatibility overload `assemble(const std::string&, const std::string&)`; the current stub returns staged text and reports `object_emitted = false`.
 - target-local writer staging today: `src/backend/mir/aarch64/assembler/elf_writer.md` records legacy writer notes, but there is no current AArch64 ELF object writer implementation in this route.

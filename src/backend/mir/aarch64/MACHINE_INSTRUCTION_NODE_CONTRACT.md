@@ -37,14 +37,17 @@ structured encoding record derived from those nodes.
   prepared physical-register spellings. `parse_aarch64_register_name(...)` is a
   conversion and diagnostic helper, not an assembler parser that supplies
   codegen semantics.
-- `codegen/records.hpp` owns the current target-MIR record layer and the
-  selected machine-node layer, including `InstructionFamily`, `OperandRecord`,
-  `InstructionRecord`, branch, scalar, memory, spill/reload, call, return,
-  assembler, and object record variants. The accepted selected subset covers
-  structured branch, integer scalar ALU/cast, memory load/store, and prepared
-  spill/reload pseudo nodes. The live `.s` printer consumes only the selected
-  printable subset and fails closed for unsupported nodes; this document still
-  does not require encoding, object writing, or linking behavior.
+- The current split `codegen/` layer owns derived instruction records,
+  operands, dispatch, traversal, returns, integer ALU/comparison lowering, emit
+  orchestration, and compatibility projection through
+  `instruction.*`, `operands.*`, `dispatch.*`, `traversal.*`, `returns.*`,
+  `alu.*`, `comparison.*`, `emit.*`, and `compatibility_projection.*`.
+  The accepted selected subset covers structured branch, integer scalar
+  ALU/cast, memory load/store, and prepared spill/reload pseudo nodes. The live
+  `.s` printer is only the temporary terminal compatibility printer deferred to
+  idea 224 for replacement by common MIR traversal plus target rendering hooks;
+  this document still does not require encoding, object writing, or linking
+  behavior.
 - `codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
   `assembler/types.hpp`, and `assembler/encoder/mod.hpp` remain compatibility,
   external-assembler, or legacy text-first surfaces until a later contract
@@ -342,7 +345,7 @@ are added.
 ## Focused Guard Decision
 
 The current live AArch64 `--codegen asm` route has no live route that feeds
-printed `.s` from `machine_printer.cpp` into the in-tree
+printed `.s` from the temporary terminal machine printer into the in-tree
 parser/encoder/object/linker path. The backend builds prepared machine nodes,
 prints terminal assembly text with `print_machine_instruction_nodes(...)`, and
 returns that text to the caller. The staged AArch64 `parse_asm`, `assemble`,

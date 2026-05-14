@@ -251,9 +251,11 @@ callee-save and clobber records, moves, and spill/reload operations. Display
 strings and concrete offsets in those records are snapshots or diagnostics
 only unless a later frame-layout contract says otherwise.
 
-`codegen/records.hpp` owns target MIR record variants consumed before machine
-instruction nodes. Record construction may consume the allocation result, but
-it must not recover allocation facts from assembly text or rendered names.
+The split `codegen/` layer owns target MIR instruction and operand projection
+consumed before machine instruction nodes, primarily through `instruction.*`,
+`operands.*`, and feature-specific lowering helpers. Record construction may
+consume the allocation result, but it must not recover allocation facts from
+assembly text or rendered names.
 
 `MACHINE_INSTRUCTION_NODE_CONTRACT.md` owns the next boundary after target MIR.
 This document does not authorize instruction selection, printing, encoding,
