@@ -1,5 +1,7 @@
 #include "module.hpp"
 
+#include "../codegen/comparison.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -597,15 +599,16 @@ InstructionDispatchResult dispatch_prepared_block(
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::Branch) {
-    if (auto lowered = lower_prepared_branch_terminator(context, diagnostics)) {
+    if (auto lowered = codegen::lower_prepared_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
-      block.successors.push_back(make_unconditional_branch_successor(context));
+      block.successors.push_back(codegen::make_unconditional_branch_successor(context));
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::CondBranch) {
-    if (auto lowered = lower_prepared_conditional_branch_terminator(context, diagnostics)) {
+    if (auto lowered =
+            codegen::lower_prepared_conditional_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
-      block.successors = make_conditional_branch_successors(context);
+      block.successors = codegen::make_conditional_branch_successors(context);
     }
   } else {
     append_block_diagnostic(

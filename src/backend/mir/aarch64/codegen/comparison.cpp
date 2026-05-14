@@ -1,27 +1,28 @@
-#include "module.hpp"
+#include "comparison.hpp"
 
 #include <optional>
 #include <string>
 #include <utility>
 
-namespace c4c::backend::aarch64::module {
+namespace c4c::backend::aarch64::codegen {
 namespace {
 
 namespace bir = c4c::backend::bir;
 namespace mir = c4c::backend::mir;
+namespace prepare = c4c::backend::prepare;
 
-void append_branch_diagnostic(ModuleLoweringDiagnostics& diagnostics,
-                              const BlockLoweringContext& context,
+void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
+                              const module::BlockLoweringContext& context,
                               std::string message) {
-  diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-      .kind = ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
       .function_name = context.function.control_flow != nullptr
                            ? context.function.control_flow->function_name
                            : c4c::kInvalidFunctionName,
       .block_label = context.control_flow_block != nullptr
                          ? context.control_flow_block->block_label
                          : c4c::kInvalidBlockLabel,
-      .instruction_family = InstructionLoweringFamily::BranchControl,
+      .instruction_family = module::InstructionLoweringFamily::BranchControl,
       .message = std::move(message),
   });
 }
@@ -41,37 +42,37 @@ void append_branch_diagnostic(ModuleLoweringDiagnostics& diagnostics,
   }
 }
 
-[[nodiscard]] codegen::RegisterOperandRole register_role_from_authority(
-    OperandAuthority authority) {
+[[nodiscard]] RegisterOperandRole register_role_from_authority(
+    module::OperandAuthority authority) {
   switch (authority) {
-    case OperandAuthority::RegallocAssignment:
-      return codegen::RegisterOperandRole::AllocationResult;
-    case OperandAuthority::StoragePlan:
-      return codegen::RegisterOperandRole::StoragePlan;
-    case OperandAuthority::PreparedValueHome:
-      return codegen::RegisterOperandRole::ValueHome;
+    case module::OperandAuthority::RegallocAssignment:
+      return RegisterOperandRole::AllocationResult;
+    case module::OperandAuthority::StoragePlan:
+      return RegisterOperandRole::StoragePlan;
+    case module::OperandAuthority::PreparedValueHome:
+      return RegisterOperandRole::ValueHome;
     default:
-      return codegen::RegisterOperandRole::Physical;
+      return RegisterOperandRole::Physical;
   }
 }
 
-[[nodiscard]] std::optional<codegen::OperandRecord> make_condition_register_operand(
-    const BlockLoweringContext& context,
+[[nodiscard]] std::optional<OperandRecord> make_condition_register_operand(
+    const module::BlockLoweringContext& context,
     prepare::PreparedValueId condition_value_id,
     c4c::ValueNameId condition_value_name,
     bir::TypeKind condition_type,
-    ModuleLoweringDiagnostics& diagnostics) {
-  auto resolved = resolve_value_operand(condition_value_id, context.function, diagnostics);
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  auto resolved = module::resolve_value_operand(condition_value_id, context.function, diagnostics);
   if (!resolved.has_value() || !resolved->register_reference.has_value()) {
-    diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-        .kind = ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
         .function_name = context.function.control_flow != nullptr
                              ? context.function.control_flow->function_name
                              : c4c::kInvalidFunctionName,
         .block_label = context.control_flow_block != nullptr
                            ? context.control_flow_block->block_label
                            : c4c::kInvalidBlockLabel,
-        .instruction_family = InstructionLoweringFamily::BranchControl,
+        .instruction_family = module::InstructionLoweringFamily::BranchControl,
         .value_id = condition_value_id,
         .value_name = condition_value_name,
         .message =
@@ -80,7 +81,7 @@ void append_branch_diagnostic(ModuleLoweringDiagnostics& diagnostics,
     return std::nullopt;
   }
 
-  return codegen::make_register_operand(codegen::RegisterOperand{
+  return make_register_operand(RegisterOperand{
       .reg = *resolved->register_reference,
       .role = register_role_from_authority(resolved->authority),
       .value_id = condition_value_id,
@@ -89,16 +90,15 @@ void append_branch_diagnostic(ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
-[[nodiscard]] MachineInstruction make_branch_instruction(
-    const BlockLoweringContext& context,
-    codegen::BranchInstructionRecord record) {
-  codegen::InstructionRecord target =
-      codegen::make_branch_instruction(std::move(record));
+[[nodiscard]] module::MachineInstruction make_branch_instruction(
+    const module::BlockLoweringContext& context,
+    BranchInstructionRecord record) {
+  InstructionRecord target = make_branch_instruction(std::move(record));
   target.function_name = context.function.control_flow->function_name;
   target.block_label = context.control_flow_block->block_label;
   target.block_index = context.block_index;
 
-  return MachineInstruction{
+  return module::MachineInstruction{
       .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
       .operands = {},
       .target = std::move(target),
@@ -113,9 +113,9 @@ void append_branch_diagnostic(ModuleLoweringDiagnostics& diagnostics,
 
 }  // namespace
 
-std::optional<MachineInstruction> lower_prepared_branch_terminator(
-    const BlockLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+std::optional<module::MachineInstruction> lower_prepared_branch_terminator(
+    const module::BlockLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.function.control_flow == nullptr || context.control_flow_block == nullptr ||
       context.bir_block == nullptr) {
     append_branch_diagnostic(
@@ -133,7 +133,7 @@ std::optional<MachineInstruction> lower_prepared_branch_terminator(
     return std::nullopt;
   }
 
-  const auto prepared_record = codegen::make_prepared_unconditional_branch_record(
+  const auto prepared_record = make_prepared_unconditional_branch_record(
       context.function.control_flow->function_name,
       *context.control_flow_block,
       context.bir_block->terminator);
@@ -142,12 +142,12 @@ std::optional<MachineInstruction> lower_prepared_branch_terminator(
         diagnostics,
         context,
         std::string{"AArch64 unconditional branch lowering rejected prepared branch facts: "} +
-            std::string{codegen::prepared_branch_record_error_name(prepared_record.error)});
+            std::string{prepared_branch_record_error_name(prepared_record.error)});
     return std::nullopt;
   }
 
   auto instruction = make_branch_instruction(context, std::move(*prepared_record.record));
-  if (instruction.target.selection.status != codegen::MachineNodeSelectionStatus::Selected) {
+  if (instruction.target.selection.status != MachineNodeSelectionStatus::Selected) {
     append_branch_diagnostic(
         diagnostics,
         context,
@@ -157,9 +157,9 @@ std::optional<MachineInstruction> lower_prepared_branch_terminator(
   return instruction;
 }
 
-std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
-    const BlockLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+std::optional<module::MachineInstruction> lower_prepared_conditional_branch_terminator(
+    const module::BlockLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.function.prepared == nullptr || context.function.control_flow == nullptr ||
       context.function.value_locations == nullptr || context.control_flow_block == nullptr ||
       context.bir_block == nullptr) {
@@ -196,7 +196,7 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
     return std::nullopt;
   }
 
-  auto prepared_record = codegen::make_prepared_conditional_branch_record(
+  auto prepared_record = make_prepared_conditional_branch_record(
       context.function.prepared->names,
       *context.function.value_locations,
       *context.control_flow_block,
@@ -207,7 +207,7 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
         diagnostics,
         context,
         std::string{"AArch64 conditional branch lowering rejected prepared branch facts: "} +
-            std::string{codegen::prepared_branch_record_error_name(prepared_record.error)});
+            std::string{prepared_branch_record_error_name(prepared_record.error)});
     return std::nullopt;
   }
 
@@ -236,9 +236,9 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
   auto instruction = make_branch_instruction(context, std::move(record));
   const auto expected_opcode =
       branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare
-          ? codegen::MachineOpcode::CompareBranch
-          : codegen::MachineOpcode::ConditionalBranch;
-  if (instruction.target.selection.status != codegen::MachineNodeSelectionStatus::Selected ||
+          ? MachineOpcode::CompareBranch
+          : MachineOpcode::ConditionalBranch;
+  if (instruction.target.selection.status != MachineNodeSelectionStatus::Selected ||
       instruction.target.opcode != expected_opcode) {
     append_branch_diagnostic(
         diagnostics,
@@ -250,7 +250,7 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
 }
 
 mir::MachineBlockSuccessor make_unconditional_branch_successor(
-    const BlockLoweringContext& context) {
+    const module::BlockLoweringContext& context) {
   return mir::MachineBlockSuccessor{
       .target_label = context.control_flow_block != nullptr
                           ? context.control_flow_block->branch_target_label
@@ -270,7 +270,7 @@ mir::MachineBlockSuccessor make_unconditional_branch_successor(
 }
 
 std::vector<mir::MachineBlockSuccessor> make_conditional_branch_successors(
-    const BlockLoweringContext& context) {
+    const module::BlockLoweringContext& context) {
   const mir::MachineOrigin origin{
       .reason = mir::MachineOriginReason::BirTerminator,
       .function_name = context.function.control_flow != nullptr
@@ -298,4 +298,4 @@ std::vector<mir::MachineBlockSuccessor> make_conditional_branch_successors(
   };
 }
 
-}  // namespace c4c::backend::aarch64::module
+}  // namespace c4c::backend::aarch64::codegen
