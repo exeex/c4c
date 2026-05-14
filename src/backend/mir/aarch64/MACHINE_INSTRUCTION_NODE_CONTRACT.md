@@ -292,6 +292,27 @@ object stream. These additions attach to machine instruction nodes or lower
 encoding records; they do not move semantic authority out of the machine
 instruction node boundary and they do not authorize assembly-text recovery.
 
+## Centralized Enum Spelling Contract
+
+Future structured asm/encoding record surfaces must centralize every
+enum-to-string or to_string mapping used for terminal printers and diagnostics.
+Lowering, selection, encoder preparation, object preparation, and linker-facing
+record construction must branch on typed enum values, not on scattered spelling
+switches or string comparisons.
+
+The centralized mappings must cover each enum kind introduced for section
+records, label records, directive records, operator/opcode categories, operand
+kind variants, register use kind variants such as `AsmRegisterUseKind`,
+relocation kind variants, and record surface classifications. Terminal printers
+and diagnostics call those mappings when they need display spelling; they do
+not duplicate enum switch spelling through lowering code or treat printed text
+as semantic input.
+
+This docs-only plan has not introduced new live structured asm/encoding enum
+types, so no live enum helper or implementation mapping is required in this
+slice. The contract applies to the future C++ records when those enum surfaces
+are added.
+
 ## Rejected Internal Routes
 
 The following routes are rejected for AArch64 codegen:

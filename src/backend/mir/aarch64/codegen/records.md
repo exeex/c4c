@@ -185,3 +185,13 @@ ownership for object-facing records. That effect set remains attached to
 machine instruction nodes or derived structured records, preserving machine
 instruction nodes as the semantic boundary before any printer, encoder,
 object writer, linker, or external assembler parser consumes the stream.
+
+Future record surfaces must keep enum spelling centralized. Any new section
+enum, label enum, directive enum, operator/opcode enum, operand kind enum,
+register use kind enum such as `AsmRegisterUseKind`, relocation kind enum, or
+record surface enum needs one enum-to-string or to_string mapping family for
+terminal printers and diagnostics. Lowering and record construction should
+consume typed enum values; terminal printers and diagnostics should call the
+central mapping instead of scattering display switches through semantic
+lowering code. No live helper is needed for this docs-only plan because it has
+not introduced new live structured asm/encoding enum types.

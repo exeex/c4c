@@ -3,47 +3,40 @@
 Status: Active
 Source Idea Path: ideas/open/218_aarch64_structured_asm_encoder_linker_contract.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Tie Structured Records To Prepared And Machine-Level Facts
+Current Step ID: 5
+Current Step Title: Centralize Enum Spelling Contract
 
 ## Just Finished
 
-Completed Step 4 from `plan.md`: tied structured asm/encoding records to
-prepared lifecycle authority and post-selection machine-level effects in the
-accepted AArch64 contract docs.
+Completed Step 5 from `plan.md`: documented the centralized enum spelling
+contract for future structured asm/encoding record surfaces without adding live
+enum helpers.
 
 Updated contract docs:
 
 - `src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md`: added the
-  prepared authority boundary for liveness, regalloc, move resolution,
-  spill/reload, preserved-value, and clobber facts; clarified that structured
-  asm/encoding records add only post-selection implicit register uses/defs,
-  selected opcode clobbers, flags, scratch lifetimes, operator effects, and
-  section/relocation ownership.
-- `src/backend/mir/aarch64/codegen/records.md`: mirrored the same prepared
-  authority and post-selection effect split for future record-core work while
-  preserving selected machine nodes as the semantic boundary.
-- `src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md`: recorded the
-  proceed/split boundary that prepared carriers remain authority and lower
-  structured records only add machine-level facts that exist after opcode
-  selection.
+  enum-to-string/to_string mapping requirement for future section, label,
+  directive, operator/opcode, operand kind, register use kind, relocation kind,
+  and record surface enums; terminal printers and diagnostics must call those
+  mappings instead of scattering spelling switches through lowering code.
+- `src/backend/mir/aarch64/codegen/records.md`: mirrored the centralized enum
+  spelling rule for future record surfaces and noted that this docs-only plan
+  introduced no live enum helper requirement.
 
 ## Suggested Next
 
-Execute the next supervisor-selected plan step after Step 4, keeping the
-structured node/record boundary intact and staying in docs or code only as
-delegated.
+Execute the next supervisor-selected plan step after Step 5, keeping enum
+spelling as display-only support around typed structured records.
 
 ## Watchouts
 
 - Preserve the separation between terminal printer output, external assembler
   input, structured encoder/object records, and linker object inputs.
-- Prepared lifecycle facts remain upstream authority; do not let future
-  structured asm/encoding records duplicate allocation, liveness,
-  call-preservation, or spill/reload policy.
-- Future behavior work must attach post-selection machine effects to selected
-  machine nodes or derived structured records, not to printed assembly text or
-  parser-recovered operands.
+- New future enum kinds for sections, labels, directives, operator/opcode
+  categories, operand kinds, register use kinds, relocation kinds, and record
+  surfaces need one centralized display mapping family.
+- Lowering and record construction should use typed enum values; terminal
+  printers and diagnostics should be the consumers of enum display spelling.
 - Do not edit the source idea for routine execution details; record packet
   state here instead.
 
@@ -52,8 +45,8 @@ delegated.
 Delegated proof completed successfully and wrote `test_after.log`:
 
 ```bash
-bash -lc 'set -o pipefail; rg -n "PreparedLiveness|PreparedLiveInterval|PreparedRegalloc|PreparedRegallocValue|PreparedInterferenceEdge|PreparedMoveResolution|PreparedSpillReloadOp|PreparedValueLocations|PreparedCallPreservedValue|PreparedClobberedRegister|implicit register|selected opcode clobber|scratch|section/relocation ownership" src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md src/backend/mir/aarch64/codegen/records.md src/backend/mir/aarch64/BIR_PREPARED_GAP_LEDGER.md todo.md > test_after.log 2>&1; test -s test_after.log'
+bash -lc 'set -o pipefail; rg -n "enum-to-string|to_string mapping|section.*enum|label.*enum|directive.*enum|operator/opcode|operand kind|register use kind|relocation kind|record surface|terminal printers and diagnostics|AsmRegisterUseKind" src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md src/backend/mir/aarch64/codegen/records.md todo.md > test_after.log 2>&1; test -s test_after.log'
 ```
 
-Proof result: required prepared-authority and post-selection machine-effect
-contract vocabulary is present.
+Proof result: required centralized enum spelling contract vocabulary is
+present, and this docs-only slice requires no live enum mapping helper.
