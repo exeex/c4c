@@ -8,54 +8,53 @@ Current Step Title: Migrate Legacy Module-Record Compile Tests
 
 ## Just Finished
 
-Step 2: Establish AArch64 Header And Module Skeleton recreated
-`src/backend/mir/aarch64/module/module.hpp` and
-`src/backend/mir/aarch64/module/module.cpp` as compact Stage 3 skeleton files
-after the legacy implementation was removed. The new public surface exposes
-`BuildResult`, `Module`, `FunctionRecord`, the common MIR carrier aliases, and
-`build(const prepare::PreparedBirModule&)`; `build` validates the AArch64 ABI
-handoff and returns an empty canonical module product until real lowering is
-reintroduced.
+Step 3: Migrate Legacy Module-Record Compile Tests replaced the stale AArch64
+legacy module-record tests that referenced deleted `OperandRecord`,
+`FrameRecord`, broad module-side record piles, and `module.globals` APIs. The
+old compile targets `backend_aarch64_prepared_module_identity`,
+`backend_aarch64_prepared_operand_identity`,
+`backend_aarch64_prepared_frame_control`, and
+`backend_aarch64_prepared_data_identity` were removed from
+`tests/backend/mir/CMakeLists.txt` and their legacy sources were deleted.
 
-Lifecycle repair accepted the committed state where the legacy emitter is
-already removed. The next step is a focused test-contract migration, not a
-legacy restoration or function-traversal implementation packet.
+Replacement coverage is explicit rather than a silent downgrade:
+`backend_aarch64_module_skeleton_contract` proves the fresh AArch64 module
+skeleton validates the prepared handoff and returns an empty canonical module
+product, while `backend_aarch64_mir_carrier` proves the common
+hierarchical MIR carrier preserves function, block, instruction, and BIR origin
+identity. Existing `backend_aarch64_prepared_handoff_gate`,
+`backend_aarch64_machine_printer`, and
+`backend_cli_aarch64_asm_no_machine_nodes_fails` continue to cover handoff,
+selected machine-node printing, and public assembly fail-closed behavior.
 
 ## Suggested Next
 
-Delegate the next AArch64 module packet to migrate stale legacy module-record
-compile tests away from deleted APIs such as `OperandRecord`, `FrameRecord`,
-broad `FunctionRecord` record piles, and `module.globals` legacy views.
-Replace/update/remove those stale compile dependencies with new-route tests for
-the common MIR carrier, the fresh AArch64 skeleton, fail-closed
-assembly/no-machine-nodes behavior, and future traversal/operand contracts.
-This is not a test downgrade: do not restore the legacy module emitter, do not
-recreate the old record pile, and do not weaken supported-path expectations.
+Delegate Step 4 to implement the first focused AArch64 function traversal and
+operand-resolution packet on top of the common MIR carrier. Keep it semantic:
+walk prepared functions/blocks into `Module::mir` and add only the operand
+contracts needed by that traversal slice.
 
 ## Watchouts
 
-- The new skeleton intentionally does not lower prepared functions into machine
-  nodes, so public assembly paths that require printable nodes should still
-  fail closed until a later packet adds semantic lowering.
-- `Module::functions` is currently a plain compatibility vector for existing
-  backend call sites; a later API cleanup can move users to the canonical
-  `Module::mir` carrier or `CompatibilityProjection`.
-- Keep `module.hpp` as the single non-helper public header unless lifecycle
-  repair authorizes a different layout.
+- Future traversal and operand-resolution contracts are intentionally TODOs for
+  Step 4; do not bring back the deleted legacy module-record side tables to
+  satisfy them.
+- `Module::mir` is the canonical product for new AArch64 traversal. Existing
+  lower-level codegen record tests still own codegen-helper behavior and were
+  not weakened by this migration.
+- Public assembly without selected machine nodes must keep failing closed until
+  semantic lowering populates printable machine nodes.
 - Do not use cached display strings, source spellings, broad public records,
   raw prepared/source views, or register strings as semantic lowering
   authority.
-- Do not weaken tests, mark supported paths unsupported, or claim
-  expectation-only progress as implementation conversion.
-- The next packet owns test migration only; it must not restore legacy
-  `module.cpp` behavior or the deleted legacy module-record API.
 
 ## Proof
 
 Ran:
-`cmake --build build --target c4c_backend -j2`
+`cmake --build build -j`
 
-Also ran optional subset:
-`ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_prepared_handoff_gate|backend_aarch64_machine_printer'`
+Then ran:
+`ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_prepared_handoff_gate|backend_aarch64_machine_printer|backend_cli_aarch64_asm_no_machine_nodes_fails|backend_aarch64_.*module|backend_aarch64_.*carrier'`
 
-Result: passed. Proof output is preserved in `test_after.log`.
+Result: passed; subset ran 5/5 tests. Proof output is preserved in
+`test_after.log`.

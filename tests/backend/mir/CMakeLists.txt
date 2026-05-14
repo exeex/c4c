@@ -128,23 +128,13 @@ set_tests_properties(backend_aarch64_target_record_core_contract PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
-c4c_add_aarch64_cpp_test(backend_aarch64_prepared_module_identity)
-set_tests_properties(backend_aarch64_prepared_module_identity PROPERTIES
+c4c_add_aarch64_cpp_test(backend_aarch64_module_skeleton_contract)
+set_tests_properties(backend_aarch64_module_skeleton_contract PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
-c4c_add_aarch64_cpp_test(backend_aarch64_prepared_operand_identity)
-set_tests_properties(backend_aarch64_prepared_operand_identity PROPERTIES
-  LABELS "backend;internal;cpp;aarch64"
-)
-
-c4c_add_aarch64_cpp_test(backend_aarch64_prepared_frame_control)
-set_tests_properties(backend_aarch64_prepared_frame_control PROPERTIES
-  LABELS "backend;internal;cpp;aarch64"
-)
-
-c4c_add_aarch64_cpp_test(backend_aarch64_prepared_data_identity)
-set_tests_properties(backend_aarch64_prepared_data_identity PROPERTIES
+c4c_add_aarch64_cpp_test(backend_aarch64_mir_carrier)
+set_tests_properties(backend_aarch64_mir_carrier PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
