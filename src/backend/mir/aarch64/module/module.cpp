@@ -886,9 +886,9 @@ void merge_storage_operand(
       .destination_kind = move.destination_kind,
       .destination_storage_kind = move.destination_storage_kind,
       .destination_abi_index = move.destination_abi_index,
-      .destination_register = move.destination_register_name.has_value()
-                                  ? std::string_view{*move.destination_register_name}
-                                  : std::string_view{},
+      .destination_register =
+          resolved_prepared_register_name(move.destination_register_placement,
+                                         move.destination_register_name),
       .destination_contiguous_width = move.destination_contiguous_width,
       .destination_occupied_registers =
           register_name_views(move.destination_occupied_register_names),
@@ -921,9 +921,9 @@ void merge_storage_operand(
       .destination_kind = binding.destination_kind,
       .destination_storage_kind = binding.destination_storage_kind,
       .destination_abi_index = binding.destination_abi_index,
-      .destination_register = binding.destination_register_name.has_value()
-                                  ? std::string_view{*binding.destination_register_name}
-                                  : std::string_view{},
+      .destination_register =
+          resolved_prepared_register_name(binding.destination_register_placement,
+                                         binding.destination_register_name),
       .destination_contiguous_width = binding.destination_contiguous_width,
       .destination_occupied_registers =
           register_name_views(binding.destination_occupied_register_names),
