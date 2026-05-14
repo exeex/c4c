@@ -28,6 +28,9 @@ choose the next bounded lowering family or route-review packet.
 - `codegen/operands.hpp` still includes `module/module.hpp` because the moved
   API consumes module lowering contexts and diagnostics; those shared context
   and diagnostic structs were intentionally left in module ownership.
+- Review checkpoint: `codegen/*.hpp` headers introduced during the extraction
+  are target-private implementation surfaces used by focused tests, not stable
+  module public API.
 - Direct operand-resolution tests needed a narrow public-API update to include
   `codegen/operands.hpp` and call the moved `aarch64_codegen` helpers; no test
   expectations were changed.
