@@ -1,12 +1,29 @@
 # AArch64 Markdown Driven Backend Case Bringup
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Depends On:
 - `ideas/closed/216_aarch64_machine_node_asm_printer_external_smoke.md`
 - `ideas/closed/218_aarch64_structured_asm_encoder_linker_contract.md`
 - `ideas/closed/219_aarch64_natural_operator_naming_and_printer_spelling.md`
+
+## Completion Notes
+
+Closed after committing
+`src/backend/mir/aarch64/BACKEND_CASE_BRINGUP_MATRIX.md` as the durable
+markdown-owned backend case routing artifact. The matrix maps relevant
+`tests/backend/case` files to AArch64 markdown owners, structured implementation
+owners, dependent machine-node/operator coverage, public smoke expectations,
+status labels, and deferred or blocked reasons.
+
+The selected first follow-up implementation group is scalar return/ALU and is
+tracked separately in
+`ideas/open/222_aarch64_scalar_return_alu_selected_nodes.md`. Future AArch64
+case work should pick one markdown owner at a time from the matrix and keep
+case enablement behind structured implementation coverage, public `c4cll`
+assembly output, and external assembler/compiler proof where applicable.
 
 ## Goal
 
