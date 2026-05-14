@@ -1,47 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/232_aarch64_variadic_function_entry_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Prepared Variadic Entry Carrier Types
+Current Step ID: 3
+Current Step Title: Populate Variadic Entry Facts In Prepared State
 
 # Current Packet
 
 ## Just Finished
 
-Step 2, Define Prepared Variadic Entry Carrier Types, completed the prepared
-shared carrier slice. `PreparedBirModule` now owns a separate
-`PreparedVariadicEntryPlans` collection keyed by `FunctionNameId`, with typed
-subrecords for named GP/FP counts, register-save-area facts, overflow-area
-facts, `va_list` layout fields, and helper resource needs.
+Step 3, Populate Variadic Entry Facts In Prepared State, completed the prepared
+population slice for AAPCS64 variadic function-entry carriers.
 
 Implementation notes:
-- `populate_variadic_entry_plans` publishes carriers only for variadic function
-  definitions, not variadic declarations or callsites.
-- Named GP/FP counts are populated from existing BIR parameter ABI metadata
-  when available; target-specific register-save-area, overflow-area, `va_list`,
-  and scratch-resource facts remain explicit optional/default fields rather
-  than target-local inference.
-- The prepared printer now emits a distinct
-  `--- prepared-variadic-entry-plans ---` section and a function-summary
-  `variadic_entry=yes/no` signal.
-- Focused tests prove same-module variadic definitions publish entry carriers,
-  variadic callsite metadata remains separate from caller entry carriers, and
-  variadic extern declarations do not create function-entry carriers.
+- `populate_variadic_entry_plans` now populates AAPCS64 register-save-area,
+  overflow-area, `va_list` layout, signed initial offset, saved-register-count,
+  slot-size, and helper-use facts from prepared target profile plus existing BIR
+  parameter ABI metadata and `llvm.va_*` calls.
+- Functions without observed variadic helper use keep the Step 2 structural
+  carrier but do not receive fabricated save-area or `va_list` requirements.
+- Missing frame/storage facts that prepared state does not yet allocate are
+  recorded on the carrier as `missing_required_facts` instead of being invented
+  in AArch64 lowering.
+- `PreparedCallPlan::variadic_fpr_arg_register_count` remains call-boundary
+  metadata only; no AArch64 target lowering or printer consumption was added.
 
 ## Suggested Next
 
-Start the next packet by wiring AArch64-side fail-closed observation against the
-new prepared variadic-entry carrier, without consuming or fabricating target
-lowering semantics.
+Start Step 4 by extending prepared dump and focused test coverage for the
+variadic entry carrier family beyond the current AAPCS64 `va_start` proof,
+including integer, FP, aggregate, and `va_copy` observations where the current
+IR exposes them.
 
 ## Watchouts
 
-- The new carrier intentionally does not make AArch64 target lowering consume
-  register-save-area, overflow-area, `va_list`, or helper scratch details yet.
-- `PreparedCallPlan::variadic_fpr_arg_register_count` remains call-boundary
-  metadata only; do not treat it as callee-entry state.
-- Optional/default fields are structural placeholders for later AAPCS64 facts;
-  the next packet should not backfill them with target-local inference.
+- The carrier records required-but-missing prepared storage facts such as
+  `register_save_area.slot_id`, `register_save_area.stack_offset_bytes`, and
+  `overflow_area.base_stack_offset_bytes`; later packets should either allocate
+  these in prepared/frame state or keep downstream AArch64 paths fail-closed.
+- Helper scratch-resource counts remain unknown because this packet did not add
+  a prepared scratch-policy authority.
+- No AArch64 target lowering/printer files were touched; target consumption
+  still belongs to the later fail-closed packet.
 
 ## Proof
 

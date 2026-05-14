@@ -1202,6 +1202,12 @@ struct PreparedVariadicEntryRegisterSaveArea {
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::size_t> gp_offset_bytes;
   std::optional<std::size_t> fp_offset_bytes;
+  std::optional<std::size_t> gp_slot_size_bytes;
+  std::optional<std::size_t> fp_slot_size_bytes;
+  std::optional<std::size_t> saved_gp_register_count;
+  std::optional<std::size_t> saved_fp_register_count;
+  std::optional<std::ptrdiff_t> initial_gp_offset_bytes;
+  std::optional<std::ptrdiff_t> initial_fp_offset_bytes;
 };
 
 struct PreparedVariadicEntryOverflowArea {
@@ -1216,6 +1222,8 @@ enum class PreparedVariadicVaListFieldKind {
   FpOffset,
   OverflowArgArea,
   RegisterSaveArea,
+  GpRegisterSaveArea,
+  FpRegisterSaveArea,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_variadic_va_list_field_kind_name(
@@ -1229,6 +1237,10 @@ enum class PreparedVariadicVaListFieldKind {
       return "overflow_arg_area";
     case PreparedVariadicVaListFieldKind::RegisterSaveArea:
       return "register_save_area";
+    case PreparedVariadicVaListFieldKind::GpRegisterSaveArea:
+      return "gp_register_save_area";
+    case PreparedVariadicVaListFieldKind::FpRegisterSaveArea:
+      return "fp_register_save_area";
   }
   return "unknown";
 }
@@ -1282,6 +1294,7 @@ struct PreparedVariadicEntryPlanFunction {
   PreparedVariadicEntryOverflowArea overflow_area;
   PreparedVariadicVaListLayout va_list_layout;
   PreparedVariadicEntryHelperResources helper_resources;
+  std::vector<std::string> missing_required_facts;
 };
 
 struct PreparedVariadicEntryPlans {

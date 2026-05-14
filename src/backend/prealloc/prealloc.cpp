@@ -186,6 +186,99 @@ namespace {
   return std::nullopt;
 }
 
+void append_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& function_plan,
+                                        std::string fact) {
+  auto& facts = function_plan.missing_required_facts;
+  if (std::find(facts.begin(), facts.end(), fact) == facts.end()) {
+    facts.push_back(std::move(fact));
+  }
+}
+
+void populate_aapcs64_variadic_entry_abi_facts(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  if (function_plan.helper_resources.required_helpers.empty()) {
+    return;
+  }
+
+  constexpr std::size_t kAapcs64GpArgumentRegisters = 8;
+  constexpr std::size_t kAapcs64FpArgumentRegisters = 8;
+  constexpr std::size_t kAapcs64GpSlotBytes = 8;
+  constexpr std::size_t kAapcs64FpSlotBytes = 16;
+  constexpr std::size_t kAapcs64GpSaveAreaBytes =
+      kAapcs64GpArgumentRegisters * kAapcs64GpSlotBytes;
+  constexpr std::size_t kAapcs64FpSaveAreaBytes =
+      kAapcs64FpArgumentRegisters * kAapcs64FpSlotBytes;
+
+  function_plan.register_save_area.required = true;
+  function_plan.register_save_area.size_bytes =
+      kAapcs64GpSaveAreaBytes + kAapcs64FpSaveAreaBytes;
+  function_plan.register_save_area.align_bytes = kAapcs64FpSlotBytes;
+  function_plan.register_save_area.gp_offset_bytes = 0;
+  function_plan.register_save_area.fp_offset_bytes = kAapcs64GpSaveAreaBytes;
+  function_plan.register_save_area.gp_slot_size_bytes = kAapcs64GpSlotBytes;
+  function_plan.register_save_area.fp_slot_size_bytes = kAapcs64FpSlotBytes;
+
+  function_plan.overflow_area.required = true;
+  function_plan.overflow_area.align_bytes = kAapcs64GpSlotBytes;
+
+  function_plan.va_list_layout.required = true;
+  function_plan.va_list_layout.size_bytes = 32;
+  function_plan.va_list_layout.align_bytes = 8;
+  function_plan.va_list_layout.fields = {
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .offset_bytes = 0,
+          .size_bytes = 8,
+      },
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::GpRegisterSaveArea,
+          .offset_bytes = 8,
+          .size_bytes = 8,
+      },
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::FpRegisterSaveArea,
+          .offset_bytes = 16,
+          .size_bytes = 8,
+      },
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::GpOffset,
+          .offset_bytes = 24,
+          .size_bytes = 4,
+      },
+      PreparedVariadicVaListField{
+          .kind = PreparedVariadicVaListFieldKind::FpOffset,
+          .offset_bytes = 28,
+          .size_bytes = 4,
+      },
+  };
+
+  if (!function_plan.named_register_counts.gp.has_value()) {
+    append_missing_variadic_entry_fact(function_plan, "named_register_counts.gp");
+  } else {
+    const std::size_t named_gp =
+        std::min(*function_plan.named_register_counts.gp, kAapcs64GpArgumentRegisters);
+    const std::size_t saved_gp = kAapcs64GpArgumentRegisters - named_gp;
+    function_plan.register_save_area.saved_gp_register_count = saved_gp;
+    function_plan.register_save_area.initial_gp_offset_bytes =
+        saved_gp == 0 ? 0 : -static_cast<std::ptrdiff_t>(saved_gp * kAapcs64GpSlotBytes);
+  }
+
+  if (!function_plan.named_register_counts.fp.has_value()) {
+    append_missing_variadic_entry_fact(function_plan, "named_register_counts.fp");
+  } else {
+    const std::size_t named_fp =
+        std::min(*function_plan.named_register_counts.fp, kAapcs64FpArgumentRegisters);
+    const std::size_t saved_fp = kAapcs64FpArgumentRegisters - named_fp;
+    function_plan.register_save_area.saved_fp_register_count = saved_fp;
+    function_plan.register_save_area.initial_fp_offset_bytes =
+        saved_fp == 0 ? 0 : -static_cast<std::ptrdiff_t>(saved_fp * kAapcs64FpSlotBytes);
+  }
+
+  append_missing_variadic_entry_fact(function_plan, "register_save_area.slot_id");
+  append_missing_variadic_entry_fact(function_plan, "register_save_area.stack_offset_bytes");
+  append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+}
+
 [[nodiscard]] std::string dynamic_alloca_type_text(std::string_view callee) {
   constexpr std::string_view kPrefix = "llvm.dynamic_alloca.";
   if (!is_dynamic_alloca_call(callee)) {
@@ -1487,6 +1580,10 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
           helpers.push_back(*helper_kind);
         }
       }
+    }
+
+    if (prepared.target_profile.backend_abi == c4c::BackendAbiKind::Aapcs64) {
+      populate_aapcs64_variadic_entry_abi_facts(function_plan);
     }
 
     prepared.variadic_entry_plans.functions.push_back(std::move(function_plan));

@@ -199,6 +199,10 @@ std::string optional_size_text(const std::optional<std::size_t>& value) {
   return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
 }
 
+std::string optional_signed_size_text(const std::optional<std::ptrdiff_t>& value) {
+  return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
+}
+
 void append_call_arg_source_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const PreparedCallArgumentPlan& arg) {
@@ -708,6 +712,18 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
         << optional_size_text(function_plan.register_save_area.gp_offset_bytes)
         << " fp_offset="
         << optional_size_text(function_plan.register_save_area.fp_offset_bytes)
+        << " gp_slot="
+        << optional_size_text(function_plan.register_save_area.gp_slot_size_bytes)
+        << " fp_slot="
+        << optional_size_text(function_plan.register_save_area.fp_slot_size_bytes)
+        << " saved_gp="
+        << optional_size_text(function_plan.register_save_area.saved_gp_register_count)
+        << " saved_fp="
+        << optional_size_text(function_plan.register_save_area.saved_fp_register_count)
+        << " initial_gp_offset="
+        << optional_signed_size_text(function_plan.register_save_area.initial_gp_offset_bytes)
+        << " initial_fp_offset="
+        << optional_signed_size_text(function_plan.register_save_area.initial_fp_offset_bytes)
         << "\n";
 
     out << "  overflow_area required="
@@ -746,6 +762,9 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
       out << "    helper kind="
           << prepared_variadic_entry_helper_kind_name(helper)
           << "\n";
+    }
+    for (const auto& fact : function_plan.missing_required_facts) {
+      out << "    missing fact=" << fact << "\n";
     }
   }
 }

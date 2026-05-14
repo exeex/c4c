@@ -4,6 +4,7 @@
 #include "src/target_profile.hpp"
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdlib>
 #include <iostream>
 #include <string>
@@ -16,6 +17,10 @@ namespace {
 
 c4c::TargetProfile riscv_target_profile() {
   return c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
+}
+
+c4c::TargetProfile aarch64_target_profile() {
+  return c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
 }
 
 void set_register_group_override(prepare::PreparedBirModule& prepared,
@@ -650,6 +655,66 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   return prepare::prepare_semantic_bir_module_with_options(
       module,
       c4c::default_target_profile(c4c::TargetArch::X86_64),
+      options);
+}
+
+prepare::PreparedBirModule prepare_aapcs64_variadic_entry_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "aapcs64_variadic_entry_dump_contract";
+  function.is_variadic = true;
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "scale",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
       options);
 }
 
@@ -2291,6 +2356,64 @@ int main() {
   if (!expect_contains(call_wrapper_dump,
                        "register_save_area required=no size=<unknown> align=<unknown> slot=<none>",
                        "variadic entry register-save-area placeholder")) {
+    return EXIT_FAILURE;
+  }
+  const auto aapcs64_variadic_prepared = prepare_aapcs64_variadic_entry_dump_module();
+  const std::string aapcs64_variadic_dump = prepare::print(aapcs64_variadic_prepared);
+  const auto aapcs64_function_id =
+      aapcs64_variadic_prepared.names.function_names.find("aapcs64_variadic_entry_dump_contract");
+  const auto* aapcs64_entry_plan =
+      prepare::find_prepared_variadic_entry_plan(aapcs64_variadic_prepared, aapcs64_function_id);
+  if (aapcs64_entry_plan == nullptr ||
+      aapcs64_entry_plan->named_parameter_count != 2 ||
+      aapcs64_entry_plan->named_register_counts.gp != std::optional<std::size_t>{1} ||
+      aapcs64_entry_plan->named_register_counts.fp != std::optional<std::size_t>{1} ||
+      !aapcs64_entry_plan->register_save_area.required ||
+      aapcs64_entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
+      aapcs64_entry_plan->register_save_area.initial_gp_offset_bytes !=
+          std::optional<std::ptrdiff_t>{-56} ||
+      aapcs64_entry_plan->register_save_area.initial_fp_offset_bytes !=
+          std::optional<std::ptrdiff_t>{-112} ||
+      !aapcs64_entry_plan->overflow_area.required ||
+      !aapcs64_entry_plan->va_list_layout.required ||
+      aapcs64_entry_plan->va_list_layout.fields.size() != 5 ||
+      aapcs64_entry_plan->helper_resources.required_helpers.size() != 1 ||
+      aapcs64_entry_plan->helper_resources.required_helpers.front() !=
+          prepare::PreparedVariadicEntryHelperKind::VaStart ||
+      aapcs64_entry_plan->missing_required_facts.empty()) {
+    std::cerr << "[FAIL] AAPCS64 variadic entry carrier did not publish structured ABI facts "
+                 "or unsupported blockers\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_variadic_dump,
+          "register_save_area required=yes size=192 align=16 slot=<none> stack_offset=<unknown> gp_offset=0 fp_offset=64 gp_slot=8 fp_slot=16 saved_gp=7 saved_fp=7 initial_gp_offset=-56 initial_fp_offset=-112",
+          "AAPCS64 variadic entry register-save facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "va_list_layout required=yes size=32 align=8 fields=5",
+                       "AAPCS64 variadic va_list layout header")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "field kind=gp_register_save_area offset=8 size=8",
+                       "AAPCS64 variadic GP save-area field")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "field kind=fp_register_save_area offset=16 size=8",
+                       "AAPCS64 variadic FP save-area field")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "helper kind=va_start",
+                       "AAPCS64 variadic va_start helper need")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "missing fact=register_save_area.slot_id",
+                       "AAPCS64 variadic unsupported save-area storage fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
