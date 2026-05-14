@@ -1,23 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Verify Phoenix Extraction Scope
+Current Step ID: 2
+Current Step Title: Run Scripted Markdown Extraction
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Verify Phoenix Extraction Scope completed. The module directory
-inventory contains exactly `module.cpp` and `module.hpp`; `module.hpp` is the
-only `.hpp` file and therefore the sole non-helper header. Stage-1 owned
-surface is `module.cpp` plus `module.hpp`; no module markdown artifacts are
-present in `src/backend/mir/aarch64/module/`.
+Step 2: Run Scripted Markdown Extraction completed for the verified AArch64
+module legacy source set. Produced compressed phoenix extraction companions:
+`src/backend/mir/aarch64/module/module.cpp.md` and
+`src/backend/mir/aarch64/module/module.hpp.md`.
 
 ## Suggested Next
 
-Proceed with the next stage-1 extraction packet using the verified
-`module.cpp`/`module.hpp` scope.
+Proceed with the next stage-1 packet that creates the directory-level
+`src/backend/mir/aarch64/module/module.md` index over the extracted module
+artifact set.
 
 ## Watchouts
 
@@ -25,12 +25,16 @@ Proceed with the next stage-1 extraction packet using the verified
 - Prepared BIR should lower directly to MIR machine nodes in the rebuilt
   route.
 - Stage 1 extracts evidence only; replacement layout belongs to stage 2.
-- No surprise module-surface files were found by the delegated inventory.
+- The `.cpp` companion is 212 lines and the `.hpp` companion is 190 lines;
+  both are compressed enough for review and avoid source dumping.
+- Extraction was script-driven and preserved the source files as legacy
+  evidence only.
 - Do not broaden the scope beyond `module.cpp` and `module.hpp` without
   lifecycle repair.
 
 ## Proof
 
-Ran the supervisor-selected inventory proof:
-`find src/backend/mir/aarch64/module -maxdepth 1 -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.md' \) -printf '%f\n' | sort > test_after.log`.
-Proof log: `test_after.log`.
+Ran the supervisor-selected artifact listing proof:
+`wc -l src/backend/mir/aarch64/module/module.cpp.md src/backend/mir/aarch64/module/module.hpp.md | tee test_after.log`.
+Result: 212 lines for `module.cpp.md`, 190 lines for `module.hpp.md`, 402
+total. Proof log: `test_after.log`.
