@@ -440,8 +440,14 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                               .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
                               .source_value_id = prepare::PreparedValueId{21},
                               .source_symbol_name_id = callee_symbol,
-                              .destination_register_name = std::string{"x0"},
                               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .destination_register_placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                                      .slot_index = 0,
+                                      .contiguous_width = 1,
+                                  },
                           },
                       },
                   .result =
@@ -451,19 +457,36 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                           .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
                           .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
                           .destination_value_id = prepare::PreparedValueId{22},
-                          .source_register_name = std::string{"x0"},
+                          .source_register_name = std::string{"x1"},
                           .source_register_bank = prepare::PreparedRegisterBank::Gpr,
                           .destination_slot_id = 11,
                           .destination_stack_offset_bytes = std::size_t{32},
+                          .source_register_placement =
+                              prepare::PreparedRegisterPlacement{
+                                  .bank = prepare::PreparedRegisterBank::Gpr,
+                                  .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                                  .slot_index = 0,
+                                  .contiguous_width = 1,
+                              },
                       },
                   .preserved_values =
                       {
                           prepare::PreparedCallPreservedValue{
                               .value_id = 21,
                               .value_name = source_name,
-                              .route = prepare::PreparedCallPreservationRoute::StackSlot,
-                              .slot_id = 11,
-                              .stack_offset_bytes = std::size_t{32},
+                              .route =
+                                  prepare::PreparedCallPreservationRoute::CalleeSavedRegister,
+                              .callee_saved_save_index = std::size_t{2},
+                              .register_name = std::string{"x19"},
+                              .register_bank = prepare::PreparedRegisterBank::Gpr,
+                              .occupied_register_names = {"x20"},
+                              .register_placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                                      .slot_index = 1,
+                                      .contiguous_width = 1,
+                                  },
                           },
                       },
                   .clobbered_registers =
@@ -540,9 +563,14 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (call.source_call != &prepared.call_plans.functions.front().calls.front() ||
       call.arguments.front().source_symbol_label != "callee.identity" ||
       call.arguments.front().destination_register != "x0" ||
+      prepared.call_plans.functions.front().calls.front()
+          .arguments.front()
+          .destination_register_name.has_value() ||
       call.result->destination_value_id != 22 || call.result->destination_slot_id != 11 ||
+      call.result->source_register != "x0" ||
       call.preserved_values.front().value_label != "source.value" ||
-      call.preserved_values.front().slot_id != 11) {
+      call.preserved_values.front().register_name != "x20" ||
+      call.preserved_values.front().callee_saved_save_index != std::size_t{2}) {
     return fail("expected call record to preserve structured call argument/result/preservation facts");
   }
 

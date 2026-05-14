@@ -161,6 +161,20 @@ namespace {
   return "<invalid-aarch64-register>";
 }
 
+[[nodiscard]] std::string_view resolved_prepared_register_name(
+    const std::optional<c4c::backend::prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<std::string>& legacy_register_name) {
+  if (placement.has_value()) {
+    const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
+        *placement, register_class_from_bank(placement->bank), std::nullopt);
+    if (converted.reg.has_value()) {
+      return stable_register_name(*converted.reg);
+    }
+  }
+  return legacy_register_name.has_value() ? std::string_view{*legacy_register_name}
+                                          : std::string_view{};
+}
+
 [[nodiscard]] const c4c::backend::prepare::PreparedRegallocFunction*
 find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& regalloc,
                                 c4c::FunctionNameId function_name) {
@@ -743,9 +757,9 @@ void merge_storage_operand(
       .source_stack_offset_is_prepared_snapshot = argument.source_stack_offset_bytes.has_value(),
       .source_base_value_name = argument.source_base_value_name,
       .source_pointer_byte_delta = argument.source_pointer_byte_delta,
-      .destination_register = argument.destination_register_name.has_value()
-                                   ? std::string_view{*argument.destination_register_name}
-                                   : std::string_view{},
+      .destination_register =
+          resolved_prepared_register_name(argument.destination_register_placement,
+                                         argument.destination_register_name),
       .destination_register_bank = argument.destination_register_bank,
       .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
@@ -772,15 +786,15 @@ void merge_storage_operand(
       .source_storage_kind = result.source_storage_kind,
       .destination_storage_kind = result.destination_storage_kind,
       .destination_value_id = result.destination_value_id,
-      .source_register = result.source_register_name.has_value()
-                              ? std::string_view{*result.source_register_name}
-                              : std::string_view{},
+      .source_register =
+          resolved_prepared_register_name(result.source_register_placement,
+                                         result.source_register_name),
       .source_register_bank = result.source_register_bank,
       .source_stack_offset_bytes = result.source_stack_offset_bytes,
       .source_stack_offset_is_prepared_snapshot = result.source_stack_offset_bytes.has_value(),
-      .destination_register = result.destination_register_name.has_value()
-                                   ? std::string_view{*result.destination_register_name}
-                                   : std::string_view{},
+      .destination_register =
+          resolved_prepared_register_name(result.destination_register_placement,
+                                         result.destination_register_name),
       .destination_register_bank = result.destination_register_bank,
       .destination_slot_id = result.destination_slot_id,
       .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
@@ -800,9 +814,9 @@ void merge_storage_operand(
                                                                 preserved.value_name),
       .route = preserved.route,
       .callee_saved_save_index = preserved.callee_saved_save_index,
-      .register_name = preserved.register_name.has_value()
-                           ? std::string_view{*preserved.register_name}
-                           : std::string_view{},
+      .register_name =
+          resolved_prepared_register_name(preserved.register_placement,
+                                         preserved.register_name),
       .register_bank = preserved.register_bank,
       .slot_id = preserved.slot_id,
       .stack_offset_bytes = preserved.stack_offset_bytes,
