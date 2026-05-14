@@ -16,6 +16,7 @@
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
@@ -385,11 +386,18 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .block_index = 0,
                   .instruction_index = 4,
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
-                  .register_name = std::string{"x20"},
+                  .register_name = std::string{"x19"},
                   .contiguous_width = 1,
                   .occupied_register_names = {"x20"},
                   .slot_id = 11,
                   .stack_offset_bytes = std::size_t{32},
+                  .register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
               },
               prepare::PreparedSpillReloadOp{
                   .value_id = 21,
@@ -397,11 +405,18 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .block_index = 3,
                   .instruction_index = 0,
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
-                  .register_name = std::string{"x20"},
+                  .register_name = std::string{"x19"},
                   .contiguous_width = 1,
                   .occupied_register_names = {"x20"},
                   .slot_id = 11,
                   .stack_offset_bytes = std::size_t{32},
+                  .register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
               },
           },
   });
@@ -615,9 +630,11 @@ int records_preserve_frame_control_call_and_move_identity() {
       spill_scratch.register_class != prepare::PreparedRegisterClass::General ||
       spill_scratch.register_bank != prepare::PreparedRegisterBank::Gpr ||
       spill_scratch.value_name != source_name ||
+      spill_scratch.register_reference != aarch64_abi::x_register(20) ||
       spill_scratch.physical_register != "x20" ||
       spill_scratch.occupied_registers.size() != 1 ||
       spill_scratch.occupied_registers.front() != "x20" ||
+      reload_scratch.register_reference != aarch64_abi::x_register(20) ||
       reload_scratch.physical_register != "x20") {
     return fail("expected spill/reload scratch authority to remain structured target-MIR facts");
   }
@@ -665,6 +682,7 @@ int records_preserve_frame_control_call_and_move_identity() {
       spill_node->slot.byte_offset != 32 ||
       !spill_node->slot.byte_offset_is_prepared_snapshot ||
       !spill_node->scratch.has_value() ||
+      spill_node->scratch->reg != aarch64_abi::x_register(20) ||
       spill_node->scratch->role != aarch64_codegen::RegisterOperandRole::SpillAuthority ||
       spill_node->scratch->value_id != prepare::PreparedValueId{21} ||
       spill_node->scratch->value_name != source_name ||
@@ -679,6 +697,8 @@ int records_preserve_frame_control_call_and_move_identity() {
       reload_node->slot.frame_slot_id != prepare::PreparedFrameSlotId{11} ||
       reload_node->stack_offset_bytes != std::size_t{32} ||
       !reload_node->stack_offset_is_prepared_snapshot ||
+      !reload_node->scratch.has_value() ||
+      reload_node->scratch->reg != aarch64_abi::x_register(20) ||
       reload_node->occupied_scratch_registers.size() != 1 ||
       reload_node->occupied_scratch_registers.front() != "x20" ||
       reload_node->source_spill_reload != function.spill_reloads.back().source_spill_reload) {

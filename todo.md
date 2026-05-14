@@ -8,13 +8,13 @@ Current Step Title: Move AArch64 Physical Register Mapping Into Target MIR
 
 ## Just Finished
 
-Step 4 migrated AArch64 return-selected scalar operand conversion for storage-plan registers to prefer `PreparedStoragePlanValue::register_placement` before legacy storage register spelling.
+Step 4 migrated AArch64 spill/reload scratch conversion to prefer `PreparedSpillReloadOp::register_placement` before legacy register spelling.
 
-`module.cpp` now lets selected scalar operands convert register-encoded storage from structured placement even when storage `register_name` is absent or mismatched, while preserving the old value-home/register-name equality fallback for placement-less fixtures. `backend_aarch64_prepared_scalar_alu_records_test` adds a return-selected scalar module fixture that proves lhs/rhs operands come from placement-selected `x1`/`x2`, not legacy storage spelling.
+`module.cpp` now builds spill/reload target-register records and machine-node scratch operands from structured placement when present, while preserving the old `register_name` fallback for placement-less fixtures. `backend_aarch64_prepared_frame_control_test` now gives spill/reload ops mismatched legacy names and proves the target register record plus selected machine scratch operand still resolve through placement to `x20`.
 
 ## Suggested Next
 
-Next coherent packet: migrate the remaining AArch64 prepared-to-MIR register consumers that still read move, call, preserved, or spill/reload register-name fields directly, using the same placement-first conversion pattern and focused mismatch tests.
+Next coherent packet: migrate the remaining AArch64 prepared-to-MIR register consumers that still read move, call, preserved, or ABI-binding register-name fields directly, using the same placement-first conversion pattern and focused mismatch tests.
 
 ## Watchouts
 
@@ -27,6 +27,6 @@ Next coherent packet: migrate the remaining AArch64 prepared-to-MIR register con
 
 Ran delegated focused AArch64 placement/register-record proof:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_scalar_alu_records|scalar_alu_records|prepared_operand_identity|prepared_register_conversion)$" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_frame_control|memory_operand_contract|prepared_register_conversion|prepared_operand_identity)$" --output-on-failure' > test_after.log 2>&1`
 
 Result: passed; 4/4 selected AArch64 backend tests passed. Proof log: `test_after.log`.

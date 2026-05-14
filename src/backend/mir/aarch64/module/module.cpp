@@ -951,8 +951,23 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   for (const auto& op : regalloc->spill_reload_ops) {
     const auto* value = find_regalloc_value(*regalloc, op.value_id);
     const auto register_class = register_class_from_bank(op.register_bank);
+    c4c::backend::aarch64::abi::PreparedRegisterConversionResult converted;
+    if (op.register_placement.has_value()) {
+      converted = c4c::backend::aarch64::abi::convert_prepared_register(
+          *op.register_placement, register_class, std::nullopt);
+    } else if (op.register_name.has_value()) {
+      converted = c4c::backend::aarch64::abi::convert_prepared_register(*op.register_name,
+                                                                        op.register_bank,
+                                                                        register_class,
+                                                                        std::nullopt);
+    }
+    const std::string_view resolved_register_name =
+        converted.reg.has_value()
+            ? stable_register_name(*converted.reg)
+            : op.register_name.has_value() ? std::string_view{*op.register_name}
+                                           : std::string_view{};
     std::optional<std::size_t> scratch_register_authority;
-    if (op.register_name.has_value()) {
+    if (op.register_placement.has_value() || op.register_name.has_value()) {
       scratch_register_authority =
           append_register_record(registers,
                                  TargetRegisterReferenceKind::SpillAuthority,
@@ -961,7 +976,8 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
                                  value != nullptr ? value->value_name : c4c::kInvalidValueName,
                                  register_class,
                                  op.register_bank,
-                                 *op.register_name,
+                                 converted,
+                                 resolved_register_name,
                                  op.contiguous_width,
                                  register_name_views(op.occupied_register_names));
     }
@@ -973,8 +989,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
         .instruction_index = op.instruction_index,
         .register_class = register_class,
         .register_bank = op.register_bank,
-        .register_name = op.register_name.has_value() ? std::string_view{*op.register_name}
-                                                       : std::string_view{},
+        .register_name = resolved_register_name,
         .contiguous_width = op.contiguous_width,
         .occupied_registers = register_name_views(op.occupied_register_names),
         .scratch_register_authority = scratch_register_authority,
