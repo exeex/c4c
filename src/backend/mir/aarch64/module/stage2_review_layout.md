@@ -7,9 +7,9 @@ accepted Stage 1 evidence. It describes the legacy emitter as evidence for
 later layout decisions, not as the replacement architecture and not as a set of
 helper boundaries to preserve.
 
-This Step 2 artifact intentionally stops before the replacement architecture,
-parent-224 judgment, Stage 3 draft map, and Stage 2 handoff. Those belong to
-later Stage 2 steps.
+This Stage 2 artifact now covers the current subsystem reconstruction and the
+replacement architecture layout. It intentionally stops before the Stage 3
+draft map and Stage 2 handoff; those belong to later Stage 2 steps.
 
 ## Current Entry Points
 
@@ -174,6 +174,286 @@ replacement decomposition.
 - Preserving the current catch-all record assembler under renamed helper
   boundaries.
 
+## Replacement Architecture Layout
+
+The replacement architecture lowers `prepare::PreparedBirModule` directly into
+typed MIR machine nodes. The current record assembly shape remains evidence for
+what facts must survive, but it must not become a renamed catch-all module
+emitter that gathers every prepared table, source fallback, instruction rule,
+and compatibility view in one implementation file.
+
+Dependency direction is one way:
+
+`prepare::PreparedBirModule` -> AArch64 module dispatch -> function traversal
+-> value/operand resolution -> instruction, branch/control, and call lowering
+-> MIR machine nodes -> shared `mir_printer` traversal -> target-owned
+instruction/operand/register rendering.
+
+Lower layers may receive typed facts from earlier layers, but must not reach
+back into broad prepared tables, BIR source spellings, or public compatibility
+records to rediscover authority. The module boundary may orchestrate and return
+the public product; it must not own all lowering decisions.
+
+## Responsibility And Dependency Seams
+
+### Module Dispatch
+
+Owns:
+
+- accepting the `prepare::PreparedBirModule` entry point
+- target-profile and AArch64 prepared-handoff validation
+- dispatching data/module-level preparation and prepared function traversal
+- constructing the public `BuildResult` and top-level module product
+
+May know:
+
+- the prepared module, target profile, top-level data records, and which
+  function traversal component is used for AArch64
+- the public compatibility fields that must be populated from completed MIR
+  output
+
+Must not know:
+
+- individual BIR operation lowering rules
+- register spelling fallbacks as semantic authority
+- call argument/result ABI expansion details beyond passing the prepared call
+  plan to call lowering
+- branch fusion, scalar ALU, spill/reload, or return lowering internals
+
+Outputs:
+
+- a validated module-level product containing canonical MIR functions and any
+  required data/relocation records
+- compatibility views derived from canonical MIR and typed facts, not from a
+  separate catch-all record pass
+
+### Function Traversal
+
+Owns:
+
+- walking `prepared.control_flow.functions` and their prepared block order
+- establishing per-function lowering context from prepared frame, storage,
+  regalloc, spill/reload, parallel-copy, and call-plan authorities
+- creating MIR function/block structure before instruction emission
+- preserving source/debug provenance only as optional metadata
+
+May know:
+
+- prepared function identity, block IDs, prepared frame/control-flow records,
+  and typed per-function authority tables
+- the value/operand resolver and target instruction lowerers
+
+Must not know:
+
+- AArch64 assembly text syntax
+- public flat `machine_nodes` compatibility as the primary output shape
+- spelling-based source function or block recovery except through an explicit
+  compatibility/provenance bridge
+
+Outputs:
+
+- a `mir::Function<mir::MachineNode<...>>` with ordered MIR blocks and target
+  machine nodes
+- per-function compatibility/provenance metadata derived from the same typed
+  traversal
+
+### Value And Operand Resolution
+
+Owns:
+
+- the single typed authority model for prepared value locations
+- conversion from prepared value homes, storage-plan entries, regalloc
+  assignments, frame slots, spill slots, immediates, symbols, labels, and
+  target registers into AArch64 operand objects
+- normalizing storage location precedence so consumers do not choose among
+  broad optional record fields
+
+May know:
+
+- prepared value IDs, storage locations, frame/stack slot IDs, ABI register
+  references, immediate values, symbols, and label identities
+- AArch64 register classes and operand forms needed to build target operands
+
+Must not know:
+
+- operation-specific instruction selection
+- branch or call sequencing rules
+- final assembly punctuation, spacing, or line emission
+- legacy register-name parsing except through a contained compatibility
+  adapter with fail-closed behavior for structured misses
+
+Outputs:
+
+- target-owned operand/register representations for instructions, branches,
+  calls, memory forms, immediates, labels, and symbols
+- diagnostic/provenance records that explain which prepared authority produced
+  each operand when compatibility clients still need that view
+
+### Instruction Lowering
+
+Owns:
+
+- lowering prepared non-control operations into AArch64 MIR machine nodes
+- scalar ALU, memory, move, spill/reload, parallel-copy step, and return-value
+  materialization rules as semantic instruction families, not named testcase
+  shortcuts
+- selecting target instruction records from typed operands and prepared
+  operation semantics
+
+May know:
+
+- prepared operation kind, typed operands from the resolver, target register
+  classes, instruction constraints, and MIR block insertion points
+
+Must not know:
+
+- module-level public record assembly
+- source BIR spelling recovery as semantic input
+- printer traversal or `.s` file structure
+- call ABI planning or branch edge ownership
+
+Outputs:
+
+- target instruction machine nodes inserted into canonical MIR blocks
+- optional compatibility instruction records derived from those nodes when
+  existing clients still require `FunctionRecord::machine_nodes`
+
+### Branch And Control Lowering
+
+Owns:
+
+- prepared terminator lowering, block-edge emission, conditional/unconditional
+  branch node creation, compare/condition handling, and return control flow
+- branch-fusion decisions when prepared comparison facts and target constraints
+  make fusion valid
+- ensuring MIR block control nodes are complete enough for a shared printer to
+  emit labels and branches without target-specific traversal logic
+
+May know:
+
+- prepared terminators, block labels, compare/condition metadata, target branch
+  instruction forms, and typed operands from the resolver
+
+Must not know:
+
+- function traversal order beyond the current block context
+- public compatibility branch records as instruction authority
+- ad hoc source label spellings except as compatibility metadata
+
+Outputs:
+
+- target branch/control machine nodes and block successor metadata
+- compatibility branch records derived from typed control lowering when needed
+
+### Call Lowering
+
+Owns:
+
+- converting prepared call plans into target MIR call sequences
+- materializing argument moves, result locations, preserved values, clobbers,
+  indirect callees, memory returns, and call-site ABI bindings
+- coordinating with value/operand resolution for locations while keeping ABI
+  call semantics in one call-lowering component
+
+May know:
+
+- prepared call plans, ABI argument/result locations, clobber/preserve sets,
+  memory-return metadata, indirect-callee data, and target call instruction
+  forms
+
+Must not know:
+
+- generic operation lowering rules unrelated to calls
+- public flat record layout as the source of call authority
+- printer syntax or section/file emission
+
+Outputs:
+
+- target call and call-adjacent move machine nodes in canonical MIR
+- call inspection records that are projections of the lowered call sequence and
+  prepared ABI facts
+
+### Public Assembly Bridging
+
+Owns:
+
+- the bridge from canonical MIR functions and module data to one shared,
+  platform-independent `mir_printer` pass
+- preserving the invariant that the common printer owns traversal, ordering,
+  spacing mechanics, labels, sections, and file emission structure
+- calling target-owned print/render methods on AArch64 instruction, operand,
+  register, memory, label, symbol, and immediate representations
+
+May know:
+
+- common MIR containers, target-owned printable interfaces, module data records,
+  and the minimal section/data hooks needed by the common printer
+
+Must not know:
+
+- AArch64 opcode syntax tables, register spelling rules, operand punctuation,
+  or instruction-family formatting details
+- lowering-time prepared authority tables
+- cached display strings as semantic output
+
+Outputs:
+
+- `.s` text acceptable to `gcc`/`as` through a single common printer traversal
+- no C++ API named `__repr__`; target-owned render methods should have ordinary
+  C++ names that separate instruction printing from operand printing
+
+### Compatibility Behavior
+
+Owns:
+
+- migration-only projections such as `FunctionRecord::machine_nodes`, raw
+  source/prepared provenance pointers, label views, broad inspection records,
+  and legacy register-string fallback
+- clear removal conditions for compatibility views once clients consume
+  canonical MIR blocks and typed operands directly
+
+May know:
+
+- legacy public record shapes and the structured canonical MIR facts needed to
+  populate them
+- source/prepared pointers and string views for diagnostics
+
+Must not know:
+
+- semantic lowering decisions that should live in instruction, branch, call, or
+  operand components
+- fallback strings as primary identity or register authority
+- testcase-specific exceptions that bypass typed prepared data
+
+Outputs:
+
+- compatibility records derived after canonical lowering
+- fail-closed diagnostics when structured authority is missing and no approved
+  compatibility fallback applies
+
+## Parent 224 Judgment
+
+The layout resolves the parent 224 failure family if Stage 3 preserves these
+seams:
+
+- common MIR carrier confusion: canonical output is MIR blocks containing
+  target-owned instruction nodes; public records and compatibility vectors are
+  projections, not a second instruction carrier
+- flat target-local vectors: `FunctionRecord::machine_nodes` may remain only as
+  a derived migration view and must not drive printing, validation, or future
+  lowering
+- cached display strings: printable target forms render themselves when the
+  shared printer asks; cached strings are diagnostics only and cannot become
+  semantic instruction or operand authority
+- target/common printer boundary drift: the common `mir_printer` owns traversal
+  and emission mechanics, while AArch64 owns opcode, register, operand, memory,
+  immediate, label, and symbol rendering
+
+The parent 224 judgment is therefore positive for a phoenix replacement only
+under the direct prepared-BIR-to-MIR layout above. A design that keeps the
+legacy broad module emitter, renames its helpers, and asks later code to infer
+instructions from record piles would fail parent 224 again.
+
 ## Step 2 Decision Support
 
 The current subsystem is a broad adapter from prepared BIR evidence to an
@@ -185,3 +465,9 @@ compatibility recovery, data records, and partial instruction lowering.
 Later layout decisions should therefore use this document to understand which
 facts must survive, while rejecting the current helper grouping as replacement
 design.
+
+Step 3 extends that decision support with a replacement architecture: prepared
+state drives typed MIR machine-node lowering through explicit module,
+function, operand, instruction, branch, call, printer-bridge, and compatibility
+seams. Stage 3 should fill draft artifacts for those seams later; this document
+does not provide draft implementation contents.
