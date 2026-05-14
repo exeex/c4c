@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/228_aarch64_module_phoenix_drafts_to_implementation.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Establish AArch64 Header And Module Skeleton
+Current Step ID: 3
+Current Step Title: Migrate Legacy Module-Record Compile Tests
 
 # Current Packet
 
@@ -19,9 +19,14 @@ reintroduced.
 
 ## Suggested Next
 
-Delegate the next AArch64 module packet to add the first real canonical
-function traversal seam that produces `MachineFunction`/`MachineBlock`
-contents without restoring the legacy flat record assembler.
+Delegate the next AArch64 module packet to migrate stale legacy module-record
+compile tests away from deleted APIs such as `OperandRecord`, `FrameRecord`,
+broad `FunctionRecord` record piles, and `module.globals` legacy views.
+Replace/update/remove those stale compile dependencies with new-route tests for
+the common MIR carrier, the fresh AArch64 skeleton, fail-closed
+assembly/no-machine-nodes behavior, and future traversal/operand contracts.
+This is not a test downgrade: do not restore the legacy module emitter, do not
+recreate the old record pile, and do not weaken supported-path expectations.
 
 ## Watchouts
 
@@ -38,6 +43,8 @@ contents without restoring the legacy flat record assembler.
   authority.
 - Do not weaken tests, mark supported paths unsupported, or claim
   expectation-only progress as implementation conversion.
+- The next packet owns test migration only; it must not restore legacy
+  `module.cpp` behavior or the deleted legacy module-record API.
 
 ## Proof
 

@@ -50,6 +50,14 @@ left outside the rebuilt module/MIR lowering surface.
 - Typical migration order is shared helpers, value/home or operand resolution,
   one coherent lowering family, dispatch rewiring, then deletion of dead
   compatibility code.
+- After the fresh AArch64 skeleton, migrate stale legacy module-record compile
+  tests before function traversal: replace/update/remove dependencies on
+  deleted APIs such as `OperandRecord`, `FrameRecord`, broad `FunctionRecord`
+  record piles, and `module.globals` legacy views with new-route tests for the
+  common MIR carrier, skeleton construction, fail-closed
+  assembly/no-machine-nodes behavior, and future traversal/operand contracts.
+  This is not a test downgrade; do not restore the legacy module emitter or the
+  old record pile to satisfy stale tests.
 - Every migration packet must state what responsibility moved, what still
   remains in legacy code, and what proof covers the moved seam.
 - Proof must cover each migrated capability family before completion is

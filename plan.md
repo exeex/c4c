@@ -16,9 +16,12 @@ after the replacement path is live and proved.
 ## Core Rule
 
 Stage 4 owns real `.cpp` / `.hpp` implementation, build wiring, dispatcher
-rewiring, proof, and legacy retirement. It must preserve staged migration:
-do not delete or disconnect legacy code until the new owner for that seam is
-live and covered by matching proof.
+rewiring, proof, and legacy retirement. The legacy AArch64 module emitter has
+already been removed by `252dbc50c` and the fresh skeleton was added by
+`0fce192f4`, so current execution must continue from that state. Do not restore
+the broad legacy emitter or old module-record API to satisfy stale tests; repair
+tests and implementation around the new route, then prove each replacement seam
+before claiming capability progress.
 
 ## Read First
 
@@ -90,15 +93,19 @@ Implementation conversion targets from the reviewed Stage 3 draft map:
 
 ## Execution Rules
 
-- Migrate in behavior-preserving slices that each state what responsibility
-  moved, what remains in legacy code, and what proof covers the moved seam.
+- Migrate in behavior-preserving slices where possible. For seams already
+  affected by the legacy emitter removal, each slice must state what new-route
+  responsibility moved, which deleted legacy surfaces are intentionally not
+  restored, and what proof covers the repaired seam.
 - Establish the common MIR carrier before translating the AArch64 public
   module skeleton, so the target header does not become the canonical
   container owner.
 - Translate the Stage 3 drafts in dependency order instead of preserving the
   legacy catch-all assembler first.
-- Keep the legacy path available until a replacement seam is compiled, routed,
-  and proved.
+- Do not attempt to keep or resurrect the deleted legacy module emitter as the
+  active path. Until replacement lowering is compiled, routed, and proved, keep
+  public assembly paths fail-closed rather than falling back to the old record
+  pile.
 - Build after each code-changing packet and run the delegated narrow proof;
   escalate to broader backend or full CTest when dispatcher/build wiring or
   shared lowering behavior changes.
@@ -165,7 +172,45 @@ Completion check:
 - No dispatcher path relies on incomplete replacement lowering for behavior.
 - No component-level public header has been introduced.
 
-### Step 3: Implement Function Traversal And Operand Resolution
+### Step 3: Migrate Legacy Module-Record Compile Tests
+
+Goal: repair stale legacy module-record compile tests after the fresh AArch64
+skeleton removed the old record-pile API, without restoring the legacy module
+emitter or weakening coverage.
+
+Primary targets:
+
+- stale compile tests and test helpers that still depend on deleted legacy
+  module-record APIs
+- focused new-route tests for the common MIR carrier and fresh AArch64
+  skeleton behavior
+
+Actions:
+
+- Replace, update, or remove stale compile dependencies on deleted legacy
+  record APIs such as `OperandRecord`, `FrameRecord`, broad
+  `FunctionRecord` record piles, `module.globals` legacy views, and other
+  old module-emitter inspection surfaces.
+- Add or migrate tests toward the new route: common MIR carrier structure,
+  fresh AArch64 skeleton construction, fail-closed assembly/no-machine-nodes
+  behavior, and the future traversal/operand contracts that the next
+  implementation step will satisfy.
+- Keep this as a test-contract migration, not a test downgrade: do not mark
+  supported paths unsupported, do not hide expected machine-node behavior, and
+  do not claim capability progress through expectation-only edits.
+- do not restore `src/backend/mir/aarch64/module.cpp` legacy emitter logic or
+  recreate the old broad record pile just to satisfy stale tests.
+
+Completion check:
+
+- The project builds after stale module-record compile dependencies are
+  migrated away from deleted APIs.
+- Tests now describe the common MIR carrier, the fresh AArch64 skeleton,
+  fail-closed assembly/no-machine-nodes behavior, and the future
+  traversal/operand contract instead of the old record pile.
+- No legacy module emitter or deleted record API has been restored.
+
+### Step 4: Implement Function Traversal And Operand Resolution
 
 Goal: make prepared function/block traversal and typed AArch64 operand
 resolution usable by later lowering families.
@@ -194,7 +239,7 @@ Completion check:
 - Instruction, branch, and call code can consume typed operands without
   reaching back into cached display strings or broad prepared/source records.
 
-### Step 4: Implement One Lowering Family At A Time
+### Step 5: Implement One Lowering Family At A Time
 
 Goal: move semantic target lowering into reviewed component owners while
 keeping each packet narrow enough to prove.
@@ -223,7 +268,7 @@ Completion check:
   plus backend proof.
 - Compatibility records are not used as semantic lowering inputs.
 
-### Step 5: Implement Public Bridge And Compatibility Projection
+### Step 6: Implement Public Bridge And Compatibility Projection
 
 Goal: expose completed canonical MIR through the shared printer and derive
 legacy compatibility surfaces after lowering.
@@ -253,7 +298,7 @@ Completion check:
   lowering authority.
 - Focused backend proof covers the public bridge and compatibility projection.
 
-### Step 6: Rewire Dispatch And Retire Dead Legacy Ownership
+### Step 7: Rewire Dispatch And Retire Dead Legacy Ownership
 
 Goal: make the reviewed replacement path the active owner for the migrated
 surface, then delete or retire unreachable legacy code.
@@ -281,7 +326,7 @@ Completion check:
 - Legacy code is deleted, disconnected, or explicitly classified.
 - Backend validation passes with no expectation downgrades.
 
-### Step 7: Closure Review And Final Proof
+### Step 8: Closure Review And Final Proof
 
 Goal: prove Stage 4 completion against the source idea and phoenix reject
 signals.
