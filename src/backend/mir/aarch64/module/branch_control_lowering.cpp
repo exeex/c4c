@@ -187,11 +187,12 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
         "AArch64 conditional branch lowering requires prepared branch condition authority");
     return std::nullopt;
   }
-  if (branch_condition->kind != prepare::PreparedBranchConditionKind::MaterializedBool) {
+  if (branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare &&
+      !branch_condition->can_fuse_with_branch) {
     append_branch_diagnostic(
         diagnostics,
         context,
-        "AArch64 conditional branch lowering keeps fused compare branches fail-closed");
+        "AArch64 conditional branch lowering keeps non-fusable compare branches fail-closed");
     return std::nullopt;
   }
 
@@ -211,32 +212,38 @@ std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
   }
 
   auto& record = *prepared_record.record;
-  if (!record.condition_record.has_value() ||
-      !record.condition_record->condition_value_id.has_value()) {
-    append_branch_diagnostic(
-        diagnostics,
+  if (branch_condition->kind == prepare::PreparedBranchConditionKind::MaterializedBool) {
+    if (!record.condition_record.has_value() ||
+        !record.condition_record->condition_value_id.has_value()) {
+      append_branch_diagnostic(
+          diagnostics,
+          context,
+          "AArch64 conditional branch lowering requires prepared condition value identity");
+      return std::nullopt;
+    }
+    auto condition_operand = make_condition_register_operand(
         context,
-        "AArch64 conditional branch lowering requires prepared condition value identity");
-    return std::nullopt;
+        *record.condition_record->condition_value_id,
+        record.condition_record->condition_value_name,
+        record.condition_record->condition_type,
+        diagnostics);
+    if (!condition_operand.has_value()) {
+      return std::nullopt;
+    }
+    record.condition = std::move(*condition_operand);
   }
-  auto condition_operand = make_condition_register_operand(
-      context,
-      *record.condition_record->condition_value_id,
-      record.condition_record->condition_value_name,
-      record.condition_record->condition_type,
-      diagnostics);
-  if (!condition_operand.has_value()) {
-    return std::nullopt;
-  }
-  record.condition = std::move(*condition_operand);
 
   auto instruction = make_branch_instruction(context, std::move(record));
+  const auto expected_opcode =
+      branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare
+          ? codegen::MachineOpcode::CompareBranch
+          : codegen::MachineOpcode::ConditionalBranch;
   if (instruction.target.selection.status != codegen::MachineNodeSelectionStatus::Selected ||
-      instruction.target.opcode != codegen::MachineOpcode::ConditionalBranch) {
+      instruction.target.opcode != expected_opcode) {
     append_branch_diagnostic(
         diagnostics,
         context,
-        "AArch64 materialized-bool branch lowering did not produce a selected conditional node");
+        "AArch64 conditional branch lowering did not produce a selected branch-control node");
     return std::nullopt;
   }
   return instruction;

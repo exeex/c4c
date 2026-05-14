@@ -74,7 +74,8 @@ prepare::PreparedBirModule prepared_with_unconditional_branch() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_conditional_branch() {
+prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
+    bool can_fuse_with_branch = true) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -107,7 +108,7 @@ prepare::PreparedBirModule prepared_with_conditional_branch() {
           .compare_type = bir::TypeKind::I32,
           .lhs = bir::Value::immediate_i32(1),
           .rhs = bir::Value::immediate_i32(1),
-          .can_fuse_with_branch = true,
+          .can_fuse_with_branch = can_fuse_with_branch,
           .true_label = then_label,
           .false_label = else_label,
       }},
@@ -382,6 +383,96 @@ int direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node
   return 0;
 }
 
+int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
+  auto prepared = prepared_with_fused_compare_conditional_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_module::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_module::make_block_lowering_context(function_context, block_cf, 5);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      !diagnostics.empty()) {
+    return fail("expected fusable fused-compare branch to emit one selected instruction");
+  }
+  if (block.successors.size() != 2 ||
+      block.successors[0].target_label != block_cf.true_label ||
+      block.successors[0].kind != mir::MachineBlockSuccessorKind::ConditionalTrue ||
+      block.successors[1].target_label != block_cf.false_label ||
+      block.successors[1].kind != mir::MachineBlockSuccessorKind::ConditionalFalse ||
+      !block.successors[0].origin.has_value() ||
+      !block.successors[1].origin.has_value() ||
+      block.successors[0].origin->reason != mir::MachineOriginReason::BirTerminator ||
+      block.successors[1].origin->reason != mir::MachineOriginReason::BirTerminator ||
+      block.successors[0].origin->function_name != function_cf.function_name ||
+      block.successors[1].origin->function_name != function_cf.function_name ||
+      block.successors[0].origin->block_label != block_cf.block_label ||
+      block.successors[1].origin->block_label != block_cf.block_label) {
+    return fail("expected fusable compare branch dispatch to record true/false successors");
+  }
+
+  const auto& instruction = block.instructions.front();
+  if (!instruction.origin.has_value() ||
+      instruction.origin->reason != mir::MachineOriginReason::BirTerminator ||
+      instruction.origin->function_name != function_cf.function_name ||
+      instruction.origin->block_label != block_cf.block_label) {
+    return fail("expected compare branch origin to preserve source block identity");
+  }
+  if (instruction.target.family != aarch64_codegen::InstructionFamily::Branch ||
+      instruction.target.opcode != aarch64_codegen::MachineOpcode::CompareBranch ||
+      instruction.target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.target.function_name != function_cf.function_name ||
+      instruction.target.block_label != block_cf.block_label ||
+      instruction.target.block_index != 5) {
+    return fail("expected compare branch target to be canonical selected branch node");
+  }
+
+  const auto* branch =
+      std::get_if<aarch64_codegen::BranchInstructionRecord>(&instruction.target.payload);
+  if (branch == nullptr || !branch->conditional || !branch->target_pair.has_value() ||
+      !branch->condition_record.has_value() || branch->condition.has_value() ||
+      branch->target_pair->true_target.block_label != block_cf.true_label ||
+      branch->target_pair->false_target.block_label != block_cf.false_label) {
+    return fail("expected compare branch payload to preserve prepared branch targets");
+  }
+
+  const auto& condition = *branch->condition_record;
+  if (condition.form != aarch64_codegen::BranchConditionForm::FusedCompare ||
+      !condition.can_fuse_with_branch || !condition.predicate.has_value() ||
+      !condition.compare_operands.has_value() ||
+      condition.predicate->source_predicate != bir::BinaryOpcode::Eq ||
+      condition.predicate->compare_type != bir::TypeKind::I32 ||
+      condition.compare_operands->compare_type != bir::TypeKind::I32 ||
+      condition.compare_operands->lhs.source_value != bir::Value::immediate_i32(1) ||
+      condition.compare_operands->rhs.source_value != bir::Value::immediate_i32(1)) {
+    return fail("expected compare branch condition record to preserve compare facts");
+  }
+  if (!condition.compare_branch_candidate.has_value() ||
+      condition.compare_branch_candidate->kind !=
+          aarch64_codegen::BranchCompareCandidateKind::FusedCompareAndBranch ||
+      !condition.compare_branch_candidate->can_fuse_with_branch ||
+      !condition.compare_branch_candidate->target_pair.has_value()) {
+    return fail("expected compare branch condition to retain fusable candidate metadata");
+  }
+  if (instruction.target.operands.size() != 5 ||
+      instruction.target.operands[0].kind != aarch64_codegen::OperandKind::BranchTarget ||
+      instruction.target.operands[1].kind != aarch64_codegen::OperandKind::BranchTarget ||
+      instruction.target.operands[2].kind != aarch64_codegen::OperandKind::PreparedValue ||
+      instruction.target.operands[3].kind != aarch64_codegen::OperandKind::Immediate ||
+      instruction.target.operands[4].kind != aarch64_codegen::OperandKind::Immediate) {
+    return fail("expected compare branch node operands to carry targets and compare inputs");
+  }
+  return 0;
+}
+
 int module_build_keeps_branch_node_without_restoring_legacy_return_nodes() {
   auto prepared = prepared_with_unconditional_branch();
   const auto result = aarch64_api::build_prepared_module(prepared);
@@ -410,8 +501,8 @@ int module_build_keeps_branch_node_without_restoring_legacy_return_nodes() {
   return 0;
 }
 
-int conditional_branch_control_stays_fail_closed() {
-  auto prepared = prepared_with_conditional_branch();
+int non_fusable_compare_branch_control_stays_fail_closed() {
+  auto prepared = prepared_with_fused_compare_conditional_branch(false);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_module::make_function_lowering_context(
@@ -427,14 +518,14 @@ int conditional_branch_control_stays_fail_closed() {
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 0 || !block.instructions.empty() ||
       !block.successors.empty()) {
-    return fail("expected conditional branch to remain unsupported for this slice");
+    return fail("expected non-fusable compare branch to remain unsupported for this slice");
   }
   if (diagnostics.entries.size() != 1 ||
       diagnostics.entries.front().kind !=
           aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily ||
       diagnostics.entries.front().function_name != function_cf.function_name ||
       diagnostics.entries.front().block_label != block_cf.block_label) {
-    return fail("expected conditional branch to fail closed with a typed diagnostic");
+    return fail("expected non-fusable compare branch to fail closed with a typed diagnostic");
   }
   return 0;
 }
@@ -456,7 +547,13 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = conditional_branch_control_stays_fail_closed(); status != 0) {
+  if (const int status =
+          direct_dispatch_lowers_fusable_compare_branch_to_selected_node();
+      status != 0) {
+    return status;
+  }
+  if (const int status = non_fusable_compare_branch_control_stays_fail_closed();
+      status != 0) {
     return status;
   }
   return 0;
