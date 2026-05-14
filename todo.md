@@ -1,65 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/230_aarch64_c_testsuite_backend_full_scan.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Honest AArch64 Backend Scan Wiring
+Current Step ID: 3
+Current Step Title: Run The First Full Scan
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2, Add Honest AArch64 Backend Scan Wiring.
+Completed Step 3, Run The First Full Scan.
 
-Added explicit opt-in registration controls:
+Ran the explicit AArch64 c-testsuite backend scan without semantic repairs:
 
-- `ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN` defaults `OFF` and registers an
-  AArch64 backend scan independently of the existing host-derived
-  `ENABLE_C_TESTSUITE_BACKEND_TESTS` route.
-- `C_TESTSUITE_AARCH64_BACKEND_RUNNER` is an optional runner/emulator command
-  for non-AArch64 hosts.
+- Registered cases: 220
+- Compiled to AArch64 assembly: 0
+- Assembled/linked: 0
+- Run-and-matched: 0
+- Failed: 220
+- Runtime-unavailable: 0
 
-Updated c-testsuite backend registration:
+Failure inventory:
 
-- Factored backend add-test wiring into a helper so the legacy host-derived
-  route keeps the same naming, labels, mode, triple, and output directories.
-- The explicit AArch64 scan registers tests named
-  `c_testsuite_aarch64_backend_*` with `CODEGEN_MODE=backend-aarch64`,
-  `TARGET_TRIPLE=aarch64-unknown-linux-gnu`, label `aarch64_backend`, and
-  outputs under `c_testsuite_aarch64_backend/`.
-- If native AArch64 host backend tests are already registered through the
-  legacy host route, the explicit route does not duplicate the same test names.
+- Toolchain / build-configuration blocker: 220 cases.
+  - CTest-visible tag: `[FRONTEND_FAIL]`.
+  - Representative cases:
+    `c_testsuite_aarch64_backend_src_00001_c`,
+    `c_testsuite_aarch64_backend_src_00002_c`,
+    `c_testsuite_aarch64_backend_src_00003_c`,
+    `c_testsuite_aarch64_backend_src_00204_c`.
+  - Representative setup probe:
+    `./build-aarch64-scan/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00001.c -o /tmp/c4c_aarch64_probe_00001.s`
+    exited 2 with `backend support is disabled in this build`.
 
-Updated explicit AArch64 runtime handling with root-owned wiring:
+Empty buckets in this scan:
 
-- Added root-owned
-  `tests/c/external/c-testsuite-aarch64-backend-runner.cmake` for the explicit
-  AArch64 backend scan.
-- Legacy host-derived backend tests still route through the pinned submodule
-  runner at `tests/c/external/c-testsuite/RunCase.cmake`.
-- The explicit AArch64 runner compiles, checks assembly output, assembles/links,
-  then runs directly only on native AArch64 hosts or through
-  `C_TESTSUITE_AARCH64_BACKEND_RUNNER`.
-- `C_TESTSUITE_AARCH64_BACKEND_RUNNER` is parsed as a command string with
-  arguments before appending the produced binary, so runners such as
-  `qemu-aarch64 -L /usr/aarch64-linux-gnu` become proper argv lists.
-- On non-AArch64 hosts without a runner, the explicit path fails with
-  `[RUNTIME_UNAVAILABLE]` instead of silently trying to execute an AArch64
-  binary directly.
-- Removed the prior dirty submodule runner edit; `tests/c/external/c-testsuite`
-  is clean again.
+- Frontend parse/sema semantic diagnostics: 0 visible beyond the runner's
+  `[FRONTEND_FAIL]` wrapper.
+- BIR/prepared-BIR: 0.
+- AArch64 lowering: 0.
+- Fallback/non-AArch64 output: 0.
+- Backend assembly/link toolchain: 0.
+- Runtime mismatch: 0.
+- Runtime-unavailable: 0.
+
+The scan did not reach source-level backend capability failures because this
+configured `c4cll` binary rejects `--codegen asm` before writing any output.
 
 ## Suggested Next
 
-Run the explicit AArch64 scan far enough to inventory compile/link failures and
-decide the next backend capability packet from real failing cases.
+Enable or configure the backend-native asm route in the AArch64 scan build, then
+rerun the same explicit scan to produce a semantic backend failure inventory.
 
 ## Watchouts
 
-- The registration proof used `ctest -N -V` only. It proves wiring, not that
-  AArch64 compile/link/runtime cases pass.
-- On non-AArch64 hosts, running explicit AArch64 backend tests without
-  `C_TESTSUITE_AARCH64_BACKEND_RUNNER` is expected to fail at runtime with
-  `[RUNTIME_UNAVAILABLE]` after any compile/link success.
+- `build-aarch64-scan/c4cll` was missing before the first ctest attempt; the
+  `c4cll` target was built successfully, then the final scan was rerun into
+  `test_after.log`.
+- The final scan is a valid failure inventory for the current build
+  configuration, but it is not yet an inventory of AArch64 lowering failures.
+- Do not weaken c-testsuite expectations to make this scan green; the current
+  blocker is that backend-native asm codegen is disabled in the scan build.
 
 ## Proof
 
@@ -67,25 +67,20 @@ Proof log: `test_after.log`.
 
 Commands run:
 
-- `cmake -S . -B build-aarch64-scan -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON`
-- `ctest --test-dir build-aarch64-scan -N -V -R '^c_testsuite_aarch64_backend_'`
-- `cmake -S . -B build-host-backend-check -DENABLE_C_TESTSUITE_BACKEND_TESTS=ON`
-- `ctest --test-dir build-host-backend-check -N -V -R '^c_testsuite_aarch64_backend_'`
-- `git status --short`
+- `ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_' > test_after.log 2>&1`
+- Setup check after the first attempt found the test compiler missing:
+  `cmake --build build-aarch64-scan --target c4cll -j2`
+- Final proof rerun:
+  `ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_' > test_after.log 2>&1`
+- Representative classifier probe recorded in `test_after.log`:
+  `./build-aarch64-scan/c4cll --codegen asm --target aarch64-unknown-linux-gnu tests/c/external/c-testsuite/src/00001.c -o /tmp/c4c_aarch64_probe_00001.s`
 
 Results:
 
-- Explicit AArch64 backend scan registration listed 220 tests.
-- Listed commands include `-DCODEGEN_MODE=backend-aarch64`,
-  `-DTARGET_TRIPLE=aarch64-unknown-linux-gnu`, and `OUT_LL`/`OUT_BIN` under
-  `build-aarch64-scan/c_testsuite_aarch64_backend/`.
-- Listed explicit AArch64 commands use the root-owned
-  `tests/c/external/c-testsuite-aarch64-backend-runner.cmake` script.
-- The root-owned runner parses `C_TESTSUITE_AARCH64_BACKEND_RUNNER` command
-  strings with arguments before runtime execution.
-- This workspace reports `CMAKE_HOST_SYSTEM_PROCESSOR=aarch64`; with only the
-  legacy host backend option enabled, `^c_testsuite_aarch64_backend_` listed
-  220 tests through the original submodule `RunCase.cmake`, confirming the
-  host-derived route remains registered.
-- `git status --short` does not show lowercase `m tests/c/external/c-testsuite`;
-  the nested submodule checkout is clean.
+- Final ctest exit code: 8.
+- `0% tests passed, 220 tests failed out of 220`.
+- All 220 failures have CTest-visible `[FRONTEND_FAIL]` from
+  `c-testsuite-aarch64-backend-runner.cmake`.
+- No output files were created under `build-aarch64-scan/c_testsuite_aarch64_backend`.
+- The classifier probe shows the underlying first-stage diagnostic:
+  `backend support is disabled in this build`.
