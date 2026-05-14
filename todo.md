@@ -8,24 +8,22 @@ Current Step Title: Split Or Classify Compatibility Projection
 
 ## Just Finished
 
-Plan repair updated Step 4 and Step 5 away from retired module draft filenames
-and toward the current `src/backend/mir/aarch64/codegen/*` implementation
-surfaces.
+Step 6 split the derived AArch64 compatibility projection out of
+`src/backend/mir/aarch64/codegen/emit.cpp` into target-private
+`src/backend/mir/aarch64/codegen/compatibility_projection.hpp` and
+`src/backend/mir/aarch64/codegen/compatibility_projection.cpp`.
 
-`plan.md` now treats the completed extraction/migration work as current-state
-context, keeps `machine_printer.*` deferred to idea 224 shared MIR printer
-cleanup, and narrows active Step 6 to compatibility projection
-split/classification.
+`emit.cpp` now stays in orchestration: validate handoff, build the MIR module,
+derive compatibility-facing function records from canonical lowered MIR, and
+assign the derived compatibility projection. The projection helper filters only
+selected non-return machine nodes and does not act as semantic lowering
+authority.
 
 ## Suggested Next
 
-Next executor packet: Step 6, split the compatibility projection currently in
-`src/backend/mir/aarch64/codegen/emit.cpp` into target-private
-`src/backend/mir/aarch64/codegen/compatibility_projection.hpp` and
-`src/backend/mir/aarch64/codegen/compatibility_projection.cpp`, with build
-wiring and focused proof. If inspection shows the split is not warranted, leave
-the projection in `emit.cpp` but classify it clearly as derived compatibility,
-not semantic lowering authority, and record the reason here.
+Next packet: supervisor or plan owner should decide whether Step 6 exhausts the
+current runbook or whether another target-private codegen cleanup remains
+inside the active idea before closure/deactivation.
 
 ## Watchouts
 
@@ -36,12 +34,13 @@ not semantic lowering authority, and record the reason here.
   MIR printer route lands would break the public AArch64 asm path.
 - Idea 224 owns replacing this target-local printer with common MIR traversal
   plus AArch64 target rendering hooks.
-- The compatibility projection must remain derived from canonical lowering; it
-  must not become a fallback lowering input or a broad record-pile owner.
-- No implementation, lowering expectations, or testcase contracts were changed
-  in this lifecycle repair packet.
+- The compatibility projection is now target-private codegen glue derived from
+  canonical lowered MIR; do not add fallback lowering inputs there.
+- `machine_printer.*`, `src/backend/mir/aarch64/module/*`, tests, `plan.md`,
+  and `ideas/open/*` were not touched.
 
 ## Proof
 
-Lifecycle-only repair. Reference hygiene to run after this patch:
-`rg -n 'src/backend/mir/aarch64/module/(function_traversal|operand_resolution|instruction_lowering|branch_control_lowering|call_lowering|public_assembly_bridge|compatibility_projection)' plan.md todo.md`.
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_function_traversal|backend_aarch64_instruction_dispatch|backend_aarch64_operand_resolution|backend_aarch64_return_lowering|backend_aarch64_branch_control_lowering|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
+
+Passed. Proof log: `test_after.log`.
