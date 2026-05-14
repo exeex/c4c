@@ -9,11 +9,11 @@ Current Step Title: Implement One Lowering Family At A Time
 ## Just Finished
 
 Step 5: Implement One Lowering Family At A Time cleaned up the stale
-`src/backend/mir/aarch64/module/*.cpp.md` replacement drafts after their
-implemented surfaces had moved into compiled module/codegen C++.
+`src/backend/mir/aarch64/module/*.md` replacement drafts and stage notes after
+their implemented surfaces had moved into compiled module/codegen C++.
 
-`plan.md` no longer points active executors at deleted `module/*.cpp.md` files;
-its active read/target list now references the current `module/module.*` and
+`plan.md` no longer points active executors at deleted `module/*.md` files; its
+active read/target list now references the current `module/module.*` and
 `codegen/*.cpp/.hpp` implementation surfaces.
 
 ## Suggested Next
@@ -23,9 +23,9 @@ the compatibility projection split or the next route-review packet.
 
 ## Watchouts
 
-- Historical stage notes under `src/backend/mir/aarch64/module/` may still
-  mention the removed draft filenames as archive context; active `plan.md` no
-  longer depends on them.
+- The removed stage/draft notes were stale route scaffolding, not canonical
+  source intent; durable source intent remains in `ideas/open/228...` and the
+  parent `ideas/open/224...`.
 - Review checkpoint: the codegen headers introduced during the extraction
   remain target-private helper surfaces used by focused tests, not stable
   module public API.
@@ -35,4 +35,5 @@ the compatibility projection split or the next route-review packet.
 ## Proof
 
 Docs/lifecycle-only cleanup. Validation is reference hygiene:
-`rg -n 'module/(module|function_traversal|operand_resolution|instruction_lowering|branch_control_lowering|call_lowering|public_assembly_bridge|compatibility_projection)\\.cpp\\.md|src/backend/mir/aarch64/module/.*\\.cpp\\.md' plan.md todo.md ideas/open tests`.
+`find src/backend/mir/aarch64/module -maxdepth 1 -name '*.md' -print` and
+`rg -n 'src/backend/mir/aarch64/module/.*\\.md|module/(module|module\\.hpp|stage2_review_layout|stage2_to_stage3_handoff|stage3_draft_review)\\.md' plan.md ideas/open tests`.
