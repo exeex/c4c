@@ -781,8 +781,9 @@ int records_preserve_frame_control_call_and_move_identity() {
       spill_node->scratch->role != aarch64_codegen::RegisterOperandRole::SpillAuthority ||
       spill_node->scratch->value_id != prepare::PreparedValueId{21} ||
       spill_node->scratch->value_name != source_name ||
-      spill_node->scratch->occupied_registers.size() != 1 ||
-      spill_node->scratch->occupied_registers.front() != "x20" ||
+      spill_node->scratch->occupied_register_references.size() != 1 ||
+      spill_node->scratch->occupied_register_references.front() !=
+          aarch64_abi::x_register(20) ||
       spill_node->scratch_register_authority !=
           function.spill_reloads.front().scratch_register_authority ||
       spill_node->source_spill_reload != function.spill_reloads.front().source_spill_reload) {
@@ -794,8 +795,9 @@ int records_preserve_frame_control_call_and_move_identity() {
       !reload_node->stack_offset_is_prepared_snapshot ||
       !reload_node->scratch.has_value() ||
       reload_node->scratch->reg != aarch64_abi::x_register(20) ||
-      reload_node->occupied_scratch_registers.size() != 1 ||
-      reload_node->occupied_scratch_registers.front() != "x20" ||
+      reload_node->occupied_scratch_register_references.size() != 1 ||
+      reload_node->occupied_scratch_register_references.front() !=
+          aarch64_abi::x_register(20) ||
       reload_node->source_spill_reload != function.spill_reloads.back().source_spill_reload) {
     return fail("expected reload machine node to preserve scratch, slot, and provenance facts");
   }

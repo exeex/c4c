@@ -1118,17 +1118,72 @@ c4c::backend::prepare::PreparedRegisterClass register_class_from_bank(
   return c4c::backend::prepare::PreparedRegisterClass::None;
 }
 
+std::string_view register_display_name(
+    c4c::backend::aarch64::abi::RegisterReference reg) {
+  static constexpr std::string_view x_names[] = {
+      "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
+      "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
+      "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+      "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31"};
+  static constexpr std::string_view w_names[] = {
+      "w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
+      "w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
+      "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
+      "w24", "w25", "w26", "w27", "w28", "w29", "w30", "w31"};
+  static constexpr std::string_view v_names[] = {
+      "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",
+      "v8",  "v9",  "v10", "v11", "v12", "v13", "v14", "v15",
+      "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+      "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31"};
+  static constexpr std::string_view s_names[] = {
+      "s0",  "s1",  "s2",  "s3",  "s4",  "s5",  "s6",  "s7",
+      "s8",  "s9",  "s10", "s11", "s12", "s13", "s14", "s15",
+      "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
+      "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31"};
+  static constexpr std::string_view d_names[] = {
+      "d0",  "d1",  "d2",  "d3",  "d4",  "d5",  "d6",  "d7",
+      "d8",  "d9",  "d10", "d11", "d12", "d13", "d14", "d15",
+      "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
+      "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"};
+  static constexpr std::string_view q_names[] = {
+      "q0",  "q1",  "q2",  "q3",  "q4",  "q5",  "q6",  "q7",
+      "q8",  "q9",  "q10", "q11", "q12", "q13", "q14", "q15",
+      "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23",
+      "q24", "q25", "q26", "q27", "q28", "q29", "q30", "q31"};
+  if (reg.index >= 32U) {
+    return {};
+  }
+  switch (reg.view) {
+    case c4c::backend::aarch64::abi::RegisterView::X:
+      return x_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::W:
+      return w_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::V:
+      return v_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::S:
+      return s_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::D:
+      return d_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::Q:
+      return q_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::Sp:
+      return "sp";
+  }
+  return {};
+}
+
 std::vector<std::string_view> occupied_register_views(
-    const c4c::backend::prepare::PreparedStoragePlanValue& storage) {
-  std::vector<std::string_view> occupied;
-  occupied.reserve(storage.occupied_register_names.size());
-  for (const auto& name : storage.occupied_register_names) {
-    occupied.push_back(name);
+    c4c::backend::aarch64::abi::RegisterReference reg) {
+  const auto display_name = register_display_name(reg);
+  if (display_name.empty()) {
+    return {};
   }
-  if (occupied.empty() && storage.register_name.has_value()) {
-    occupied.push_back(*storage.register_name);
-  }
-  return occupied;
+  return {display_name};
+}
+
+std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references(
+    c4c::backend::aarch64::abi::RegisterReference reg) {
+  return {reg};
 }
 
 std::optional<RegisterOperand> make_prepared_register_operand(
@@ -1171,7 +1226,8 @@ std::optional<RegisterOperand> make_prepared_register_operand(
       .prepared_bank = storage.bank,
       .expected_view = expected_view,
       .contiguous_width = storage.contiguous_width,
-      .occupied_registers = occupied_register_views(storage),
+      .occupied_register_references = occupied_register_references(*converted.reg),
+      .occupied_registers = occupied_register_views(*converted.reg),
   };
 }
 
@@ -1658,7 +1714,7 @@ MachineNodeStatusRecord spill_reload_selection_status(
   }
   if (!instruction.source_spill_reload || !instruction.slot_id.has_value() ||
       !instruction.stack_offset_bytes.has_value() || !instruction.scratch.has_value() ||
-      instruction.occupied_scratch_registers.empty() ||
+      instruction.occupied_scratch_register_references.empty() ||
       !instruction.scratch_register_authority.has_value()) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
@@ -1785,6 +1841,15 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
 }
 
 InstructionRecord make_spill_reload_instruction(SpillReloadInstructionRecord instruction) {
+  if (instruction.scratch.has_value() &&
+      instruction.scratch->occupied_register_references.empty()) {
+    instruction.scratch->occupied_register_references.push_back(instruction.scratch->reg);
+  }
+  if (instruction.occupied_scratch_register_references.empty() &&
+      instruction.scratch.has_value()) {
+    instruction.occupied_scratch_register_references =
+        instruction.scratch->occupied_register_references;
+  }
   std::vector<OperandRecord> operands = {make_memory_operand(instruction.slot)};
   if (instruction.scratch.has_value()) {
     operands.push_back(make_register_operand(*instruction.scratch));

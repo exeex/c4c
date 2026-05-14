@@ -177,8 +177,9 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
         alu.result_register->expected_view != aarch64_abi::RegisterView::X ||
         alu.result_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
         alu.result_register->prepared_class != prepare::PreparedRegisterClass::General ||
-        alu.result_register->occupied_registers.size() != 1 ||
-        alu.result_register->occupied_registers.front() != "x0") {
+        alu.result_register->occupied_register_references.size() != 1 ||
+        alu.result_register->occupied_register_references.front() !=
+            aarch64_abi::x_register(0)) {
       return fail("expected ALU result to become a typed prepared destination register");
     }
 
@@ -261,6 +262,11 @@ int prepared_scalar_alu_registers_prefer_storage_register_placement() {
       lhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       rhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {
     return fail("expected ALU result and operands to use storage placement registers");
+  }
+  if (rhs->occupied_register_references.size() != 1 ||
+      rhs->occupied_register_references.front() != aarch64_abi::x_register(4) ||
+      rhs->occupied_registers.size() != 1 || rhs->occupied_registers.front() != "x4") {
+    return fail("expected occupied register display to follow typed placement conversion");
   }
   return 0;
 }

@@ -255,6 +255,7 @@ struct RegisterOperand {
       c4c::backend::prepare::PreparedRegisterBank::None;
   std::optional<c4c::backend::aarch64::abi::RegisterView> expected_view;
   std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
 };
 
@@ -514,6 +515,8 @@ struct SpillReloadInstructionRecord {
   MachinePseudoKind pseudo_kind = MachinePseudoKind::SpillToSlot;
   MemoryOperand slot;
   std::optional<RegisterOperand> scratch;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      occupied_scratch_register_references;
   std::vector<std::string_view> occupied_scratch_registers;
   std::optional<std::size_t> scratch_register_authority;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
