@@ -1,26 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Write Stage 2 To Stage 3 Handoff
+Current Step ID: 6
+Current Step Title: Final Stage 2 Acceptance Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 5: Write Stage 2 To Stage 3 Handoff added
-`src/backend/mir/aarch64/module/stage2_to_stage3_handoff.md` as the Stage 3
-intake contract. The handoff records trusted Stage 1 evidence, the no-repair
-Stage 1 dependency result, the mandatory Stage 3 draft files from
-`stage2_review_layout.md`, route constraints for hierarchical MIR carriers,
-lightweight provenance, shared `mir_printer` traversal with AArch64-owned
-rendering, and Stage 3 non-goals/rejection signals.
+Step 6: Final Stage 2 Acceptance Check verified the Stage 2 review/layout and
+handoff artifacts for the AArch64 module phoenix route. The check confirmed
+that `stage2_review_layout.md` exists and covers current subsystem shape,
+extraction quality/no-repair status, replacement layout, parent 224 judgment,
+and the Stage 3 draft artifact map. It also confirmed that
+`stage2_to_stage3_handoff.md` exists, matches the mandatory draft map and route
+constraints, `module.cpp` still exists, and `plan.md`/`todo.md` still point to
+idea 226.
 
 ## Suggested Next
 
-Delegate Step 6 final acceptance check: verify the Stage 2 review/layout and
-handoff artifacts exist, match each other, preserve the no-implementation-edit
-route constraint, and record final Stage 2 proof notes for supervisor review.
+Stage 2 is ready for supervisor review and possible plan-owner closure or
+transition decision.
 
 ## Watchouts
 
@@ -43,12 +43,16 @@ route constraint, and record final Stage 2 proof notes for supervisor review.
   canonical MIR nodes are the carrier, flat vectors are compatibility only,
   cached display strings are diagnostics only, and the shared printer owns
   traversal while AArch64 owns rendering.
+- The final acceptance check found no implementation, build wiring, test, or
+  expectation dirtiness. This packet only updates `todo.md` and
+  `test_after.log`.
 
 ## Proof
 
-No build needed for this markdown-only handoff packet. The delegated proof
-wrote concise read-only `rg` output to `test_after.log`, verifying that
-`stage2_to_stage3_handoff.md` exists, contains sections for trustworthy
-evidence, evidence repair status, mandatory Stage 3 draft files, route
-constraints, non-goals, rejection signals, and sequencing dependencies, and
-references all mandatory Stage 3 draft files from `stage2_review_layout.md`.
+No build needed for this markdown-only acceptance packet. The delegated proof
+wrote concise read-only acceptance notes to `test_after.log`, verifying the
+Stage 2 review/layout artifact, the Stage 2 to Stage 3 handoff artifact, the
+mandatory Stage 3 draft map and route constraints, the continued existence of
+`src/backend/mir/aarch64/module/module.cpp`, clean non-doc implementation/build
+/test/expectation state, and continued plan/todo linkage to
+`ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md`.
