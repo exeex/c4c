@@ -17,8 +17,9 @@ legacy evidence for the current build.
 
 ## Suggested Next
 
-Proceed with Step 5 handoff: record that physical teardown is deferred until a
-later phoenix stage owns replacement implementation and build-system wiring.
+Proceed to Step 5 deferred teardown handoff: record that physical teardown is
+deferred until a later phoenix stage owns replacement implementation and
+build-system wiring.
 
 ## Watchouts
 
@@ -38,8 +39,8 @@ later phoenix stage owns replacement implementation and build-system wiring.
 
 ## Proof
 
-Ran the supervisor-selected filesystem close-readiness proof and wrote
-`test_after.log`. No build was run because this packet verifies markdown
-evidence and build-preserving state only. Proof found the markdown artifact,
-header-invariant, index-reference, and `module.cpp` presence checks green;
-Stage 1 is ready for handoff under the current source idea.
+Ran the supervisor-selected build-preserving close-readiness proof and wrote
+`test_after.log`. Proof found the markdown artifact, header-invariant,
+index-reference, `module.cpp` presence, CMake reference, and delegated
+`c4c_backend` build checks green; Stage 1 is ready for handoff under the
+current source idea.
