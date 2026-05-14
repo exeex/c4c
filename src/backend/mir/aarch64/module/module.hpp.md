@@ -170,8 +170,29 @@ This file should own the directory index contract: the public module build entry
 the exported module/function/data record vocabulary, and the narrow set of durable types
 that downstream clients are expected to consume.
 
+For the replacement boundary, the public entry point still receives
+`prepare::PreparedBirModule`, but the durable product should be target MIR
+nodes lowered directly from that prepared module. The header should not describe
+an intermediate accumulation of broad module records as the thing later stages
+must interpret. Its exported shape should make clear that prepared BIR evidence
+is transformed into MIR instructions, operands, and registers that already know
+how they print for the target.
+
+The MIR node vocabulary must be rich enough for a shared `mir_printer` to scan
+once and emit `.s` for `gcc`/`as` without learning AArch64-specific syntax.
+That printer is the platform-independent traversal and emission layer. It calls
+target-owned print/render methods on instruction, operand, and register objects
+when a concrete assembly spelling is needed.
+
+The target-owned printable representation should cover instructions plus their
+operands, including immediates, registers, memory forms, labels, symbols, and
+other target operands introduced by lowering. This keeps AArch64 spelling rules
+near AArch64 instruction/operand/register types, while keeping the common
+printer reusable across targets.
+
 It should not own lowering algorithms, register-allocation policy, frame planning,
-parallel-copy resolution, call ABI planning, spill/reload selection, or compatibility
-storage for clients that can consume canonical MIR blocks directly. In a rebuild, keep
-this header as the directory index surface, but push repeated storage-location shapes,
-debug provenance, and compatibility views behind clearer typed seams.
+parallel-copy resolution, call ABI planning, spill/reload selection, target
+assembly syntax, or compatibility storage for clients that can consume canonical
+MIR blocks directly. In a rebuild, keep this header as the directory index
+surface, but push repeated storage-location shapes, debug provenance, and
+compatibility views behind clearer typed seams.

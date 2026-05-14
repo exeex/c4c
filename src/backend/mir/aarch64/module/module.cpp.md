@@ -213,12 +213,29 @@ separate from function lowering but lives in the same file.
 
 ## Rebuild Ownership Boundary
 
-This file should own the final composition of an AArch64 module snapshot from
-validated prepared inputs: ordering the record builders, preserving source
-evidence, and returning the public `BuildResult`.
+This file should become the replacement lowering boundary from
+`prepare::PreparedBirModule` to target MIR nodes. The rebuild should not keep
+the current intermediate pile of module records as the primary product and then
+ask later code to rediscover instructions from those records. It should consume
+the prepared module directly, walk prepared functions/blocks/operations, and
+produce MIR nodes that already represent the target-owned instruction stream.
 
+The intended output boundary is a MIR tree that is sufficient for one shared
+`mir_printer` pass to scan and emit `.s` accepted by `gcc`/`as`. The common
+printer should be platform-independent: it owns traversal, spacing, section
+ordering hooks, and file emission mechanics, but it should not encode AArch64
+instruction syntax or operand spellings.
+
+Printing an individual node should dispatch to target-owned printable methods
+on AArch64 instruction, operand, and register representations. Operands should
+include printable immediates, physical/virtual registers, memory references,
+symbols, labels, and other target forms as needed by MIR lowering. Registers
+and operands should carry their own renderable target identity instead of
+forcing the common printer to inspect ad hoc record fields.
+
+This replacement boundary leaves `module.cpp` as a thin orchestrator over
+explicit contracts: validate/accept prepared input, drive semantic lowering
+from prepared BIR facts to MIR nodes, and return the public `BuildResult`.
 It should not own register allocation, ABI classification, prepared-plan
-construction, broad name recovery policy, scalar instruction selection, generic
-MIR operand semantics, or data-layout policy. In a rebuild, those should move
-behind narrower helpers or existing domain modules, with this file reduced to a
-thin orchestrator over explicit contracts.
+construction, broad name recovery policy, scalar instruction selection,
+generic MIR operand semantics, target assembly syntax, or data-layout policy.
