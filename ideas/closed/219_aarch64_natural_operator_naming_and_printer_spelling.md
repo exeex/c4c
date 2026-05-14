@@ -1,7 +1,8 @@
 # AArch64 Natural Operator Naming And Printer Spelling
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Depends On:
 - `ideas/closed/218_aarch64_structured_asm_encoder_linker_contract.md`
@@ -102,6 +103,20 @@ into exact AArch64 encoding families.
   supported operator kinds.
 - Representative tests or compile checks prove that code-facing operator names
   and printed spelling do not drift for the supported subset.
+
+## Completion Note
+
+Closed after the active runbook completed all six steps. The final executor
+review found no remaining acceptance gap: the contract now distinguishes the
+naming tiers, alias ownership stays with assembler/encoder canonicalization,
+printer spelling uses the centralized helper surface for the supported subset,
+and representative AArch64 records/printer tests guard supported spelling
+against drift.
+
+Close-time regression guard used matching focused AArch64 records/printer
+logs: `test_before.log` and `test_after.log` both reported 2 passed, 0 failed.
+The guard passed in non-decreasing mode because the existing focused tests were
+strengthened in place rather than introducing a new CTest target.
 
 ## Reviewer Reject Signals
 
