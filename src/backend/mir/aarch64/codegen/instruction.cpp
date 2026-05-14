@@ -149,6 +149,10 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "conditional_branch";
     case MachineOpcode::CompareBranch:
       return "compare_branch";
+    case MachineOpcode::DirectCall:
+      return "direct_call";
+    case MachineOpcode::IndirectCall:
+      return "indirect_call";
     case MachineOpcode::Add:
       return "add";
     case MachineOpcode::Sub:
@@ -197,6 +201,10 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "b";
     case MachinePrinterMnemonicKind::ConditionalBranchNonZero:
       return "cbnz";
+    case MachinePrinterMnemonicKind::DirectCall:
+      return "bl";
+    case MachinePrinterMnemonicKind::IndirectCall:
+      return "blr";
     case MachinePrinterMnemonicKind::Add:
       return "add";
     case MachinePrinterMnemonicKind::Sub:
@@ -219,6 +227,10 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Branch;
     case MachineOpcode::ConditionalBranch:
       return MachinePrinterMnemonicKind::ConditionalBranchNonZero;
+    case MachineOpcode::DirectCall:
+      return MachinePrinterMnemonicKind::DirectCall;
+    case MachineOpcode::IndirectCall:
+      return MachinePrinterMnemonicKind::IndirectCall;
     case MachineOpcode::Add:
       return MachinePrinterMnemonicKind::Add;
     case MachineOpcode::Sub:
@@ -1900,6 +1912,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = instruction.is_indirect ? MachineOpcode::IndirectCall : MachineOpcode::DirectCall,
       .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
       .operands = operands,
       .defs = defs,

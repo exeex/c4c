@@ -7,6 +7,7 @@
 #include "src/target_profile.hpp"
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -59,6 +60,51 @@ prepare::PreparedBirModule prepared_with_unsupported_instructions() {
       .blocks = {prepare::PreparedControlFlowBlock{
           .block_label = entry_label,
           .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_direct_call_plan() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.call");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.call.entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("dispatch.call.entry");
+  const auto actual_link = prepared.names.link_names.intern("actual_function");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.call.entry",
+          .insts = {bir::CallInst{
+              .callee = "actual_function",
+              .callee_link_name_id = actual_link,
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"actual_function"},
       }},
   });
   return prepared;
@@ -232,11 +278,60 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
     return fail("expected first diagnostic to describe scalar instruction zero");
   }
   if (diagnostics.entries[1].kind !=
-          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan ||
       diagnostics.entries[1].instruction_index != 1 ||
       diagnostics.entries[1].instruction_family !=
           aarch64_module::InstructionLoweringFamily::Call) {
-    return fail("expected second diagnostic to describe call instruction one");
+    return fail("expected second diagnostic to describe missing prepared call plan");
+  }
+  return 0;
+}
+
+int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
+  auto prepared = prepared_with_direct_call_plan();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  if (function_context.call_plans == nullptr ||
+      function_context.frame_plan != nullptr ||
+      function_context.dynamic_stack_plan != nullptr) {
+    return fail("expected function context to thread prepared call plans without fake frame plans");
+  }
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected prepared direct call dispatch to emit call plus return");
+  }
+
+  const auto& call_instruction = block.instructions.front();
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &call_instruction.target.payload);
+  if (call == nullptr ||
+      call_instruction.target.family != aarch64_module::codegen::InstructionFamily::Call ||
+      call_instruction.target.opcode != aarch64_module::codegen::MachineOpcode::DirectCall ||
+      call_instruction.target.function_name != function_cf.function_name ||
+      call_instruction.target.block_label != block_cf.block_label ||
+      call_instruction.target.instruction_index != 0 ||
+      !call->direct_callee.has_value() ||
+      call->direct_callee_label != "actual_function" ||
+      call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      call->source_call != &function_context.call_plans->calls.front() ||
+      !call->arguments.empty() || call->result.has_value()) {
+    return fail("expected direct call node to preserve prepared call provenance only");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator to remain lowered after direct call");
   }
   return 0;
 }
@@ -348,6 +443,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_visits_prepared_instructions_in_order_and_fails_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi();
       status != 0) {
     return status;
   }

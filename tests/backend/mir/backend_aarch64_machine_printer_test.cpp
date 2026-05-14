@@ -526,6 +526,40 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
   return 0;
 }
 
+int selected_direct_call_prints_from_prepared_call_provenance() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"actual_function"},
+  };
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{9},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "actual_function",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .calling_convention = bir::CallingConv::C,
+      });
+
+  const auto result = print_common_instruction_nodes({call});
+  if (!result.ok) {
+    return fail("expected direct call node to print from prepared provenance: " +
+                result.diagnostic);
+  }
+  const auto call_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(call);
+  const std::string expected = "    " + std::string(call_mnemonic) + " actual_function\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    bl actual_function\n",
+                         "direct-call common-printer drift guard");
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -598,6 +632,25 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected scalar with unprintable sub operands to fail closed");
   }
 
+  const auto call_missing_provenance = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{10},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "actual_function",
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto call_missing_provenance_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(call_missing_provenance);
+  if (call_missing_provenance_result.ok ||
+      call_missing_provenance_result.diagnostic.find("missing prepared callee provenance") ==
+          std::string::npos) {
+    return fail("expected selected direct call without prepared provenance to fail closed");
+  }
+
   return 0;
 }
 
@@ -629,6 +682,10 @@ int main() {
     return result;
   }
   if (const int result = selected_scalar_add_sub_reject_nonencodable_immediates();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_direct_call_prints_from_prepared_call_provenance();
       result != 0) {
     return result;
   }

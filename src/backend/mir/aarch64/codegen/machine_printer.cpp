@@ -212,6 +212,27 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   return target_printed({out.str()});
 }
 
+mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
+                                             const CallInstructionRecord& call) {
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");
+  }
+  if (call.is_indirect) {
+    return target_unsupported(bad_header(instruction) +
+                              "indirect call node is outside the printable subset");
+  }
+  if (!call.direct_callee.has_value() || call.direct_callee_label.empty() ||
+      call.source_call == nullptr || !call.wrapper_kind.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "direct call node is missing prepared callee provenance");
+  }
+
+  std::ostringstream out;
+  out << mnemonic << " " << call.direct_callee_label;
+  return target_printed({out.str()});
+}
+
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
                                                const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
@@ -371,6 +392,9 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* memory = std::get_if<MemoryInstructionRecord>(&instruction.payload)) {
     return print_memory(instruction, *memory);
+  }
+  if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
+    return print_call(instruction, *call);
   }
   if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     return print_scalar(instruction, *scalar);

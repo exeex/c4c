@@ -46,6 +46,7 @@ enum class ModuleLoweringDiagnosticKind {
   UnsupportedStoragePlan,
   MissingBlockContext,
   MissingInstructionBlockMapping,
+  MissingPreparedCallPlan,
   UnsupportedInstructionFamily,
   UnsupportedTerminatorFamily,
 };
@@ -75,6 +76,9 @@ struct FunctionLoweringContext {
   const prepare::PreparedValueLocationFunction* value_locations = nullptr;
   const prepare::PreparedStoragePlanFunction* storage_plan = nullptr;
   const prepare::PreparedRegallocFunction* regalloc = nullptr;
+  const prepare::PreparedFramePlanFunction* frame_plan = nullptr;
+  const prepare::PreparedDynamicStackPlanFunction* dynamic_stack_plan = nullptr;
+  const prepare::PreparedCallPlansFunction* call_plans = nullptr;
 };
 
 struct BlockLoweringContext {

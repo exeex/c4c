@@ -95,6 +95,8 @@ enum class MachineOpcode {
   Branch,
   ConditionalBranch,
   CompareBranch,
+  DirectCall,
+  IndirectCall,
   Add,
   Sub,
   And,
@@ -119,6 +121,8 @@ enum class MachinePrinterMnemonicKind {
   None,
   Branch,
   ConditionalBranchNonZero,
+  DirectCall,
+  IndirectCall,
   Add,
   Sub,
   Load,
@@ -531,9 +535,18 @@ struct SpillReloadInstructionRecord {
 
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
+  std::string_view direct_callee_label;
   std::optional<OperandRecord> indirect_callee;
   std::vector<OperandRecord> arguments;
   std::optional<OperandRecord> result;
+  std::optional<prepare::PreparedCallWrapperKind> wrapper_kind;
+  std::size_t variadic_fpr_arg_register_count = 0;
+  std::optional<prepare::PreparedMemoryReturnPlan> memory_return;
+  std::vector<prepare::PreparedCallArgumentPlan> prepared_arguments;
+  std::optional<prepare::PreparedCallResultPlan> prepared_result;
+  std::vector<prepare::PreparedCallPreservedValue> preserved_values;
+  std::vector<prepare::PreparedClobberedRegister> clobbered_registers;
+  const prepare::PreparedCallPlan* source_call = nullptr;
   bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

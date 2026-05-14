@@ -53,6 +53,10 @@ module::FunctionLoweringContext make_function_lowering_context(
         }
         return nullptr;
       }(),
+      .frame_plan = prepare::find_prepared_frame_plan(prepared, function.function_name),
+      .dynamic_stack_plan =
+          prepare::find_prepared_dynamic_stack_plan(prepared, function.function_name),
+      .call_plans = prepare::find_prepared_call_plans(prepared, function.function_name),
   };
 }
 

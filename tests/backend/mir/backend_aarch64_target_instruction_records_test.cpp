@@ -1,6 +1,7 @@
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -197,6 +198,28 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   const auto result = make_value_register(prepare::PreparedValueId{21},
                                           c4c::ValueNameId{8},
                                           0);
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 2,
+      .instruction_index = 5,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"actual_function"},
+      .arguments = {prepare::PreparedCallArgumentPlan{
+          .instruction_index = 5,
+          .arg_index = 0,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .destination_register_name = std::string{"x0"},
+      }},
+      .result = prepare::PreparedCallResultPlan{
+          .instruction_index = 5,
+          .value_bank = prepare::PreparedRegisterBank::Gpr,
+          .destination_value_id = prepare::PreparedValueId{21},
+          .source_register_name = std::string{"x0"},
+      },
+      .clobbered_registers = {prepare::PreparedClobberedRegister{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_name = "x0",
+      }},
+  };
   const auto call = aarch64_codegen::make_call_instruction(
       aarch64_codegen::CallInstructionRecord{
           .direct_callee =
@@ -205,11 +228,17 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
                   .type = bir::TypeKind::Ptr,
                   .is_extern = true,
               },
+          .direct_callee_label = "actual_function",
           .arguments =
               {
                   make_value_register(prepare::PreparedValueId{22}, c4c::ValueNameId{9}, 3),
               },
           .result = result,
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .prepared_arguments = prepared_call.arguments,
+          .prepared_result = prepared_call.result,
+          .clobbered_registers = prepared_call.clobbered_registers,
+          .source_call = &prepared_call,
           .calling_convention = bir::CallingConv::C,
       });
   const auto ret = aarch64_codegen::make_return_instruction(
@@ -260,6 +289,13 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
       call.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
       !call_payload->direct_callee.has_value() ||
       call_payload->direct_callee->link_name != c4c::LinkNameId{4} ||
+      call_payload->direct_callee_label != "actual_function" ||
+      call_payload->wrapper_kind !=
+          prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      call_payload->source_call != &prepared_call ||
+      call_payload->prepared_arguments.size() != 1 ||
+      !call_payload->prepared_result.has_value() ||
+      call_payload->clobbered_registers.size() != 1 ||
       call_payload->arguments.size() != 1 || !call_payload->result.has_value()) {
     return fail("expected call record to preserve explicit callee, argument, and result operands");
   }
@@ -497,6 +533,18 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
           .rhs = make_value_register(prepare::PreparedValueId{38}, c4c::ValueNameId{20}, 4),
           .supported_integer_operation = true,
       }));
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{8},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "actual_function",
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .calling_convention = bir::CallingConv::C,
+      });
 
   if (aarch64_codegen::machine_printer_mnemonic_kind_name(
           aarch64_codegen::MachinePrinterMnemonicKind::None) != "" ||
@@ -505,6 +553,7 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
           "cbnz" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(load) != "ldr" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(store) != "str" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(call) != "bl" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret) != "ret" ||
       aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret) != "" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(immediate_ret) != "ret" ||
