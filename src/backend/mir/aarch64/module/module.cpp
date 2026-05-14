@@ -98,6 +98,69 @@ namespace {
   return views;
 }
 
+[[nodiscard]] std::string_view stable_register_name(
+    c4c::backend::aarch64::abi::RegisterReference reg) {
+  static constexpr std::string_view gp_x_names[] = {
+      "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
+      "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
+      "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+      "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31",
+  };
+  static constexpr std::string_view gp_w_names[] = {
+      "w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
+      "w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
+      "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
+      "w24", "w25", "w26", "w27", "w28", "w29", "w30", "w31",
+  };
+  static constexpr std::string_view fp_s_names[] = {
+      "s0",  "s1",  "s2",  "s3",  "s4",  "s5",  "s6",  "s7",
+      "s8",  "s9",  "s10", "s11", "s12", "s13", "s14", "s15",
+      "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
+      "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31",
+  };
+  static constexpr std::string_view fp_d_names[] = {
+      "d0",  "d1",  "d2",  "d3",  "d4",  "d5",  "d6",  "d7",
+      "d8",  "d9",  "d10", "d11", "d12", "d13", "d14", "d15",
+      "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
+      "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31",
+  };
+  static constexpr std::string_view fp_q_names[] = {
+      "q0",  "q1",  "q2",  "q3",  "q4",  "q5",  "q6",  "q7",
+      "q8",  "q9",  "q10", "q11", "q12", "q13", "q14", "q15",
+      "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23",
+      "q24", "q25", "q26", "q27", "q28", "q29", "q30", "q31",
+  };
+  static constexpr std::string_view fp_v_names[] = {
+      "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",
+      "v8",  "v9",  "v10", "v11", "v12", "v13", "v14", "v15",
+      "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+      "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
+  };
+  if (c4c::backend::aarch64::abi::is_stack_pointer(reg)) {
+    return "sp";
+  }
+  if (reg.index > 31) {
+    return "<invalid-aarch64-register>";
+  }
+  switch (reg.view) {
+    case c4c::backend::aarch64::abi::RegisterView::X:
+      return gp_x_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::W:
+      return gp_w_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::S:
+      return fp_s_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::D:
+      return fp_d_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::Q:
+      return fp_q_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::V:
+      return fp_v_names[reg.index];
+    case c4c::backend::aarch64::abi::RegisterView::Sp:
+      return "sp";
+  }
+  return "<invalid-aarch64-register>";
+}
+
 [[nodiscard]] const c4c::backend::prepare::PreparedRegallocFunction*
 find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& regalloc,
                                 c4c::FunctionNameId function_name) {
@@ -246,6 +309,8 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
     std::size_t contiguous_width,
     std::vector<std::string_view> occupied_registers) {
   const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(physical_register);
+  const auto resolved_register = parsed.has_value() ? stable_register_name(*parsed)
+                                                    : physical_register;
   registers.push_back(TargetRegisterRecord{.reference_kind = reference_kind,
                                            .allocation_snapshot = allocation_snapshot,
                                            .allocation_authority =
@@ -262,7 +327,7 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                                                          c4c::backend::aarch64::abi::
                                                              allocation_register_pool(*parsed)}
                                                    : std::nullopt,
-                                           .physical_register = physical_register,
+                                           .physical_register = resolved_register,
                                            .contiguous_width = contiguous_width,
                                            .occupied_registers = std::move(occupied_registers),
                                            .is_reserved_mir_scratch =
@@ -273,6 +338,45 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                                                parsed.has_value() &&
                                                c4c::backend::aarch64::abi::
                                                    is_long_lived_allocatable_candidate(*parsed)});
+  return registers.size() - 1U;
+}
+
+[[nodiscard]] std::size_t append_register_record(
+    std::vector<TargetRegisterRecord>& registers,
+    TargetRegisterReferenceKind reference_kind,
+    AllocationSnapshotKind allocation_snapshot,
+    c4c::backend::prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    c4c::backend::prepare::PreparedRegisterClass reg_class,
+    c4c::backend::prepare::PreparedRegisterBank reg_bank,
+    const c4c::backend::aarch64::abi::PreparedRegisterConversionResult& converted,
+    std::string_view fallback_register_name,
+    std::size_t contiguous_width,
+    std::vector<std::string_view> occupied_registers) {
+  const auto resolved_register =
+      converted.reg.has_value() ? stable_register_name(*converted.reg) : fallback_register_name;
+  registers.push_back(TargetRegisterRecord{
+      .reference_kind = reference_kind,
+      .allocation_snapshot = allocation_snapshot,
+      .allocation_authority = allocation_authority_for_register_reference(reference_kind),
+      .value_id = value_id,
+      .value_name = value_name,
+      .register_class = reg_class,
+      .register_bank = reg_bank,
+      .register_reference = converted.reg,
+      .allocation_pool = converted.reg.has_value()
+                             ? std::optional{c4c::backend::aarch64::abi::
+                                                 allocation_register_pool(*converted.reg)}
+                             : std::nullopt,
+      .physical_register = resolved_register,
+      .contiguous_width = contiguous_width,
+      .occupied_registers = std::move(occupied_registers),
+      .is_reserved_mir_scratch = converted.reg.has_value() &&
+                                 c4c::backend::aarch64::abi::is_reserved_mir_scratch(
+                                     *converted.reg),
+      .may_be_long_lived_home = converted.reg.has_value() &&
+                                c4c::backend::aarch64::abi::
+                                    is_long_lived_allocatable_candidate(*converted.reg)});
   return registers.size() - 1U;
 }
 
@@ -347,6 +451,9 @@ void merge_regalloc_operand(
   if (value.assigned_register.has_value()) {
     operand.allocation_location = AllocationLocationKind::PhysicalRegister;
     operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
+    const auto converted =
+        c4c::backend::aarch64::abi::convert_prepared_register(*value.assigned_register,
+                                                              std::nullopt);
     operand.assigned_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::RegallocAssignment,
@@ -355,6 +462,7 @@ void merge_regalloc_operand(
                                value.value_name,
                                value.assigned_register->reg_class,
                                c4c::backend::prepare::PreparedRegisterBank::None,
+                               converted,
                                value.assigned_register->register_name,
                                value.assigned_register->contiguous_width,
                                register_name_views(
@@ -364,6 +472,9 @@ void merge_regalloc_operand(
     if (operand.allocation_authority == AllocationAuthorityKind::None) {
       operand.allocation_authority = AllocationAuthorityKind::SpillAuthority;
     }
+    const auto converted =
+        c4c::backend::aarch64::abi::convert_prepared_register(*value.spill_register_authority,
+                                                              std::nullopt);
     operand.spill_register_authority =
         append_register_record(registers,
                                TargetRegisterReferenceKind::SpillAuthority,
@@ -372,6 +483,7 @@ void merge_regalloc_operand(
                                value.value_name,
                                value.spill_register_authority->reg_class,
                                c4c::backend::prepare::PreparedRegisterBank::None,
+                               converted,
                                value.spill_register_authority->register_name,
                                value.spill_register_authority->contiguous_width,
                                register_name_views(
@@ -408,8 +520,17 @@ void merge_storage_operand(
     operand.symbol_label = prepared.names.link_names.spelling(*value.symbol_name);
   }
   operand.source_storage = &value;
-  if (value.register_name.has_value()) {
+  if (value.register_placement.has_value() || value.register_name.has_value()) {
     operand.allocation_location = AllocationLocationKind::PhysicalRegister;
+    const auto converted =
+        value.register_placement.has_value()
+            ? c4c::backend::aarch64::abi::convert_prepared_register(
+                  *value.register_placement, register_class_from_bank(value.bank), std::nullopt)
+            : c4c::backend::aarch64::abi::convert_prepared_register(*value.register_name,
+                                                                    value.bank,
+                                                                    register_class_from_bank(
+                                                                        value.bank),
+                                                                    std::nullopt);
     operand.storage_register =
         append_register_record(registers,
                                TargetRegisterReferenceKind::StoragePlan,
@@ -418,7 +539,9 @@ void merge_storage_operand(
                                value.value_name,
                                register_class_from_bank(value.bank),
                                value.bank,
-                               *value.register_name,
+                               converted,
+                               value.register_name.has_value() ? std::string_view{*value.register_name}
+                                                               : std::string_view{},
                                value.contiguous_width,
                                register_name_views(value.occupied_register_names));
   } else if (value.slot_id.has_value()) {

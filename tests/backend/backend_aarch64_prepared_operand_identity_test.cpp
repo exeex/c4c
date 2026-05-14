@@ -116,9 +116,16 @@ prepare::PreparedBirModule prepared_operand_module() {
                   .assigned_register =
                       prepare::PreparedPhysicalRegisterAssignment{
                           .reg_class = prepare::PreparedRegisterClass::General,
-                          .register_name = "x19",
+                          .register_name = "x21",
                           .contiguous_width = 1,
-                          .occupied_register_names = {"x19"},
+                          .occupied_register_names = {"x21"},
+                          .placement =
+                              prepare::PreparedRegisterPlacement{
+                                  .bank = prepare::PreparedRegisterBank::Gpr,
+                                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                                  .slot_index = 0,
+                                  .contiguous_width = 1,
+                              },
                       },
               },
               prepare::PreparedRegallocValue{
@@ -160,9 +167,16 @@ prepare::PreparedBirModule prepared_operand_module() {
                   .spill_register_authority =
                       prepare::PreparedPhysicalRegisterAssignment{
                           .reg_class = prepare::PreparedRegisterClass::General,
-                          .register_name = "x9",
+                          .register_name = "x10",
                           .contiguous_width = 1,
-                          .occupied_register_names = {"x9"},
+                          .occupied_register_names = {"x10"},
+                          .placement =
+                              prepare::PreparedRegisterPlacement{
+                                  .bank = prepare::PreparedRegisterBank::Gpr,
+                                  .pool = prepare::PreparedRegisterSlotPool::ReservedScratch,
+                                  .slot_index = 0,
+                                  .contiguous_width = 1,
+                              },
                       },
               },
           },
@@ -178,8 +192,15 @@ prepare::PreparedBirModule prepared_operand_module() {
                   .encoding = prepare::PreparedStorageEncodingKind::Register,
                   .bank = prepare::PreparedRegisterBank::Gpr,
                   .contiguous_width = 1,
-                  .register_name = std::string{"x20"},
-                  .occupied_register_names = {"x20"},
+                  .register_name = std::string{"x21"},
+                  .occupied_register_names = {"x21"},
+                  .register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
               },
               prepare::PreparedStoragePlanValue{
                   .value_id = 8,
@@ -241,7 +262,7 @@ int records_preserve_operand_identity_and_separate_register_refs() {
   if (function.target_registers[*param->value_home_register].physical_register != "x8" ||
       function.target_registers[*param->assigned_register].physical_register != "x19" ||
       function.target_registers[*param->storage_register].physical_register != "x20") {
-    return fail("expected physical register names to live in target register records");
+    return fail("expected structured placement to decide assigned and storage target registers");
   }
   if (!function.target_registers[*param->assigned_register].register_reference.has_value() ||
       function.target_registers[*param->assigned_register].allocation_authority !=
@@ -323,7 +344,7 @@ int records_preserve_operand_identity_and_separate_register_refs() {
   if (scratch_record.physical_register != "x9" || !scratch_record.is_reserved_mir_scratch ||
       scratch_record.may_be_long_lived_home ||
       scratch_record.allocation_authority != aarch64_module::AllocationAuthorityKind::SpillAuthority) {
-    return fail("expected reserved scratch authority to be separate from long-lived homes");
+    return fail("expected structured placement to decide reserved scratch authority");
   }
 
   return 0;

@@ -8,33 +8,25 @@ Current Step Title: Move AArch64 Physical Register Mapping Into Target MIR
 
 ## Just Finished
 
-Step 4 started the AArch64 target mapping migration by adding a target-layer conversion path from `PreparedRegisterPlacement` to `aarch64::abi::RegisterReference`.
+Step 4 migrated AArch64 prepared operand/register-record construction for regalloc assigned registers, spill-authority scratch registers, and storage-plan registers to prefer structured placement conversion before legacy register spelling.
 
-`aarch64::abi::convert_prepared_register` now maps structured call-argument, call-result, caller-saved, callee-saved, and reserved-scratch placements to AArch64 target register records, validates bank/class/view metadata, and fails closed on out-of-range slots. Prepared physical assignments and saved-register carriers prefer structured placement when present before falling back to legacy spelling.
-
-A narrow AArch64 return-ABI lowering consumer now prefers `PreparedMoveResolution::destination_register_placement` for function return registers, with the legacy spelling fallback preserved for older/manual fixtures that only carry `x0`-style text.
+`module.cpp` now builds those target register records from `PreparedPhysicalRegisterAssignment::placement` or `PreparedStoragePlanValue::register_placement` when present, preserving legacy spelling as fallback only. `backend_aarch64_prepared_operand_identity_test` now uses deliberately mismatched legacy register names to prove placement selects `x19`, `x20`, and reserved scratch `x9`.
 
 ## Suggested Next
 
-Next coherent packet: migrate another AArch64 prepared-to-MIR consumer away from parsing prepared register names, likely storage-plan operand conversion or spill/reload scratch conversion, and add a focused test that proves placement-first behavior with mismatched legacy spelling.
+Next coherent packet: migrate the remaining AArch64 prepared-to-MIR register consumers that still read move, call, preserved, or spill/reload register-name fields directly, using the same placement-first conversion pattern and focused mismatch tests.
 
 ## Watchouts
 
-- This packet intentionally did not remove legacy parsing; it establishes the AArch64 placement-first mapping path and updates one return-ABI consumer.
+- This packet intentionally did not remove legacy parsing; older/manual prepared fixtures can still provide only `register_name`.
 - AArch64 `CallArgument` and `CallResult` placement mapping is bounded to slot indexes 0..7. Return mapping currently accepts slot 0 only.
-- Prepared-printer summary/detail text includes extra `placement=` or `spill_slot=` tokens; future string checks should assert those structured tokens for migrated records instead of relying only on `reg=` or `slot_id=`.
+- Target register records still retain `occupied_registers` from prepared occupied-name text; this packet only moves the target physical register/reference decision to structured placement for assigned, spill-authority, and storage-plan register records.
 - Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
 ## Proof
 
-Ran focused AArch64 conversion and prepared-return proof:
+Ran delegated focused AArch64 placement/register-record proof:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_register_conversion|prepared_scalar_alu_records|scalar_alu_records|prepared_frame_control|prepared_operand_identity)$" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_register_conversion|prepared_operand_identity|prepared_scalar_alu_records|scalar_alu_records|prepared_frame_control)$" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed.
-
-Ran broader AArch64 validation, now preserved in `test_after.log`:
-
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_aarch64_" --output-on-failure' > test_after.log 2>&1`
-
-Result: passed; 24/24 AArch64 backend tests passed.
+Result: passed; 5/5 selected AArch64 backend tests passed. Proof log: `test_after.log`.
