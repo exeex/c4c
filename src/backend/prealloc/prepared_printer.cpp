@@ -195,6 +195,10 @@ std::string storage_encoding_kind_name(PreparedStorageEncodingKind kind) {
   return "unknown";
 }
 
+std::string optional_size_text(const std::optional<std::size_t>& value) {
+  return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
+}
+
 void append_call_arg_source_summary(std::ostringstream& out,
                                     const PreparedNameTables& names,
                                     const PreparedCallArgumentPlan& arg) {
@@ -495,6 +499,8 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
     const auto* frame_plan = find_prepared_frame_plan(module, function_name_id);
     const auto* dynamic_plan = find_prepared_dynamic_stack_plan(module, function_name_id);
     const auto* call_plans = find_prepared_call_plans(module, function_name_id);
+    const auto* variadic_entry_plan =
+        find_prepared_variadic_entry_plan(module, function_name_id);
     const auto* storage_plan = find_prepared_storage_plan(module, function_name_id);
 
     out << "prepared.summary @" << function.name
@@ -509,6 +515,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         << (frame_plan != nullptr ? frame_plan->saved_callee_registers.size() : 0)
         << " calls=" << (call_plans != nullptr ? call_plans->calls.size() : 0)
         << " dynamic_stack_ops=" << (dynamic_plan != nullptr ? dynamic_plan->operations.size() : 0)
+        << " variadic_entry=" << (variadic_entry_plan != nullptr ? "yes" : "no")
         << " storage_values=" << (storage_plan != nullptr ? storage_plan->values.size() : 0)
         << "\n";
 
@@ -671,6 +678,74 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         }
         out << "\n";
       }
+    }
+  }
+}
+
+void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-variadic-entry-plans ---\n";
+  for (const auto& function_plan : module.variadic_entry_plans.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
+        << " named_params=" << function_plan.named_parameter_count
+        << " named_gp=" << optional_size_text(function_plan.named_register_counts.gp)
+        << " named_fp=" << optional_size_text(function_plan.named_register_counts.fp)
+        << " helpers=" << function_plan.helper_resources.required_helpers.size()
+        << "\n";
+
+    out << "  register_save_area required="
+        << (function_plan.register_save_area.required ? "yes" : "no")
+        << " size=" << optional_size_text(function_plan.register_save_area.size_bytes)
+        << " align=" << optional_size_text(function_plan.register_save_area.align_bytes)
+        << " slot=";
+    if (function_plan.register_save_area.slot_id.has_value()) {
+      out << "#" << *function_plan.register_save_area.slot_id;
+    } else {
+      out << "<none>";
+    }
+    out << " stack_offset="
+        << optional_size_text(function_plan.register_save_area.stack_offset_bytes)
+        << " gp_offset="
+        << optional_size_text(function_plan.register_save_area.gp_offset_bytes)
+        << " fp_offset="
+        << optional_size_text(function_plan.register_save_area.fp_offset_bytes)
+        << "\n";
+
+    out << "  overflow_area required="
+        << (function_plan.overflow_area.required ? "yes" : "no")
+        << " base_slot=";
+    if (function_plan.overflow_area.base_slot_id.has_value()) {
+      out << "#" << *function_plan.overflow_area.base_slot_id;
+    } else {
+      out << "<none>";
+    }
+    out << " base_stack_offset="
+        << optional_size_text(function_plan.overflow_area.base_stack_offset_bytes)
+        << " align=" << optional_size_text(function_plan.overflow_area.align_bytes)
+        << "\n";
+
+    out << "  va_list_layout required="
+        << (function_plan.va_list_layout.required ? "yes" : "no")
+        << " size=" << optional_size_text(function_plan.va_list_layout.size_bytes)
+        << " align=" << optional_size_text(function_plan.va_list_layout.align_bytes)
+        << " fields=" << function_plan.va_list_layout.fields.size()
+        << "\n";
+    for (const auto& field : function_plan.va_list_layout.fields) {
+      out << "    field kind="
+          << prepared_variadic_va_list_field_kind_name(field.kind)
+          << " offset=" << field.offset_bytes
+          << " size=" << field.size_bytes
+          << "\n";
+    }
+
+    out << "  helper_resources scratch_registers="
+        << optional_size_text(function_plan.helper_resources.scratch_register_count)
+        << " scratch_stack="
+        << optional_size_text(function_plan.helper_resources.scratch_stack_bytes)
+        << "\n";
+    for (const auto helper : function_plan.helper_resources.required_helpers) {
+      out << "    helper kind="
+          << prepared_variadic_entry_helper_kind_name(helper)
+          << "\n";
     }
   }
 }
@@ -1296,6 +1371,7 @@ std::string print(const PreparedBirModule& module) {
   append_frame_plan(out, module);
   append_dynamic_stack_plan(out, module);
   append_call_plans(out, module);
+  append_variadic_entry_plans(out, module);
   append_regalloc(out, module);
   append_storage_plans(out, module);
   append_addressing(out, module);

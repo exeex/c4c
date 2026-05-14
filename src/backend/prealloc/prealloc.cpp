@@ -169,6 +169,23 @@ namespace {
          "llvm.dynamic_alloca.";
 }
 
+[[nodiscard]] std::optional<PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(
+    std::string_view callee) {
+  if (callee == "llvm.va_start.p0") {
+    return PreparedVariadicEntryHelperKind::VaStart;
+  }
+  if (callee.substr(0, std::string_view("llvm.va_arg.").size()) == "llvm.va_arg.") {
+    if (callee == "llvm.va_arg.aggregate") {
+      return PreparedVariadicEntryHelperKind::VaArgAggregate;
+    }
+    return PreparedVariadicEntryHelperKind::VaArg;
+  }
+  if (callee == "llvm.va_copy.p0.p0") {
+    return PreparedVariadicEntryHelperKind::VaCopy;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::string dynamic_alloca_type_text(std::string_view callee) {
   constexpr std::string_view kPrefix = "llvm.dynamic_alloca.";
   if (!is_dynamic_alloca_call(callee)) {
@@ -1396,6 +1413,86 @@ void populate_call_plans(PreparedBirModule& prepared) {
   }
 }
 
+void populate_variadic_entry_plans(PreparedBirModule& prepared) {
+  prepared.variadic_entry_plans.functions.clear();
+
+  for (const auto& function : prepared.module.functions) {
+    if (function.is_declaration || !function.is_variadic) {
+      continue;
+    }
+    const FunctionNameId function_name_id = prepared.names.function_names.find(function.name);
+    if (function_name_id == kInvalidFunctionName) {
+      continue;
+    }
+
+    PreparedVariadicEntryPlanFunction function_plan{
+        .function_name = function_name_id,
+        .named_parameter_count = 0,
+        .named_register_counts = {},
+        .register_save_area = {},
+        .overflow_area = {},
+        .va_list_layout = {},
+        .helper_resources = {},
+    };
+
+    std::size_t named_gp_register_count = 0;
+    std::size_t named_fp_register_count = 0;
+    bool has_named_gp_register_count = true;
+    bool has_named_fp_register_count = true;
+    for (const auto& param : function.params) {
+      if (param.is_varargs) {
+        continue;
+      }
+      ++function_plan.named_parameter_count;
+      if (!param.abi.has_value()) {
+        has_named_gp_register_count = false;
+        has_named_fp_register_count = false;
+        continue;
+      }
+      if (!param.abi->passed_in_register) {
+        continue;
+      }
+      switch (param.abi->primary_class) {
+        case bir::AbiValueClass::Integer:
+          ++named_gp_register_count;
+          break;
+        case bir::AbiValueClass::Sse:
+          ++named_fp_register_count;
+          break;
+        case bir::AbiValueClass::X87:
+        case bir::AbiValueClass::Memory:
+        case bir::AbiValueClass::None:
+          break;
+      }
+    }
+    if (has_named_gp_register_count) {
+      function_plan.named_register_counts.gp = named_gp_register_count;
+    }
+    if (has_named_fp_register_count) {
+      function_plan.named_register_counts.fp = named_fp_register_count;
+    }
+
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        const auto* call = std::get_if<bir::CallInst>(&inst);
+        if (call == nullptr) {
+          continue;
+        }
+        const auto helper_kind = variadic_entry_helper_kind(call->callee);
+        if (!helper_kind.has_value()) {
+          continue;
+        }
+        auto& helpers = function_plan.helper_resources.required_helpers;
+        if (std::find(helpers.begin(), helpers.end(), *helper_kind) == helpers.end()) {
+          helpers.push_back(*helper_kind);
+        }
+      }
+    }
+
+    prepared.variadic_entry_plans.functions.push_back(std::move(function_plan));
+  }
+}
+
 void publish_prepared_bir_label_identity(PreparedBirModule& prepared) {
   for (auto& function : prepared.module.functions) {
     const auto function_name_id = prepared.names.function_names.find(function.name);
@@ -1498,6 +1595,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_frame_plan(prepared_);
   populate_dynamic_stack_plan(prepared_);
   populate_call_plans(prepared_);
+  populate_variadic_entry_plans(prepared_);
   populate_storage_plans(prepared_);
 }
 

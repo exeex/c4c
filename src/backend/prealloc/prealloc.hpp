@@ -1189,6 +1189,105 @@ struct PreparedCallPlans {
   std::vector<PreparedCallPlansFunction> functions;
 };
 
+struct PreparedVariadicEntryNamedRegisterCounts {
+  std::optional<std::size_t> gp;
+  std::optional<std::size_t> fp;
+};
+
+struct PreparedVariadicEntryRegisterSaveArea {
+  bool required = false;
+  std::optional<std::size_t> size_bytes;
+  std::optional<std::size_t> align_bytes;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> gp_offset_bytes;
+  std::optional<std::size_t> fp_offset_bytes;
+};
+
+struct PreparedVariadicEntryOverflowArea {
+  bool required = false;
+  std::optional<PreparedFrameSlotId> base_slot_id;
+  std::optional<std::size_t> base_stack_offset_bytes;
+  std::optional<std::size_t> align_bytes;
+};
+
+enum class PreparedVariadicVaListFieldKind {
+  GpOffset,
+  FpOffset,
+  OverflowArgArea,
+  RegisterSaveArea,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_variadic_va_list_field_kind_name(
+    PreparedVariadicVaListFieldKind kind) {
+  switch (kind) {
+    case PreparedVariadicVaListFieldKind::GpOffset:
+      return "gp_offset";
+    case PreparedVariadicVaListFieldKind::FpOffset:
+      return "fp_offset";
+    case PreparedVariadicVaListFieldKind::OverflowArgArea:
+      return "overflow_arg_area";
+    case PreparedVariadicVaListFieldKind::RegisterSaveArea:
+      return "register_save_area";
+  }
+  return "unknown";
+}
+
+struct PreparedVariadicVaListField {
+  PreparedVariadicVaListFieldKind kind = PreparedVariadicVaListFieldKind::GpOffset;
+  std::size_t offset_bytes = 0;
+  std::size_t size_bytes = 0;
+};
+
+struct PreparedVariadicVaListLayout {
+  bool required = false;
+  std::optional<std::size_t> size_bytes;
+  std::optional<std::size_t> align_bytes;
+  std::vector<PreparedVariadicVaListField> fields;
+};
+
+enum class PreparedVariadicEntryHelperKind {
+  VaStart,
+  VaArg,
+  VaArgAggregate,
+  VaCopy,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_variadic_entry_helper_kind_name(
+    PreparedVariadicEntryHelperKind kind) {
+  switch (kind) {
+    case PreparedVariadicEntryHelperKind::VaStart:
+      return "va_start";
+    case PreparedVariadicEntryHelperKind::VaArg:
+      return "va_arg";
+    case PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return "va_arg_aggregate";
+    case PreparedVariadicEntryHelperKind::VaCopy:
+      return "va_copy";
+  }
+  return "unknown";
+}
+
+struct PreparedVariadicEntryHelperResources {
+  std::vector<PreparedVariadicEntryHelperKind> required_helpers;
+  std::optional<std::size_t> scratch_register_count;
+  std::optional<std::size_t> scratch_stack_bytes;
+};
+
+struct PreparedVariadicEntryPlanFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::size_t named_parameter_count = 0;
+  PreparedVariadicEntryNamedRegisterCounts named_register_counts;
+  PreparedVariadicEntryRegisterSaveArea register_save_area;
+  PreparedVariadicEntryOverflowArea overflow_area;
+  PreparedVariadicVaListLayout va_list_layout;
+  PreparedVariadicEntryHelperResources helper_resources;
+};
+
+struct PreparedVariadicEntryPlans {
+  std::vector<PreparedVariadicEntryPlanFunction> functions;
+};
+
 struct PreparedStoragePlanValue {
   PreparedValueId value_id = 0;
   ValueNameId value_name = kInvalidValueName;
@@ -4189,6 +4288,7 @@ struct PreparedBirModule {
   PreparedFramePlan frame_plan;
   PreparedDynamicStackPlan dynamic_stack_plan;
   PreparedCallPlans call_plans;
+  PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
@@ -4304,6 +4404,23 @@ struct PreparedBirModule {
     const PreparedBirModule& module,
     FunctionNameId function_name) {
   return find_prepared_call_plans(module.call_plans, function_name);
+}
+
+[[nodiscard]] inline const PreparedVariadicEntryPlanFunction*
+find_prepared_variadic_entry_plan(const PreparedVariadicEntryPlans& variadic_entry_plans,
+                                  FunctionNameId function_name) {
+  for (const auto& function_plan : variadic_entry_plans.functions) {
+    if (function_plan.function_name == function_name) {
+      return &function_plan;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedVariadicEntryPlanFunction*
+find_prepared_variadic_entry_plan(const PreparedBirModule& module,
+                                  FunctionNameId function_name) {
+  return find_prepared_variadic_entry_plan(module.variadic_entry_plans, function_name);
 }
 
 [[nodiscard]] inline const PreparedStoragePlanFunction* find_prepared_storage_plan(

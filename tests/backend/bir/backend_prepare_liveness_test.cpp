@@ -4653,6 +4653,18 @@ int check_lowered_same_module_variadic_global_byval_call_abi(
       call_plan.indirect_callee.has_value() || call_plan.arguments.size() != 2) {
     return fail("expected same-module variadic aggregate call to publish same-module call-plan authority");
   }
+  if (prepare::find_prepared_variadic_entry_plan(prepared, regalloc->function_name) != nullptr) {
+    return fail(
+        "expected variadic call metadata to remain separate from the caller function-entry carrier");
+  }
+  const auto myprintf_function_id = prepared.names.function_names.find("myprintf");
+  const auto* myprintf_entry_plan =
+      prepare::find_prepared_variadic_entry_plan(prepared, myprintf_function_id);
+  if (myprintf_entry_plan == nullptr || myprintf_entry_plan->named_parameter_count != 1 ||
+      myprintf_entry_plan->named_register_counts.gp != std::optional<std::size_t>{1} ||
+      myprintf_entry_plan->named_register_counts.fp != std::optional<std::size_t>{0}) {
+    return fail("expected same-module variadic callee definition to publish entry carrier counts");
+  }
   if (!call_plan.arguments[1].source_register_name.has_value()) {
     return fail(
         "expected same-module variadic aggregate call to keep the byval source materialized on the shared storage seam");

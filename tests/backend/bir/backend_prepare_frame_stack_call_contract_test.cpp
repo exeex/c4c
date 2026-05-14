@@ -3085,6 +3085,10 @@ int check_call_wrapper_kind_contract() {
     return fail("call-wrapper contract: indirect call lost explicit wrapper classification");
   }
 
+  if (!prepared.variadic_entry_plans.functions.empty()) {
+    return fail("call-wrapper contract: variadic callsite metadata leaked into function-entry carriers");
+  }
+
   return 0;
 }
 

@@ -494,6 +494,43 @@ prepare::PreparedBirModule prepare_call_wrapper_dump_module() {
   });
   module.functions.push_back(std::move(variadic_extern));
 
+  bir::Function variadic_entry;
+  variadic_entry.name = "variadic_entry_dump_contract";
+  variadic_entry.is_variadic = true;
+  variadic_entry.return_type = bir::TypeKind::I32;
+  variadic_entry.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  variadic_entry.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "scale",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  bir::Block variadic_entry_block;
+  variadic_entry_block.label = "entry";
+  variadic_entry_block.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  variadic_entry.blocks.push_back(std::move(variadic_entry_block));
+  module.functions.push_back(std::move(variadic_entry));
+
   bir::Function caller;
   caller.name = "call_wrapper_dump_contract";
   caller.return_type = bir::TypeKind::I32;
@@ -2221,6 +2258,39 @@ int main() {
   if (!expect_contains(call_wrapper_dump,
                        "call block_index=0 inst_index=2 wrapper_kind=direct_extern_variadic variadic_fpr_arg_register_count=1 indirect=no callee=extern_variadic_i32",
                        "variadic wrapper call-plan detail")) {
+    return EXIT_FAILURE;
+  }
+  const auto entry_function_id =
+      call_wrapper_prepared.names.function_names.find("variadic_entry_dump_contract");
+  const auto extern_function_id =
+      call_wrapper_prepared.names.function_names.find("extern_variadic_i32");
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(call_wrapper_prepared, entry_function_id);
+  const auto* extern_plan =
+      prepare::find_prepared_variadic_entry_plan(call_wrapper_prepared, extern_function_id);
+  if (entry_plan == nullptr || entry_plan->named_parameter_count != 2 ||
+      entry_plan->named_register_counts.gp != std::optional<std::size_t>{1} ||
+      entry_plan->named_register_counts.fp != std::optional<std::size_t>{1} ||
+      entry_plan->register_save_area.required ||
+      entry_plan->overflow_area.required ||
+      entry_plan->va_list_layout.required ||
+      extern_plan != nullptr) {
+    std::cerr << "[FAIL] variadic entry prepared carrier did not stay distinct from call wrappers or extern declarations\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "prepared.summary @variadic_entry_dump_contract stable_base=rsp frame_size=0 frame_alignment=1 has_dynamic_stack=no saved_regs=0 calls=0 dynamic_stack_ops=0 variadic_entry=yes",
+                       "variadic entry summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "prepared.func @variadic_entry_dump_contract named_params=2 named_gp=1 named_fp=1 helpers=0",
+                       "variadic entry plan header")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "register_save_area required=no size=<unknown> align=<unknown> slot=<none>",
+                       "variadic entry register-save-area placeholder")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
