@@ -1,4 +1,5 @@
 #include "alu.hpp"
+#include "operands.hpp"
 
 #include <cstdint>
 #include <string>
@@ -42,13 +43,13 @@ namespace mir = c4c::backend::mir;
 }
 
 [[nodiscard]] RegisterOperandRole register_role_from_authority(
-    module::OperandAuthority authority) {
+    OperandAuthority authority) {
   switch (authority) {
-    case module::OperandAuthority::RegallocAssignment:
+    case OperandAuthority::RegallocAssignment:
       return RegisterOperandRole::AllocationResult;
-    case module::OperandAuthority::StoragePlan:
+    case OperandAuthority::StoragePlan:
       return RegisterOperandRole::StoragePlan;
-    case module::OperandAuthority::PreparedValueHome:
+    case OperandAuthority::PreparedValueHome:
       return RegisterOperandRole::ValueHome;
     default:
       return RegisterOperandRole::Physical;
@@ -56,7 +57,7 @@ namespace mir = c4c::backend::mir;
 }
 
 [[nodiscard]] std::optional<OperandRecord> make_resolved_scalar_operand(
-    const module::ResolvedOperand& resolved,
+    const ResolvedOperand& resolved,
     const bir::Value& value) {
   if (const auto* immediate =
           std::get_if<mir::Immediate>(&resolved.operand.payload)) {
@@ -109,7 +110,7 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
   auto resolved =
-      module::resolve_value_operand(home->value_id, context.function, diagnostics);
+      resolve_value_operand(home->value_id, context.function, diagnostics);
   if (!resolved.has_value()) {
     return std::nullopt;
   }

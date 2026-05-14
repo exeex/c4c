@@ -1,3 +1,4 @@
+#include "src/backend/mir/aarch64/codegen/operands.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -10,6 +11,7 @@
 namespace {
 
 namespace aarch64_module = c4c::backend::aarch64::module;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
@@ -72,11 +74,11 @@ int storage_plan_register_precedes_value_home() {
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto resolved = aarch64_module::resolve_value_operand(value_id, context, diagnostics);
+  const auto resolved = aarch64_codegen::resolve_value_operand(value_id, context, diagnostics);
   if (!resolved.has_value()) {
     return fail("expected storage-plan register operand to resolve");
   }
-  if (resolved->authority != aarch64_module::OperandAuthority::StoragePlan) {
+  if (resolved->authority != aarch64_codegen::OperandAuthority::StoragePlan) {
     return fail("expected storage-plan authority to precede value-home authority");
   }
   const auto* reg = std::get_if<mir::PhysicalRegister>(&resolved->operand.payload);
@@ -123,11 +125,11 @@ int regalloc_assignment_precedes_storage_plan() {
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto resolved = aarch64_module::resolve_value_operand(value_id, context, diagnostics);
+  const auto resolved = aarch64_codegen::resolve_value_operand(value_id, context, diagnostics);
   if (!resolved.has_value()) {
     return fail("expected regalloc register operand to resolve");
   }
-  if (resolved->authority != aarch64_module::OperandAuthority::RegallocAssignment) {
+  if (resolved->authority != aarch64_codegen::OperandAuthority::RegallocAssignment) {
     return fail("expected regalloc assignment to precede storage-plan authority");
   }
   if (std::get_if<mir::PhysicalRegister>(&resolved->operand.payload) == nullptr) {
@@ -159,7 +161,7 @@ int literals_labels_symbols_and_register_spellings_are_narrow() {
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto missing = aarch64_module::resolve_value_operand(value_id, context, diagnostics);
+  const auto missing = aarch64_codegen::resolve_value_operand(value_id, context, diagnostics);
   if (missing.has_value()) {
     return fail("expected register spelling-only value home to fail closed");
   }
@@ -169,16 +171,16 @@ int literals_labels_symbols_and_register_spellings_are_narrow() {
     return fail("expected missing typed register authority diagnostic");
   }
 
-  const auto immediate = aarch64_module::resolve_immediate_operand(mir::Immediate{
+  const auto immediate = aarch64_codegen::resolve_immediate_operand(mir::Immediate{
       .kind = mir::ImmediateKind::Signed,
       .signed_value = -7,
       .unsigned_value = 0,
   });
-  const auto target = aarch64_module::resolve_label_operand(label);
-  const auto global = aarch64_module::resolve_symbol_operand(symbol, 16);
-  if (immediate.authority != aarch64_module::OperandAuthority::Immediate ||
-      target.authority != aarch64_module::OperandAuthority::Label ||
-      global.authority != aarch64_module::OperandAuthority::Symbol) {
+  const auto target = aarch64_codegen::resolve_label_operand(label);
+  const auto global = aarch64_codegen::resolve_symbol_operand(symbol, 16);
+  if (immediate.authority != aarch64_codegen::OperandAuthority::Immediate ||
+      target.authority != aarch64_codegen::OperandAuthority::Label ||
+      global.authority != aarch64_codegen::OperandAuthority::Symbol) {
     return fail("expected literal, label, and symbol helpers to carry narrow authority");
   }
   if (std::get_if<mir::Immediate>(&immediate.operand.payload) == nullptr ||

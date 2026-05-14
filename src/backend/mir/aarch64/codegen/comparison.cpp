@@ -1,4 +1,5 @@
 #include "comparison.hpp"
+#include "operands.hpp"
 
 #include <optional>
 #include <string>
@@ -43,13 +44,13 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 }
 
 [[nodiscard]] RegisterOperandRole register_role_from_authority(
-    module::OperandAuthority authority) {
+    OperandAuthority authority) {
   switch (authority) {
-    case module::OperandAuthority::RegallocAssignment:
+    case OperandAuthority::RegallocAssignment:
       return RegisterOperandRole::AllocationResult;
-    case module::OperandAuthority::StoragePlan:
+    case OperandAuthority::StoragePlan:
       return RegisterOperandRole::StoragePlan;
-    case module::OperandAuthority::PreparedValueHome:
+    case OperandAuthority::PreparedValueHome:
       return RegisterOperandRole::ValueHome;
     default:
       return RegisterOperandRole::Physical;
@@ -62,7 +63,7 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     c4c::ValueNameId condition_value_name,
     bir::TypeKind condition_type,
     module::ModuleLoweringDiagnostics& diagnostics) {
-  auto resolved = module::resolve_value_operand(condition_value_id, context.function, diagnostics);
+  auto resolved = resolve_value_operand(condition_value_id, context.function, diagnostics);
   if (!resolved.has_value() || !resolved->register_reference.has_value()) {
     diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
         .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,

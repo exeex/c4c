@@ -1,9 +1,9 @@
-#include "module.hpp"
+#include "operands.hpp"
 
 #include <cstdint>
 #include <utility>
 
-namespace c4c::backend::aarch64::module {
+namespace c4c::backend::aarch64::codegen {
 namespace {
 
 namespace mir = c4c::backend::mir;
@@ -23,12 +23,12 @@ namespace mir = c4c::backend::mir;
     prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
     c4c::FunctionNameId function_name,
-    ModuleLoweringDiagnostics& diagnostics) {
+    module::ModuleLoweringDiagnostics& diagnostics) {
   const auto converted =
       abi::convert_prepared_register(placement, prepared_class, std::nullopt);
   if (!converted.reg.has_value()) {
-    diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-        .kind = ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
         .function_name = function_name,
         .value_id = value_id,
         .value_name = value_name,
@@ -51,8 +51,8 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] std::optional<ResolvedOperand> resolve_from_regalloc(
     prepare::PreparedValueId value_id,
-    const FunctionLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+    const module::FunctionLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.regalloc == nullptr) {
     return std::nullopt;
   }
@@ -94,8 +94,8 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] std::optional<ResolvedOperand> resolve_from_storage_plan(
     prepare::PreparedValueId value_id,
-    const FunctionLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+    const module::FunctionLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.storage_plan == nullptr) {
     return std::nullopt;
   }
@@ -108,8 +108,8 @@ namespace mir = c4c::backend::mir;
     switch (value.encoding) {
       case prepare::PreparedStorageEncodingKind::Register:
         if (!value.register_placement.has_value()) {
-          diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-              .kind = ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+              .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
               .function_name = context.storage_plan->function_name,
               .value_id = value.value_id,
               .value_name = value.value_name,
@@ -176,8 +176,8 @@ namespace mir = c4c::backend::mir;
         break;
     }
 
-    diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-        .kind = ModuleLoweringDiagnosticKind::UnsupportedStoragePlan,
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::UnsupportedStoragePlan,
         .function_name = context.storage_plan->function_name,
         .value_id = value.value_id,
         .value_name = value.value_name,
@@ -191,8 +191,8 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] std::optional<ResolvedOperand> resolve_from_value_home(
     prepare::PreparedValueId value_id,
-    const FunctionLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+    const module::FunctionLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.value_locations == nullptr) {
     return std::nullopt;
   }
@@ -238,8 +238,8 @@ namespace mir = c4c::backend::mir;
           .value_name = home->value_name,
       };
     case prepare::PreparedValueHomeKind::Register:
-      diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-          .kind = ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+      diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+          .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
           .function_name = home->function_name,
           .value_id = home->value_id,
           .value_name = home->value_name,
@@ -252,8 +252,8 @@ namespace mir = c4c::backend::mir;
       break;
   }
 
-  diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-      .kind = ModuleLoweringDiagnosticKind::UnsupportedValueHome,
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = module::ModuleLoweringDiagnosticKind::UnsupportedValueHome,
       .function_name = home->function_name,
       .value_id = home->value_id,
       .value_name = home->value_name,
@@ -266,11 +266,11 @@ namespace mir = c4c::backend::mir;
 
 std::optional<ResolvedOperand> resolve_value_operand(
     prepare::PreparedValueId value_id,
-    const FunctionLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics) {
+    const module::FunctionLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   if (context.control_flow == nullptr) {
-    diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-        .kind = ModuleLoweringDiagnosticKind::MissingFunctionContext,
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::MissingFunctionContext,
         .value_id = value_id,
         .message = "operand resolution requires a prepared function context",
     });
@@ -287,8 +287,8 @@ std::optional<ResolvedOperand> resolve_value_operand(
     return resolved;
   }
 
-  diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-      .kind = ModuleLoweringDiagnosticKind::MissingValueAuthority,
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
       .function_name = context.control_flow->function_name,
       .value_id = value_id,
       .message = "no typed prepared authority exists for value operand",
@@ -317,4 +317,4 @@ ResolvedOperand resolve_symbol_operand(c4c::LinkNameId symbol, std::int64_t adde
   };
 }
 
-}  // namespace c4c::backend::aarch64::module
+}  // namespace c4c::backend::aarch64::codegen

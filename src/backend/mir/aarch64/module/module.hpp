@@ -27,19 +27,6 @@ using MachineModule = c4c::backend::mir::MachineModule<codegen::InstructionRecor
 struct ModuleDataRecords {
 };
 
-enum class OperandAuthority {
-  None,
-  RegallocAssignment,
-  StoragePlan,
-  PreparedValueHome,
-  FrameSlot,
-  SpillSlot,
-  Immediate,
-  Symbol,
-  Label,
-  TargetRegister,
-};
-
 enum class InstructionLoweringFamily {
   Unknown,
   Phi,
@@ -97,15 +84,6 @@ struct BlockLoweringContext {
   std::size_t block_index = 0;
 };
 
-struct ResolvedOperand {
-  c4c::backend::mir::Operand operand;
-  OperandAuthority authority = OperandAuthority::None;
-  std::optional<abi::RegisterReference> register_reference;
-  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
-  std::optional<prepare::PreparedValueId> value_id;
-  c4c::ValueNameId value_name = c4c::kInvalidValueName;
-};
-
 struct FunctionRecord {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::string_view label;
@@ -140,14 +118,4 @@ struct BuildResult {
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
     const prepare::PreparedControlFlowFunction& function);
-[[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
-    prepare::PreparedValueId value_id,
-    const FunctionLoweringContext& context,
-    ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] ResolvedOperand resolve_immediate_operand(
-    c4c::backend::mir::Immediate immediate);
-[[nodiscard]] ResolvedOperand resolve_label_operand(c4c::BlockLabelId label);
-[[nodiscard]] ResolvedOperand resolve_symbol_operand(c4c::LinkNameId symbol,
-                                                     std::int64_t addend = 0);
-
 }  // namespace c4c::backend::aarch64::module
