@@ -333,6 +333,22 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   }
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Add),
+          "add",
+          "add mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Sub),
+          "sub",
+          "sub mnemonic kind");
+      status != 0) {
+    return status;
+  }
+  if (const int status = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
               aarch64_codegen::MachinePrinterMnemonicKind::Branch),
           "b",
           "branch mnemonic kind");
@@ -466,6 +482,21 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
           .rhs = make_value_register(prepare::PreparedValueId{35}, c4c::ValueNameId{17}, 4),
           .supported_integer_operation = true,
       }));
+  const auto sub_scalar = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{36},
+          .result_value_name = c4c::ValueNameId{18},
+          .result_type = bir::TypeKind::I64,
+          .result_register =
+              value_register(prepare::PreparedValueId{36}, c4c::ValueNameId{18}, 0),
+          .lhs = make_value_register(prepare::PreparedValueId{37}, c4c::ValueNameId{19}, 3),
+          .rhs = make_value_register(prepare::PreparedValueId{38}, c4c::ValueNameId{20}, 4),
+          .supported_integer_operation = true,
+      }));
 
   if (aarch64_codegen::machine_printer_mnemonic_kind_name(
           aarch64_codegen::MachinePrinterMnemonicKind::None) != "" ||
@@ -478,7 +509,8 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
       aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret) != "" ||
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(immediate_ret) != "ret" ||
       aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(immediate_ret) != "mov" ||
-      aarch64_codegen::machine_instruction_primary_printer_mnemonic(scalar) != "") {
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(scalar) != "add" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(sub_scalar) != "sub") {
     return fail("expected supported printer mnemonics to come from the central helper");
   }
 

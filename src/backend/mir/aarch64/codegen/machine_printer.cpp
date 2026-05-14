@@ -193,9 +193,38 @@ MachineAssemblyPrintResult print_memory(const InstructionRecord& instruction,
   return printed(out.str());
 }
 
-MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction) {
-  return unsupported(bad_header(instruction) +
-                     "scalar node is missing a structured destination register operand");
+MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction,
+                                        const ScalarInstructionRecord& scalar) {
+  if (!scalar.result_register.has_value()) {
+    return unsupported(bad_header(instruction) +
+                       "scalar node is missing a structured destination register operand");
+  }
+  if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
+    return unsupported(bad_header(instruction) +
+                       "scalar node opcode is outside the printable add/sub subset");
+  }
+  if (scalar.inputs.size() != 2) {
+    return unsupported(bad_header(instruction) +
+                       "scalar add/sub node requires exactly two register operands");
+  }
+
+  const auto* lhs = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+  const auto* rhs = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+  if (scalar.inputs[0].kind != OperandKind::Register || lhs == nullptr ||
+      scalar.inputs[1].kind != OperandKind::Register || rhs == nullptr) {
+    return unsupported(bad_header(instruction) +
+                       "scalar add/sub node requires register operands");
+  }
+
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return unsupported(bad_header(instruction) + "scalar add/sub mnemonic is not printable");
+  }
+
+  std::ostringstream out;
+  out << "    " << mnemonic << " " << register_name(*scalar.result_register) << ", "
+      << register_name(*lhs) << ", " << register_name(*rhs) << "\n";
+  return printed(out.str());
 }
 
 MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
@@ -203,6 +232,15 @@ MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
   std::ostringstream out;
   if (ret.value.has_value()) {
     const auto* immediate = std::get_if<ImmediateOperand>(&ret.value->payload);
+    const auto* reg = std::get_if<RegisterOperand>(&ret.value->payload);
+    if (ret.value->kind == OperandKind::Register && reg != nullptr) {
+      const auto return_mnemonic = required_primary_mnemonic(instruction);
+      if (return_mnemonic.empty()) {
+        return unsupported(bad_header(instruction) + "return mnemonic is not printable");
+      }
+      out << "    " << return_mnemonic << "\n";
+      return printed(out.str());
+    }
     if (ret.value->kind != OperandKind::Immediate || immediate == nullptr) {
       return unsupported(bad_header(instruction) +
                          "return value is not a printable immediate operand");
@@ -260,8 +298,8 @@ MachineAssemblyPrintResult print_machine_instruction_node(const InstructionRecor
   if (const auto* memory = std::get_if<MemoryInstructionRecord>(&instruction.payload)) {
     return print_memory(instruction, *memory);
   }
-  if (std::get_if<ScalarInstructionRecord>(&instruction.payload) != nullptr) {
-    return print_scalar(instruction);
+  if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
+    return print_scalar(instruction, *scalar);
   }
   if (const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload)) {
     return print_return(instruction, *ret);

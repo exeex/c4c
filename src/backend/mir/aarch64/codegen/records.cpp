@@ -193,6 +193,10 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "b";
     case MachinePrinterMnemonicKind::ConditionalBranchNonZero:
       return "cbnz";
+    case MachinePrinterMnemonicKind::Add:
+      return "add";
+    case MachinePrinterMnemonicKind::Sub:
+      return "sub";
     case MachinePrinterMnemonicKind::Load:
       return "ldr";
     case MachinePrinterMnemonicKind::Store:
@@ -211,6 +215,10 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Branch;
     case MachineOpcode::ConditionalBranch:
       return MachinePrinterMnemonicKind::ConditionalBranchNonZero;
+    case MachineOpcode::Add:
+      return MachinePrinterMnemonicKind::Add;
+    case MachineOpcode::Sub:
+      return MachinePrinterMnemonicKind::Sub;
     case MachineOpcode::Load:
     case MachineOpcode::ReloadFromSlot:
       return MachinePrinterMnemonicKind::Load;
@@ -219,8 +227,6 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Store;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
-    case MachineOpcode::Add:
-    case MachineOpcode::Sub:
     case MachineOpcode::And:
     case MachineOpcode::Or:
     case MachineOpcode::Xor:

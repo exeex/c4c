@@ -1,49 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/222_aarch64_scalar_return_alu_selected_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select Returned Scalar Add/Sub Machine Nodes
+Current Step ID: 4
+Current Step Title: Print Structured Add/Sub And Return Assembly
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 implementation completed for `plan.md` Step 3, `Select Returned Scalar Add/Sub Machine Nodes`.
+Step 4 implementation completed for `plan.md` Step 4, `Print Structured Add/Sub And Return Assembly`.
 
-Implemented prepared-module selection for returned scalar add/sub:
-- Added AArch64 module-machine construction for simple returned BIR `Add`/`Sub` instructions using existing prepared scalar ALU record conversion.
-- Emits selected scalar `MachineOpcode::Add`/`Sub` nodes with prepared lhs/rhs register uses, destination register defs, function/block labels, and source instruction index.
-- Updated return-node construction to consume the structured prepared scalar result register when the returned value is produced by a selected scalar node, preserving the generic prepared-value fallback for other returns.
-- Added focused prepared-module identity coverage for returned I64 add and I32 sub sequencing: scalar node first, return node second, with register uses/defs and no generic prepared-value placeholder for the scalar return.
+Implemented focused machine-printer and mnemonic coverage for selected scalar add/sub:
+- Added central `MachinePrinterMnemonicKind::Add`/`Sub` spellings and mapped `MachineOpcode::Add`/`Sub` to `add`/`sub`.
+- Printed selected scalar add/sub machine nodes from `ScalarInstructionRecord::result_register` and two structured register inputs.
+- Kept scalar printing fail-closed for missing destination registers, non-add/sub scalar opcodes, wrong input count, and non-register scalar operands.
+- Updated register-valued return nodes to print only `ret`; immediate returns still emit the existing `mov` plus `ret` sequence.
+- Added focused machine-printer and target-instruction-record tests for add/sub mnemonics, x/w register operand spelling, register-valued `ret`, and scalar fail-closed behavior.
 
 Kept out of scope as required:
-- Did not edit `machine_printer.cpp`.
 - Did not enable `tests/backend/case/return_add.c`.
-- Did not edit backend case smoke wiring or `tests/backend/CMakeLists.txt`.
+- Did not edit backend CMake public smoke wiring.
+- Did not touch `plan.md` or source idea files.
 
 ## Suggested Next
 
-Delegate the next packet to add printer spelling and print coverage for selected scalar add/sub using the structured destination/result register facts now emitted through the prepared-module machine-node path.
+Delegate the next coherent packet to connect the existing prepared-module selected add/sub nodes to any non-public focused assembly path the supervisor wants, or to request plan-owner/reviewer assessment if Step 4 completes the current runbook slice.
 
 ## Watchouts
 
-- Do not enable `tests/backend/case/return_add.c` before printer coverage exists for selected scalar add/sub plus returned scalar results.
+- Printer coverage now exists for selected scalar add/sub plus register-valued return nodes, but do not enable `tests/backend/case/return_add.c` unless the supervisor explicitly delegates public smoke wiring.
 - Reject named-case matching, fixture assembly text, expectation downgrades, or unsupported marking as progress.
 - Keep `return_add_sub_chain.c` and broader scalar ALU cases deferred unless they receive matching structured proof.
-- The next printer packet should consume `ScalarInstructionRecord::result_register`; current `machine_printer.cpp` still intentionally fails selected scalar nodes closed.
-- Watch for `I32` versus `I64` register views (`w` versus `x`) when printing destination and operand registers.
+- The current printer intentionally supports only register-register selected scalar add/sub; immediate-form scalar ALU printing remains fail-closed.
+- Watch for `I32` versus `I64` register views (`w` versus `x`) when expanding beyond the covered scalar register-register subset.
 
 ## Proof
 
-Ran the supervisor-delegated Step 3 narrow proof exactly:
+Ran the supervisor-delegated Step 4 narrow proof exactly:
 
 ```sh
-bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "backend_aarch64_(prepared_module_identity|prepared_scalar_alu_records|target_instruction_records)$"' > test_after.log 2>&1
+bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "backend_aarch64_(machine_printer|target_instruction_records|prepared_module_identity)$"' > test_after.log 2>&1
 ```
 
-Result: passed; build plus 3 focused CTest tests passed for `backend_aarch64_(prepared_module_identity|prepared_scalar_alu_records|target_instruction_records)$`. Output is preserved in `test_after.log`.
+Result: passed; build plus 3 focused CTest tests passed for `backend_aarch64_(machine_printer|target_instruction_records|prepared_module_identity)$`.
 
-Supervisor-side broader validation then replaced `test_after.log` with:
+Supervisor-side broader validation now preserved in `test_after.log`:
 
 ```sh
 bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_aarch64_"' > test_after.log 2>&1

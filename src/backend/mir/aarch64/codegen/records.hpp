@@ -115,6 +115,8 @@ enum class MachinePrinterMnemonicKind {
   None,
   Branch,
   ConditionalBranchNonZero,
+  Add,
+  Sub,
   Load,
   Store,
   Move,

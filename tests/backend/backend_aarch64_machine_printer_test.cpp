@@ -46,6 +46,17 @@ aarch64_codegen::RegisterOperand xreg(unsigned index) {
   };
 }
 
+aarch64_codegen::RegisterOperand wreg(unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::w_register(static_cast<std::uint8_t>(index)),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = aarch64_abi::RegisterView::W,
+      .contiguous_width = 1,
+  };
+}
+
 aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
   return aarch64_codegen::MemoryOperand{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -225,6 +236,76 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
   return 0;
 }
 
+int selected_scalar_add_sub_and_register_return_print_from_structured_operands() {
+  const auto add = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{40},
+          .result_value_name = c4c::ValueNameId{41},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .lhs = aarch64_codegen::make_register_operand(xreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(xreg(2)),
+          .supported_integer_operation = true,
+      }));
+  const auto sub = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{42},
+          .result_value_name = c4c::ValueNameId{43},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(wreg(2)),
+          .supported_integer_operation = true,
+      }));
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_register_operand(wreg(0)),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto result = aarch64_codegen::print_machine_instruction_nodes({add, sub, ret});
+  if (!result.ok) {
+    return fail("expected scalar add/sub and register return to print from structured operands: " +
+                result.diagnostic);
+  }
+  const auto add_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(add);
+  const auto sub_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(sub);
+  const auto return_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret);
+  const std::string expected =
+      "    " + std::string(add_mnemonic) + " x0, x1, x2\n" +
+      "    " + std::string(sub_mnemonic) + " w0, w1, w2\n" +
+      "    " + std::string(return_mnemonic) + "\n";
+  if (const int check = expect_assembly(result.assembly,
+                                        expected,
+                                        "    add x0, x1, x2\n"
+                                        "    sub w0, w1, w2\n"
+                                        "    ret\n",
+                                        "scalar add/sub helper-printer drift guard");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(add_mnemonic, "add", "add helper mnemonic"); check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(sub_mnemonic, "sub", "sub helper mnemonic"); check != 0) {
+    return check;
+  }
+  if (const int check =
+          expect_equal(return_mnemonic, "ret", "register return helper primary mnemonic");
+      check != 0) {
+    return check;
+  }
+  return 0;
+}
+
 int selected_immediate_return_node_prints_callable_epilogue() {
   const auto ret = aarch64_codegen::make_return_instruction(
       aarch64_codegen::ReturnInstructionRecord{
@@ -309,6 +390,32 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected scalar without destination register to fail closed");
   }
 
+  const auto scalar_without_register_rhs = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{32},
+          .result_value_name = c4c::ValueNameId{33},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .lhs = aarch64_codegen::make_register_operand(xreg(2)),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I64,
+              .signed_value = 1,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto scalar_without_register_rhs_result =
+      aarch64_codegen::print_machine_instruction_node(scalar_without_register_rhs);
+  if (scalar_without_register_rhs_result.ok ||
+      scalar_without_register_rhs_result.diagnostic.find("requires register operands") ==
+          std::string::npos) {
+    return fail("expected selected scalar without register operands to fail closed");
+  }
+
   return 0;
 }
 
@@ -319,6 +426,11 @@ int main() {
     return result;
   }
   if (const int result = selected_branch_and_store_nodes_print_without_semantic_roundtrip();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_scalar_add_sub_and_register_return_print_from_structured_operands();
       result != 0) {
     return result;
   }
