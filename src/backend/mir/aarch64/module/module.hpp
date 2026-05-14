@@ -97,12 +97,6 @@ struct BlockLoweringContext {
   std::size_t block_index = 0;
 };
 
-struct InstructionDispatchResult {
-  std::size_t visited_operations = 0;
-  bool visited_terminator = false;
-  std::size_t emitted_instructions = 0;
-};
-
 struct ResolvedOperand {
   c4c::backend::mir::Operand operand;
   OperandAuthority authority = OperandAuthority::None;
@@ -146,14 +140,6 @@ struct BuildResult {
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
     const prepare::PreparedControlFlowFunction& function);
-[[nodiscard]] BlockLoweringContext make_block_lowering_context(
-    FunctionLoweringContext function,
-    const prepare::PreparedControlFlowBlock& block,
-    std::size_t block_index);
-[[nodiscard]] InstructionDispatchResult dispatch_prepared_block(
-    const BlockLoweringContext& context,
-    MachineBlock& block,
-    ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
     prepare::PreparedValueId value_id,
     const FunctionLoweringContext& context,

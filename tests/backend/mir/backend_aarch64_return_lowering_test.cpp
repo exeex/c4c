@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
 
@@ -12,6 +13,7 @@ namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_abi = c4c::backend::aarch64::abi;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -312,12 +314,12 @@ int direct_dispatch_lowers_prepared_return_to_canonical_machine_instruction() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 7);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 7);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 1 || block.instructions.size() != 1 ||
@@ -385,12 +387,12 @@ int direct_dispatch_attaches_immediate_return_value() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
   if (result.emitted_instructions != 1 || block.instructions.size() != 1 ||
       !diagnostics.empty()) {
     return fail("expected immediate return value dispatch to emit one selected return");
@@ -520,12 +522,12 @@ int unsupported_conditional_branch_terminator_stays_diagnostic_only() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 0 || !block.instructions.empty() ||

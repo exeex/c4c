@@ -1,5 +1,7 @@
 #include "module.hpp"
 
+#include "../codegen/dispatch.hpp"
+
 #include <cstddef>
 #include <string_view>
 #include <utility>
@@ -80,8 +82,9 @@ std::vector<MachineFunction> lower_prepared_functions(
           .instructions = {},
       });
       const auto block_context =
-          make_block_lowering_context(function_context, prepared_block, block_index);
-      (void)dispatch_prepared_block(block_context, function.blocks.back(), diagnostics);
+          codegen::make_block_lowering_context(function_context, prepared_block, block_index);
+      (void)codegen::dispatch_prepared_block(
+          block_context, function.blocks.back(), diagnostics);
     }
 
     if (prepared_function.function_name == c4c::kInvalidFunctionName) {

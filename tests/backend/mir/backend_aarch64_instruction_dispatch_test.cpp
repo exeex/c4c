@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -11,6 +12,7 @@
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -165,12 +167,12 @@ int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 0 || !block.instructions.empty()) {
@@ -195,7 +197,7 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block{
       .block_label = c4c::kInvalidBlockLabel,
@@ -204,7 +206,7 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
   };
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 2 || !result.visited_terminator ||
       result.emitted_instructions != 1) {
@@ -245,7 +247,7 @@ int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
   if (block_context.bir_block == nullptr ||
       block_context.bir_block->label != "second.entry") {
     return fail("expected block context to map retained BIR by prepared identity");
@@ -254,7 +256,7 @@ int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 1) {
     return fail("expected retained BIR dispatch to visit the identity-mapped block instruction");
@@ -292,12 +294,12 @@ int missing_bir_block_mapping_is_diagnostic_only() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 1 || block.instructions.size() != 1) {

@@ -1,5 +1,6 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
 
@@ -253,12 +254,12 @@ int direct_dispatch_lowers_unconditional_branch_to_selected_node() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 3);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 3);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 1 || block.instructions.size() != 1 ||
@@ -314,12 +315,12 @@ int direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 4);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 4);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 1 || block.instructions.size() != 1 ||
@@ -390,12 +391,12 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 5);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 5);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 1 || block.instructions.size() != 1 ||
@@ -508,12 +509,12 @@ int non_fusable_compare_branch_control_stays_fail_closed() {
   const auto function_context = aarch64_module::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
-      aarch64_module::make_block_lowering_context(function_context, block_cf, 0);
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
   aarch64_module::MachineBlock block;
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto result =
-      aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
       result.emitted_instructions != 0 || !block.instructions.empty() ||

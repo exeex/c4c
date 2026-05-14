@@ -1,28 +1,27 @@
-#include "module.hpp"
+#include "dispatch.hpp"
 
-#include "../codegen/alu.hpp"
-#include "../codegen/comparison.hpp"
-#include "../codegen/returns.hpp"
+#include "alu.hpp"
+#include "comparison.hpp"
+#include "returns.hpp"
 
 #include <cstddef>
-#include <optional>
 #include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
 #include <variant>
 
-namespace c4c::backend::aarch64::module {
-
+namespace c4c::backend::aarch64::codegen {
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace prepare = c4c::backend::prepare;
 
-void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
-                             ModuleLoweringDiagnosticKind kind,
-                             const BlockLoweringContext& context,
+void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
+                             module::ModuleLoweringDiagnosticKind kind,
+                             const module::BlockLoweringContext& context,
                              std::string message) {
-  diagnostics.entries.push_back(ModuleLoweringDiagnostic{
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
       .kind = kind,
       .function_name = context.function.control_flow != nullptr
                            ? context.function.control_flow->function_name
@@ -48,7 +47,7 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
 }
 
 [[nodiscard]] const bir::Block* find_bir_block(
-    const FunctionLoweringContext& function,
+    const module::FunctionLoweringContext& function,
     const prepare::PreparedControlFlowBlock& block) {
   if (function.bir_function == nullptr) {
     return nullptr;
@@ -77,36 +76,38 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
   return nullptr;
 }
 
-[[nodiscard]] InstructionLoweringFamily classify_instruction(const bir::Inst& inst) {
+[[nodiscard]] module::InstructionLoweringFamily classify_instruction(
+    const bir::Inst& inst) {
   return std::visit(
-      [](const auto& typed_inst) -> InstructionLoweringFamily {
+      [](const auto& typed_inst) -> module::InstructionLoweringFamily {
         using T = std::decay_t<decltype(typed_inst)>;
         if constexpr (std::is_same_v<T, bir::PhiInst>) {
-          return InstructionLoweringFamily::Phi;
+          return module::InstructionLoweringFamily::Phi;
         } else if constexpr (std::is_same_v<T, bir::BinaryInst> ||
                              std::is_same_v<T, bir::CastInst>) {
-          return InstructionLoweringFamily::Scalar;
+          return module::InstructionLoweringFamily::Scalar;
         } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
-          return InstructionLoweringFamily::Select;
+          return module::InstructionLoweringFamily::Select;
         } else if constexpr (std::is_same_v<T, bir::CallInst>) {
-          return InstructionLoweringFamily::Call;
+          return module::InstructionLoweringFamily::Call;
         } else if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
                              std::is_same_v<T, bir::LoadGlobalInst> ||
                              std::is_same_v<T, bir::StoreLocalInst> ||
                              std::is_same_v<T, bir::StoreGlobalInst>) {
-          return InstructionLoweringFamily::Memory;
+          return module::InstructionLoweringFamily::Memory;
         }
-        return InstructionLoweringFamily::Unknown;
+        return module::InstructionLoweringFamily::Unknown;
       },
       inst);
 }
 
-void append_unsupported_instruction_diagnostic(ModuleLoweringDiagnostics& diagnostics,
-                                               const BlockLoweringContext& context,
-                                               const bir::Inst& inst,
-                                               std::size_t instruction_index) {
-  diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-      .kind = ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+void append_unsupported_instruction_diagnostic(
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
       .function_name = context.function.control_flow != nullptr
                            ? context.function.control_flow->function_name
                            : c4c::kInvalidFunctionName,
@@ -122,11 +123,11 @@ void append_unsupported_instruction_diagnostic(ModuleLoweringDiagnostics& diagno
 
 }  // namespace
 
-BlockLoweringContext make_block_lowering_context(
-    FunctionLoweringContext function,
+module::BlockLoweringContext make_block_lowering_context(
+    module::FunctionLoweringContext function,
     const prepare::PreparedControlFlowBlock& block,
     std::size_t block_index) {
-  return BlockLoweringContext{
+  return module::BlockLoweringContext{
       .function = function,
       .control_flow_block = &block,
       .bir_block = find_bir_block(function, block),
@@ -135,14 +136,14 @@ BlockLoweringContext make_block_lowering_context(
 }
 
 InstructionDispatchResult dispatch_prepared_block(
-    const BlockLoweringContext& context,
-    MachineBlock& block,
-    ModuleLoweringDiagnostics& diagnostics) {
+    const module::BlockLoweringContext& context,
+    module::MachineBlock& block,
+    module::ModuleLoweringDiagnostics& diagnostics) {
   InstructionDispatchResult result;
 
   if (context.function.control_flow == nullptr || context.control_flow_block == nullptr) {
     append_block_diagnostic(diagnostics,
-                            ModuleLoweringDiagnosticKind::MissingBlockContext,
+                            module::ModuleLoweringDiagnosticKind::MissingBlockContext,
                             context,
                             "AArch64 block dispatch requires prepared function and block context");
     return result;
@@ -155,18 +156,18 @@ InstructionDispatchResult dispatch_prepared_block(
   if (context.bir_block == nullptr && context.function.bir_function != nullptr) {
     append_block_diagnostic(
         diagnostics,
-        ModuleLoweringDiagnosticKind::MissingInstructionBlockMapping,
+        module::ModuleLoweringDiagnosticKind::MissingInstructionBlockMapping,
         context,
         "AArch64 block dispatch could not map prepared block to retained BIR instructions");
   }
 
-  codegen::BlockScalarLoweringState scalar_state;
+  BlockScalarLoweringState scalar_state;
   if (context.bir_block != nullptr) {
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
-      if (auto lowered = codegen::lower_scalar_instruction(
+      if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));
       } else {
@@ -181,26 +182,26 @@ InstructionDispatchResult dispatch_prepared_block(
   if (context.control_flow_block->terminator_kind ==
       c4c::backend::bir::TerminatorKind::Return) {
     if (auto lowered =
-            codegen::lower_prepared_return_terminator(context, scalar_state, diagnostics)) {
+            lower_prepared_return_terminator(context, scalar_state, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::Branch) {
-    if (auto lowered = codegen::lower_prepared_branch_terminator(context, diagnostics)) {
+    if (auto lowered = lower_prepared_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
-      block.successors.push_back(codegen::make_unconditional_branch_successor(context));
+      block.successors.push_back(make_unconditional_branch_successor(context));
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::CondBranch) {
     if (auto lowered =
-            codegen::lower_prepared_conditional_branch_terminator(context, diagnostics)) {
+            lower_prepared_conditional_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
-      block.successors = codegen::make_conditional_branch_successors(context);
+      block.successors = make_conditional_branch_successors(context);
     }
   } else {
     append_block_diagnostic(
         diagnostics,
-        ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
+        module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
         context,
         unsupported_terminator_message(context.control_flow_block->terminator_kind));
   }
@@ -209,4 +210,4 @@ InstructionDispatchResult dispatch_prepared_block(
   return result;
 }
 
-}  // namespace c4c::backend::aarch64::module
+}  // namespace c4c::backend::aarch64::codegen
