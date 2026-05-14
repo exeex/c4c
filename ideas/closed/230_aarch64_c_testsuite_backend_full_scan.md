@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite Backend Full Scan
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 
 ## Intent
@@ -162,6 +163,47 @@ once through that route, easy nonsemantic or low-risk fixes have either landed
 or been explicitly deferred, and every remaining deeper AArch64, shared MIR,
 BIR, or prepared-BIR failure family has a corresponding reviewable follow-up
 idea or draft.
+
+## Closure Summary
+
+The AArch64 backend c-testsuite scan is registered and runnable with:
+
+```text
+cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON
+cmake --build build-aarch64-scan --target c4cll -j2
+ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_'
+```
+
+Final inventory:
+
+- Registered cases: 220
+- Compiled to AArch64 assembly: 192
+- Assembled/linked: 149
+- Run-and-matched: 0
+- Runtime-unavailable: 149
+- Backend assembly/link failures: 43
+- Frontend-stage AArch64 lowering/printer/`lir_to_bir` failures: 28
+- Fallback/non-AArch64 output: 0 after runner repair
+
+Easy scan-path fixes landed before close:
+
+- the scan route now requires `ENABLE_C4C_BACKEND=ON`
+- the route was rebuilt with backend support enabled
+- the AArch64 runner assembly check accepts valid indented `.text` directives
+  while still rejecting fallback/non-AArch64 output
+
+Follow-up draft artifacts preserve the remaining deeper families:
+
+- `ideas/draft/17_aarch64_c_testsuite_runtime_runner.md`
+- `ideas/draft/18_aarch64_c_testsuite_branch_label_materialization.md`
+- `ideas/draft/19_aarch64_c_testsuite_scalar_alu_printer_operands.md`
+- `ideas/draft/20_bir_semantic_gap_from_aarch64_c_testsuite.md`
+
+Close-time regression guard used canonical `test_before.log` and
+`test_after.log` for the same 220-test AArch64 backend c-testsuite scope.
+The default strict pass-increase mode failed because the scan remained
+0 passed / 220 failed, but the documented non-decreasing mode passed with no
+new failing tests and no pass-count regression.
 
 ## Reviewer Reject Signals
 
