@@ -11,6 +11,7 @@
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -170,6 +171,114 @@ prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
           .encoding = prepare::PreparedStorageEncodingKind::Immediate,
           .immediate_i32 = 5,
       }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_return_selected_scalar_chain() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto t0_name = prepared.names.value_names.intern("%t0");
+  const auto t1_name = prepared.names.value_names.intern("%t1");
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t1"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .rhs = bir::Value::immediate_i32(1),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%t1")};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{5},
+                  .function_name = function_name,
+                  .value_name = t0_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = 5,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{6},
+                  .function_name = function_name,
+                  .value_name = t1_name,
+                  .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+                  .immediate_i32 = 4,
+              },
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeInstruction,
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{5},
+                      .to_value_id = prepare::PreparedValueId{6},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                      .destination_contiguous_width = 1,
+                  }},
+              },
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeReturn,
+                  .block_index = 0,
+                  .instruction_index = 2,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{6},
+                      .to_value_id = prepare::PreparedValueId{6},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                      .destination_contiguous_width = 1,
+                      .destination_register_placement = call_result_gpr(0),
+                  }},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{5},
+                  .value_name = t0_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                  .immediate_i32 = 5,
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{6},
+                  .value_name = t1_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                  .immediate_i32 = 4,
+              },
+          },
   });
   return prepared;
 }
@@ -338,13 +447,62 @@ int module_build_selects_scalar_result_before_return() {
   if (ret == nullptr || !ret->value.has_value()) {
     return fail("expected scalar result return to carry a value");
   }
-  const auto* immediate =
-      std::get_if<aarch64_module::codegen::ImmediateOperand>(&ret->value->payload);
-  if (immediate == nullptr || immediate->signed_value != 5 ||
+  const auto* reg =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(&ret->value->payload);
+  if (reg == nullptr || reg->value_id != prepare::PreparedValueId{5} ||
+      reg->reg != aarch64_abi::w_register(0) ||
       result.module->functions.front().machine_nodes.size() != 1 ||
       result.module->functions.front().machine_nodes.front().family !=
           aarch64_module::codegen::InstructionFamily::Scalar) {
-    return fail("expected scalar return to attach rematerialized value and selected scalar node");
+    return fail("expected scalar return to attach emitted result register and selected scalar node");
+  }
+  return 0;
+}
+
+int module_build_selects_scalar_chain_before_return() {
+  auto prepared = prepared_with_return_selected_scalar_chain();
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected return-selected scalar chain module to build");
+  }
+  const auto& instructions = result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() != 3 ||
+      instructions[0].target.family != aarch64_module::codegen::InstructionFamily::Scalar ||
+      instructions[1].target.family != aarch64_module::codegen::InstructionFamily::Scalar ||
+      instructions[2].target.family != aarch64_module::codegen::InstructionFamily::Return) {
+    return fail("expected two scalar chain instructions to precede return instruction");
+  }
+
+  const auto* first = std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+      &instructions[0].target.payload);
+  const auto* second = std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+      &instructions[1].target.payload);
+  const auto* ret =
+      std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+          &instructions[2].target.payload);
+  if (first == nullptr || second == nullptr || ret == nullptr ||
+      !first->result_register.has_value() || !second->result_register.has_value() ||
+      first->result_register->reg != aarch64_abi::w_register(0) ||
+      second->result_register->reg != aarch64_abi::w_register(0) ||
+      second->source_binary_opcode != bir::BinaryOpcode::Sub ||
+      second->inputs.size() != 2) {
+    return fail("expected add/sub chain to use the return ABI accumulator register");
+  }
+  const auto* second_lhs =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(&second->inputs[0].payload);
+  const auto* second_rhs =
+      std::get_if<aarch64_module::codegen::ImmediateOperand>(&second->inputs[1].payload);
+  const auto* ret_reg =
+      ret->value.has_value()
+          ? std::get_if<aarch64_module::codegen::RegisterOperand>(&ret->value->payload)
+          : nullptr;
+  if (second_lhs == nullptr || second_lhs->value_id != prepare::PreparedValueId{5} ||
+      second_lhs->reg != aarch64_abi::w_register(0) || second_rhs == nullptr ||
+      second_rhs->signed_value != 1 || ret_reg == nullptr ||
+      ret_reg->value_id != prepare::PreparedValueId{6} ||
+      ret_reg->reg != aarch64_abi::w_register(0) ||
+      result.module->functions.front().machine_nodes.size() != 2) {
+    return fail("expected chain operands and return to reference selected scalar records");
   }
   return 0;
 }
@@ -399,6 +557,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_selects_scalar_result_before_return();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_selects_scalar_chain_before_return();
       status != 0) {
     return status;
   }

@@ -209,9 +209,28 @@ if(CLANG_EXECUTABLE AND AARCH64_AS_EXECUTABLE)
   set_tests_properties(backend_cli_aarch64_asm_external_return_add_smoke PROPERTIES
     LABELS "backend;internal;cli;aarch64;external_toolchain"
   )
+  add_test(
+    NAME backend_cli_aarch64_asm_external_return_add_sub_chain_smoke
+    COMMAND "${CMAKE_COMMAND}"
+            -DCOMPILER=$<TARGET_FILE:c4cll>
+            -DCLANG=${CLANG_EXECUTABLE}
+            -DAS=${AARCH64_AS_EXECUTABLE}
+            -DTARGET_TRIPLE=aarch64-linux-gnu
+            -DSRC=${BACKEND_CASE_ROOT}/return_add_sub_chain.c
+            -DOUT_ASM=${BACKEND_TEST_BINARY_ROOT}/aarch64_return_add_sub_chain_smoke.s
+            -DOUT_OBJ=${BACKEND_TEST_BINARY_ROOT}/aarch64_return_add_sub_chain_smoke.o
+            -DOUT_BIN=${BACKEND_TEST_BINARY_ROOT}/aarch64_return_add_sub_chain_smoke.bin
+            -DHOST_PROCESSOR=${CMAKE_HOST_SYSTEM_PROCESSOR}
+            "-DREQUIRED_SNIPPETS=.globl main|main:|mov w0, #2|add w0, w0, #3|sub w0, w0, #1|ret"
+            -DEXPECTED_RUN_RC=4
+            -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_aarch64_external_smoke.cmake"
+  )
+  set_tests_properties(backend_cli_aarch64_asm_external_return_add_sub_chain_smoke PROPERTIES
+    LABELS "backend;internal;cli;aarch64;external_toolchain"
+  )
 else()
   message(WARNING
-    "clang or AArch64 assembler not found: backend_cli_aarch64_asm_external_return_zero_smoke and backend_cli_aarch64_asm_external_return_add_smoke will be skipped")
+    "clang or AArch64 assembler not found: backend_cli_aarch64_asm_external_return_zero_smoke, backend_cli_aarch64_asm_external_return_add_smoke, and backend_cli_aarch64_asm_external_return_add_sub_chain_smoke will be skipped")
 endif()
 
 get_property(C4C_MIR_BACKEND_TESTS DIRECTORY PROPERTY TESTS)

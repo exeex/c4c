@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_map>
 #include <utility>
 #include <variant>
 
@@ -14,6 +15,10 @@ namespace c4c::backend::aarch64::module {
 namespace {
 
 namespace bir = c4c::backend::bir;
+
+struct BlockScalarLoweringState {
+  std::unordered_map<c4c::ValueNameId, codegen::RegisterOperand> emitted_registers;
+};
 
 void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
                              ModuleLoweringDiagnosticKind kind,
@@ -167,6 +172,7 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
 
 [[nodiscard]] std::optional<codegen::ReturnInstructionRecord> make_return_record(
     const BlockLoweringContext& context,
+    const BlockScalarLoweringState& scalar_state,
     ModuleLoweringDiagnostics& diagnostics) {
   codegen::ReturnInstructionRecord record;
   if (context.bir_block == nullptr || !context.bir_block->terminator.value.has_value()) {
@@ -178,7 +184,15 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
   if (value.kind == bir::Value::Kind::Immediate) {
     record.value = make_immediate_return_operand(value);
   } else {
-    record.value = make_named_return_operand(value, context, diagnostics);
+    const auto* home = find_named_value_home(value, context.function);
+    const auto emitted =
+        home == nullptr ? scalar_state.emitted_registers.end()
+                        : scalar_state.emitted_registers.find(home->value_name);
+    if (emitted != scalar_state.emitted_registers.end()) {
+      record.value = codegen::make_register_operand(emitted->second);
+    } else {
+      record.value = make_named_return_operand(value, context, diagnostics);
+    }
   }
   if (!record.value.has_value()) {
     diagnostics.entries.push_back(ModuleLoweringDiagnostic{
@@ -242,6 +256,97 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
     }
   }
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<codegen::RegisterOperand> retarget_register_operand(
+    codegen::RegisterOperand reg,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    bir::TypeKind type) {
+  reg.value_id = value_id;
+  reg.value_name = value_name;
+  reg.expected_view = scalar_register_view(type);
+  return reg;
+}
+
+[[nodiscard]] bool value_matches_name(const bir::Value& value,
+                                      std::string_view name) {
+  return value.kind == bir::Value::Kind::Named && value.name == name;
+}
+
+[[nodiscard]] std::optional<codegen::RegisterOperand> find_return_chain_register(
+    const BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const prepare::PreparedValueHome& result_home,
+    bir::TypeKind result_type) {
+  if (context.function.prepared == nullptr || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+
+  std::string current_name =
+      std::string(prepare::prepared_value_name(context.function.prepared->names,
+                                               result_home.value_name));
+  if (current_name.empty()) {
+    return std::nullopt;
+  }
+
+  for (std::size_t next_index = instruction_index + 1;
+       next_index < context.bir_block->insts.size();
+       ++next_index) {
+    const auto* next_binary =
+        std::get_if<bir::BinaryInst>(&context.bir_block->insts[next_index]);
+    if (next_binary == nullptr ||
+        !codegen::is_scalar_alu_integer_opcode(next_binary->opcode)) {
+      return std::nullopt;
+    }
+    const bool consumes_current = value_matches_name(next_binary->lhs, current_name) ||
+                                  value_matches_name(next_binary->rhs, current_name);
+    if (!consumes_current || next_binary->result.kind != bir::Value::Kind::Named) {
+      return std::nullopt;
+    }
+    current_name = next_binary->result.name;
+  }
+
+  if (!context.bir_block->terminator.value.has_value() ||
+      !value_matches_name(*context.bir_block->terminator.value, current_name)) {
+    return std::nullopt;
+  }
+
+  const auto* terminal_home =
+      find_named_value_home(*context.bir_block->terminator.value, context.function);
+  if (terminal_home == nullptr) {
+    return std::nullopt;
+  }
+  auto terminal_register =
+      find_return_abi_register(context,
+                               terminal_home->value_id,
+                               terminal_home->value_name,
+                               context.bir_block->terminator.value->type);
+  if (!terminal_register.has_value()) {
+    return std::nullopt;
+  }
+  return retarget_register_operand(*terminal_register,
+                                   result_home.value_id,
+                                   result_home.value_name,
+                                   result_type);
+}
+
+[[nodiscard]] std::optional<codegen::OperandRecord> make_scalar_fallback_operand(
+    const bir::Value& value,
+    const BlockLoweringContext& context,
+    const BlockScalarLoweringState& scalar_state,
+    ModuleLoweringDiagnostics& diagnostics) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return make_immediate_return_operand(value);
+  }
+  const auto* home = find_named_value_home(value, context.function);
+  const auto emitted =
+      home == nullptr ? scalar_state.emitted_registers.end()
+                      : scalar_state.emitted_registers.find(home->value_name);
+  if (emitted != scalar_state.emitted_registers.end()) {
+    return codegen::make_register_operand(emitted->second);
+  }
+  return make_named_return_operand(value, context, diagnostics);
 }
 
 [[nodiscard]] MachineInstruction make_return_instruction(
@@ -342,7 +447,9 @@ void append_unsupported_instruction_diagnostic(ModuleLoweringDiagnostics& diagno
 [[nodiscard]] std::optional<MachineInstruction> lower_scalar_instruction(
     const BlockLoweringContext& context,
     const bir::Inst& inst,
-    std::size_t instruction_index) {
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    ModuleLoweringDiagnostics& diagnostics) {
   if (context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
       context.function.storage_plan == nullptr) {
@@ -363,15 +470,21 @@ void append_unsupported_instruction_diagnostic(ModuleLoweringDiagnostics& diagno
   std::optional<codegen::ScalarInstructionRecord> scalar_record = prepared.record;
   if (!scalar_record.has_value()) {
     const auto* result_home = find_named_value_home(binary->result, context.function);
-    const auto result_register =
+    auto result_register =
         result_home == nullptr
             ? std::optional<codegen::RegisterOperand>{}
             : find_return_abi_register(context,
                                        result_home->value_id,
                                        result_home->value_name,
                                        binary->result.type);
-    const auto lhs = make_immediate_return_operand(binary->lhs);
-    const auto rhs = make_immediate_return_operand(binary->rhs);
+    if (!result_register.has_value() && result_home != nullptr) {
+      result_register =
+          find_return_chain_register(context, instruction_index, *result_home, binary->result.type);
+    }
+    const auto lhs =
+        make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
+    const auto rhs =
+        make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
     if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||
         !rhs.has_value() || !codegen::is_scalar_alu_integer_opcode(binary->opcode)) {
       return std::nullopt;
@@ -399,6 +512,11 @@ void append_unsupported_instruction_diagnostic(ModuleLoweringDiagnostics& diagno
   target.block_label = context.control_flow_block->block_label;
   target.block_index = context.block_index;
   target.instruction_index = instruction_index;
+  if (scalar_record->result_register.has_value() &&
+      scalar_record->result_value_name != c4c::kInvalidValueName) {
+    scalar_state.emitted_registers[scalar_record->result_value_name] =
+        *scalar_record->result_register;
+  }
 
   return MachineInstruction{
       .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
@@ -453,12 +571,14 @@ InstructionDispatchResult dispatch_prepared_block(
         "AArch64 block dispatch could not map prepared block to retained BIR instructions");
   }
 
+  BlockScalarLoweringState scalar_state;
   if (context.bir_block != nullptr) {
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
-      if (auto lowered = lower_scalar_instruction(context, inst, instruction_index)) {
+      if (auto lowered = lower_scalar_instruction(
+              context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));
       } else {
         append_unsupported_instruction_diagnostic(
@@ -471,7 +591,7 @@ InstructionDispatchResult dispatch_prepared_block(
   result.visited_terminator = true;
   if (context.control_flow_block->terminator_kind ==
       c4c::backend::bir::TerminatorKind::Return) {
-    if (auto record = make_return_record(context, diagnostics)) {
+    if (auto record = make_return_record(context, scalar_state, diagnostics)) {
       block.instructions.push_back(make_return_instruction(context, std::move(*record)));
     }
   } else {

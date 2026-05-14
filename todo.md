@@ -8,22 +8,23 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time fixed the return-value
-regression from the first return-lowering commit. Retained BIR return values
-now feed `ReturnInstructionRecord::value`: void returns stay bare, immediate
-integer returns materialize through typed immediate operands, and named returns
-resolve through prepared value homes/storage/register authority.
+Step 5: Implement One Lowering Family At A Time extended return-selected
+scalar add/sub lowering from one immediate binary operation to a same-block
+linear scalar ALU chain. The AArch64 module lowering now keeps block-local
+emitted scalar value registers, derives the return ABI accumulator from the
+prepared before-return move authority, retargets that register through linear
+same-block add/sub results, and makes the final return consume the emitted
+register instead of rematerializing over the selected chain.
 
-The slice also selects the existing scalar add/sub record for return-selected
-scalar results when prepared return ABI register authority exists, so generated
-AArch64 assembly again emits the value-producing `mov`/`add` sequence before
-`ret`. Compatibility `machine_nodes` now expose selected non-return nodes needed
-by existing scalar coverage while return nodes remain canonical MIR-only.
+The slice proves `tests/backend/case/return_add_sub_chain.c` through the public
+AArch64 asm smoke without named-case matching: generated assembly contains
+`mov w0, #2`, `add w0, w0, #3`, `sub w0, w0, #1`, and `ret`, and the external
+run expects rc 4.
 
 ## Suggested Next
 
-Supervisor can review and commit this regression-fix slice, then continue with
-the next Step 5 lowering family.
+Supervisor can review and commit this Step 5 scalar-chain slice, then continue
+with the next bounded AArch64 lowering family.
 
 ## Watchouts
 
@@ -31,18 +32,18 @@ the next Step 5 lowering family.
   selected return representation: `InstructionRecord` family `Return` with a
   `ReturnInstructionRecord` payload. The generic MIR opcode remains the target
   record's current opcode value.
-- `src/backend/mir/aarch64/module/branch_control_lowering.cpp` was delegated
-  but does not exist as a real source file in this checkout, so no branch-control
-  source split was made.
-- Compatibility `machine_nodes` intentionally exclude return nodes but now carry
-  selected non-return records such as return-selected scalar ALU nodes for the
-  existing compatibility test surface.
+- The return-chain fallback is intentionally narrow: it only retargets the
+  prepared return ABI register through a same-block linear add/sub chain ending
+  at the block return. It still fails closed for non-scalar, non-linear, or
+  non-return-selected shapes.
+- Compatibility `machine_nodes` still intentionally exclude return nodes but
+  carry selected non-return scalar records for the existing compatibility test
+  surface.
 
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_scalar_alu_records|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_scalar_alu_records|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
 
-Result: passed; focused subset ran 9/9 tests. The generated smoke assembly
-contains `mov w0, #0` for return-zero and `mov w0, #2` plus `add w0, w0, #3`
-for return-add. Proof output is preserved in `test_after.log`.
+Result: passed; focused subset ran 10/10 tests. Proof output is preserved in
+`test_after.log`.
