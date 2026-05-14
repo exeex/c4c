@@ -32,8 +32,9 @@ rebuild.
   `src/backend/mir/aarch64/module/module.hpp`.
 - `src/backend/mir/aarch64/module/module.md`, a directory-level index for the
   extracted module scope.
-- A teardown packet, accepted only after extraction evidence exists, that
-  removes the replaced legacy `.cpp` file with the phoenix cleanup script.
+- A build-preserving handoff note that keeps `module.cpp` available as legacy
+  evidence until a later phoenix stage owns replacement implementation and
+  build-system rewiring.
 
 ## Does Not Yet Own
 
@@ -71,8 +72,9 @@ layout and handoff contract for draft generation.
 
 - Do not hand-copy full source files into markdown.
 - Do not draft replacement APIs in this stage.
-- Do not keep the old `.cpp` parked beside accepted extraction evidence after
-  teardown is accepted.
+- Do not delete `module.cpp` in this stage; teardown belongs to the later
+  phoenix stage that first provides a replacement implementation and updates
+  build wiring.
 - Do not treat current record boundaries as trusted design boundaries.
 - Do not weaken or rewrite tests to make extraction look complete.
 
@@ -81,17 +83,18 @@ layout and handoff contract for draft generation.
 This idea is complete only when every in-scope legacy source has a compressed
 markdown companion, `module.hpp` has its `module.hpp.md` index-surface
 companion, `module.md` points at the full artifact set, no in-scope directory
-has more than one non-helper `.hpp`, the accepted teardown packet has removed
-the replaced legacy `.cpp` with the phoenix cleanup script, and reviewers can
-understand the module emitter responsibilities without reopening the removed
-source as the primary reference.
+has more than one non-helper `.hpp`, Stage 1 explicitly records that
+`module.cpp` remains compiled legacy evidence until a later replacement stage
+owns teardown plus build rewiring, and reviewers can understand the module
+emitter responsibilities from the extracted evidence without treating the live
+source as the replacement design.
 
 ## Reviewer Reject Signals
 
 Reject the route if extraction is a source dump, omits `module.hpp`, omits the
-directory index, leaves `module.cpp` parked after accepted teardown, silently
-adds another non-helper header in the module directory, classifies direct
-prepared-BIR-to-MIR lowering as out of scope, or claims progress through
-testcase-shaped shortcuts, unsupported expectation downgrades, helper renames,
-expectation rewrites, or new labels that preserve the old module-emitter
-failure mode unchanged.
+directory index, deletes or build-disconnects `module.cpp` before replacement
+implementation and build wiring exist, silently adds another non-helper header
+in the module directory, classifies direct prepared-BIR-to-MIR lowering as out
+of scope, or claims progress through testcase-shaped shortcuts, unsupported
+expectation downgrades, helper renames, expectation rewrites, or new labels
+that preserve the old module-emitter failure mode unchanged.

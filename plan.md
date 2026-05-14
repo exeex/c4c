@@ -51,17 +51,19 @@ replacement architecture, edit implementation behavior, or make tests weaker.
 
 The extraction packet should use the phoenix script to produce one markdown
 companion per in-scope legacy `.cpp` / `.hpp`, then produce the directory-level
-index. After extraction is accepted, the teardown packet removes the replaced
-legacy `.cpp` through the phoenix cleanup script so the old implementation is
-not parked beside its evidence.
+index. Stage 1 keeps `module.cpp` in place as compiled legacy evidence because
+`src/backend/CMakeLists.txt` still builds it and no replacement implementation
+exists yet. Teardown belongs to a later phoenix stage that owns replacement
+implementation plus build wiring.
 
 ## Execution Rules
 
 - Keep routine executor progress in `todo.md`.
 - Use script-driven extraction:
   `python .codex/skills/phoenix-rebuild/scripts/extract_legacy_to_markdown.py 'src/backend/mir/aarch64/module/module.cpp' 'src/backend/mir/aarch64/module/module.hpp'`
-- Use phoenix cleanup for accepted `.cpp` teardown:
-  `python .codex/skills/phoenix-rebuild/scripts/delete_legacy_cpp.py 'src/backend/mir/aarch64/module/module.cpp'`
+- Do not run phoenix cleanup for `module.cpp` in Stage 1. The cleanup command
+  is deferred until a later phoenix stage provides replacement implementation
+  and updates the build graph.
 - Keep extraction compressed and reviewable; do not dump full source.
 - Use short fenced `cpp` blocks only for essential surfaces.
 - Classify fast paths and special cases as core lowering, optional fast path,
@@ -130,39 +132,51 @@ Completion check:
   reviewer understand the extracted scope without reopening source as the
   primary reference.
 
-### Step 4: Teardown Accepted Legacy CPP
+### Step 4: Check Build-Preserving Stage 1 Close Readiness
 
-Goal: remove the replaced legacy `.cpp` only after extraction evidence is
-accepted.
-
-Primary target:
-- `src/backend/mir/aarch64/module/module.cpp`
-
-Actions:
-- Confirm the per-file and directory-level markdown artifacts exist.
-- Run the phoenix cleanup script for `module.cpp`.
-- Do not remove `module.hpp` in this stage.
-
-Completion check:
-- `module.cpp` is removed by the cleanup script after evidence exists, and no
-  old `.cpp` remains parked beside the accepted extraction.
-
-### Step 5: Check Stage 1 Close Readiness
-
-Goal: make the extraction set ready for supervisor/reviewer acceptance.
+Goal: make the extraction set ready for supervisor/reviewer acceptance while
+preserving the current build.
 
 Primary targets:
 - `src/backend/mir/aarch64/module/module.cpp.md`
 - `src/backend/mir/aarch64/module/module.hpp.md`
 - `src/backend/mir/aarch64/module/module.md`
+- `src/backend/mir/aarch64/module/module.cpp`
 - `todo.md`
 
 Actions:
 - Verify every in-scope source has the required markdown companion.
 - Verify the one non-helper `.hpp` rule still holds.
 - Verify the directory index points at the complete artifact set.
-- Record any extraction limitations or follow-up repair needs in `todo.md`.
+- Confirm `module.cpp` remains available to the build as legacy evidence; do
+  not delete it, remove it from CMake, or replace it in this stage.
+- Record any extraction limitations, handoff notes, or follow-up repair needs
+  in `todo.md`.
 
 Completion check:
-- Stage 1 satisfies the source idea completion signal, or `todo.md` records the
-  exact blocker preventing activation of stage 2.
+- Stage 1 satisfies the source idea completion signal without breaking build
+  wiring, or `todo.md` records the exact blocker preventing activation of
+  stage 2.
+
+### Step 5: Hand Off Deferred Teardown To Stage 2
+
+Goal: leave a clean boundary for the later phoenix stage that will replace the
+legacy module implementation.
+
+Primary targets:
+- `src/backend/mir/aarch64/module/module.md`
+- `src/backend/mir/aarch64/module/module.cpp`
+- `todo.md`
+
+Actions:
+- Ensure `todo.md` states that `module.cpp` is legacy evidence only, not a
+  replacement design target.
+- Record that physical teardown is deferred until replacement implementation
+  and build-system wiring are ready.
+- Do not draft replacement architecture or edit implementation files in this
+  stage.
+
+Completion check:
+- A new agent can start the next phoenix stage from the markdown evidence and
+  knows that deleting or disconnecting `module.cpp` is not accepted until the
+  replacement stage owns build-preserving wiring.
