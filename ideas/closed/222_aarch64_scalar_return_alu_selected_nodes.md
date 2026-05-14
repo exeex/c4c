@@ -1,7 +1,8 @@
 # AArch64 Scalar Return ALU Selected Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Completed: 2026-05-14
 
 Depends On:
 - `ideas/open/221_aarch64_markdown_driven_backend_case_bringup.md`
@@ -107,3 +108,21 @@ shortcuts.
   markdown-owned contract.
 - The exact old failure mode is retained behind a new abstraction name, such
   as producing printable output without real selected scalar machine nodes.
+
+## Closure Notes
+
+Closed after the selected-node, machine-printer, public smoke, broader
+AArch64 bucket, and full-suite baseline checks passed.
+
+Durable acceptance proof:
+- focused semantic proof passed for
+  `backend_aarch64_(prepared_module_identity|machine_printer|target_instruction_records)$`
+- public AArch64 asm smoke grew from 2/2 to 3/3 with
+  `backend_cli_aarch64_asm_external_return_add_smoke`
+- broader `^backend_aarch64_` validation passed 24/24
+- full-suite baseline comparison passed 3162/3162 to 3163/3163 with no new
+  failures
+
+Deferred work remains out of scope for this idea: broader scalar ALU fixtures,
+`return_add_sub_chain.c`, pointer returns, memory/call/global behavior, and
+object/linker route work.
