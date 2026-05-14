@@ -1,33 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/219_aarch64_natural_operator_naming_and_printer_spelling.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Representative Drift Guards
+Current Step ID: 6
+Current Step Title: Final Contract And Validation Pass
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5: added representative AArch64 mnemonic drift guards that keep
-supported helper output and printed assembly spelling aligned.
+Completed Step 6: performed the final contract and validation pass for idea
+219.
 
-Implementation updates made:
-- `backend_aarch64_target_instruction_records_test.cpp` now directly proves
-  the supported shared helper spellings for `str`, `ldr`, `cbnz`, `b`, `mov`,
-  and `ret`.
-- `backend_aarch64_machine_printer_test.cpp` now derives representative
-  expected printer output from the shared helper spellings and compares that
-  helper-derived output against canonical printed assembly for spill/reload,
-  conditional branch plus fallthrough branch, store, immediate move, and
-  return.
-- No instruction-selection coverage was expanded and no expectations were
-  downgraded.
+Acceptance review:
+- The naming contract distinguishes stream item kinds, natural operator kinds,
+  printer mnemonics, and later encoder canonical forms.
+- Alias-like names such as `Mov`, `Cmp`, and `Tst` remain valid at the
+  MIR/structured-asm layer when readable, with assembler/encoder
+  canonicalization owning the later encoding-form choice.
+- Printed `.s` remains terminal renderer output and is not treated as semantic
+  backend input.
+- Printer output and representative diagnostics/tests use the centralized
+  `MachinePrinterMnemonicKind` and
+  `machine_instruction_*_printer_mnemonic` helper surface for the supported
+  subset.
+- Representative focused tests cover the supported spelling subset without
+  expanding instruction selection coverage or downgrading expectations.
+
+No idea 219 acceptance criteria remain open from this executor review.
 
 ## Suggested Next
 
-Execute Step 6: perform the final contract and validation pass for idea 219,
-confirming the acceptance criteria and reviewer reject signals before broader
-supervisor-selected validation.
+Supervisor should run lifecycle close/review for idea 219. The active runbook
+appears complete from this executor packet, but lifecycle closure belongs to
+the plan owner and final commit boundary belongs to the supervisor.
 
 ## Watchouts
 
@@ -35,26 +40,23 @@ supervisor-selected validation.
   not semantic backend input.
 - Do not touch `ideas/open/220_aarch64_markdown_driven_backend_case_bringup.md`.
 - Do not touch `ideas/open/221_backend_test_tree_split_bir_mir_and_prune_legacy.md`.
-- Do not expand instruction selection coverage just to add more operator names.
-- Do not downgrade expectations or introduce testcase-shaped shortcuts.
-- External assembler and encoder headers still accept mnemonic strings for the
-  external text path only; do not treat those as the internal shared operator
-  source.
-- The helper intentionally returns an empty spelling for currently
-  unsupported scalar opcodes and `CompareBranch`; do not expand instruction
-  selection coverage just to make those spellings non-empty.
-- The printer still intentionally rejects loads without a structured
-  destination operand; Step 4 did not add new printable instruction forms.
-- Step 5 intentionally guards the currently supported printer subset only:
-  `str`, `ldr`, `cbnz`, `b`, `mov`, and `ret`.
+- No acceptance gap was found in idea 219's stated scope.
+- Reviewer reject signals were not observed in this final pass: the route does
+  not force obscure encoding-form names, does not push alias resolution into
+  MIR lowering, does not treat printed `.s` as backend input, and did not widen
+  into broad instruction selection or encoder implementation.
+- Root-level logs observed by the delegated proof are `test_after.log`,
+  `test_baseline.log`, and `test_before.log`; only `test_after.log` was
+  updated by this packet.
 
 ## Proof
 
-Step 5 drift-guard proof:
+Step 6 final contract and validation proof:
 
 ```bash
-bash -lc 'set -o pipefail; cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R "^backend_aarch64_(target_instruction_records|machine_printer)$" >> test_after.log 2>&1'
+bash -lc 'set -o pipefail; { rg -n "natural operator kind|printer mnemonic|encoder canonical|MachinePrinterMnemonicKind|machine_instruction_primary_printer_mnemonic|machine_instruction_auxiliary_printer_mnemonic|Mov|Cmp|Tst|semantic backend input|printed \.s" ideas/open/219_aarch64_natural_operator_naming_and_printer_spelling.md plan.md src/backend/mir/aarch64/MACHINE_INSTRUCTION_NODE_CONTRACT.md src/backend/mir/aarch64/codegen/records.md src/backend/mir/aarch64/codegen/records.hpp src/backend/mir/aarch64/codegen/records.cpp src/backend/mir/aarch64/codegen/machine_printer.cpp tests/backend/backend_aarch64_machine_printer_test.cpp tests/backend/backend_aarch64_target_instruction_records_test.cpp; cmake --build --preset default; ctest --test-dir build -j --output-on-failure -R "^backend_aarch64_"; find . -maxdepth 1 -name "*.log" -printf "%f\n" | sort; } > test_after.log 2>&1'
 ```
 
-The delegated build plus focused AArch64 target-instruction records and
-machine-printer subset passed. Proof output is preserved in `test_after.log`.
+The delegated proof passed. Build reported `ninja: no work to do`; the focused
+AArch64 backend subset passed with 24 tests and 0 failures. Proof output is
+preserved in `test_after.log`.
