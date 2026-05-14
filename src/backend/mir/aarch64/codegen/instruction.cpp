@@ -1346,6 +1346,11 @@ std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
 
 std::optional<MachineEffectResource> effect_from_prepared_call_preserved_value(
     const prepare::PreparedCallPreservedValue& preserved) {
+  if (preserved.route == prepare::PreparedCallPreservationRoute::StackSlot) {
+    // Stack-slot preserved values do not currently carry size/alignment here,
+    // so a structured MemoryOperand preserve effect would be incomplete.
+    return std::nullopt;
+  }
   if (preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
       !preserved.register_name.has_value() || !preserved.register_bank.has_value() ||
       preserved.register_name->empty() ||

@@ -8,35 +8,28 @@ Current Step Title: Lower Memory-Return And Preservation Cases
 
 ## Just Finished
 
-Continued Step 5, Lower Memory-Return And Preservation Cases, by exposing
-prepared preserved-value register facts on selected AArch64 call
-machine-node records.
+Continued Step 5, Lower Memory-Return And Preservation Cases, by checking
+whether stack-slot `PreparedCallPreservedValue` records can become structured
+AArch64 call `preserves` memory effects using only existing prepared authority.
 
-Implemented the narrow prepared preserved-value path:
+Implemented the fail-closed path for stack-slot preserved values:
 
-- Added `InstructionRecord::preserves` as a structured effect carrier separate
-  from defs, uses, and clobbers.
-- Populated call-node `preserves` only from existing
-  `PreparedCallPreservedValue` records whose route is
-  `CalleeSavedRegister` and whose prepared register name, bank, width, and
-  occupied-register carrier are explicit and convertible.
-- Retained incomplete or malformed preserved-value records as raw
-  `CallInstructionRecord::preserved_values` provenance without creating
-  structured preservation effects.
-- Kept call printer output unchanged; tests prove preserved-value effects stay
-  attached while the printed call line still comes only from prepared callee
-  provenance.
-- Added target-record, dispatch, and printer coverage for an explicit
-  prepared preserved-value register case, including a fail-closed incomplete
-  preserved fact.
+- Confirmed `PreparedCallPreservedValue` carries value identity, slot id, stack
+  offset, and spill-slot placement for stack-slot routes, but does not carry
+  the preserved slot size/alignment needed to build a complete
+  `MemoryOperand`.
+- Kept stack-slot preserved values as raw
+  `CallInstructionRecord::preserved_values` provenance and explicitly returns
+  no structured `preserves` effect for the `StackSlot` route.
+- Added target-record and dispatch coverage proving explicit stack-slot
+  preserved-value provenance survives while structured call `preserves` remains
+  limited to the already-complete register preservation carrier.
 
 ## Suggested Next
 
-Continue Step 5 by deciding whether stack-slot preserved values should gain a
-structured `preserves` effect carrier. Only do this if the existing
-`PreparedCallPreservedValue` slot id and stack offset are accepted as
-sufficient authority; otherwise route the missing carrier instead of inferring
-frame or preservation policy locally.
+Continue Step 5 by deciding whether to add an upstream prepared carrier for
+stack-slot preserved-value size/alignment, or leave stack-slot preservation as
+raw call provenance until a later prepared-authority slice owns that contract.
 
 ## Watchouts
 
@@ -93,8 +86,11 @@ frame or preservation policy locally.
   memory-return plans remain raw payload provenance and do not gain structured
   memory effects in AArch64 dispatch.
 - Preserved-value effects are exposed only for explicit prepared
-  callee-saved-register carriers. Stack-slot preserved values and incomplete
-  register facts remain raw `PreparedCallPreservedValue` provenance for now.
+  callee-saved-register carriers. Stack-slot preserved values remain raw
+  `PreparedCallPreservedValue` provenance because the current preserved-value
+  carrier lacks size/alignment for a complete structured memory effect.
+- `clang-format` is not installed in this environment; the edited hunks were
+  manually checked.
 
 ## Proof
 

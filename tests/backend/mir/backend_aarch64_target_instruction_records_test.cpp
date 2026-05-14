@@ -418,6 +418,58 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   return 0;
 }
 
+int stack_slot_preserved_value_fails_closed_without_size_alignment_carrier() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"actual_function"},
+      .preserved_values = {prepare::PreparedCallPreservedValue{
+          .value_id = prepare::PreparedValueId{70},
+          .value_name = c4c::ValueNameId{31},
+          .route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .contiguous_width = 1,
+          .slot_id = prepare::PreparedFrameSlotId{15},
+          .stack_offset_bytes = std::size_t{88},
+          .spill_slot_placement =
+              prepare::PreparedSpillSlotPlacement{
+                  .slot_id = prepare::PreparedFrameSlotId{15},
+                  .offset_bytes = 88,
+              },
+      }},
+  };
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{4},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "actual_function",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .preserved_values = prepared_call.preserved_values,
+          .source_call = &prepared_call,
+          .calling_convention = bir::CallingConv::C,
+      });
+
+  const auto* call_payload = std::get_if<aarch64_codegen::CallInstructionRecord>(&call.payload);
+  if (call_payload == nullptr || call_payload->preserved_values.size() != 1 ||
+      call_payload->preserved_values.front().route !=
+          prepare::PreparedCallPreservationRoute::StackSlot ||
+      call_payload->preserved_values.front().slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{15} ||
+      call_payload->preserved_values.front().stack_offset_bytes !=
+          std::optional<std::size_t>{88}) {
+    return fail("expected stack-slot preserved value to remain raw prepared provenance");
+  }
+  if (!call.preserves.empty()) {
+    return fail("expected stack-slot preserved value to fail closed without size/alignment");
+  }
+
+  return 0;
+}
+
 int memory_return_call_record_exposes_prepared_frame_slot_storage() {
   const prepare::PreparedMemoryReturnPlan memory_return{
       .sret_arg_index = std::size_t{0},
@@ -1114,6 +1166,10 @@ int main() {
     return status;
   }
   if (const int status = call_return_assembler_and_object_families_are_explicit_placeholders();
+      status != 0) {
+    return status;
+  }
+  if (const int status = stack_slot_preserved_value_fails_closed_without_size_alignment_carrier();
       status != 0) {
     return status;
   }

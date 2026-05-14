@@ -116,6 +116,19 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
                   .register_name = std::string{"x19"},
                   .register_bank = prepare::PreparedRegisterBank::Gpr,
                   .occupied_register_names = {"x19"},
+              },
+              prepare::PreparedCallPreservedValue{
+                  .value_id = prepare::PreparedValueId{43},
+                  .value_name = c4c::ValueNameId{18},
+                  .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                  .contiguous_width = 1,
+                  .slot_id = prepare::PreparedFrameSlotId{11},
+                  .stack_offset_bytes = std::size_t{96},
+                  .spill_slot_placement =
+                      prepare::PreparedSpillSlotPlacement{
+                          .slot_id = prepare::PreparedFrameSlotId{11},
+                          .offset_bytes = 96,
+                      },
               }},
           .clobbered_registers = {prepare::PreparedClobberedRegister{
               .bank = prepare::PreparedRegisterBank::Vreg,
@@ -737,10 +750,15 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
       call->direct_callee_label != "actual_function" ||
       call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
       call->source_call != &function_context.call_plans->calls.front() ||
-      call->preserved_values.size() != 1 ||
+      call->preserved_values.size() != 2 ||
       call->clobbered_registers.size() != 1 ||
       !call->arguments.empty() || call->result.has_value()) {
     return fail("expected direct call node to preserve prepared call provenance");
+  }
+  if (call->preserved_values[1].route != prepare::PreparedCallPreservationRoute::StackSlot ||
+      call->preserved_values[1].slot_id != std::optional<prepare::PreparedFrameSlotId>{11} ||
+      call->preserved_values[1].stack_offset_bytes != std::optional<std::size_t>{96}) {
+    return fail("expected direct call node to retain stack-slot preserved-value provenance");
   }
   if (call_instruction.target.preserves.size() != 1 ||
       call_instruction.target.preserves.front().kind !=
