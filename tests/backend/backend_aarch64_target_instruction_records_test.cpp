@@ -266,6 +266,134 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   return 0;
 }
 
+int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
+  const auto condition = make_value_register(prepare::PreparedValueId{30},
+                                             c4c::ValueNameId{12},
+                                             1);
+  const auto branch = aarch64_codegen::make_branch_instruction(
+      aarch64_codegen::BranchInstructionRecord{
+          .target =
+              aarch64_codegen::BranchTargetOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .block_label = c4c::BlockLabelId{7},
+                  .function_name = c4c::FunctionNameId{2},
+                  .condition_value_id = prepare::PreparedValueId{30},
+              },
+      });
+  const auto conditional_branch = aarch64_codegen::make_branch_instruction(
+      aarch64_codegen::BranchInstructionRecord{
+          .target =
+              aarch64_codegen::BranchTargetOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .block_label = c4c::BlockLabelId{7},
+                  .function_name = c4c::FunctionNameId{2},
+                  .condition_value_id = prepare::PreparedValueId{30},
+              },
+          .target_pair =
+              aarch64_codegen::BranchTargetPairRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .true_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{7},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{30},
+                      },
+                  .false_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{8},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{30},
+                      },
+              },
+          .condition = condition,
+          .condition_record =
+              aarch64_codegen::BranchConditionRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .form = aarch64_codegen::BranchConditionForm::MaterializedBool,
+                  .condition_value_id = prepare::PreparedValueId{30},
+                  .condition_value_name = c4c::ValueNameId{12},
+                  .condition_type = bir::TypeKind::I1,
+              },
+          .conditional = true,
+      });
+
+  const auto memory_address = aarch64_codegen::MemoryOperand{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{7},
+      .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+      .frame_slot_id = prepare::PreparedFrameSlotId{9},
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_space = bir::AddressSpace::Default,
+      .can_use_base_plus_offset = true,
+  };
+  const auto load = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address = memory_address,
+          .result_value_id = prepare::PreparedValueId{31},
+          .result_value_name = c4c::ValueNameId{13},
+          .value_type = bir::TypeKind::I64,
+      });
+
+  auto store_address = memory_address;
+  store_address.stored_value_id = prepare::PreparedValueId{32};
+  store_address.stored_value_name = c4c::ValueNameId{14};
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = store_address,
+          .value = make_value_register(prepare::PreparedValueId{32}, c4c::ValueNameId{14}, 2),
+          .value_type = bir::TypeKind::I64,
+      });
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{});
+  const auto immediate_ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 0,
+              }),
+          .value_type = bir::TypeKind::I32,
+      });
+  const auto scalar = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{33},
+          .result_value_name = c4c::ValueNameId{15},
+          .result_type = bir::TypeKind::I64,
+          .lhs = make_value_register(prepare::PreparedValueId{34}, c4c::ValueNameId{16}, 3),
+          .rhs = make_value_register(prepare::PreparedValueId{35}, c4c::ValueNameId{17}, 4),
+          .supported_integer_operation = true,
+      }));
+
+  if (aarch64_codegen::machine_printer_mnemonic_kind_name(
+          aarch64_codegen::MachinePrinterMnemonicKind::None) != "" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(branch) != "b" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(conditional_branch) !=
+          "cbnz" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(load) != "ldr" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(store) != "str" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret) != "ret" ||
+      aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret) != "" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(immediate_ret) != "ret" ||
+      aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(immediate_ret) != "mov" ||
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(scalar) != "") {
+    return fail("expected supported printer mnemonics to come from the central helper");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -274,6 +402,10 @@ int main() {
     return status;
   }
   if (const int status = call_return_assembler_and_object_families_are_explicit_placeholders();
+      status != 0) {
+    return status;
+  }
+  if (const int status = machine_node_printer_mnemonics_have_one_supported_spelling_source();
       status != 0) {
     return status;
   }

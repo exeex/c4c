@@ -185,6 +185,97 @@ std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo) {
   return "unknown";
 }
 
+std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind kind) {
+  switch (kind) {
+    case MachinePrinterMnemonicKind::None:
+      return "";
+    case MachinePrinterMnemonicKind::Branch:
+      return "b";
+    case MachinePrinterMnemonicKind::ConditionalBranchNonZero:
+      return "cbnz";
+    case MachinePrinterMnemonicKind::Load:
+      return "ldr";
+    case MachinePrinterMnemonicKind::Store:
+      return "str";
+    case MachinePrinterMnemonicKind::Move:
+      return "mov";
+    case MachinePrinterMnemonicKind::Return:
+      return "ret";
+  }
+  return "";
+}
+
+MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode opcode) {
+  switch (opcode) {
+    case MachineOpcode::Branch:
+      return MachinePrinterMnemonicKind::Branch;
+    case MachineOpcode::ConditionalBranch:
+      return MachinePrinterMnemonicKind::ConditionalBranchNonZero;
+    case MachineOpcode::Load:
+    case MachineOpcode::ReloadFromSlot:
+      return MachinePrinterMnemonicKind::Load;
+    case MachineOpcode::Store:
+    case MachineOpcode::SpillToSlot:
+      return MachinePrinterMnemonicKind::Store;
+    case MachineOpcode::Unspecified:
+    case MachineOpcode::CompareBranch:
+    case MachineOpcode::Add:
+    case MachineOpcode::Sub:
+    case MachineOpcode::And:
+    case MachineOpcode::Or:
+    case MachineOpcode::Xor:
+    case MachineOpcode::SignExtend:
+    case MachineOpcode::ZeroExtend:
+    case MachineOpcode::Truncate:
+      return MachinePrinterMnemonicKind::None;
+  }
+  return MachinePrinterMnemonicKind::None;
+}
+
+MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic_kind(MachinePseudoKind pseudo) {
+  switch (pseudo) {
+    case MachinePseudoKind::SpillToSlot:
+      return MachinePrinterMnemonicKind::Store;
+    case MachinePseudoKind::ReloadFromSlot:
+      return MachinePrinterMnemonicKind::Load;
+    case MachinePseudoKind::None:
+      return MachinePrinterMnemonicKind::None;
+  }
+  return MachinePrinterMnemonicKind::None;
+}
+
+MachinePrinterMnemonicKind machine_instruction_primary_printer_mnemonic_kind(
+    const InstructionRecord& instruction) {
+  if (std::get_if<ReturnInstructionRecord>(&instruction.payload) != nullptr) {
+    return MachinePrinterMnemonicKind::Return;
+  }
+  if (std::get_if<SpillReloadInstructionRecord>(&instruction.payload) != nullptr) {
+    return machine_pseudo_printer_mnemonic_kind(instruction.pseudo);
+  }
+  return machine_opcode_printer_mnemonic_kind(instruction.opcode);
+}
+
+std::string_view machine_instruction_primary_printer_mnemonic(
+    const InstructionRecord& instruction) {
+  return machine_printer_mnemonic_kind_name(
+      machine_instruction_primary_printer_mnemonic_kind(instruction));
+}
+
+MachinePrinterMnemonicKind machine_instruction_auxiliary_printer_mnemonic_kind(
+    const InstructionRecord& instruction) {
+  const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload);
+  if (ret != nullptr && ret->value.has_value()) {
+    return MachinePrinterMnemonicKind::Move;
+  }
+  return MachinePrinterMnemonicKind::None;
+}
+
+std::string_view machine_instruction_auxiliary_printer_mnemonic(
+    const InstructionRecord& instruction) {
+  return machine_printer_mnemonic_kind_name(
+      machine_instruction_auxiliary_printer_mnemonic_kind(instruction));
+}
+
 std::string_view machine_node_selection_status_name(MachineNodeSelectionStatus status) {
   switch (status) {
     case MachineNodeSelectionStatus::Selected:

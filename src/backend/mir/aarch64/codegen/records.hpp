@@ -111,6 +111,16 @@ enum class MachinePseudoKind {
   ReloadFromSlot,
 };
 
+enum class MachinePrinterMnemonicKind {
+  None,
+  Branch,
+  ConditionalBranchNonZero,
+  Load,
+  Store,
+  Move,
+  Return,
+};
+
 enum class MachineNodeSelectionStatus {
   Selected,
   DeferredUnsupported,
@@ -576,6 +586,20 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view instruction_family_name(InstructionFamily family);
 [[nodiscard]] std::string_view machine_opcode_name(MachineOpcode opcode);
 [[nodiscard]] std::string_view machine_pseudo_kind_name(MachinePseudoKind pseudo);
+[[nodiscard]] std::string_view machine_printer_mnemonic_kind_name(
+    MachinePrinterMnemonicKind kind);
+[[nodiscard]] MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(
+    MachineOpcode opcode);
+[[nodiscard]] MachinePrinterMnemonicKind machine_pseudo_printer_mnemonic_kind(
+    MachinePseudoKind pseudo);
+[[nodiscard]] MachinePrinterMnemonicKind machine_instruction_primary_printer_mnemonic_kind(
+    const InstructionRecord& instruction);
+[[nodiscard]] std::string_view machine_instruction_primary_printer_mnemonic(
+    const InstructionRecord& instruction);
+[[nodiscard]] MachinePrinterMnemonicKind machine_instruction_auxiliary_printer_mnemonic_kind(
+    const InstructionRecord& instruction);
+[[nodiscard]] std::string_view machine_instruction_auxiliary_printer_mnemonic(
+    const InstructionRecord& instruction);
 [[nodiscard]] std::string_view machine_node_selection_status_name(
     MachineNodeSelectionStatus status);
 [[nodiscard]] std::string_view machine_effect_resource_kind_name(
