@@ -562,6 +562,7 @@ InstructionDispatchResult dispatch_prepared_block(
 
   block.block_label = context.control_flow_block->block_label;
   block.index = context.block_index;
+  block.successors.clear();
 
   if (context.bir_block == nullptr && context.function.bir_function != nullptr) {
     append_block_diagnostic(
@@ -598,6 +599,7 @@ InstructionDispatchResult dispatch_prepared_block(
              c4c::backend::bir::TerminatorKind::Branch) {
     if (auto lowered = lower_prepared_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
+      block.successors.push_back(make_unconditional_branch_successor(context));
     }
   } else {
     append_block_diagnostic(

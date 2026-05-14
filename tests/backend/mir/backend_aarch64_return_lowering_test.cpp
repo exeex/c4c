@@ -324,6 +324,9 @@ int direct_dispatch_lowers_prepared_return_to_canonical_machine_instruction() {
       !diagnostics.empty()) {
     return fail("expected direct return dispatch to emit exactly one instruction");
   }
+  if (!block.successors.empty()) {
+    return fail("expected direct return dispatch to record no block successors");
+  }
 
   const auto& instruction = block.instructions.front();
   if (!instruction.origin.has_value() ||
@@ -358,7 +361,8 @@ int module_build_lowers_prepared_return_without_flat_compatibility_nodes() {
 
   const auto& module = *result.module;
   if (module.mir.functions.size() != 1 || module.mir.functions.front().blocks.size() != 1 ||
-      module.mir.functions.front().blocks.front().instructions.size() != 1) {
+      module.mir.functions.front().blocks.front().instructions.size() != 1 ||
+      !module.mir.functions.front().blocks.front().successors.empty()) {
     return fail("expected module build to lower one prepared return instruction");
   }
   if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
@@ -524,7 +528,8 @@ int unsupported_conditional_branch_terminator_stays_diagnostic_only() {
       aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
-      result.emitted_instructions != 0 || !block.instructions.empty()) {
+      result.emitted_instructions != 0 || !block.instructions.empty() ||
+      !block.successors.empty()) {
     return fail("expected unsupported conditional branch terminator to emit no machine instruction");
   }
   if (diagnostics.entries.size() != 1 ||

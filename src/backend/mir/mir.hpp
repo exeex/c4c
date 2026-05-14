@@ -73,6 +73,19 @@ struct MachineOrigin {
   std::optional<std::size_t> target_instruction_index;
 };
 
+enum class MachineBlockSuccessorKind {
+  Unknown,
+  Unconditional,
+  ConditionalTrue,
+  ConditionalFalse,
+};
+
+struct MachineBlockSuccessor {
+  c4c::BlockLabelId target_label = c4c::kInvalidBlockLabel;
+  MachineBlockSuccessorKind kind = MachineBlockSuccessorKind::Unknown;
+  std::optional<MachineOrigin> origin;
+};
+
 template <typename TargetInstruction = std::monostate>
 struct MachineInstruction {
   TargetOpcode opcode = 0;
@@ -86,6 +99,7 @@ struct MachineBlock {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::size_t index = 0;
   std::vector<MachineInstruction<TargetInstruction>> instructions;
+  std::vector<MachineBlockSuccessor> successors;
 };
 
 template <typename TargetInstruction = std::monostate>

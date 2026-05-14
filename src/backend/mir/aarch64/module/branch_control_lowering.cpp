@@ -93,4 +93,24 @@ std::optional<MachineInstruction> lower_prepared_branch_terminator(
   return instruction;
 }
 
+c4c::backend::mir::MachineBlockSuccessor make_unconditional_branch_successor(
+    const BlockLoweringContext& context) {
+  return c4c::backend::mir::MachineBlockSuccessor{
+      .target_label = context.control_flow_block != nullptr
+                          ? context.control_flow_block->branch_target_label
+                          : c4c::kInvalidBlockLabel,
+      .kind = c4c::backend::mir::MachineBlockSuccessorKind::Unconditional,
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirTerminator,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+          },
+  };
+}
+
 }  // namespace c4c::backend::aarch64::module

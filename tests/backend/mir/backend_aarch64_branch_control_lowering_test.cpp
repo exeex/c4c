@@ -13,6 +13,7 @@ namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(std::string_view message) {
@@ -157,6 +158,15 @@ int direct_dispatch_lowers_unconditional_branch_to_selected_node() {
       !diagnostics.empty()) {
     return fail("expected unconditional branch dispatch to emit one selected instruction");
   }
+  if (block.successors.size() != 1 ||
+      block.successors.front().target_label != function_cf.blocks[1].block_label ||
+      block.successors.front().kind != mir::MachineBlockSuccessorKind::Unconditional ||
+      !block.successors.front().origin.has_value() ||
+      block.successors.front().origin->reason != mir::MachineOriginReason::BirTerminator ||
+      block.successors.front().origin->function_name != function_cf.function_name ||
+      block.successors.front().origin->block_label != block_cf.block_label) {
+    return fail("expected unconditional branch dispatch to record one typed successor");
+  }
 
   const auto& instruction = block.instructions.front();
   if (!instruction.origin.has_value() ||
@@ -200,8 +210,14 @@ int module_build_keeps_branch_node_without_restoring_legacy_return_nodes() {
   const auto& module = *result.module;
   if (module.mir.functions.size() != 1 || module.mir.functions.front().blocks.size() != 2 ||
       module.mir.functions.front().blocks[0].instructions.size() != 1 ||
-      module.mir.functions.front().blocks[1].instructions.size() != 1) {
+      module.mir.functions.front().blocks[1].instructions.size() != 1 ||
+      module.mir.functions.front().blocks[0].successors.size() != 1 ||
+      module.mir.functions.front().blocks[1].successors.size() != 0) {
     return fail("expected module build to lower branch block and return block");
+  }
+  if (module.mir.functions.front().blocks[0].successors.front().target_label !=
+      module.mir.functions.front().blocks[1].block_label) {
+    return fail("expected module build to keep branch successor target label identity");
   }
   if (module.functions.front().machine_nodes.size() != 1 ||
       module.functions.front().machine_nodes.front().family !=
@@ -227,7 +243,8 @@ int conditional_branch_control_stays_fail_closed() {
       aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
-      result.emitted_instructions != 0 || !block.instructions.empty()) {
+      result.emitted_instructions != 0 || !block.instructions.empty() ||
+      !block.successors.empty()) {
     return fail("expected conditional branch to remain unsupported for this slice");
   }
   if (diagnostics.entries.size() != 1 ||

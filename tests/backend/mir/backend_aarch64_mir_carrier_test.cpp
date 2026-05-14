@@ -42,6 +42,9 @@ int common_carrier_keeps_function_block_and_origin_identity() {
   if (block.instructions.size() != 1 || block.instructions.front().opcode != 42) {
     return fail("expected common MIR carrier to retain appended machine instruction");
   }
+  if (!block.successors.empty()) {
+    return fail("expected common MIR carrier to leave successor metadata empty by default");
+  }
   const auto& origin = block.instructions.front().origin;
   if (!origin.has_value() || origin->reason != mir::MachineOriginReason::BirInstruction ||
       origin->function_name != c4c::FunctionNameId{17} ||
@@ -49,6 +52,36 @@ int common_carrier_keeps_function_block_and_origin_identity() {
       origin->instruction_index != std::size_t{5} ||
       origin->target_instruction_index != std::size_t{7}) {
     return fail("expected common MIR origin to preserve BIR function/block provenance");
+  }
+  return 0;
+}
+
+int common_carrier_preserves_typed_successor_metadata() {
+  aarch64_module::MachineBlock block;
+  block.block_label = c4c::BlockLabelId{31};
+  block.index = 2;
+  block.successors.push_back(mir::MachineBlockSuccessor{
+      .target_label = c4c::BlockLabelId{37},
+      .kind = mir::MachineBlockSuccessorKind::Unconditional,
+      .origin =
+          mir::MachineOrigin{
+              .reason = mir::MachineOriginReason::BirTerminator,
+              .function_name = c4c::FunctionNameId{41},
+              .block_label = c4c::BlockLabelId{31},
+          },
+  });
+
+  if (block.successors.size() != 1) {
+    return fail("expected common MIR carrier to retain one block successor");
+  }
+  const auto& successor = block.successors.front();
+  if (successor.target_label != c4c::BlockLabelId{37} ||
+      successor.kind != mir::MachineBlockSuccessorKind::Unconditional ||
+      !successor.origin.has_value() ||
+      successor.origin->reason != mir::MachineOriginReason::BirTerminator ||
+      successor.origin->function_name != c4c::FunctionNameId{41} ||
+      successor.origin->block_label != c4c::BlockLabelId{31}) {
+    return fail("expected common MIR successor to preserve typed target and provenance");
   }
   return 0;
 }
@@ -83,6 +116,10 @@ int flatten_and_empty_helpers_use_hierarchical_carrier() {
 
 int main() {
   if (const int status = common_carrier_keeps_function_block_and_origin_identity();
+      status != 0) {
+    return status;
+  }
+  if (const int status = common_carrier_preserves_typed_successor_metadata();
       status != 0) {
     return status;
   }

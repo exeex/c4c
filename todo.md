@@ -8,22 +8,22 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time added the first AArch64
-branch/control module lowering slice. Prepared unconditional BIR branch
-terminators now lower through the existing
-`codegen::make_prepared_unconditional_branch_record` authority into selected
-canonical MIR `Branch` machine instructions with `BirTerminator` origin, source
-block identity on the instruction record, and prepared destination label
-identity preserved in the branch payload.
+Step 5: Implement One Lowering Family At A Time added common MIR block
+successor metadata and populated it for the currently lowered AArch64
+terminators. `MachineBlock` now carries typed successor records with target
+label, edge kind, and optional `MachineOrigin` provenance. AArch64 return
+blocks record no successors, while prepared unconditional branch blocks record
+one `Unconditional` successor using the prepared destination label and
+`BirTerminator` provenance.
 
-The slice adds a small `branch_control_lowering.cpp` seam, wires it into module
-dispatch, and keeps conditional/fused compare branch control fail-closed for a
-later packet. It does not restore legacy module records or use source-text or
-testcase-name matching.
+The slice keeps conditional/fused compare branch control fail-closed: unsupported
+conditional terminators still emit no instruction and no successor metadata. It
+does not restore legacy module records or use source text, compatibility
+machine nodes, or testcase-name matching as successor authority.
 
 ## Suggested Next
 
-Supervisor can review and commit this Step 5 unconditional branch-control slice,
+Supervisor can review and commit this Step 5 common successor metadata slice,
 then continue with the next bounded AArch64 lowering family, likely conditional
 materialized-bool branch lowering or the next prepared scalar/control family.
 
@@ -36,13 +36,17 @@ materialized-bool branch lowering or the next prepared scalar/control family.
 - Unconditional branch lowering requires retained BIR terminator authority so
   the prepared target label and BIR `BranchTerminator::target_label_id` can be
   checked by the existing record API.
+- `MachineBlockSuccessorKind` has explicit conditional true/false edge kinds
+  for a later packet, but this slice intentionally populates only unconditional
+  branch successors.
 - Conditional and fused-compare branch records already exist, but module
-  lowering intentionally does not select them in this packet.
+  lowering intentionally does not select them or attach successor metadata in
+  this packet.
 
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_prepared_branch_records|backend_aarch64_branch_compare_records|backend_aarch64_branch_compare_contract|backend_aarch64_branch_control_lowering|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_branch_control_lowering|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
 
-Result: passed; focused subset ran 13/13 tests. Proof output is preserved in
+Result: passed; focused subset ran 8/8 tests. Proof output is preserved in
 `test_after.log`.
