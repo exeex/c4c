@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/227_aarch64_module_phoenix_replacement_drafts.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Draft Call Lowering
+Current Step ID: 6
+Current Step Title: Draft Public Bridge And Compatibility Projection
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 5 by adding
-`src/backend/mir/aarch64/module/call_lowering.cpp.md` as a Stage 3
-replacement draft. The draft lowers prepared call plans into canonical MIR
-`MachineInstruction` call sequences while keeping call-site ABI sequencing in
-the call-lowering seam. It covers argument and result locations,
-call-adjacent moves, preserved values, clobbers, indirect callees, memory
-returns, call-site ABI bindings, typed operand consumption, owned
-inputs/outputs, indirect queries, forbidden knowledge, classification, and
-fail-closed rejection of broad public call records, compatibility projections,
-cached display strings, source spellings, named-testcase call handling, and
-flat `FunctionRecord::machine_nodes` authority.
+Completed plan Step 6 by adding
+`src/backend/mir/aarch64/module/public_assembly_bridge.cpp.md` and
+`src/backend/mir/aarch64/module/compatibility_projection.cpp.md` as Stage 3
+replacement drafts. The public bridge routes canonical `MachineModule`,
+function, block, instruction, module-data, and relocation products to the
+shared `mir_printer`, with AArch64 owning only target render hooks. The
+compatibility projection derives `FunctionRecord::machine_nodes`, broad
+inspection records, provenance views, label views, and legacy register-string
+diagnostics after canonical lowering, with removal conditions and no semantic
+lowering authority.
 
 ## Suggested Next
 
-Delegate Step 6 to draft the public assembly bridge and compatibility
-projection after canonical MIR lowering exists.
+Delegate Step 7 to review the complete Stage 3 replacement draft set against
+the Stage 2 handoff and parent 224 boundary.
 
 ## Watchouts
 
@@ -45,16 +44,22 @@ projection after canonical MIR lowering exists.
 - Compatibility projection may expose broad public records and flat
   `FunctionRecord::machine_nodes`, but only as migration views derived after
   canonical lowering.
+- Step 7 should reject any draft that makes compatibility records, cached
+  strings, source spellings, flat `machine_nodes`, or public bridge output a
+  semantic lowering input.
 
 ## Proof
 
 Markdown-only proof written to `test_after.log` with concise read-only `rg`
-checks over `call_lowering.cpp.md`. The proof confirms the file is a Stage 3
-replacement draft and covers prepared call-plan lowering, argument/result
-locations, call-adjacent moves, preserved values, clobbers, indirect callees,
-memory returns, call-site ABI bindings, typed operand consumption, canonical
-MIR call sequence output, owned inputs/outputs, indirect queries, forbidden
-knowledge, classification, and rejection of broad public call records,
-compatibility projections, cached-display/source-spelling authority, and flat
-`machine_nodes` authority. No build was required for this markdown-only draft
-packet.
+checks over both Step 6 drafts. The proof confirms both files are Stage 3
+replacement drafts. Public assembly bridge coverage includes canonical
+MIR/module data to shared `mir_printer`, AArch64 target-owned rendering hooks,
+`.s` emission through common traversal, owned inputs/outputs, indirect
+queries, forbidden knowledge, classification, and rejection of AArch64-owned
+traversal, cached string printing, and compatibility-vector printing.
+Compatibility projection coverage includes derived
+`FunctionRecord::machine_nodes`, broad inspection records, raw
+source/prepared provenance, label views, legacy register-string diagnostics,
+removal conditions, owned inputs/outputs, indirect queries, forbidden
+knowledge, classification, and rejection of projection as semantic lowering
+authority. No build was required for this markdown-only draft packet.
