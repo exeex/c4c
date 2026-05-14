@@ -17,6 +17,10 @@ after the legacy implementation was removed. The new public surface exposes
 handoff and returns an empty canonical module product until real lowering is
 reintroduced.
 
+Lifecycle repair accepted the committed state where the legacy emitter is
+already removed. The next step is a focused test-contract migration, not a
+legacy restoration or function-traversal implementation packet.
+
 ## Suggested Next
 
 Delegate the next AArch64 module packet to migrate stale legacy module-record

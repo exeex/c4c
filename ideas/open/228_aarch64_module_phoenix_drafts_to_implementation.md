@@ -27,6 +27,10 @@ and legacy retirement.
 - Explicit accounting of moved responsibilities and remaining legacy
   compatibility.
 - Legacy deletion or retirement only after the new owner is live and proved.
+  The current route has already removed the legacy AArch64 module emitter in
+  `252dbc50c`, with a fresh skeleton added in `0fce192f4`; lifecycle execution
+  must continue from that committed state by migrating stale tests and adding
+  replacement seams, not by restoring the old broad record-pile owner.
 
 ## Does Not Yet Own
 
@@ -46,7 +50,10 @@ left outside the rebuilt module/MIR lowering surface.
 
 - Migrate in behavior-preserving slices rather than an all-at-once rewrite.
 - Keep old live behavior available until the new dispatcher can choose the
-  replacement path for the migrated seam.
+  replacement path for the migrated seam where that legacy behavior still
+  exists. For the already-deleted AArch64 module emitter, keep incomplete public
+  assembly paths fail-closed until replacement lowering is proved rather than
+  resurrecting the deleted record-pile emitter.
 - Typical migration order is shared helpers, value/home or operand resolution,
   one coherent lowering family, dispatch rewiring, then deletion of dead
   compatibility code.
