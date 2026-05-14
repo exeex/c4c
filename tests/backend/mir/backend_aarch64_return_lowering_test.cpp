@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
 
@@ -311,7 +312,7 @@ int direct_dispatch_lowers_prepared_return_to_canonical_machine_instruction() {
   auto prepared = prepared_with_return_block();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 7);
@@ -384,7 +385,7 @@ int direct_dispatch_attaches_immediate_return_value() {
   auto prepared = prepared_with_immediate_return_value();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
@@ -519,7 +520,7 @@ int unsupported_conditional_branch_terminator_stays_diagnostic_only() {
   auto prepared = prepared_with_conditional_branch_block();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);

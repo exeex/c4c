@@ -1,12 +1,12 @@
-#include "module.hpp"
+#include "traversal.hpp"
 
-#include "../codegen/dispatch.hpp"
+#include "dispatch.hpp"
 
 #include <cstddef>
 #include <string_view>
 #include <utility>
 
-namespace c4c::backend::aarch64::module {
+namespace c4c::backend::aarch64::codegen {
 namespace {
 
 [[nodiscard]] const c4c::backend::bir::Function* find_bir_function(
@@ -32,11 +32,11 @@ namespace {
 
 }  // namespace
 
-FunctionLoweringContext make_function_lowering_context(
+module::FunctionLoweringContext make_function_lowering_context(
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
     const prepare::PreparedControlFlowFunction& function) {
-  return FunctionLoweringContext{
+  return module::FunctionLoweringContext{
       .prepared = &prepared,
       .target_profile = &target_profile,
       .control_flow = &function,
@@ -56,18 +56,18 @@ FunctionLoweringContext make_function_lowering_context(
   };
 }
 
-std::vector<MachineFunction> lower_prepared_functions(
+std::vector<module::MachineFunction> lower_prepared_functions(
     const prepare::PreparedBirModule& prepared,
     const c4c::TargetProfile& target_profile,
-    ModuleLoweringDiagnostics& diagnostics) {
-  std::vector<MachineFunction> functions;
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  std::vector<module::MachineFunction> functions;
   functions.reserve(prepared.control_flow.functions.size());
 
   for (const auto& prepared_function : prepared.control_flow.functions) {
     const auto function_context =
         make_function_lowering_context(prepared, target_profile, prepared_function);
 
-    MachineFunction function{
+    module::MachineFunction function{
         .function_name = prepared_function.function_name,
         .blocks = {},
     };
@@ -76,20 +76,19 @@ std::vector<MachineFunction> lower_prepared_functions(
     for (std::size_t block_index = 0; block_index < prepared_function.blocks.size();
          ++block_index) {
       const auto& prepared_block = prepared_function.blocks[block_index];
-      function.blocks.push_back(MachineBlock{
+      function.blocks.push_back(module::MachineBlock{
           .block_label = prepared_block.block_label,
           .index = block_index,
           .instructions = {},
       });
       const auto block_context =
-          codegen::make_block_lowering_context(function_context, prepared_block, block_index);
-      (void)codegen::dispatch_prepared_block(
-          block_context, function.blocks.back(), diagnostics);
+          make_block_lowering_context(function_context, prepared_block, block_index);
+      (void)dispatch_prepared_block(block_context, function.blocks.back(), diagnostics);
     }
 
     if (prepared_function.function_name == c4c::kInvalidFunctionName) {
-      diagnostics.entries.push_back(ModuleLoweringDiagnostic{
-          .kind = ModuleLoweringDiagnosticKind::MissingFunctionContext,
+      diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+          .kind = module::ModuleLoweringDiagnosticKind::MissingFunctionContext,
           .function_name = prepared_function.function_name,
           .message = "prepared control-flow function is missing durable function identity",
       });
@@ -101,4 +100,4 @@ std::vector<MachineFunction> lower_prepared_functions(
   return functions;
 }
 
-}  // namespace c4c::backend::aarch64::module
+}  // namespace c4c::backend::aarch64::codegen

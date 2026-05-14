@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
 
@@ -251,7 +252,7 @@ int direct_dispatch_lowers_unconditional_branch_to_selected_node() {
   auto prepared = prepared_with_unconditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 3);
@@ -312,7 +313,7 @@ int direct_dispatch_lowers_materialized_bool_conditional_branch_to_selected_node
   auto prepared = prepared_with_materialized_bool_conditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 4);
@@ -388,7 +389,7 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   auto prepared = prepared_with_fused_compare_conditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 5);
@@ -506,7 +507,7 @@ int non_fusable_compare_branch_control_stays_fail_closed() {
   auto prepared = prepared_with_fused_compare_conditional_branch(false);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);

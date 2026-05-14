@@ -110,12 +110,4 @@ struct BuildResult {
 };
 
 [[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
-[[nodiscard]] std::vector<MachineFunction> lower_prepared_functions(
-    const prepare::PreparedBirModule& prepared,
-    const c4c::TargetProfile& target_profile,
-    ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] FunctionLoweringContext make_function_lowering_context(
-    const prepare::PreparedBirModule& prepared,
-    const c4c::TargetProfile& target_profile,
-    const prepare::PreparedControlFlowFunction& function);
 }  // namespace c4c::backend::aarch64::module

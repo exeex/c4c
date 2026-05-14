@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -164,7 +165,7 @@ int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
@@ -194,7 +195,7 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
   auto prepared = prepared_with_unsupported_instructions();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
@@ -244,7 +245,7 @@ int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   auto prepared = prepared_with_reordered_retained_bir();
   const auto& function_cf = prepared.control_flow.functions[1];
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
@@ -291,7 +292,7 @@ int missing_bir_block_mapping_is_diagnostic_only() {
 
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
-  const auto function_context = aarch64_module::make_function_lowering_context(
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);

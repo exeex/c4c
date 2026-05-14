@@ -1,5 +1,7 @@
 #include "emit.hpp"
 
+#include "traversal.hpp"
+
 #include <optional>
 #include <utility>
 #include <vector>
@@ -43,7 +45,7 @@ module::BuildResult build_module(
   };
   module::ModuleLoweringDiagnostics diagnostics;
   built_module.mir.functions =
-      module::lower_prepared_functions(prepared, target_profile, diagnostics);
+      lower_prepared_functions(prepared, target_profile, diagnostics);
   for (const auto& function : built_module.mir.functions) {
     built_module.functions.push_back(module::FunctionRecord{
         .function_name = function.function_name,

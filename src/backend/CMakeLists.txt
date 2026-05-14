@@ -15,7 +15,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/instruction.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/operands.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/returns.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/function_traversal.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/traversal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/module.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/x86/api/api.cpp"

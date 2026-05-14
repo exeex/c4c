@@ -1,4 +1,5 @@
 #include "src/backend/mir/aarch64/codegen/operands.hpp"
+#include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -39,7 +40,7 @@ aarch64_module::FunctionLoweringContext make_context(prepare::PreparedBirModule&
           .block_label = prepared.names.block_labels.intern("operand.entry"),
       }},
   });
-  return aarch64_module::make_function_lowering_context(
+  return aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 }
 
@@ -70,7 +71,7 @@ int storage_plan_register_precedes_value_home() {
           .register_placement = caller_saved_gpr(0),
       }},
   });
-  context = aarch64_module::make_function_lowering_context(
+  context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
@@ -121,7 +122,7 @@ int regalloc_assignment_precedes_storage_plan() {
           },
       }},
   });
-  context = aarch64_module::make_function_lowering_context(
+  context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
@@ -157,7 +158,7 @@ int literals_labels_symbols_and_register_spellings_are_narrow() {
           .register_name = std::string{"x0"},
       }},
   });
-  context = aarch64_module::make_function_lowering_context(
+  context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, prepared.control_flow.functions.front());
 
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
