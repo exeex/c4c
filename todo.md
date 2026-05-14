@@ -8,24 +8,26 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time cleaned up the stale
-`src/backend/mir/aarch64/module/*.md` replacement drafts and stage notes after
-their implemented surfaces had moved into compiled module/codegen C++.
+Step 5: Implement One Lowering Family At A Time marked the current
+`src/backend/mir/aarch64/codegen/machine_printer.*` path as a temporary legacy
+terminal assembly printer that should be removed by idea 224's shared MIR
+printer boundary work, not grown by the active 228 route.
 
-`plan.md` no longer points active executors at deleted `module/*.md` files; its
-active read/target list now references the current `module/module.*` and
-`codegen/*.cpp/.hpp` implementation surfaces.
+`plan.md` no longer lists `machine_printer.cpp` as an active Stage 4 read/target
+surface. The files remain in the build because `backend.cpp` and focused printer
+tests still use them for the current public AArch64 asm route.
 
 ## Suggested Next
 
-Supervisor can review and commit this docs/lifecycle cleanup, then proceed to
+Supervisor can review and commit this lifecycle clarification, then proceed to
 the compatibility projection split or the next route-review packet.
 
 ## Watchouts
 
-- The removed stage/draft notes were stale route scaffolding, not canonical
-  source intent; durable source intent remains in `ideas/open/228...` and the
-  parent `ideas/open/224...`.
+- `machine_printer.*` is still live code today; deleting it before the shared
+  MIR printer route lands would break the public AArch64 asm path.
+- Idea 224 owns replacing this target-local printer with common MIR traversal
+  plus AArch64 target rendering hooks.
 - Review checkpoint: the codegen headers introduced during the extraction
   remain target-private helper surfaces used by focused tests, not stable
   module public API.
@@ -34,6 +36,5 @@ the compatibility projection split or the next route-review packet.
 
 ## Proof
 
-Docs/lifecycle-only cleanup. Validation is reference hygiene:
-`find src/backend/mir/aarch64/module -maxdepth 1 -name '*.md' -print` and
-`rg -n 'src/backend/mir/aarch64/module/.*\\.md|module/(module|module\\.hpp|stage2_review_layout|stage2_to_stage3_handoff|stage3_draft_review)\\.md' plan.md ideas/open tests`.
+Lifecycle-only clarification. Validation is reference hygiene:
+`rg -n 'codegen/machine_printer\\.cpp' plan.md todo.md`.

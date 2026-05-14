@@ -41,7 +41,6 @@ before claiming capability progress.
 - `src/backend/mir/aarch64/codegen/returns.cpp`
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 
 ## Current Targets
 
@@ -60,7 +59,6 @@ as compiled C++ surfaces:
 - `src/backend/mir/aarch64/codegen/returns.cpp`
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 - related build wiring only when needed to compile and route the converted
   implementation
 
@@ -95,6 +93,9 @@ as compiled C++ surfaces:
 - The shared `mir_printer` owns traversal and common emission mechanics;
   AArch64 owns target rendering hooks and target-specific operand/data forms.
 - Public target rendering APIs use ordinary C++ names, not `__repr__`.
+- `src/backend/mir/aarch64/codegen/machine_printer.*` remains a temporary
+  terminal assembly route until idea 224 replaces it with the shared MIR printer
+  boundary; do not grow it as a Stage 4 owner.
 
 ## Execution Rules
 
