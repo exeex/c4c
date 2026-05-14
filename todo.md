@@ -8,34 +8,36 @@ Current Step Title: Create BIR Test Tree And Move BIR-Owned Tests
 
 ## Just Finished
 
-Step 2 BIR CLI CMake ownership packet completed. Created
-`tests/backend/bir/CMakeLists.txt`, moved the BIR-owned
-`backend_cli_dump_bir*` and `backend_cli_dump_prepared_bir*` test definitions
-there, and replaced the old root definitions with `add_subdirectory(bir)`.
-Test names, labels, command arguments, and behavior were left unchanged.
+Step 2 BIR C++ CMake ownership packet completed. Moved the remaining
+BIR-owned executable and `add_test` definitions that source
+`tests/backend/bir/*.cpp` from `tests/backend/CMakeLists.txt` into
+`tests/backend/bir/CMakeLists.txt`. Target names, test names, labels, source
+paths, and link behavior were left unchanged.
 
 ## Suggested Next
 
-Next Step 2 mechanical move packet: move the remaining BIR-owned C++ executable
-and `add_test` definitions that already source `tests/backend/bir/*.cpp` from
-`tests/backend/CMakeLists.txt` into `tests/backend/bir/CMakeLists.txt`.
-Preserve target names, test names, labels, source paths, and link behavior.
+Next Step 2 recommendation: inspect the remaining root backend CMake route
+tests for x86/riscv semantic-route assertions that observe BIR or prepared-BIR
+behavior, then delegate a mechanical BIR ownership move for only those route
+test definitions if the source/test ownership is unambiguous.
 
 ## Watchouts
 
-- The BIR CLI dump/prepared-dump definitions now live under BIR CMake ownership,
-  but the BIR C++ executable/test definitions are still rooted in
-  `tests/backend/CMakeLists.txt`.
-- Keep the next packet mechanical: do not move backend route tests, AArch64
-  tests, case fixtures, disabled MIR placeholders, or implementation files.
+- The BIR CLI dump/prepared-dump and BIR C++ executable/test definitions now
+  live under BIR CMake ownership.
+- Keep the next packet ownership-driven: route tests should move only when
+  their assertion target is BIR/prepared-BIR, not just because they compile
+  through the backend route.
+- Do not move AArch64 tests, case fixtures, disabled MIR placeholders, or
+  implementation files as part of Step 2.
 - Disabled MIR dump/trace placeholders are still a pruning concern, not a move
   target.
 
 ## Proof
 
 Delegated proof command:
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_cli_dump_(bir|prepared_bir)" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^(backend_prepare_|backend_lir_to_bir_notes|backend_prepared_printer|backend_x86_prepared_handoff_label_authority)" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed. CMake regenerated, the build completed with no work needed, and
-the focused CTest subset passed 19/19 tests. Proof log path is
-`test_after.log`.
+Result: passed. CMake regenerated, the moved BIR C++ targets built under
+`tests/backend/bir`, and the focused CTest subset passed 10/10 tests. Proof log
+path is `test_after.log`.
