@@ -1,135 +1,159 @@
 Status: Active
 Source Idea Path: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Reconcile ABI, Call, Frame, And Global Shards
+Current Step ID: Step 5
+Current Step Title: Reconcile Scalar, Memory, Float, And Wide Operation Shards
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 4 ledger reconciliation for the ABI, call, frame, and
-global shard group: `calls.md`, `prologue.md`, `variadic.md`, and `globals.md`.
-Each entry separates current prepared/shared authority from real AArch64
-codegen work and avoids reviving the archived markdown-era translation units.
+Completed `plan.md` Step 5 ledger reconciliation for the scalar, memory, float,
+and wide-operation shard group: `memory.md`, `cast_ops.md`, `float_ops.md`,
+`i128_ops.md`, and `f128.md`. Each entry separates current BIR/prepared/shared
+facts from missing AArch64 machine-node work and avoids restoring the archived
+accumulator/scratch-register surfaces.
 
-Shard: `src/backend/mir/aarch64/codegen/calls.md`
+Shard: `src/backend/mir/aarch64/codegen/memory.md`
 Classification: real-missing-feature
-Current Owner: prepared call authority in `src/backend/prealloc/prealloc.hpp`
-and `src/backend/prealloc/prealloc.cpp`; partial AArch64 record vocabulary in
-`src/backend/mir/aarch64/codegen/instruction.hpp` and
-`src/backend/mir/aarch64/codegen/instruction.cpp`; no compiled AArch64 call
-lowering or printer owner yet.
-Review Result: The shard's old local ABI classifier and `x0`/`x1`/`q0`/`x17`
-scratch conventions are stale authority. The valid current intent is broader:
-selected AArch64 call machine nodes must consume prepared direct/indirect
-callee identity, argument/result placement, memory-return, preserved-value,
-clobber, `BeforeCall`/`AfterCall`, ABI-binding, and variadic call-boundary
-facts. Current code has those prepared carriers, but AArch64 dispatch only
-classifies `bir::CallInst` as `Call` and then reports it through the generic
-unsupported-instruction path; `make_call_instruction` exists as record
-vocabulary but no lowering path reaches it and the terminal printer has no call
-case.
-Proof or Evidence: `prealloc.hpp:1033` defines `PreparedCallArgumentPlan`;
-`:1058` defines `PreparedCallResultPlan`; `:1107` defines call preserved-value
-records; `:1122` defines wrapper kinds including direct extern variadic and
-indirect; `:1168` defines `PreparedCallPlan`; `prealloc.cpp:1109` populates
-call plans with wrapper kind, indirect callee, memory return, preserved values,
-and clobbers; `dispatch.cpp:91` classifies `bir::CallInst` as `Call` but
-`dispatch.cpp:170` only invokes `lower_scalar_instruction`; `alu.cpp:307`
-returns no lowering for non-binary instructions; `instruction.cpp:1889`
-defines call record construction; `machine_printer.cpp:365` through `:381`
-prints spill/reload, branch, memory, scalar, and return only.
-Follow-Up: `ideas/open/231_aarch64_call_frame_machine_nodes.md`.
-
-Shard: `src/backend/mir/aarch64/codegen/prologue.md`
-Classification: real-missing-feature
-Current Owner: prepared frame authority in `src/backend/prealloc/prealloc.hpp`,
-`src/backend/prealloc/prealloc.cpp`, and
-`src/backend/prealloc/stack_layout/coordinator.cpp`; partial frame-slot and
-spill/reload record vocabulary in `src/backend/mir/aarch64/codegen/operands.cpp`,
-`src/backend/mir/aarch64/codegen/instruction.hpp`, and
+Current Owner: BIR memory lowering in `src/backend/bir/lir_to_bir/memory/*`;
+prepared memory access and address facts in
+`src/backend/prealloc/stack_layout/coordinator.cpp`; AArch64 memory record
+vocabulary in `src/backend/mir/aarch64/codegen/instruction.hpp` and
+`src/backend/mir/aarch64/codegen/instruction.cpp`; partial printer support in
 `src/backend/mir/aarch64/codegen/machine_printer.cpp`; no compiled AArch64
-prologue/epilogue owner yet.
-Review Result: The shard's old stack-space calculator, local register pool
-selection, parameter pre-store optimization, and variadic save-area allocation
-are not current AArch64 codegen authority. Current prepared layers own frame
-size, alignment, frame-slot offsets, saved callee registers, dynamic-stack
-state, and frame-pointer policy. The AArch64 backend can name frame-slot and
-spill/reload records, but it does not yet lower prepared frame facts into
-function-entry setup, callee-save save/restore nodes, epilogue teardown, or
-parameter-home moves. Full variadic save-area layout remains a separate
-prepared-carrier gap, not a prologue-local codegen shortcut.
-Proof or Evidence: `prealloc.hpp:181` defines `PreparedFrameSlot`;
-`:322` defines `PreparedFramePlanFunction` with frame size, alignment, saved
-callee registers, frame-slot order, dynamic-stack, and frame-pointer flags;
-`prealloc.cpp:820` populates the frame plan; `prealloc.cpp:845` takes function
-frame size from prepared addressing; `prealloc.cpp:913` records saved
-callee-register facts; `stack_layout/coordinator.cpp:776` through `:789`
-builds per-function prepared addressing frame metadata; `machine_printer.cpp:89`
-prints only already-selected spill/reload frame-slot nodes and no prologue or
-epilogue frame sequence.
-Follow-Up: `ideas/open/231_aarch64_call_frame_machine_nodes.md`.
+dispatch path for memory instructions yet.
+Review Result: The shard's old `x0`/`x1`/`x9`/`x10`/`x11`/`x12`/`x17`
+lowering surface is stale. Current code already has prepared memory access
+facts and structured AArch64 memory records for frame-slot, pointer-value,
+symbol, and string bases, but block dispatch only calls scalar lowering for
+every retained BIR instruction. Selected memory nodes therefore do not reach
+the machine module from prepared load/store instructions, and the terminal
+printer only has a narrow store path while explicitly rejecting loads without a
+structured destination register. The missing fact belongs in AArch64
+load/store machine-node lowering and printer completion; global address
+materialization remains idea 233, and memcpy/memset or dynamic-stack helpers
+remain separate BIR/AArch64 feature routes.
+Proof or Evidence: `dispatch.cpp:93` through `:97` classifies local/global
+load/store as `Memory`, but `dispatch.cpp:170` invokes only
+`lower_scalar_instruction`; `alu.cpp:307` rejects non-`bir::BinaryInst`
+instructions; `instruction.cpp:1010` through `:1084` builds prepared memory
+operand records; `instruction.cpp:1670` through `:1708` selects only prepared
+frame-slot and pointer-value memory bases; `instruction.cpp:2304` through
+`:2465` validates local/global load/store memory identities; `machine_printer.cpp:181`
+through `:213` prints stores but rejects load nodes as missing a structured
+destination register.
+Follow-Up: `ideas/open/234_aarch64_memory_load_store_machine_nodes.md`.
 
-Shard: `src/backend/mir/aarch64/codegen/variadic.md`
+Shard: `src/backend/mir/aarch64/codegen/cast_ops.md`
 Classification: real-missing-feature
-Current Owner: minimal variadic call-boundary facts in
-`src/backend/prealloc/prealloc.hpp` and `src/backend/prealloc/prealloc.cpp`;
-none for full AAPCS64 variadic function-entry, `va_list`, `va_start`,
-`va_arg`, or `va_copy` carriers.
-Review Result: The accepted current implementation surface is narrower than
-the archived shard. Prepared call plans preserve direct extern variadic wrapper
-kind and the floating-point argument-register count for variadic calls, so the
-call-boundary minimum is already represented outside AArch64 markdown. The
-full `va_list` layout, register-save areas, negative GP/FP offsets, named
-argument counts, stack overflow-area policy, aggregate `va_arg`, F128 helper
-handling, and `va_copy` semantics are real missing mechanisms, but they are
-prepared/shared carrier gaps first. AArch64 codegen must not synthesize those
-facts from prologue text or markdown scratch-register conventions.
-Proof or Evidence: `prealloc.hpp:1122` includes
-`PreparedCallWrapperKind::DirectExternVariadic`; `prealloc.hpp:1172` stores
-`PreparedCallPlan::variadic_fpr_arg_register_count`; `prealloc.cpp:295`
-classifies direct extern variadic calls; `prealloc.cpp:319` computes variadic
-FPR argument counts from call ABI; `prealloc.cpp:1112` stores both facts in
-each prepared call plan. No prepared structs found for AAPCS64 `va_list`
-fields, variadic register-save areas, `va_start`, `va_arg`, or `va_copy`.
-Follow-Up: `ideas/open/232_aarch64_variadic_function_entry_carriers.md`.
+Current Owner: BIR cast opcode vocabulary in `src/backend/bir/bir.hpp`;
+prepared scalar cast record helpers in
+`src/backend/mir/aarch64/codegen/instruction.cpp`; no compiled AArch64 dispatch
+or printer path for cast machine nodes yet.
+Review Result: Simple integer casts have current record vocabulary:
+`SExt`, `ZExt`, and `Trunc` can become `ScalarCastRecord`s when prepared
+register and storage facts are present. That is only record-level coverage.
+Dispatch still sends all instructions through a binary-only scalar lowering
+path, so `bir::CastInst` never becomes a selected machine instruction, and the
+printer maps sign-extend, zero-extend, and truncate opcodes to no printable
+mnemonic. Floating-point casts, pointer/integer casts, bitcasts, and F128 casts
+are deferred beyond the simple integer subset. Missing facts belong in AArch64
+cast dispatch/selection/printer work, with FP/F128 conversion semantics split
+to typed FP and binary128 routes rather than patched into BIR or shared MIR.
+Proof or Evidence: `dispatch.cpp:86` through `:88` classifies `bir::CastInst`
+as scalar, but `alu.cpp:307` through `:310` returns no lowering for non-binary
+instructions; `instruction.cpp:604` through `:622` accepts only simple integer
+cast opcodes; `instruction.cpp:660` through `:680` maps unsupported casts to
+`Deferred`; `instruction.cpp:2233` through `:2301` builds prepared scalar cast
+records; `instruction.cpp:1647` through `:1665` can select supported simple
+integer casts; `machine_printer.cpp:222` through `:225` only prints scalar
+add/sub and rejects other scalar opcodes.
+Follow-Up: `ideas/open/235_aarch64_scalar_cast_and_float_machine_nodes.md`.
 
-Shard: `src/backend/mir/aarch64/codegen/globals.md`
+Shard: `src/backend/mir/aarch64/codegen/float_ops.md`
 Classification: real-missing-feature
-Current Owner: BIR global/string memory identity in `src/backend/bir/bir.hpp`;
-prepared symbol-backed memory access facts in
-`src/backend/prealloc/stack_layout/coordinator.cpp`; partial AArch64 memory
-record validation in `src/backend/mir/aarch64/codegen/instruction.cpp`; no
-compiled AArch64 global/label/TLS address-materialization owner yet.
-Review Result: Current owners already represent memory accesses whose base is a
-global symbol or string constant, but the shard describes address-producing
-operations: direct global address, label address, GOT-indirect global address,
-and TLS address materialization through `tpidr_el0`. Treating global load/store
-support as enough would conflate symbol-backed memory access with materialized
-addresses. BIR has default/FS/GS/TLS address-space vocabulary and label base
-identity, but prepared addressing currently maps only global symbols and string
-constants into direct symbol-backed prepared addresses; AArch64 printer memory
-output only handles frame slots and pointer-value register bases. Address-kind
-policy for direct/GOT/TLS materialization is therefore a real follow-up, with
-some carrier work and some AArch64 machine-node/printer work.
-Proof or Evidence: `bir.hpp:94` defines `AddressSpace::Tls`; `bir.hpp:270`
-defines `MemoryAddress::BaseKind::GlobalSymbol`, `Label`, and `StringConstant`;
-`bir.hpp:412` and `:425` define load/store global instructions with semantic
-`LinkNameId`; `stack_layout/coordinator.cpp:261` builds direct symbol-backed
-prepared addresses; `stack_layout/coordinator.cpp:307` accepts only global
-symbol and string constant bases for that path; `instruction.cpp:874` through
-`:909` validates global symbol identity for memory operands; `instruction.cpp:1049`
-maps prepared global-symbol addresses to `MemoryBaseKind::Symbol`; `machine_printer.cpp:38`
-prints memory addresses only for frame slots and pointer values with base
-registers.
-Follow-Up: `ideas/open/233_aarch64_global_address_materialization.md`.
+Current Owner: BIR scalar type and binary opcode vocabulary in
+`src/backend/bir/bir.hpp`; prepared floating register-bank and ABI placement
+facts in `src/backend/prealloc/target_register_profile.cpp` and
+`src/backend/prealloc/regalloc.cpp`; no compiled AArch64 FP arithmetic
+machine-node owner yet.
+Review Result: F32/F64 values are known to BIR and prepared layers, and
+prepared register profiles can route float values to FPR/ABI registers. The
+compiled AArch64 scalar ALU owner is intentionally integer-only: it accepts
+only selected integer binary opcodes and only scalar register views for
+`I1`/`I8`/`I16`/`I32`/`I64`/`Ptr`. There are no typed FP/SIMD arithmetic nodes
+or printer cases for FADD/FSUB/FMUL/FDIV, and F128 arithmetic belongs to the
+binary128 soft-float route. Missing facts belong in AArch64 typed FP
+machine-node lowering and register-file transition modeling, not in BIR
+opcode invention or the old integer-accumulator bridge.
+Proof or Evidence: `target_register_profile.cpp:38` through `:46` recognizes
+F32/F64/F128 as float types; `target_register_profile.cpp:75` through `:88`
+maps float types to the FPR bank; `regalloc.cpp:50` through `:53` classifies
+F32/F64/F128 liveness as `PreparedRegisterClass::Float`; `instruction.cpp:573`
+through `:602` limits scalar ALU support to Add/Sub/And/Or/Xor and excludes
+Mul/shifts/div/rem/compare; `instruction.cpp:1087` through `:1104` has no
+scalar register view for F32/F64/F128; `machine_printer.cpp:215` through
+`:294` prints only add/sub scalar nodes.
+Follow-Up: `ideas/open/235_aarch64_scalar_cast_and_float_machine_nodes.md`.
+
+Shard: `src/backend/mir/aarch64/codegen/i128_ops.md`
+Classification: real-missing-feature
+Current Owner: BIR `I128` type vocabulary and ABI legalization in
+`src/backend/bir/bir.hpp` and `src/backend/prealloc/legalize.cpp`; partial
+target register-bank vocabulary in `src/backend/prealloc/target_register_profile.cpp`;
+no prepared ordinary i128 liveness/register ownership and no compiled AArch64
+i128 pair-lowering owner yet.
+Review Result: The shard describes still-valid wide integer behavior:
+low/high pair transport, add/sub carry and borrow, bitwise operations, shifts,
+ordered comparisons, and runtime helper calls. Current code can name `I128`
+and treats i128 call arguments/results as memory in ABI legalization, but
+ordinary register allocation does not classify i128 liveness into a usable
+register class, and AArch64 scalar lowering excludes i128 from scalar register
+views and selected operations. This is a real wide-integer feature gap spanning
+prepared pair/memory carriers and AArch64 pair machine nodes; it should not be
+rebuilt as fixed `x0`/`x1` accumulator shortcuts.
+Proof or Evidence: `legalize.cpp:57` through `:59` sizes I128/F128 as 16
+bytes; `legalize.cpp:125` through `:129` makes I128 call arguments memory;
+`legalize.cpp:174` through `:177` makes I128 returns memory; `target_register_profile.cpp:75`
+through `:88` maps I128 to the Vreg bank, but `regalloc.cpp:42` through `:57`
+classifies ordinary I128 liveness as `PreparedRegisterClass::None`;
+`instruction.cpp:1087` through `:1104` rejects I128 as a scalar register view;
+`instruction.cpp:573` through `:602` lacks selected mul/shift/div/rem/compare
+coverage.
+Follow-Up: `ideas/open/236_aarch64_i128_pair_lowering.md`.
+
+Shard: `src/backend/mir/aarch64/codegen/f128.md`
+Classification: real-missing-feature
+Current Owner: BIR `F128` type vocabulary and ABI/register-bank facts in
+`src/backend/bir/bir.hpp`, `src/backend/prealloc/legalize.cpp`,
+`src/backend/prealloc/target_register_profile.cpp`, and
+`src/backend/prealloc/regalloc.cpp`; no compiled AArch64 binary128 soft-float
+transport, source-tracking, helper-call, or machine-node owner yet.
+Review Result: F128 is not absent from the shared/prepared model: it has type
+size, ABI classification, and FPR/q-register placement vocabulary. The missing
+feature is the actual binary128 lowering contract: full 16-byte source
+tracking, constants, q-register transport, temporary storage, helper calls,
+comparisons, casts, negation, and full-width load/store/copy behavior. Those
+facts require prepared/shared carriers plus AArch64 helper-call and memory
+transport nodes. They do not belong in scalar F64 lowering, and the archived
+`x16`/`x17` scratch convention is not current authority.
+Proof or Evidence: `legalize.cpp:57` through `:59` sizes F128 as 16 bytes;
+`legalize.cpp:107` through `:117` and `:160` through `:165` classify F128 ABI
+paths through float-capable ABI classes on non-x86_64 targets;
+`target_register_profile.cpp:38` through `:46` recognizes F128 as a float
+type; `target_register_profile.cpp:75` through `:88` maps F128 to the FPR
+bank; `target_register_profile.cpp:519` through `:523` returns an AArch64
+float result register name for F128 ABI returns; `regalloc.cpp:50` through
+`:53` classifies F128 liveness as float; `instruction.cpp:1087` through
+`:1104` has no scalar register view for F128, and no AArch64 codegen files
+define binary128 helper-call/source-tracking machine nodes.
+Follow-Up: `ideas/open/237_aarch64_binary128_softfloat_lowering.md`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 5 by reconciling only the scalar, memory, float, and
-wide-operation shard group: `memory.md`, `cast_ops.md`, `float_ops.md`,
-`i128_ops.md`, and `f128.md`.
+Execute `plan.md` Step 6 by reconciling only the target-specific extra shard
+group: `atomics.md`, `intrinsics.md`, `inline_asm.md`, and `peephole.md`.
 
 ## Watchouts
 
@@ -141,13 +165,18 @@ wide-operation shard group: `memory.md`, `cast_ops.md`, `float_ops.md`,
 - Do not recreate the stale `asm_emitter.md` inline-asm emitter, scratch
   allocator, template substitution path, or text-first assembler handoff.
 - Do not classify a missing feature before checking current compiled owners.
-- Calls and frames have prepared authority but need AArch64 machine-node and
-  printer work; do not re-run local ABI classification in target codegen.
-- Full variadic function-entry is a prepared/shared carrier gap before it is an
-  AArch64 codegen gap; keep it separate from the existing variadic call-boundary
-  fields.
+- Memory access facts exist in BIR/prepared layers, but selected AArch64
+  load/store dispatch and load printing are still missing; do not re-create the
+  legacy memory scratch-register route.
+- Cast record helpers are not enough: dispatch and printer support are missing
+  for cast nodes.
+- F32/F64 arithmetic needs typed FP/SIMD machine nodes, not integer ALU reuse.
+- I128 requires prepared pair/memory carriers before AArch64 pair lowering can
+  be honest.
+- F128 requires full binary128 source tracking and helper-call carriers; do not
+  collapse it to scalar F64 behavior.
 - Global memory access support is not the same as global, label, GOT, or TLS
-  address materialization.
+  address materialization; keep that with idea 233.
 - Keep compatibility projection out of terminal assembly printing; terminal
   assembly must walk shared `module::MachineModule` through
   `mir::print_machine_module` plus the AArch64 `MachineInstructionPrinter`.
@@ -161,20 +190,24 @@ proof explicitly required ledger-only classification.
 Evidence inspected with focused `rg`, `sed`, and `nl` reads of:
 
 - `ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md`
-- `src/backend/mir/aarch64/codegen/calls.md`
-- `src/backend/mir/aarch64/codegen/prologue.md`
-- `src/backend/mir/aarch64/codegen/variadic.md`
-- `src/backend/mir/aarch64/codegen/globals.md`
-- `src/backend/prealloc/prealloc.hpp`
-- `src/backend/prealloc/prealloc.cpp`
-- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- `src/backend/mir/aarch64/codegen/memory.md`
+- `src/backend/mir/aarch64/codegen/cast_ops.md`
+- `src/backend/mir/aarch64/codegen/float_ops.md`
+- `src/backend/mir/aarch64/codegen/i128_ops.md`
+- `src/backend/mir/aarch64/codegen/f128.md`
 - `src/backend/bir/bir.hpp`
-- `src/backend/mir/aarch64/codegen/traversal.cpp` / `.hpp`
 - `src/backend/mir/aarch64/codegen/dispatch.cpp` / `.hpp`
 - `src/backend/mir/aarch64/codegen/alu.cpp` / `.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp` / `.hpp`
 - `src/backend/mir/aarch64/codegen/machine_printer.cpp` / `.hpp`
-- `src/backend/mir/aarch64/module/module.cpp` / `.hpp`
-- `ideas/open/231_aarch64_call_frame_machine_nodes.md`
-- `ideas/open/232_aarch64_variadic_function_entry_carriers.md`
+- `src/backend/mir/aarch64/codegen/operands.cpp` / `.hpp`
+- `src/backend/prealloc/legalize.cpp`
+- `src/backend/prealloc/regalloc.cpp`
+- `src/backend/prealloc/target_register_profile.cpp` / `.hpp`
+- `src/backend/prealloc/stack_layout/coordinator.cpp`
+- `src/backend/bir/lir_to_bir/memory/*`
 - `ideas/open/233_aarch64_global_address_materialization.md`
+- `ideas/open/234_aarch64_memory_load_store_machine_nodes.md`
+- `ideas/open/235_aarch64_scalar_cast_and_float_machine_nodes.md`
+- `ideas/open/236_aarch64_i128_pair_lowering.md`
+- `ideas/open/237_aarch64_binary128_softfloat_lowering.md`
