@@ -1,135 +1,127 @@
 Status: Active
 Source Idea Path: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Reconcile Active Compiled Surface Shards
+Current Step ID: Step 3
+Current Step Title: Reconcile Route Boundary And Stale Structural Shards
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 ledger reconciliation for the active compiled
-surface shard group: `alu.md`, `comparison.md`, `returns.md`, and `emit.md`.
-Each entry below was checked against the current compiled owner before
-classification.
+Completed `plan.md` Step 3 ledger reconciliation for the route-boundary and
+stale structural shard group: `mod.md`, `records.md`, and `asm_emitter.md`.
+Each entry below was checked against current compiled owners or explicit route
+boundary files before classification.
 
-Shard: `src/backend/mir/aarch64/codegen/alu.md`
-Classification: already-converted/reconcile-ledger
-Current Owner: `src/backend/mir/aarch64/codegen/alu.cpp`,
-`src/backend/mir/aarch64/codegen/alu.hpp`, and the scalar record helpers in
-`src/backend/mir/aarch64/codegen/instruction.cpp` / `.hpp`
-Review Result: The current owner is the post-228 structured scalar ALU route,
-not the archived accumulator/direct-assembly helper surface. It lowers
-prepared BIR binary instructions through `lower_scalar_instruction`, consumes
-prepared value/storage authority, records emitted scalar registers for return
-chaining, and selects machine-node records for the accepted scalar ALU subset.
-The legacy helper catalog's wider arithmetic, float-negation, byte-swap, popcount,
-i128-copy, and direct assembly details are not current Step 2 owner gaps; they
-remain archival evidence for later family-specific shard review rather than a
-reason to recreate the old monolith.
-Proof or Evidence: `alu.cpp:295` defines `lower_scalar_instruction`;
-`instruction.cpp:624` maps current scalar ALU opcodes; `instruction.cpp:1349`
-maps selected scalar ALU records to machine opcodes; `instruction.cpp:2141`
-builds prepared scalar ALU records from value-location and storage-plan facts.
-Focused evidence exists in
-`tests/backend/mir/backend_aarch64_prepared_scalar_alu_records_test.cpp:147`
-for prepared record conversion, `:391` for module build selection, and `:452`
-for fail-closed unsupported opcodes such as `Mul` and compare predicates.
-Follow-Up: none for Step 2; do not create a new missing-feature idea from the
-legacy ALU helper catalog during this active-surface ledger pass.
+Shard: `src/backend/mir/aarch64/codegen/mod.md`
+Classification: stale/reject-retire
+Current Owner: `src/backend/mir/aarch64/module/module.cpp`,
+`src/backend/mir/aarch64/module/module.hpp`,
+`src/backend/mir/aarch64/api/api.cpp`,
+`src/backend/mir/aarch64/codegen/emit.cpp`,
+`src/backend/mir/aarch64/codegen/traversal.cpp`, and the shared MIR printer
+boundary in `src/backend/mir/printer.hpp` with the AArch64 target printer in
+`src/backend/mir/aarch64/codegen/machine_printer.cpp`
+Review Result: The shard is a historical Rust-style module index and is not a
+live dependency graph or C++ visibility contract. The current route already has
+an explicit public facade, prepared-module build entry point, function/block
+lowering traversal, compatibility projection, and terminal printer boundary.
+The shard's old list of modules is stale as ownership evidence and must not be
+used to recreate same-named translation units, direct text emission, or broad
+module-emitter ownership. Its only narrow valid fact is the current boundary
+direction: structured target MIR records flow to selected machine nodes, and
+terminal assembly text is a printer consumer rather than semantic input.
+Proof or Evidence: `module.cpp:7` delegates `module::build` to
+`codegen::build_module`; `api.cpp:7` exposes `build_prepared_module`;
+`emit.cpp:11` builds the module after handoff validation; `traversal.cpp:59`
+lowers prepared functions into `module::MachineFunction` / `MachineModule`;
+`backend.cpp:158` builds the prepared module and `backend.cpp:181` prints each
+function through `MachineInstructionPrinter`; `printer.hpp:51` and `:101`
+define the shared machine function/module printer boundary.
+Follow-Up: retire note only; no follow-up idea and no same-named `mod.cpp` /
+`mod.hpp` recreation.
 
-Shard: `src/backend/mir/aarch64/codegen/comparison.md`
+Shard: `src/backend/mir/aarch64/codegen/records.md`
 Classification: already-converted/reconcile-ledger
-Current Owner: `src/backend/mir/aarch64/codegen/comparison.cpp`,
-`src/backend/mir/aarch64/codegen/comparison.hpp`, and branch instruction record
-helpers in `src/backend/mir/aarch64/codegen/instruction.cpp` / `.hpp`
-Review Result: The current owner covers prepared branch-control lowering rather
-than the old combined compare/select/text emitter hooks. It lowers prepared
-unconditional branches, materialized-bool conditional branches, and fusable
-compare branches into selected branch machine nodes, while block successors
-preserve true/false and unconditional control-flow facts. Old materialized
-boolean compare, float compare, soft-float `F128`, and select helper details
-are not reintroduced here and are not classified as current-owner missing
-without a later focused semantic route.
-Proof or Evidence: `comparison.cpp:117` lowers prepared unconditional branch
-terminators; `comparison.cpp:161` lowers prepared conditional branch
-terminators; `comparison.cpp:237` enforces selected `ConditionalBranch` or
-`CompareBranch` opcodes; `instruction.cpp:1391` maps branch records to machine
-opcodes. Focused evidence exists in
-`tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp:353` for
-materialized-bool conditional branches and `:388` for fusable compare-branch
-dispatch with recorded MIR successors.
-Follow-Up: none for Step 2; any future materialized-compare, floating-compare,
-or select enablement should be routed through a later focused feature idea only
-after current prepared-owner review.
+Current Owner: `src/backend/mir/aarch64/codegen/instruction.hpp`,
+`src/backend/mir/aarch64/codegen/instruction.cpp`,
+`src/backend/mir/aarch64/codegen/operands.cpp`,
+`src/backend/mir/aarch64/codegen/alu.cpp`,
+`src/backend/mir/aarch64/codegen/comparison.cpp`,
+`src/backend/mir/aarch64/codegen/returns.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch.cpp`,
+`src/backend/mir/aarch64/codegen/machine_printer.cpp`,
+and the shared MIR container/printer boundary under `src/backend/mir/`
+Review Result: Current-owner review proves only the narrow valid record facts:
+the compiled backend has typed record-surface vocabulary, operand/resource
+records, branch/scalar/memory/spill/return record families, selected
+machine-node status, printer mnemonic mapping, and fail-closed terminal
+printing for selected machine nodes. The shard's broader roadmap notes about
+future asm/encoding streams, object records, linker behavior, and enum growth
+remain non-authoritative until a later focused route owns them. Step 3 should
+not turn this markdown shard into broad record-pile ownership or a
+`records.cpp` / `records.hpp` conversion.
+Proof or Evidence: `instruction.hpp:28` defines `RecordSurfaceKind` with
+target-MIR, machine-node, printer-output, encoder-input, and external-assembler
+input surfaces; `instruction.hpp:70` defines broad instruction families;
+`instruction.hpp:93` defines selected machine opcodes; `instruction.hpp:130`
+defines selection status; `instruction.cpp:29`, `:122`, `:142`, and `:192`
+centralize display names for surfaces, families, opcodes, and printer
+mnemonics; `machine_printer.cpp:72` requires selected machine-node surfaces
+before printing; `machine_printer.cpp:359` dispatches only the printable
+selected subset.
+Follow-Up: none for Step 3; future asm/encoding or object-record expansion
+needs a separate focused idea only when current compiled owners require it.
 
-Shard: `src/backend/mir/aarch64/codegen/returns.md`
-Classification: already-converted/reconcile-ledger
-Current Owner: `src/backend/mir/aarch64/codegen/returns.cpp`,
-`src/backend/mir/aarch64/codegen/returns.hpp`, scalar-state support from
-`src/backend/mir/aarch64/codegen/alu.cpp` / `.hpp`, and return record helpers
-in `src/backend/mir/aarch64/codegen/instruction.cpp` / `.hpp`
-Review Result: The current owner covers prepared return terminator lowering
-into a structured `ReturnInstructionRecord`, including immediate returns,
-named/rematerialized returns, and scalar-result returns that reuse emitted
-scalar register state. The archived ABI register move hooks for scalar FP,
-binary128, second return components, epilogue text, and direct helper calls are
-historical evidence, not current Step 2 active-surface gaps.
-Proof or Evidence: `returns.cpp:120` builds typed return records from the BIR
-terminator value; `returns.cpp:184` exposes `lower_prepared_return_terminator`;
-`instruction.cpp:1912` creates selected return machine nodes with return and
-control-flow side effects. Focused evidence exists in
-`tests/backend/mir/backend_aarch64_return_lowering_test.cpp:360` for module
-MIR return lowering, `:384` for immediate returns, `:417` for named
-rematerialized returns, and `:441` / `:471` for scalar-result and scalar-chain
-returns.
-Follow-Up: none for Step 2; deeper ABI return-resource work belongs to a
-focused ABI/call/frame route if later shard review proves a current missing
-feature.
-
-Shard: `src/backend/mir/aarch64/codegen/emit.md`
-Classification: already-converted/reconcile-ledger
-Current Owner: `src/backend/mir/aarch64/codegen/emit.cpp`,
-`src/backend/mir/aarch64/codegen/emit.hpp`,
-`src/backend/mir/aarch64/codegen/traversal.cpp` / `.hpp`,
-`src/backend/mir/aarch64/codegen/compatibility_projection.cpp` / `.hpp`, and
-the public facade in `src/backend/mir/aarch64/module/module.cpp` / `.hpp`
-Review Result: The current owner is the thin prepared-module build entry point,
-not the archived direct BIR/LIR text renderer, recognizer pile, or assembler
-handoff surface. `build_module` validates the prepared AArch64 handoff, creates
-the structured module/MIR containers, lowers prepared functions, and derives
-compatibility projections for migration callers. The old direct assembly,
-shape recognizer, constant-fold fallback, type-string parser, and object
-assembly responsibilities are stale with respect to this active compiled
-surface and must not be restored through Step 2.
-Proof or Evidence: `emit.cpp:11` defines `build_module`; `emit.cpp:13` resolves
-the target profile; `emit.cpp:14` validates the prepared handoff; `emit.cpp:27`
-lowers prepared functions; `emit.cpp:29` / `:31` derive compatibility
-projections. Focused evidence exists in
-`tests/backend/mir/backend_aarch64_prepared_handoff_gate_test.cpp:53` and `:71`
-for fail-closed target/ABI handoff validation, plus the return and scalar
-module-build tests cited above for prepared-module integration.
-Follow-Up: none for Step 2; route-boundary and stale monolith retirement should
-continue in Step 3.
+Shard: `src/backend/mir/aarch64/codegen/asm_emitter.md`
+Classification: stale/reject-retire
+Current Owner: none for the archived inline-assembly emitter semantics;
+related live boundaries are the structured record vocabulary in
+`src/backend/mir/aarch64/codegen/instruction.hpp`, the selected-node printer in
+`src/backend/mir/aarch64/codegen/machine_printer.cpp`, and the external
+assembler compatibility surface under `src/backend/mir/aarch64/assembler/`
+Review Result: The shard describes a removed inline-assembly emitter with
+target-local constraint classification, scratch allocation, operand movement,
+template substitution, memory formatting, and immediate validation. Those
+details are stale relative to the current compiled route. The live backend does
+not own a prepared inline-asm lowering path here, and the external assembler
+parser/encoder surface is explicitly not an internal bridge from printed
+`--codegen asm` back into semantic backend input. Recreating this shard would
+reopen standalone scratch allocation, callee-save repair, and text-first
+inline-asm emission outside the current prepared authority boundary.
+Proof or Evidence: `instruction.hpp:153` has only side-effect vocabulary for
+`InlineAssembly`; `assembler/parser.hpp:11` says the parser is for external
+assembler text and must not recover backend semantics from printed
+`machine_printer.cpp` output; `assembler/mod.hpp:8` marks the assembler API as
+external text compatibility, not the compile-through bridge; `assembler/encoder/mod.hpp:11`
+keeps encoder helpers downstream of parsed external assembler operands;
+`c4cll.cpp:333` states AArch64 asm output is selected machine-node printer
+output and `c4cll.cpp:334` says it is not parsed back, encoded, or linked.
+Follow-Up: retire note only; no follow-up idea from this packet because current
+owners do not prove a narrow missing inline-asm feature to repair here.
 
 ## Suggested Next
 
-Execute `plan.md` Step 3 by reconciling only the route-boundary and stale
-structural shard group: `mod.md`, `records.md`, and `asm_emitter.md`.
+Execute `plan.md` Step 4 by reconciling only the ABI, call, frame, and global
+shard group: `calls.md`, `prologue.md`, `variadic.md`, and `globals.md`.
 
 ## Watchouts
 
 - Do not mechanically convert markdown shards into same-named C++ files.
 - Do not reopen the shared MIR printer boundary closed by idea 224.
-- Do not treat `records.md` as a mandate to recreate legacy record ownership.
+- Treat `records.md` as already represented only for the narrow facts proven by
+  current compiled owners; its future structured asm/object roadmap text is not
+  a Step 3 implementation mandate.
+- Do not recreate the stale `asm_emitter.md` inline-asm emitter, scratch
+  allocator, template substitution path, or text-first assembler handoff.
 - Do not classify a missing feature before checking current compiled owners.
 - Keep compatibility projection out of terminal assembly printing; terminal
   assembly must walk shared `module::MachineModule` through
   `mir::print_machine_module` plus the AArch64 `MachineInstructionPrinter`.
-- The Step 2 ledger deliberately does not promote every archived helper detail
-  into missing-feature work. Later shard groups should still check current
-  owners before deciding whether any broader arithmetic, comparison, ABI, or
-  emit behavior is a real missing feature.
+- The Step 3 ledger deliberately does not promote every archived route-boundary
+  or inline-asm detail into missing-feature work. Step 4 should still check
+  current ABI/call/frame/global owners before deciding whether any real missing
+  feature exists.
 
 ## Proof
 
@@ -140,14 +132,19 @@ proof explicitly required ledger-only classification.
 Evidence inspected with focused `rg`, `sed`, and `nl` reads of:
 
 - `ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md`
-- `src/backend/mir/aarch64/codegen/alu.md`
-- `src/backend/mir/aarch64/codegen/comparison.md`
-- `src/backend/mir/aarch64/codegen/returns.md`
-- `src/backend/mir/aarch64/codegen/emit.md`
-- `src/backend/mir/aarch64/codegen/alu.cpp` / `.hpp`
-- `src/backend/mir/aarch64/codegen/comparison.cpp` / `.hpp`
-- `src/backend/mir/aarch64/codegen/returns.cpp` / `.hpp`
+- `src/backend/mir/aarch64/codegen/mod.md`
+- `src/backend/mir/aarch64/codegen/records.md`
+- `src/backend/mir/aarch64/codegen/asm_emitter.md`
 - `src/backend/mir/aarch64/codegen/emit.cpp` / `.hpp`
+- `src/backend/mir/aarch64/codegen/traversal.cpp` / `.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp` / `.hpp`
-- focused tests under `tests/backend/mir/` covering scalar ALU records,
-  branch-control lowering, return lowering, and prepared handoff gating
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp` / `.hpp`
+- `src/backend/mir/aarch64/codegen/compatibility_projection.cpp` / `.hpp`
+- `src/backend/mir/aarch64/module/module.cpp` / `.hpp`
+- `src/backend/mir/aarch64/api/api.cpp` / `.hpp`
+- `src/backend/mir/printer.cpp` / `.hpp`
+- `src/backend/backend.cpp`
+- `src/apps/c4cll.cpp`
+- `src/backend/mir/aarch64/assembler/parser.hpp`
+- `src/backend/mir/aarch64/assembler/mod.hpp`
+- `src/backend/mir/aarch64/assembler/encoder/mod.hpp`
