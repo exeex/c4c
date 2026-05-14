@@ -6,7 +6,7 @@ Created: 2026-05-14
 Depends On:
 - `ideas/closed/216_aarch64_machine_node_asm_printer_external_smoke.md`
 - `ideas/closed/218_aarch64_structured_asm_encoder_linker_contract.md`
-- `ideas/open/219_aarch64_natural_operator_naming_and_printer_spelling.md`
+- `ideas/closed/219_aarch64_natural_operator_naming_and_printer_spelling.md`
 
 ## Goal
 
