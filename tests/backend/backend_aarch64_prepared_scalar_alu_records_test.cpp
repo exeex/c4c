@@ -1,13 +1,18 @@
 #include "src/backend/mir/aarch64/codegen/records.hpp"
+#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <iostream>
 #include <optional>
+#include <utility>
 #include <variant>
 
 namespace {
 
 namespace aarch64_abi = c4c::backend::aarch64::abi;
+namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -58,6 +63,15 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
       .contiguous_width = 1,
       .register_name = register_name,
       .occupied_register_names = {register_name},
+  };
+}
+
+prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
   };
 }
 
@@ -214,6 +228,159 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
   return 0;
 }
 
+prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_operands() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("placement.scalar");
+  const auto entry_label = prepared.names.block_labels.intern("entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto sum_name = prepared.names.value_names.intern("%sum");
+
+  const auto function_link_name = prepared.module.names.link_names.intern("placement.scalar");
+  const auto entry_bir_label = prepared.module.names.block_labels.intern("entry");
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = entry_bir_label;
+  entry.insts.push_back(binary(bir::BinaryOpcode::Add, bir::TypeKind::I64));
+  entry.terminator = bir::ReturnTerminator{.value = named_value(bir::TypeKind::I64, "%sum")};
+
+  bir::Function function;
+  function.name = "placement.scalar";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I64;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{10}, function_name, lhs_name, "x1"),
+              register_home(prepare::PreparedValueId{11}, function_name, rhs_name, "x2"),
+              register_home(prepare::PreparedValueId{12}, function_name, sum_name, "x0"),
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeReturn,
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{12},
+                              .to_value_id = prepare::PreparedValueId{12},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                              .block_index = 0,
+                              .instruction_index = 1,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .destination_register_placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                                      .slot_index = 0,
+                                      .contiguous_width = 1,
+                                  },
+                          },
+                      },
+              },
+          },
+  });
+
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{10},
+                  .value_name = lhs_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::nullopt,
+                  .register_placement = caller_saved_gpr(1),
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{11},
+                  .value_name = rhs_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"x19"},
+                  .occupied_register_names = {"x19"},
+                  .register_placement = caller_saved_gpr(2),
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{12},
+                  .value_name = sum_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"mismatched-result-spelling"},
+              },
+          },
+  });
+
+  return prepared;
+}
+
+int return_selected_scalar_operands_prefer_storage_register_placement() {
+  auto prepared = prepared_return_scalar_module_with_placement_only_operands();
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value() ||
+      result.module->functions.empty()) {
+    return fail("expected placement-only scalar operand module to build");
+  }
+
+  const auto& machine_nodes = result.module->functions.front().machine_nodes;
+  const auto scalar_it = std::find_if(
+      machine_nodes.begin(), machine_nodes.end(), [](const auto& node) {
+        return node.family == aarch64_codegen::InstructionFamily::Scalar &&
+               node.selection.status ==
+                   aarch64_codegen::MachineNodeSelectionStatus::Selected &&
+               std::holds_alternative<aarch64_codegen::ScalarInstructionRecord>(node.payload);
+      });
+  if (scalar_it == machine_nodes.end()) {
+    return fail("expected return-selected scalar ALU machine node to be built");
+  }
+
+  const auto& scalar =
+      std::get<aarch64_codegen::ScalarInstructionRecord>(scalar_it->payload);
+  if (!scalar.scalar_alu.has_value() || scalar.inputs.size() != 2) {
+    return fail("expected selected scalar ALU node to keep two structured inputs");
+  }
+  const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(
+      &scalar.scalar_alu->lhs.payload);
+  const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(
+      &scalar.scalar_alu->rhs.payload);
+  if (lhs == nullptr || rhs == nullptr ||
+      lhs->reg != aarch64_abi::x_register(1) ||
+      rhs->reg != aarch64_abi::x_register(2) ||
+      lhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
+      rhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {
+    return fail("expected selected operands to convert from storage placement before legacy names");
+  }
+  return 0;
+}
+
 int named_rematerialized_immediate_operands_preserve_source_identity() {
   auto fixture = make_i64_fixture();
   fixture.locations.value_homes[1] =
@@ -303,6 +470,10 @@ int unsupported_and_incomplete_facts_fail_closed() {
 
 int main() {
   if (const int status = supported_scalar_alu_records_preserve_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = return_selected_scalar_operands_prefer_storage_register_placement();
       status != 0) {
     return status;
   }

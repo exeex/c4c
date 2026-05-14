@@ -8,9 +8,9 @@ Current Step Title: Move AArch64 Physical Register Mapping Into Target MIR
 
 ## Just Finished
 
-Step 4 migrated AArch64 prepared operand/register-record construction for regalloc assigned registers, spill-authority scratch registers, and storage-plan registers to prefer structured placement conversion before legacy register spelling.
+Step 4 migrated AArch64 return-selected scalar operand conversion for storage-plan registers to prefer `PreparedStoragePlanValue::register_placement` before legacy storage register spelling.
 
-`module.cpp` now builds those target register records from `PreparedPhysicalRegisterAssignment::placement` or `PreparedStoragePlanValue::register_placement` when present, preserving legacy spelling as fallback only. `backend_aarch64_prepared_operand_identity_test` now uses deliberately mismatched legacy register names to prove placement selects `x19`, `x20`, and reserved scratch `x9`.
+`module.cpp` now lets selected scalar operands convert register-encoded storage from structured placement even when storage `register_name` is absent or mismatched, while preserving the old value-home/register-name equality fallback for placement-less fixtures. `backend_aarch64_prepared_scalar_alu_records_test` adds a return-selected scalar module fixture that proves lhs/rhs operands come from placement-selected `x1`/`x2`, not legacy storage spelling.
 
 ## Suggested Next
 
@@ -20,13 +20,13 @@ Next coherent packet: migrate the remaining AArch64 prepared-to-MIR register con
 
 - This packet intentionally did not remove legacy parsing; older/manual prepared fixtures can still provide only `register_name`.
 - AArch64 `CallArgument` and `CallResult` placement mapping is bounded to slot indexes 0..7. Return mapping currently accepts slot 0 only.
-- Target register records still retain `occupied_registers` from prepared occupied-name text; this packet only moves the target physical register/reference decision to structured placement for assigned, spill-authority, and storage-plan register records.
+- Target register records and selected operands still retain `occupied_registers` from prepared occupied-name text; this packet only moves the target physical register/reference decision to structured placement.
 - Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
 ## Proof
 
 Ran delegated focused AArch64 placement/register-record proof:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_register_conversion|prepared_operand_identity|prepared_scalar_alu_records|scalar_alu_records|prepared_frame_control)$" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_scalar_alu_records|scalar_alu_records|prepared_operand_identity|prepared_register_conversion)$" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed; 5/5 selected AArch64 backend tests passed. Proof log: `test_after.log`.
+Result: passed; 4/4 selected AArch64 backend tests passed. Proof log: `test_after.log`.

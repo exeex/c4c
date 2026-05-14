@@ -1109,9 +1109,7 @@ selected_scalar_operand(
     });
   }
   if (home->kind != prepare::PreparedValueHomeKind::Register ||
-      stored->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      !home->register_name.has_value() || !stored->register_name.has_value() ||
-      *home->register_name != *stored->register_name) {
+      stored->encoding != prepare::PreparedStorageEncodingKind::Register) {
     return std::nullopt;
   }
   const auto expected_view = scalar_result_register_view(value.type);
@@ -1119,10 +1117,21 @@ selected_scalar_operand(
     return std::nullopt;
   }
   const auto reg_class = register_class_from_bank(stored->bank);
-  const auto converted = abi::convert_prepared_register(*stored->register_name,
-                                                        stored->bank,
-                                                        reg_class,
-                                                        expected_view);
+  abi::PreparedRegisterConversionResult converted;
+  if (stored->register_placement.has_value()) {
+    converted = abi::convert_prepared_register(*stored->register_placement,
+                                               reg_class,
+                                               expected_view);
+  } else {
+    if (!home->register_name.has_value() || !stored->register_name.has_value() ||
+        *home->register_name != *stored->register_name) {
+      return std::nullopt;
+    }
+    converted = abi::convert_prepared_register(*stored->register_name,
+                                               stored->bank,
+                                               reg_class,
+                                               expected_view);
+  }
   if (!converted.has_value()) {
     return std::nullopt;
   }
