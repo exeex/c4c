@@ -907,6 +907,219 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
          opcode == c4c::backend::bir::BinaryOpcode::Sub;
 }
 
+[[nodiscard]] std::optional<c4c::backend::aarch64::abi::RegisterView>
+scalar_result_register_view(c4c::backend::bir::TypeKind type) {
+  using c4c::backend::aarch64::abi::RegisterView;
+  switch (type) {
+    case c4c::backend::bir::TypeKind::I1:
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+      return RegisterView::W;
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return RegisterView::X;
+    case c4c::backend::bir::TypeKind::Void:
+    case c4c::backend::bir::TypeKind::I128:
+    case c4c::backend::bir::TypeKind::F32:
+    case c4c::backend::bir::TypeKind::F64:
+    case c4c::backend::bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const c4c::backend::prepare::PreparedStoragePlanValue*
+find_storage_plan_value(
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
+    c4c::backend::prepare::PreparedValueId value_id) {
+  for (const auto& value : storage.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::OperandRecord>
+selected_scalar_operand(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
+    const c4c::backend::bir::Value& value) {
+  namespace abi = c4c::backend::aarch64::abi;
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return codegen::make_immediate_operand(codegen::ImmediateOperand{
+        .kind = codegen::ImmediateKind::SignedInteger,
+        .type = value.type,
+        .signed_value = value.immediate,
+        .unsigned_value = value.immediate_bits,
+    });
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto* home = prepare::find_prepared_value_home(prepared.names, locations, value.name);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* stored = find_storage_plan_value(storage, home->value_id);
+  if (stored == nullptr || stored->value_name != home->value_name) {
+    return std::nullopt;
+  }
+  if (stored->encoding == prepare::PreparedStorageEncodingKind::Immediate) {
+    if (home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
+        !home->immediate_i32.has_value() || !stored->immediate_i32.has_value() ||
+        *home->immediate_i32 != *stored->immediate_i32) {
+      return std::nullopt;
+    }
+    return codegen::make_immediate_operand(codegen::ImmediateOperand{
+        .kind = codegen::ImmediateKind::SignedInteger,
+        .type = value.type,
+        .signed_value = *stored->immediate_i32,
+        .unsigned_value = static_cast<std::uint64_t>(*stored->immediate_i32),
+        .source_value_id = home->value_id,
+        .source_value_name = home->value_name,
+    });
+  }
+  if (home->kind != prepare::PreparedValueHomeKind::Register ||
+      stored->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      !home->register_name.has_value() || !stored->register_name.has_value() ||
+      *home->register_name != *stored->register_name) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_result_register_view(value.type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto reg_class = register_class_from_bank(stored->bank);
+  const auto converted = abi::convert_prepared_register(*stored->register_name,
+                                                        stored->bank,
+                                                        reg_class,
+                                                        expected_view);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  return codegen::make_register_operand(codegen::RegisterOperand{
+      .reg = *converted.reg,
+      .role = codegen::RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_class = reg_class,
+      .prepared_bank = stored->bank,
+      .expected_view = expected_view,
+      .contiguous_width = stored->contiguous_width,
+      .occupied_registers = register_name_views(stored->occupied_register_names),
+  });
+}
+
+[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::RegisterOperand>
+return_abi_register_for_value(
+    const c4c::backend::prepare::PreparedNameTables& names,
+    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
+    const c4c::backend::bir::Value& value,
+    std::size_t block_index,
+    std::size_t return_instruction_index) {
+  namespace abi = c4c::backend::aarch64::abi;
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  const auto expected_view = scalar_result_register_view(value.type);
+  if (value.kind != c4c::backend::bir::Value::Kind::Named || !expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepare::find_prepared_value_home(names, locations, value.name);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      locations, prepare::PreparedMovePhase::BeforeReturn, block_index, return_instruction_index);
+  if (bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : bundle->moves) {
+    if (move.from_value_id != home->value_id || move.to_value_id != home->value_id ||
+        move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        !move.destination_register_name.has_value()) {
+      continue;
+    }
+    const auto parsed = abi::parse_aarch64_register_name(*move.destination_register_name);
+    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      return std::nullopt;
+    }
+    return codegen::RegisterOperand{
+        .reg =
+            abi::RegisterReference{
+                .bank = parsed->bank,
+                .view = *expected_view,
+                .index = parsed->index,
+            },
+        .role = codegen::RegisterOperandRole::CallAbi,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = expected_view,
+        .contiguous_width = move.destination_contiguous_width,
+        .occupied_registers = register_name_views(move.destination_occupied_register_names),
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::InstructionRecord>
+make_return_abi_scalar_alu_instruction(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
+    const c4c::backend::bir::BinaryInst& binary,
+    c4c::BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t return_instruction_index) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  const auto result_register = return_abi_register_for_value(
+      prepared.names, locations, binary.result, block_index, return_instruction_index);
+  const auto* result_home =
+      prepare::find_prepared_value_home(prepared.names, locations, binary.result.name);
+  if (!result_register.has_value() || result_home == nullptr) {
+    return std::nullopt;
+  }
+  auto lhs = selected_scalar_operand(prepared, locations, storage, binary.lhs);
+  auto rhs = selected_scalar_operand(prepared, locations, storage, binary.rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  auto node = codegen::make_scalar_instruction(codegen::make_scalar_alu_instruction_record(
+      codegen::ScalarAluRecord{
+          .surface = codegen::RecordSurfaceKind::RecordOnly,
+          .operation = codegen::scalar_alu_operation_from_binary_opcode(binary.opcode),
+          .source_binary_opcode = binary.opcode,
+          .operand_type = binary.operand_type,
+          .result_value_id = result_home->value_id,
+          .result_value_name = result_home->value_name,
+          .result_type = binary.result.type,
+          .result_register = result_register,
+          .lhs = *lhs,
+          .rhs = *rhs,
+          .supported_integer_operation = true,
+      }));
+  node.function_name = function.function_name;
+  node.block_label = block_label;
+  node.block_index = block_index;
+  node.instruction_index = instruction_index;
+  return node;
+}
+
 [[nodiscard]] std::optional<c4c::backend::aarch64::codegen::RegisterOperand>
 returned_scalar_result_register(
     const c4c::backend::prepare::PreparedBirModule& prepared,
@@ -962,6 +1175,19 @@ build_return_scalar_alu_machine_nodes(
                                                                *storage,
                                                                *binary);
       if (!scalar.record.has_value()) {
+        auto fallback = make_return_abi_scalar_alu_instruction(prepared,
+                                                               function,
+                                                               *locations,
+                                                               *storage,
+                                                               *binary,
+                                                               block.block_label,
+                                                               block_index,
+                                                               instruction_index,
+                                                               source_block->insts.size());
+        if (!fallback.has_value()) {
+          continue;
+        }
+        nodes.push_back(std::move(*fallback));
         continue;
       }
       auto node = codegen::make_scalar_instruction(*scalar.record);

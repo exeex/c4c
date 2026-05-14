@@ -3,6 +3,7 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
+#include <cstdint>
 #include <iostream>
 #include <string_view>
 #include <utility>
@@ -45,6 +46,32 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
       .contiguous_width = 1,
       .register_name = register_name,
       .occupied_register_names = {register_name},
+  };
+}
+
+prepare::PreparedValueHome immediate_home(prepare::PreparedValueId value_id,
+                                          c4c::FunctionNameId function_name,
+                                          c4c::ValueNameId value_name,
+                                          std::int64_t value) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = value,
+  };
+}
+
+prepare::PreparedStoragePlanValue immediate_storage(prepare::PreparedValueId value_id,
+                                                    c4c::ValueNameId value_name,
+                                                    std::int64_t value) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Immediate,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .immediate_i32 = value,
   };
 }
 
@@ -167,6 +194,96 @@ prepare::PreparedBirModule prepared_return_scalar_alu_module(bir::BinaryOpcode o
               register_storage(prepare::PreparedValueId{10}, lhs_name, lhs_register),
               register_storage(prepare::PreparedValueId{11}, rhs_name, rhs_register),
               register_storage(prepare::PreparedValueId{12}, result_name, result_register),
+          },
+  });
+
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_return_rematerialized_scalar_alu_module() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("return.remat.scalar.fn");
+  const auto block_label = prepared.names.block_labels.intern("entry.return.remat.scalar");
+  const auto result_name = prepared.names.value_names.intern("%result");
+
+  const auto function_link_name =
+      prepared.module.names.link_names.intern("return.remat.scalar.fn");
+  const auto block_bir_label =
+      prepared.module.names.block_labels.intern("entry.return.remat.scalar");
+
+  bir::Block block;
+  block.label = "raw.entry.return.remat.scalar";
+  block.label_id = block_bir_label;
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%result"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  block.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "%result"),
+  };
+
+  bir::Function function;
+  function.name = "raw.return.remat.scalar.display.drift";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(block));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = block_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              immediate_home(prepare::PreparedValueId{20}, function_name, result_name, 5),
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeReturn,
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{20},
+                              .to_value_id = prepare::PreparedValueId{20},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_register_name = "x0",
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                              .block_index = 0,
+                              .instruction_index = 1,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "return_register_to_register",
+                          },
+                      },
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              immediate_storage(prepare::PreparedValueId{20}, result_name, 5),
           },
   });
 
@@ -345,6 +462,53 @@ int returned_scalar_add_sub_build_selected_machine_nodes() {
   return 0;
 }
 
+int returned_rematerialized_scalar_add_uses_return_abi_register() {
+  auto prepared = prepared_return_rematerialized_scalar_alu_module();
+
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected rematerialized returned scalar add module to build");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.machine_nodes.size() != 2) {
+    return fail("expected rematerialized returned add to build scalar node followed by return");
+  }
+
+  const auto& scalar_node = function.machine_nodes[0];
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&scalar_node.payload);
+  if (scalar == nullptr || scalar_node.opcode != aarch64_codegen::MachineOpcode::Add ||
+      scalar_node.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      scalar_node.operands.size() != 2 || scalar_node.defs.size() != 1 ||
+      scalar_node.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      scalar_node.defs.front().value_id != prepare::PreparedValueId{20} ||
+      scalar_node.defs.front().reg != aarch64_abi::w_register(0)) {
+    return fail("expected rematerialized returned add to select a real w0 scalar def");
+  }
+  if (!scalar->result_register.has_value() ||
+      scalar->result_register->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      scalar->result_register->value_id != prepare::PreparedValueId{20} ||
+      scalar->result_register->reg != aarch64_abi::w_register(0)) {
+    return fail("expected rematerialized returned add result to use return ABI register");
+  }
+  if (scalar_node.operands[0].kind != aarch64_codegen::OperandKind::Immediate ||
+      scalar_node.operands[1].kind != aarch64_codegen::OperandKind::Immediate) {
+    return fail("expected rematerialized returned add to preserve structured immediates");
+  }
+
+  const auto& return_node = function.machine_nodes[1];
+  const auto* ret = std::get_if<aarch64_codegen::ReturnInstructionRecord>(&return_node.payload);
+  if (ret == nullptr || return_node.uses.size() != 1 ||
+      return_node.uses.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      return_node.uses.front().value_id != prepare::PreparedValueId{20} ||
+      return_node.uses.front().reg != aarch64_abi::w_register(0) || !ret->value.has_value() ||
+      ret->value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected return node to consume rematerialized add through w0");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -353,6 +517,10 @@ int main() {
     return status;
   }
   if (const int status = returned_scalar_add_sub_build_selected_machine_nodes(); status != 0) {
+    return status;
+  }
+  if (const int status = returned_rematerialized_scalar_add_uses_return_abi_register();
+      status != 0) {
     return status;
   }
   return 0;

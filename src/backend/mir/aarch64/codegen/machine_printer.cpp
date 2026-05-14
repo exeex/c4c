@@ -24,6 +24,15 @@ std::string register_name(const RegisterOperand& operand) {
   return c4c::backend::aarch64::abi::register_name(operand.reg);
 }
 
+std::string immediate_name(const ImmediateOperand& operand) {
+  return "#" + std::to_string(operand.signed_value);
+}
+
+bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
+  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
+         operand.signed_value <= 4095;
+}
+
 std::string memory_address(const MemoryOperand& address) {
   std::ostringstream out;
   if (address.base_kind == MemoryBaseKind::FrameSlot) {
@@ -205,15 +214,30 @@ MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction,
   }
   if (scalar.inputs.size() != 2) {
     return unsupported(bad_header(instruction) +
-                       "scalar add/sub node requires exactly two register operands");
+                       "scalar add/sub node requires exactly two register or immediate operands");
   }
 
-  const auto* lhs = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
-  const auto* rhs = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
-  if (scalar.inputs[0].kind != OperandKind::Register || lhs == nullptr ||
-      scalar.inputs[1].kind != OperandKind::Register || rhs == nullptr) {
+  const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+  const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+  const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
+  const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+  const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
+                               lhs_register != nullptr;
+  const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
+                               rhs_register != nullptr;
+  const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
+                                lhs_immediate != nullptr;
+  const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
+                                rhs_immediate != nullptr;
+  if ((!lhs_is_register && !lhs_is_immediate) || (!rhs_is_register && !rhs_is_immediate)) {
     return unsupported(bad_header(instruction) +
-                       "scalar add/sub node requires register operands");
+                       "scalar add/sub node requires register or immediate operands");
+  }
+  if ((lhs_is_immediate && !is_plain_add_sub_immediate(*lhs_immediate)) ||
+      (rhs_is_immediate && !is_plain_add_sub_immediate(*rhs_immediate))) {
+    return unsupported(bad_header(instruction) +
+                       "scalar add/sub immediate operand is outside the plain #imm encoding "
+                       "range 0..4095");
   }
 
   const auto mnemonic = required_primary_mnemonic(instruction);
@@ -222,8 +246,27 @@ MachineAssemblyPrintResult print_scalar(const InstructionRecord& instruction,
   }
 
   std::ostringstream out;
-  out << "    " << mnemonic << " " << register_name(*scalar.result_register) << ", "
-      << register_name(*lhs) << ", " << register_name(*rhs) << "\n";
+  const auto result = register_name(*scalar.result_register);
+  if (lhs_is_register && rhs_is_register) {
+    out << "    " << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
+        << register_name(*rhs_register) << "\n";
+  } else if (lhs_is_register && rhs_is_immediate) {
+    out << "    " << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
+        << immediate_name(*rhs_immediate) << "\n";
+  } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
+    out << "    " << mnemonic << " " << result << ", " << register_name(*rhs_register) << ", "
+        << immediate_name(*lhs_immediate) << "\n";
+  } else if (lhs_is_immediate && rhs_is_immediate) {
+    const auto move_mnemonic =
+        machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
+    out << "    " << move_mnemonic << " " << result << ", " << immediate_name(*lhs_immediate)
+        << "\n";
+    out << "    " << mnemonic << " " << result << ", " << result << ", "
+        << immediate_name(*rhs_immediate) << "\n";
+  } else {
+    return unsupported(bad_header(instruction) +
+                       "scalar sub with an immediate lhs and register rhs is not printable");
+  }
   return printed(out.str());
 }
 

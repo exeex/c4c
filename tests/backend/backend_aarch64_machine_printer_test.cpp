@@ -348,6 +348,114 @@ int selected_immediate_return_node_prints_callable_epilogue() {
   return 0;
 }
 
+int selected_scalar_add_with_immediate_operands_prints_structured_add() {
+  const auto add = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{44},
+          .result_value_name = c4c::ValueNameId{45},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 2,
+          }),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 3,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_register_operand(wreg(0)),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto result = aarch64_codegen::print_machine_instruction_nodes({add, ret});
+  if (!result.ok) {
+    return fail("expected scalar add with immediate operands to print structured add: " +
+                result.diagnostic);
+  }
+  const auto add_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(add);
+  const auto return_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret);
+  const std::string expected =
+      "    mov w0, #2\n"
+      "    " +
+      std::string(add_mnemonic) + " w0, w0, #3\n" +
+      "    " + std::string(return_mnemonic) + "\n";
+  if (const int check = expect_assembly(result.assembly,
+                                        expected,
+                                        "    mov w0, #2\n"
+                                        "    add w0, w0, #3\n"
+                                        "    ret\n",
+                                        "scalar immediate add helper-printer drift guard");
+      check != 0) {
+    return check;
+  }
+  return 0;
+}
+
+int selected_scalar_add_sub_reject_nonencodable_immediates() {
+  const auto add_out_of_range = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{46},
+          .result_value_name = c4c::ValueNameId{47},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 4096,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto out_of_range_result =
+      aarch64_codegen::print_machine_instruction_node(add_out_of_range);
+  if (out_of_range_result.ok ||
+      out_of_range_result.diagnostic.find("plain #imm encoding range 0..4095") ==
+          std::string::npos) {
+    return fail("expected scalar add with out-of-range immediate to fail closed");
+  }
+
+  const auto sub_negative = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{48},
+          .result_value_name = c4c::ValueNameId{49},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = -1,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto negative_result = aarch64_codegen::print_machine_instruction_node(sub_negative);
+  if (negative_result.ok ||
+      negative_result.diagnostic.find("plain #imm encoding range 0..4095") ==
+          std::string::npos) {
+    return fail("expected scalar sub with negative immediate to fail closed");
+  }
+
+  return 0;
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -390,7 +498,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected scalar without destination register to fail closed");
   }
 
-  const auto scalar_without_register_rhs = aarch64_codegen::make_scalar_instruction(
+  const auto scalar_with_unprintable_sub_operands = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
           .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
@@ -400,20 +508,21 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
           .result_value_name = c4c::ValueNameId{33},
           .result_type = bir::TypeKind::I64,
           .result_register = xreg(0),
-          .lhs = aarch64_codegen::make_register_operand(xreg(2)),
-          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+          .lhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
               .kind = aarch64_codegen::ImmediateKind::SignedInteger,
               .type = bir::TypeKind::I64,
               .signed_value = 1,
           }),
+          .rhs = aarch64_codegen::make_register_operand(xreg(2)),
           .supported_integer_operation = true,
       }));
-  const auto scalar_without_register_rhs_result =
-      aarch64_codegen::print_machine_instruction_node(scalar_without_register_rhs);
-  if (scalar_without_register_rhs_result.ok ||
-      scalar_without_register_rhs_result.diagnostic.find("requires register operands") ==
+  const auto scalar_with_unprintable_sub_operands_result =
+      aarch64_codegen::print_machine_instruction_node(scalar_with_unprintable_sub_operands);
+  if (scalar_with_unprintable_sub_operands_result.ok ||
+      scalar_with_unprintable_sub_operands_result.diagnostic.find(
+          "scalar sub with an immediate lhs and register rhs is not printable") ==
           std::string::npos) {
-    return fail("expected selected scalar without register operands to fail closed");
+    return fail("expected selected scalar with unprintable sub operands to fail closed");
   }
 
   return 0;
@@ -435,6 +544,14 @@ int main() {
     return result;
   }
   if (const int result = selected_immediate_return_node_prints_callable_epilogue();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_scalar_add_with_immediate_operands_prints_structured_add();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_scalar_add_sub_reject_nonencodable_immediates();
       result != 0) {
     return result;
   }
