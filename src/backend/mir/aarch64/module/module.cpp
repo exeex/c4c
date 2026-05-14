@@ -1562,9 +1562,8 @@ build_return_machine_nodes(
     record.target_destination_kind = target_move->destination_kind;
     record.target_destination_storage_kind = target_move->destination_storage_kind;
     record.target_destination_register =
-        target_move->destination_register_name.has_value()
-            ? std::string_view{*target_move->destination_register_name}
-            : std::string_view{};
+        resolved_prepared_register_name(target_move->destination_register_placement,
+                                        target_move->destination_register_name);
     record.target_destination_stack_offset_bytes = target_move->destination_stack_offset_bytes;
     record.target_destination_stack_offset_is_prepared_snapshot =
         target_move->destination_stack_offset_bytes.has_value();
@@ -1666,9 +1665,9 @@ build_return_machine_nodes(
           .destination_kind = move.destination_kind,
           .destination_storage_kind = move.destination_storage_kind,
           .destination_abi_index = move.destination_abi_index,
-          .destination_register = move.destination_register_name.has_value()
-                                      ? std::string_view{*move.destination_register_name}
-                                      : std::string_view{},
+          .destination_register =
+              resolved_prepared_register_name(move.destination_register_placement,
+                                             move.destination_register_name),
           .destination_contiguous_width = move.destination_contiguous_width,
           .destination_occupied_registers =
               register_name_views(move.destination_occupied_register_names),

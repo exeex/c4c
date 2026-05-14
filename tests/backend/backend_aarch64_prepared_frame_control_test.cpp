@@ -342,8 +342,9 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                               .to_value_id = 31,
                               .destination_kind = prepare::PreparedMoveDestinationKind::Value,
                               .destination_storage_kind =
-                                  prepare::PreparedMoveStorageKind::StackSlot,
-                              .destination_stack_offset_bytes = std::size_t{32},
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x4"},
                               .block_index = 3,
                               .instruction_index = 0,
                               .uses_cycle_temp_source = true,
@@ -354,6 +355,13 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                               .source_parallel_copy_predecessor_label = left_label,
                               .source_parallel_copy_successor_label = join_label,
                               .reason = "out-of-ssa cycle",
+                              .destination_register_placement =
+                                  prepare::PreparedRegisterPlacement{
+                                      .bank = prepare::PreparedRegisterBank::Gpr,
+                                      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                                      .slot_index = 4,
+                                      .contiguous_width = 1,
+                                  },
                           },
                       },
               },
@@ -392,13 +400,20 @@ prepare::PreparedBirModule prepared_frame_control_module() {
                   .to_value_id = 42,
                   .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
                   .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
-                  .destination_register_name = std::string{"x0"},
+                  .destination_register_name = std::string{"x7"},
                   .destination_contiguous_width = 1,
                   .destination_occupied_register_names = {"x0"},
                   .block_index = 3,
                   .instruction_index = 1,
                   .source_immediate_i32 = std::int64_t{7},
                   .reason = "return abi",
+                  .destination_register_placement =
+                      prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                          .slot_index = 0,
+                          .contiguous_width = 1,
+                      },
               },
           },
       .spill_reload_ops =
@@ -623,9 +638,11 @@ int records_preserve_frame_control_call_and_move_identity() {
           prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp ||
       !function.moves[2].uses_cycle_temp_source ||
       function.moves[2].source_parallel_copy_step_index != 1 ||
+      function.moves[2].destination_register != "x4" ||
+      function.moves[2].source_move->destination_register_name.has_value() ||
       function.parallel_copies.front().execution_block_label !=
           prepared.names.block_labels.intern("join")) {
-    return fail("expected parallel-copy move record to preserve out-of-SSA authority");
+    return fail("expected parallel-copy move record to use placement-only target register facts");
   }
   const auto& parallel_copy = function.parallel_copies.front();
   if (!parallel_copy.has_cycle || parallel_copy.moves.size() != 2 ||
@@ -644,8 +661,17 @@ int records_preserve_frame_control_call_and_move_identity() {
       !parallel_copy.steps.back().uses_cycle_temp_source ||
       parallel_copy.steps.back().source_move != &parallel_copy.source_bundle->moves.back() ||
       !parallel_copy.steps.back().has_target_move_record ||
+      parallel_copy.steps.back().target_destination_register != "x4" ||
+      parallel_copy.steps.back().source_target_move->destination_register_name.has_value() ||
       parallel_copy.steps.back().source_target_move != function.moves[2].source_move) {
-    return fail("expected parallel-copy record to expose per-move and per-step target facts");
+    return fail("expected parallel-copy record to expose placement-only step target facts");
+  }
+  if (function.moves.back().authority_kind != prepare::PreparedMoveAuthorityKind::None ||
+      function.moves.back().destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      function.moves.back().destination_register != "x0" ||
+      function.moves.back().source_move->destination_register_name != std::string{"x7"}) {
+    return fail("expected regalloc move record to prefer placement over legacy register name");
   }
   if (function.abi_bindings.front().destination_kind !=
           prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
