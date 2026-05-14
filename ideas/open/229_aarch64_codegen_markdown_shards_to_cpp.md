@@ -1,35 +1,49 @@
-# AArch64 Codegen Markdown Shards To Cpp
+# AArch64 Codegen Markdown Shard Reconciliation
 
 Status: Open
 Created: 2026-05-14
-Parent Context: ideas/open/228_aarch64_module_phoenix_drafts_to_implementation.md
+Parent Context: ideas/closed/228_aarch64_module_phoenix_drafts_to_implementation.md
 
 ## Intent
 
-Convert each legacy markdown shard under
-`src/backend/mir/aarch64/codegen/*.md` into real compiled C++ implementation,
-one shard at a time, with a matching backend C fixture proof for every
-converted shard.
+Review and reconcile the legacy markdown shards under
+`src/backend/mir/aarch64/codegen/*.md` against the current post-228 AArch64
+backend architecture. This is no longer a mechanical route to convert every
+markdown file into a same-named `.cpp` / `.hpp` pair.
 
-The markdown files are not completion artifacts. They are archived production
-surface notes that must be turned into active `.cpp` / `.hpp` code only when
-the corresponding behavior is wired into the current AArch64 MIR/codegen route
-and proved by a focused `tests/backend/case/xxxx.c` case.
+The post-228 codegen surface already has compiled owners such as
+`alu.cpp`, `comparison.cpp`, `returns.cpp`, `emit.cpp`,
+`dispatch.cpp`, `instruction.cpp`, `machine_printer.cpp`, `operands.cpp`, and
+`traversal.cpp`. Reconciliation should decide whether each markdown shard is:
 
-Before converting any shard, re-review the source markdown against the current
-backend architecture. The markdown may be stale; do not treat its archived
-description as automatically correct implementation intent.
+- already represented by current compiled code and only needs a durable ledger
+  entry
+- stale legacy evidence that should be rejected, retired, or archived as
+  non-authoritative context
+- a real missing-feature shard that deserves a focused implementation idea or
+  bounded execution route
 
-`src/backend/mir/aarch64/codegen/` should own lowering from a BIR prepared
-module into target MIR/codegen structures. All lowering inputs should be
-generated from the BIR prepared module. If a conversion discovers that prepared
-BIR is missing facts or mechanisms needed for correct lowering, record a
-separate idea under `ideas/open/` to complete BIR first instead of filling that
-semantic gap inside AArch64 codegen.
+Idea 224 owns the shared MIR printer boundary and any active migration noise
+around that boundary. This idea must not reopen that ownership while 224 is
+active; it should only classify codegen markdown evidence against the current
+layout and preserve clear follow-up intent.
+
+## Current Context
+
+Idea 228 is closed and supplied the current architecture this review should use
+as its baseline. The old markdown shards remain useful only as evidence to be
+checked against the live compiled route, not as an implementation blueprint to
+restore wholesale.
+
+`src/backend/mir/aarch64/codegen/` currently includes active compiled surfaces
+for selected-machine-node lowering, dispatch, operands, instruction modeling,
+emission, returns, comparison, ALU handling, traversal, and machine printing.
+Those surfaces should be treated as the first source of truth before any
+markdown shard is labeled missing.
 
 ## Source Markdown Set
 
-This idea owns the conversion of these source artifacts:
+This idea owns review of these source artifacts:
 
 - `src/backend/mir/aarch64/codegen/alu.md`
 - `src/backend/mir/aarch64/codegen/asm_emitter.md`
@@ -52,100 +66,131 @@ This idea owns the conversion of these source artifacts:
 - `src/backend/mir/aarch64/codegen/returns.md`
 - `src/backend/mir/aarch64/codegen/variadic.md`
 
-## Conversion Rule
+## Reconciliation Categories
+
+Each shard should receive exactly one primary classification.
+
+### Already-Converted / Reconcile-Ledger
+
+Use this category when the shard's valid intent is already represented by
+compiled post-228 surfaces. The work is to write a ledger entry that maps the
+markdown evidence to the owning compiled files and, when useful, the existing
+tests or selectors that prove the behavior.
+
+Likely examples include:
+
+- `alu.md` -> `alu.cpp` / `alu.hpp`
+- `comparison.md` -> `comparison.cpp` / `comparison.hpp`
+- `returns.md` -> `returns.cpp` / `returns.hpp`
+- `emit.md` -> `emit.cpp` / `emit.hpp`
+
+The exact mapping must be verified during execution; do not assume a filename
+match means the semantic coverage is complete.
+
+### Stale / Reject-Retire
+
+Use this category when the shard describes legacy ownership, record piles,
+module-emitter structures, or implementation shape that conflicts with the
+current backend architecture. These shards should be retired as stale evidence,
+not converted back into old surfaces.
+
+`records.md` belongs here unless review proves there is a narrowly valid
+current fact to preserve. Treat it as stale legacy record-pile evidence to
+retire, not as a reason to recreate `records.cpp` / `records.hpp` or restore
+deleted broad record ownership.
+
+### Real Missing-Feature Shard
+
+Use this category when a shard describes a still-valid AArch64 backend feature
+that current compiled code does not cover. The output should be a focused
+implementation idea, draft, or bounded runbook slice with its own proof
+contract. Do not smuggle a broad feature family into this reconciliation route.
+
+If the missing feature depends on facts that should be prepared by BIR or the
+shared MIR route, write a separate idea for that dependency instead of filling
+the semantic gap inside AArch64 codegen.
+
+## Review Rule
 
 For each markdown shard:
 
-1. Re-review the markdown shard and decide which parts are still valid under
-   the current BIR-prepared-module-to-MIR route.
-2. Create or update the corresponding compiled C++ surface under
-   `src/backend/mir/aarch64/codegen/`.
-3. Wire it through build files and the current AArch64 MIR/codegen ownership
-   route, taking inputs from the BIR prepared module rather than ad hoc source,
-   parsed assembly, or resurrected legacy records.
-4. Add or reuse one explicit fixture under `tests/backend/case/xxxx.c` that
-   exercises the converted capability.
-5. Register a CTest proof for that fixture through the backend/MIR test owner
-   that naturally owns the route.
-6. Record the markdown review result, proof command, and proof result in
-   `todo.md` before claiming that shard converted.
+1. Compare the shard against the current compiled codegen layout and the
+   closed idea 228 architecture.
+2. Check whether any apparent gap is already owned by active compiled surfaces
+   or by idea 224's shared MIR printer boundary.
+3. Assign one of the three reconciliation categories.
+4. Record the rationale, current owner files, and any proof or follow-up idea
+   needed.
+5. Only propose implementation work for real missing-feature shards with a
+   current semantic owner and a focused proof path.
 
-The converted `.cpp` must own real semantic behavior or a real structural
-boundary. Merely preserving the markdown text as comments, adding a stub file,
-or changing expectations without capability progress does not count.
-If the reviewed shard needs prepared BIR facts that do not exist yet, the
-conversion packet should stop and create or request a separate BIR-completion
-idea before continuing the AArch64 codegen conversion.
+The review should prefer durable clarity over file-count progress. Deleting,
+renaming, or converting markdown is not progress unless it follows from a
+correct classification and preserves the current architecture.
 
-## Proof Ledger
+## Ledger Shape
 
-Every completed shard needs a ledger entry in the active runbook or `todo.md`
+Every reconciled shard needs a ledger entry in the active runbook or `todo.md`
 with this shape:
 
 ```text
 Shard: src/backend/mir/aarch64/codegen/<name>.md
-Markdown Review: <current, stale sections rejected, or BIR gap found>
-Converted Code: src/backend/mir/aarch64/codegen/<name>.cpp[, <name>.hpp]
-Proof Fixture: tests/backend/case/<case>.c
-Proof Test: <ctest name or exact ctest -R selector>
-Result: <fresh passing result>
+Classification: already-converted/reconcile-ledger | stale/reject-retire | real-missing-feature
+Current Owner: <compiled files, idea 224 boundary, or none>
+Review Result: <why the classification is correct>
+Proof or Evidence: <existing selector, code reference, or reason no proof applies>
+Follow-Up: <none, retire note, or ideas/open draft path to create>
 ```
 
-Suggested fixture naming is `aarch64_codegen_<shard>*.c`, but the proof may
-use a clearer feature name when the C behavior is more specific than the shard
-name. Each converted shard must have its own explicit ledger mapping to a
-`tests/backend/case/xxxx.c` fixture before the shard is marked complete.
+## Expected Review Order
 
-## Expected Slice Order
+Start with shards that appear to overlap already-active compiled surfaces, then
+move into stale structural evidence, then missing feature families:
 
-Prefer converting lower-risk structural or already-active surfaces first, then
-move into feature families:
-
-- active route and record boundaries: `emit`, `records`, `mod`
-- existing selected-machine-node behavior: `alu`, `comparison`, `returns`,
-  `memory`
+- active compiled surfaces: `alu`, `comparison`, `returns`, `emit`
+- current route boundaries and stale legacy evidence: `mod`, `records`,
+  `asm_emitter`
 - ABI and call/frame behavior: `calls`, `prologue`, `variadic`, `globals`
-- scalar and wide operation families: `cast_ops`, `float_ops`, `i128_ops`,
-  `f128`
-- target-specific extras: `atomics`, `intrinsics`, `inline_asm`,
-  `asm_emitter`, `peephole`
+- scalar and wide operation families: `memory`, `cast_ops`, `float_ops`,
+  `i128_ops`, `f128`
+- target-specific extras: `atomics`, `intrinsics`, `inline_asm`, `peephole`
 
 The exact order may change during planning, but each execution packet should
-stay bounded to one shard or one tightly coupled pair and include its own C
-fixture proof.
+stay bounded to a small shard group and must not reopen active 224 work.
 
 ## Boundaries
 
-- Do not treat markdown deletion or renaming as implementation progress.
-- Do not convert a shard before reviewing whether the markdown still matches
-  current architecture.
-- Do not port the old reference shape blindly if it conflicts with the current
-  prepared-BIR-to-MIR route from idea 228.
+- Do not treat this as a mandate to convert every markdown shard into C++.
+- Do not resurrect legacy record-pile or broad module-emitter ownership.
+- Do not convert `records.md` into `records.cpp` / `records.hpp` unless a
+  later human-approved idea explicitly changes the architecture.
+- Do not claim a missing-feature shard without first checking current compiled
+  owners such as `alu.cpp`, `comparison.cpp`, `returns.cpp`, and `emit.cpp`.
+- Do not move printer-boundary work out of idea 224 or add noise to active 224
+  implementation state.
 - Do not use AArch64 codegen as the owner for semantic facts that should be
-  prepared by BIR. Missing prepared-BIR mechanisms require a separate
-  `ideas/open/` entry.
-- Do not resurrect deleted broad legacy module-emitter or record-pile
-  ownership to make a proof pass.
+  prepared by BIR or shared MIR layers.
 - Do not downgrade backend cases, mark supported paths unsupported, or accept
   expectation-only progress.
-- Do not add named-case shortcuts in C++ that only recognize the proof fixture.
-- Do not claim a shard complete until its matching `tests/backend/case/xxxx.c`
-  proof is passing through CTest.
+- Do not add named-case shortcuts in C++ that only recognize a proof fixture.
 
 ## Completion Signal
 
-This idea is complete when every `.md` shard in
-`src/backend/mir/aarch64/codegen/` has been converted into active compiled C++,
-every converted shard has a corresponding `tests/backend/case/xxxx.c` proof
-recorded in the ledger, the relevant backend/MIR CTest selectors pass, and no
-markdown artifact remains as the only owner of live AArch64 codegen behavior.
+This idea is complete when every listed codegen markdown shard has a recorded
+classification, stale shards have explicit retire rationale, already-converted
+shards map to current compiled owners, and every real missing-feature shard has
+been turned into a focused follow-up idea or bounded implementation route with
+a clear proof contract.
+
+Completion does not require eliminating all markdown files or creating
+same-named C++ files for every shard.
 
 ## Reviewer Reject Signals
 
-Reject the route if a shard is marked converted without compiled C++ and a
-passing backend C fixture, if the implementation adds fixture-shaped special
-cases, if tests are weakened to make conversion appear green, if old legacy
-module ownership is restored under new filenames, or if proof only checks that
-the file exists rather than that the converted capability works. Also reject
-the route if missing prepared-BIR facts are patched over inside AArch64 codegen
-instead of being split into a separate BIR-completion idea.
+Reject the route if it mechanically converts shards without architectural
+review, recreates stale record-pile ownership, treats `records.md` as a mandate
+for `records.cpp` / `records.hpp`, claims missing features without checking
+current compiled owners, moves active printer-boundary work out of idea 224,
+adds fixture-shaped special cases, weakens tests to appear green, or patches
+missing prepared-BIR facts inside AArch64 codegen instead of splitting them
+into a separate idea.
