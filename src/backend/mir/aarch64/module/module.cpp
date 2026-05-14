@@ -1,0 +1,2296 @@
+#include "module.hpp"
+
+#include <algorithm>
+#include <iterator>
+#include <optional>
+#include <string>
+#include <string_view>
+#include <utility>
+#include <variant>
+
+namespace c4c::backend::aarch64::module {
+
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+namespace codegen = c4c::backend::aarch64::codegen;
+
+namespace {
+
+[[nodiscard]] std::optional<c4c::BlockLabelId> prepared_label_for_bir_block(
+    const prepare::PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const bir::Block& block) {
+  if (block.label_id != c4c::kInvalidBlockLabel) {
+    const std::string_view structured_label = bir_names.block_labels.spelling(block.label_id);
+    if (!structured_label.empty()) {
+      const auto prepared_label =
+          prepare::resolve_prepared_block_label_id(names, structured_label);
+      if (prepared_label.has_value()) {
+        return prepared_label;
+      }
+    }
+  }
+  return prepare::resolve_prepared_block_label_id(names, block.label);
+}
+
+[[nodiscard]] const bir::Function* find_source_function(
+    const prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  if (function_name == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  for (const auto& function : prepared.module.functions) {
+    std::optional<c4c::FunctionNameId> candidate;
+    if (function.link_name_id != c4c::kInvalidLinkName) {
+      const std::string_view structured_name =
+          prepared.module.names.link_names.spelling(function.link_name_id);
+      candidate = prepare::resolve_prepared_function_name_id(prepared.names,
+                                                                           structured_name);
+    } else {
+      candidate =
+          prepare::resolve_prepared_function_name_id(prepared.names, function.name);
+    }
+    if (candidate.has_value() && *candidate == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::Block* find_source_block(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* function,
+    c4c::BlockLabelId block_label) {
+  if (function == nullptr || block_label == c4c::kInvalidBlockLabel) {
+    return nullptr;
+  }
+  for (const auto& block : function->blocks) {
+    const auto candidate =
+        prepared_label_for_bir_block(prepared.names, prepared.module.names, block);
+    if (candidate.has_value() && *candidate == block_label) {
+      return &block;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
+    prepare::PreparedRegisterBank bank) {
+  using prepare::PreparedRegisterBank;
+  using prepare::PreparedRegisterClass;
+  switch (bank) {
+    case PreparedRegisterBank::Gpr:
+      return PreparedRegisterClass::General;
+    case PreparedRegisterBank::Fpr:
+      return PreparedRegisterClass::Float;
+    case PreparedRegisterBank::Vreg:
+      return PreparedRegisterClass::Vector;
+    case PreparedRegisterBank::AggregateAddress:
+      return PreparedRegisterClass::AggregateAddress;
+    case PreparedRegisterBank::None:
+      return PreparedRegisterClass::None;
+  }
+  return PreparedRegisterClass::None;
+}
+
+[[nodiscard]] std::vector<std::string_view> register_name_views(
+    const std::vector<std::string>& names) {
+  std::vector<std::string_view> views;
+  views.reserve(names.size());
+  for (const auto& name : names) {
+    views.push_back(name);
+  }
+  return views;
+}
+
+[[nodiscard]] std::vector<abi::RegisterReference>
+register_references_from_names(const std::vector<std::string>& names) {
+  std::vector<abi::RegisterReference> references;
+  references.reserve(names.size());
+  for (const auto& name : names) {
+    const auto parsed = abi::parse_aarch64_register_name(name);
+    if (parsed.has_value()) {
+      references.push_back(*parsed);
+    }
+  }
+  return references;
+}
+
+[[nodiscard]] std::string_view stable_register_name(
+    abi::RegisterReference reg) {
+  static constexpr std::string_view gp_x_names[] = {
+      "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
+      "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
+      "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+      "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31",
+  };
+  static constexpr std::string_view gp_w_names[] = {
+      "w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
+      "w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
+      "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
+      "w24", "w25", "w26", "w27", "w28", "w29", "w30", "w31",
+  };
+  static constexpr std::string_view fp_s_names[] = {
+      "s0",  "s1",  "s2",  "s3",  "s4",  "s5",  "s6",  "s7",
+      "s8",  "s9",  "s10", "s11", "s12", "s13", "s14", "s15",
+      "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
+      "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31",
+  };
+  static constexpr std::string_view fp_d_names[] = {
+      "d0",  "d1",  "d2",  "d3",  "d4",  "d5",  "d6",  "d7",
+      "d8",  "d9",  "d10", "d11", "d12", "d13", "d14", "d15",
+      "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
+      "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31",
+  };
+  static constexpr std::string_view fp_q_names[] = {
+      "q0",  "q1",  "q2",  "q3",  "q4",  "q5",  "q6",  "q7",
+      "q8",  "q9",  "q10", "q11", "q12", "q13", "q14", "q15",
+      "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23",
+      "q24", "q25", "q26", "q27", "q28", "q29", "q30", "q31",
+  };
+  static constexpr std::string_view fp_v_names[] = {
+      "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",
+      "v8",  "v9",  "v10", "v11", "v12", "v13", "v14", "v15",
+      "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+      "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
+  };
+  if (abi::is_stack_pointer(reg)) {
+    return "sp";
+  }
+  if (reg.index > 31) {
+    return "<invalid-aarch64-register>";
+  }
+  switch (reg.view) {
+    case abi::RegisterView::X:
+      return gp_x_names[reg.index];
+    case abi::RegisterView::W:
+      return gp_w_names[reg.index];
+    case abi::RegisterView::S:
+      return fp_s_names[reg.index];
+    case abi::RegisterView::D:
+      return fp_d_names[reg.index];
+    case abi::RegisterView::Q:
+      return fp_q_names[reg.index];
+    case abi::RegisterView::V:
+      return fp_v_names[reg.index];
+    case abi::RegisterView::Sp:
+      return "sp";
+  }
+  return "<invalid-aarch64-register>";
+}
+
+[[nodiscard]] std::vector<abi::RegisterReference>
+occupied_register_references_for(
+    const abi::PreparedRegisterConversionResult& converted,
+    const std::vector<std::string>& fallback_names) {
+  if (converted.reg.has_value()) {
+    return {*converted.reg};
+  }
+  return register_references_from_names(fallback_names);
+}
+
+[[nodiscard]] std::vector<std::string_view> register_name_views(
+    const std::vector<abi::RegisterReference>& references,
+    const std::vector<std::string>& fallback_names) {
+  if (references.empty()) {
+    return register_name_views(fallback_names);
+  }
+  std::vector<std::string_view> views;
+  views.reserve(references.size());
+  for (const auto& reference : references) {
+    views.push_back(stable_register_name(reference));
+  }
+  return views;
+}
+
+[[nodiscard]] abi::PreparedRegisterConversionResult
+convert_prepared_register_reference(
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<std::string>& legacy_register_name,
+    prepare::PreparedRegisterBank bank,
+    prepare::PreparedRegisterClass reg_class,
+    std::optional<abi::RegisterView> expected_view = std::nullopt) {
+  if (placement.has_value()) {
+    return abi::convert_prepared_register(*placement,
+                                                                 reg_class,
+                                                                 expected_view);
+  }
+  if (legacy_register_name.has_value()) {
+    auto converted = abi::convert_prepared_register(*legacy_register_name,
+                                                                           bank,
+                                                                           reg_class,
+                                                                           expected_view);
+    if (!converted.has_value()) {
+      if (auto parsed =
+              abi::parse_aarch64_register_name(*legacy_register_name);
+          parsed.has_value()) {
+        if (expected_view.has_value()) {
+          parsed->view = *expected_view;
+        }
+        converted.reg = parsed;
+      }
+    }
+    return converted;
+  }
+  return {};
+}
+
+[[nodiscard]] std::string_view resolved_prepared_register_name(
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<std::string>& legacy_register_name) {
+  const auto converted =
+      convert_prepared_register_reference(placement,
+                                          legacy_register_name,
+                                          placement.has_value() ? placement->bank
+                                                               : prepare::
+                                                                     PreparedRegisterBank::None,
+                                          placement.has_value()
+                                              ? register_class_from_bank(placement->bank)
+                                              : prepare::
+                                                    PreparedRegisterClass::None);
+  if (converted.reg.has_value()) {
+    return stable_register_name(*converted.reg);
+  }
+  return legacy_register_name.has_value() ? std::string_view{*legacy_register_name}
+                                          : std::string_view{};
+}
+
+[[nodiscard]] const prepare::PreparedRegallocFunction*
+find_prepared_regalloc_function(const prepare::PreparedRegalloc& regalloc,
+                                c4c::FunctionNameId function_name) {
+  for (const auto& function : regalloc.functions) {
+    if (function.function_name == function_name) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedFrameSlotId>
+find_destination_slot_id(const prepare::PreparedBirModule& prepared,
+                         c4c::FunctionNameId function_name,
+                         prepare::PreparedValueId value_id) {
+  if (value_id == 0) {
+    return std::nullopt;
+  }
+  if (const auto* locations =
+          prepare::find_prepared_value_location_function(prepared, function_name);
+      locations != nullptr) {
+    for (const auto& home : locations->value_homes) {
+      if (home.value_id == value_id && home.slot_id.has_value()) {
+        return home.slot_id;
+      }
+    }
+  }
+  if (const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc, function_name);
+      regalloc != nullptr) {
+    for (const auto& value : regalloc->values) {
+      if (value.value_id == value_id && value.assigned_stack_slot.has_value()) {
+        return value.assigned_stack_slot->slot_id;
+      }
+    }
+  }
+  if (const auto* storage =
+          prepare::find_prepared_storage_plan(prepared, function_name);
+      storage != nullptr) {
+    for (const auto& value : storage->values) {
+      if (value.value_id == value_id && value.slot_id.has_value()) {
+        return value.slot_id;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] constexpr AllocationAuthorityKind allocation_authority_for_register_reference(
+    TargetRegisterReferenceKind reference_kind) {
+  switch (reference_kind) {
+    case TargetRegisterReferenceKind::ValueHome:
+      return AllocationAuthorityKind::ValueHome;
+    case TargetRegisterReferenceKind::RegallocAssignment:
+      return AllocationAuthorityKind::RegallocAssignment;
+    case TargetRegisterReferenceKind::SpillAuthority:
+      return AllocationAuthorityKind::SpillAuthority;
+    case TargetRegisterReferenceKind::StoragePlan:
+      return AllocationAuthorityKind::StoragePlan;
+  }
+  return AllocationAuthorityKind::None;
+}
+
+[[nodiscard]] constexpr SpillReloadPseudoKind spill_reload_pseudo_kind(
+    prepare::PreparedSpillReloadOpKind op_kind) {
+  using prepare::PreparedSpillReloadOpKind;
+  switch (op_kind) {
+    case PreparedSpillReloadOpKind::Spill:
+      return SpillReloadPseudoKind::StoreFromRegisterToSlot;
+    case PreparedSpillReloadOpKind::Reload:
+      return SpillReloadPseudoKind::ReloadFromSlotToScratch;
+    case PreparedSpillReloadOpKind::Rematerialize:
+      return SpillReloadPseudoKind::RematerializeToScratch;
+  }
+  return SpillReloadPseudoKind::StoreFromRegisterToSlot;
+}
+
+[[nodiscard]] const prepare::PreparedRegallocValue* find_regalloc_value(
+    const prepare::PreparedRegallocFunction& regalloc,
+    prepare::PreparedValueId value_id) {
+  for (const auto& value : regalloc.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+void attach_spill_slot_metadata(const prepare::PreparedBirModule& prepared,
+                                prepare::PreparedFrameSlotId slot_id,
+                                OperandRecord& operand) {
+  operand.spill_slot_id = slot_id;
+  if (const auto* slot = find_frame_slot_by_id(prepared.stack_layout, slot_id);
+      slot != nullptr) {
+    operand.spill_slot_size_bytes = slot->size_bytes;
+    operand.spill_slot_align_bytes = slot->align_bytes;
+    operand.spill_slot_fixed_location = slot->fixed_location;
+  }
+}
+
+[[nodiscard]] OperandRecord& ensure_operand(std::vector<OperandRecord>& operands,
+                                            prepare::PreparedValueId value_id,
+                                            c4c::FunctionNameId function_name) {
+  const auto found = std::find_if(operands.begin(),
+                                  operands.end(),
+                                  [value_id](const OperandRecord& operand) {
+                                    return operand.value_id == value_id;
+                                  });
+  if (found != operands.end()) {
+    return *found;
+  }
+  operands.push_back(OperandRecord{.value_id = value_id, .function_name = function_name});
+  return operands.back();
+}
+
+[[nodiscard]] std::size_t append_register_record(
+    std::vector<TargetRegisterRecord>& registers,
+    TargetRegisterReferenceKind reference_kind,
+    AllocationSnapshotKind allocation_snapshot,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedRegisterClass reg_class,
+    prepare::PreparedRegisterBank reg_bank,
+    std::string_view physical_register,
+    std::size_t contiguous_width,
+    std::vector<std::string_view> occupied_registers) {
+  const auto parsed = abi::parse_aarch64_register_name(physical_register);
+  const auto resolved_register = parsed.has_value() ? stable_register_name(*parsed)
+                                                    : physical_register;
+  std::vector<abi::RegisterReference> occupied_register_references;
+  if (parsed.has_value()) {
+    occupied_register_references.push_back(*parsed);
+    occupied_registers = register_name_views(occupied_register_references, {});
+  }
+  registers.push_back(TargetRegisterRecord{.reference_kind = reference_kind,
+                                           .allocation_snapshot = allocation_snapshot,
+                                           .allocation_authority =
+                                               allocation_authority_for_register_reference(
+                                                   reference_kind),
+                                           .value_id = value_id,
+                                           .value_name = value_name,
+                                           .register_class = reg_class,
+                                           .register_bank = reg_bank,
+                                           .register_reference = parsed,
+                                           .allocation_pool =
+                                               parsed.has_value()
+                                                   ? std::optional{
+                                                         abi::
+                                                             allocation_register_pool(*parsed)}
+                                                   : std::nullopt,
+                                           .physical_register = resolved_register,
+                                           .contiguous_width = contiguous_width,
+                                           .occupied_register_references =
+                                               std::move(occupied_register_references),
+                                           .occupied_registers = std::move(occupied_registers),
+                                           .is_reserved_mir_scratch =
+                                               parsed.has_value() &&
+                                               abi::
+                                                   is_reserved_mir_scratch(*parsed),
+                                           .may_be_long_lived_home =
+                                               parsed.has_value() &&
+                                               abi::
+                                                   is_long_lived_allocatable_candidate(*parsed)});
+  return registers.size() - 1U;
+}
+
+[[nodiscard]] std::size_t append_register_record(
+    std::vector<TargetRegisterRecord>& registers,
+    TargetRegisterReferenceKind reference_kind,
+    AllocationSnapshotKind allocation_snapshot,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedRegisterClass reg_class,
+    prepare::PreparedRegisterBank reg_bank,
+    const abi::PreparedRegisterConversionResult& converted,
+    std::string_view fallback_register_name,
+    std::size_t contiguous_width,
+    std::vector<std::string_view> occupied_registers) {
+  const auto resolved_register =
+      converted.reg.has_value() ? stable_register_name(*converted.reg) : fallback_register_name;
+  std::vector<abi::RegisterReference> occupied_register_references;
+  if (converted.reg.has_value()) {
+    occupied_register_references.push_back(*converted.reg);
+    occupied_registers = register_name_views(occupied_register_references, {});
+  }
+  registers.push_back(TargetRegisterRecord{
+      .reference_kind = reference_kind,
+      .allocation_snapshot = allocation_snapshot,
+      .allocation_authority = allocation_authority_for_register_reference(reference_kind),
+      .value_id = value_id,
+      .value_name = value_name,
+      .register_class = reg_class,
+      .register_bank = reg_bank,
+      .register_reference = converted.reg,
+      .allocation_pool = converted.reg.has_value()
+                             ? std::optional{abi::
+                                                 allocation_register_pool(*converted.reg)}
+                             : std::nullopt,
+      .physical_register = resolved_register,
+      .contiguous_width = contiguous_width,
+      .occupied_register_references = std::move(occupied_register_references),
+      .occupied_registers = std::move(occupied_registers),
+      .is_reserved_mir_scratch = converted.reg.has_value() &&
+                                 abi::is_reserved_mir_scratch(
+                                     *converted.reg),
+      .may_be_long_lived_home = converted.reg.has_value() &&
+                                abi::
+                                    is_long_lived_allocatable_candidate(*converted.reg)});
+  return registers.size() - 1U;
+}
+
+void merge_value_home_operand(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedValueHome& home,
+    std::vector<OperandRecord>& operands,
+    std::vector<TargetRegisterRecord>& registers) {
+  auto& operand = ensure_operand(operands, home.value_id, home.function_name);
+  operand.value_name = home.value_name;
+  operand.label = prepare::prepared_value_name(prepared.names, home.value_name);
+  operand.home_kind = home.kind;
+  operand.frame_slot_id = home.slot_id;
+  operand.allocation_authority = AllocationAuthorityKind::ValueHome;
+  if (home.offset_bytes.has_value()) {
+    operand.stack_offset_bytes = home.offset_bytes;
+    operand.stack_offset_is_prepared_snapshot = true;
+  }
+  operand.immediate_i32 = home.immediate_i32;
+  operand.pointer_base_value_name = home.pointer_base_value_name;
+  if (home.pointer_base_value_name.has_value()) {
+    operand.pointer_base_label =
+        prepare::prepared_value_name(prepared.names, *home.pointer_base_value_name);
+  }
+  operand.pointer_byte_delta = home.pointer_byte_delta;
+  operand.source_value_home = &home;
+  if (home.register_name.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
+    operand.value_home_register = append_register_record(registers,
+                                                         TargetRegisterReferenceKind::ValueHome,
+                                                         AllocationSnapshotKind::PreparedSnapshot,
+                                                         home.value_id,
+                                                         home.value_name,
+                                                         prepare::
+                                                             PreparedRegisterClass::None,
+                                                         prepare::
+                                                             PreparedRegisterBank::None,
+                                                         *home.register_name,
+                                                         1,
+                                                         {});
+  } else if (home.slot_id.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    attach_spill_slot_metadata(prepared, *home.slot_id, operand);
+  } else if (home.kind != prepare::PreparedValueHomeKind::None) {
+    operand.allocation_location = AllocationLocationKind::NonRegister;
+  }
+}
+
+void merge_regalloc_operand(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedRegallocValue& value,
+    std::vector<OperandRecord>& operands,
+    std::vector<TargetRegisterRecord>& registers) {
+  auto& operand = ensure_operand(operands, value.value_id, value.function_name);
+  operand.value_name = value.value_name;
+  operand.label = prepare::prepared_value_name(prepared.names, value.value_name);
+  operand.type = value.type;
+  operand.value_kind = value.value_kind;
+  operand.stack_object_id = value.stack_object_id;
+  operand.allocation_status = value.allocation_status;
+  operand.register_class = value.register_class;
+  operand.register_group_width = value.register_group_width;
+  operand.source_regalloc = &value;
+  if (value.assigned_stack_slot.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
+    operand.frame_slot_id = value.assigned_stack_slot->slot_id;
+    attach_spill_slot_metadata(prepared, value.assigned_stack_slot->slot_id, operand);
+    operand.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
+    operand.stack_offset_is_prepared_snapshot = true;
+  }
+  if (value.assigned_register.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
+    operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
+    const auto converted =
+        abi::convert_prepared_register(*value.assigned_register,
+                                                              std::nullopt);
+    operand.assigned_register =
+        append_register_record(registers,
+                               TargetRegisterReferenceKind::RegallocAssignment,
+                               AllocationSnapshotKind::AllocationResult,
+                               value.value_id,
+                               value.value_name,
+                               value.assigned_register->reg_class,
+                               prepare::PreparedRegisterBank::None,
+                               converted,
+                               value.assigned_register->register_name,
+                               value.assigned_register->contiguous_width,
+                               register_name_views(
+                                   value.assigned_register->occupied_register_names));
+  }
+  if (value.spill_register_authority.has_value()) {
+    if (operand.allocation_authority == AllocationAuthorityKind::None) {
+      operand.allocation_authority = AllocationAuthorityKind::SpillAuthority;
+    }
+    const auto converted =
+        abi::convert_prepared_register(*value.spill_register_authority,
+                                                              std::nullopt);
+    operand.spill_register_authority =
+        append_register_record(registers,
+                               TargetRegisterReferenceKind::SpillAuthority,
+                               AllocationSnapshotKind::SpillReloadScratch,
+                               value.value_id,
+                               value.value_name,
+                               value.spill_register_authority->reg_class,
+                               prepare::PreparedRegisterBank::None,
+                               converted,
+                               value.spill_register_authority->register_name,
+                               value.spill_register_authority->contiguous_width,
+                               register_name_views(
+                                   value.spill_register_authority->occupied_register_names));
+  }
+  if (!value.assigned_register.has_value() && !value.assigned_stack_slot.has_value() &&
+      value.allocation_status == prepare::PreparedAllocationStatus::Unallocated) {
+    operand.allocation_location = AllocationLocationKind::FutureVirtualRegister;
+    operand.allocation_authority = AllocationAuthorityKind::DeferredPlaceholder;
+  }
+}
+
+void merge_storage_operand(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedStoragePlanValue& value,
+    c4c::FunctionNameId function_name,
+    std::vector<OperandRecord>& operands,
+    std::vector<TargetRegisterRecord>& registers) {
+  auto& operand = ensure_operand(operands, value.value_id, function_name);
+  operand.value_name = value.value_name;
+  operand.label = prepare::prepared_value_name(prepared.names, value.value_name);
+  operand.storage_encoding = value.encoding;
+  operand.storage_bank = value.bank;
+  operand.frame_slot_id = value.slot_id;
+  if (operand.allocation_authority == AllocationAuthorityKind::None ||
+      operand.allocation_authority == AllocationAuthorityKind::ValueHome) {
+    operand.allocation_authority = AllocationAuthorityKind::StoragePlan;
+  }
+  operand.stack_offset_bytes = value.stack_offset_bytes;
+  operand.stack_offset_is_prepared_snapshot = value.stack_offset_bytes.has_value();
+  operand.immediate_i32 = value.immediate_i32;
+  operand.symbol_name = value.symbol_name;
+  if (value.symbol_name.has_value()) {
+    operand.symbol_label = prepared.names.link_names.spelling(*value.symbol_name);
+  }
+  operand.source_storage = &value;
+  if (value.register_placement.has_value() || value.register_name.has_value()) {
+    operand.allocation_location = AllocationLocationKind::PhysicalRegister;
+    const auto converted =
+        value.register_placement.has_value()
+            ? abi::convert_prepared_register(
+                  *value.register_placement, register_class_from_bank(value.bank), std::nullopt)
+            : abi::convert_prepared_register(*value.register_name,
+                                                                    value.bank,
+                                                                    register_class_from_bank(
+                                                                        value.bank),
+                                                                    std::nullopt);
+    operand.storage_register =
+        append_register_record(registers,
+                               TargetRegisterReferenceKind::StoragePlan,
+                               AllocationSnapshotKind::PreparedSnapshot,
+                               value.value_id,
+                               value.value_name,
+                               register_class_from_bank(value.bank),
+                               value.bank,
+                               converted,
+                               value.register_name.has_value() ? std::string_view{*value.register_name}
+                                                               : std::string_view{},
+                               value.contiguous_width,
+                               register_name_views(value.occupied_register_names));
+  } else if (value.slot_id.has_value()) {
+    operand.allocation_location = AllocationLocationKind::SpillSlot;
+    attach_spill_slot_metadata(prepared, *value.slot_id, operand);
+  } else if (value.encoding != prepare::PreparedStorageEncodingKind::None) {
+    operand.allocation_location = AllocationLocationKind::NonRegister;
+  }
+}
+
+[[nodiscard]] std::vector<OperandRecord> build_operands(
+    const prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name,
+    std::vector<TargetRegisterRecord>& registers) {
+  std::vector<OperandRecord> operands;
+  if (const auto* locations =
+          prepare::find_prepared_value_location_function(prepared, function_name);
+      locations != nullptr) {
+    operands.reserve(locations->value_homes.size());
+    for (const auto& home : locations->value_homes) {
+      merge_value_home_operand(prepared, home, operands, registers);
+    }
+  }
+  if (const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc, function_name);
+      regalloc != nullptr) {
+    operands.reserve(std::max(operands.size(), regalloc->values.size()));
+    for (const auto& value : regalloc->values) {
+      merge_regalloc_operand(prepared, value, operands, registers);
+    }
+  }
+  if (const auto* storage = prepare::find_prepared_storage_plan(prepared,
+                                                                              function_name);
+      storage != nullptr) {
+    operands.reserve(std::max(operands.size(), storage->values.size()));
+    for (const auto& value : storage->values) {
+      merge_storage_operand(prepared, value, function_name, operands, registers);
+    }
+  }
+  return operands;
+}
+
+[[nodiscard]] CalleeSaveRecord build_callee_save_record(
+    const prepare::PreparedSavedRegister& saved) {
+  const auto converted = abi::convert_prepared_register(
+      saved,
+      register_class_from_bank(saved.bank),
+      std::nullopt);
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, saved.occupied_register_names);
+  return CalleeSaveRecord{
+      .bank = saved.bank,
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value() ? stable_register_name(*converted.reg)
+                                                  : std::string_view{saved.register_name},
+      .contiguous_width = saved.contiguous_width,
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, saved.occupied_register_names),
+      .save_index = saved.save_index,
+      .source_saved_register = &saved,
+  };
+}
+
+[[nodiscard]] CalleeSaveRecord build_clobbered_register_record(
+    const prepare::PreparedClobberedRegister& clobbered) {
+  const auto converted =
+      convert_prepared_register_reference(clobbered.placement,
+                                          std::optional<std::string>{clobbered.register_name},
+                                          clobbered.bank,
+                                          register_class_from_bank(clobbered.bank));
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, clobbered.occupied_register_names);
+  return CalleeSaveRecord{
+      .bank = clobbered.bank,
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value() ? stable_register_name(*converted.reg)
+                                                  : std::string_view{clobbered.register_name},
+      .contiguous_width = clobbered.contiguous_width,
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, clobbered.occupied_register_names),
+  };
+}
+
+[[nodiscard]] FrameSlotRecord build_frame_slot_record(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedFrameSlot& slot) {
+  const auto* object = find_stack_object(prepared.stack_layout, slot.object_id);
+  FrameSlotRecord record{
+      .slot_id = slot.slot_id,
+      .object_id = slot.object_id,
+      .function_name = slot.function_name,
+      .offset_bytes = slot.offset_bytes,
+      .size_bytes = slot.size_bytes,
+      .align_bytes = slot.align_bytes,
+      .fixed_location = slot.fixed_location,
+      .source_slot = &slot,
+      .source_object = object,
+  };
+  if (object != nullptr) {
+    record.slot_name = object->slot_name;
+    record.slot_label = prepare::prepared_stack_object_slot_name(prepared.names,
+                                                                                *object);
+    record.value_name = object->value_name;
+    record.value_label = prepare::prepared_stack_object_value_name(prepared.names,
+                                                                                  *object);
+    record.type = object->type;
+    record.address_exposed = object->address_exposed;
+    record.requires_home_slot = object->requires_home_slot;
+    record.permanent_home_slot = object->permanent_home_slot;
+  }
+  return record;
+}
+
+[[nodiscard]] DynamicStackRecord build_dynamic_stack_record(
+    const prepare::PreparedDynamicStackOp& op) {
+  DynamicStackRecord record{
+      .block_label = op.block_label,
+      .instruction_index = op.instruction_index,
+      .kind = op.kind,
+      .result_value_name = op.result_value_name,
+      .operand_value_name = op.operand_value_name,
+      .element_size_bytes = op.element_size_bytes,
+      .element_align_bytes = op.element_align_bytes,
+      .source_op = &op,
+  };
+  return record;
+}
+
+[[nodiscard]] FrameRecord build_frame_record(
+    const prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared,
+                                                                           function_name);
+  const auto* dynamic_stack = prepare::find_prepared_dynamic_stack_plan(
+      prepared, function_name);
+  FrameRecord record{
+      .source_frame_plan = frame_plan,
+      .source_dynamic_stack = dynamic_stack,
+  };
+  if (frame_plan != nullptr) {
+    record.frame_size_bytes = frame_plan->frame_size_bytes;
+    record.frame_alignment_bytes = frame_plan->frame_alignment_bytes;
+    record.has_dynamic_stack = frame_plan->has_dynamic_stack;
+    record.uses_frame_pointer_for_fixed_slots = frame_plan->uses_frame_pointer_for_fixed_slots;
+    record.frame_slot_order = frame_plan->frame_slot_order;
+    record.callee_saves.reserve(frame_plan->saved_callee_registers.size());
+    for (const auto& saved : frame_plan->saved_callee_registers) {
+      record.callee_saves.push_back(build_callee_save_record(saved));
+    }
+  }
+  for (const auto& slot : prepared.stack_layout.frame_slots) {
+    if (slot.function_name == function_name) {
+      record.slots.push_back(build_frame_slot_record(prepared, slot));
+    }
+  }
+  if (dynamic_stack != nullptr) {
+    record.requires_stack_save_restore = dynamic_stack->requires_stack_save_restore;
+    if (dynamic_stack->uses_frame_pointer_for_fixed_slots) {
+      record.uses_frame_pointer_for_fixed_slots = true;
+    }
+    record.dynamic_stack.reserve(dynamic_stack->operations.size());
+    for (const auto& op : dynamic_stack->operations) {
+      record.dynamic_stack.push_back(build_dynamic_stack_record(op));
+    }
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<BranchRecord> build_branch_records(
+    const prepare::PreparedControlFlowFunction& function) {
+  std::vector<BranchRecord> branches;
+  branches.reserve(function.branch_conditions.size());
+  for (const auto& condition : function.branch_conditions) {
+    branches.push_back(BranchRecord{
+        .block_label = condition.block_label,
+        .condition_kind = condition.kind,
+        .condition_value = condition.condition_value,
+        .predicate = condition.predicate,
+        .compare_type = condition.compare_type,
+        .lhs = condition.lhs,
+        .rhs = condition.rhs,
+        .can_fuse_with_branch = condition.can_fuse_with_branch,
+        .true_label = condition.true_label,
+        .false_label = condition.false_label,
+        .source_condition = &condition,
+    });
+  }
+  return branches;
+}
+
+[[nodiscard]] CallArgumentRecord build_call_argument_record(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedCallArgumentPlan& argument) {
+  const auto destination_bank =
+      argument.destination_register_bank.value_or(
+          argument.destination_register_placement.has_value()
+              ? argument.destination_register_placement->bank
+              : prepare::PreparedRegisterBank::None);
+  const auto destination_register =
+      convert_prepared_register_reference(argument.destination_register_placement,
+                                          argument.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       argument.destination_occupied_register_names);
+  CallArgumentRecord record{
+      .arg_index = argument.arg_index,
+      .value_bank = argument.value_bank,
+      .source_encoding = argument.source_encoding,
+      .source_value_id = argument.source_value_id,
+      .source_base_value_id = argument.source_base_value_id,
+      .source_literal = argument.source_literal,
+      .source_symbol_name_id = argument.source_symbol_name_id,
+      .source_slot_id = argument.source_slot_id,
+      .source_stack_offset_bytes = argument.source_stack_offset_bytes,
+      .source_stack_offset_is_prepared_snapshot = argument.source_stack_offset_bytes.has_value(),
+      .source_base_value_name = argument.source_base_value_name,
+      .source_pointer_byte_delta = argument.source_pointer_byte_delta,
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : argument.destination_register_name.has_value()
+                                        ? std::string_view{*argument.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = argument.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied,
+                              argument.destination_occupied_register_names),
+      .destination_register_bank = argument.destination_register_bank,
+      .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          argument.destination_stack_offset_bytes.has_value(),
+      .source_argument = &argument,
+  };
+  if (argument.source_symbol_name_id.has_value()) {
+    record.source_symbol_label = prepared.names.link_names.spelling(*argument.source_symbol_name_id);
+  } else if (argument.source_symbol_name.has_value()) {
+    record.source_symbol_label = *argument.source_symbol_name;
+  }
+  if (argument.source_base_value_name.has_value()) {
+    record.source_base_label =
+        prepare::prepared_value_name(prepared.names,
+                                                   *argument.source_base_value_name);
+  }
+  return record;
+}
+
+[[nodiscard]] CallResultRecord build_call_result_record(
+    const prepare::PreparedCallResultPlan& result) {
+  const auto source_bank =
+      result.source_register_bank.value_or(
+          result.source_register_placement.has_value()
+              ? result.source_register_placement->bank
+              : prepare::PreparedRegisterBank::None);
+  const auto source_register =
+      convert_prepared_register_reference(result.source_register_placement,
+                                          result.source_register_name,
+                                          source_bank,
+                                          register_class_from_bank(source_bank));
+  auto source_occupied =
+      occupied_register_references_for(source_register, result.source_occupied_register_names);
+  const auto destination_bank =
+      result.destination_register_bank.value_or(
+          result.destination_register_placement.has_value()
+              ? result.destination_register_placement->bank
+              : prepare::PreparedRegisterBank::None);
+  const auto destination_register =
+      convert_prepared_register_reference(result.destination_register_placement,
+                                          result.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       result.destination_occupied_register_names);
+  return CallResultRecord{
+      .value_bank = result.value_bank,
+      .source_storage_kind = result.source_storage_kind,
+      .destination_storage_kind = result.destination_storage_kind,
+      .destination_value_id = result.destination_value_id,
+      .source_register_reference = source_register.reg,
+      .source_register = source_register.reg.has_value()
+                             ? stable_register_name(*source_register.reg)
+                             : result.source_register_name.has_value()
+                                   ? std::string_view{*result.source_register_name}
+                                   : std::string_view{},
+      .source_contiguous_width = result.source_contiguous_width,
+      .source_occupied_register_references = source_occupied,
+      .source_occupied_registers =
+          register_name_views(source_occupied, result.source_occupied_register_names),
+      .source_register_bank = result.source_register_bank,
+      .source_stack_offset_bytes = result.source_stack_offset_bytes,
+      .source_stack_offset_is_prepared_snapshot = result.source_stack_offset_bytes.has_value(),
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : result.destination_register_name.has_value()
+                                        ? std::string_view{*result.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = result.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied,
+                              result.destination_occupied_register_names),
+      .destination_register_bank = result.destination_register_bank,
+      .destination_slot_id = result.destination_slot_id,
+      .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          result.destination_stack_offset_bytes.has_value(),
+      .source_result = &result,
+  };
+}
+
+[[nodiscard]] CallPreservedValueRecord build_call_preserved_value_record(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedCallPreservedValue& preserved) {
+  const auto register_bank =
+      preserved.register_bank.value_or(preserved.register_placement.has_value()
+                                           ? preserved.register_placement->bank
+                                           : prepare::PreparedRegisterBank::None);
+  const auto converted =
+      convert_prepared_register_reference(preserved.register_placement,
+                                          preserved.register_name,
+                                          register_bank,
+                                          register_class_from_bank(register_bank));
+  const auto occupied_register_references =
+      occupied_register_references_for(converted, preserved.occupied_register_names);
+  return CallPreservedValueRecord{
+      .value_id = preserved.value_id,
+      .value_name = preserved.value_name,
+      .value_label = prepare::prepared_value_name(prepared.names,
+                                                                preserved.value_name),
+      .route = preserved.route,
+      .callee_saved_save_index = preserved.callee_saved_save_index,
+      .register_reference = converted.reg,
+      .register_name = converted.reg.has_value()
+                           ? stable_register_name(*converted.reg)
+                           : resolved_prepared_register_name(preserved.register_placement,
+                                                            preserved.register_name),
+      .register_bank = preserved.register_bank,
+      .contiguous_width = preserved.contiguous_width,
+      .occupied_register_references = occupied_register_references,
+      .occupied_registers =
+          register_name_views(occupied_register_references, preserved.occupied_register_names),
+      .slot_id = preserved.slot_id,
+      .stack_offset_bytes = preserved.stack_offset_bytes,
+      .stack_offset_is_prepared_snapshot = preserved.stack_offset_bytes.has_value(),
+      .source_preserved_value = &preserved,
+  };
+}
+
+[[nodiscard]] std::vector<CallRecord> build_call_records(
+    const prepare::PreparedBirModule& prepared,
+    c4c::FunctionNameId function_name) {
+  std::vector<CallRecord> calls;
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared,
+                                                                           function_name);
+  if (call_plans == nullptr) {
+    return calls;
+  }
+  calls.reserve(call_plans->calls.size());
+  for (const auto& call : call_plans->calls) {
+    CallRecord record{
+        .block_index = call.block_index,
+        .instruction_index = call.instruction_index,
+        .wrapper_kind = call.wrapper_kind,
+        .is_indirect = call.is_indirect,
+        .direct_callee_name = call.direct_callee_name.has_value()
+                                  ? std::string_view{*call.direct_callee_name}
+                                  : std::string_view{},
+        .source_call = &call,
+    };
+    if (call.indirect_callee.has_value()) {
+      record.indirect_callee_value_name = call.indirect_callee->value_name;
+      record.indirect_callee_value_id = call.indirect_callee->value_id;
+    }
+    if (call.memory_return.has_value()) {
+      record.memory_return_slot_id = call.memory_return->slot_id;
+      record.memory_return_stack_offset_bytes = call.memory_return->stack_offset_bytes;
+    }
+    record.arguments.reserve(call.arguments.size());
+    for (const auto& argument : call.arguments) {
+      record.arguments.push_back(build_call_argument_record(prepared, argument));
+    }
+    if (call.result.has_value()) {
+      record.result = build_call_result_record(*call.result);
+    }
+    record.preserved_values.reserve(call.preserved_values.size());
+    for (const auto& preserved : call.preserved_values) {
+      record.preserved_values.push_back(build_call_preserved_value_record(prepared, preserved));
+    }
+    record.clobbered_registers.reserve(call.clobbered_registers.size());
+    for (const auto& clobbered : call.clobbered_registers) {
+      record.clobbered_registers.push_back(build_clobbered_register_record(clobbered));
+    }
+    calls.push_back(std::move(record));
+  }
+  return calls;
+}
+
+[[nodiscard]] MoveRecord build_move_record(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move) {
+  const auto destination_bank = move.destination_register_placement.has_value()
+                                    ? move.destination_register_placement->bank
+                                    : prepare::PreparedRegisterBank::None;
+  const auto destination_register =
+      convert_prepared_register_reference(move.destination_register_placement,
+                                          move.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       move.destination_occupied_register_names);
+  return MoveRecord{
+      .phase = bundle.phase,
+      .authority_kind = move.authority_kind,
+      .from_value_id = move.from_value_id,
+      .to_value_id = move.to_value_id,
+      .destination_kind = move.destination_kind,
+      .destination_storage_kind = move.destination_storage_kind,
+      .destination_abi_index = move.destination_abi_index,
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : move.destination_register_name.has_value()
+                                        ? std::string_view{*move.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = move.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied, move.destination_occupied_register_names),
+      .destination_slot_id =
+          find_destination_slot_id(prepared, bundle.function_name, move.to_value_id),
+      .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          move.destination_stack_offset_bytes.has_value(),
+      .block_index = move.block_index,
+      .instruction_index = move.instruction_index,
+      .uses_cycle_temp_source = move.uses_cycle_temp_source,
+      .coalesced_by_assigned_storage = move.coalesced_by_assigned_storage,
+      .source_parallel_copy_step_index = move.source_parallel_copy_step_index,
+      .source_immediate_i32 = move.source_immediate_i32,
+      .op_kind = move.op_kind,
+      .source_parallel_copy_predecessor_label = move.source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label = move.source_parallel_copy_successor_label,
+      .reason = move.reason,
+      .source_bundle = &bundle,
+      .source_move = &move,
+  };
+}
+
+[[nodiscard]] AbiBindingRecord build_abi_binding_record(
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedAbiBinding& binding) {
+  const auto destination_bank = binding.destination_register_placement.has_value()
+                                    ? binding.destination_register_placement->bank
+                                    : prepare::PreparedRegisterBank::None;
+  const auto destination_register =
+      convert_prepared_register_reference(binding.destination_register_placement,
+                                          binding.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       binding.destination_occupied_register_names);
+  return AbiBindingRecord{
+      .phase = bundle.phase,
+      .authority_kind = bundle.authority_kind,
+      .destination_kind = binding.destination_kind,
+      .destination_storage_kind = binding.destination_storage_kind,
+      .destination_abi_index = binding.destination_abi_index,
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : binding.destination_register_name.has_value()
+                                        ? std::string_view{*binding.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = binding.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied,
+                              binding.destination_occupied_register_names),
+      .destination_stack_offset_bytes = binding.destination_stack_offset_bytes,
+      .destination_stack_offset_is_prepared_snapshot =
+          binding.destination_stack_offset_bytes.has_value(),
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .source_bundle = &bundle,
+      .source_binding = &binding,
+  };
+}
+
+void append_value_location_moves(const prepare::PreparedBirModule& prepared,
+                                 const prepare::PreparedValueLocationFunction* locations,
+                                 std::vector<MoveRecord>& moves,
+                                 std::vector<AbiBindingRecord>& abi_bindings) {
+  if (locations == nullptr) {
+    return;
+  }
+  for (const auto& bundle : locations->move_bundles) {
+    for (const auto& move : bundle.moves) {
+      moves.push_back(build_move_record(prepared, bundle, move));
+    }
+    for (const auto& binding : bundle.abi_bindings) {
+      abi_bindings.push_back(build_abi_binding_record(bundle, binding));
+    }
+  }
+}
+
+[[nodiscard]] std::vector<SpillReloadRecord> build_spill_reload_records(
+    const prepare::PreparedRegallocFunction* regalloc,
+    std::vector<TargetRegisterRecord>& registers) {
+  std::vector<SpillReloadRecord> records;
+  if (regalloc == nullptr) {
+    return records;
+  }
+  records.reserve(regalloc->spill_reload_ops.size());
+  for (const auto& op : regalloc->spill_reload_ops) {
+    const auto* value = find_regalloc_value(*regalloc, op.value_id);
+    const auto register_class = register_class_from_bank(op.register_bank);
+    abi::PreparedRegisterConversionResult converted;
+    if (op.register_placement.has_value()) {
+      converted = abi::convert_prepared_register(
+          *op.register_placement, register_class, std::nullopt);
+    } else if (op.register_name.has_value()) {
+      converted = abi::convert_prepared_register(*op.register_name,
+                                                                        op.register_bank,
+                                                                        register_class,
+                                                                        std::nullopt);
+    }
+    if (!converted.has_value() && op.register_name.has_value()) {
+      if (auto parsed = abi::parse_aarch64_register_name(*op.register_name);
+          parsed.has_value()) {
+        converted.reg = parsed;
+      }
+    }
+    const std::string_view resolved_register_name =
+        converted.reg.has_value()
+            ? stable_register_name(*converted.reg)
+            : op.register_name.has_value() ? std::string_view{*op.register_name}
+                                           : std::string_view{};
+    auto occupied_register_references =
+        occupied_register_references_for(converted, op.occupied_register_names);
+    auto occupied_registers =
+        register_name_views(occupied_register_references, op.occupied_register_names);
+    std::optional<std::size_t> scratch_register_authority;
+    if (op.register_placement.has_value() || op.register_name.has_value()) {
+      scratch_register_authority =
+          append_register_record(registers,
+                                 TargetRegisterReferenceKind::SpillAuthority,
+                                 AllocationSnapshotKind::SpillReloadScratch,
+                                 op.value_id,
+                                 value != nullptr ? value->value_name : c4c::kInvalidValueName,
+                                 register_class,
+                                 op.register_bank,
+                                 converted,
+                                 resolved_register_name,
+                                 op.contiguous_width,
+                                 occupied_registers);
+    }
+    records.push_back(SpillReloadRecord{
+        .value_id = op.value_id,
+        .op_kind = op.op_kind,
+        .pseudo_kind = spill_reload_pseudo_kind(op.op_kind),
+        .block_index = op.block_index,
+        .instruction_index = op.instruction_index,
+        .register_class = register_class,
+        .register_bank = op.register_bank,
+        .register_reference = converted.reg,
+        .register_name = resolved_register_name,
+        .contiguous_width = op.contiguous_width,
+        .occupied_register_references = occupied_register_references,
+        .occupied_registers = occupied_registers,
+        .scratch_register_authority = scratch_register_authority,
+        .slot_id = op.slot_id,
+        .stack_offset_bytes = op.stack_offset_bytes,
+        .stack_offset_is_prepared_snapshot = op.stack_offset_bytes.has_value(),
+        .source_spill_reload = &op,
+    });
+  }
+  return records;
+}
+
+[[nodiscard]] c4c::BlockLabelId block_label_at(
+    const prepare::PreparedControlFlowFunction& function,
+    std::size_t block_index) {
+  if (block_index >= function.blocks.size()) {
+    return c4c::kInvalidBlockLabel;
+  }
+  return function.blocks[block_index].block_label;
+}
+
+[[nodiscard]] codegen::OperandRecord immediate_return_operand(
+    const bir::Value& value) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  return codegen::make_immediate_operand(codegen::ImmediateOperand{
+      .kind = codegen::ImmediateKind::SignedInteger,
+      .type = value.type,
+      .signed_value = value.immediate,
+      .unsigned_value = value.immediate_bits,
+  });
+}
+
+[[nodiscard]] bool is_returned_named_value(
+    const bir::Function* source_function,
+    const bir::Value& value) {
+  if (source_function == nullptr || value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  for (const auto& block : source_function->blocks) {
+    if (block.terminator.kind == bir::TerminatorKind::Return &&
+        block.terminator.value.has_value() &&
+        block.terminator.value->kind == bir::Value::Kind::Named &&
+        block.terminator.value->name == value.name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool is_selected_return_scalar_alu_opcode(
+    bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::Add ||
+         opcode == bir::BinaryOpcode::Sub;
+}
+
+[[nodiscard]] std::optional<abi::RegisterView>
+scalar_result_register_view(bir::TypeKind type) {
+  using abi::RegisterView;
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return RegisterView::W;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return RegisterView::X;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const prepare::PreparedStoragePlanValue*
+find_storage_plan_value(
+    const prepare::PreparedStoragePlanFunction& storage,
+    prepare::PreparedValueId value_id) {
+  for (const auto& value : storage.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<codegen::OperandRecord>
+selected_scalar_operand(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedValueLocationFunction& locations,
+    const prepare::PreparedStoragePlanFunction& storage,
+    const bir::Value& value) {
+  namespace abi = c4c::backend::aarch64::abi;
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return codegen::make_immediate_operand(codegen::ImmediateOperand{
+        .kind = codegen::ImmediateKind::SignedInteger,
+        .type = value.type,
+        .signed_value = value.immediate,
+        .unsigned_value = value.immediate_bits,
+    });
+  }
+  if (value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto* home = prepare::find_prepared_value_home(prepared.names, locations, value.name);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* stored = find_storage_plan_value(storage, home->value_id);
+  if (stored == nullptr || stored->value_name != home->value_name) {
+    return std::nullopt;
+  }
+  if (stored->encoding == prepare::PreparedStorageEncodingKind::Immediate) {
+    if (home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
+        !home->immediate_i32.has_value() || !stored->immediate_i32.has_value() ||
+        *home->immediate_i32 != *stored->immediate_i32) {
+      return std::nullopt;
+    }
+    return codegen::make_immediate_operand(codegen::ImmediateOperand{
+        .kind = codegen::ImmediateKind::SignedInteger,
+        .type = value.type,
+        .signed_value = *stored->immediate_i32,
+        .unsigned_value = static_cast<std::uint64_t>(*stored->immediate_i32),
+        .source_value_id = home->value_id,
+        .source_value_name = home->value_name,
+    });
+  }
+  if (home->kind != prepare::PreparedValueHomeKind::Register ||
+      stored->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_result_register_view(value.type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto reg_class = register_class_from_bank(stored->bank);
+  abi::PreparedRegisterConversionResult converted;
+  if (stored->register_placement.has_value()) {
+    converted = abi::convert_prepared_register(*stored->register_placement,
+                                               reg_class,
+                                               expected_view);
+  } else {
+    if (!home->register_name.has_value() || !stored->register_name.has_value() ||
+        *home->register_name != *stored->register_name) {
+      return std::nullopt;
+    }
+    converted = abi::convert_prepared_register(*stored->register_name,
+                                               stored->bank,
+                                               reg_class,
+                                               expected_view);
+  }
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  return codegen::make_register_operand(codegen::RegisterOperand{
+      .reg = *converted.reg,
+      .role = codegen::RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_class = reg_class,
+      .prepared_bank = stored->bank,
+      .expected_view = expected_view,
+      .contiguous_width = stored->contiguous_width,
+      .occupied_registers = register_name_views(stored->occupied_register_names),
+  });
+}
+
+[[nodiscard]] std::optional<codegen::RegisterOperand>
+return_abi_register_for_value(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& locations,
+    const bir::Value& value,
+    std::size_t block_index,
+    std::size_t return_instruction_index) {
+  namespace abi = c4c::backend::aarch64::abi;
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  const auto expected_view = scalar_result_register_view(value.type);
+  if (value.kind != bir::Value::Kind::Named || !expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepare::find_prepared_value_home(names, locations, value.name);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      locations, prepare::PreparedMovePhase::BeforeReturn, block_index, return_instruction_index);
+  if (bundle == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& move : bundle->moves) {
+    if (move.from_value_id != home->value_id || move.to_value_id != home->value_id ||
+        move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+      continue;
+    }
+    std::optional<abi::RegisterReference> return_register;
+    if (move.destination_register_placement.has_value()) {
+      const auto converted =
+          abi::convert_prepared_register(*move.destination_register_placement,
+                                         prepare::PreparedRegisterClass::General,
+                                         expected_view);
+      if (!converted.has_value() ||
+          converted.reg->bank != abi::RegisterBank::GeneralPurpose) {
+        return std::nullopt;
+      }
+      return_register = converted.reg;
+    } else if (move.destination_register_name.has_value()) {
+      const auto parsed = abi::parse_aarch64_register_name(*move.destination_register_name);
+      if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+        return std::nullopt;
+      }
+      return_register = abi::RegisterReference{
+          .bank = parsed->bank,
+          .view = *expected_view,
+          .index = parsed->index,
+      };
+    } else {
+      continue;
+    }
+    return codegen::RegisterOperand{
+        .reg = *return_register,
+        .role = codegen::RegisterOperandRole::CallAbi,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = expected_view,
+        .contiguous_width = move.destination_contiguous_width,
+        .occupied_registers = register_name_views(move.destination_occupied_register_names),
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<codegen::InstructionRecord>
+make_return_abi_scalar_alu_instruction(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedValueLocationFunction& locations,
+    const prepare::PreparedStoragePlanFunction& storage,
+    const bir::BinaryInst& binary,
+    c4c::BlockLabelId block_label,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    std::size_t return_instruction_index) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  namespace prepare = c4c::backend::prepare;
+
+  const auto result_register = return_abi_register_for_value(
+      prepared.names, locations, binary.result, block_index, return_instruction_index);
+  const auto* result_home =
+      prepare::find_prepared_value_home(prepared.names, locations, binary.result.name);
+  if (!result_register.has_value() || result_home == nullptr) {
+    return std::nullopt;
+  }
+  auto lhs = selected_scalar_operand(prepared, locations, storage, binary.lhs);
+  auto rhs = selected_scalar_operand(prepared, locations, storage, binary.rhs);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+
+  auto node = codegen::make_scalar_instruction(codegen::make_scalar_alu_instruction_record(
+      codegen::ScalarAluRecord{
+          .surface = codegen::RecordSurfaceKind::RecordOnly,
+          .operation = codegen::scalar_alu_operation_from_binary_opcode(binary.opcode),
+          .source_binary_opcode = binary.opcode,
+          .operand_type = binary.operand_type,
+          .result_value_id = result_home->value_id,
+          .result_value_name = result_home->value_name,
+          .result_type = binary.result.type,
+          .result_register = result_register,
+          .lhs = *lhs,
+          .rhs = *rhs,
+          .supported_integer_operation = true,
+      }));
+  node.function_name = function.function_name;
+  node.block_label = block_label;
+  node.block_index = block_index;
+  node.instruction_index = instruction_index;
+  return node;
+}
+
+[[nodiscard]] std::optional<codegen::RegisterOperand>
+returned_scalar_result_register(
+    const prepare::PreparedBirModule& prepared,
+    const std::vector<codegen::InstructionRecord>& scalar_nodes,
+    const bir::Value& value) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  if (value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  for (const auto& node : scalar_nodes) {
+    const auto* scalar = std::get_if<codegen::ScalarInstructionRecord>(&node.payload);
+    if (scalar == nullptr || !scalar->result_register.has_value() ||
+        scalar->result_value_name == c4c::kInvalidValueName) {
+      continue;
+    }
+    if (prepared.names.value_names.spelling(scalar->result_value_name) == value.name) {
+      return scalar->result_register;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<codegen::InstructionRecord>
+build_return_scalar_alu_machine_nodes(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedValueLocationFunction* locations,
+    const prepare::PreparedStoragePlanFunction* storage) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  if (source_function == nullptr || locations == nullptr || storage == nullptr) {
+    return nodes;
+  }
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    const auto* source_block = find_source_block(prepared, source_function, block.block_label);
+    if (source_block == nullptr) {
+      continue;
+    }
+    for (std::size_t instruction_index = 0; instruction_index < source_block->insts.size();
+         ++instruction_index) {
+      const auto* binary =
+          std::get_if<bir::BinaryInst>(&source_block->insts[instruction_index]);
+      if (binary == nullptr || !is_selected_return_scalar_alu_opcode(binary->opcode) ||
+          !is_returned_named_value(source_function, binary->result)) {
+        continue;
+      }
+      const auto scalar =
+          codegen::make_prepared_scalar_alu_instruction_record(prepared.names,
+                                                               *locations,
+                                                               *storage,
+                                                               *binary);
+      if (!scalar.record.has_value()) {
+        auto fallback = make_return_abi_scalar_alu_instruction(prepared,
+                                                               function,
+                                                               *locations,
+                                                               *storage,
+                                                               *binary,
+                                                               block.block_label,
+                                                               block_index,
+                                                               instruction_index,
+                                                               source_block->insts.size());
+        if (!fallback.has_value()) {
+          continue;
+        }
+        nodes.push_back(std::move(*fallback));
+        continue;
+      }
+      auto node = codegen::make_scalar_instruction(*scalar.record);
+      node.function_name = function.function_name;
+      node.block_label = block.block_label;
+      node.block_index = block_index;
+      node.instruction_index = instruction_index;
+      nodes.push_back(std::move(node));
+    }
+  }
+  return nodes;
+}
+
+[[nodiscard]] codegen::MachinePseudoKind codegen_spill_reload_pseudo(
+    SpillReloadPseudoKind pseudo) {
+  using codegen::MachinePseudoKind;
+  switch (pseudo) {
+    case SpillReloadPseudoKind::StoreFromRegisterToSlot:
+      return MachinePseudoKind::SpillToSlot;
+    case SpillReloadPseudoKind::ReloadFromSlotToScratch:
+      return MachinePseudoKind::ReloadFromSlot;
+    case SpillReloadPseudoKind::RematerializeToScratch:
+      return MachinePseudoKind::None;
+  }
+  return MachinePseudoKind::None;
+}
+
+[[nodiscard]] std::vector<codegen::InstructionRecord>
+build_spill_reload_machine_nodes(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedRegallocFunction* regalloc,
+    const std::vector<SpillReloadRecord>& records) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  nodes.reserve(records.size());
+  for (const auto& record : records) {
+    const auto* value = regalloc != nullptr ? find_regalloc_value(*regalloc, record.value_id)
+                                            : nullptr;
+    const auto value_name = value != nullptr ? value->value_name : c4c::kInvalidValueName;
+    const auto value_type =
+        value != nullptr ? value->type : bir::TypeKind::Void;
+    const auto block_label = block_label_at(function, record.block_index);
+    const auto* frame_slot =
+        record.slot_id.has_value() ? find_frame_slot_by_id(prepared.stack_layout, *record.slot_id)
+                                   : nullptr;
+    codegen::MemoryOperand slot{
+        .surface = codegen::RecordSurfaceKind::RecordOnly,
+        .support = record.slot_id.has_value()
+                       ? codegen::MemoryOperandSupportKind::Prepared
+                       : codegen::MemoryOperandSupportKind::DeferredUnsupported,
+        .function_name = function.function_name,
+        .block_label = block_label,
+        .instruction_index = record.instruction_index,
+        .base_kind = record.slot_id.has_value() ? codegen::MemoryBaseKind::FrameSlot
+                                                : codegen::MemoryBaseKind::None,
+        .frame_slot_id = record.slot_id,
+        .byte_offset = record.stack_offset_bytes.has_value()
+                           ? static_cast<std::int64_t>(*record.stack_offset_bytes)
+                           : 0,
+        .byte_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
+        .size_bytes = frame_slot != nullptr ? frame_slot->size_bytes : 0,
+        .align_bytes = frame_slot != nullptr ? frame_slot->align_bytes : 0,
+        .address_space = bir::AddressSpace::Default,
+        .can_use_base_plus_offset = record.stack_offset_bytes.has_value(),
+    };
+    if (record.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
+      slot.stored_value_id = record.value_id;
+      slot.stored_value_name = value_name;
+    } else if (record.op_kind == prepare::PreparedSpillReloadOpKind::Reload) {
+      slot.result_value_id = record.value_id;
+      slot.result_value_name = value_name;
+    }
+
+    std::optional<codegen::RegisterOperand> scratch;
+    if (record.register_reference.has_value()) {
+      scratch = codegen::RegisterOperand{
+          .reg = *record.register_reference,
+          .role = codegen::RegisterOperandRole::SpillAuthority,
+          .value_id = record.value_id,
+          .value_name = value_name,
+          .prepared_class = record.register_class,
+          .prepared_bank = record.register_bank,
+          .contiguous_width = record.contiguous_width,
+          .occupied_register_references = record.occupied_register_references,
+          .occupied_registers = record.occupied_registers,
+      };
+    }
+
+    nodes.push_back(codegen::make_spill_reload_instruction(
+        codegen::SpillReloadInstructionRecord{
+            .value_id = record.value_id,
+            .value_name = value_name,
+            .value_type = value_type,
+            .op_kind = record.op_kind,
+            .pseudo_kind = codegen_spill_reload_pseudo(record.pseudo_kind),
+            .slot = slot,
+            .scratch = scratch,
+            .occupied_scratch_register_references = record.occupied_register_references,
+            .occupied_scratch_registers = record.occupied_registers,
+            .scratch_register_authority = record.scratch_register_authority,
+            .slot_id = record.slot_id,
+            .stack_offset_bytes = record.stack_offset_bytes,
+            .stack_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
+            .source_spill_reload = record.source_spill_reload,
+        }));
+  }
+  return nodes;
+}
+
+[[nodiscard]] std::vector<codegen::InstructionRecord>
+build_return_machine_nodes(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowFunction& function,
+    const std::vector<codegen::InstructionRecord>& scalar_nodes) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  nodes.reserve(function.blocks.size());
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    const auto* source_block =
+        find_source_block(prepared, source_function, block.block_label);
+    if (block.terminator_kind != bir::TerminatorKind::Return ||
+        source_block == nullptr ||
+        source_block->terminator.kind != bir::TerminatorKind::Return) {
+      continue;
+    }
+
+    codegen::ReturnInstructionRecord ret{
+        .value_type = source_block->terminator.value.has_value()
+                          ? source_block->terminator.value->type
+                          : bir::TypeKind::Void,
+    };
+    if (source_block->terminator.value.has_value()) {
+      const auto& value = *source_block->terminator.value;
+      if (value.kind == bir::Value::Kind::Immediate) {
+        ret.value = immediate_return_operand(value);
+      } else if (auto result_register =
+                     returned_scalar_result_register(prepared, scalar_nodes, value);
+                 result_register.has_value()) {
+        ret.value = codegen::make_register_operand(*result_register);
+      } else {
+        ret.value = codegen::make_prepared_value_operand(codegen::PreparedValueOperand{
+            .function_name = function.function_name,
+            .type = value.type,
+        });
+      }
+    }
+
+    auto node = codegen::make_return_instruction(ret);
+    node.function_name = function.function_name;
+    node.block_label = block.block_label;
+    node.block_index = block_index;
+    nodes.push_back(std::move(node));
+  }
+  return nodes;
+}
+
+[[nodiscard]] c4c::backend::mir::PhysicalRegister mir_register(
+    abi::RegisterReference reg) {
+  return c4c::backend::mir::PhysicalRegister{
+      .bank = static_cast<c4c::backend::mir::RegisterBankId>(reg.bank),
+      .view = static_cast<c4c::backend::mir::RegisterViewId>(reg.view),
+      .index = reg.index,
+  };
+}
+
+[[nodiscard]] c4c::backend::mir::Immediate mir_immediate(
+    const codegen::ImmediateOperand& operand) {
+  c4c::backend::mir::ImmediateKind kind = c4c::backend::mir::ImmediateKind::Signed;
+  switch (operand.kind) {
+    case codegen::ImmediateKind::SignedInteger:
+      kind = c4c::backend::mir::ImmediateKind::Signed;
+      break;
+    case codegen::ImmediateKind::UnsignedInteger:
+      kind = c4c::backend::mir::ImmediateKind::Unsigned;
+      break;
+    case codegen::ImmediateKind::Boolean:
+      kind = c4c::backend::mir::ImmediateKind::Boolean;
+      break;
+    case codegen::ImmediateKind::NullPointer:
+      kind = c4c::backend::mir::ImmediateKind::NullPointer;
+      break;
+  }
+  return c4c::backend::mir::Immediate{
+      .kind = kind,
+      .signed_value = operand.signed_value,
+      .unsigned_value = operand.unsigned_value,
+  };
+}
+
+[[nodiscard]] c4c::backend::mir::Operand mir_operand(const codegen::OperandRecord& operand) {
+  if (const auto* reg = std::get_if<codegen::RegisterOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Register && reg != nullptr) {
+    return c4c::backend::mir::Operand{.payload = mir_register(reg->reg)};
+  }
+  if (const auto* imm = std::get_if<codegen::ImmediateOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Immediate && imm != nullptr) {
+    return c4c::backend::mir::Operand{.payload = mir_immediate(*imm)};
+  }
+  if (const auto* symbol = std::get_if<codegen::SymbolOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Symbol && symbol != nullptr) {
+    return c4c::backend::mir::Operand{.payload = c4c::backend::mir::Symbol{
+                                          .name = symbol->link_name,
+                                          .addend = symbol->byte_offset,
+                                      }};
+  }
+  if (const auto* target = std::get_if<codegen::BranchTargetOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::BranchTarget && target != nullptr) {
+    return c4c::backend::mir::Operand{.payload = c4c::backend::mir::Label{
+                                          .label = target->block_label,
+                                      }};
+  }
+  if (const auto* memory = std::get_if<codegen::MemoryOperand>(&operand.payload);
+      operand.kind == codegen::OperandKind::Memory && memory != nullptr) {
+    c4c::backend::mir::Memory mir_memory{
+        .displacement = memory->byte_offset,
+    };
+    if (memory->base_register.has_value()) {
+      mir_memory.base = mir_register(memory->base_register->reg);
+    }
+    return c4c::backend::mir::Operand{.payload = mir_memory};
+  }
+  return c4c::backend::mir::Operand{};
+}
+
+[[nodiscard]] c4c::backend::mir::MachineNode<codegen::InstructionRecord> mir_node(
+    const codegen::InstructionRecord& node) {
+  c4c::backend::mir::MachineNode<codegen::InstructionRecord> mir{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(node.opcode),
+      .target = node,
+  };
+  mir.operands.reserve(node.operands.size());
+  for (const auto& operand : node.operands) {
+    mir.operands.push_back(mir_operand(operand));
+  }
+  return mir;
+}
+
+[[nodiscard]] c4c::backend::mir::Function<
+    c4c::backend::mir::MachineNode<codegen::InstructionRecord>>
+build_mir_function(
+    const prepare::PreparedControlFlowFunction& function,
+    const std::vector<codegen::InstructionRecord>& machine_nodes) {
+  c4c::backend::mir::Function<c4c::backend::mir::MachineNode<codegen::InstructionRecord>> mir{
+      .name = function.function_name,
+  };
+  mir.blocks.reserve(function.blocks.size());
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    mir.blocks.push_back(c4c::backend::mir::Block<
+                         c4c::backend::mir::MachineNode<codegen::InstructionRecord>>{
+        .label = function.blocks[block_index].block_label,
+        .index = block_index,
+    });
+  }
+  for (const auto& node : machine_nodes) {
+    c4c::backend::mir::append_instruction(mir,
+                                          node.block_label,
+                                          node.block_index,
+                                          mir_node(node));
+  }
+  return mir;
+}
+
+[[nodiscard]] ParallelCopyMoveRecord build_parallel_copy_move_record(
+    const prepare::PreparedParallelCopyMove& move) {
+  return ParallelCopyMoveRecord{
+      .join_transfer_index = move.join_transfer_index,
+      .edge_transfer_index = move.edge_transfer_index,
+      .source_value = move.source_value,
+      .destination_value = move.destination_value,
+      .carrier_kind = move.carrier_kind,
+      .storage_name = move.storage_name,
+      .source_move = &move,
+  };
+}
+
+[[nodiscard]] ParallelCopyStepRecord build_parallel_copy_step_record(
+    const prepare::PreparedParallelCopyBundle& bundle,
+    const prepare::PreparedParallelCopyStep& step,
+    const prepare::PreparedMoveResolution* target_move) {
+  ParallelCopyStepRecord record{
+      .kind = step.kind,
+      .move_index = step.move_index,
+      .uses_cycle_temp_source = step.uses_cycle_temp_source,
+      .source_step = &step,
+  };
+  if (const auto* move = prepare::find_prepared_parallel_copy_move_for_step(
+          bundle, step);
+      move != nullptr) {
+    record.source_value = move->source_value;
+    record.destination_value = move->destination_value;
+    record.carrier_kind = move->carrier_kind;
+    record.storage_name = move->storage_name;
+    record.source_move = move;
+  }
+  if (target_move != nullptr) {
+    const auto destination_bank = target_move->destination_register_placement.has_value()
+                                      ? target_move->destination_register_placement->bank
+                                      : prepare::PreparedRegisterBank::None;
+    const auto destination_register =
+        convert_prepared_register_reference(target_move->destination_register_placement,
+                                            target_move->destination_register_name,
+                                            destination_bank,
+                                            register_class_from_bank(destination_bank));
+    auto destination_occupied =
+        occupied_register_references_for(destination_register,
+                                         target_move->destination_occupied_register_names);
+    record.has_target_move_record = true;
+    record.target_move_authority_kind = target_move->authority_kind;
+    record.target_destination_kind = target_move->destination_kind;
+    record.target_destination_storage_kind = target_move->destination_storage_kind;
+    record.target_destination_register_reference = destination_register.reg;
+    record.target_destination_register = destination_register.reg.has_value()
+                                             ? stable_register_name(*destination_register.reg)
+                                             : target_move->destination_register_name.has_value()
+                                                   ? std::string_view{
+                                                         *target_move->destination_register_name}
+                                                   : std::string_view{};
+    record.target_destination_contiguous_width = target_move->destination_contiguous_width;
+    record.target_destination_occupied_register_references = destination_occupied;
+    record.target_destination_occupied_registers =
+        register_name_views(destination_occupied,
+                            target_move->destination_occupied_register_names);
+    record.target_destination_stack_offset_bytes = target_move->destination_stack_offset_bytes;
+    record.target_destination_stack_offset_is_prepared_snapshot =
+        target_move->destination_stack_offset_bytes.has_value();
+    record.source_target_move = target_move;
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<ParallelCopyRecord> build_parallel_copy_records(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const bir::Function* source_function,
+    const prepare::PreparedValueLocationFunction* locations) {
+  std::vector<ParallelCopyRecord> records;
+  records.reserve(function.parallel_copy_bundles.size());
+  for (const auto& bundle : function.parallel_copy_bundles) {
+    ParallelCopyRecord record{
+        .predecessor_label = bundle.predecessor_label,
+        .successor_label = bundle.successor_label,
+        .execution_site = bundle.execution_site,
+        .execution_block_label = bundle.execution_block_label,
+        .has_cycle = bundle.has_cycle,
+        .move_count = bundle.moves.size(),
+        .step_count = bundle.steps.size(),
+        .source_bundle = &bundle,
+    };
+    record.moves.reserve(bundle.moves.size());
+    for (const auto& move : bundle.moves) {
+      record.moves.push_back(build_parallel_copy_move_record(move));
+    }
+    const prepare::PreparedMoveBundle* target_move_bundle = nullptr;
+    if (source_function != nullptr && locations != nullptr) {
+      target_move_bundle =
+          prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+              prepared.names, *source_function, *locations, bundle);
+    }
+    record.steps.reserve(bundle.steps.size());
+    for (std::size_t step_index = 0; step_index < bundle.steps.size(); ++step_index) {
+      const auto& step = bundle.steps[step_index];
+      const prepare::PreparedMoveResolution* target_move = nullptr;
+      if (target_move_bundle != nullptr) {
+        target_move = prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+            *target_move_bundle, step_index);
+      }
+      auto step_record = build_parallel_copy_step_record(bundle, step, target_move);
+      if (target_move != nullptr) {
+        step_record.target_destination_slot_id =
+            find_destination_slot_id(prepared, function.function_name, target_move->to_value_id);
+      }
+      record.steps.push_back(std::move(step_record));
+    }
+    records.push_back(std::move(record));
+  }
+  return records;
+}
+
+[[nodiscard]] BlockRecord build_block_record(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowBlock& block) {
+  return BlockRecord{
+      .block_label = block.block_label,
+      .label = prepare::prepared_block_label(prepared.names, block.block_label),
+      .terminator_kind = block.terminator_kind,
+      .branch_target_label = block.branch_target_label,
+      .true_label = block.true_label,
+      .false_label = block.false_label,
+      .source_block = find_source_block(prepared, source_function, block.block_label),
+      .control_flow = &block,
+  };
+}
+
+[[nodiscard]] FunctionRecord build_function_record(
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function) {
+  const auto* source_function = find_source_function(prepared, function.function_name);
+  FunctionRecord record{
+      .function_name = function.function_name,
+      .label = prepare::prepared_function_name(prepared.names,
+                                                             function.function_name),
+      .source_function = source_function,
+      .control_flow = &function,
+  };
+  const auto* locations =
+      prepare::find_prepared_value_location_function(prepared,
+                                                                   function.function_name);
+  const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc,
+                                                         function.function_name);
+  record.frame = build_frame_record(prepared, function.function_name);
+  record.branches = build_branch_records(function);
+  record.calls = build_call_records(prepared, function.function_name);
+  append_value_location_moves(prepared, locations, record.moves, record.abi_bindings);
+  if (regalloc != nullptr) {
+    for (const auto& move : regalloc->move_resolution) {
+      const auto destination_bank = move.destination_register_placement.has_value()
+                                        ? move.destination_register_placement->bank
+                                        : prepare::PreparedRegisterBank::None;
+      const auto destination_register =
+          convert_prepared_register_reference(move.destination_register_placement,
+                                              move.destination_register_name,
+                                              destination_bank,
+                                              register_class_from_bank(destination_bank));
+      auto destination_occupied =
+          occupied_register_references_for(destination_register,
+                                           move.destination_occupied_register_names);
+      record.moves.push_back(MoveRecord{
+          .authority_kind = move.authority_kind,
+          .from_value_id = move.from_value_id,
+          .to_value_id = move.to_value_id,
+          .destination_kind = move.destination_kind,
+          .destination_storage_kind = move.destination_storage_kind,
+          .destination_abi_index = move.destination_abi_index,
+          .destination_register_reference = destination_register.reg,
+          .destination_register = destination_register.reg.has_value()
+                                      ? stable_register_name(*destination_register.reg)
+                                      : move.destination_register_name.has_value()
+                                            ? std::string_view{*move.destination_register_name}
+                                            : std::string_view{},
+          .destination_contiguous_width = move.destination_contiguous_width,
+          .destination_occupied_register_references = destination_occupied,
+          .destination_occupied_registers =
+              register_name_views(destination_occupied,
+                                  move.destination_occupied_register_names),
+          .destination_slot_id =
+              find_destination_slot_id(prepared, function.function_name, move.to_value_id),
+          .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
+          .destination_stack_offset_is_prepared_snapshot =
+              move.destination_stack_offset_bytes.has_value(),
+          .block_index = move.block_index,
+          .instruction_index = move.instruction_index,
+          .uses_cycle_temp_source = move.uses_cycle_temp_source,
+          .coalesced_by_assigned_storage = move.coalesced_by_assigned_storage,
+          .source_parallel_copy_step_index = move.source_parallel_copy_step_index,
+          .source_immediate_i32 = move.source_immediate_i32,
+          .op_kind = move.op_kind,
+          .source_parallel_copy_predecessor_label = move.source_parallel_copy_predecessor_label,
+          .source_parallel_copy_successor_label = move.source_parallel_copy_successor_label,
+          .reason = move.reason,
+          .source_move = &move,
+      });
+    }
+  }
+  record.spill_reloads = build_spill_reload_records(regalloc, record.target_registers);
+  record.machine_nodes = build_spill_reload_machine_nodes(prepared,
+                                                          function,
+                                                          regalloc,
+                                                          record.spill_reloads);
+  auto scalar_nodes = build_return_scalar_alu_machine_nodes(prepared,
+                                                           source_function,
+                                                           function,
+                                                           locations,
+                                                           prepare::
+                                                               find_prepared_storage_plan(
+                                                                   prepared,
+                                                                   function.function_name));
+  record.machine_nodes.insert(record.machine_nodes.end(),
+                              std::make_move_iterator(scalar_nodes.begin()),
+                              std::make_move_iterator(scalar_nodes.end()));
+  auto return_nodes = build_return_machine_nodes(prepared,
+                                                 source_function,
+                                                 function,
+                                                 record.machine_nodes);
+  record.machine_nodes.insert(record.machine_nodes.end(),
+                              std::make_move_iterator(return_nodes.begin()),
+                              std::make_move_iterator(return_nodes.end()));
+  record.mir = build_mir_function(function, record.machine_nodes);
+  record.parallel_copies =
+      build_parallel_copy_records(prepared, function, source_function, locations);
+  record.operands = build_operands(prepared, function.function_name, record.target_registers);
+  record.blocks.reserve(function.blocks.size());
+  for (const auto& block : function.blocks) {
+    record.blocks.push_back(build_block_record(prepared, source_function, block));
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<FunctionRecord> build_function_records(
+    const prepare::PreparedBirModule& prepared) {
+  std::vector<FunctionRecord> functions;
+  functions.reserve(prepared.control_flow.functions.size());
+  for (const auto& function : prepared.control_flow.functions) {
+    functions.push_back(build_function_record(prepared, function));
+  }
+  return functions;
+}
+
+[[nodiscard]] std::string_view link_label(
+    const bir::NameTables& names,
+    c4c::LinkNameId id,
+    std::string_view fallback) {
+  if (id != c4c::kInvalidLinkName) {
+    const std::string_view label = names.link_names.spelling(id);
+    if (!label.empty()) {
+      return label;
+    }
+  }
+  return fallback;
+}
+
+[[nodiscard]] std::string_view text_label(
+    const bir::NameTables& names,
+    c4c::TextId id,
+    std::string_view fallback) {
+  if (id != c4c::kInvalidText) {
+    const std::string_view label = names.texts.lookup(id);
+    if (!label.empty()) {
+      return label;
+    }
+  }
+  return fallback;
+}
+
+[[nodiscard]] SymbolVisibilityRecordKind visibility_for_global(
+    const bir::Global& global) {
+  return global.is_extern ? SymbolVisibilityRecordKind::ExternalDeclaration
+                          : SymbolVisibilityRecordKind::LinkVisibleDefinition;
+}
+
+[[nodiscard]] std::optional<DataRelocationNeedRecord> relocation_need_for_value(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& owner,
+    std::size_t global_index,
+    DataRelocationNeedKind kind,
+    const bir::Value& value,
+    std::optional<std::size_t> initializer_element_index) {
+  if (value.pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+    return std::nullopt;
+  }
+  return DataRelocationNeedRecord{
+      .kind = kind,
+      .global_index = global_index,
+      .owner_link_name = owner.link_name_id,
+      .owner_label = link_label(prepared.module.names, owner.link_name_id, owner.name),
+      .target_link_name = value.pointer_symbol_link_name_id,
+      .target_label = link_label(prepared.module.names, value.pointer_symbol_link_name_id,
+                                 value.name),
+      .initializer_element_index = initializer_element_index,
+      .initializer_element = value,
+      .source_global = &owner,
+  };
+}
+
+[[nodiscard]] DataRelocationNeedRecord relocation_need_for_initializer_symbol(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& owner,
+    std::size_t global_index) {
+  const std::string_view fallback =
+      owner.initializer_symbol_name.has_value() ? std::string_view{*owner.initializer_symbol_name}
+                                                : std::string_view{};
+  return DataRelocationNeedRecord{
+      .kind = DataRelocationNeedKind::InitializerSymbol,
+      .global_index = global_index,
+      .owner_link_name = owner.link_name_id,
+      .owner_label = link_label(prepared.module.names, owner.link_name_id, owner.name),
+      .target_link_name = owner.initializer_symbol_name_id,
+      .target_label = link_label(prepared.module.names, owner.initializer_symbol_name_id, fallback),
+      .initializer_element_index = std::nullopt,
+      .initializer_element = std::nullopt,
+      .source_global = &owner,
+  };
+}
+
+[[nodiscard]] GlobalDataRecord build_global_data_record(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& global,
+    std::size_t global_index) {
+  GlobalDataRecord record{
+      .global_index = global_index,
+      .label = link_label(prepared.module.names, global.link_name_id, global.name),
+      .link_name = global.link_name_id,
+      .type = global.type,
+      .visibility = visibility_for_global(global),
+      .is_extern = global.is_extern,
+      .is_thread_local = global.is_thread_local,
+      .is_constant = global.is_constant,
+      .size_bytes = global.size_bytes,
+      .align_bytes = global.align_bytes,
+      .initializer = global.initializer,
+      .initializer_symbol_label =
+          global.initializer_symbol_name.has_value()
+              ? std::optional<std::string_view>{
+                    link_label(prepared.module.names,
+                               global.initializer_symbol_name_id,
+                               *global.initializer_symbol_name)}
+              : std::nullopt,
+      .initializer_symbol_name_id = global.initializer_symbol_name_id,
+      .initializer_elements = global.initializer_elements,
+      .source_global = &global,
+  };
+
+  if (global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    record.relocation_needs.push_back(
+        relocation_need_for_initializer_symbol(prepared, global, global_index));
+  }
+  if (global.initializer.has_value()) {
+    if (auto need = relocation_need_for_value(prepared,
+                                              global,
+                                              global_index,
+                                              DataRelocationNeedKind::InitializerSymbol,
+                                              *global.initializer,
+                                              std::nullopt)) {
+      record.relocation_needs.push_back(*need);
+    }
+  }
+  for (std::size_t index = 0; index < global.initializer_elements.size(); ++index) {
+    if (auto need = relocation_need_for_value(prepared,
+                                              global,
+                                              global_index,
+                                              DataRelocationNeedKind::InitializerElementSymbol,
+                                              global.initializer_elements[index],
+                                              index)) {
+      record.relocation_needs.push_back(*need);
+    }
+  }
+  return record;
+}
+
+[[nodiscard]] std::vector<GlobalDataRecord> build_global_data_records(
+    const prepare::PreparedBirModule& prepared) {
+  std::vector<GlobalDataRecord> globals;
+  globals.reserve(prepared.module.globals.size());
+  for (std::size_t index = 0; index < prepared.module.globals.size(); ++index) {
+    globals.push_back(build_global_data_record(prepared, prepared.module.globals[index], index));
+  }
+  return globals;
+}
+
+[[nodiscard]] StringDataRecord build_string_data_record(
+    const prepare::PreparedBirModule& prepared,
+    const bir::StringConstant& string,
+    std::size_t string_index) {
+  return StringDataRecord{
+      .string_index = string_index,
+      .label = text_label(prepared.module.names, string.name_id, string.name),
+      .name_id = string.name_id,
+      .bytes = string.bytes,
+      .align_bytes = string.align_bytes,
+      .source_string = &string,
+  };
+}
+
+[[nodiscard]] std::vector<StringDataRecord> build_string_data_records(
+    const prepare::PreparedBirModule& prepared) {
+  std::vector<StringDataRecord> strings;
+  strings.reserve(prepared.module.string_constants.size());
+  for (std::size_t index = 0; index < prepared.module.string_constants.size(); ++index) {
+    strings.push_back(
+        build_string_data_record(prepared, prepared.module.string_constants[index], index));
+  }
+  return strings;
+}
+
+[[nodiscard]] std::vector<DataRelocationNeedRecord> collect_relocation_needs(
+    const std::vector<GlobalDataRecord>& globals) {
+  std::vector<DataRelocationNeedRecord> needs;
+  for (const auto& global : globals) {
+    needs.insert(needs.end(), global.relocation_needs.begin(), global.relocation_needs.end());
+  }
+  return needs;
+}
+
+}  // namespace
+
+BuildResult build(const prepare::PreparedBirModule& prepared) {
+  const c4c::TargetProfile target_profile =
+      abi::resolve_target_profile(prepared);
+  if (auto error = abi::validate_prepared_module_handoff(prepared)) {
+    return BuildResult{.module = std::nullopt, .error = std::move(error)};
+  }
+  auto globals = build_global_data_records(prepared);
+  auto strings = build_string_data_records(prepared);
+  auto relocation_needs = collect_relocation_needs(globals);
+  return BuildResult{.module = Module{.prepared = &prepared,
+                                      .target_profile = target_profile,
+                                      .globals = std::move(globals),
+                                      .strings = std::move(strings),
+                                      .relocation_needs = std::move(relocation_needs),
+                                      .functions = build_function_records(prepared)},
+                     .error = std::nullopt};
+}
+
+}  // namespace c4c::backend::aarch64::module
