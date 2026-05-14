@@ -6,6 +6,7 @@
 
 #include <iostream>
 #include <string_view>
+#include <variant>
 
 namespace {
 
@@ -206,15 +207,19 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
       aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 2 || !result.visited_terminator ||
-      result.emitted_instructions != 0) {
-    return fail("expected dispatch to visit prepared instructions and emit nothing");
+      result.emitted_instructions != 1) {
+    return fail("expected dispatch to visit prepared instructions and emit return");
   }
   if (block.block_label != block_cf.block_label || block.index != 0 ||
-      !block.instructions.empty()) {
-    return fail("expected dispatch to preserve identity and emit no fake instructions");
+      block.instructions.size() != 1) {
+    return fail("expected dispatch to preserve identity and emit one return instruction");
   }
-  if (diagnostics.entries.size() != 3) {
-    return fail("expected unsupported instruction diagnostics plus terminator diagnostic");
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected dispatch to emit canonical return instruction target");
+  }
+  if (diagnostics.entries.size() != 2) {
+    return fail("expected unsupported instruction diagnostics only");
   }
   if (diagnostics.entries[0].kind !=
           aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
@@ -229,12 +234,6 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
       diagnostics.entries[1].instruction_family !=
           aarch64_module::InstructionLoweringFamily::Call) {
     return fail("expected second diagnostic to describe call instruction one");
-  }
-  if (diagnostics.entries[2].kind !=
-          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily ||
-      diagnostics.entries[2].function_name != function_cf.function_name ||
-      diagnostics.entries[2].block_label != block_cf.block_label) {
-    return fail("expected typed unsupported-terminator diagnostic with prepared identity");
   }
   return 0;
 }
@@ -263,11 +262,11 @@ int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   if (!result.visited_terminator) {
     return fail("expected retained BIR dispatch to visit the prepared terminator");
   }
-  if (result.emitted_instructions != 0 || !block.instructions.empty()) {
-    return fail("expected retained BIR dispatch not to emit fake instructions");
+  if (result.emitted_instructions != 1 || block.instructions.size() != 1) {
+    return fail("expected retained BIR dispatch to emit one return instruction");
   }
-  if (diagnostics.entries.size() != 2) {
-    return fail("expected identity-mapped retained BIR dispatch to record two diagnostics");
+  if (diagnostics.entries.size() != 1) {
+    return fail("expected identity-mapped retained BIR dispatch to record operation diagnostic only");
   }
   if (diagnostics.entries[0].kind !=
       aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily) {
@@ -279,10 +278,6 @@ int block_dispatch_maps_retained_bir_by_prepared_identity_not_index() {
   }
   if (diagnostics.entries[0].block_label != block_cf.block_label) {
     return fail("expected identity-mapped retained BIR dispatch diagnostic block identity");
-  }
-  if (diagnostics.entries[1].kind !=
-      aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily) {
-    return fail("expected identity-mapped retained BIR dispatch diagnostics");
   }
   return 0;
 }
@@ -305,22 +300,19 @@ int missing_bir_block_mapping_is_diagnostic_only() {
       aarch64_module::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 0 || !result.visited_terminator ||
-      result.emitted_instructions != 0 || !block.instructions.empty()) {
-    return fail("expected missing mapping to skip operations but still visit terminator");
+      result.emitted_instructions != 1 || block.instructions.size() != 1) {
+    return fail("expected missing mapping to skip operations but still lower return terminator");
   }
-  if (diagnostics.entries.size() != 2 ||
+  if (diagnostics.entries.size() != 1 ||
       diagnostics.entries[0].kind !=
           aarch64_module::ModuleLoweringDiagnosticKind::MissingInstructionBlockMapping ||
-      diagnostics.entries[0].block_label != block_cf.block_label ||
-      diagnostics.entries[1].kind !=
-          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily ||
-      diagnostics.entries[1].block_label != block_cf.block_label) {
+      diagnostics.entries[0].block_label != block_cf.block_label) {
     return fail("expected typed missing block mapping diagnostic");
   }
   return 0;
 }
 
-int module_build_dispatch_scaffold_keeps_machine_nodes_empty() {
+int module_build_dispatch_scaffold_lowers_return_and_keeps_machine_nodes_empty() {
   auto prepared = prepared_with_unsupported_instructions();
   const auto result = aarch64_api::build_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
@@ -328,12 +320,16 @@ int module_build_dispatch_scaffold_keeps_machine_nodes_empty() {
   }
 
   const auto& function = result.module->mir.functions.front();
-  if (function.blocks.size() != 1 || !function.blocks.front().instructions.empty()) {
-    return fail("expected unsupported dispatch scaffold not to emit instructions");
+  if (function.blocks.size() != 1 || function.blocks.front().instructions.size() != 1) {
+    return fail("expected dispatch scaffold to emit one return instruction");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          function.blocks.front().instructions.front().target.payload)) {
+    return fail("expected module build to preserve canonical return target");
   }
   for (const auto& record : result.module->functions) {
     if (!record.machine_nodes.empty()) {
-      return fail("expected unsupported dispatch scaffold not to fake flat machine nodes");
+      return fail("expected dispatch scaffold not to fake flat compatibility machine nodes");
     }
   }
   return 0;
@@ -361,7 +357,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = module_build_dispatch_scaffold_keeps_machine_nodes_empty();
+  if (const int status = module_build_dispatch_scaffold_lowers_return_and_keeps_machine_nodes_empty();
       status != 0) {
     return status;
   }

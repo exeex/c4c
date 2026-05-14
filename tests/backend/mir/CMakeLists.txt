@@ -153,6 +153,11 @@ set_tests_properties(backend_aarch64_instruction_dispatch PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
+c4c_add_aarch64_cpp_test(backend_aarch64_return_lowering)
+set_tests_properties(backend_aarch64_return_lowering PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 add_test(
   NAME backend_cli_aarch64_asm_no_machine_nodes_fails
   COMMAND "${CMAKE_COMMAND}"

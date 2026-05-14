@@ -33,13 +33,34 @@ void append_block_diagnostic(ModuleLoweringDiagnostics& diagnostics,
     c4c::backend::bir::TerminatorKind kind) {
   switch (kind) {
     case c4c::backend::bir::TerminatorKind::Return:
-      return "AArch64 block dispatch visited prepared return terminator; semantic lowering is not implemented";
+      return "AArch64 block dispatch visited unsupported prepared return terminator";
     case c4c::backend::bir::TerminatorKind::Branch:
       return "AArch64 block dispatch visited prepared branch terminator; semantic lowering is not implemented";
     case c4c::backend::bir::TerminatorKind::CondBranch:
       return "AArch64 block dispatch visited prepared conditional branch terminator; semantic lowering is not implemented";
   }
   return "AArch64 block dispatch visited unsupported prepared terminator";
+}
+
+[[nodiscard]] MachineInstruction make_return_instruction(
+    const BlockLoweringContext& context) {
+  codegen::InstructionRecord target =
+      codegen::make_return_instruction(codegen::ReturnInstructionRecord{});
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+
+  return MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirTerminator,
+              .function_name = context.function.control_flow->function_name,
+              .block_label = context.control_flow_block->block_label,
+          },
+  };
 }
 
 [[nodiscard]] const bir::Block* find_bir_block(
@@ -166,11 +187,16 @@ InstructionDispatchResult dispatch_prepared_block(
   }
 
   result.visited_terminator = true;
-  append_block_diagnostic(
-      diagnostics,
-      ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
-      context,
-      unsupported_terminator_message(context.control_flow_block->terminator_kind));
+  if (context.control_flow_block->terminator_kind ==
+      c4c::backend::bir::TerminatorKind::Return) {
+    block.instructions.push_back(make_return_instruction(context));
+  } else {
+    append_block_diagnostic(
+        diagnostics,
+        ModuleLoweringDiagnosticKind::UnsupportedTerminatorFamily,
+        context,
+        unsupported_terminator_message(context.control_flow_block->terminator_kind));
+  }
 
   result.emitted_instructions = block.instructions.size();
   return result;

@@ -1,59 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/228_aarch64_module_phoenix_drafts_to_implementation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Implement Function Traversal And Operand Resolution
+Current Step ID: 5
+Current Step Title: Implement One Lowering Family At A Time
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Implement Function Traversal And Operand Resolution tightened the
-retained BIR mapping used by the block-local dispatch scaffold. Function
-context now maps a prepared control-flow function to retained BIR by prepared
-function-name spelling, and block context maps prepared block labels to
-retained BIR `Block::label_id` spelling or retained `Block::label` spelling.
-Vector index is no longer dispatch authority.
+Step 5: Implement One Lowering Family At A Time completed the first real
+return-lowering packet. Prepared `Return` terminators now lower to one
+canonical selected return `MachineInstruction`, while branch/non-return
+terminators remain diagnostic-only and emit no nodes.
 
-The dispatch test now includes reordered retained BIR functions and blocks.
-Prepared control-flow order differs from retained BIR order, but dispatch still
-visits the matching retained BIR block's unsupported instructions by identity
-and keeps canonical `MachineBlock::instructions` plus compatibility
-`machine_nodes` empty.
+The focused tests now cover direct dispatch, `build_prepared_module`, module
+skeleton traversal, and function traversal. They continue to require
+compatibility `machine_nodes` to stay empty; selected return nodes live only in
+canonical MIR block instructions.
 
 ## Suggested Next
 
-Delegate the next Step 4 packet to connect the first real prepared terminator
-or operation family to semantic instruction lowering. Start with a narrow
-family that has structured prepared authority, and keep unsupported families
-diagnostic-only rather than falling back to legacy records or rendered text.
+Supervisor can review and commit the coherent Step 5 return-lowering slice, or
+delegate the next Step 5 lowering family once the commit boundary is accepted.
 
 ## Watchouts
 
-- `PreparedControlFlowBlock` is sufficient authority for terminator visitation
-  even when retained BIR block mapping is absent. Do not require fixture-side
-  BIR population just to dispatch a prepared terminator.
-- Retained BIR instruction traversal is only an optional operation dispatch
-  source; unsupported families remain diagnostic-only and must not create
-  placeholder `MachineInstruction` nodes.
-- Retained BIR mapping must stay identity/spelling based. Do not reintroduce
-  vector-index matching between prepared control-flow and retained BIR
-  functions or blocks.
-- Missing prepared block-to-BIR mapping may be diagnostic when a retained BIR
-  function exists, but it must not suppress prepared terminator dispatch.
-- Unsupported operations and terminators intentionally record diagnostics while
-  emitting no `MachineInstruction` nodes. Do not treat those diagnostics as
-  public assembly success.
-- Keep compatibility mirrors derived after canonical traversal and keep
-  `machine_nodes` empty until real lowering selects printable instructions.
-- The operand scaffold still fails closed for register value-homes that only
-  have diagnostic spelling; add typed placement/register authority before
-  consuming those paths.
+- The current repo has no `MachineOpcode::Return`; this slice uses the existing
+  selected return representation: `InstructionRecord` family `Return` with a
+  `ReturnInstructionRecord` payload. The generic MIR opcode remains the target
+  record's current opcode value.
+- `src/backend/mir/aarch64/module/branch_control_lowering.cpp` was delegated
+  but does not exist as a real source file in this checkout, so no branch-control
+  source split was made.
+- Compatibility `machine_nodes` remain empty; selected return nodes live only in
+  canonical MIR block instructions.
 
 ## Proof
 
 Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch'`
+`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_module_skeleton|backend_aarch64_mir_carrier|backend_aarch64_function_traversal|backend_aarch64_operand_resolution|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering'`
 
-Result: passed; focused subset ran 5/5 tests. Proof output is preserved in
+Result: passed; focused subset ran 6/6 tests. Proof output is preserved in
 `test_after.log`.

@@ -1,15 +1,18 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
 #include <iostream>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
@@ -80,8 +83,21 @@ int skeleton_validates_handoff_and_returns_empty_canonical_product() {
   }
   const auto& block = function.blocks.front();
   if (block.block_label != prepared.control_flow.functions.front().blocks.front().block_label ||
-      block.index != 0 || !block.instructions.empty()) {
-    return fail("expected skeleton traversal to leave the block instruction vector empty");
+      block.index != 0 || block.instructions.size() != 1) {
+    return fail("expected skeleton traversal to lower one prepared return instruction");
+  }
+  const auto& instruction = block.instructions.front();
+  if (!instruction.origin.has_value() ||
+      instruction.origin->reason !=
+          c4c::backend::mir::MachineOriginReason::BirTerminator ||
+      instruction.origin->function_name != function.function_name ||
+      instruction.origin->block_label != block.block_label ||
+      instruction.target.family != aarch64_module::codegen::InstructionFamily::Return ||
+      instruction.target.surface !=
+          aarch64_module::codegen::RecordSurfaceKind::MachineInstructionNode ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          instruction.target.payload)) {
+    return fail("expected skeleton traversal to publish a canonical return instruction");
   }
   if (module.functions.size() != 1 || module.compatibility.functions.size() != 1 ||
       !module.functions.front().machine_nodes.empty() ||

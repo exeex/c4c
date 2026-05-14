@@ -1,14 +1,17 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
 #include <iostream>
 #include <string_view>
+#include <variant>
 
 namespace {
 
 namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
@@ -81,12 +84,31 @@ int build_prepared_module_traverses_functions_and_blocks_into_mir() {
       functions[1].blocks[0].index != 0) {
     return fail("expected traversal to preserve block labels and prepared block indexes");
   }
-  for (const auto& function : functions) {
-    for (const auto& block : function.blocks) {
-      if (!block.instructions.empty()) {
-        return fail("expected traversal slice to leave instruction lowering empty");
-      }
-    }
+  if (!functions[0].blocks[0].instructions.empty()) {
+    return fail("expected unsupported branch terminator to remain diagnostic-only");
+  }
+  if (functions[0].blocks[1].instructions.size() != 1 ||
+      functions[1].blocks[0].instructions.size() != 1) {
+    return fail("expected prepared return terminators to lower to one instruction each");
+  }
+  const auto& first_return = functions[0].blocks[1].instructions.front();
+  const auto& second_return = functions[1].blocks[0].instructions.front();
+  if (!first_return.origin.has_value() || !second_return.origin.has_value() ||
+      first_return.origin->reason !=
+          c4c::backend::mir::MachineOriginReason::BirTerminator ||
+      second_return.origin->reason !=
+          c4c::backend::mir::MachineOriginReason::BirTerminator ||
+      first_return.origin->block_label != functions[0].blocks[1].block_label ||
+      second_return.origin->block_label != functions[1].blocks[0].block_label ||
+      first_return.target.family !=
+          aarch64_module::codegen::InstructionFamily::Return ||
+      second_return.target.family !=
+          aarch64_module::codegen::InstructionFamily::Return ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          first_return.target.payload) ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          second_return.target.payload)) {
+    return fail("expected traversal returns to carry canonical return records");
   }
   if (result.module->functions.size() != functions.size() ||
       result.module->compatibility.functions.size() != functions.size()) {
