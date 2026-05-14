@@ -1,48 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/231_aarch64_call_frame_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Lower Prepared Frame Facts
+Current Step ID: 4
+Current Step Title: Lower Direct And Indirect Calls
 
 # Current Packet
 
 ## Just Finished
 
-Continued Step 3, Lower Prepared Frame Facts, by inspecting whether callee-save
-save/restore lowering has explicit prepared slot and offset facts.
+Completed lifecycle review for Step 3 after discovering a missing prepared
+callee-save slot-placement fact.
 
-No callee-save lowering code was added in this packet because the required
-prepared fact is missing:
+Decision:
 
-- `PreparedSavedRegister` currently carries the saved register identity
-  (`bank`, `register_name`, `contiguous_width`, `occupied_register_names`,
-  `save_index`) plus optional register placement.
-- `PreparedFramePlanFunction` carries `saved_callee_registers` and a general
+- Narrowed plan Step 3 to the completed simple fixed-frame subset.
+- Split the missing prepared callee-save placement fact into
+  `ideas/open/241_prepared_callee_save_slot_placement.md`.
+- Advanced the active runbook pointer to Step 4, Lower Direct And Indirect
+  Calls, so implementation can continue on call lowering without violating the
+  active plan's prepared-fact rule.
+
+Reason:
+
+- `PreparedSavedRegister` carries register identity and `save_index`.
+- `PreparedFramePlanFunction` carries `saved_callee_registers` and
   `frame_slot_order`.
-- `PreparedFrameSlot` carries `slot_id`, `object_id`, `function_name`,
-  `offset_bytes`, size, alignment, and fixed-location state.
-- There is no explicit prepared mapping from each `PreparedSavedRegister` to a
-  `PreparedFrameSlotId` and stack offset, and `PreparedFrameSlot` is not tagged
-  as a callee-save slot for a specific saved register.
-- Lowering callee-save stores/loads from `save_index`, `frame_slot_order`, or
-  generic frame-slot offsets would invent ABI/frame-layout policy locally, so
-  this packet leaves callee-save lowering deferred.
-
-What this slice intentionally did not do:
-
-- It did not derive saved-register frame slots from ordering or register names.
-- It did not add testcase-shaped save/restore records or rendered-string
-  payloads.
-- It did not change dynamic-stack anchoring, frame-pointer policy, outgoing call
-  areas, or call-boundary moves.
+- `PreparedFrameSlot` carries `PreparedFrameSlotId` and `offset_bytes`.
+- No explicit prepared fact maps each saved register to a frame slot and stack
+  offset.
+- Inferring that mapping in AArch64 codegen from `save_index`,
+  `frame_slot_order`, register names, or sorted offsets would recreate
+  frame-layout authority in the target backend.
 
 ## Suggested Next
 
-Add a prepared callee-save slot-placement fact before lowering save/restore
-records. The narrow source-side shape should explicitly connect each saved
-register to a frame slot and offset, for example in `PreparedSavedRegister` or a
-dedicated frame-plan child record. After that, traversal can emit structured
-`CalleeSaveStore` and `CalleeSaveLoad` records without inventing layout.
+Continue with Step 4: lower direct and indirect calls from `PreparedCallPlan`
+and call-boundary move bundles. Keep callee-save store/load lowering deferred
+until `ideas/open/241_prepared_callee_save_slot_placement.md` is completed or
+the supervisor explicitly switches to that dependency.
 
 ## Watchouts
 
@@ -72,14 +67,11 @@ dedicated frame-plan child record. After that, traversal can emit structured
 - Callee-save lowering is blocked on an explicit saved-register-to-frame-slot
   and offset prepared fact. Do not infer it from `save_index` or
   `frame_slot_order`.
+- The active source idea cannot be closed as fully complete while callee-save
+  proof remains delegated to `ideas/open/241_prepared_callee_save_slot_placement.md`
+  unless the supervisor explicitly accepts a narrower completion boundary.
 
 ## Proof
 
-Proof log: `test_after.log`.
-
-Command run exactly:
-
-`(cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_prepare_frame_stack_call_contract_test -j2 && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_prepare_frame_stack_call_contract)$') > test_after.log 2>&1`
-
-Result: not rerun in this packet because no code changed. The existing
-`test_after.log` remains from the prior Step 3 proof and was not refreshed.
+Lifecycle-only plan review/split; no build or test proof required for this
+packet.

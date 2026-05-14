@@ -126,23 +126,28 @@ Completion check:
 - Machine records can represent the call/frame proof cases without ad hoc
   string payloads or target-local ABI decisions.
 
-### Step 3: Lower Prepared Frame Facts
+### Step 3: Lower Simple Prepared Frame Facts
 
-Goal: Emit prologue and epilogue machine nodes from `PreparedFramePlanFunction`
-and prepared frame-slot facts.
+Goal: Emit simple fixed-frame prologue and epilogue machine nodes from
+`PreparedFramePlanFunction` and prepared frame-slot facts without callee-save
+save/restore placement inference.
 
 Actions:
 
-- Lower frame size, alignment, frame-pointer policy, saved callee registers,
-  and frame-slot order into selected frame nodes.
-- Emit matched save/restore records for callee-save registers.
+- Lower frame size, alignment, frame-pointer policy, and frame-slot order into
+  selected frame nodes for no-save fixed-frame cases.
+- Preserve saved callee-register facts as structured data, but do not emit
+  callee-save save/restore records until an explicit prepared
+  saved-register-to-frame-slot mapping exists.
 - Reject or defer dynamic-stack states whose prepared facts are incomplete.
 - Add printer support for the completed prologue/epilogue subset.
 
 Completion check:
 
-- A function with saved callee registers emits matched structured prologue and
-  epilogue output from prepared frame facts.
+- Simple fixed-frame functions emit structured prologue and epilogue output
+  from prepared frame facts, and callee-save lowering is deferred to
+  `ideas/open/241_prepared_callee_save_slot_placement.md` instead of inferred
+  locally.
 
 ### Step 4: Lower Direct And Indirect Calls
 
@@ -192,6 +197,9 @@ Actions:
 - Escalate to backend or AArch64 c-testsuite subsets if the changed surfaces
   affect broader backend output.
 - Record remaining unsupported call/frame states in `todo.md`.
+- Do not close the source idea until the callee-save placement split is either
+  completed and reintegrated or the supervisor explicitly accepts a narrower
+  source-idea completion boundary.
 - Ask the supervisor whether the source idea is complete, blocked, or should
   be split before close.
 
