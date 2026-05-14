@@ -8,13 +8,16 @@ Current Step Title: Verify Phoenix Extraction Scope
 
 ## Just Finished
 
-Lifecycle switch only. The active route moved from 224 to phoenix stage 1
-extraction for the AArch64 module/MIR lowering rebuild.
+Step 1: Verify Phoenix Extraction Scope completed. The module directory
+inventory contains exactly `module.cpp` and `module.hpp`; `module.hpp` is the
+only `.hpp` file and therefore the sole non-helper header. Stage-1 owned
+surface is `module.cpp` plus `module.hpp`; no module markdown artifacts are
+present in `src/backend/mir/aarch64/module/`.
 
 ## Suggested Next
 
-Delegate Step 1 to verify the module extraction scope and header invariant
-before running the phoenix extraction script.
+Proceed with the next stage-1 extraction packet using the verified
+`module.cpp`/`module.hpp` scope.
 
 ## Watchouts
 
@@ -22,9 +25,12 @@ before running the phoenix extraction script.
 - Prepared BIR should lower directly to MIR machine nodes in the rebuilt
   route.
 - Stage 1 extracts evidence only; replacement layout belongs to stage 2.
-- Do not broaden the scope beyond `module.cpp`, `module.hpp`, and module
-  markdown artifacts without lifecycle repair.
+- No surprise module-surface files were found by the delegated inventory.
+- Do not broaden the scope beyond `module.cpp` and `module.hpp` without
+  lifecycle repair.
 
 ## Proof
 
-Lifecycle-only switch. No build or test proof required.
+Ran the supervisor-selected inventory proof:
+`find src/backend/mir/aarch64/module -maxdepth 1 -type f \( -name '*.cpp' -o -name '*.hpp' -o -name '*.md' \) -printf '%f\n' | sort > test_after.log`.
+Proof log: `test_after.log`.
