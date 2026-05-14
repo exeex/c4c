@@ -1,7 +1,8 @@
 # AArch64 Structured ASM Encoder Linker Contract
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Depends On:
 - `ideas/closed/211_aarch64_machine_instruction_node_contract.md`
@@ -225,6 +226,22 @@ struct AsmRegisterOperand {
   should feed printed assembly to an internal parser as the normal backend
   pipeline.
 - The idea 216 external `.c -> .s -> clang/as -> run` path remains valid.
+
+## Completion Note
+
+Closed after the active runbook completed the AArch64 structured asm contract
+slice. The accepted contract now separates terminal `--codegen asm` text from
+future internal structured asm/encoding, object, and linker records; records the
+required register operand decomposition; ties structured records to prepared
+liveness/regalloc/move/spill/call authority; requires centralized enum spelling
+for future structured enums; rejects external `.ll` and `.s` as normal backend
+inputs; and records that no current live AArch64 route feeds
+`machine_printer.cpp` output back into parser/encoder/object/linker semantics.
+
+Close-time regression guard used the accepted full-suite baseline in
+`test_before.log` and a current full-suite run in `test_after.log`; both had
+3162 passing tests and no failures. The docs-only close used the
+non-decreasing-pass regression-guard mode.
 
 ## Reviewer Reject Signals
 
