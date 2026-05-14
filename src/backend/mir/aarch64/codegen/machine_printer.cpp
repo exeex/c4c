@@ -21,7 +21,7 @@ std::string block_label(c4c::FunctionNameId function_name, c4c::BlockLabelId blo
 }
 
 std::string register_name(const RegisterOperand& operand) {
-  return c4c::backend::aarch64::abi::register_name(operand.reg);
+  return abi::register_name(operand.reg);
 }
 
 std::string immediate_name(const ImmediateOperand& operand) {
@@ -296,13 +296,13 @@ MachineAssemblyPrintResult print_return(const InstructionRecord& instruction,
 
     const char* result_register = nullptr;
     switch (ret.value_type) {
-      case c4c::backend::bir::TypeKind::I1:
-      case c4c::backend::bir::TypeKind::I8:
-      case c4c::backend::bir::TypeKind::I16:
-      case c4c::backend::bir::TypeKind::I32:
+      case bir::TypeKind::I1:
+      case bir::TypeKind::I8:
+      case bir::TypeKind::I16:
+      case bir::TypeKind::I32:
         result_register = "w0";
         break;
-      case c4c::backend::bir::TypeKind::I64:
+      case bir::TypeKind::I64:
         result_register = "x0";
         break;
       default:

@@ -2,6 +2,10 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+
 std::string_view operand_kind_name(OperandKind kind) {
   switch (kind) {
     case OperandKind::Register:
@@ -535,142 +539,142 @@ std::string_view prepared_memory_operand_record_error_name(
   return "unknown";
 }
 
-bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode) {
+bool is_compare_predicate(bir::BinaryOpcode opcode) {
   switch (opcode) {
-    case c4c::backend::bir::BinaryOpcode::Eq:
-    case c4c::backend::bir::BinaryOpcode::Ne:
-    case c4c::backend::bir::BinaryOpcode::Slt:
-    case c4c::backend::bir::BinaryOpcode::Sle:
-    case c4c::backend::bir::BinaryOpcode::Sgt:
-    case c4c::backend::bir::BinaryOpcode::Sge:
-    case c4c::backend::bir::BinaryOpcode::Ult:
-    case c4c::backend::bir::BinaryOpcode::Ule:
-    case c4c::backend::bir::BinaryOpcode::Ugt:
-    case c4c::backend::bir::BinaryOpcode::Uge:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
       return true;
-    case c4c::backend::bir::BinaryOpcode::Add:
-    case c4c::backend::bir::BinaryOpcode::Sub:
-    case c4c::backend::bir::BinaryOpcode::Mul:
-    case c4c::backend::bir::BinaryOpcode::And:
-    case c4c::backend::bir::BinaryOpcode::Or:
-    case c4c::backend::bir::BinaryOpcode::Xor:
-    case c4c::backend::bir::BinaryOpcode::Shl:
-    case c4c::backend::bir::BinaryOpcode::LShr:
-    case c4c::backend::bir::BinaryOpcode::AShr:
-    case c4c::backend::bir::BinaryOpcode::SDiv:
-    case c4c::backend::bir::BinaryOpcode::UDiv:
-    case c4c::backend::bir::BinaryOpcode::SRem:
-    case c4c::backend::bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
       return false;
   }
   return false;
 }
 
-bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode) {
+bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
   switch (opcode) {
-    case c4c::backend::bir::BinaryOpcode::Add:
-    case c4c::backend::bir::BinaryOpcode::Sub:
-    case c4c::backend::bir::BinaryOpcode::And:
-    case c4c::backend::bir::BinaryOpcode::Or:
-    case c4c::backend::bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
       return true;
-    case c4c::backend::bir::BinaryOpcode::Mul:
-    case c4c::backend::bir::BinaryOpcode::Shl:
-    case c4c::backend::bir::BinaryOpcode::LShr:
-    case c4c::backend::bir::BinaryOpcode::AShr:
-    case c4c::backend::bir::BinaryOpcode::SDiv:
-    case c4c::backend::bir::BinaryOpcode::UDiv:
-    case c4c::backend::bir::BinaryOpcode::SRem:
-    case c4c::backend::bir::BinaryOpcode::URem:
-    case c4c::backend::bir::BinaryOpcode::Eq:
-    case c4c::backend::bir::BinaryOpcode::Ne:
-    case c4c::backend::bir::BinaryOpcode::Slt:
-    case c4c::backend::bir::BinaryOpcode::Sle:
-    case c4c::backend::bir::BinaryOpcode::Sgt:
-    case c4c::backend::bir::BinaryOpcode::Sge:
-    case c4c::backend::bir::BinaryOpcode::Ult:
-    case c4c::backend::bir::BinaryOpcode::Ule:
-    case c4c::backend::bir::BinaryOpcode::Ugt:
-    case c4c::backend::bir::BinaryOpcode::Uge:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
       return false;
   }
   return false;
 }
 
-bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode) {
+bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
   switch (opcode) {
-    case c4c::backend::bir::CastOpcode::SExt:
-    case c4c::backend::bir::CastOpcode::ZExt:
-    case c4c::backend::bir::CastOpcode::Trunc:
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
       return true;
-    case c4c::backend::bir::CastOpcode::FPTrunc:
-    case c4c::backend::bir::CastOpcode::FPExt:
-    case c4c::backend::bir::CastOpcode::FPToSI:
-    case c4c::backend::bir::CastOpcode::FPToUI:
-    case c4c::backend::bir::CastOpcode::SIToFP:
-    case c4c::backend::bir::CastOpcode::UIToFP:
-    case c4c::backend::bir::CastOpcode::PtrToInt:
-    case c4c::backend::bir::CastOpcode::IntToPtr:
-    case c4c::backend::bir::CastOpcode::Bitcast:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
       return false;
   }
   return false;
 }
 
 ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
-    c4c::backend::bir::BinaryOpcode opcode) {
+    bir::BinaryOpcode opcode) {
   switch (opcode) {
-    case c4c::backend::bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Add:
       return ScalarAluOperationKind::Add;
-    case c4c::backend::bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Sub:
       return ScalarAluOperationKind::Sub;
-    case c4c::backend::bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::And:
       return ScalarAluOperationKind::And;
-    case c4c::backend::bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Or:
       return ScalarAluOperationKind::Or;
-    case c4c::backend::bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Xor:
       return ScalarAluOperationKind::Xor;
-    case c4c::backend::bir::BinaryOpcode::Mul:
-    case c4c::backend::bir::BinaryOpcode::Shl:
-    case c4c::backend::bir::BinaryOpcode::LShr:
-    case c4c::backend::bir::BinaryOpcode::AShr:
-    case c4c::backend::bir::BinaryOpcode::SDiv:
-    case c4c::backend::bir::BinaryOpcode::UDiv:
-    case c4c::backend::bir::BinaryOpcode::SRem:
-    case c4c::backend::bir::BinaryOpcode::URem:
-    case c4c::backend::bir::BinaryOpcode::Eq:
-    case c4c::backend::bir::BinaryOpcode::Ne:
-    case c4c::backend::bir::BinaryOpcode::Slt:
-    case c4c::backend::bir::BinaryOpcode::Sle:
-    case c4c::backend::bir::BinaryOpcode::Sgt:
-    case c4c::backend::bir::BinaryOpcode::Sge:
-    case c4c::backend::bir::BinaryOpcode::Ult:
-    case c4c::backend::bir::BinaryOpcode::Ule:
-    case c4c::backend::bir::BinaryOpcode::Ugt:
-    case c4c::backend::bir::BinaryOpcode::Uge:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
       return ScalarAluOperationKind::Deferred;
   }
   return ScalarAluOperationKind::Deferred;
 }
 
 ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
-    c4c::backend::bir::CastOpcode opcode) {
+    bir::CastOpcode opcode) {
   switch (opcode) {
-    case c4c::backend::bir::CastOpcode::SExt:
+    case bir::CastOpcode::SExt:
       return ScalarCastOperationKind::SignExtend;
-    case c4c::backend::bir::CastOpcode::ZExt:
+    case bir::CastOpcode::ZExt:
       return ScalarCastOperationKind::ZeroExtend;
-    case c4c::backend::bir::CastOpcode::Trunc:
+    case bir::CastOpcode::Trunc:
       return ScalarCastOperationKind::Truncate;
-    case c4c::backend::bir::CastOpcode::FPTrunc:
-    case c4c::backend::bir::CastOpcode::FPExt:
-    case c4c::backend::bir::CastOpcode::FPToSI:
-    case c4c::backend::bir::CastOpcode::FPToUI:
-    case c4c::backend::bir::CastOpcode::SIToFP:
-    case c4c::backend::bir::CastOpcode::UIToFP:
-    case c4c::backend::bir::CastOpcode::PtrToInt:
-    case c4c::backend::bir::CastOpcode::IntToPtr:
-    case c4c::backend::bir::CastOpcode::Bitcast:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
       return ScalarCastOperationKind::Deferred;
   }
   return ScalarCastOperationKind::Deferred;
@@ -740,7 +744,7 @@ PreparedScalarCastRecordError scalar_cast_operand_error_from_alu_error(
 
 BranchTargetOperand make_prepared_branch_target(c4c::FunctionNameId function_name,
                                                 c4c::BlockLabelId block_label,
-                                                std::optional<c4c::backend::prepare::PreparedValueId>
+                                                std::optional<prepare::PreparedValueId>
                                                     condition_value_id = std::nullopt) {
   return BranchTargetOperand{
       .surface = RecordSurfaceKind::RecordOnly,
@@ -750,24 +754,24 @@ BranchTargetOperand make_prepared_branch_target(c4c::FunctionNameId function_nam
   };
 }
 
-bool same_bir_value(const c4c::backend::bir::Value& lhs,
-                    const c4c::backend::bir::Value& rhs) {
+bool same_bir_value(const bir::Value& lhs,
+                    const bir::Value& rhs) {
   return lhs == rhs;
 }
 
-const c4c::backend::prepare::PreparedValueHome* find_named_value_home(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::bir::Value& value) {
-  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+const prepare::PreparedValueHome* find_named_value_home(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named) {
     return nullptr;
   }
-  return c4c::backend::prepare::find_prepared_value_home(names, value_locations, value.name);
+  return prepare::find_prepared_value_home(names, value_locations, value.name);
 }
 
-const c4c::backend::prepare::PreparedStoragePlanValue* find_storage_plan_value(
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    c4c::backend::prepare::PreparedValueId value_id) {
+const prepare::PreparedStoragePlanValue* find_storage_plan_value(
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    prepare::PreparedValueId value_id) {
   for (const auto& value : storage_plan.values) {
     if (value.value_id == value_id) {
       return &value;
@@ -776,8 +780,8 @@ const c4c::backend::prepare::PreparedStoragePlanValue* find_storage_plan_value(
   return nullptr;
 }
 
-std::optional<c4c::backend::prepare::PreparedValueId> find_value_home_id(
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+std::optional<prepare::PreparedValueId> find_value_home_id(
+    const prepare::PreparedValueLocationFunction& value_locations,
     c4c::ValueNameId value_name) {
   if (value_name == c4c::kInvalidValueName) {
     return std::nullopt;
@@ -791,14 +795,14 @@ std::optional<c4c::backend::prepare::PreparedValueId> find_value_home_id(
 }
 
 PreparedMemoryOperandRecordError find_unique_value_home_id(
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedValueLocationFunction& value_locations,
     c4c::ValueNameId value_name,
-    c4c::backend::prepare::PreparedValueId& out) {
+    prepare::PreparedValueId& out) {
   if (value_name == c4c::kInvalidValueName) {
     return PreparedMemoryOperandRecordError::MissingPointerValueName;
   }
 
-  std::optional<c4c::backend::prepare::PreparedValueId> found;
+  std::optional<prepare::PreparedValueId> found;
   for (const auto& home : value_locations.value_homes) {
     if (home.value_name != value_name) {
       continue;
@@ -817,9 +821,9 @@ PreparedMemoryOperandRecordError find_unique_value_home_id(
 }
 
 std::optional<c4c::ValueNameId> named_value_id(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::bir::Value& value) {
-  if (value.kind != c4c::backend::bir::Value::Kind::Named || value.name.empty()) {
+    const prepare::PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return std::nullopt;
   }
   const auto value_name = names.value_names.find(value.name);
@@ -830,7 +834,7 @@ std::optional<c4c::ValueNameId> named_value_id(
 }
 
 PreparedMemoryOperandRecordError validate_structured_memory_address_facts(
-    const c4c::backend::bir::MemoryAddress& address,
+    const bir::MemoryAddress& address,
     const MemoryOperand& memory) {
   if (address.byte_offset != memory.byte_offset ||
       (address.size_bytes != 0 && address.size_bytes != memory.size_bytes) ||
@@ -848,7 +852,7 @@ PreparedMemoryOperandRecordError validate_unstructured_memory_instruction_facts(
     const MemoryOperand& memory) {
   if (static_cast<std::int64_t>(instruction_byte_offset) != memory.byte_offset ||
       (instruction_align_bytes != 0 && instruction_align_bytes != memory.align_bytes) ||
-      memory.size_bytes != 0 || memory.address_space != c4c::backend::bir::AddressSpace::Default ||
+      memory.size_bytes != 0 || memory.address_space != bir::AddressSpace::Default ||
       memory.is_volatile) {
     return PreparedMemoryOperandRecordError::AddressFactMismatch;
   }
@@ -856,7 +860,7 @@ PreparedMemoryOperandRecordError validate_unstructured_memory_instruction_facts(
 }
 
 PreparedMemoryOperandRecordError validate_memory_instruction_facts(
-    const c4c::backend::bir::MemoryAddress* address,
+    const bir::MemoryAddress* address,
     std::size_t instruction_byte_offset,
     std::size_t instruction_align_bytes,
     const MemoryOperand& memory) {
@@ -868,10 +872,10 @@ PreparedMemoryOperandRecordError validate_memory_instruction_facts(
 }
 
 std::optional<c4c::LinkNameId> global_symbol_id_from_address_or_inst(
-    const c4c::backend::bir::MemoryAddress* address,
+    const bir::MemoryAddress* address,
     c4c::LinkNameId fallback_link_name) {
   if (address != nullptr) {
-    if (address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::GlobalSymbol) {
+    if (address->base_kind != bir::MemoryAddress::BaseKind::GlobalSymbol) {
       return std::nullopt;
     }
     if (address->base_link_name_id != c4c::kInvalidLinkName) {
@@ -885,15 +889,15 @@ std::optional<c4c::LinkNameId> global_symbol_id_from_address_or_inst(
 }
 
 PreparedMemoryOperandRecordError validate_memory_base_identity(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::bir::MemoryAddress* address,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const bir::MemoryAddress* address,
     c4c::LinkNameId fallback_link_name,
     MemoryOperand& memory) {
   switch (memory.base_kind) {
     case MemoryBaseKind::FrameSlot:
       if (address != nullptr &&
-          address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::LocalSlot) {
+          address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
         return PreparedMemoryOperandRecordError::UnsupportedBase;
       }
       return PreparedMemoryOperandRecordError::None;
@@ -909,7 +913,7 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
         return PreparedMemoryOperandRecordError::MissingPointerValueName;
       }
       if (address == nullptr ||
-          address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::PointerValue) {
+          address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
         return PreparedMemoryOperandRecordError::PointerValueMismatch;
       }
       const auto pointer_value_name = named_value_id(names, address->base_value);
@@ -917,7 +921,7 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
         return PreparedMemoryOperandRecordError::PointerValueMismatch;
       }
 
-      c4c::backend::prepare::PreparedValueId pointer_value_id = 0;
+      prepare::PreparedValueId pointer_value_id = 0;
       const auto error =
           find_unique_value_home_id(value_locations, *memory.pointer_value_name, pointer_value_id);
       if (error != PreparedMemoryOperandRecordError::None) {
@@ -931,12 +935,12 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
         return PreparedMemoryOperandRecordError::MissingSymbolName;
       }
       if (address == nullptr ||
-          address->base_kind != c4c::backend::bir::MemoryAddress::BaseKind::StringConstant) {
+          address->base_kind != bir::MemoryAddress::BaseKind::StringConstant) {
         return PreparedMemoryOperandRecordError::StringIdentityMismatch;
       }
 
       const std::string_view prepared_symbol =
-          c4c::backend::prepare::prepared_link_name(names, *memory.string_symbol_name);
+          prepare::prepared_link_name(names, *memory.string_symbol_name);
       if (prepared_symbol.empty()) {
         return PreparedMemoryOperandRecordError::MissingSymbolName;
       }
@@ -962,10 +966,10 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
 }
 
 PreparedMemoryOperandRecordError apply_load_identity(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedMemoryAccess& access,
-    const c4c::backend::bir::Value& result,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedMemoryAccess& access,
+    const bir::Value& result,
     MemoryOperand& memory) {
   if (!access.result_value_name.has_value() || access.stored_value_name.has_value()) {
     return PreparedMemoryOperandRecordError::ResultValueMismatch;
@@ -980,10 +984,10 @@ PreparedMemoryOperandRecordError apply_load_identity(
 }
 
 PreparedMemoryOperandRecordError apply_store_identity(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedMemoryAccess& access,
-    const c4c::backend::bir::Value& stored,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedMemoryAccess& access,
+    const bir::Value& stored,
     MemoryOperand& memory) {
   if (access.result_value_name.has_value()) {
     return PreparedMemoryOperandRecordError::StoredValueMismatch;
@@ -1004,9 +1008,9 @@ PreparedMemoryOperandRecordError apply_store_identity(
 }
 
 PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index) {
   if (addressing.function_name == c4c::kInvalidFunctionName ||
@@ -1014,7 +1018,7 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
     return memory_operand_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
   }
   const auto* access =
-      c4c::backend::prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
   if (access == nullptr || access->function_name != addressing.function_name) {
     return memory_operand_record_error(
         PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
@@ -1035,21 +1039,21 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
   };
 
   switch (access->address.base_kind) {
-    case c4c::backend::prepare::PreparedAddressBaseKind::FrameSlot:
+    case prepare::PreparedAddressBaseKind::FrameSlot:
       if (!access->address.frame_slot_id.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingFrameSlotId);
       }
       memory.base_kind = MemoryBaseKind::FrameSlot;
       memory.frame_slot_id = access->address.frame_slot_id;
       break;
-    case c4c::backend::prepare::PreparedAddressBaseKind::GlobalSymbol:
+    case prepare::PreparedAddressBaseKind::GlobalSymbol:
       if (!access->address.symbol_name.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingSymbolName);
       }
       memory.base_kind = MemoryBaseKind::Symbol;
       memory.symbol_name = access->address.symbol_name;
       break;
-    case c4c::backend::prepare::PreparedAddressBaseKind::PointerValue:
+    case prepare::PreparedAddressBaseKind::PointerValue:
       if (!access->address.pointer_value_name.has_value()) {
         return memory_operand_record_error(
             PreparedMemoryOperandRecordError::MissingPointerValueName);
@@ -1057,20 +1061,20 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
       memory.base_kind = MemoryBaseKind::PointerValue;
       memory.pointer_value_name = access->address.pointer_value_name;
       break;
-    case c4c::backend::prepare::PreparedAddressBaseKind::StringConstant:
+    case prepare::PreparedAddressBaseKind::StringConstant:
       if (!access->address.symbol_name.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingSymbolName);
       }
       memory.base_kind = MemoryBaseKind::StringConstant;
       memory.string_symbol_name = access->address.symbol_name;
       if (const auto text_id =
-              names.texts.find(c4c::backend::prepare::prepared_link_name(
+              names.texts.find(prepare::prepared_link_name(
                   names, *access->address.symbol_name));
           text_id != c4c::kInvalidText) {
         memory.string_name = text_id;
       }
       break;
-    case c4c::backend::prepare::PreparedAddressBaseKind::None:
+    case prepare::PreparedAddressBaseKind::None:
       return memory_operand_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
 
@@ -1080,46 +1084,46 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
   };
 }
 
-std::optional<c4c::backend::aarch64::abi::RegisterView> scalar_register_view(
-    c4c::backend::bir::TypeKind type) {
+std::optional<abi::RegisterView> scalar_register_view(
+    bir::TypeKind type) {
   switch (type) {
-    case c4c::backend::bir::TypeKind::I1:
-    case c4c::backend::bir::TypeKind::I8:
-    case c4c::backend::bir::TypeKind::I16:
-    case c4c::backend::bir::TypeKind::I32:
-      return c4c::backend::aarch64::abi::RegisterView::W;
-    case c4c::backend::bir::TypeKind::I64:
-    case c4c::backend::bir::TypeKind::Ptr:
-      return c4c::backend::aarch64::abi::RegisterView::X;
-    case c4c::backend::bir::TypeKind::Void:
-    case c4c::backend::bir::TypeKind::I128:
-    case c4c::backend::bir::TypeKind::F32:
-    case c4c::backend::bir::TypeKind::F64:
-    case c4c::backend::bir::TypeKind::F128:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return abi::RegisterView::W;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return abi::RegisterView::X;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
       return std::nullopt;
   }
   return std::nullopt;
 }
 
-c4c::backend::prepare::PreparedRegisterClass register_class_from_bank(
-    c4c::backend::prepare::PreparedRegisterBank bank) {
+prepare::PreparedRegisterClass register_class_from_bank(
+    prepare::PreparedRegisterBank bank) {
   switch (bank) {
-    case c4c::backend::prepare::PreparedRegisterBank::Gpr:
-      return c4c::backend::prepare::PreparedRegisterClass::General;
-    case c4c::backend::prepare::PreparedRegisterBank::Fpr:
-      return c4c::backend::prepare::PreparedRegisterClass::Float;
-    case c4c::backend::prepare::PreparedRegisterBank::Vreg:
-      return c4c::backend::prepare::PreparedRegisterClass::Vector;
-    case c4c::backend::prepare::PreparedRegisterBank::AggregateAddress:
-      return c4c::backend::prepare::PreparedRegisterClass::AggregateAddress;
-    case c4c::backend::prepare::PreparedRegisterBank::None:
-      return c4c::backend::prepare::PreparedRegisterClass::None;
+    case prepare::PreparedRegisterBank::Gpr:
+      return prepare::PreparedRegisterClass::General;
+    case prepare::PreparedRegisterBank::Fpr:
+      return prepare::PreparedRegisterClass::Float;
+    case prepare::PreparedRegisterBank::Vreg:
+      return prepare::PreparedRegisterClass::Vector;
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return prepare::PreparedRegisterClass::AggregateAddress;
+    case prepare::PreparedRegisterBank::None:
+      return prepare::PreparedRegisterClass::None;
   }
-  return c4c::backend::prepare::PreparedRegisterClass::None;
+  return prepare::PreparedRegisterClass::None;
 }
 
 std::string_view register_display_name(
-    c4c::backend::aarch64::abi::RegisterReference reg) {
+    abi::RegisterReference reg) {
   static constexpr std::string_view x_names[] = {
       "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
       "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
@@ -1154,26 +1158,26 @@ std::string_view register_display_name(
     return {};
   }
   switch (reg.view) {
-    case c4c::backend::aarch64::abi::RegisterView::X:
+    case abi::RegisterView::X:
       return x_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::W:
+    case abi::RegisterView::W:
       return w_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::V:
+    case abi::RegisterView::V:
       return v_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::S:
+    case abi::RegisterView::S:
       return s_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::D:
+    case abi::RegisterView::D:
       return d_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::Q:
+    case abi::RegisterView::Q:
       return q_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::Sp:
+    case abi::RegisterView::Sp:
       return "sp";
   }
   return {};
 }
 
 std::vector<std::string_view> occupied_register_views(
-    c4c::backend::aarch64::abi::RegisterReference reg) {
+    abi::RegisterReference reg) {
   const auto display_name = register_display_name(reg);
   if (display_name.empty()) {
     return {};
@@ -1181,18 +1185,18 @@ std::vector<std::string_view> occupied_register_views(
   return {display_name};
 }
 
-std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references(
-    c4c::backend::aarch64::abi::RegisterReference reg) {
+std::vector<abi::RegisterReference> occupied_register_references(
+    abi::RegisterReference reg) {
   return {reg};
 }
 
 std::optional<RegisterOperand> make_prepared_register_operand(
-    const c4c::backend::prepare::PreparedValueHome& home,
-    const c4c::backend::prepare::PreparedStoragePlanValue& storage,
-    c4c::backend::bir::TypeKind type,
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedStoragePlanValue& storage,
+    bir::TypeKind type,
     RegisterOperandRole role) {
-  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-      storage.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      storage.encoding != prepare::PreparedStorageEncodingKind::Register) {
     return std::nullopt;
   }
 
@@ -1201,16 +1205,16 @@ std::optional<RegisterOperand> make_prepared_register_operand(
     return std::nullopt;
   }
   const auto prepared_class = register_class_from_bank(storage.bank);
-  c4c::backend::aarch64::abi::PreparedRegisterConversionResult converted;
+  abi::PreparedRegisterConversionResult converted;
   if (storage.register_placement.has_value()) {
-    converted = c4c::backend::aarch64::abi::convert_prepared_register(
+    converted = abi::convert_prepared_register(
         *storage.register_placement, prepared_class, expected_view);
   } else {
     if (!home.register_name.has_value() || !storage.register_name.has_value() ||
         *home.register_name != *storage.register_name) {
       return std::nullopt;
     }
-    converted = c4c::backend::aarch64::abi::convert_prepared_register(
+    converted = abi::convert_prepared_register(
         *storage.register_name, storage.bank, prepared_class, expected_view);
   }
   if (!converted.has_value()) {
@@ -1232,15 +1236,15 @@ std::optional<RegisterOperand> make_prepared_register_operand(
 }
 
 std::optional<ImmediateOperand> make_scalar_immediate_operand(
-    const c4c::backend::bir::Value& value,
-    std::optional<c4c::backend::prepare::PreparedValueId> source_value_id = std::nullopt,
+    const bir::Value& value,
+    std::optional<prepare::PreparedValueId> source_value_id = std::nullopt,
     c4c::ValueNameId source_value_name = c4c::kInvalidValueName) {
-  if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+  if (value.kind != bir::Value::Kind::Immediate) {
     return std::nullopt;
   }
 
   ImmediateKind kind = ImmediateKind::SignedInteger;
-  if (value.type == c4c::backend::bir::TypeKind::I1) {
+  if (value.type == bir::TypeKind::I1) {
     kind = ImmediateKind::Boolean;
   } else if (!scalar_register_view(value.type).has_value()) {
     return std::nullopt;
@@ -1258,12 +1262,12 @@ std::optional<ImmediateOperand> make_scalar_immediate_operand(
 }
 
 PreparedScalarAluRecordError make_prepared_scalar_operand(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::Value& value,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& value,
     OperandRecord& out) {
-  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+  if (value.kind == bir::Value::Kind::Immediate) {
     const auto immediate = make_scalar_immediate_operand(value);
     if (!immediate.has_value()) {
       return PreparedScalarAluRecordError::UnsupportedOperandType;
@@ -1271,7 +1275,7 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
     out = make_immediate_operand(*immediate);
     return PreparedScalarAluRecordError::None;
   }
-  if (value.kind != c4c::backend::bir::Value::Kind::Named || value.name.empty()) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
     return PreparedScalarAluRecordError::UnsupportedOperandValue;
   }
 
@@ -1284,14 +1288,14 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
     return PreparedScalarAluRecordError::MissingOperandStorage;
   }
 
-  if (storage->encoding == c4c::backend::prepare::PreparedStorageEncodingKind::Immediate) {
-    if (home->kind != c4c::backend::prepare::PreparedValueHomeKind::RematerializableImmediate ||
+  if (storage->encoding == prepare::PreparedStorageEncodingKind::Immediate) {
+    if (home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
         !home->immediate_i32.has_value() || !storage->immediate_i32.has_value() ||
         *home->immediate_i32 != *storage->immediate_i32) {
       return PreparedScalarAluRecordError::UnsupportedOperandStorage;
     }
     const auto immediate = make_scalar_immediate_operand(
-        c4c::backend::bir::Value::immediate_i32(static_cast<std::int32_t>(*storage->immediate_i32)),
+        bir::Value::immediate_i32(static_cast<std::int32_t>(*storage->immediate_i32)),
         home->value_id,
         home->value_name);
     if (!immediate.has_value()) {
@@ -1301,8 +1305,8 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
     return PreparedScalarAluRecordError::None;
   }
 
-  if (home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-      storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
+  if (home->kind != prepare::PreparedValueHomeKind::Register ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
       (!storage->register_placement.has_value() &&
        (!home->register_name.has_value() || !storage->register_name.has_value() ||
         *home->register_name != *storage->register_name))) {
@@ -1319,9 +1323,9 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
 }
 
 std::optional<CompareValueRecord> make_compare_value_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::bir::Value& value) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const bir::Value& value) {
   CompareValueRecord record{
       .surface = RecordSurfaceKind::RecordOnly,
       .value_id = std::nullopt,
@@ -1329,7 +1333,7 @@ std::optional<CompareValueRecord> make_compare_value_record(
       .type = value.type,
       .source_value = value,
   };
-  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+  if (value.kind == bir::Value::Kind::Immediate) {
     return record;
   }
 
@@ -1487,7 +1491,7 @@ MachineEffectResource effect_from_operand(const OperandRecord& operand) {
 }
 
 MachineEffectResource prepared_value_def(
-    std::optional<c4c::backend::prepare::PreparedValueId> value_id,
+    std::optional<prepare::PreparedValueId> value_id,
     c4c::ValueNameId value_name) {
   return MachineEffectResource{
       .kind = MachineEffectResourceKind::PreparedValue,
@@ -1505,7 +1509,7 @@ OperandRecord make_condition_value_operand(const BranchConditionRecord& conditio
 }
 
 std::optional<OperandRecord> make_compare_value_operand(const CompareValueRecord& value) {
-  if (value.source_value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+  if (value.source_value.kind == bir::Value::Kind::Immediate) {
     const auto immediate =
         make_scalar_immediate_operand(value.source_value, value.value_id, value.value_name);
     if (immediate.has_value()) {
@@ -1609,7 +1613,7 @@ MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& i
   const auto& condition = *instruction.condition_record;
   if (!condition.condition_value_id.has_value() ||
       condition.condition_value_name == c4c::kInvalidValueName ||
-      condition.condition_type != c4c::backend::bir::TypeKind::I1) {
+      condition.condition_type != bir::TypeKind::I1) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "conditional branch is missing condition value identity"};
@@ -1707,7 +1711,7 @@ MachineNodeStatusRecord memory_selection_status(const MemoryInstructionRecord& i
 MachineNodeStatusRecord spill_reload_selection_status(
     const SpillReloadInstructionRecord& instruction) {
   if (instruction.pseudo_kind == MachinePseudoKind::None ||
-      instruction.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Rematerialize) {
+      instruction.op_kind == prepare::PreparedSpillReloadOpKind::Rematerialize) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
                                    .diagnostic =
                                        "spill/reload op is outside the selected subset"};
@@ -1974,16 +1978,16 @@ InstructionRecord make_unsupported_machine_instruction(InstructionFamily family,
 
 PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
     c4c::FunctionNameId function_name,
-    const c4c::backend::prepare::PreparedControlFlowBlock& block,
-    const c4c::backend::bir::Terminator& terminator) {
+    const prepare::PreparedControlFlowBlock& block,
+    const bir::Terminator& terminator) {
   if (function_name == c4c::kInvalidFunctionName) {
     return branch_record_error(PreparedBranchRecordError::InvalidFunction);
   }
   if (block.block_label == c4c::kInvalidBlockLabel) {
     return branch_record_error(PreparedBranchRecordError::InvalidSourceBlock);
   }
-  if (block.terminator_kind != c4c::backend::bir::TerminatorKind::Branch ||
-      terminator.kind != c4c::backend::bir::TerminatorKind::Branch) {
+  if (block.terminator_kind != bir::TerminatorKind::Branch ||
+      terminator.kind != bir::TerminatorKind::Branch) {
     return branch_record_error(PreparedBranchRecordError::TerminatorKindMismatch);
   }
   if (block.branch_target_label == c4c::kInvalidBlockLabel ||
@@ -2010,11 +2014,11 @@ PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
 }
 
 PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedControlFlowBlock& block,
-    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
-    const c4c::backend::bir::Terminator& terminator) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedControlFlowBlock& block,
+    const prepare::PreparedBranchCondition& branch_condition,
+    const bir::Terminator& terminator) {
   if (branch_condition.function_name == c4c::kInvalidFunctionName ||
       value_locations.function_name != branch_condition.function_name) {
     return branch_record_error(PreparedBranchRecordError::InvalidFunction);
@@ -2023,8 +2027,8 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       branch_condition.block_label != block.block_label) {
     return branch_record_error(PreparedBranchRecordError::InvalidSourceBlock);
   }
-  if (block.terminator_kind != c4c::backend::bir::TerminatorKind::CondBranch ||
-      terminator.kind != c4c::backend::bir::TerminatorKind::CondBranch) {
+  if (block.terminator_kind != bir::TerminatorKind::CondBranch ||
+      terminator.kind != bir::TerminatorKind::CondBranch) {
     return branch_record_error(PreparedBranchRecordError::TerminatorKindMismatch);
   }
   if (block.true_label == c4c::kInvalidBlockLabel ||
@@ -2041,8 +2045,8 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       terminator.false_label_id != branch_condition.false_label) {
     return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
   }
-  if (branch_condition.condition_value.type != c4c::backend::bir::TypeKind::I1 ||
-      terminator.condition.type != c4c::backend::bir::TypeKind::I1) {
+  if (branch_condition.condition_value.type != bir::TypeKind::I1 ||
+      terminator.condition.type != bir::TypeKind::I1) {
     return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
   }
   if (!same_bir_value(branch_condition.condition_value, terminator.condition)) {
@@ -2058,7 +2062,7 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
   BranchConditionRecord condition{
       .surface = RecordSurfaceKind::RecordOnly,
       .form = branch_condition.kind ==
-                      c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare
+                      prepare::PreparedBranchConditionKind::FusedCompare
                   ? BranchConditionForm::FusedCompare
                   : BranchConditionForm::MaterializedBool,
       .condition_value_id = condition_home->value_id,
@@ -2067,7 +2071,7 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       .can_fuse_with_branch = branch_condition.can_fuse_with_branch,
   };
 
-  if (branch_condition.kind == c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare) {
+  if (branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare) {
     if (!branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
         !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value()) {
       return branch_record_error(PreparedBranchRecordError::MissingCompareFacts);
@@ -2108,7 +2112,7 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
   condition.compare_branch_candidate = BranchCompareCandidateRecord{
       .surface = RecordSurfaceKind::RecordOnly,
       .kind =
-          branch_condition.kind == c4c::backend::prepare::PreparedBranchConditionKind::FusedCompare
+          branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare
               ? (branch_condition.can_fuse_with_branch
                      ? BranchCompareCandidateKind::FusedCompareAndBranch
                      : BranchCompareCandidateKind::NonFusableCompare)
@@ -2135,10 +2139,10 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
 }
 
 PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::BinaryInst& binary) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary) {
   if (value_locations.function_name == c4c::kInvalidFunctionName ||
       storage_plan.function_name != value_locations.function_name) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::InvalidFunction);
@@ -2146,7 +2150,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   if (!is_scalar_alu_integer_opcode(binary.opcode)) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
-  if (binary.result.kind != c4c::backend::bir::Value::Kind::Named || binary.result.name.empty()) {
+  if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultValue);
   }
   if (!scalar_register_view(binary.result.type).has_value() ||
@@ -2162,8 +2166,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultStorage);
   }
-  if (result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-      result_storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
       (!result_storage->register_placement.has_value() &&
        (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
         *result_home->register_name != *result_storage->register_name))) {
@@ -2208,10 +2212,10 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
 }
 
 PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::BinaryInst& binary) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary) {
   const auto result = make_prepared_scalar_alu_record(names, value_locations, storage_plan, binary);
   if (!result.record.has_value()) {
     return scalar_instruction_record_error(result.error);
@@ -2223,10 +2227,10 @@ PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_recor
 }
 
 PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::CastInst& cast) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::CastInst& cast) {
   if (value_locations.function_name == c4c::kInvalidFunctionName ||
       storage_plan.function_name != value_locations.function_name) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::InvalidFunction);
@@ -2234,7 +2238,7 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
   if (!is_simple_integer_cast_opcode(cast.opcode)) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOpcode);
   }
-  if (cast.result.kind != c4c::backend::bir::Value::Kind::Named || cast.result.name.empty()) {
+  if (cast.result.kind != bir::Value::Kind::Named || cast.result.name.empty()) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultValue);
   }
   if (!scalar_register_view(cast.result.type).has_value() ||
@@ -2250,8 +2254,8 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
   if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::MissingResultStorage);
   }
-  if (result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-      result_storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
       (!result_storage->register_placement.has_value() &&
        (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
         *result_home->register_name != *result_storage->register_name))) {
@@ -2283,10 +2287,10 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
 }
 
 PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::CastInst& cast) {
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::CastInst& cast) {
   const auto result = make_prepared_scalar_cast_record(names, value_locations, storage_plan, cast);
   if (!result.record.has_value()) {
     return scalar_cast_instruction_record_error(result.error);
@@ -2298,12 +2302,12 @@ PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::LoadLocalInst& load) {
+    const bir::LoadLocalInst& load) {
   auto result = make_memory_record_from_prepared_access(
       names, value_locations, addressing, block_label, instruction_index);
   if (!result.record.has_value()) {
@@ -2329,7 +2333,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (const auto error = apply_load_identity(
           names,
           value_locations,
-          *c4c::backend::prepare::find_prepared_memory_access(
+          *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
           load.result,
           *result.record);
@@ -2340,12 +2344,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::StoreLocalInst& store) {
+    const bir::StoreLocalInst& store) {
   auto result = make_memory_record_from_prepared_access(
       names, value_locations, addressing, block_label, instruction_index);
   if (!result.record.has_value()) {
@@ -2371,7 +2375,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (const auto error = apply_store_identity(
           names,
           value_locations,
-          *c4c::backend::prepare::find_prepared_memory_access(
+          *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
           store.value,
           *result.record);
@@ -2382,12 +2386,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::LoadGlobalInst& load) {
+    const bir::LoadGlobalInst& load) {
   auto result = make_memory_record_from_prepared_access(
       names, value_locations, addressing, block_label, instruction_index);
   if (!result.record.has_value()) {
@@ -2413,7 +2417,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (const auto error = apply_load_identity(
           names,
           value_locations,
-          *c4c::backend::prepare::find_prepared_memory_access(
+          *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
           load.result,
           *result.record);
@@ -2424,12 +2428,12 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::StoreGlobalInst& store) {
+    const bir::StoreGlobalInst& store) {
   auto result = make_memory_record_from_prepared_access(
       names, value_locations, addressing, block_label, instruction_index);
   if (!result.record.has_value()) {
@@ -2455,7 +2459,7 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
   if (const auto error = apply_store_identity(
           names,
           value_locations,
-          *c4c::backend::prepare::find_prepared_memory_access(
+          *prepare::find_prepared_memory_access(
               addressing, block_label, instruction_index),
           store.value,
           *result.record);

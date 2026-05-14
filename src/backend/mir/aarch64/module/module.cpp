@@ -9,27 +9,33 @@
 #include <variant>
 
 namespace c4c::backend::aarch64::module {
+
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+namespace codegen = c4c::backend::aarch64::codegen;
+
 namespace {
 
 [[nodiscard]] std::optional<c4c::BlockLabelId> prepared_label_for_bir_block(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::bir::NameTables& bir_names,
-    const c4c::backend::bir::Block& block) {
+    const prepare::PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const bir::Block& block) {
   if (block.label_id != c4c::kInvalidBlockLabel) {
     const std::string_view structured_label = bir_names.block_labels.spelling(block.label_id);
     if (!structured_label.empty()) {
       const auto prepared_label =
-          c4c::backend::prepare::resolve_prepared_block_label_id(names, structured_label);
+          prepare::resolve_prepared_block_label_id(names, structured_label);
       if (prepared_label.has_value()) {
         return prepared_label;
       }
     }
   }
-  return c4c::backend::prepare::resolve_prepared_block_label_id(names, block.label);
+  return prepare::resolve_prepared_block_label_id(names, block.label);
 }
 
-[[nodiscard]] const c4c::backend::bir::Function* find_source_function(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
+[[nodiscard]] const bir::Function* find_source_function(
+    const prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
   if (function_name == c4c::kInvalidFunctionName) {
     return nullptr;
@@ -39,11 +45,11 @@ namespace {
     if (function.link_name_id != c4c::kInvalidLinkName) {
       const std::string_view structured_name =
           prepared.module.names.link_names.spelling(function.link_name_id);
-      candidate = c4c::backend::prepare::resolve_prepared_function_name_id(prepared.names,
+      candidate = prepare::resolve_prepared_function_name_id(prepared.names,
                                                                            structured_name);
     } else {
       candidate =
-          c4c::backend::prepare::resolve_prepared_function_name_id(prepared.names, function.name);
+          prepare::resolve_prepared_function_name_id(prepared.names, function.name);
     }
     if (candidate.has_value() && *candidate == function_name) {
       return &function;
@@ -52,9 +58,9 @@ namespace {
   return nullptr;
 }
 
-[[nodiscard]] const c4c::backend::bir::Block* find_source_block(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Function* function,
+[[nodiscard]] const bir::Block* find_source_block(
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* function,
     c4c::BlockLabelId block_label) {
   if (function == nullptr || block_label == c4c::kInvalidBlockLabel) {
     return nullptr;
@@ -69,10 +75,10 @@ namespace {
   return nullptr;
 }
 
-[[nodiscard]] c4c::backend::prepare::PreparedRegisterClass register_class_from_bank(
-    c4c::backend::prepare::PreparedRegisterBank bank) {
-  using c4c::backend::prepare::PreparedRegisterBank;
-  using c4c::backend::prepare::PreparedRegisterClass;
+[[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
+    prepare::PreparedRegisterBank bank) {
+  using prepare::PreparedRegisterBank;
+  using prepare::PreparedRegisterClass;
   switch (bank) {
     case PreparedRegisterBank::Gpr:
       return PreparedRegisterClass::General;
@@ -98,12 +104,12 @@ namespace {
   return views;
 }
 
-[[nodiscard]] std::vector<c4c::backend::aarch64::abi::RegisterReference>
+[[nodiscard]] std::vector<abi::RegisterReference>
 register_references_from_names(const std::vector<std::string>& names) {
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> references;
+  std::vector<abi::RegisterReference> references;
   references.reserve(names.size());
   for (const auto& name : names) {
-    const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(name);
+    const auto parsed = abi::parse_aarch64_register_name(name);
     if (parsed.has_value()) {
       references.push_back(*parsed);
     }
@@ -112,7 +118,7 @@ register_references_from_names(const std::vector<std::string>& names) {
 }
 
 [[nodiscard]] std::string_view stable_register_name(
-    c4c::backend::aarch64::abi::RegisterReference reg) {
+    abi::RegisterReference reg) {
   static constexpr std::string_view gp_x_names[] = {
       "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
       "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
@@ -149,34 +155,34 @@ register_references_from_names(const std::vector<std::string>& names) {
       "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
       "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31",
   };
-  if (c4c::backend::aarch64::abi::is_stack_pointer(reg)) {
+  if (abi::is_stack_pointer(reg)) {
     return "sp";
   }
   if (reg.index > 31) {
     return "<invalid-aarch64-register>";
   }
   switch (reg.view) {
-    case c4c::backend::aarch64::abi::RegisterView::X:
+    case abi::RegisterView::X:
       return gp_x_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::W:
+    case abi::RegisterView::W:
       return gp_w_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::S:
+    case abi::RegisterView::S:
       return fp_s_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::D:
+    case abi::RegisterView::D:
       return fp_d_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::Q:
+    case abi::RegisterView::Q:
       return fp_q_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::V:
+    case abi::RegisterView::V:
       return fp_v_names[reg.index];
-    case c4c::backend::aarch64::abi::RegisterView::Sp:
+    case abi::RegisterView::Sp:
       return "sp";
   }
   return "<invalid-aarch64-register>";
 }
 
-[[nodiscard]] std::vector<c4c::backend::aarch64::abi::RegisterReference>
+[[nodiscard]] std::vector<abi::RegisterReference>
 occupied_register_references_for(
-    const c4c::backend::aarch64::abi::PreparedRegisterConversionResult& converted,
+    const abi::PreparedRegisterConversionResult& converted,
     const std::vector<std::string>& fallback_names) {
   if (converted.reg.has_value()) {
     return {*converted.reg};
@@ -185,7 +191,7 @@ occupied_register_references_for(
 }
 
 [[nodiscard]] std::vector<std::string_view> register_name_views(
-    const std::vector<c4c::backend::aarch64::abi::RegisterReference>& references,
+    const std::vector<abi::RegisterReference>& references,
     const std::vector<std::string>& fallback_names) {
   if (references.empty()) {
     return register_name_views(fallback_names);
@@ -198,26 +204,26 @@ occupied_register_references_for(
   return views;
 }
 
-[[nodiscard]] c4c::backend::aarch64::abi::PreparedRegisterConversionResult
+[[nodiscard]] abi::PreparedRegisterConversionResult
 convert_prepared_register_reference(
-    const std::optional<c4c::backend::prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
     const std::optional<std::string>& legacy_register_name,
-    c4c::backend::prepare::PreparedRegisterBank bank,
-    c4c::backend::prepare::PreparedRegisterClass reg_class,
-    std::optional<c4c::backend::aarch64::abi::RegisterView> expected_view = std::nullopt) {
+    prepare::PreparedRegisterBank bank,
+    prepare::PreparedRegisterClass reg_class,
+    std::optional<abi::RegisterView> expected_view = std::nullopt) {
   if (placement.has_value()) {
-    return c4c::backend::aarch64::abi::convert_prepared_register(*placement,
+    return abi::convert_prepared_register(*placement,
                                                                  reg_class,
                                                                  expected_view);
   }
   if (legacy_register_name.has_value()) {
-    auto converted = c4c::backend::aarch64::abi::convert_prepared_register(*legacy_register_name,
+    auto converted = abi::convert_prepared_register(*legacy_register_name,
                                                                            bank,
                                                                            reg_class,
                                                                            expected_view);
     if (!converted.has_value()) {
       if (auto parsed =
-              c4c::backend::aarch64::abi::parse_aarch64_register_name(*legacy_register_name);
+              abi::parse_aarch64_register_name(*legacy_register_name);
           parsed.has_value()) {
         if (expected_view.has_value()) {
           parsed->view = *expected_view;
@@ -231,17 +237,17 @@ convert_prepared_register_reference(
 }
 
 [[nodiscard]] std::string_view resolved_prepared_register_name(
-    const std::optional<c4c::backend::prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
     const std::optional<std::string>& legacy_register_name) {
   const auto converted =
       convert_prepared_register_reference(placement,
                                           legacy_register_name,
                                           placement.has_value() ? placement->bank
-                                                               : c4c::backend::prepare::
+                                                               : prepare::
                                                                      PreparedRegisterBank::None,
                                           placement.has_value()
                                               ? register_class_from_bank(placement->bank)
-                                              : c4c::backend::prepare::
+                                              : prepare::
                                                     PreparedRegisterClass::None);
   if (converted.reg.has_value()) {
     return stable_register_name(*converted.reg);
@@ -250,8 +256,8 @@ convert_prepared_register_reference(
                                           : std::string_view{};
 }
 
-[[nodiscard]] const c4c::backend::prepare::PreparedRegallocFunction*
-find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& regalloc,
+[[nodiscard]] const prepare::PreparedRegallocFunction*
+find_prepared_regalloc_function(const prepare::PreparedRegalloc& regalloc,
                                 c4c::FunctionNameId function_name) {
   for (const auto& function : regalloc.functions) {
     if (function.function_name == function_name) {
@@ -261,15 +267,15 @@ find_prepared_regalloc_function(const c4c::backend::prepare::PreparedRegalloc& r
   return nullptr;
 }
 
-[[nodiscard]] std::optional<c4c::backend::prepare::PreparedFrameSlotId>
-find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepared,
+[[nodiscard]] std::optional<prepare::PreparedFrameSlotId>
+find_destination_slot_id(const prepare::PreparedBirModule& prepared,
                          c4c::FunctionNameId function_name,
-                         c4c::backend::prepare::PreparedValueId value_id) {
+                         prepare::PreparedValueId value_id) {
   if (value_id == 0) {
     return std::nullopt;
   }
   if (const auto* locations =
-          c4c::backend::prepare::find_prepared_value_location_function(prepared, function_name);
+          prepare::find_prepared_value_location_function(prepared, function_name);
       locations != nullptr) {
     for (const auto& home : locations->value_homes) {
       if (home.value_id == value_id && home.slot_id.has_value()) {
@@ -286,7 +292,7 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
     }
   }
   if (const auto* storage =
-          c4c::backend::prepare::find_prepared_storage_plan(prepared, function_name);
+          prepare::find_prepared_storage_plan(prepared, function_name);
       storage != nullptr) {
     for (const auto& value : storage->values) {
       if (value.value_id == value_id && value.slot_id.has_value()) {
@@ -297,9 +303,9 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
   return std::nullopt;
 }
 
-[[nodiscard]] const c4c::backend::prepare::PreparedStackObject* find_stack_object(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    c4c::backend::prepare::PreparedObjectId object_id) {
+[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id) {
   for (const auto& object : stack_layout.objects) {
     if (object.object_id == object_id) {
       return &object;
@@ -308,9 +314,9 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
   return nullptr;
 }
 
-[[nodiscard]] const c4c::backend::prepare::PreparedFrameSlot* find_frame_slot_by_id(
-    const c4c::backend::prepare::PreparedStackLayout& stack_layout,
-    c4c::backend::prepare::PreparedFrameSlotId slot_id) {
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
   for (const auto& slot : stack_layout.frame_slots) {
     if (slot.slot_id == slot_id) {
       return &slot;
@@ -335,8 +341,8 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
 }
 
 [[nodiscard]] constexpr SpillReloadPseudoKind spill_reload_pseudo_kind(
-    c4c::backend::prepare::PreparedSpillReloadOpKind op_kind) {
-  using c4c::backend::prepare::PreparedSpillReloadOpKind;
+    prepare::PreparedSpillReloadOpKind op_kind) {
+  using prepare::PreparedSpillReloadOpKind;
   switch (op_kind) {
     case PreparedSpillReloadOpKind::Spill:
       return SpillReloadPseudoKind::StoreFromRegisterToSlot;
@@ -348,9 +354,9 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
   return SpillReloadPseudoKind::StoreFromRegisterToSlot;
 }
 
-[[nodiscard]] const c4c::backend::prepare::PreparedRegallocValue* find_regalloc_value(
-    const c4c::backend::prepare::PreparedRegallocFunction& regalloc,
-    c4c::backend::prepare::PreparedValueId value_id) {
+[[nodiscard]] const prepare::PreparedRegallocValue* find_regalloc_value(
+    const prepare::PreparedRegallocFunction& regalloc,
+    prepare::PreparedValueId value_id) {
   for (const auto& value : regalloc.values) {
     if (value.value_id == value_id) {
       return &value;
@@ -359,8 +365,8 @@ find_destination_slot_id(const c4c::backend::prepare::PreparedBirModule& prepare
   return nullptr;
 }
 
-void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& prepared,
-                                c4c::backend::prepare::PreparedFrameSlotId slot_id,
+void attach_spill_slot_metadata(const prepare::PreparedBirModule& prepared,
+                                prepare::PreparedFrameSlotId slot_id,
                                 OperandRecord& operand) {
   operand.spill_slot_id = slot_id;
   if (const auto* slot = find_frame_slot_by_id(prepared.stack_layout, slot_id);
@@ -372,7 +378,7 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
 }
 
 [[nodiscard]] OperandRecord& ensure_operand(std::vector<OperandRecord>& operands,
-                                            c4c::backend::prepare::PreparedValueId value_id,
+                                            prepare::PreparedValueId value_id,
                                             c4c::FunctionNameId function_name) {
   const auto found = std::find_if(operands.begin(),
                                   operands.end(),
@@ -390,17 +396,17 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
     std::vector<TargetRegisterRecord>& registers,
     TargetRegisterReferenceKind reference_kind,
     AllocationSnapshotKind allocation_snapshot,
-    c4c::backend::prepare::PreparedValueId value_id,
+    prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
-    c4c::backend::prepare::PreparedRegisterClass reg_class,
-    c4c::backend::prepare::PreparedRegisterBank reg_bank,
+    prepare::PreparedRegisterClass reg_class,
+    prepare::PreparedRegisterBank reg_bank,
     std::string_view physical_register,
     std::size_t contiguous_width,
     std::vector<std::string_view> occupied_registers) {
-  const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(physical_register);
+  const auto parsed = abi::parse_aarch64_register_name(physical_register);
   const auto resolved_register = parsed.has_value() ? stable_register_name(*parsed)
                                                     : physical_register;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   if (parsed.has_value()) {
     occupied_register_references.push_back(*parsed);
     occupied_registers = register_name_views(occupied_register_references, {});
@@ -418,7 +424,7 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                                            .allocation_pool =
                                                parsed.has_value()
                                                    ? std::optional{
-                                                         c4c::backend::aarch64::abi::
+                                                         abi::
                                                              allocation_register_pool(*parsed)}
                                                    : std::nullopt,
                                            .physical_register = resolved_register,
@@ -428,11 +434,11 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                                            .occupied_registers = std::move(occupied_registers),
                                            .is_reserved_mir_scratch =
                                                parsed.has_value() &&
-                                               c4c::backend::aarch64::abi::
+                                               abi::
                                                    is_reserved_mir_scratch(*parsed),
                                            .may_be_long_lived_home =
                                                parsed.has_value() &&
-                                               c4c::backend::aarch64::abi::
+                                               abi::
                                                    is_long_lived_allocatable_candidate(*parsed)});
   return registers.size() - 1U;
 }
@@ -441,17 +447,17 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
     std::vector<TargetRegisterRecord>& registers,
     TargetRegisterReferenceKind reference_kind,
     AllocationSnapshotKind allocation_snapshot,
-    c4c::backend::prepare::PreparedValueId value_id,
+    prepare::PreparedValueId value_id,
     c4c::ValueNameId value_name,
-    c4c::backend::prepare::PreparedRegisterClass reg_class,
-    c4c::backend::prepare::PreparedRegisterBank reg_bank,
-    const c4c::backend::aarch64::abi::PreparedRegisterConversionResult& converted,
+    prepare::PreparedRegisterClass reg_class,
+    prepare::PreparedRegisterBank reg_bank,
+    const abi::PreparedRegisterConversionResult& converted,
     std::string_view fallback_register_name,
     std::size_t contiguous_width,
     std::vector<std::string_view> occupied_registers) {
   const auto resolved_register =
       converted.reg.has_value() ? stable_register_name(*converted.reg) : fallback_register_name;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   if (converted.reg.has_value()) {
     occupied_register_references.push_back(*converted.reg);
     occupied_registers = register_name_views(occupied_register_references, {});
@@ -466,7 +472,7 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
       .register_bank = reg_bank,
       .register_reference = converted.reg,
       .allocation_pool = converted.reg.has_value()
-                             ? std::optional{c4c::backend::aarch64::abi::
+                             ? std::optional{abi::
                                                  allocation_register_pool(*converted.reg)}
                              : std::nullopt,
       .physical_register = resolved_register,
@@ -474,22 +480,22 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
       .occupied_register_references = std::move(occupied_register_references),
       .occupied_registers = std::move(occupied_registers),
       .is_reserved_mir_scratch = converted.reg.has_value() &&
-                                 c4c::backend::aarch64::abi::is_reserved_mir_scratch(
+                                 abi::is_reserved_mir_scratch(
                                      *converted.reg),
       .may_be_long_lived_home = converted.reg.has_value() &&
-                                c4c::backend::aarch64::abi::
+                                abi::
                                     is_long_lived_allocatable_candidate(*converted.reg)});
   return registers.size() - 1U;
 }
 
 void merge_value_home_operand(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedValueHome& home,
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedValueHome& home,
     std::vector<OperandRecord>& operands,
     std::vector<TargetRegisterRecord>& registers) {
   auto& operand = ensure_operand(operands, home.value_id, home.function_name);
   operand.value_name = home.value_name;
-  operand.label = c4c::backend::prepare::prepared_value_name(prepared.names, home.value_name);
+  operand.label = prepare::prepared_value_name(prepared.names, home.value_name);
   operand.home_kind = home.kind;
   operand.frame_slot_id = home.slot_id;
   operand.allocation_authority = AllocationAuthorityKind::ValueHome;
@@ -501,7 +507,7 @@ void merge_value_home_operand(
   operand.pointer_base_value_name = home.pointer_base_value_name;
   if (home.pointer_base_value_name.has_value()) {
     operand.pointer_base_label =
-        c4c::backend::prepare::prepared_value_name(prepared.names, *home.pointer_base_value_name);
+        prepare::prepared_value_name(prepared.names, *home.pointer_base_value_name);
   }
   operand.pointer_byte_delta = home.pointer_byte_delta;
   operand.source_value_home = &home;
@@ -512,9 +518,9 @@ void merge_value_home_operand(
                                                          AllocationSnapshotKind::PreparedSnapshot,
                                                          home.value_id,
                                                          home.value_name,
-                                                         c4c::backend::prepare::
+                                                         prepare::
                                                              PreparedRegisterClass::None,
-                                                         c4c::backend::prepare::
+                                                         prepare::
                                                              PreparedRegisterBank::None,
                                                          *home.register_name,
                                                          1,
@@ -522,19 +528,19 @@ void merge_value_home_operand(
   } else if (home.slot_id.has_value()) {
     operand.allocation_location = AllocationLocationKind::SpillSlot;
     attach_spill_slot_metadata(prepared, *home.slot_id, operand);
-  } else if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::None) {
+  } else if (home.kind != prepare::PreparedValueHomeKind::None) {
     operand.allocation_location = AllocationLocationKind::NonRegister;
   }
 }
 
 void merge_regalloc_operand(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedRegallocValue& value,
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedRegallocValue& value,
     std::vector<OperandRecord>& operands,
     std::vector<TargetRegisterRecord>& registers) {
   auto& operand = ensure_operand(operands, value.value_id, value.function_name);
   operand.value_name = value.value_name;
-  operand.label = c4c::backend::prepare::prepared_value_name(prepared.names, value.value_name);
+  operand.label = prepare::prepared_value_name(prepared.names, value.value_name);
   operand.type = value.type;
   operand.value_kind = value.value_kind;
   operand.stack_object_id = value.stack_object_id;
@@ -554,7 +560,7 @@ void merge_regalloc_operand(
     operand.allocation_location = AllocationLocationKind::PhysicalRegister;
     operand.allocation_authority = AllocationAuthorityKind::RegallocAssignment;
     const auto converted =
-        c4c::backend::aarch64::abi::convert_prepared_register(*value.assigned_register,
+        abi::convert_prepared_register(*value.assigned_register,
                                                               std::nullopt);
     operand.assigned_register =
         append_register_record(registers,
@@ -563,7 +569,7 @@ void merge_regalloc_operand(
                                value.value_id,
                                value.value_name,
                                value.assigned_register->reg_class,
-                               c4c::backend::prepare::PreparedRegisterBank::None,
+                               prepare::PreparedRegisterBank::None,
                                converted,
                                value.assigned_register->register_name,
                                value.assigned_register->contiguous_width,
@@ -575,7 +581,7 @@ void merge_regalloc_operand(
       operand.allocation_authority = AllocationAuthorityKind::SpillAuthority;
     }
     const auto converted =
-        c4c::backend::aarch64::abi::convert_prepared_register(*value.spill_register_authority,
+        abi::convert_prepared_register(*value.spill_register_authority,
                                                               std::nullopt);
     operand.spill_register_authority =
         append_register_record(registers,
@@ -584,7 +590,7 @@ void merge_regalloc_operand(
                                value.value_id,
                                value.value_name,
                                value.spill_register_authority->reg_class,
-                               c4c::backend::prepare::PreparedRegisterBank::None,
+                               prepare::PreparedRegisterBank::None,
                                converted,
                                value.spill_register_authority->register_name,
                                value.spill_register_authority->contiguous_width,
@@ -592,21 +598,21 @@ void merge_regalloc_operand(
                                    value.spill_register_authority->occupied_register_names));
   }
   if (!value.assigned_register.has_value() && !value.assigned_stack_slot.has_value() &&
-      value.allocation_status == c4c::backend::prepare::PreparedAllocationStatus::Unallocated) {
+      value.allocation_status == prepare::PreparedAllocationStatus::Unallocated) {
     operand.allocation_location = AllocationLocationKind::FutureVirtualRegister;
     operand.allocation_authority = AllocationAuthorityKind::DeferredPlaceholder;
   }
 }
 
 void merge_storage_operand(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedStoragePlanValue& value,
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedStoragePlanValue& value,
     c4c::FunctionNameId function_name,
     std::vector<OperandRecord>& operands,
     std::vector<TargetRegisterRecord>& registers) {
   auto& operand = ensure_operand(operands, value.value_id, function_name);
   operand.value_name = value.value_name;
-  operand.label = c4c::backend::prepare::prepared_value_name(prepared.names, value.value_name);
+  operand.label = prepare::prepared_value_name(prepared.names, value.value_name);
   operand.storage_encoding = value.encoding;
   operand.storage_bank = value.bank;
   operand.frame_slot_id = value.slot_id;
@@ -626,9 +632,9 @@ void merge_storage_operand(
     operand.allocation_location = AllocationLocationKind::PhysicalRegister;
     const auto converted =
         value.register_placement.has_value()
-            ? c4c::backend::aarch64::abi::convert_prepared_register(
+            ? abi::convert_prepared_register(
                   *value.register_placement, register_class_from_bank(value.bank), std::nullopt)
-            : c4c::backend::aarch64::abi::convert_prepared_register(*value.register_name,
+            : abi::convert_prepared_register(*value.register_name,
                                                                     value.bank,
                                                                     register_class_from_bank(
                                                                         value.bank),
@@ -649,18 +655,18 @@ void merge_storage_operand(
   } else if (value.slot_id.has_value()) {
     operand.allocation_location = AllocationLocationKind::SpillSlot;
     attach_spill_slot_metadata(prepared, *value.slot_id, operand);
-  } else if (value.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::None) {
+  } else if (value.encoding != prepare::PreparedStorageEncodingKind::None) {
     operand.allocation_location = AllocationLocationKind::NonRegister;
   }
 }
 
 [[nodiscard]] std::vector<OperandRecord> build_operands(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name,
     std::vector<TargetRegisterRecord>& registers) {
   std::vector<OperandRecord> operands;
   if (const auto* locations =
-          c4c::backend::prepare::find_prepared_value_location_function(prepared, function_name);
+          prepare::find_prepared_value_location_function(prepared, function_name);
       locations != nullptr) {
     operands.reserve(locations->value_homes.size());
     for (const auto& home : locations->value_homes) {
@@ -674,7 +680,7 @@ void merge_storage_operand(
       merge_regalloc_operand(prepared, value, operands, registers);
     }
   }
-  if (const auto* storage = c4c::backend::prepare::find_prepared_storage_plan(prepared,
+  if (const auto* storage = prepare::find_prepared_storage_plan(prepared,
                                                                               function_name);
       storage != nullptr) {
     operands.reserve(std::max(operands.size(), storage->values.size()));
@@ -686,8 +692,8 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] CalleeSaveRecord build_callee_save_record(
-    const c4c::backend::prepare::PreparedSavedRegister& saved) {
-  const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
+    const prepare::PreparedSavedRegister& saved) {
+  const auto converted = abi::convert_prepared_register(
       saved,
       register_class_from_bank(saved.bank),
       std::nullopt);
@@ -708,7 +714,7 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] CalleeSaveRecord build_clobbered_register_record(
-    const c4c::backend::prepare::PreparedClobberedRegister& clobbered) {
+    const prepare::PreparedClobberedRegister& clobbered) {
   const auto converted =
       convert_prepared_register_reference(clobbered.placement,
                                           std::optional<std::string>{clobbered.register_name},
@@ -729,8 +735,8 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] FrameSlotRecord build_frame_slot_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedFrameSlot& slot) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedFrameSlot& slot) {
   const auto* object = find_stack_object(prepared.stack_layout, slot.object_id);
   FrameSlotRecord record{
       .slot_id = slot.slot_id,
@@ -745,10 +751,10 @@ void merge_storage_operand(
   };
   if (object != nullptr) {
     record.slot_name = object->slot_name;
-    record.slot_label = c4c::backend::prepare::prepared_stack_object_slot_name(prepared.names,
+    record.slot_label = prepare::prepared_stack_object_slot_name(prepared.names,
                                                                                 *object);
     record.value_name = object->value_name;
-    record.value_label = c4c::backend::prepare::prepared_stack_object_value_name(prepared.names,
+    record.value_label = prepare::prepared_stack_object_value_name(prepared.names,
                                                                                   *object);
     record.type = object->type;
     record.address_exposed = object->address_exposed;
@@ -759,11 +765,11 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] DynamicStackRecord build_dynamic_stack_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedDynamicStackOp& op) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedDynamicStackOp& op) {
   DynamicStackRecord record{
       .block_label = op.block_label,
-      .block_label_text = c4c::backend::prepare::prepared_block_label(prepared.names,
+      .block_label_text = prepare::prepared_block_label(prepared.names,
                                                                        op.block_label),
       .instruction_index = op.instruction_index,
       .kind = op.kind,
@@ -776,21 +782,21 @@ void merge_storage_operand(
   };
   if (op.result_value_name.has_value()) {
     record.result_label =
-        c4c::backend::prepare::prepared_value_name(prepared.names, *op.result_value_name);
+        prepare::prepared_value_name(prepared.names, *op.result_value_name);
   }
   if (op.operand_value_name.has_value()) {
     record.operand_label =
-        c4c::backend::prepare::prepared_value_name(prepared.names, *op.operand_value_name);
+        prepare::prepared_value_name(prepared.names, *op.operand_value_name);
   }
   return record;
 }
 
 [[nodiscard]] FrameRecord build_frame_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
-  const auto* frame_plan = c4c::backend::prepare::find_prepared_frame_plan(prepared,
+  const auto* frame_plan = prepare::find_prepared_frame_plan(prepared,
                                                                            function_name);
-  const auto* dynamic_stack = c4c::backend::prepare::find_prepared_dynamic_stack_plan(
+  const auto* dynamic_stack = prepare::find_prepared_dynamic_stack_plan(
       prepared, function_name);
   FrameRecord record{
       .source_frame_plan = frame_plan,
@@ -826,14 +832,14 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] std::vector<BranchRecord> build_branch_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function) {
   std::vector<BranchRecord> branches;
   branches.reserve(function.branch_conditions.size());
   for (const auto& condition : function.branch_conditions) {
     branches.push_back(BranchRecord{
         .block_label = condition.block_label,
-        .block_label_text = c4c::backend::prepare::prepared_block_label(prepared.names,
+        .block_label_text = prepare::prepared_block_label(prepared.names,
                                                                          condition.block_label),
         .condition_kind = condition.kind,
         .condition_value = condition.condition_value,
@@ -851,13 +857,13 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] CallArgumentRecord build_call_argument_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedCallArgumentPlan& argument) {
   const auto destination_bank =
       argument.destination_register_bank.value_or(
           argument.destination_register_placement.has_value()
               ? argument.destination_register_placement->bank
-              : c4c::backend::prepare::PreparedRegisterBank::None);
+              : prepare::PreparedRegisterBank::None);
   const auto destination_register =
       convert_prepared_register_reference(argument.destination_register_placement,
                                           argument.destination_register_name,
@@ -903,19 +909,19 @@ void merge_storage_operand(
   }
   if (argument.source_base_value_name.has_value()) {
     record.source_base_label =
-        c4c::backend::prepare::prepared_value_name(prepared.names,
+        prepare::prepared_value_name(prepared.names,
                                                    *argument.source_base_value_name);
   }
   return record;
 }
 
 [[nodiscard]] CallResultRecord build_call_result_record(
-    const c4c::backend::prepare::PreparedCallResultPlan& result) {
+    const prepare::PreparedCallResultPlan& result) {
   const auto source_bank =
       result.source_register_bank.value_or(
           result.source_register_placement.has_value()
               ? result.source_register_placement->bank
-              : c4c::backend::prepare::PreparedRegisterBank::None);
+              : prepare::PreparedRegisterBank::None);
   const auto source_register =
       convert_prepared_register_reference(result.source_register_placement,
                                           result.source_register_name,
@@ -927,7 +933,7 @@ void merge_storage_operand(
       result.destination_register_bank.value_or(
           result.destination_register_placement.has_value()
               ? result.destination_register_placement->bank
-              : c4c::backend::prepare::PreparedRegisterBank::None);
+              : prepare::PreparedRegisterBank::None);
   const auto destination_register =
       convert_prepared_register_reference(result.destination_register_placement,
                                           result.destination_register_name,
@@ -975,12 +981,12 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] CallPreservedValueRecord build_call_preserved_value_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedCallPreservedValue& preserved) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedCallPreservedValue& preserved) {
   const auto register_bank =
       preserved.register_bank.value_or(preserved.register_placement.has_value()
                                            ? preserved.register_placement->bank
-                                           : c4c::backend::prepare::PreparedRegisterBank::None);
+                                           : prepare::PreparedRegisterBank::None);
   const auto converted =
       convert_prepared_register_reference(preserved.register_placement,
                                           preserved.register_name,
@@ -991,7 +997,7 @@ void merge_storage_operand(
   return CallPreservedValueRecord{
       .value_id = preserved.value_id,
       .value_name = preserved.value_name,
-      .value_label = c4c::backend::prepare::prepared_value_name(prepared.names,
+      .value_label = prepare::prepared_value_name(prepared.names,
                                                                 preserved.value_name),
       .route = preserved.route,
       .callee_saved_save_index = preserved.callee_saved_save_index,
@@ -1013,10 +1019,10 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] std::vector<CallRecord> build_call_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const prepare::PreparedBirModule& prepared,
     c4c::FunctionNameId function_name) {
   std::vector<CallRecord> calls;
-  const auto* call_plans = c4c::backend::prepare::find_prepared_call_plans(prepared,
+  const auto* call_plans = prepare::find_prepared_call_plans(prepared,
                                                                            function_name);
   if (call_plans == nullptr) {
     return calls;
@@ -1062,12 +1068,12 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] MoveRecord build_move_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedMoveBundle& bundle,
-    const c4c::backend::prepare::PreparedMoveResolution& move) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move) {
   const auto destination_bank = move.destination_register_placement.has_value()
                                     ? move.destination_register_placement->bank
-                                    : c4c::backend::prepare::PreparedRegisterBank::None;
+                                    : prepare::PreparedRegisterBank::None;
   const auto destination_register =
       convert_prepared_register_reference(move.destination_register_placement,
                                           move.destination_register_name,
@@ -1115,11 +1121,11 @@ void merge_storage_operand(
 }
 
 [[nodiscard]] AbiBindingRecord build_abi_binding_record(
-    const c4c::backend::prepare::PreparedMoveBundle& bundle,
-    const c4c::backend::prepare::PreparedAbiBinding& binding) {
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedAbiBinding& binding) {
   const auto destination_bank = binding.destination_register_placement.has_value()
                                     ? binding.destination_register_placement->bank
-                                    : c4c::backend::prepare::PreparedRegisterBank::None;
+                                    : prepare::PreparedRegisterBank::None;
   const auto destination_register =
       convert_prepared_register_reference(binding.destination_register_placement,
                                           binding.destination_register_name,
@@ -1155,8 +1161,8 @@ void merge_storage_operand(
   };
 }
 
-void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule& prepared,
-                                 const c4c::backend::prepare::PreparedValueLocationFunction* locations,
+void append_value_location_moves(const prepare::PreparedBirModule& prepared,
+                                 const prepare::PreparedValueLocationFunction* locations,
                                  std::vector<MoveRecord>& moves,
                                  std::vector<AbiBindingRecord>& abi_bindings) {
   if (locations == nullptr) {
@@ -1173,7 +1179,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
 }
 
 [[nodiscard]] std::vector<SpillReloadRecord> build_spill_reload_records(
-    const c4c::backend::prepare::PreparedRegallocFunction* regalloc,
+    const prepare::PreparedRegallocFunction* regalloc,
     std::vector<TargetRegisterRecord>& registers) {
   std::vector<SpillReloadRecord> records;
   if (regalloc == nullptr) {
@@ -1183,18 +1189,18 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   for (const auto& op : regalloc->spill_reload_ops) {
     const auto* value = find_regalloc_value(*regalloc, op.value_id);
     const auto register_class = register_class_from_bank(op.register_bank);
-    c4c::backend::aarch64::abi::PreparedRegisterConversionResult converted;
+    abi::PreparedRegisterConversionResult converted;
     if (op.register_placement.has_value()) {
-      converted = c4c::backend::aarch64::abi::convert_prepared_register(
+      converted = abi::convert_prepared_register(
           *op.register_placement, register_class, std::nullopt);
     } else if (op.register_name.has_value()) {
-      converted = c4c::backend::aarch64::abi::convert_prepared_register(*op.register_name,
+      converted = abi::convert_prepared_register(*op.register_name,
                                                                         op.register_bank,
                                                                         register_class,
                                                                         std::nullopt);
     }
     if (!converted.has_value() && op.register_name.has_value()) {
-      if (auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(*op.register_name);
+      if (auto parsed = abi::parse_aarch64_register_name(*op.register_name);
           parsed.has_value()) {
         converted.reg = parsed;
       }
@@ -1247,7 +1253,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
 }
 
 [[nodiscard]] c4c::BlockLabelId block_label_at(
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedControlFlowFunction& function,
     std::size_t block_index) {
   if (block_index >= function.blocks.size()) {
     return c4c::kInvalidBlockLabel;
@@ -1255,8 +1261,8 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   return function.blocks[block_index].block_label;
 }
 
-[[nodiscard]] c4c::backend::aarch64::codegen::OperandRecord immediate_return_operand(
-    const c4c::backend::bir::Value& value) {
+[[nodiscard]] codegen::OperandRecord immediate_return_operand(
+    const bir::Value& value) {
   namespace codegen = c4c::backend::aarch64::codegen;
   return codegen::make_immediate_operand(codegen::ImmediateOperand{
       .kind = codegen::ImmediateKind::SignedInteger,
@@ -1267,15 +1273,15 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
 }
 
 [[nodiscard]] bool is_returned_named_value(
-    const c4c::backend::bir::Function* source_function,
-    const c4c::backend::bir::Value& value) {
-  if (source_function == nullptr || value.kind != c4c::backend::bir::Value::Kind::Named) {
+    const bir::Function* source_function,
+    const bir::Value& value) {
+  if (source_function == nullptr || value.kind != bir::Value::Kind::Named) {
     return false;
   }
   for (const auto& block : source_function->blocks) {
-    if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return &&
+    if (block.terminator.kind == bir::TerminatorKind::Return &&
         block.terminator.value.has_value() &&
-        block.terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+        block.terminator.value->kind == bir::Value::Kind::Named &&
         block.terminator.value->name == value.name) {
       return true;
     }
@@ -1284,37 +1290,37 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
 }
 
 [[nodiscard]] bool is_selected_return_scalar_alu_opcode(
-    c4c::backend::bir::BinaryOpcode opcode) {
-  return opcode == c4c::backend::bir::BinaryOpcode::Add ||
-         opcode == c4c::backend::bir::BinaryOpcode::Sub;
+    bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::Add ||
+         opcode == bir::BinaryOpcode::Sub;
 }
 
-[[nodiscard]] std::optional<c4c::backend::aarch64::abi::RegisterView>
-scalar_result_register_view(c4c::backend::bir::TypeKind type) {
-  using c4c::backend::aarch64::abi::RegisterView;
+[[nodiscard]] std::optional<abi::RegisterView>
+scalar_result_register_view(bir::TypeKind type) {
+  using abi::RegisterView;
   switch (type) {
-    case c4c::backend::bir::TypeKind::I1:
-    case c4c::backend::bir::TypeKind::I8:
-    case c4c::backend::bir::TypeKind::I16:
-    case c4c::backend::bir::TypeKind::I32:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
       return RegisterView::W;
-    case c4c::backend::bir::TypeKind::I64:
-    case c4c::backend::bir::TypeKind::Ptr:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
       return RegisterView::X;
-    case c4c::backend::bir::TypeKind::Void:
-    case c4c::backend::bir::TypeKind::I128:
-    case c4c::backend::bir::TypeKind::F32:
-    case c4c::backend::bir::TypeKind::F64:
-    case c4c::backend::bir::TypeKind::F128:
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
       return std::nullopt;
   }
   return std::nullopt;
 }
 
-[[nodiscard]] const c4c::backend::prepare::PreparedStoragePlanValue*
+[[nodiscard]] const prepare::PreparedStoragePlanValue*
 find_storage_plan_value(
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
-    c4c::backend::prepare::PreparedValueId value_id) {
+    const prepare::PreparedStoragePlanFunction& storage,
+    prepare::PreparedValueId value_id) {
   for (const auto& value : storage.values) {
     if (value.value_id == value_id) {
       return &value;
@@ -1323,17 +1329,17 @@ find_storage_plan_value(
   return nullptr;
 }
 
-[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::OperandRecord>
+[[nodiscard]] std::optional<codegen::OperandRecord>
 selected_scalar_operand(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
-    const c4c::backend::bir::Value& value) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedValueLocationFunction& locations,
+    const prepare::PreparedStoragePlanFunction& storage,
+    const bir::Value& value) {
   namespace abi = c4c::backend::aarch64::abi;
   namespace codegen = c4c::backend::aarch64::codegen;
   namespace prepare = c4c::backend::prepare;
 
-  if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+  if (value.kind == bir::Value::Kind::Immediate) {
     return codegen::make_immediate_operand(codegen::ImmediateOperand{
         .kind = codegen::ImmediateKind::SignedInteger,
         .type = value.type,
@@ -1341,7 +1347,7 @@ selected_scalar_operand(
         .unsigned_value = value.immediate_bits,
     });
   }
-  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+  if (value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
   const auto* home = prepare::find_prepared_value_home(prepared.names, locations, value.name);
@@ -1407,11 +1413,11 @@ selected_scalar_operand(
   });
 }
 
-[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::RegisterOperand>
+[[nodiscard]] std::optional<codegen::RegisterOperand>
 return_abi_register_for_value(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
-    const c4c::backend::bir::Value& value,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& locations,
+    const bir::Value& value,
     std::size_t block_index,
     std::size_t return_instruction_index) {
   namespace abi = c4c::backend::aarch64::abi;
@@ -1419,7 +1425,7 @@ return_abi_register_for_value(
   namespace prepare = c4c::backend::prepare;
 
   const auto expected_view = scalar_result_register_view(value.type);
-  if (value.kind != c4c::backend::bir::Value::Kind::Named || !expected_view.has_value()) {
+  if (value.kind != bir::Value::Kind::Named || !expected_view.has_value()) {
     return std::nullopt;
   }
   const auto* home = prepare::find_prepared_value_home(names, locations, value.name);
@@ -1477,13 +1483,13 @@ return_abi_register_for_value(
   return std::nullopt;
 }
 
-[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::InstructionRecord>
+[[nodiscard]] std::optional<codegen::InstructionRecord>
 make_return_abi_scalar_alu_instruction(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
-    const c4c::backend::prepare::PreparedValueLocationFunction& locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage,
-    const c4c::backend::bir::BinaryInst& binary,
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedValueLocationFunction& locations,
+    const prepare::PreparedStoragePlanFunction& storage,
+    const bir::BinaryInst& binary,
     c4c::BlockLabelId block_label,
     std::size_t block_index,
     std::size_t instruction_index,
@@ -1525,13 +1531,13 @@ make_return_abi_scalar_alu_instruction(
   return node;
 }
 
-[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::RegisterOperand>
+[[nodiscard]] std::optional<codegen::RegisterOperand>
 returned_scalar_result_register(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const std::vector<c4c::backend::aarch64::codegen::InstructionRecord>& scalar_nodes,
-    const c4c::backend::bir::Value& value) {
+    const prepare::PreparedBirModule& prepared,
+    const std::vector<codegen::InstructionRecord>& scalar_nodes,
+    const bir::Value& value) {
   namespace codegen = c4c::backend::aarch64::codegen;
-  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+  if (value.kind != bir::Value::Kind::Named) {
     return std::nullopt;
   }
   for (const auto& node : scalar_nodes) {
@@ -1547,13 +1553,13 @@ returned_scalar_result_register(
   return std::nullopt;
 }
 
-[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+[[nodiscard]] std::vector<codegen::InstructionRecord>
 build_return_scalar_alu_machine_nodes(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Function* source_function,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
-    const c4c::backend::prepare::PreparedValueLocationFunction* locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction* storage) {
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedValueLocationFunction* locations,
+    const prepare::PreparedStoragePlanFunction* storage) {
   namespace codegen = c4c::backend::aarch64::codegen;
 
   std::vector<codegen::InstructionRecord> nodes;
@@ -1569,7 +1575,7 @@ build_return_scalar_alu_machine_nodes(
     for (std::size_t instruction_index = 0; instruction_index < source_block->insts.size();
          ++instruction_index) {
       const auto* binary =
-          std::get_if<c4c::backend::bir::BinaryInst>(&source_block->insts[instruction_index]);
+          std::get_if<bir::BinaryInst>(&source_block->insts[instruction_index]);
       if (binary == nullptr || !is_selected_return_scalar_alu_opcode(binary->opcode) ||
           !is_returned_named_value(source_function, binary->result)) {
         continue;
@@ -1606,9 +1612,9 @@ build_return_scalar_alu_machine_nodes(
   return nodes;
 }
 
-[[nodiscard]] c4c::backend::aarch64::codegen::MachinePseudoKind codegen_spill_reload_pseudo(
+[[nodiscard]] codegen::MachinePseudoKind codegen_spill_reload_pseudo(
     SpillReloadPseudoKind pseudo) {
-  using c4c::backend::aarch64::codegen::MachinePseudoKind;
+  using codegen::MachinePseudoKind;
   switch (pseudo) {
     case SpillReloadPseudoKind::StoreFromRegisterToSlot:
       return MachinePseudoKind::SpillToSlot;
@@ -1620,11 +1626,11 @@ build_return_scalar_alu_machine_nodes(
   return MachinePseudoKind::None;
 }
 
-[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+[[nodiscard]] std::vector<codegen::InstructionRecord>
 build_spill_reload_machine_nodes(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
-    const c4c::backend::prepare::PreparedRegallocFunction* regalloc,
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const prepare::PreparedRegallocFunction* regalloc,
     const std::vector<SpillReloadRecord>& records) {
   namespace codegen = c4c::backend::aarch64::codegen;
 
@@ -1635,7 +1641,7 @@ build_spill_reload_machine_nodes(
                                             : nullptr;
     const auto value_name = value != nullptr ? value->value_name : c4c::kInvalidValueName;
     const auto value_type =
-        value != nullptr ? value->type : c4c::backend::bir::TypeKind::Void;
+        value != nullptr ? value->type : bir::TypeKind::Void;
     const auto block_label = block_label_at(function, record.block_index);
     const auto* frame_slot =
         record.slot_id.has_value() ? find_frame_slot_by_id(prepared.stack_layout, *record.slot_id)
@@ -1657,13 +1663,13 @@ build_spill_reload_machine_nodes(
         .byte_offset_is_prepared_snapshot = record.stack_offset_is_prepared_snapshot,
         .size_bytes = frame_slot != nullptr ? frame_slot->size_bytes : 0,
         .align_bytes = frame_slot != nullptr ? frame_slot->align_bytes : 0,
-        .address_space = c4c::backend::bir::AddressSpace::Default,
+        .address_space = bir::AddressSpace::Default,
         .can_use_base_plus_offset = record.stack_offset_bytes.has_value(),
     };
-    if (record.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Spill) {
+    if (record.op_kind == prepare::PreparedSpillReloadOpKind::Spill) {
       slot.stored_value_id = record.value_id;
       slot.stored_value_name = value_name;
-    } else if (record.op_kind == c4c::backend::prepare::PreparedSpillReloadOpKind::Reload) {
+    } else if (record.op_kind == prepare::PreparedSpillReloadOpKind::Reload) {
       slot.result_value_id = record.value_id;
       slot.result_value_name = value_name;
     }
@@ -1704,12 +1710,12 @@ build_spill_reload_machine_nodes(
   return nodes;
 }
 
-[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+[[nodiscard]] std::vector<codegen::InstructionRecord>
 build_return_machine_nodes(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Function* source_function,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
-    const std::vector<c4c::backend::aarch64::codegen::InstructionRecord>& scalar_nodes) {
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowFunction& function,
+    const std::vector<codegen::InstructionRecord>& scalar_nodes) {
   namespace codegen = c4c::backend::aarch64::codegen;
 
   std::vector<codegen::InstructionRecord> nodes;
@@ -1718,20 +1724,20 @@ build_return_machine_nodes(
     const auto& block = function.blocks[block_index];
     const auto* source_block =
         find_source_block(prepared, source_function, block.block_label);
-    if (block.terminator_kind != c4c::backend::bir::TerminatorKind::Return ||
+    if (block.terminator_kind != bir::TerminatorKind::Return ||
         source_block == nullptr ||
-        source_block->terminator.kind != c4c::backend::bir::TerminatorKind::Return) {
+        source_block->terminator.kind != bir::TerminatorKind::Return) {
       continue;
     }
 
     codegen::ReturnInstructionRecord ret{
         .value_type = source_block->terminator.value.has_value()
                           ? source_block->terminator.value->type
-                          : c4c::backend::bir::TypeKind::Void,
+                          : bir::TypeKind::Void,
     };
     if (source_block->terminator.value.has_value()) {
       const auto& value = *source_block->terminator.value;
-      if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
+      if (value.kind == bir::Value::Kind::Immediate) {
         ret.value = immediate_return_operand(value);
       } else if (auto result_register =
                      returned_scalar_result_register(prepared, scalar_nodes, value);
@@ -1755,7 +1761,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] ParallelCopyMoveRecord build_parallel_copy_move_record(
-    const c4c::backend::prepare::PreparedParallelCopyMove& move) {
+    const prepare::PreparedParallelCopyMove& move) {
   return ParallelCopyMoveRecord{
       .join_transfer_index = move.join_transfer_index,
       .edge_transfer_index = move.edge_transfer_index,
@@ -1768,16 +1774,16 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] ParallelCopyStepRecord build_parallel_copy_step_record(
-    const c4c::backend::prepare::PreparedParallelCopyBundle& bundle,
-    const c4c::backend::prepare::PreparedParallelCopyStep& step,
-    const c4c::backend::prepare::PreparedMoveResolution* target_move) {
+    const prepare::PreparedParallelCopyBundle& bundle,
+    const prepare::PreparedParallelCopyStep& step,
+    const prepare::PreparedMoveResolution* target_move) {
   ParallelCopyStepRecord record{
       .kind = step.kind,
       .move_index = step.move_index,
       .uses_cycle_temp_source = step.uses_cycle_temp_source,
       .source_step = &step,
   };
-  if (const auto* move = c4c::backend::prepare::find_prepared_parallel_copy_move_for_step(
+  if (const auto* move = prepare::find_prepared_parallel_copy_move_for_step(
           bundle, step);
       move != nullptr) {
     record.source_value = move->source_value;
@@ -1789,7 +1795,7 @@ build_return_machine_nodes(
   if (target_move != nullptr) {
     const auto destination_bank = target_move->destination_register_placement.has_value()
                                       ? target_move->destination_register_placement->bank
-                                      : c4c::backend::prepare::PreparedRegisterBank::None;
+                                      : prepare::PreparedRegisterBank::None;
     const auto destination_register =
         convert_prepared_register_reference(target_move->destination_register_placement,
                                             target_move->destination_register_name,
@@ -1823,10 +1829,10 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::vector<ParallelCopyRecord> build_parallel_copy_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function,
-    const c4c::backend::bir::Function* source_function,
-    const c4c::backend::prepare::PreparedValueLocationFunction* locations) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function,
+    const bir::Function* source_function,
+    const prepare::PreparedValueLocationFunction* locations) {
   std::vector<ParallelCopyRecord> records;
   records.reserve(function.parallel_copy_bundles.size());
   for (const auto& bundle : function.parallel_copy_bundles) {
@@ -1844,18 +1850,18 @@ build_return_machine_nodes(
     for (const auto& move : bundle.moves) {
       record.moves.push_back(build_parallel_copy_move_record(move));
     }
-    const c4c::backend::prepare::PreparedMoveBundle* target_move_bundle = nullptr;
+    const prepare::PreparedMoveBundle* target_move_bundle = nullptr;
     if (source_function != nullptr && locations != nullptr) {
       target_move_bundle =
-          c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
+          prepare::find_prepared_out_of_ssa_parallel_copy_move_bundle(
               prepared.names, *source_function, *locations, bundle);
     }
     record.steps.reserve(bundle.steps.size());
     for (std::size_t step_index = 0; step_index < bundle.steps.size(); ++step_index) {
       const auto& step = bundle.steps[step_index];
-      const c4c::backend::prepare::PreparedMoveResolution* target_move = nullptr;
+      const prepare::PreparedMoveResolution* target_move = nullptr;
       if (target_move_bundle != nullptr) {
-        target_move = c4c::backend::prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
+        target_move = prepare::find_prepared_out_of_ssa_parallel_copy_move_for_step(
             *target_move_bundle, step_index);
       }
       auto step_record = build_parallel_copy_step_record(bundle, step, target_move);
@@ -1871,12 +1877,12 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] BlockRecord build_block_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Function* source_function,
-    const c4c::backend::prepare::PreparedControlFlowBlock& block) {
+    const prepare::PreparedBirModule& prepared,
+    const bir::Function* source_function,
+    const prepare::PreparedControlFlowBlock& block) {
   return BlockRecord{
       .block_label = block.block_label,
-      .label = c4c::backend::prepare::prepared_block_label(prepared.names, block.block_label),
+      .label = prepare::prepared_block_label(prepared.names, block.block_label),
       .terminator_kind = block.terminator_kind,
       .branch_target_label = block.branch_target_label,
       .true_label = block.true_label,
@@ -1887,18 +1893,18 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] FunctionRecord build_function_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+    const prepare::PreparedBirModule& prepared,
+    const prepare::PreparedControlFlowFunction& function) {
   const auto* source_function = find_source_function(prepared, function.function_name);
   FunctionRecord record{
       .function_name = function.function_name,
-      .label = c4c::backend::prepare::prepared_function_name(prepared.names,
+      .label = prepare::prepared_function_name(prepared.names,
                                                              function.function_name),
       .source_function = source_function,
       .control_flow = &function,
   };
   const auto* locations =
-      c4c::backend::prepare::find_prepared_value_location_function(prepared,
+      prepare::find_prepared_value_location_function(prepared,
                                                                    function.function_name);
   const auto* regalloc = find_prepared_regalloc_function(prepared.regalloc,
                                                          function.function_name);
@@ -1910,7 +1916,7 @@ build_return_machine_nodes(
     for (const auto& move : regalloc->move_resolution) {
       const auto destination_bank = move.destination_register_placement.has_value()
                                         ? move.destination_register_placement->bank
-                                        : c4c::backend::prepare::PreparedRegisterBank::None;
+                                        : prepare::PreparedRegisterBank::None;
       const auto destination_register =
           convert_prepared_register_reference(move.destination_register_placement,
                                               move.destination_register_name,
@@ -1965,7 +1971,7 @@ build_return_machine_nodes(
                                                            source_function,
                                                            function,
                                                            locations,
-                                                           c4c::backend::prepare::
+                                                           prepare::
                                                                find_prepared_storage_plan(
                                                                    prepared,
                                                                    function.function_name));
@@ -1990,7 +1996,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::vector<FunctionRecord> build_function_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared) {
+    const prepare::PreparedBirModule& prepared) {
   std::vector<FunctionRecord> functions;
   functions.reserve(prepared.control_flow.functions.size());
   for (const auto& function : prepared.control_flow.functions) {
@@ -2000,7 +2006,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::string_view link_label(
-    const c4c::backend::bir::NameTables& names,
+    const bir::NameTables& names,
     c4c::LinkNameId id,
     std::string_view fallback) {
   if (id != c4c::kInvalidLinkName) {
@@ -2013,7 +2019,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::string_view text_label(
-    const c4c::backend::bir::NameTables& names,
+    const bir::NameTables& names,
     c4c::TextId id,
     std::string_view fallback) {
   if (id != c4c::kInvalidText) {
@@ -2026,17 +2032,17 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] SymbolVisibilityRecordKind visibility_for_global(
-    const c4c::backend::bir::Global& global) {
+    const bir::Global& global) {
   return global.is_extern ? SymbolVisibilityRecordKind::ExternalDeclaration
                           : SymbolVisibilityRecordKind::LinkVisibleDefinition;
 }
 
 [[nodiscard]] std::optional<DataRelocationNeedRecord> relocation_need_for_value(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Global& owner,
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& owner,
     std::size_t global_index,
     DataRelocationNeedKind kind,
-    const c4c::backend::bir::Value& value,
+    const bir::Value& value,
     std::optional<std::size_t> initializer_element_index) {
   if (value.pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
     return std::nullopt;
@@ -2056,8 +2062,8 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] DataRelocationNeedRecord relocation_need_for_initializer_symbol(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Global& owner,
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& owner,
     std::size_t global_index) {
   const std::string_view fallback =
       owner.initializer_symbol_name.has_value() ? std::string_view{*owner.initializer_symbol_name}
@@ -2076,8 +2082,8 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] GlobalDataRecord build_global_data_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::Global& global,
+    const prepare::PreparedBirModule& prepared,
+    const bir::Global& global,
     std::size_t global_index) {
   GlobalDataRecord record{
       .global_index = global_index,
@@ -2132,7 +2138,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::vector<GlobalDataRecord> build_global_data_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared) {
+    const prepare::PreparedBirModule& prepared) {
   std::vector<GlobalDataRecord> globals;
   globals.reserve(prepared.module.globals.size());
   for (std::size_t index = 0; index < prepared.module.globals.size(); ++index) {
@@ -2142,8 +2148,8 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] StringDataRecord build_string_data_record(
-    const c4c::backend::prepare::PreparedBirModule& prepared,
-    const c4c::backend::bir::StringConstant& string,
+    const prepare::PreparedBirModule& prepared,
+    const bir::StringConstant& string,
     std::size_t string_index) {
   return StringDataRecord{
       .string_index = string_index,
@@ -2156,7 +2162,7 @@ build_return_machine_nodes(
 }
 
 [[nodiscard]] std::vector<StringDataRecord> build_string_data_records(
-    const c4c::backend::prepare::PreparedBirModule& prepared) {
+    const prepare::PreparedBirModule& prepared) {
   std::vector<StringDataRecord> strings;
   strings.reserve(prepared.module.string_constants.size());
   for (std::size_t index = 0; index < prepared.module.string_constants.size(); ++index) {
@@ -2177,10 +2183,10 @@ build_return_machine_nodes(
 
 }  // namespace
 
-BuildResult build(const c4c::backend::prepare::PreparedBirModule& prepared) {
+BuildResult build(const prepare::PreparedBirModule& prepared) {
   const c4c::TargetProfile target_profile =
-      c4c::backend::aarch64::abi::resolve_target_profile(prepared);
-  if (auto error = c4c::backend::aarch64::abi::validate_prepared_module_handoff(prepared)) {
+      abi::resolve_target_profile(prepared);
+  if (auto error = abi::validate_prepared_module_handoff(prepared)) {
     return BuildResult{.module = std::nullopt, .error = std::move(error)};
   }
   auto globals = build_global_data_records(prepared);

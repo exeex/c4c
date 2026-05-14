@@ -11,6 +11,11 @@
 
 namespace c4c::backend::aarch64::module {
 
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+namespace codegen = c4c::backend::aarch64::codegen;
+
 enum class TargetRegisterReferenceKind {
   ValueHome,
   RegallocAssignment,
@@ -52,31 +57,31 @@ struct TargetRegisterRecord {
   TargetRegisterReferenceKind reference_kind = TargetRegisterReferenceKind::ValueHome;
   AllocationSnapshotKind allocation_snapshot = AllocationSnapshotKind::PreparedSnapshot;
   AllocationAuthorityKind allocation_authority = AllocationAuthorityKind::None;
-  c4c::backend::prepare::PreparedValueId value_id = 0;
+  prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  c4c::backend::prepare::PreparedRegisterClass register_class =
-      c4c::backend::prepare::PreparedRegisterClass::None;
-  c4c::backend::prepare::PreparedRegisterBank register_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
-  std::optional<c4c::backend::aarch64::abi::AllocationRegisterPool> allocation_pool;
+  prepare::PreparedRegisterClass register_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank register_bank =
+      prepare::PreparedRegisterBank::None;
+  std::optional<abi::RegisterReference> register_reference;
+  std::optional<abi::AllocationRegisterPool> allocation_pool;
   std::string_view physical_register;
   std::size_t contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   bool is_reserved_mir_scratch = false;
   bool may_be_long_lived_home = false;
 };
 
 struct FrameSlotRecord {
-  c4c::backend::prepare::PreparedFrameSlotId slot_id = 0;
-  c4c::backend::prepare::PreparedObjectId object_id = 0;
+  prepare::PreparedFrameSlotId slot_id = 0;
+  prepare::PreparedObjectId object_id = 0;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::optional<c4c::SlotNameId> slot_name;
   std::string_view slot_label;
   std::optional<c4c::ValueNameId> value_name;
   std::string_view value_label;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind type = bir::TypeKind::Void;
   std::size_t offset_bytes = 0;
   bool offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
@@ -85,28 +90,28 @@ struct FrameSlotRecord {
   bool address_exposed = false;
   bool requires_home_slot = false;
   bool permanent_home_slot = false;
-  const c4c::backend::prepare::PreparedFrameSlot* source_slot = nullptr;
-  const c4c::backend::prepare::PreparedStackObject* source_object = nullptr;
+  const prepare::PreparedFrameSlot* source_slot = nullptr;
+  const prepare::PreparedStackObject* source_object = nullptr;
 };
 
 struct CalleeSaveRecord {
-  c4c::backend::prepare::PreparedRegisterBank bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
+  prepare::PreparedRegisterBank bank =
+      prepare::PreparedRegisterBank::None;
+  std::optional<abi::RegisterReference> register_reference;
   std::string_view register_name;
   std::size_t contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   std::size_t save_index = 0;
-  const c4c::backend::prepare::PreparedSavedRegister* source_saved_register = nullptr;
+  const prepare::PreparedSavedRegister* source_saved_register = nullptr;
 };
 
 struct DynamicStackRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::string_view block_label_text;
   std::size_t instruction_index = 0;
-  c4c::backend::prepare::PreparedDynamicStackOpKind kind =
-      c4c::backend::prepare::PreparedDynamicStackOpKind::StackSave;
+  prepare::PreparedDynamicStackOpKind kind =
+      prepare::PreparedDynamicStackOpKind::StackSave;
   std::optional<c4c::ValueNameId> result_value_name;
   std::string_view result_label;
   std::optional<c4c::ValueNameId> operand_value_name;
@@ -114,7 +119,7 @@ struct DynamicStackRecord {
   std::string_view allocation_type_text;
   std::size_t element_size_bytes = 0;
   std::size_t element_align_bytes = 0;
-  const c4c::backend::prepare::PreparedDynamicStackOp* source_op = nullptr;
+  const prepare::PreparedDynamicStackOp* source_op = nullptr;
 };
 
 struct FrameRecord {
@@ -123,38 +128,38 @@ struct FrameRecord {
   bool has_dynamic_stack = false;
   bool requires_stack_save_restore = false;
   bool uses_frame_pointer_for_fixed_slots = false;
-  std::vector<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_order;
+  std::vector<prepare::PreparedFrameSlotId> frame_slot_order;
   std::vector<FrameSlotRecord> slots;
   std::vector<CalleeSaveRecord> callee_saves;
   std::vector<DynamicStackRecord> dynamic_stack;
-  const c4c::backend::prepare::PreparedFramePlanFunction* source_frame_plan = nullptr;
-  const c4c::backend::prepare::PreparedDynamicStackPlanFunction* source_dynamic_stack = nullptr;
+  const prepare::PreparedFramePlanFunction* source_frame_plan = nullptr;
+  const prepare::PreparedDynamicStackPlanFunction* source_dynamic_stack = nullptr;
 };
 
 struct OperandRecord {
-  c4c::backend::prepare::PreparedValueId value_id = 0;
+  prepare::PreparedValueId value_id = 0;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   std::string_view label;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::prepare::PreparedValueKind value_kind =
-      c4c::backend::prepare::PreparedValueKind::Temporary;
-  std::optional<c4c::backend::prepare::PreparedObjectId> stack_object_id;
-  c4c::backend::prepare::PreparedValueHomeKind home_kind =
-      c4c::backend::prepare::PreparedValueHomeKind::None;
-  c4c::backend::prepare::PreparedStorageEncodingKind storage_encoding =
-      c4c::backend::prepare::PreparedStorageEncodingKind::None;
-  c4c::backend::prepare::PreparedAllocationStatus allocation_status =
-      c4c::backend::prepare::PreparedAllocationStatus::Unallocated;
+  bir::TypeKind type = bir::TypeKind::Void;
+  prepare::PreparedValueKind value_kind =
+      prepare::PreparedValueKind::Temporary;
+  std::optional<prepare::PreparedObjectId> stack_object_id;
+  prepare::PreparedValueHomeKind home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedStorageEncodingKind storage_encoding =
+      prepare::PreparedStorageEncodingKind::None;
+  prepare::PreparedAllocationStatus allocation_status =
+      prepare::PreparedAllocationStatus::Unallocated;
   AllocationLocationKind allocation_location = AllocationLocationKind::None;
   AllocationAuthorityKind allocation_authority = AllocationAuthorityKind::None;
-  c4c::backend::prepare::PreparedRegisterClass register_class =
-      c4c::backend::prepare::PreparedRegisterClass::None;
-  c4c::backend::prepare::PreparedRegisterBank storage_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterClass register_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank storage_bank =
+      prepare::PreparedRegisterBank::None;
   std::size_t register_group_width = 1;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> spill_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> spill_slot_id;
   std::optional<std::size_t> spill_slot_size_bytes;
   std::optional<std::size_t> spill_slot_align_bytes;
   bool spill_slot_fixed_location = false;
@@ -170,142 +175,142 @@ struct OperandRecord {
   std::optional<std::size_t> assigned_register;
   std::optional<std::size_t> spill_register_authority;
   std::optional<std::size_t> storage_register;
-  const c4c::backend::prepare::PreparedValueHome* source_value_home = nullptr;
-  const c4c::backend::prepare::PreparedRegallocValue* source_regalloc = nullptr;
-  const c4c::backend::prepare::PreparedStoragePlanValue* source_storage = nullptr;
+  const prepare::PreparedValueHome* source_value_home = nullptr;
+  const prepare::PreparedRegallocValue* source_regalloc = nullptr;
+  const prepare::PreparedStoragePlanValue* source_storage = nullptr;
 };
 
 struct BranchRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::string_view block_label_text;
-  c4c::backend::prepare::PreparedBranchConditionKind condition_kind =
-      c4c::backend::prepare::PreparedBranchConditionKind::MaterializedBool;
-  c4c::backend::bir::Value condition_value;
-  std::optional<c4c::backend::bir::BinaryOpcode> predicate;
-  std::optional<c4c::backend::bir::TypeKind> compare_type;
-  std::optional<c4c::backend::bir::Value> lhs;
-  std::optional<c4c::backend::bir::Value> rhs;
+  prepare::PreparedBranchConditionKind condition_kind =
+      prepare::PreparedBranchConditionKind::MaterializedBool;
+  bir::Value condition_value;
+  std::optional<bir::BinaryOpcode> predicate;
+  std::optional<bir::TypeKind> compare_type;
+  std::optional<bir::Value> lhs;
+  std::optional<bir::Value> rhs;
   bool can_fuse_with_branch = false;
   c4c::BlockLabelId true_label = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId false_label = c4c::kInvalidBlockLabel;
-  const c4c::backend::prepare::PreparedBranchCondition* source_condition = nullptr;
+  const prepare::PreparedBranchCondition* source_condition = nullptr;
 };
 
 struct CallArgumentRecord {
   std::size_t arg_index = 0;
-  c4c::backend::prepare::PreparedRegisterBank value_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  c4c::backend::prepare::PreparedStorageEncodingKind source_encoding =
-      c4c::backend::prepare::PreparedStorageEncodingKind::None;
-  std::optional<c4c::backend::prepare::PreparedValueId> source_value_id;
-  std::optional<c4c::backend::prepare::PreparedValueId> source_base_value_id;
-  std::optional<c4c::backend::bir::Value> source_literal;
+  prepare::PreparedRegisterBank value_bank =
+      prepare::PreparedRegisterBank::None;
+  prepare::PreparedStorageEncodingKind source_encoding =
+      prepare::PreparedStorageEncodingKind::None;
+  std::optional<prepare::PreparedValueId> source_value_id;
+  std::optional<prepare::PreparedValueId> source_base_value_id;
+  std::optional<bir::Value> source_literal;
   std::optional<c4c::LinkNameId> source_symbol_name_id;
   std::string_view source_symbol_label;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> source_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> source_slot_id;
   std::optional<std::size_t> source_stack_offset_bytes;
   bool source_stack_offset_is_prepared_snapshot = false;
   std::optional<c4c::ValueNameId> source_base_value_name;
   std::string_view source_base_label;
   std::optional<std::int64_t> source_pointer_byte_delta;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
+  std::optional<abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
+  std::optional<prepare::PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedCallArgumentPlan* source_argument = nullptr;
+  const prepare::PreparedCallArgumentPlan* source_argument = nullptr;
 };
 
 struct CallResultRecord {
-  c4c::backend::prepare::PreparedRegisterBank value_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  c4c::backend::prepare::PreparedMoveStorageKind source_storage_kind =
-      c4c::backend::prepare::PreparedMoveStorageKind::None;
-  c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
-      c4c::backend::prepare::PreparedMoveStorageKind::None;
-  std::optional<c4c::backend::prepare::PreparedValueId> destination_value_id;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> source_register_reference;
+  prepare::PreparedRegisterBank value_bank =
+      prepare::PreparedRegisterBank::None;
+  prepare::PreparedMoveStorageKind source_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  prepare::PreparedMoveStorageKind destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  std::optional<prepare::PreparedValueId> destination_value_id;
+  std::optional<abi::RegisterReference> source_register_reference;
   std::string_view source_register;
   std::size_t source_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       source_occupied_register_references;
   std::vector<std::string_view> source_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedRegisterBank> source_register_bank;
+  std::optional<prepare::PreparedRegisterBank> source_register_bank;
   std::optional<std::size_t> source_stack_offset_bytes;
   bool source_stack_offset_is_prepared_snapshot = false;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
+  std::optional<abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
+  std::optional<prepare::PreparedRegisterBank> destination_register_bank;
+  std::optional<prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedCallResultPlan* source_result = nullptr;
+  const prepare::PreparedCallResultPlan* source_result = nullptr;
 };
 
 struct CallPreservedValueRecord {
-  c4c::backend::prepare::PreparedValueId value_id = 0;
+  prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
   std::string_view value_label;
-  c4c::backend::prepare::PreparedCallPreservationRoute route =
-      c4c::backend::prepare::PreparedCallPreservationRoute::Unknown;
+  prepare::PreparedCallPreservationRoute route =
+      prepare::PreparedCallPreservationRoute::Unknown;
   std::optional<std::size_t> callee_saved_save_index;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
+  std::optional<abi::RegisterReference> register_reference;
   std::string_view register_name;
-  std::optional<c4c::backend::prepare::PreparedRegisterBank> register_bank;
+  std::optional<prepare::PreparedRegisterBank> register_bank;
   std::size_t contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedCallPreservedValue* source_preserved_value = nullptr;
+  const prepare::PreparedCallPreservedValue* source_preserved_value = nullptr;
 };
 
 struct CallRecord {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
-  c4c::backend::prepare::PreparedCallWrapperKind wrapper_kind =
-      c4c::backend::prepare::PreparedCallWrapperKind::Indirect;
+  prepare::PreparedCallWrapperKind wrapper_kind =
+      prepare::PreparedCallWrapperKind::Indirect;
   bool is_indirect = false;
   std::string_view direct_callee_name;
   std::optional<c4c::ValueNameId> indirect_callee_value_name;
-  std::optional<c4c::backend::prepare::PreparedValueId> indirect_callee_value_id;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> memory_return_slot_id;
+  std::optional<prepare::PreparedValueId> indirect_callee_value_id;
+  std::optional<prepare::PreparedFrameSlotId> memory_return_slot_id;
   std::optional<std::size_t> memory_return_stack_offset_bytes;
   std::vector<CallArgumentRecord> arguments;
   std::optional<CallResultRecord> result;
   std::vector<CallPreservedValueRecord> preserved_values;
   std::vector<CalleeSaveRecord> clobbered_registers;
-  const c4c::backend::prepare::PreparedCallPlan* source_call = nullptr;
+  const prepare::PreparedCallPlan* source_call = nullptr;
 };
 
 struct MoveRecord {
-  c4c::backend::prepare::PreparedMovePhase phase =
-      c4c::backend::prepare::PreparedMovePhase::BeforeInstruction;
-  c4c::backend::prepare::PreparedMoveAuthorityKind authority_kind =
-      c4c::backend::prepare::PreparedMoveAuthorityKind::None;
-  c4c::backend::prepare::PreparedValueId from_value_id = 0;
-  c4c::backend::prepare::PreparedValueId to_value_id = 0;
-  c4c::backend::prepare::PreparedMoveDestinationKind destination_kind =
-      c4c::backend::prepare::PreparedMoveDestinationKind::Value;
-  c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
-      c4c::backend::prepare::PreparedMoveStorageKind::None;
+  prepare::PreparedMovePhase phase =
+      prepare::PreparedMovePhase::BeforeInstruction;
+  prepare::PreparedMoveAuthorityKind authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  prepare::PreparedValueId from_value_id = 0;
+  prepare::PreparedValueId to_value_id = 0;
+  prepare::PreparedMoveDestinationKind destination_kind =
+      prepare::PreparedMoveDestinationKind::Value;
+  prepare::PreparedMoveStorageKind destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
+  std::optional<abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
@@ -314,118 +319,118 @@ struct MoveRecord {
   bool coalesced_by_assigned_storage = false;
   std::optional<std::size_t> source_parallel_copy_step_index;
   std::optional<std::int64_t> source_immediate_i32;
-  c4c::backend::prepare::PreparedMoveResolutionOpKind op_kind =
-      c4c::backend::prepare::PreparedMoveResolutionOpKind::Move;
+  prepare::PreparedMoveResolutionOpKind op_kind =
+      prepare::PreparedMoveResolutionOpKind::Move;
   std::optional<c4c::BlockLabelId> source_parallel_copy_predecessor_label;
   std::optional<c4c::BlockLabelId> source_parallel_copy_successor_label;
   std::string_view reason;
-  const c4c::backend::prepare::PreparedMoveBundle* source_bundle = nullptr;
-  const c4c::backend::prepare::PreparedMoveResolution* source_move = nullptr;
+  const prepare::PreparedMoveBundle* source_bundle = nullptr;
+  const prepare::PreparedMoveResolution* source_move = nullptr;
 };
 
 struct AbiBindingRecord {
-  c4c::backend::prepare::PreparedMovePhase phase =
-      c4c::backend::prepare::PreparedMovePhase::BeforeInstruction;
-  c4c::backend::prepare::PreparedMoveAuthorityKind authority_kind =
-      c4c::backend::prepare::PreparedMoveAuthorityKind::None;
-  c4c::backend::prepare::PreparedMoveDestinationKind destination_kind =
-      c4c::backend::prepare::PreparedMoveDestinationKind::Value;
-  c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
-      c4c::backend::prepare::PreparedMoveStorageKind::None;
+  prepare::PreparedMovePhase phase =
+      prepare::PreparedMovePhase::BeforeInstruction;
+  prepare::PreparedMoveAuthorityKind authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  prepare::PreparedMoveDestinationKind destination_kind =
+      prepare::PreparedMoveDestinationKind::Value;
+  prepare::PreparedMoveStorageKind destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
+  std::optional<abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
-  const c4c::backend::prepare::PreparedMoveBundle* source_bundle = nullptr;
-  const c4c::backend::prepare::PreparedAbiBinding* source_binding = nullptr;
+  const prepare::PreparedMoveBundle* source_bundle = nullptr;
+  const prepare::PreparedAbiBinding* source_binding = nullptr;
 };
 
 struct SpillReloadRecord {
-  c4c::backend::prepare::PreparedValueId value_id = 0;
-  c4c::backend::prepare::PreparedSpillReloadOpKind op_kind =
-      c4c::backend::prepare::PreparedSpillReloadOpKind::Spill;
+  prepare::PreparedValueId value_id = 0;
+  prepare::PreparedSpillReloadOpKind op_kind =
+      prepare::PreparedSpillReloadOpKind::Spill;
   SpillReloadPseudoKind pseudo_kind = SpillReloadPseudoKind::StoreFromRegisterToSlot;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
-  c4c::backend::prepare::PreparedRegisterClass register_class =
-      c4c::backend::prepare::PreparedRegisterClass::None;
-  c4c::backend::prepare::PreparedRegisterBank register_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
+  prepare::PreparedRegisterClass register_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank register_bank =
+      prepare::PreparedRegisterBank::None;
+  std::optional<abi::RegisterReference> register_reference;
   std::string_view register_name;
   std::size_t contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   std::optional<std::size_t> scratch_register_authority;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
+  const prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
 };
 
 struct ParallelCopyMoveRecord {
   std::size_t join_transfer_index = 0;
   std::size_t edge_transfer_index = 0;
-  c4c::backend::bir::Value source_value;
-  c4c::backend::bir::Value destination_value;
-  c4c::backend::prepare::PreparedJoinTransferCarrierKind carrier_kind =
-      c4c::backend::prepare::PreparedJoinTransferCarrierKind::None;
+  bir::Value source_value;
+  bir::Value destination_value;
+  prepare::PreparedJoinTransferCarrierKind carrier_kind =
+      prepare::PreparedJoinTransferCarrierKind::None;
   std::optional<c4c::SlotNameId> storage_name;
-  const c4c::backend::prepare::PreparedParallelCopyMove* source_move = nullptr;
+  const prepare::PreparedParallelCopyMove* source_move = nullptr;
 };
 
 struct ParallelCopyStepRecord {
-  c4c::backend::prepare::PreparedParallelCopyStepKind kind =
-      c4c::backend::prepare::PreparedParallelCopyStepKind::Move;
+  prepare::PreparedParallelCopyStepKind kind =
+      prepare::PreparedParallelCopyStepKind::Move;
   std::size_t move_index = 0;
   bool uses_cycle_temp_source = false;
-  c4c::backend::bir::Value source_value;
-  c4c::backend::bir::Value destination_value;
-  c4c::backend::prepare::PreparedJoinTransferCarrierKind carrier_kind =
-      c4c::backend::prepare::PreparedJoinTransferCarrierKind::None;
+  bir::Value source_value;
+  bir::Value destination_value;
+  prepare::PreparedJoinTransferCarrierKind carrier_kind =
+      prepare::PreparedJoinTransferCarrierKind::None;
   std::optional<c4c::SlotNameId> storage_name;
   bool has_target_move_record = false;
-  c4c::backend::prepare::PreparedMoveAuthorityKind target_move_authority_kind =
-      c4c::backend::prepare::PreparedMoveAuthorityKind::None;
-  c4c::backend::prepare::PreparedMoveDestinationKind target_destination_kind =
-      c4c::backend::prepare::PreparedMoveDestinationKind::Value;
-  c4c::backend::prepare::PreparedMoveStorageKind target_destination_storage_kind =
-      c4c::backend::prepare::PreparedMoveStorageKind::None;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference>
+  prepare::PreparedMoveAuthorityKind target_move_authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  prepare::PreparedMoveDestinationKind target_destination_kind =
+      prepare::PreparedMoveDestinationKind::Value;
+  prepare::PreparedMoveStorageKind target_destination_storage_kind =
+      prepare::PreparedMoveStorageKind::None;
+  std::optional<abi::RegisterReference>
       target_destination_register_reference;
   std::string_view target_destination_register;
   std::size_t target_destination_contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       target_destination_occupied_register_references;
   std::vector<std::string_view> target_destination_occupied_registers;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> target_destination_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> target_destination_slot_id;
   std::optional<std::size_t> target_destination_stack_offset_bytes;
   bool target_destination_stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedParallelCopyStep* source_step = nullptr;
-  const c4c::backend::prepare::PreparedParallelCopyMove* source_move = nullptr;
-  const c4c::backend::prepare::PreparedMoveResolution* source_target_move = nullptr;
+  const prepare::PreparedParallelCopyStep* source_step = nullptr;
+  const prepare::PreparedParallelCopyMove* source_move = nullptr;
+  const prepare::PreparedMoveResolution* source_target_move = nullptr;
 };
 
 struct ParallelCopyRecord {
   c4c::BlockLabelId predecessor_label = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId successor_label = c4c::kInvalidBlockLabel;
-  c4c::backend::prepare::PreparedParallelCopyExecutionSite execution_site =
-      c4c::backend::prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator;
+  prepare::PreparedParallelCopyExecutionSite execution_site =
+      prepare::PreparedParallelCopyExecutionSite::PredecessorTerminator;
   std::optional<c4c::BlockLabelId> execution_block_label;
   bool has_cycle = false;
   std::size_t move_count = 0;
   std::size_t step_count = 0;
   std::vector<ParallelCopyMoveRecord> moves;
   std::vector<ParallelCopyStepRecord> steps;
-  const c4c::backend::prepare::PreparedParallelCopyBundle* source_bundle = nullptr;
+  const prepare::PreparedParallelCopyBundle* source_bundle = nullptr;
 };
 
 enum class SymbolVisibilityRecordKind {
@@ -446,27 +451,27 @@ struct DataRelocationNeedRecord {
   c4c::LinkNameId target_link_name = c4c::kInvalidLinkName;
   std::string_view target_label;
   std::optional<std::size_t> initializer_element_index;
-  std::optional<c4c::backend::bir::Value> initializer_element;
-  const c4c::backend::bir::Global* source_global = nullptr;
+  std::optional<bir::Value> initializer_element;
+  const bir::Global* source_global = nullptr;
 };
 
 struct GlobalDataRecord {
   std::size_t global_index = 0;
   std::string_view label;
   c4c::LinkNameId link_name = c4c::kInvalidLinkName;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind type = bir::TypeKind::Void;
   SymbolVisibilityRecordKind visibility = SymbolVisibilityRecordKind::LinkVisibleDefinition;
   bool is_extern = false;
   bool is_thread_local = false;
   bool is_constant = false;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
-  std::optional<c4c::backend::bir::Value> initializer;
+  std::optional<bir::Value> initializer;
   std::optional<std::string_view> initializer_symbol_label;
   c4c::LinkNameId initializer_symbol_name_id = c4c::kInvalidLinkName;
-  std::vector<c4c::backend::bir::Value> initializer_elements;
+  std::vector<bir::Value> initializer_elements;
   std::vector<DataRelocationNeedRecord> relocation_needs;
-  const c4c::backend::bir::Global* source_global = nullptr;
+  const bir::Global* source_global = nullptr;
 };
 
 struct StringDataRecord {
@@ -475,25 +480,25 @@ struct StringDataRecord {
   c4c::TextId name_id = c4c::kInvalidText;
   std::string_view bytes;
   std::size_t align_bytes = 1;
-  const c4c::backend::bir::StringConstant* source_string = nullptr;
+  const bir::StringConstant* source_string = nullptr;
 };
 
 struct BlockRecord {
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::string_view label;
-  c4c::backend::bir::TerminatorKind terminator_kind = c4c::backend::bir::TerminatorKind::Return;
+  bir::TerminatorKind terminator_kind = bir::TerminatorKind::Return;
   c4c::BlockLabelId branch_target_label = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId true_label = c4c::kInvalidBlockLabel;
   c4c::BlockLabelId false_label = c4c::kInvalidBlockLabel;
-  const c4c::backend::bir::Block* source_block = nullptr;
-  const c4c::backend::prepare::PreparedControlFlowBlock* control_flow = nullptr;
+  const bir::Block* source_block = nullptr;
+  const prepare::PreparedControlFlowBlock* control_flow = nullptr;
 };
 
 struct FunctionRecord {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::string_view label;
-  const c4c::backend::bir::Function* source_function = nullptr;
-  const c4c::backend::prepare::PreparedControlFlowFunction* control_flow = nullptr;
+  const bir::Function* source_function = nullptr;
+  const prepare::PreparedControlFlowFunction* control_flow = nullptr;
   FrameRecord frame;
   std::vector<BranchRecord> branches;
   std::vector<CallRecord> calls;
@@ -503,12 +508,12 @@ struct FunctionRecord {
   std::vector<ParallelCopyRecord> parallel_copies;
   std::vector<OperandRecord> operands;
   std::vector<TargetRegisterRecord> target_registers;
-  std::vector<c4c::backend::aarch64::codegen::InstructionRecord> machine_nodes;
+  std::vector<codegen::InstructionRecord> machine_nodes;
   std::vector<BlockRecord> blocks;
 };
 
 struct Module {
-  const c4c::backend::prepare::PreparedBirModule* prepared = nullptr;
+  const prepare::PreparedBirModule* prepared = nullptr;
   c4c::TargetProfile target_profile{};
   std::vector<GlobalDataRecord> globals;
   std::vector<StringDataRecord> strings;
@@ -518,9 +523,9 @@ struct Module {
 
 struct BuildResult {
   std::optional<Module> module;
-  std::optional<c4c::backend::aarch64::abi::HandoffError> error;
+  std::optional<abi::HandoffError> error;
 };
 
-[[nodiscard]] BuildResult build(const c4c::backend::prepare::PreparedBirModule& prepared);
+[[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
 
 }  // namespace c4c::backend::aarch64::module

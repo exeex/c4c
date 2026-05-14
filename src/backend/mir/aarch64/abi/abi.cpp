@@ -249,7 +249,7 @@ std::optional<RegisterReference> placement_register(
   return std::nullopt;
 }
 
-std::string explicit_target_triple(const c4c::backend::prepare::PreparedBirModule& module) {
+std::string explicit_target_triple(const prepare::PreparedBirModule& module) {
   if (!module.target_profile.triple.empty()) {
     return module.target_profile.triple;
   }
@@ -798,7 +798,7 @@ PreparedRegisterConversionResult convert_prepared_register(
 }
 
 c4c::TargetProfile resolve_target_profile(
-    const c4c::backend::prepare::PreparedBirModule& module) {
+    const prepare::PreparedBirModule& module) {
   if (module.target_profile.arch != c4c::TargetArch::Unknown) {
     return module.target_profile;
   }
@@ -818,7 +818,7 @@ bool is_aapcs64_abi(const c4c::TargetProfile& target_profile) {
 }
 
 std::optional<HandoffError> validate_prepared_module_handoff(
-    const c4c::backend::prepare::PreparedBirModule& module) {
+    const prepare::PreparedBirModule& module) {
   const c4c::TargetProfile target_profile = resolve_target_profile(module);
   if (!is_aarch64_target(target_profile)) {
     return make_error(HandoffErrorKind::UnsupportedTargetArch, target_profile,

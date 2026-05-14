@@ -11,6 +11,10 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+namespace prepare = c4c::backend::prepare;
+namespace bir = c4c::backend::bir;
+namespace abi = c4c::backend::aarch64::abi;
+
 enum class OperandKind {
   Register,
   Immediate,
@@ -245,54 +249,54 @@ enum class PreparedMemoryOperandRecordError {
 };
 
 struct RegisterOperand {
-  c4c::backend::aarch64::abi::RegisterReference reg{};
+  abi::RegisterReference reg{};
   RegisterOperandRole role = RegisterOperandRole::Physical;
-  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  std::optional<prepare::PreparedValueId> value_id;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  c4c::backend::prepare::PreparedRegisterClass prepared_class =
-      c4c::backend::prepare::PreparedRegisterClass::None;
-  c4c::backend::prepare::PreparedRegisterBank prepared_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
-  std::optional<c4c::backend::aarch64::abi::RegisterView> expected_view;
+  prepare::PreparedRegisterClass prepared_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank prepared_bank =
+      prepare::PreparedRegisterBank::None;
+  std::optional<abi::RegisterView> expected_view;
   std::size_t contiguous_width = 1;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  std::vector<abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
 };
 
 struct ImmediateOperand {
   ImmediateKind kind = ImmediateKind::SignedInteger;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind type = bir::TypeKind::Void;
   std::int64_t signed_value = 0;
   std::uint64_t unsigned_value = 0;
-  std::optional<c4c::backend::prepare::PreparedValueId> source_value_id;
+  std::optional<prepare::PreparedValueId> source_value_id;
   c4c::ValueNameId source_value_name = c4c::kInvalidValueName;
 };
 
 struct PreparedValueOperand {
-  c4c::backend::prepare::PreparedValueId value_id = 0;
+  prepare::PreparedValueId value_id = 0;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::prepare::PreparedValueKind value_kind =
-      c4c::backend::prepare::PreparedValueKind::Temporary;
-  c4c::backend::prepare::PreparedValueHomeKind home_kind =
-      c4c::backend::prepare::PreparedValueHomeKind::None;
-  c4c::backend::prepare::PreparedStorageEncodingKind storage_encoding =
-      c4c::backend::prepare::PreparedStorageEncodingKind::None;
-  c4c::backend::prepare::PreparedRegisterClass register_class =
-      c4c::backend::prepare::PreparedRegisterClass::None;
-  c4c::backend::prepare::PreparedRegisterBank storage_bank =
-      c4c::backend::prepare::PreparedRegisterBank::None;
+  bir::TypeKind type = bir::TypeKind::Void;
+  prepare::PreparedValueKind value_kind =
+      prepare::PreparedValueKind::Temporary;
+  prepare::PreparedValueHomeKind home_kind =
+      prepare::PreparedValueHomeKind::None;
+  prepare::PreparedStorageEncodingKind storage_encoding =
+      prepare::PreparedStorageEncodingKind::None;
+  prepare::PreparedRegisterClass register_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank storage_bank =
+      prepare::PreparedRegisterBank::None;
   std::size_t register_group_width = 1;
 };
 
 struct FrameSlotOperand {
-  c4c::backend::prepare::PreparedFrameSlotId slot_id = 0;
-  std::optional<c4c::backend::prepare::PreparedObjectId> object_id;
+  prepare::PreparedFrameSlotId slot_id = 0;
+  std::optional<prepare::PreparedObjectId> object_id;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::optional<c4c::SlotNameId> slot_name;
   std::optional<c4c::ValueNameId> value_name;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind type = bir::TypeKind::Void;
   std::size_t offset_bytes = 0;
   bool offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
@@ -302,7 +306,7 @@ struct FrameSlotOperand {
 
 struct SymbolOperand {
   c4c::LinkNameId link_name = c4c::kInvalidLinkName;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind type = bir::TypeKind::Void;
   std::int64_t byte_offset = 0;
   bool is_extern = false;
 };
@@ -311,7 +315,7 @@ struct BranchTargetOperand {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
-  std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
+  std::optional<prepare::PreparedValueId> condition_value_id;
 };
 
 struct BranchTargetPairRecord {
@@ -322,31 +326,31 @@ struct BranchTargetPairRecord {
 
 struct CompareValueRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
-  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  std::optional<prepare::PreparedValueId> value_id;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::bir::Value source_value;
+  bir::TypeKind type = bir::TypeKind::Void;
+  bir::Value source_value;
 };
 
 struct ComparePredicateRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
-  c4c::backend::bir::BinaryOpcode source_predicate = c4c::backend::bir::BinaryOpcode::Eq;
-  c4c::backend::bir::TypeKind compare_type = c4c::backend::bir::TypeKind::Void;
+  bir::BinaryOpcode source_predicate = bir::BinaryOpcode::Eq;
+  bir::TypeKind compare_type = bir::TypeKind::Void;
 };
 
 struct CompareOperandPairRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   CompareValueRecord lhs;
   CompareValueRecord rhs;
-  c4c::backend::bir::TypeKind compare_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind compare_type = bir::TypeKind::Void;
 };
 
 struct BranchCompareCandidateRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   BranchCompareCandidateKind kind = BranchCompareCandidateKind::None;
-  std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
+  std::optional<prepare::PreparedValueId> condition_value_id;
   c4c::ValueNameId condition_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind condition_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind condition_type = bir::TypeKind::Void;
   std::optional<ComparePredicateRecord> predicate;
   std::optional<CompareOperandPairRecord> compare_operands;
   std::optional<BranchTargetPairRecord> target_pair;
@@ -356,9 +360,9 @@ struct BranchCompareCandidateRecord {
 struct BranchConditionRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   BranchConditionForm form = BranchConditionForm::Unconditional;
-  std::optional<c4c::backend::prepare::PreparedValueId> condition_value_id;
+  std::optional<prepare::PreparedValueId> condition_value_id;
   c4c::ValueNameId condition_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind condition_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind condition_type = bir::TypeKind::Void;
   std::optional<ComparePredicateRecord> predicate;
   std::optional<CompareOperandPairRecord> compare_operands;
   std::optional<BranchCompareCandidateRecord> compare_branch_candidate;
@@ -371,23 +375,23 @@ struct MemoryOperand {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::size_t instruction_index = 0;
-  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  std::optional<prepare::PreparedValueId> result_value_id;
   std::optional<c4c::ValueNameId> result_value_name;
-  std::optional<c4c::backend::prepare::PreparedValueId> stored_value_id;
+  std::optional<prepare::PreparedValueId> stored_value_id;
   std::optional<c4c::ValueNameId> stored_value_name;
   MemoryBaseKind base_kind = MemoryBaseKind::None;
   std::optional<RegisterOperand> base_register;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
   std::optional<c4c::LinkNameId> symbol_name;
   std::optional<c4c::ValueNameId> pointer_value_name;
-  std::optional<c4c::backend::prepare::PreparedValueId> pointer_value_id;
+  std::optional<prepare::PreparedValueId> pointer_value_id;
   std::optional<c4c::TextId> string_name;
   std::optional<c4c::LinkNameId> string_symbol_name;
   std::int64_t byte_offset = 0;
   bool byte_offset_is_prepared_snapshot = true;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
-  c4c::backend::bir::AddressSpace address_space = c4c::backend::bir::AddressSpace::Default;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_volatile = false;
   bool can_use_base_plus_offset = false;
 };
@@ -408,10 +412,10 @@ struct OperandRecord {
 struct MachineEffectResource {
   MachineEffectResourceKind kind = MachineEffectResourceKind::PreparedValue;
   std::optional<OperandRecord> operand;
-  std::optional<c4c::backend::prepare::PreparedValueId> value_id;
+  std::optional<prepare::PreparedValueId> value_id;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  std::optional<c4c::backend::aarch64::abi::RegisterReference> reg;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> frame_slot_id;
+  std::optional<abi::RegisterReference> reg;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
   std::optional<c4c::LinkNameId> symbol_name;
   std::optional<c4c::BlockLabelId> block_label;
 };
@@ -437,11 +441,11 @@ struct PreparedBranchInstructionRecordResult {
 struct ScalarAluRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   ScalarAluOperationKind operation = ScalarAluOperationKind::Deferred;
-  c4c::backend::bir::BinaryOpcode source_binary_opcode = c4c::backend::bir::BinaryOpcode::Add;
-  c4c::backend::bir::TypeKind operand_type = c4c::backend::bir::TypeKind::Void;
-  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
   OperandRecord lhs;
   OperandRecord rhs;
@@ -451,23 +455,23 @@ struct ScalarAluRecord {
 struct ScalarCastRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   ScalarCastOperationKind operation = ScalarCastOperationKind::Deferred;
-  c4c::backend::bir::CastOpcode source_cast_opcode = c4c::backend::bir::CastOpcode::SExt;
-  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::Void;
-  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  bir::CastOpcode source_cast_opcode = bir::CastOpcode::SExt;
+  bir::TypeKind source_type = bir::TypeKind::Void;
+  std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
   OperandRecord source;
   bool supported_simple_integer_cast = false;
 };
 
 struct ScalarInstructionRecord {
-  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
   std::vector<OperandRecord> inputs;
-  std::optional<c4c::backend::bir::BinaryOpcode> source_binary_opcode;
-  std::optional<c4c::backend::bir::CastOpcode> source_cast_opcode;
+  std::optional<bir::BinaryOpcode> source_binary_opcode;
+  std::optional<bir::CastOpcode> source_cast_opcode;
   std::optional<ScalarAluRecord> scalar_alu;
   std::optional<ScalarCastRecord> scalar_cast;
 };
@@ -501,28 +505,28 @@ struct MemoryInstructionRecord {
   MemoryInstructionKind memory_kind = MemoryInstructionKind::Load;
   MemoryOperand address;
   std::optional<OperandRecord> value;
-  std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
+  std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind value_type = bir::TypeKind::Void;
 };
 
 struct SpillReloadInstructionRecord {
-  c4c::backend::prepare::PreparedValueId value_id = 0;
+  prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
-  c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
-  c4c::backend::prepare::PreparedSpillReloadOpKind op_kind =
-      c4c::backend::prepare::PreparedSpillReloadOpKind::Spill;
+  bir::TypeKind value_type = bir::TypeKind::Void;
+  prepare::PreparedSpillReloadOpKind op_kind =
+      prepare::PreparedSpillReloadOpKind::Spill;
   MachinePseudoKind pseudo_kind = MachinePseudoKind::SpillToSlot;
   MemoryOperand slot;
   std::optional<RegisterOperand> scratch;
-  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+  std::vector<abi::RegisterReference>
       occupied_scratch_register_references;
   std::vector<std::string_view> occupied_scratch_registers;
   std::optional<std::size_t> scratch_register_authority;
-  std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   bool stack_offset_is_prepared_snapshot = false;
-  const c4c::backend::prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
+  const prepare::PreparedSpillReloadOp* source_spill_reload = nullptr;
 };
 
 struct CallInstructionRecord {
@@ -530,7 +534,7 @@ struct CallInstructionRecord {
   std::optional<OperandRecord> indirect_callee;
   std::vector<OperandRecord> arguments;
   std::optional<OperandRecord> result;
-  c4c::backend::bir::CallingConv calling_convention = c4c::backend::bir::CallingConv::C;
+  bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;
   bool is_noreturn = false;
@@ -538,7 +542,7 @@ struct CallInstructionRecord {
 
 struct ReturnInstructionRecord {
   std::optional<OperandRecord> value;
-  c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind value_type = bir::TypeKind::Void;
 };
 
 struct AssemblerInstructionRecord {
@@ -551,7 +555,7 @@ struct ObjectInstructionRecord {
   std::optional<SymbolOperand> symbol;
   std::optional<FrameSlotOperand> frame_slot;
   std::optional<OperandRecord> value;
-  c4c::backend::bir::TypeKind object_type = c4c::backend::bir::TypeKind::Void;
+  bir::TypeKind object_type = bir::TypeKind::Void;
 };
 
 using InstructionPayload = std::variant<BranchInstructionRecord,
@@ -625,13 +629,13 @@ struct InstructionRecord {
     PreparedScalarCastRecordError error);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
-[[nodiscard]] bool is_compare_predicate(c4c::backend::bir::BinaryOpcode opcode);
-[[nodiscard]] bool is_scalar_alu_integer_opcode(c4c::backend::bir::BinaryOpcode opcode);
-[[nodiscard]] bool is_simple_integer_cast_opcode(c4c::backend::bir::CastOpcode opcode);
+[[nodiscard]] bool is_compare_predicate(bir::BinaryOpcode opcode);
+[[nodiscard]] bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode);
+[[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
-    c4c::backend::bir::BinaryOpcode opcode);
+    bir::BinaryOpcode opcode);
 [[nodiscard]] ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
-    c4c::backend::bir::CastOpcode opcode);
+    bir::CastOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);
 [[nodiscard]] OperandRecord make_immediate_operand(ImmediateOperand operand);
 [[nodiscard]] OperandRecord make_prepared_value_operand(PreparedValueOperand operand);
@@ -656,62 +660,62 @@ struct InstructionRecord {
     std::string_view diagnostic);
 [[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
     c4c::FunctionNameId function_name,
-    const c4c::backend::prepare::PreparedControlFlowBlock& block,
-    const c4c::backend::bir::Terminator& terminator);
+    const prepare::PreparedControlFlowBlock& block,
+    const bir::Terminator& terminator);
 [[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedControlFlowBlock& block,
-    const c4c::backend::prepare::PreparedBranchCondition& branch_condition,
-    const c4c::backend::bir::Terminator& terminator);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedControlFlowBlock& block,
+    const prepare::PreparedBranchCondition& branch_condition,
+    const bir::Terminator& terminator);
 [[nodiscard]] PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::BinaryInst& binary);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary);
 [[nodiscard]] PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::BinaryInst& binary);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary);
 [[nodiscard]] PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::CastInst& cast);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::CastInst& cast);
 [[nodiscard]] PreparedScalarCastInstructionRecordResult
 make_prepared_scalar_cast_instruction_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedStoragePlanFunction& storage_plan,
-    const c4c::backend::bir::CastInst& cast);
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::CastInst& cast);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::LoadLocalInst& load);
+    const bir::LoadLocalInst& load);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::StoreLocalInst& store);
+    const bir::StoreLocalInst& store);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::LoadGlobalInst& load);
+    const bir::LoadGlobalInst& load);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
-    const c4c::backend::prepare::PreparedNameTables& names,
-    const c4c::backend::prepare::PreparedValueLocationFunction& value_locations,
-    const c4c::backend::prepare::PreparedAddressingFunction& addressing,
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
-    const c4c::backend::bir::StoreGlobalInst& store);
+    const bir::StoreGlobalInst& store);
 
 }  // namespace c4c::backend::aarch64::codegen

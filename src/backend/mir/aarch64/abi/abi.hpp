@@ -10,6 +10,8 @@
 
 namespace c4c::backend::aarch64::abi {
 
+namespace prepare = c4c::backend::prepare;
+
 enum class RegisterBank {
   GeneralPurpose,
   StackPointer,
@@ -53,8 +55,8 @@ struct PreparedRegisterConversionError {
   PreparedRegisterConversionErrorKind kind =
       PreparedRegisterConversionErrorKind::UnknownRegisterName;
   std::string register_name;
-  std::optional<c4c::backend::prepare::PreparedRegisterBank> prepared_bank;
-  std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class;
+  std::optional<prepare::PreparedRegisterBank> prepared_bank;
+  std::optional<prepare::PreparedRegisterClass> prepared_class;
   std::optional<RegisterView> expected_view;
   std::string message;
 };
@@ -132,25 +134,25 @@ struct HandoffError {
     std::string_view register_name);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
     std::string_view register_name,
-    std::optional<c4c::backend::prepare::PreparedRegisterBank> prepared_bank,
-    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    std::optional<prepare::PreparedRegisterBank> prepared_bank,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
-    const c4c::backend::prepare::PreparedRegisterPlacement& placement,
-    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    const prepare::PreparedRegisterPlacement& placement,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
-    const c4c::backend::prepare::PreparedPhysicalRegisterAssignment& assignment,
+    const prepare::PreparedPhysicalRegisterAssignment& assignment,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
-    const c4c::backend::prepare::PreparedSavedRegister& saved_register,
-    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    const prepare::PreparedSavedRegister& saved_register,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] c4c::TargetProfile resolve_target_profile(
-    const c4c::backend::prepare::PreparedBirModule& module);
+    const prepare::PreparedBirModule& module);
 [[nodiscard]] bool is_aarch64_target(const c4c::TargetProfile& target_profile);
 [[nodiscard]] bool is_aapcs64_abi(const c4c::TargetProfile& target_profile);
 [[nodiscard]] std::optional<HandoffError> validate_prepared_module_handoff(
-    const c4c::backend::prepare::PreparedBirModule& module);
+    const prepare::PreparedBirModule& module);
 
 }  // namespace c4c::backend::aarch64::abi
