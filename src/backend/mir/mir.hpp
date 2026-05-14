@@ -86,6 +86,9 @@ struct MachineBlockSuccessor {
   std::optional<MachineOrigin> origin;
 };
 
+// Common hierarchical MIR stream contract. The shared layer owns module,
+// function, block, instruction, operand, and provenance shape; each target owns
+// the opaque instruction payload carried in `target`.
 template <typename TargetInstruction = std::monostate>
 struct MachineInstruction {
   TargetOpcode opcode = 0;
@@ -113,9 +116,13 @@ struct MachineModule {
   std::vector<MachineFunction<TargetInstruction>> functions;
 };
 
+// Compatibility alias for older flat machine-node terminology. New shared MIR
+// walking should prefer MachineModule/MachineFunction/MachineBlock hierarchy.
 template <typename TargetInstruction = std::monostate>
 using MachineNode = MachineInstruction<TargetInstruction>;
 
+// Compatibility carrier names retained for older generic MIR users. The common
+// stream contract above is the authoritative hierarchical carrier.
 template <typename Inst>
 struct Block {
   c4c::BlockLabelId label = c4c::kInvalidBlockLabel;
@@ -130,6 +137,38 @@ struct Function {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::vector<Block<Inst>> blocks;
 };
+
+template <typename TargetInstruction, typename Visitor>
+void walk_instructions(MachineFunction<TargetInstruction>& function, Visitor&& visitor) {
+  for (auto& block : function.blocks) {
+    for (auto& instruction : block.instructions) {
+      visitor(function, block, instruction);
+    }
+  }
+}
+
+template <typename TargetInstruction, typename Visitor>
+void walk_instructions(const MachineFunction<TargetInstruction>& function, Visitor&& visitor) {
+  for (const auto& block : function.blocks) {
+    for (const auto& instruction : block.instructions) {
+      visitor(function, block, instruction);
+    }
+  }
+}
+
+template <typename TargetInstruction, typename Visitor>
+void walk_instructions(MachineModule<TargetInstruction>& module, Visitor&& visitor) {
+  for (auto& function : module.functions) {
+    walk_instructions(function, visitor);
+  }
+}
+
+template <typename TargetInstruction, typename Visitor>
+void walk_instructions(const MachineModule<TargetInstruction>& module, Visitor&& visitor) {
+  for (const auto& function : module.functions) {
+    walk_instructions(function, visitor);
+  }
+}
 
 template <typename TargetInstruction>
 [[nodiscard]] bool empty(const MachineFunction<TargetInstruction>& function) {
@@ -152,7 +191,8 @@ template <typename Inst>
 }
 
 template <typename TargetInstruction>
-[[nodiscard]] std::vector<MachineInstruction<TargetInstruction>> flatten_instructions(
+[[nodiscard]] std::vector<MachineInstruction<TargetInstruction>>
+flatten_compatibility_instructions(
     const MachineFunction<TargetInstruction>& function) {
   std::vector<MachineInstruction<TargetInstruction>> instructions;
   for (const auto& block : function.blocks) {
@@ -162,12 +202,27 @@ template <typename TargetInstruction>
 }
 
 template <typename Inst>
-[[nodiscard]] std::vector<Inst> flatten_instructions(const Function<Inst>& function) {
+[[nodiscard]] std::vector<Inst> flatten_compatibility_instructions(
+    const Function<Inst>& function) {
   std::vector<Inst> instructions;
   for (const auto& block : function.blocks) {
     instructions.insert(instructions.end(), block.instructions.begin(), block.instructions.end());
   }
   return instructions;
+}
+
+// Compatibility-only flattening helper for existing flat-vector printer paths.
+// Shared MIR consumers should walk MachineModule/MachineFunction/MachineBlock
+// directly so block and successor context remains available.
+template <typename TargetInstruction>
+[[nodiscard]] std::vector<MachineInstruction<TargetInstruction>> flatten_instructions(
+    const MachineFunction<TargetInstruction>& function) {
+  return flatten_compatibility_instructions(function);
+}
+
+template <typename Inst>
+[[nodiscard]] std::vector<Inst> flatten_instructions(const Function<Inst>& function) {
+  return flatten_compatibility_instructions(function);
 }
 
 template <typename TargetInstruction>

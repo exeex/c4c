@@ -2,9 +2,12 @@
 
 #include <iostream>
 #include <string_view>
+#include <type_traits>
+#include <utility>
 
 namespace {
 
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace mir = c4c::backend::mir;
 
@@ -86,6 +89,51 @@ int common_carrier_preserves_typed_successor_metadata() {
   return 0;
 }
 
+int common_hierarchy_walks_without_owning_target_payload() {
+  static_assert(
+      std::is_same_v<decltype(aarch64_module::MachineInstruction{}.target),
+                     aarch64_codegen::InstructionRecord>,
+      "common MIR instruction must carry the target-owned instruction payload");
+
+  aarch64_module::MachineModule module;
+  module.functions.push_back(aarch64_module::MachineFunction{
+      .function_name = c4c::FunctionNameId{53},
+  });
+
+  aarch64_module::MachineInstruction instruction;
+  instruction.opcode = 71;
+  instruction.target.family = aarch64_codegen::InstructionFamily::Return;
+  instruction.target.surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode;
+  instruction.target.opcode = aarch64_codegen::MachineOpcode::Unspecified;
+
+  mir::append_instruction(module.functions.front(), c4c::BlockLabelId{59}, 4,
+                          std::move(instruction));
+
+  std::size_t visited = 0;
+  bool saw_function = false;
+  bool saw_block = false;
+  bool saw_target_payload = false;
+  mir::walk_instructions(module,
+                         [&](const aarch64_module::MachineFunction& function,
+                             const aarch64_module::MachineBlock& block,
+                             const aarch64_module::MachineInstruction& visited_instruction) {
+                           ++visited;
+                           saw_function = function.function_name == c4c::FunctionNameId{53};
+                           saw_block = block.block_label == c4c::BlockLabelId{59} &&
+                                       block.index == 4;
+                           saw_target_payload =
+                               visited_instruction.target.family ==
+                                   aarch64_codegen::InstructionFamily::Return &&
+                               visited_instruction.target.surface ==
+                                   aarch64_codegen::RecordSurfaceKind::MachineInstructionNode;
+                         });
+
+  if (visited != 1 || !saw_function || !saw_block || !saw_target_payload) {
+    return fail("expected common MIR walker to preserve hierarchy and target-owned payload");
+  }
+  return 0;
+}
+
 int flatten_and_empty_helpers_use_hierarchical_carrier() {
   aarch64_module::MachineFunction function;
   function.function_name = c4c::FunctionNameId{19};
@@ -102,9 +150,10 @@ int flatten_and_empty_helpers_use_hierarchical_carrier() {
   instruction.opcode = 99;
   mir::append_instruction(function, c4c::BlockLabelId{29}, 0, std::move(instruction));
 
-  const auto flat = mir::flatten_instructions(function);
+  const auto flat = mir::flatten_compatibility_instructions(function);
   if (flat.size() != 1 || flat.front().opcode != 99) {
-    return fail("expected common MIR flatten helper to preserve machine instruction identity");
+    return fail(
+        "expected common MIR compatibility flatten helper to preserve instruction identity");
   }
   if (mir::empty(function)) {
     return fail("expected common MIR empty helper to observe appended instructions");
@@ -120,6 +169,10 @@ int main() {
     return status;
   }
   if (const int status = common_carrier_preserves_typed_successor_metadata();
+      status != 0) {
+    return status;
+  }
+  if (const int status = common_hierarchy_walks_without_owning_target_payload();
       status != 0) {
     return status;
   }
