@@ -41,6 +41,12 @@ option(ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN
 set(C_TESTSUITE_AARCH64_BACKEND_RUNNER "" CACHE STRING
     "Optional command used to run AArch64 c-testsuite backend binaries on non-AArch64 hosts")
 
+if(ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN AND NOT ENABLE_C4C_BACKEND)
+  message(FATAL_ERROR
+    "ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN requires ENABLE_C4C_BACKEND=ON "
+    "so c4cll supports backend-native --codegen asm")
+endif()
+
 # ── Auto-detect vendored roots ────────────────────────────────────────────────
 
 if(NOT C_TESTSUITE_ROOT AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/c/external/c-testsuite")

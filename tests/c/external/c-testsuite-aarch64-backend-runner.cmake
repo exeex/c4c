@@ -40,7 +40,7 @@ if(NOT EXISTS "${OUT_LL}")
 endif()
 
 file(READ "${OUT_LL}" backend_output LIMIT 256)
-if(NOT backend_output MATCHES "(^|\n)\\.text(\n|$)")
+if(NOT backend_output MATCHES "(^|\n)[ \t]*\\.text([ \t]*(\n|$)|[ \t]+)")
   message(FATAL_ERROR
     "[BACKEND_FALLBACK_IR] ${SRC}\n"
     "expected backend asm output for ${TARGET_TRIPLE}, but backend output did not start the asm path")
