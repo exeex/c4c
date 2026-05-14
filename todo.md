@@ -8,28 +8,29 @@ Current Step Title: Establish AArch64 Header And Module Skeleton
 
 ## Just Finished
 
-Step 1: Establish Common Hierarchical MIR Carrier completed the header-level
-common MIR skeleton in `src/backend/mir/mir.hpp`. The new common carrier models
-module -> function -> block -> vector of instructions, gives machine functions
-and blocks first-class BIR identity fields initialized to invalid IDs, and adds
-lightweight optional instruction provenance metadata. Legacy `MachineNode`,
-`Block<Inst>`, `Function<Inst>`, `empty`, `flatten_instructions`, and
-`append_instruction` compatibility remain available for current AArch64 users.
+Step 2: Establish AArch64 Header And Module Skeleton recreated
+`src/backend/mir/aarch64/module/module.hpp` and
+`src/backend/mir/aarch64/module/module.cpp` as compact Stage 3 skeleton files
+after the legacy implementation was removed. The new public surface exposes
+`BuildResult`, `Module`, `FunctionRecord`, the common MIR carrier aliases, and
+`build(const prepare::PreparedBirModule&)`; `build` validates the AArch64 ABI
+handoff and returns an empty canonical module product until real lowering is
+reintroduced.
 
 ## Suggested Next
 
-Delegate plan Step 2 to begin migrating AArch64 module skeleton code onto the
-common carrier shape now that the shared header surface exists.
+Delegate the next AArch64 module packet to add the first real canonical
+function traversal seam that produces `MachineFunction`/`MachineBlock`
+contents without restoring the legacy flat record assembler.
 
 ## Watchouts
 
-- Preserve staged migration; do not delete or disconnect legacy code until the
-  replacement owner for that seam is live and proved.
-- The pre-existing dirty edits in `src/backend/mir/aarch64/module.hpp` and
-  `src/backend/mir/aarch64/module.cpp` were left untouched by this packet.
-- Current AArch64 code still uses the legacy `Function<MachineNode<...>>`
-  compatibility wrapper; a later migration should decide when to switch those
-  aliases to `MachineFunction<TargetInstruction>`.
+- The new skeleton intentionally does not lower prepared functions into machine
+  nodes, so public assembly paths that require printable nodes should still
+  fail closed until a later packet adds semantic lowering.
+- `Module::functions` is currently a plain compatibility vector for existing
+  backend call sites; a later API cleanup can move users to the canonical
+  `Module::mir` carrier or `CompatibilityProjection`.
 - Keep `module.hpp` as the single non-helper public header unless lifecycle
   repair authorizes a different layout.
 - Do not use cached display strings, source spellings, broad public records,
@@ -41,6 +42,9 @@ common carrier shape now that the shared header surface exists.
 ## Proof
 
 Ran:
-`cmake --build build --target c4c_backend -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_prepared_module_identity|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer'`
+`cmake --build build --target c4c_backend -j2`
+
+Also ran optional subset:
+`ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_prepared_handoff_gate|backend_aarch64_machine_printer'`
 
 Result: passed. Proof output is preserved in `test_after.log`.
