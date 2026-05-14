@@ -46,6 +46,15 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
+  };
+}
+
 const char* register_name_for_type(bir::TypeKind type, unsigned index) {
   if (type == bir::TypeKind::I64 || type == bir::TypeKind::Ptr) {
     return index == 0 ? "x0" : "x1";
@@ -180,6 +189,35 @@ int supported_scalar_cast_records_preserve_prepared_and_bir_facts() {
   return 0;
 }
 
+int prepared_scalar_cast_registers_prefer_storage_register_placement() {
+  auto fixture = make_fixture(bir::TypeKind::I32, bir::TypeKind::I64);
+  fixture.storage.values[0].register_name = std::string{"mismatched-source-spelling"};
+  fixture.storage.values[0].occupied_register_names = {"mismatched-source-spelling"};
+  fixture.storage.values[0].register_placement = caller_saved_gpr(3);
+  fixture.storage.values[1].register_name = std::nullopt;
+  fixture.storage.values[1].occupied_register_names.clear();
+  fixture.storage.values[1].register_placement = caller_saved_gpr(4);
+
+  const auto result = aarch64_codegen::make_prepared_scalar_cast_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      cast_inst(bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64));
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedScalarCastRecordError::None) {
+    return fail("expected cast registers to resolve from storage placement before legacy names");
+  }
+
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(&result.record->source.payload);
+  if (source == nullptr || source->reg != aarch64_abi::w_register(3) ||
+      source->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
+      source->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected cast source to use storage placement register");
+  }
+  return 0;
+}
+
 int unsupported_and_incomplete_cast_facts_fail_closed() {
   auto fixture = make_fixture(bir::TypeKind::I32, bir::TypeKind::I64);
   const auto unsupported = aarch64_codegen::make_prepared_scalar_cast_record(
@@ -267,6 +305,10 @@ int unsupported_and_incomplete_cast_facts_fail_closed() {
 
 int main() {
   if (const int status = supported_scalar_cast_records_preserve_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = prepared_scalar_cast_registers_prefer_storage_register_placement();
       status != 0) {
     return status;
   }

@@ -1137,9 +1137,7 @@ std::optional<RegisterOperand> make_prepared_register_operand(
     c4c::backend::bir::TypeKind type,
     RegisterOperandRole role) {
   if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
-      storage.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
-      !home.register_name.has_value() || !storage.register_name.has_value() ||
-      *home.register_name != *storage.register_name) {
+      storage.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register) {
     return std::nullopt;
   }
 
@@ -1148,8 +1146,18 @@ std::optional<RegisterOperand> make_prepared_register_operand(
     return std::nullopt;
   }
   const auto prepared_class = register_class_from_bank(storage.bank);
-  const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
-      *storage.register_name, storage.bank, prepared_class, expected_view);
+  c4c::backend::aarch64::abi::PreparedRegisterConversionResult converted;
+  if (storage.register_placement.has_value()) {
+    converted = c4c::backend::aarch64::abi::convert_prepared_register(
+        *storage.register_placement, prepared_class, expected_view);
+  } else {
+    if (!home.register_name.has_value() || !storage.register_name.has_value() ||
+        *home.register_name != *storage.register_name) {
+      return std::nullopt;
+    }
+    converted = c4c::backend::aarch64::abi::convert_prepared_register(
+        *storage.register_name, storage.bank, prepared_class, expected_view);
+  }
   if (!converted.has_value()) {
     return std::nullopt;
   }
@@ -1239,8 +1247,9 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
 
   if (home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
       storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
-      !home->register_name.has_value() || !storage->register_name.has_value() ||
-      *home->register_name != *storage->register_name) {
+      (!storage->register_placement.has_value() &&
+       (!home->register_name.has_value() || !storage->register_name.has_value() ||
+        *home->register_name != *storage->register_name))) {
     return PreparedScalarAluRecordError::UnsupportedOperandStorage;
   }
 
@@ -2090,8 +2099,9 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   }
   if (result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
       result_storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
-      !result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
-      *result_home->register_name != *result_storage->register_name) {
+      (!result_storage->register_placement.has_value() &&
+       (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
+        *result_home->register_name != *result_storage->register_name))) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
   }
   const auto result_register = make_prepared_register_operand(
@@ -2177,8 +2187,9 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
   }
   if (result_home->kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
       result_storage->encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
-      !result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
-      *result_home->register_name != *result_storage->register_name) {
+      (!result_storage->register_placement.has_value() &&
+       (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
+        *result_home->register_name != *result_storage->register_name))) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultStorage);
   }
 
