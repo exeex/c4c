@@ -34,8 +34,9 @@ against the Step 1 vocabulary.
 - If the Stage 2 artifact map appears wrong, stop and report a Stage 2 contract
   repair blocker instead of silently adding or removing files.
 - Step 2 drafts should use the Step 1 `MachineModule`, `MachineFunction`,
-  `MachineBlock`, `MachineInstruction`, `MachineOperand`, `Provenance`, and
-  `CompatibilityProjection` vocabulary instead of inventing a second carrier.
+  `MachineBlock`, `MachineInstruction`, `MachineOperand`, and
+  `MachineOrigin`-equivalent `Provenance` vocabulary instead of inventing a
+  second carrier.
 
 ## Proof
 
