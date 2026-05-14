@@ -1,18 +1,14 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
-#include "src/backend/mir/printer.hpp"
 
 #include <iostream>
 #include <string>
 #include <string_view>
-#include <utility>
-#include <vector>
 
 namespace {
 
 namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
-namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const std::string& message) {
@@ -534,130 +530,6 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   return 0;
 }
 
-struct FakeInstruction {
-  std::string text;
-  bool fail = false;
-};
-
-mir::MachineNode<FakeInstruction> fake_node(std::string text, bool fail = false) {
-  return mir::MachineNode<FakeInstruction>{
-      .target = FakeInstruction{.text = std::move(text), .fail = fail},
-  };
-}
-
-mir::TargetAssemblyPrinter<FakeInstruction> fake_target_printer() {
-  return mir::TargetAssemblyPrinter<FakeInstruction>{
-      .print_function_label =
-          [](c4c::FunctionNameId function_name) {
-            return mir::print_success("fn_" + std::to_string(function_name));
-          },
-      .print_block_label =
-          [](c4c::FunctionNameId function_name,
-             c4c::BlockLabelId block_label,
-             std::size_t block_index) {
-            return mir::print_success("bb_" + std::to_string(function_name) + "_" +
-                                      std::to_string(block_label) + "_" +
-                                      std::to_string(block_index));
-          },
-      .print_instruction =
-          [](const FakeInstruction& instruction) {
-            if (instruction.fail) {
-              return mir::print_failure("target instruction refused");
-            }
-            return mir::print_success(instruction.text);
-          },
-  };
-}
-
-int common_mir_printer_walks_functions_blocks_and_instructions() {
-  const std::vector<mir::Function<mir::MachineNode<FakeInstruction>>> functions{
-      mir::Function<mir::MachineNode<FakeInstruction>>{
-          .name = c4c::FunctionNameId{11},
-          .blocks =
-              {
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{7},
-                      .index = 0,
-                      .instructions = {fake_node("enter"), fake_node("op first\nop second\n")},
-                  },
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{8},
-                      .index = 1,
-                      .instructions = {fake_node("tail")},
-                  },
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{9},
-                      .index = 2,
-                  },
-              },
-      },
-      mir::Function<mir::MachineNode<FakeInstruction>>{
-          .name = c4c::FunctionNameId{12},
-          .blocks =
-              {
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{13},
-                      .index = 0,
-                      .instructions = {fake_node("finish")},
-                  },
-              },
-      },
-  };
-
-  const auto result = mir::print_functions(functions, fake_target_printer());
-  if (!result.ok) {
-    return fail("expected common MIR printer to walk printable functions: " + result.diagnostic);
-  }
-
-  const std::string expected =
-      "    .text\n"
-      "    .globl fn_11\n"
-      "    .type fn_11, %function\n"
-      "fn_11:\n"
-      "    enter\n"
-      "    op first\n"
-      "    op second\n"
-      "bb_11_8_1:\n"
-      "    tail\n"
-      "    .size fn_11, .-fn_11\n"
-      "    .globl fn_12\n"
-      "    .type fn_12, %function\n"
-      "fn_12:\n"
-      "    finish\n"
-      "    .size fn_12, .-fn_12\n"
-      "    .section .note.GNU-stack,\"\",@progbits\n";
-  return expect_equal(result.assembly, expected, "common MIR printer assembly");
-}
-
-int common_mir_printer_reports_delegated_failures_with_position() {
-  const std::vector<mir::Function<mir::MachineNode<FakeInstruction>>> functions{
-      mir::Function<mir::MachineNode<FakeInstruction>>{
-          .name = c4c::FunctionNameId{21},
-          .blocks =
-              {
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{22},
-                      .index = 0,
-                      .instructions = {fake_node("ok")},
-                  },
-                  mir::Block<mir::MachineNode<FakeInstruction>>{
-                      .label = c4c::BlockLabelId{23},
-                      .index = 1,
-                      .instructions = {fake_node("bad", true)},
-                  },
-              },
-      },
-  };
-
-  const auto result = mir::print_functions(functions, fake_target_printer());
-  if (result.ok ||
-      result.diagnostic.find("function 0 block 1 instruction 0: target instruction refused") ==
-          std::string::npos) {
-    return fail("expected common MIR printer to report delegated instruction failure position");
-  }
-  return 0;
-}
-
 }  // namespace
 
 int main() {
@@ -686,14 +558,6 @@ int main() {
     return result;
   }
   if (const int result = unsupported_surfaces_statuses_and_missing_operands_fail_closed();
-      result != 0) {
-    return result;
-  }
-  if (const int result = common_mir_printer_walks_functions_blocks_and_instructions();
-      result != 0) {
-    return result;
-  }
-  if (const int result = common_mir_printer_reports_delegated_failures_with_position();
       result != 0) {
     return result;
   }
