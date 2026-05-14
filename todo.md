@@ -1,16 +1,17 @@
 Status: Active
 Source Idea Path: ideas/open/231_aarch64_call_frame_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Lower Memory-Return And Preservation Cases
+Current Step ID: 6
+Current Step Title: Validate And Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Continued Step 5, Lower Memory-Return And Preservation Cases, by checking
-whether stack-slot `PreparedCallPreservedValue` records can become structured
-AArch64 call `preserves` memory effects using only existing prepared authority.
+Completed the lifecycle review for Step 5, Lower Memory-Return And
+Preservation Cases, after checking whether stack-slot
+`PreparedCallPreservedValue` records can become structured AArch64 call
+`preserves` memory effects using only existing prepared authority.
 
 Implemented the fail-closed path for stack-slot preserved values:
 
@@ -24,12 +25,19 @@ Implemented the fail-closed path for stack-slot preserved values:
 - Added target-record and dispatch coverage proving explicit stack-slot
   preserved-value provenance survives while structured call `preserves` remains
   limited to the already-complete register preservation carrier.
+- Created `ideas/open/242_prepared_stack_slot_preserved_value_extent.md` as the
+  separate upstream prepared-authority initiative for stack-slot
+  preserved-value size/alignment.
+- Advanced the active runbook pointer to Step 6 because Step 5 is complete for
+  currently available prepared facts, and its remaining stack-slot structured
+  memory-preserve limitation is now represented as a separate open initiative.
 
 ## Suggested Next
 
-Continue Step 5 by deciding whether to add an upstream prepared carrier for
-stack-slot preserved-value size/alignment, or leave stack-slot preservation as
-raw call provenance until a later prepared-authority slice owns that contract.
+Execute Step 6, Validate And Summarize: rerun the supervisor-chosen build and
+call/frame proof subset, preserve remaining unsupported call/frame states here,
+and ask the supervisor whether the active source idea is complete, blocked, or
+should remain open pending the split prepared-authority initiatives.
 
 ## Watchouts
 
@@ -89,6 +97,9 @@ raw call provenance until a later prepared-authority slice owns that contract.
   callee-saved-register carriers. Stack-slot preserved values remain raw
   `PreparedCallPreservedValue` provenance because the current preserved-value
   carrier lacks size/alignment for a complete structured memory effect.
+- Stack-slot structured memory-preserve effects are delegated to
+  `ideas/open/242_prepared_stack_slot_preserved_value_extent.md`; do not infer
+  their size/alignment in AArch64 lowering while this idea remains open.
 - `clang-format` is not installed in this environment; the edited hunks were
   manually checked.
 
