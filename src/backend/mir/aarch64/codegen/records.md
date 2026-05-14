@@ -140,6 +140,19 @@ spelling for the target-MIR/pre-node surface; new roadmap work should prefer
 explicit target-MIR, selected machine-node, printer-output, encoder-input, or
 external-assembler-input names.
 
+AArch64 naming tiers are intentionally separate. Stream item kind vocabulary
+classifies structured asm/encoding stream records such as sections, labels,
+operators, directives, data, and relocation needs. Natural operator kind
+vocabulary is the MIR / structured-asm semantic backend input and may use
+readable aliases such as `Mov`, `Cmp`, and `Tst` when those names better match
+the operation being authored. Printer mnemonic vocabulary is the textual `.s`
+renderer spelling for supported output and is not semantic backend input.
+Encoder canonical form vocabulary belongs to assembler/encoder
+canonicalization and may lower aliases into concrete encodable instruction
+families. The record layer should preserve typed operator identity and
+provenance; it should not force MIR authors to choose every final encoding form
+or parse printed `.s` to recover that choice.
+
 Current guard decision: there is no live route from AArch64
 `machine_printer.cpp` printed `.s` into the in-tree
 parser/encoder/object/linker path, so this docs-only plan does not require a

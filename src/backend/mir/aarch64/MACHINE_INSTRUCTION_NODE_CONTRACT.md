@@ -71,6 +71,32 @@ Mnemonic strings are not node identity. A printer may derive mnemonics from a
 node, and diagnostics may include mnemonic text, but codegen and encoder logic
 must branch on typed opcode or family identity.
 
+## Naming Tiers And Alias Ownership
+
+AArch64 naming is split into four tiers so codegen, printers, and future
+encoding work do not accidentally treat one spelling as another semantic
+surface:
+
+- stream item kind names describe structured assembly-stream records such as
+  sections, labels, operators/instructions, directives, data, alignment, and
+  relocation needs.
+- natural operator kind names are the MIR / structured-asm authoring surface.
+  They should use readable AArch64 operator names when practical, including
+  alias names such as `Mov`, `Cmp`, and `Tst` when the alias is the clearer
+  semantic backend input.
+- printer mnemonic names are terminal assembly spellings such as `mov`, `cmp`,
+  or `tst` chosen by the `.s` printer for the supported printable subset.
+  Printed `.s` remains final renderer output, not semantic backend input.
+- encoder canonical form names are later concrete encoding-family choices used
+  by assembler/encoder internals after alias canonicalization.
+
+Aliases are valid at the machine-node or structured-asm layer when they make
+the selected operation readable and preserve typed operands and provenance.
+The MIR / structured-asm surface does not need to name every concrete encoding
+form. The assembler/encoder canonicalization layer owns resolving aliases such
+as `Mov`, `Cmp`, and `Tst` into concrete encodable forms, relocation behavior,
+operand legality, and final encoding selection.
+
 ## Typed Operands
 
 Machine instruction operands must be structured variants. A later C++ surface
