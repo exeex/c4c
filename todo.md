@@ -1,33 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/219_aarch64_natural_operator_naming_and_printer_spelling.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Introduce Or Normalize Central Spelling Helpers
+Current Step ID: 4
+Current Step Title: Route Printer And Diagnostics Through Shared Spelling
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3: introduced a central supported printer mnemonic helper
-surface for AArch64 machine-node/operator spelling without routing
-`machine_printer.cpp` through it yet.
+Completed Step 4: routed the AArch64 machine printer through the shared
+printer mnemonic helper surface while preserving existing printed assembly.
 
 Implementation updates made:
-- `codegen/records.hpp` now exposes `MachinePrinterMnemonicKind` plus helper
-  functions that map supported machine opcodes, pseudos, and instruction
-  records to printer mnemonic spelling.
-- `codegen/records.cpp` centralizes the currently supported printer spellings:
-  `b`, `cbnz`, `ldr`, `str`, `mov`, and `ret`.
-- Unsupported or non-printable opcode/operator cases return the empty spelling
-  through the new helper surface.
-- `backend_aarch64_target_instruction_records_test.cpp` covers representative
-  helper output for branch, conditional branch, load/store, immediate-return
-  `mov`, `ret`, and an unsupported scalar opcode.
+- `codegen/machine_printer.cpp` now obtains supported printed mnemonics from
+  the shared helper surface for spill/reload, branch, store, immediate-return
+  move, and return output.
+- Hard-coded supported printer spelling literals were removed from the printer
+  body where practical; missing helper spellings fail closed with diagnostics.
+- `backend_aarch64_machine_printer_test.cpp` still proves representative output
+  and now checks helper/printer mnemonic alignment for `str`, `ldr`, `cbnz`,
+  `b`, `mov`, and `ret`.
 
 ## Suggested Next
 
-Execute Step 4: route the AArch64 printer and relevant diagnostics through the
-shared spelling helpers while preserving existing printed assembly.
+Execute Step 5: route remaining diagnostics or documentation references that
+name printer/operator spelling through the shared vocabulary, without expanding
+instruction selection coverage.
 
 ## Watchouts
 
@@ -37,18 +35,18 @@ shared spelling helpers while preserving existing printed assembly.
 - Do not touch `ideas/open/221_backend_test_tree_split_bir_mir_and_prune_legacy.md`.
 - Do not expand instruction selection coverage just to add more operator names.
 - Do not downgrade expectations or introduce testcase-shaped shortcuts.
-- The live printer still has hard-coded mnemonics; Step 4 should consume the
-  central helper without treating printer text as semantic input.
 - External assembler and encoder headers still accept mnemonic strings for the
   external text path only; do not treat those as the internal shared operator
   source.
 - The new helper intentionally returns an empty spelling for currently
   unsupported scalar opcodes and `CompareBranch`; do not expand instruction
   selection coverage just to make those spellings non-empty.
+- The printer still intentionally rejects loads without a structured
+  destination operand; Step 4 did not add new printable instruction forms.
 
 ## Proof
 
-Step 3 helper/test proof:
+Step 4 printer-routing proof:
 
 ```bash
 bash -lc 'set -o pipefail; cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R "^backend_aarch64_(target_instruction_records|machine_printer)$" >> test_after.log 2>&1'

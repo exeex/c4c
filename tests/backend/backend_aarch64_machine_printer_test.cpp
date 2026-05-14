@@ -2,6 +2,7 @@
 
 #include <iostream>
 #include <string>
+#include <string_view>
 
 namespace {
 
@@ -13,6 +14,14 @@ namespace prepare = c4c::backend::prepare;
 int fail(const std::string& message) {
   std::cerr << message << "\n";
   return 1;
+}
+
+int expect_equal(std::string_view actual, std::string_view expected, std::string_view context) {
+  if (actual != expected) {
+    return fail(std::string(context) + " expected '" + std::string(expected) + "', got '" +
+                std::string(actual) + "'");
+  }
+  return 0;
 }
 
 aarch64_codegen::RegisterOperand xreg(unsigned index) {
@@ -85,6 +94,20 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
   if (!result.ok || result.assembly != expected || !result.diagnostic.empty()) {
     return fail("expected selected spill/reload nodes to print canonical AArch64 text");
   }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_primary_printer_mnemonic(spill),
+          "str",
+          "spill helper mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_primary_printer_mnemonic(reload),
+          "ldr",
+          "reload helper mnemonic");
+      check != 0) {
+    return check;
+  }
   return 0;
 }
 
@@ -149,6 +172,28 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
     return fail("expected branch and store nodes to print from structured operands: " +
                 result.diagnostic);
   }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_primary_printer_mnemonic(branch),
+          "cbnz",
+          "conditional branch helper mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_printer_mnemonic_kind_name(
+              aarch64_codegen::MachinePrinterMnemonicKind::Branch),
+          "b",
+          "unconditional branch helper mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_primary_printer_mnemonic(store),
+          "str",
+          "store helper mnemonic");
+      check != 0) {
+    return check;
+  }
   return 0;
 }
 
@@ -169,6 +214,20 @@ int selected_immediate_return_node_prints_callable_epilogue() {
   if (!result.ok || result.assembly != expected) {
     return fail("expected selected immediate return node to print AArch64 return text: " +
                 result.diagnostic);
+  }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret),
+          "mov",
+          "return helper auxiliary mnemonic");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(
+          aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret),
+          "ret",
+          "return helper primary mnemonic");
+      check != 0) {
+    return check;
   }
   return 0;
 }
