@@ -1,7 +1,8 @@
 # Backend Test Tree Split Bir Mir And Prune Legacy
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Depends On:
 - `ideas/open/219_aarch64_natural_operator_naming_and_printer_spelling.md`
@@ -113,6 +114,15 @@ real MIR-owned tests or deleted.
   a recorded reason in the inventory or commit message.
 - The restructuring does not enable new AArch64 case coverage ahead of the
   markdown owner required by idea 220.
+
+## Closure Notes
+
+Closed after the backend test tree split established independent BIR and MIR
+ownership, classified backend fixtures in `tests/backend/OWNERSHIP.md`, removed
+stale disabled MIR dump/trace route debris, and preserved existing backend
+behavior. Final close proof used matching backend-scope regression logs:
+`test_before.log` and `test_after.log` both passed 135/135 `^backend_` tests,
+with no new failures under the plan-owner regression guard.
 
 ## Reviewer Reject Signals
 
