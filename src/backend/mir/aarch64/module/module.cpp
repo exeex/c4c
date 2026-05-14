@@ -1044,21 +1044,35 @@ return_abi_register_for_value(
     if (move.from_value_id != home->value_id || move.to_value_id != home->value_id ||
         move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
         move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
-        !move.destination_register_name.has_value()) {
+        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
       continue;
     }
-    const auto parsed = abi::parse_aarch64_register_name(*move.destination_register_name);
-    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
-      return std::nullopt;
+    std::optional<abi::RegisterReference> return_register;
+    if (move.destination_register_placement.has_value()) {
+      const auto converted =
+          abi::convert_prepared_register(*move.destination_register_placement,
+                                         prepare::PreparedRegisterClass::General,
+                                         expected_view);
+      if (!converted.has_value() ||
+          converted.reg->bank != abi::RegisterBank::GeneralPurpose) {
+        return std::nullopt;
+      }
+      return_register = converted.reg;
+    } else if (move.destination_register_name.has_value()) {
+      const auto parsed = abi::parse_aarch64_register_name(*move.destination_register_name);
+      if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+        return std::nullopt;
+      }
+      return_register = abi::RegisterReference{
+          .bank = parsed->bank,
+          .view = *expected_view,
+          .index = parsed->index,
+      };
+    } else {
+      continue;
     }
     return codegen::RegisterOperand{
-        .reg =
-            abi::RegisterReference{
-                .bank = parsed->bank,
-                .view = *expected_view,
-                .index = parsed->index,
-            },
+        .reg = *return_register,
         .role = codegen::RegisterOperandRole::CallAbi,
         .value_id = home->value_id,
         .value_name = home->value_name,

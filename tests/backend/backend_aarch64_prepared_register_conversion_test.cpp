@@ -97,6 +97,93 @@ int converts_prepared_assignment_and_saved_register_carriers() {
   return 0;
 }
 
+int converts_structured_prepared_placements_inside_aarch64_target() {
+  const prepare::PreparedRegisterPlacement call_arg{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+      .slot_index = 2,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement caller_temp{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = 9,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement callee_saved{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement fp_scratch{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .pool = prepare::PreparedRegisterSlotPool::ReservedScratch,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+
+  const auto arg = aarch64_abi::convert_prepared_register(
+      call_arg,
+      prepare::PreparedRegisterClass::General,
+      aarch64_abi::RegisterView::W);
+  const auto temp = aarch64_abi::convert_prepared_register(
+      caller_temp,
+      prepare::PreparedRegisterClass::General,
+      aarch64_abi::RegisterView::X);
+  const auto saved = aarch64_abi::convert_prepared_register(
+      callee_saved,
+      prepare::PreparedRegisterClass::General,
+      aarch64_abi::RegisterView::X);
+  const auto scratch = aarch64_abi::convert_prepared_register(
+      fp_scratch,
+      prepare::PreparedRegisterClass::Float,
+      aarch64_abi::RegisterView::D);
+
+  if (!arg.has_value() || arg.reg != aarch64_abi::w_register(2)) {
+    return fail("expected AArch64 to map structured call-argument placement to w2");
+  }
+  if (!temp.has_value() || temp.reg != aarch64_abi::x_register(9)) {
+    return fail("expected AArch64 to map caller-saved placement slot 9 to x9");
+  }
+  if (!saved.has_value() || saved.reg != aarch64_abi::x_register(20)) {
+    return fail("expected AArch64 to map callee-saved placement slot 1 to x20");
+  }
+  if (!scratch.has_value() ||
+      scratch.reg != aarch64_abi::fp_simd_register(17, aarch64_abi::RegisterView::D)) {
+    return fail("expected AArch64 to map reserved FP scratch placement slot 1 to d17");
+  }
+
+  const prepare::PreparedPhysicalRegisterAssignment assignment{
+      .reg_class = prepare::PreparedRegisterClass::General,
+      .register_name = "x0",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x0"},
+      .placement = callee_saved,
+  };
+  const auto placement_first =
+      aarch64_abi::convert_prepared_register(assignment, aarch64_abi::RegisterView::X);
+  if (!placement_first.has_value() || placement_first.reg != aarch64_abi::x_register(20)) {
+    return fail("expected prepared assignment conversion to prefer structured placement over spelling");
+  }
+
+  const prepare::PreparedRegisterPlacement invalid_slot{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+      .slot_index = 8,
+      .contiguous_width = 1,
+  };
+  if (!failed_with(aarch64_abi::convert_prepared_register(
+                       invalid_slot,
+                       prepare::PreparedRegisterClass::General,
+                       aarch64_abi::RegisterView::X),
+                   aarch64_abi::PreparedRegisterConversionErrorKind::UnknownRegisterName)) {
+    return fail("expected out-of-range AArch64 call argument placement to fail closed");
+  }
+
+  return 0;
+}
+
 int fails_closed_on_unknown_spellings_and_metadata_mismatches() {
   const auto unknown = aarch64_abi::convert_prepared_register(
       "x31",
@@ -162,6 +249,10 @@ int main() {
     return status;
   }
   if (const int status = converts_prepared_assignment_and_saved_register_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status = converts_structured_prepared_placements_inside_aarch64_target();
       status != 0) {
     return status;
   }

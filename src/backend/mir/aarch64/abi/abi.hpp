@@ -136,6 +136,10 @@ struct HandoffError {
     std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
+    const c4c::backend::prepare::PreparedRegisterPlacement& placement,
+    std::optional<c4c::backend::prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view);
+[[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(
     const c4c::backend::prepare::PreparedPhysicalRegisterAssignment& assignment,
     std::optional<RegisterView> expected_view);
 [[nodiscard]] PreparedRegisterConversionResult convert_prepared_register(

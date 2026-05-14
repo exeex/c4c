@@ -101,6 +101,14 @@ PreparedRegisterConversionResult conversion_failure(
   };
 }
 
+std::string placement_name(const prepare::PreparedRegisterPlacement& placement) {
+  return std::string("placement=") +
+         std::string(prepare::prepared_register_bank_name(placement.bank)) + ":" +
+         std::string(prepare::prepared_register_slot_pool_name(placement.pool)) + "#" +
+         std::to_string(placement.slot_index) + "/w" +
+         std::to_string(placement.contiguous_width);
+}
+
 bool prepared_bank_group_matches_register(prepare::PreparedRegisterBank bank,
                                           RegisterReference reg) {
   switch (bank) {
@@ -159,6 +167,86 @@ bool class_supports_view(prepare::PreparedRegisterClass reg_class, RegisterView 
       return false;
   }
   return false;
+}
+
+template <std::size_t Count>
+std::optional<RegisterReference> indexed_register(
+    const std::array<RegisterReference, Count>& registers,
+    std::size_t index) {
+  if (index >= registers.size()) {
+    return std::nullopt;
+  }
+  return registers[index];
+}
+
+std::optional<RegisterReference> call_abi_register(
+    const prepare::PreparedRegisterPlacement& placement) {
+  if (placement.slot_index > 7) {
+    return std::nullopt;
+  }
+  switch (placement.bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return x_register(static_cast<std::uint8_t>(placement.slot_index));
+    case prepare::PreparedRegisterBank::Fpr:
+    case prepare::PreparedRegisterBank::Vreg:
+      return v_register(static_cast<std::uint8_t>(placement.slot_index));
+    case prepare::PreparedRegisterBank::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<RegisterReference> placement_register(
+    const prepare::PreparedRegisterPlacement& placement) {
+  switch (placement.pool) {
+    case prepare::PreparedRegisterSlotPool::CallArgument:
+      return call_abi_register(placement);
+    case prepare::PreparedRegisterSlotPool::CallResult:
+      if (placement.slot_index != 0) {
+        return std::nullopt;
+      }
+      return call_abi_register(placement);
+    case prepare::PreparedRegisterSlotPool::CallerSaved:
+      switch (placement.bank) {
+        case prepare::PreparedRegisterBank::Gpr:
+        case prepare::PreparedRegisterBank::AggregateAddress:
+          return indexed_register(caller_saved_gp_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::Fpr:
+        case prepare::PreparedRegisterBank::Vreg:
+          return indexed_register(caller_saved_fp_simd_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::None:
+          return std::nullopt;
+      }
+      break;
+    case prepare::PreparedRegisterSlotPool::CalleeSaved:
+      switch (placement.bank) {
+        case prepare::PreparedRegisterBank::Gpr:
+        case prepare::PreparedRegisterBank::AggregateAddress:
+          return indexed_register(callee_saved_gp_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::Fpr:
+        case prepare::PreparedRegisterBank::Vreg:
+          return indexed_register(callee_saved_fp_simd_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::None:
+          return std::nullopt;
+      }
+      break;
+    case prepare::PreparedRegisterSlotPool::ReservedScratch:
+      switch (placement.bank) {
+        case prepare::PreparedRegisterBank::Gpr:
+        case prepare::PreparedRegisterBank::AggregateAddress:
+          return indexed_register(reserved_mir_scratch_gp_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::Fpr:
+        case prepare::PreparedRegisterBank::Vreg:
+          return indexed_register(reserved_mir_scratch_fp_simd_registers(), placement.slot_index);
+        case prepare::PreparedRegisterBank::None:
+          return std::nullopt;
+      }
+      break;
+    case prepare::PreparedRegisterSlotPool::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
 }
 
 std::string explicit_target_triple(const c4c::backend::prepare::PreparedBirModule& module) {
@@ -616,8 +704,78 @@ PreparedRegisterConversionResult convert_prepared_register(
 }
 
 PreparedRegisterConversionResult convert_prepared_register(
+    const prepare::PreparedRegisterPlacement& placement,
+    std::optional<prepare::PreparedRegisterClass> prepared_class,
+    std::optional<RegisterView> expected_view) {
+  const std::string display_name = placement_name(placement);
+  const auto mapped = placement_register(placement);
+  if (!mapped.has_value()) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::UnknownRegisterName,
+                              display_name,
+                              placement.bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  RegisterReference reg = *mapped;
+  if (expected_view.has_value()) {
+    reg.view = *expected_view;
+  }
+
+  if (!prepared_bank_group_matches_register(placement.bank, reg)) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::RegisterBankMismatch,
+                              display_name,
+                              placement.bank,
+                              prepared_class,
+                              expected_view);
+  }
+  if (!bank_supports_view(placement.bank, reg.view)) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::UnsupportedRegisterView,
+                              display_name,
+                              placement.bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  if (prepared_class.has_value()) {
+    if (!prepared_class_group_matches_register(*prepared_class, reg)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::RegisterClassMismatch,
+                                display_name,
+                                placement.bank,
+                                prepared_class,
+                                expected_view);
+    }
+    if (!class_supports_view(*prepared_class, reg.view)) {
+      return conversion_failure(PreparedRegisterConversionErrorKind::UnsupportedRegisterView,
+                                display_name,
+                                placement.bank,
+                                prepared_class,
+                                expected_view);
+    }
+  }
+
+  if (!is_valid_register_reference(reg)) {
+    return conversion_failure(PreparedRegisterConversionErrorKind::UnsupportedRegisterView,
+                              display_name,
+                              placement.bank,
+                              prepared_class,
+                              expected_view);
+  }
+
+  return PreparedRegisterConversionResult{
+      .reg = reg,
+      .error = std::nullopt,
+  };
+}
+
+PreparedRegisterConversionResult convert_prepared_register(
     const prepare::PreparedPhysicalRegisterAssignment& assignment,
     std::optional<RegisterView> expected_view) {
+  if (assignment.placement.has_value()) {
+    return convert_prepared_register(*assignment.placement,
+                                     assignment.reg_class,
+                                     expected_view);
+  }
   return convert_prepared_register(assignment.register_name,
                                    std::nullopt,
                                    assignment.reg_class,
@@ -628,6 +786,11 @@ PreparedRegisterConversionResult convert_prepared_register(
     const prepare::PreparedSavedRegister& saved_register,
     std::optional<prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view) {
+  if (saved_register.placement.has_value()) {
+    return convert_prepared_register(*saved_register.placement,
+                                     prepared_class,
+                                     expected_view);
+  }
   return convert_prepared_register(saved_register.register_name,
                                    saved_register.bank,
                                    prepared_class,
