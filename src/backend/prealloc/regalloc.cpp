@@ -182,6 +182,14 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return std::max<std::size_t>(value.register_group_width, 1);
 }
 
+[[nodiscard]] std::optional<PreparedRegisterPlacement> assigned_register_placement(
+    const PreparedRegallocValue& value) {
+  if (!value.assigned_register.has_value()) {
+    return std::nullopt;
+  }
+  return value.assigned_register->placement;
+}
+
 [[nodiscard]] std::optional<std::pair<std::string, std::size_t>> split_trailing_register_index(
     std::string_view register_name) {
   if (register_name.empty()) {
@@ -205,6 +213,17 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   }
   return std::pair<std::string, std::size_t>{std::string(register_name.substr(0, digit_start)),
                                               parsed_index};
+}
+
+[[nodiscard]] bool same_register_destination(
+    const std::optional<PreparedRegisterPlacement>& destination_placement,
+    const PreparedPhysicalRegisterAssignment& assigned_register,
+    const std::optional<std::string>& destination_register_name) {
+  if (destination_placement.has_value() && assigned_register.placement.has_value()) {
+    return *destination_placement == *assigned_register.placement;
+  }
+  return destination_register_name ==
+         std::optional<std::string>{assigned_register.register_name};
 }
 
 template <std::size_t N>
@@ -410,6 +429,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
        assigned_storage_matches(source, destination))) {
     return;
   }
+  const auto destination_register_placement = assigned_register_placement(destination);
 
   const auto duplicate = std::find_if(
       regalloc_function.move_resolution.begin(),
@@ -420,6 +440,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_storage_kind == assigned_storage_kind(destination) &&
                !move.destination_abi_index.has_value() &&
                !move.destination_register_name.has_value() &&
+               move.destination_register_placement == destination_register_placement &&
                !move.destination_stack_offset_bytes.has_value() &&
                move.uses_cycle_temp_source == uses_cycle_temp_source &&
                move.coalesced_by_assigned_storage == coalesced_by_assigned_storage &&
@@ -457,6 +478,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
       .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
+      .destination_register_placement = destination_register_placement,
   });
 }
 
@@ -482,6 +504,8 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                                    std::optional<BlockLabelId> source_parallel_copy_predecessor_label =
                                        std::nullopt,
                                    std::optional<BlockLabelId> source_parallel_copy_successor_label =
+                                       std::nullopt,
+                                   std::optional<PreparedRegisterPlacement> destination_register_placement =
                                        std::nullopt) {
   if (from_kind == PreparedMoveStorageKind::None || to_kind == PreparedMoveStorageKind::None) {
     return;
@@ -498,6 +522,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
                move.destination_register_name == destination_register_name &&
                move.destination_contiguous_width == destination_contiguous_width &&
                move.destination_occupied_register_names == destination_occupied_register_names &&
+               move.destination_register_placement == destination_register_placement &&
                move.destination_stack_offset_bytes == destination_stack_offset_bytes &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
@@ -537,6 +562,7 @@ void append_move_resolution_record(PreparedRegallocFunction& regalloc_function,
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
       .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
+      .destination_register_placement = std::move(destination_register_placement),
   });
 }
 
@@ -555,6 +581,7 @@ void append_immediate_i32_move_resolution_record(
       assigned_storage_kind(destination) == PreparedMoveStorageKind::None) {
     return;
   }
+  const auto destination_register_placement = assigned_register_placement(destination);
 
   const auto duplicate = std::find_if(
       regalloc_function.move_resolution.begin(),
@@ -566,6 +593,7 @@ void append_immediate_i32_move_resolution_record(
                move.destination_storage_kind == assigned_storage_kind(destination) &&
                !move.destination_abi_index.has_value() &&
                !move.destination_register_name.has_value() &&
+               move.destination_register_placement == destination_register_placement &&
                !move.destination_stack_offset_bytes.has_value() &&
                !move.uses_cycle_temp_source && !move.coalesced_by_assigned_storage &&
                move.source_parallel_copy_step_index == source_parallel_copy_step_index &&
@@ -602,6 +630,7 @@ void append_immediate_i32_move_resolution_record(
       .source_parallel_copy_predecessor_label = source_parallel_copy_predecessor_label,
       .source_parallel_copy_successor_label = source_parallel_copy_successor_label,
       .reason = std::move(reason),
+      .destination_register_placement = destination_register_placement,
   });
 }
 
@@ -612,6 +641,7 @@ void append_unassigned_return_move_resolution_record(
     std::optional<std::string> destination_register_name,
     std::size_t destination_contiguous_width,
     std::vector<std::string> destination_occupied_register_names,
+    std::optional<PreparedRegisterPlacement> destination_register_placement,
     std::size_t block_index,
     std::size_t instruction_index,
     std::string reason) {
@@ -632,6 +662,7 @@ void append_unassigned_return_move_resolution_record(
                move.destination_register_name == destination_register_name &&
                move.destination_contiguous_width == destination_contiguous_width &&
                move.destination_occupied_register_names == destination_occupied_register_names &&
+               move.destination_register_placement == destination_register_placement &&
                !move.destination_stack_offset_bytes.has_value() &&
                move.block_index == block_index &&
                move.instruction_index == instruction_index &&
@@ -664,6 +695,7 @@ void append_unassigned_return_move_resolution_record(
       .op_kind = PreparedMoveResolutionOpKind::Move,
       .authority_kind = PreparedMoveAuthorityKind::None,
       .reason = std::move(reason),
+      .destination_register_placement = std::move(destination_register_placement),
   });
 }
 
@@ -1359,6 +1391,8 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
                existing_binding.destination_contiguous_width == binding.destination_contiguous_width &&
                existing_binding.destination_occupied_register_names ==
                    binding.destination_occupied_register_names &&
+               existing_binding.destination_register_placement ==
+                   binding.destination_register_placement &&
                existing_binding.destination_stack_offset_bytes ==
                    binding.destination_stack_offset_bytes;
       });
@@ -1417,6 +1451,13 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                 : nullptr;
         const std::size_t destination_contiguous_width =
             source != nullptr ? published_register_group_width(*source) : 1;
+        const auto abi_register_placement =
+            destination_storage_kind == PreparedMoveStorageKind::Register && arg_abi.has_value()
+                ? call_arg_destination_register_placement(target_profile,
+                                                          *arg_abi,
+                                                          arg_index,
+                                                          destination_contiguous_width)
+                : std::nullopt;
         const auto destination_occupied_register_names =
             destination_storage_kind == PreparedMoveStorageKind::Register &&
                     abi_register_name.has_value()
@@ -1451,6 +1492,10 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                             destination_storage_kind == PreparedMoveStorageKind::StackSlot
                                                 ? stack_offset
                                                 : std::nullopt,
+                                        .destination_register_placement =
+                                            destination_storage_kind == PreparedMoveStorageKind::Register
+                                                ? abi_register_placement
+                                                : std::nullopt,
                                     });
         if (arg_abi.has_value() &&
             arg_abi->type == bir::TypeKind::Ptr &&
@@ -1471,8 +1516,11 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                     .destination_contiguous_width = 1,
                     .destination_occupied_register_names = {},
                     .destination_stack_offset_bytes = stack_offset,
+                    .destination_register_placement = std::nullopt,
                 });
           }
+          const auto byval_register_placement =
+              call_arg_destination_register_placement(target_profile, *arg_abi, arg_index, 1);
           append_prepared_abi_binding(function_locations,
                                       PreparedMovePhase::BeforeCall,
                                       block_index,
@@ -1489,6 +1537,8 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                           .destination_occupied_register_names =
                                               std::vector<std::string>{*abi_register_name},
                                           .destination_stack_offset_bytes = std::nullopt,
+                                          .destination_register_placement =
+                                              byval_register_placement,
                                       });
         }
       }
@@ -1507,6 +1557,13 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
               : nullptr;
       const std::size_t destination_contiguous_width =
           result != nullptr ? published_register_group_width(*result) : 1;
+      const auto destination_register_placement =
+          result_storage_kind == PreparedMoveStorageKind::Register &&
+                  call->result_abi.has_value()
+              ? call_result_destination_register_placement(target_profile,
+                                                           *call->result_abi,
+                                                           destination_contiguous_width)
+              : std::nullopt;
       append_prepared_abi_binding(function_locations,
                                   PreparedMovePhase::AfterCall,
                                   block_index,
@@ -1530,6 +1587,9 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                                     *destination_register_name,
                                                     destination_contiguous_width)
                                               : std::vector<std::string>{},
+                                      .destination_stack_offset_bytes = std::nullopt,
+                                      .destination_register_placement =
+                                          destination_register_placement,
                                   });
     }
   }
@@ -2047,6 +2107,13 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
             consumed_kind == PreparedMoveStorageKind::Register
                 ? published_register_group_width(*source)
                 : 1;
+        const auto destination_register_placement =
+            consumed_kind == PreparedMoveStorageKind::Register && arg_abi.has_value()
+                ? call_arg_destination_register_placement(target_profile,
+                                                          *arg_abi,
+                                                          arg_index,
+                                                          destination_contiguous_width)
+                : std::nullopt;
         const auto destination_occupied_register_names =
             consumed_kind == PreparedMoveStorageKind::Register &&
                     destination_register_name.has_value()
@@ -2058,7 +2125,9 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                 : std::vector<std::string>{};
         if (source_kind == PreparedMoveStorageKind::Register &&
             consumed_kind == PreparedMoveStorageKind::Register && source->assigned_register.has_value() &&
-            destination_register_name == std::optional<std::string>{source->assigned_register->register_name}) {
+            same_register_destination(destination_register_placement,
+                                      *source->assigned_register,
+                                      destination_register_name)) {
           continue;
         }
         append_move_resolution_record(regalloc_function,
@@ -2081,7 +2150,10 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       PreparedMoveAuthorityKind::None,
                                       storage_transfer_reason("call_arg",
                                                               source_kind,
-                                                              consumed_kind));
+                                                              consumed_kind),
+                                      std::nullopt,
+                                      std::nullopt,
+                                      destination_register_placement);
       }
     }
   }
@@ -2114,6 +2186,13 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
           consumed_kind == PreparedMoveStorageKind::Register
               ? published_register_group_width(*result)
               : 1;
+      const auto destination_register_placement =
+          consumed_kind == PreparedMoveStorageKind::Register &&
+                  call->result_abi.has_value()
+              ? call_result_destination_register_placement(target_profile,
+                                                           *call->result_abi,
+                                                           destination_contiguous_width)
+              : std::nullopt;
       const auto destination_occupied_register_names =
           consumed_kind == PreparedMoveStorageKind::Register &&
                   destination_register_name.has_value()
@@ -2124,7 +2203,9 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
               : std::vector<std::string>{};
       if (source_kind == PreparedMoveStorageKind::Register &&
           consumed_kind == PreparedMoveStorageKind::Register && result->assigned_register.has_value() &&
-          destination_register_name == std::optional<std::string>{result->assigned_register->register_name}) {
+          same_register_destination(destination_register_placement,
+                                    *result->assigned_register,
+                                    destination_register_name)) {
         continue;
       }
       append_move_resolution_record(regalloc_function,
@@ -2147,7 +2228,10 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
                                     PreparedMoveAuthorityKind::None,
                                     storage_transfer_reason("call_result",
                                                             source_kind,
-                                                            consumed_kind));
+                                                            consumed_kind),
+                                    std::nullopt,
+                                    std::nullopt,
+                                    destination_register_placement);
     }
   }
 }
@@ -2185,6 +2269,12 @@ void append_return_move_resolution(const PreparedNameTables& names,
         consumed_kind == PreparedMoveStorageKind::Register
             ? published_register_group_width(*source)
             : 1;
+    const auto destination_register_placement =
+        consumed_kind == PreparedMoveStorageKind::Register && return_abi.has_value()
+            ? call_result_destination_register_placement(target_profile,
+                                                         *return_abi,
+                                                         destination_contiguous_width)
+            : std::nullopt;
     const auto destination_occupied_register_names =
         consumed_kind == PreparedMoveStorageKind::Register &&
                 destination_register_name.has_value()
@@ -2197,8 +2287,9 @@ void append_return_move_resolution(const PreparedNameTables& names,
         source_kind == PreparedMoveStorageKind::Register &&
         consumed_kind == PreparedMoveStorageKind::Register &&
         source->assigned_register.has_value() &&
-        destination_register_name ==
-            std::optional<std::string>{source->assigned_register->register_name};
+        same_register_destination(destination_register_placement,
+                                  *source->assigned_register,
+                                  destination_register_name);
     if (source_kind == PreparedMoveStorageKind::None) {
       append_unassigned_return_move_resolution_record(
           regalloc_function,
@@ -2207,6 +2298,7 @@ void append_return_move_resolution(const PreparedNameTables& names,
           destination_register_name,
           destination_contiguous_width,
           destination_occupied_register_names,
+          destination_register_placement,
           block_index,
           block.insts.size(),
           "return_context_to_register");
@@ -2232,7 +2324,10 @@ void append_return_move_resolution(const PreparedNameTables& names,
                                   PreparedMoveAuthorityKind::None,
                                   storage_transfer_reason("return",
                                                           source_kind,
-                                                          consumed_kind));
+                                                          consumed_kind),
+                                  std::nullopt,
+                                  std::nullopt,
+                                  destination_register_placement);
   }
 }
 

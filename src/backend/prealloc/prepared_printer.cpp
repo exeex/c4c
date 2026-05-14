@@ -874,6 +874,7 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
         if (move.destination_abi_index.has_value()) {
           out << " abi_index=" << *move.destination_abi_index;
         }
+        append_register_placement(out, "placement", move.destination_register_placement);
         if (move.destination_register_name.has_value()) {
           out << " reg=" << *move.destination_register_name;
         }
@@ -893,6 +894,7 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
         if (abi.destination_abi_index.has_value()) {
           out << " abi_index=" << *abi.destination_abi_index;
         }
+        append_register_placement(out, "placement", abi.destination_register_placement);
         if (abi.destination_register_name.has_value()) {
           out << " reg=" << *abi.destination_register_name;
         }

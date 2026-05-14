@@ -2769,6 +2769,94 @@ int main() {
                        "call result structured source placement")) {
     return EXIT_FAILURE;
   }
+  const auto* call_wrapper_locations =
+      prepare::find_prepared_value_location_function(call_wrapper_prepared,
+                                                     "call_wrapper_dump_contract");
+  const auto* fixed_before_call_bundle =
+      call_wrapper_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*call_wrapper_locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               1);
+  const auto* fixed_after_call_bundle =
+      call_wrapper_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*call_wrapper_locations,
+                                               prepare::PreparedMovePhase::AfterCall,
+                                               0,
+                                               1);
+  if (fixed_before_call_bundle == nullptr || fixed_after_call_bundle == nullptr) {
+    std::cerr << "[FAIL] missing fixed-call move bundles in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  const auto fixed_arg_binding_it = std::find_if(
+      fixed_before_call_bundle->abi_bindings.begin(),
+      fixed_before_call_bundle->abi_bindings.end(),
+      [](const prepare::PreparedAbiBinding& binding) {
+        return binding.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+               binding.destination_register_placement.has_value();
+      });
+  const auto fixed_result_binding_it = std::find_if(
+      fixed_after_call_bundle->abi_bindings.begin(),
+      fixed_after_call_bundle->abi_bindings.end(),
+      [](const prepare::PreparedAbiBinding& binding) {
+        return binding.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallResultAbi &&
+               binding.destination_register_placement.has_value();
+      });
+  if (fixed_arg_binding_it == fixed_before_call_bundle->abi_bindings.end() ||
+      fixed_result_binding_it == fixed_after_call_bundle->abi_bindings.end()) {
+    std::cerr << "[FAIL] missing structured ABI-binding placement in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "abi_binding destination_kind=call_argument_abi destination_storage=register "
+                           "abi_index=0 " +
+                           register_placement_text(
+                               fixed_arg_binding_it->destination_register_placement,
+                               "placement") +
+                           " reg=" + *fixed_arg_binding_it->destination_register_name,
+                       "call argument ABI binding structured placement")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "abi_binding destination_kind=call_result_abi destination_storage=register " +
+                           register_placement_text(
+                               fixed_result_binding_it->destination_register_placement,
+                               "placement") +
+                           " reg=" + *fixed_result_binding_it->destination_register_name,
+                       "call result ABI binding structured placement")) {
+    return EXIT_FAILURE;
+  }
+  const auto fixed_result_move_it = std::find_if(
+      fixed_after_call_bundle->moves.begin(),
+      fixed_after_call_bundle->moves.end(),
+      [&](const prepare::PreparedMoveResolution& move) {
+        return move.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallResultAbi &&
+               fixed_call.result->destination_value_id.has_value() &&
+               move.to_value_id == *fixed_call.result->destination_value_id &&
+               move.destination_register_placement.has_value();
+      });
+  if (fixed_result_move_it == fixed_after_call_bundle->moves.end()) {
+    std::cerr << "[FAIL] missing structured move destination placement in dump fixture\n";
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(call_wrapper_dump,
+                       "move from_value_id=" +
+                           std::to_string(fixed_result_move_it->from_value_id) +
+                           " to_value_id=" +
+                           std::to_string(fixed_result_move_it->to_value_id) +
+                           " destination_kind=call_result_abi destination_storage=register "
+                           "op_kind=move uses_cycle_temp_source=no " +
+                           register_placement_text(
+                               fixed_result_move_it->destination_register_placement,
+                               "placement"),
+                       "call result move structured destination placement")) {
+    return EXIT_FAILURE;
+  }
   const std::string fixed_call_clobber_summary =
       "clobbers=" + clobber_summary(call_wrapper_call_plans->calls[1].clobbered_registers.front());
   if (!expect_contains(call_wrapper_dump,

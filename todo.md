@@ -8,18 +8,21 @@ Current Step Title: Migrate Prepared Allocation Records Away From Authoritative 
 
 ## Just Finished
 
-Step 3 started the prepared-printer consumer migration by rendering structured placement identity on representative prepared allocation records before the legacy register or slot spelling. `prepared_printer` now prints register placement (`bank:pool#slot/wN`) and spill-slot placement (`slot#N+stackOFFSET`) for saved registers, call argument/result records, clobbers, preserved values, storage plans, and spill/reload records while leaving existing `reg=`, `units=`, `slot_id=`, and stack-offset compatibility text in place.
+Step 3 continued the prepared record migration by publishing structured `PreparedRegisterPlacement` on move-resolution and ABI-binding records at creation time. `regalloc` now carries placement identity through value moves, immediate materialization moves, call argument/result moves, function return moves, and call-site ABI bindings, and duplicate/no-op checks prefer placement equality when both sides have structured placement.
 
-Focused prepared-printer tests now fail if representative call argument/result, clobber, preserved-value, storage-plan, or spill/reload records lack the structured placement fields.
+`prepared_printer` now prints those move/binding placement fields before legacy `reg=` text, keeping the spelling as display/compatibility output.
+
+Focused frame/call and printer tests now fail if call-site ABI bindings or call-result moves lose the structured placement field.
 
 ## Suggested Next
 
-Next coherent packet: migrate another narrow prepared consumer family to inspect `PreparedRegisterPlacement`/`PreparedSpillSlotPlacement` first, leaving legacy spelling fields as compatibility display or fallback. Keep this limited to pre-target prepared surfaces unless the supervisor explicitly opens a target handoff packet.
+Next coherent packet: either finish Step 3 with a targeted audit of remaining prealloc string-authoritative comparisons, or move to Step 4 by converting a narrow AArch64 prepared-to-MIR path to consume `PreparedRegisterPlacement` before legacy register spelling.
 
 ## Watchouts
 
-- This packet intentionally did not rewrite `regalloc.cpp`, target profiles, or downstream target consumers; legacy spelling fields remain compatibility display for existing paths.
+- This packet intentionally did not rewrite target profiles or downstream target consumers; legacy spelling fields remain compatibility display for existing paths.
 - Prepared-printer summary/detail text now includes extra `placement=` or `spill_slot=` tokens; future string checks should assert those structured tokens for migrated records instead of relying only on `reg=` or `slot_id=`.
+- Move-resolution records still preserve legacy `destination_register_name` and occupied-name vectors for compatibility, but call/return coalescing no longer relies on the string when both structured placements are available.
 - `PreparedRegisterSlotPool::ReservedScratch` is currently used for published call clobbers, derived from caller-saved spans, not as a full scratch allocator migration.
 - Keep future migration slices semantic; do not replace string assertions with target-name-shaped special cases.
 
@@ -50,3 +53,17 @@ Supervisor-side prepared BIR CLI dump validation now preserved in `test_after.lo
 `bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build --output-on-failure -R "^backend_cli_dump_prepared_bir_"' > test_after.log 2>&1`
 
 Result: passed; 10/10 prepared BIR CLI dump tests passed.
+
+Ran focused proof for move/binding placement migration:
+
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_(prepared_printer|prepare_frame_stack_call_contract)$" --output-on-failure' > test_after.log 2>&1`
+
+Result: passed; both focused tests passed after adding assertions for structured ABI-binding and call-result move placement.
+
+Ran broader prepared plus prepared BIR CLI dump validation, now preserved in `test_after.log`:
+
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "^backend_prepare_|^backend_prepared_printer$|^backend_cli_dump_prepared_bir_" --output-on-failure' > test_after.log 2>&1`
+
+Result: passed; 18/18 tests passed.
+
+Formatting note: `clang-format` is not installed in this workspace, so no formatter pass was available.

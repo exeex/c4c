@@ -2743,6 +2743,55 @@ int check_call_contract() {
       call_plan.result->source_register_placement->contiguous_width != 1) {
     return fail("call contract: result ABI source lost structured placement identity");
   }
+  const auto* value_locations =
+      prepare::find_prepared_value_location_function(prepared, "call_contract");
+  const auto* before_call_bundle =
+      value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*value_locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               0);
+  const auto* after_call_bundle =
+      value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(*value_locations,
+                                               prepare::PreparedMovePhase::AfterCall,
+                                               0,
+                                               0);
+  if (before_call_bundle == nullptr || after_call_bundle == nullptr) {
+    return fail("call contract: value locations lost call-site move bundles");
+  }
+  const auto arg_binding_it = std::find_if(
+      before_call_bundle->abi_bindings.begin(),
+      before_call_bundle->abi_bindings.end(),
+      [](const prepare::PreparedAbiBinding& binding) {
+        return binding.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+               binding.destination_abi_index == std::optional<std::size_t>{0};
+      });
+  if (arg_binding_it == before_call_bundle->abi_bindings.end() ||
+      !arg_binding_it->destination_register_placement.has_value() ||
+      arg_binding_it->destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallArgument ||
+      arg_binding_it->destination_register_placement->slot_index != 0) {
+    return fail("call contract: before-call ABI binding lost structured argument placement");
+  }
+  const auto result_binding_it = std::find_if(
+      after_call_bundle->abi_bindings.begin(),
+      after_call_bundle->abi_bindings.end(),
+      [](const prepare::PreparedAbiBinding& binding) {
+        return binding.destination_kind ==
+                   prepare::PreparedMoveDestinationKind::CallResultAbi &&
+               !binding.destination_abi_index.has_value();
+      });
+  if (result_binding_it == after_call_bundle->abi_bindings.end() ||
+      !result_binding_it->destination_register_placement.has_value() ||
+      result_binding_it->destination_register_placement->pool !=
+          prepare::PreparedRegisterSlotPool::CallResult ||
+      result_binding_it->destination_register_placement->slot_index != 0) {
+    return fail("call contract: after-call ABI binding lost structured result placement");
+  }
   if (call_plan.clobbered_registers.empty()) {
     return fail("call contract: call_plans lost the clobber contract");
   }
@@ -2780,6 +2829,21 @@ int check_call_contract() {
   if (call_plan.result->destination_value_id !=
       std::optional<prepare::PreparedValueId>{tmp_call->value_id}) {
     return fail("call contract: call_plans lost direct integer result source identity");
+  }
+  const auto result_move_it = std::find_if(after_call_bundle->moves.begin(),
+                                           after_call_bundle->moves.end(),
+                                           [&](const prepare::PreparedMoveResolution& move) {
+                                             return move.to_value_id == tmp_call->value_id &&
+                                                    move.destination_kind ==
+                                                        prepare::PreparedMoveDestinationKind::CallResultAbi &&
+                                                    move.destination_storage_kind ==
+                                                        prepare::PreparedMoveStorageKind::Register;
+                                           });
+  if (result_move_it == after_call_bundle->moves.end() ||
+      !result_move_it->destination_register_placement.has_value() ||
+      *result_move_it->destination_register_placement !=
+          *result_binding_it->destination_register_placement) {
+    return fail("call contract: after-call move lost structured ABI source placement");
   }
   return 0;
 }
