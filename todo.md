@@ -1,23 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Run Scripted Markdown Extraction
+Current Step ID: 3
+Current Step Title: Write The Module Directory Index
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Run Scripted Markdown Extraction completed for the verified AArch64
-module legacy source set. Produced compressed phoenix extraction companions:
-`src/backend/mir/aarch64/module/module.cpp.md` and
-`src/backend/mir/aarch64/module/module.hpp.md`.
+Step 3: Write The Module Directory Index completed for the extracted AArch64
+module scope. Created
+`src/backend/mir/aarch64/module/module.md` as the directory-level evidence
+index over `module.cpp.md` and `module.hpp.md`, summarizing the current module
+emitter responsibilities, public module surface, adjacent API/codegen/prepared
+BIR relationships, and the core lowering, optional fast path, legacy
+compatibility, and overfit-to-reject classifications.
 
 ## Suggested Next
 
-Proceed with the next stage-1 packet that creates the directory-level
-`src/backend/mir/aarch64/module/module.md` index over the extracted module
-artifact set.
+Proceed with the next stage-1 packet that checks stage-1 close readiness over
+the per-file extraction artifacts and the directory-level `module.md` index.
 
 ## Watchouts
 
@@ -25,16 +27,15 @@ artifact set.
 - Prepared BIR should lower directly to MIR machine nodes in the rebuilt
   route.
 - Stage 1 extracts evidence only; replacement layout belongs to stage 2.
-- The `.cpp` companion is 212 lines and the `.hpp` companion is 190 lines;
-  both are compressed enough for review and avoid source dumping.
-- Extraction was script-driven and preserved the source files as legacy
-  evidence only.
-- Do not broaden the scope beyond `module.cpp` and `module.hpp` without
-  lifecycle repair.
+- `module.md` now points at both extraction companions and should remain an
+  evidence index, not an architecture draft.
+- Do not broaden the scope beyond `module.cpp`, `module.hpp`, and their
+  markdown evidence without lifecycle repair.
 
 ## Proof
 
-Ran the supervisor-selected artifact listing proof:
-`wc -l src/backend/mir/aarch64/module/module.cpp.md src/backend/mir/aarch64/module/module.hpp.md | tee test_after.log`.
-Result: 212 lines for `module.cpp.md`, 190 lines for `module.hpp.md`, 402
-total. Proof log: `test_after.log`.
+Ran the supervisor-selected directory-index proof:
+`rg -n 'module\.(cpp|hpp)\.md|core lowering|legacy compatibility|overfit' src/backend/mir/aarch64/module/module.md | tee test_after.log`.
+Result: proof output references both `module.cpp.md` and `module.hpp.md` and
+matches the classification labels `core lowering`, `legacy compatibility`, and
+`overfit`. Proof log: `test_after.log`.
