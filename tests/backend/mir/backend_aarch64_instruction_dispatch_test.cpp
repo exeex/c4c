@@ -207,6 +207,29 @@ prepare::PreparedBirModule prepared_with_control_flow_only() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_simple_fixed_frame() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.frame");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.frame.entry");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  });
+  return prepared;
+}
+
 int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -433,6 +456,92 @@ int module_build_dispatch_scaffold_lowers_return_and_keeps_machine_nodes_empty()
   return 0;
 }
 
+int module_build_lowers_simple_fixed_frame_around_function_stream() {
+  auto prepared = prepared_with_simple_fixed_frame();
+  const auto result = aarch64_api::build_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected prepared module with simple fixed frame to build");
+  }
+
+  const auto& function = result.module->mir.functions.front();
+  if (function.blocks.size() != 1 || function.blocks.front().instructions.size() != 3) {
+    return fail("expected simple fixed frame to emit setup, teardown, and return");
+  }
+  const auto& block = function.blocks.front();
+  const auto& setup_instruction = block.instructions[0];
+  const auto& teardown_instruction = block.instructions[1];
+  const auto& return_instruction = block.instructions[2];
+  const auto* setup =
+      std::get_if<aarch64_module::codegen::FrameInstructionRecord>(
+          &setup_instruction.target.payload);
+  const auto* teardown =
+      std::get_if<aarch64_module::codegen::FrameInstructionRecord>(
+          &teardown_instruction.target.payload);
+  if (setup == nullptr || teardown == nullptr ||
+      setup_instruction.target.family !=
+          aarch64_module::codegen::InstructionFamily::Frame ||
+      teardown_instruction.target.family !=
+          aarch64_module::codegen::InstructionFamily::Frame ||
+      setup_instruction.target.opcode !=
+          aarch64_module::codegen::MachineOpcode::FrameSetup ||
+      teardown_instruction.target.opcode !=
+          aarch64_module::codegen::MachineOpcode::FrameTeardown ||
+      setup->source_frame != &prepared.frame_plan.functions.front() ||
+      teardown->source_frame != &prepared.frame_plan.functions.front() ||
+      setup->frame_size_bytes != 32 || teardown->frame_size_bytes != 32 ||
+      setup->frame_alignment_bytes != 16 || teardown->frame_alignment_bytes != 16 ||
+      setup_instruction.target.function_name !=
+          prepared.control_flow.functions.front().function_name ||
+      setup_instruction.target.block_label != block.block_label ||
+      teardown_instruction.target.block_label != block.block_label ||
+      !setup_instruction.origin.has_value() || !teardown_instruction.origin.has_value() ||
+      setup_instruction.origin->reason !=
+          c4c::backend::mir::MachineOriginReason::Synthetic ||
+      teardown_instruction.origin->reason !=
+          c4c::backend::mir::MachineOriginReason::Synthetic) {
+    return fail("expected fixed-frame setup/teardown to preserve prepared frame provenance");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          return_instruction.target.payload)) {
+    return fail("expected fixed-frame teardown to be inserted before return");
+  }
+
+  auto dynamic_frame = prepared_with_simple_fixed_frame();
+  dynamic_frame.frame_plan.functions.front().has_dynamic_stack = true;
+  const auto dynamic_result = aarch64_api::build_prepared_module(dynamic_frame);
+  if (dynamic_result.error.has_value() || !dynamic_result.module.has_value() ||
+      dynamic_result.module->mir.functions.front().blocks.front().instructions.size() != 1 ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          dynamic_result.module->mir.functions.front()
+              .blocks.front()
+              .instructions.front()
+              .target.payload)) {
+    return fail("expected dynamic-stack frame to remain explicitly deferred");
+  }
+
+  auto callee_save_frame = prepared_with_simple_fixed_frame();
+  callee_save_frame.frame_plan.functions.front().saved_callee_registers.push_back(
+      prepare::PreparedSavedRegister{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_name = "x19",
+          .contiguous_width = 1,
+          .occupied_register_names = {"x19"},
+          .save_index = 0,
+      });
+  const auto callee_save_result = aarch64_api::build_prepared_module(callee_save_frame);
+  if (callee_save_result.error.has_value() || !callee_save_result.module.has_value() ||
+      callee_save_result.module->mir.functions.front().blocks.front().instructions.size() != 1 ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          callee_save_result.module->mir.functions.front()
+              .blocks.front()
+              .instructions.front()
+              .target.payload)) {
+    return fail("expected callee-save frame to remain explicitly deferred");
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -461,6 +570,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_dispatch_scaffold_lowers_return_and_keeps_machine_nodes_empty();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_lowers_simple_fixed_frame_around_function_stream();
       status != 0) {
     return status;
   }
