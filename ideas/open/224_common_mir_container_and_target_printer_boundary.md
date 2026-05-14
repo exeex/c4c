@@ -4,6 +4,22 @@ Status: Open
 Created: 2026-05-14
 Last-Updated: 2026-05-14
 
+## Lifecycle Note
+
+This idea remains the parent context for the common MIR/container boundary
+failure family, but it is superseded as the active route by the AArch64 module
+phoenix rebuild sequence:
+
+- `ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md`
+- `ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md`
+- `ideas/open/227_aarch64_module_phoenix_replacement_drafts.md`
+- `ideas/open/228_aarch64_module_phoenix_drafts_to_implementation.md`
+
+The superseding route follows the user clarification that prepared BIR should
+lower directly to MIR machine nodes and that
+`src/backend/mir/aarch64/module/module.cpp` is legacy evidence for extraction,
+review, draft, and conversion, not the design to patch in place.
+
 ## Intent
 
 Make backend MIR an assembly-shaped, target-independent instruction stream:
