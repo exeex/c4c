@@ -1,15 +1,62 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
+#include "src/backend/mir/printer.hpp"
 
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
 namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
+
+std::optional<std::vector<std::string>> strip_legacy_aarch64_instruction_lines(
+    std::string_view assembly) {
+  std::vector<std::string> lines;
+  std::size_t offset = 0;
+  while (offset < assembly.size()) {
+    const auto newline = assembly.find('\n', offset);
+    const auto end = newline == std::string_view::npos ? assembly.size() : newline;
+    const auto line = assembly.substr(offset, end - offset);
+    if (!line.empty()) {
+      if (line.size() < 4 || line.substr(0, 4) != "    ") {
+        return std::nullopt;
+      }
+      lines.emplace_back(line.substr(4));
+    }
+    if (newline == std::string_view::npos) {
+      break;
+    }
+    offset = newline + 1;
+  }
+  return lines;
+}
+
+class Aarch64MirTargetPrinter final
+    : public mir::TargetInstructionPrinter<aarch64_codegen::InstructionRecord> {
+ public:
+  [[nodiscard]] mir::TargetInstructionPrintResult print_instruction(
+      const mir::MachinePrintContext&,
+      const mir::MachineInstruction<aarch64_codegen::InstructionRecord>& instruction)
+      const override {
+    const auto printed =
+        aarch64_codegen::print_machine_instruction_node(instruction.target);
+    if (!printed.ok) {
+      return mir::target_instruction_unsupported(printed.diagnostic);
+    }
+    auto lines = strip_legacy_aarch64_instruction_lines(printed.assembly);
+    if (!lines.has_value()) {
+      return mir::target_instruction_unsupported(
+          "legacy AArch64 printer returned text outside the temporary common-MIR bridge shape");
+    }
+    return mir::target_instruction_lines_printed(std::move(*lines));
+  }
+};
 
 int fail(const std::string& message) {
   std::cerr << message << "\n";
@@ -350,6 +397,47 @@ int selected_immediate_return_node_prints_callable_epilogue() {
   return 0;
 }
 
+int common_mir_printer_can_delegate_to_aarch64_target_spelling_adapter() {
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 7,
+              }),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  mir::MachineFunction<aarch64_codegen::InstructionRecord> function;
+  function.function_name = c4c::FunctionNameId{11};
+  function.blocks.push_back(mir::MachineBlock<aarch64_codegen::InstructionRecord>{
+      .block_label = c4c::BlockLabelId{13},
+      .index = 0,
+      .instructions =
+          {
+              mir::MachineInstruction<aarch64_codegen::InstructionRecord>{
+                  .target = ret,
+              },
+          },
+  });
+
+  const auto result = mir::print_machine_function(function, Aarch64MirTargetPrinter{});
+  if (!result.ok) {
+    return fail("expected common MIR printer to delegate AArch64 target spelling: " +
+                result.diagnostic);
+  }
+  const auto move_mnemonic = aarch64_codegen::machine_instruction_auxiliary_printer_mnemonic(ret);
+  const auto return_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(ret);
+  const std::string expected =
+      "    " + std::string(move_mnemonic) + " w0, #7\n" +
+      "    " + std::string(return_mnemonic) + "\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    mov w0, #7\n    ret\n",
+                         "common MIR printer AArch64 adapter drift guard");
+}
+
 int selected_scalar_add_with_immediate_operands_prints_structured_add() {
   const auto add = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -546,6 +634,10 @@ int main() {
     return result;
   }
   if (const int result = selected_immediate_return_node_prints_callable_epilogue();
+      result != 0) {
+    return result;
+  }
+  if (const int result = common_mir_printer_can_delegate_to_aarch64_target_spelling_adapter();
       result != 0) {
     return result;
   }

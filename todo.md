@@ -8,33 +8,34 @@ Current Step Title: Add The Shared MIR Printer Boundary
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by normalizing `src/backend/mir/mir.hpp` around the
-common hierarchical MIR stream contract. The shared carrier now documents
-`MachineModule -> MachineFunction -> MachineBlock -> MachineInstruction` as the
-authoritative common shape, keeps each target-owned instruction payload opaque
-in `MachineInstruction::target`, and exposes `walk_instructions(...)` helpers
-for common hierarchical walking without flattening away function/block context.
+Completed `plan.md` Step 3 by adding the shared MIR printer boundary under
+`src/backend/mir/printer.*`. The common printer now walks
+`MachineModule -> MachineFunction -> MachineBlock -> MachineInstruction`,
+passes structural print context to a target-owned spelling interface, accepts
+only unindented instruction line payloads from that interface, owns instruction
+indentation and newline joining, and fails closed with a structural diagnostic
+instead of returning partial assembly when target spelling is unsupported or
+preformatted.
 
-Flat compatibility state remains available but is explicitly marked as
-compatibility-only: `MachineNode`, legacy generic `Function`/`Block`, and
-`flatten_instructions(...)` now point callers toward hierarchical walking, with
-`flatten_compatibility_instructions(...)` as the named flat-vector helper for
-existing printer/projection routes. `backend_aarch64_mir_carrier_test.cpp`
-covers hierarchy walking, AArch64 target payload ownership, successor metadata,
-origin preservation, and compatibility flattening.
+Focused coverage now instantiates the boundary with both a fake target printer
+and an AArch64-facing temporary bridge that strips the existing target
+`print_machine_instruction_node(...)` output back to line payloads before the
+common printer applies indentation/newlines; public AArch64 assembly routing
+remains unchanged for the later Step 5 packet.
 
 ## Suggested Next
 
-Execute Step 3 as a narrow shared traversal/printer-boundary packet: route the
-public assembly path toward the common hierarchical MIR stream while preserving
-target-local instruction spelling in the AArch64 printer.
+Execute Step 4 as the next narrow packet: add or adjust the target adapter
+surface needed before Step 5 can route public AArch64 assembly through the
+common MIR printer.
 
 ## Watchouts
 
 - Keep idea 229 as a follow-up markdown-shard conversion route unless the
   supervisor changes lifecycle direction.
 - Do not grow `src/backend/mir/aarch64/codegen/machine_printer.*` as the
-  permanent terminal assembly owner.
+  permanent terminal assembly owner; it is still only the AArch64 instruction
+  spelling delegate.
 - Treat `FunctionRecord::machine_nodes` and other flat views as compatibility
   projections, not as the desired public assembly carrier.
 - `backend.cpp` currently owns public function/section scaffolding while
@@ -45,9 +46,9 @@ target-local instruction spelling in the AArch64 printer.
   `FunctionRecord::machine_nodes`, but the public assembly route does not use
   that field; it flattens `function.mir` directly and therefore includes return
   records via `MachineInstruction::target`.
-- `flatten_instructions(...)` still exists for current flat-vector callers; new
-  shared MIR traversal should prefer `walk_instructions(...)` or direct
-  function/block iteration.
+- `flatten_instructions(...)` still exists for current flat-vector callers; the
+  new shared printer uses direct function/block/instruction iteration and Step 5
+  should avoid flattening when routing public assembly.
 - Separate idea file `ideas/open/230_aarch64_c_testsuite_backend_full_scan.md`
   exists outside this packet and was not touched.
 

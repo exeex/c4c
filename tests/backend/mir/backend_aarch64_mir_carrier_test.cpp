@@ -1,6 +1,8 @@
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/mir/printer.hpp"
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <type_traits>
 #include <utility>
@@ -10,6 +12,31 @@ namespace {
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace mir = c4c::backend::mir;
+
+struct FakeTargetInstruction {
+  std::string spelling;
+  bool printable = true;
+  bool raw_payload = false;
+  std::string diagnostic;
+};
+
+class FakeTargetPrinter final : public mir::TargetInstructionPrinter<FakeTargetInstruction> {
+ public:
+  [[nodiscard]] mir::TargetInstructionPrintResult print_instruction(
+      const mir::MachinePrintContext& context,
+      const mir::MachineInstruction<FakeTargetInstruction>& instruction) const override {
+    if (!instruction.target.printable) {
+      return mir::target_instruction_unsupported(instruction.target.diagnostic);
+    }
+    if (instruction.target.raw_payload) {
+      return mir::target_instruction_printed(instruction.target.spelling);
+    }
+    return mir::target_instruction_printed(
+        "f" + std::to_string(context.function_index) + "b" +
+        std::to_string(context.block_index) + "i" +
+        std::to_string(context.instruction_index) + ":" + instruction.target.spelling);
+  }
+};
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
@@ -161,6 +188,127 @@ int flatten_and_empty_helpers_use_hierarchical_carrier() {
   return 0;
 }
 
+int common_printer_walks_hierarchy_and_delegates_target_spelling() {
+  mir::MachineModule<FakeTargetInstruction> module;
+  module.functions.push_back(mir::MachineFunction<FakeTargetInstruction>{
+      .function_name = c4c::FunctionNameId{101},
+      .blocks =
+          {
+              mir::MachineBlock<FakeTargetInstruction>{
+                  .block_label = c4c::BlockLabelId{3},
+                  .index = 0,
+                  .instructions =
+                      {
+                          mir::MachineInstruction<FakeTargetInstruction>{
+                              .target = FakeTargetInstruction{.spelling = "fake.add"},
+                          },
+                      },
+              },
+              mir::MachineBlock<FakeTargetInstruction>{
+                  .block_label = c4c::BlockLabelId{5},
+                  .index = 1,
+                  .instructions =
+                      {
+                          mir::MachineInstruction<FakeTargetInstruction>{
+                              .target = FakeTargetInstruction{.spelling = "fake.ret"},
+                          },
+                      },
+              },
+          },
+  });
+
+  const auto printed = mir::print_machine_module(module, FakeTargetPrinter{});
+  if (!printed.ok || !printed.diagnostic.empty()) {
+    return fail("expected common MIR printer to accept target-delegated spellings");
+  }
+  if (printed.assembly != "    f0b0i0:fake.add\n    f0b1i0:fake.ret\n") {
+    return fail(
+        "expected common MIR printer to add indentation/newlines while walking hierarchy");
+  }
+  return 0;
+}
+
+int common_printer_reports_unsupported_target_spelling_without_partial_output() {
+  mir::MachineFunction<FakeTargetInstruction> function;
+  function.function_name = c4c::FunctionNameId{103};
+  function.blocks.push_back(mir::MachineBlock<FakeTargetInstruction>{
+      .block_label = c4c::BlockLabelId{7},
+      .index = 0,
+      .instructions =
+          {
+              mir::MachineInstruction<FakeTargetInstruction>{
+                  .target = FakeTargetInstruction{.spelling = "fake.ok"},
+              },
+              mir::MachineInstruction<FakeTargetInstruction>{
+                  .target =
+                      FakeTargetInstruction{
+                          .printable = false,
+                          .diagnostic = "fake target has no spelling for opcode 99",
+                      },
+              },
+          },
+  });
+
+  const auto printed = mir::print_machine_function(function, FakeTargetPrinter{});
+  if (printed.ok) {
+    return fail("expected common MIR printer to fail closed on unsupported target spelling");
+  }
+  if (!printed.assembly.empty()) {
+    return fail("expected common MIR printer to suppress partial assembly on failure");
+  }
+  if (printed.diagnostic.find("function 0 block 0 instruction 1") == std::string::npos ||
+      printed.diagnostic.find("fake target has no spelling for opcode 99") == std::string::npos) {
+    return fail("expected common MIR printer to report structural target spelling failure");
+  }
+  return 0;
+}
+
+int common_printer_rejects_target_owned_indentation_or_newlines() {
+  mir::MachineFunction<FakeTargetInstruction> function;
+  function.function_name = c4c::FunctionNameId{107};
+  function.blocks.push_back(mir::MachineBlock<FakeTargetInstruction>{
+      .block_label = c4c::BlockLabelId{11},
+      .index = 0,
+      .instructions =
+          {
+              mir::MachineInstruction<FakeTargetInstruction>{
+                  .target =
+                      FakeTargetInstruction{
+                          .spelling = "    fake.indented",
+                          .raw_payload = true,
+                      },
+              },
+          },
+  });
+  const auto indented = mir::print_machine_function(function, FakeTargetPrinter{});
+  if (indented.ok ||
+      indented.diagnostic.find("must not include indentation") == std::string::npos) {
+    return fail("expected common MIR printer to reject target-owned indentation");
+  }
+
+  function.blocks.front().instructions.front().target.spelling = "fake.newline\n";
+  const auto newline = mir::print_machine_function(function, FakeTargetPrinter{});
+  if (newline.ok ||
+      newline.diagnostic.find("must not contain newline characters") == std::string::npos) {
+    return fail("expected common MIR printer to reject target-owned newlines");
+  }
+
+  class EmptyPayloadPrinter final : public mir::TargetInstructionPrinter<FakeTargetInstruction> {
+   public:
+    [[nodiscard]] mir::TargetInstructionPrintResult print_instruction(
+        const mir::MachinePrintContext&,
+        const mir::MachineInstruction<FakeTargetInstruction>&) const override {
+      return mir::target_instruction_lines_printed({});
+    }
+  };
+  const auto empty_payload = mir::print_machine_function(function, EmptyPayloadPrinter{});
+  if (empty_payload.ok ||
+      empty_payload.diagnostic.find("no instruction line payloads") == std::string::npos) {
+    return fail("expected common MIR printer to reject empty target line payloads");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -177,6 +325,19 @@ int main() {
     return status;
   }
   if (const int status = flatten_and_empty_helpers_use_hierarchical_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status = common_printer_walks_hierarchy_and_delegates_target_spelling();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          common_printer_reports_unsupported_target_spelling_without_partial_output();
+      status != 0) {
+    return status;
+  }
+  if (const int status = common_printer_rejects_target_owned_indentation_or_newlines();
       status != 0) {
     return status;
   }
