@@ -5,6 +5,9 @@
 
 namespace c4c::backend::aarch64::assembler {
 
+// Text parser compatibility payloads for external assembler input. These
+// string-shaped records are not the future structured encoder/object contract
+// for internal compile-through lowering from machine instruction nodes.
 struct Operand {
   std::string text;
 };

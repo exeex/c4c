@@ -8,6 +8,10 @@
 
 namespace c4c::backend::aarch64::assembler::encoder {
 
+// Staged encoder helpers for parsed external assembler operands and relocations.
+// They are not the internal object-writer contract for terminal --codegen asm
+// text. Future backend-owned compile-through work should consume structured
+// asm/encoding records derived from machine instruction nodes.
 enum class RelocType {
   Call26,
   Jump26,
@@ -58,6 +62,9 @@ bool is_64bit_reg(const std::string& name);
 bool is_32bit_reg(const std::string& name);
 bool is_fp_reg(const std::string& name);
 std::uint32_t encode_cond(const std::string& cond);
+
+// Encodes one parsed external-assembler instruction. Do not use this as a
+// bridge from machine_printer.cpp output back into backend semantics.
 EncodeResult encode_instruction(const std::string& mnemonic,
                                 const std::vector<Operand>& operands,
                                 const std::string& raw_operands);

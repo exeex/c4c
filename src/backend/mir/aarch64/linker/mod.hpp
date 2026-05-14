@@ -12,6 +12,9 @@
 namespace c4c::backend::aarch64::linker {
 
 // Marker type for the staged AArch64 linker contract surface.
+// Linker inputs are object records/files, not terminal --codegen asm text and
+// not external .ll or .s fixtures. Future internal object/link work should
+// receive structured object records derived from structured asm/encoding data.
 struct ContractSurface final {};
 
 struct InputObjectSummary {
@@ -58,6 +61,9 @@ struct FirstStaticExecutable {
     const std::vector<std::string>& object_paths,
     std::string* error = nullptr);
 
+// Loads object-file inputs for the staged linker path. This boundary is
+// downstream of object emission and must not accept printed assembly as the
+// backend-owned semantic input.
 [[nodiscard]] std::optional<std::vector<LoadedInputObject>> load_first_static_input_objects(
     const std::vector<std::string>& object_paths,
     std::string* error = nullptr);
