@@ -8,25 +8,22 @@ Current Step Title: Draft Operand Authority
 
 ## Just Finished
 
-Completed plan Step 2 by rewriting
-`src/backend/mir/aarch64/module/module.cpp.md` as the Stage 3 module dispatch
-replacement draft and adding
-`src/backend/mir/aarch64/module/function_traversal.cpp.md` as the Stage 3
-function traversal replacement draft. The drafts use the Step 1
-`MachineModule`, `MachineFunction`, `MachineBlock`, `MachineInstruction`,
-`MachineOperand`, and lightweight `Provenance` vocabulary; cover target
-profile resolution, AArch64 prepared-handoff validation, module data and
-relocation orchestration, `BuildResult` construction, public product assembly
-from completed canonical MIR functions, prepared function/block traversal,
-lowering context construction, MIR function/block creation, optional debug
-provenance, owned inputs/outputs, indirect queries, forbidden knowledge, and
-classification; and reject the legacy broad record assembler as the
-replacement driver.
+Completed plan Step 3 by adding
+`src/backend/mir/aarch64/module/operand_resolution.cpp.md` as the Stage 3
+operand authority replacement draft. The draft defines typed prepared
+value-location authority, target register and `MachineOperand` conversion,
+storage precedence normalization, immediates, labels, symbols, memory forms,
+fail-closed compatibility register fallback, owned inputs/outputs, indirect
+queries, forbidden knowledge, classification, and downstream consumption by
+instruction, branch/control, and call lowering without broad prepared tables,
+source spellings, broad optional public records, or flat `machine_nodes` as
+semantic inputs.
 
 ## Suggested Next
 
-Delegate Step 3 to draft `operand_resolution.cpp.md` against the Step 1
-carrier/provenance vocabulary and the Step 2 dispatch/traversal seams.
+Delegate Step 4 to draft instruction and branch/control lowering against the
+typed operand authority seam, keeping operation-specific lowering out of
+operand resolution.
 
 ## Watchouts
 
@@ -46,12 +43,19 @@ carrier/provenance vocabulary and the Step 2 dispatch/traversal seams.
   diagnostics; structured prepared facts must remain authoritative.
 - Do not let operand resolution reintroduce public `FunctionRecord` records or
   flat `machine_nodes` as semantic inputs.
+- Step 4 consumers should pass use-specific context to operand resolution and
+  consume typed `MachineOperand`/`MachineRegister` values rather than rechecking
+  value-home, storage-plan, regalloc, ABI, or source spelling tables.
 
 ## Proof
 
 Markdown-only proof written to `test_after.log` with concise read-only `rg`
-checks over `module.cpp.md` and `function_traversal.cpp.md`. The proof confirms
-the drafts exist, use the Step 1 prepared-BIR-to-typed-MIR vocabulary, keep the
-shared `mir_printer` boundary, avoid `FunctionRecord::machine_nodes` as a
-primary output, avoid `__repr__`, and did not require real source, build, or
-test edits.
+checks over `operand_resolution.cpp.md` and `todo.md`. The proof confirms the
+operand draft exists as a Stage 3 replacement draft; covers typed prepared
+value-location authority, target register/operand conversion, storage
+precedence normalization, immediates, labels, symbols, memory forms,
+fail-closed compatibility register fallback, owned inputs/outputs, indirect
+queries, forbidden knowledge, classification, downstream typed operand
+consumption, and rejection of broad optional public records and flat
+`machine_nodes` as semantic inputs. No build was required for this
+markdown-only draft packet.
