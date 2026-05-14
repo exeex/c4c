@@ -1,7 +1,7 @@
 Status: Active
 Source Idea Path: ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
+Current Step ID: 2
 Current Step Title: Reconstruct Current Subsystem Shape
 
 # Current Packet
