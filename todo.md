@@ -39,8 +39,9 @@ evidence for replacement implementation and build-system wiring.
 
 ## Proof
 
-Ran the supervisor-selected handoff proof and wrote `test_after.log`. No build
-was run because this is a handoff-only `todo.md` update. Proof verified
-`module.cpp`, `module.cpp.md`, `module.hpp.md`, and `module.md` exist, and
-verified `module.md` says Stage 2 should use this index plus the companion
-markdown evidence instead of reopening the legacy source as the main reference.
+No build or `test_after.log` refresh was needed for this wording-only
+correction. Step 5 remains covered by Step 4's existing build-preserving proof:
+the prior handoff proof verified `module.cpp`, `module.cpp.md`,
+`module.hpp.md`, and `module.md` exist, and verified `module.md` says Stage 2
+should use this index plus the companion markdown evidence instead of reopening
+the legacy source as the main reference.
