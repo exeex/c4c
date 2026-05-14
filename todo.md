@@ -1,49 +1,45 @@
 # Current Packet
 
-Status: Active
+Status: Complete
 Source Idea Path: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Retire Or Fence Temporary Display And Flat-Printer Paths
+Current Step ID: 7
+Current Step Title: Broader Validation And Handoff
 
 ## Just Finished
 
-Completed `plan.md` Step 6 by retiring the AArch64 flat terminal assembly
-helpers from `machine_printer.*`. AST-backed symbol checks plus repository
-reference checks showed the flat `print_machine_instruction_node(s)` entrypoints
-were no longer used by production code; the remaining AArch64 printer API is the
-target line-payload hook consumed by the shared MIR printer.
+Completed `plan.md` Step 7 by running the delegated full build plus full CTest
+validation after the AArch64 public assembly route moved to the shared MIR
+printer boundary. The build was already current, and full CTest passed with
+3167 tests and 0 failures.
 
-`FunctionRecord::machine_nodes` and the compatibility projection derivation are
-now explicitly fenced as compatibility-only flat views, with terminal assembly
-ownership documented on `module::MachineFunction` plus the shared MIR printer.
-The machine-printer test now prints selected records through a local
-`mir::MachineFunction` and `MachineInstructionPrinter` instead of the removed
-flat-vector helper.
+The handoff state for idea 224 is that backend MIR has the common
+instruction-stream carrier under `src/backend/mir/`, AArch64 public assembly
+generation walks that carrier, and target spelling is delegated through the
+AArch64 printer hook. No implementation files were changed in this validation
+packet.
 
 ## Suggested Next
 
-Supervisor should run Step 7 broader validation and handoff/closeout review for
-idea 224, because public AArch64 assembly routing now walks the shared MIR
-printer and the remaining flat views are fenced as non-authoritative
-compatibility projections.
+Supervisor should perform closeout/lifecycle review for idea 224 using the
+fresh full-suite proof in `test_after.log`.
 
 ## Watchouts
 
-- No AArch64 instruction coverage was broadened; tests were rerouted to the
-  shared MIR traversal boundary and still exercise the same selected spelling
-  families and fail-closed diagnostics.
-- `clang-format` is not installed in this environment, so formatting was kept
-  manual for this slice.
+- Idea 229 remains a markdown-shard conversion follow-up, not a blocker for the
+  shared MIR printer/container boundary proven by this packet.
+- Remaining migration notes are handoff items only: future target migrations
+  should route public assembly emission through the common MIR carrier plus
+  target spelling hooks, and markdown conversion work should stay under its
+  existing follow-up initiative rather than expanding idea 224.
 
 ## Proof
 
-Delegated proof passed and wrote CTest output to `test_after.log`:
+Delegated full proof passed and wrote CTest output to `test_after.log`:
 
 ```bash
-cmake --build build --target c4c_backend backend_aarch64_mir_carrier_test backend_aarch64_machine_printer_test c4cll && ctest --test-dir build -R '^(backend_aarch64_mir_carrier|backend_aarch64_machine_printer|backend_cli_aarch64_asm_external_return_add_smoke)$' --output-on-failure > test_after.log
+cmake --build build && ctest --test-dir build -j --output-on-failure > test_after.log
 ```
 
-CTest subset: `backend_aarch64_machine_printer`,
-`backend_aarch64_mir_carrier`, and
-`backend_cli_aarch64_asm_external_return_add_smoke`, all passed.
+Build result: `ninja: no work to do.` Full CTest result: 100% tests passed, 0
+tests failed out of 3167, total real test time 34.88 sec.
