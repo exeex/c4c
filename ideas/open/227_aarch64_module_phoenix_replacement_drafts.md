@@ -3,7 +3,7 @@
 Status: Open
 Created: 2026-05-14
 Parent Context: ideas/open/224_common_mir_container_and_target_printer_boundary.md
-Requires: ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md
+Requires: ideas/closed/226_aarch64_module_phoenix_review_replacement_layout.md
 
 ## Intent
 
