@@ -8,36 +8,31 @@ Current Step Title: Implement One Lowering Family At A Time
 
 ## Just Finished
 
-Step 5: Implement One Lowering Family At A Time moved AArch64 prepared function
-traversal out of `module/function_traversal.cpp` and into new compiled
-`codegen/traversal.cpp` with declarations in `codegen/traversal.hpp`.
+Step 5: Implement One Lowering Family At A Time cleaned up the stale
+`src/backend/mir/aarch64/module/*.cpp.md` replacement drafts after their
+implemented surfaces had moved into compiled module/codegen C++.
 
-`codegen/emit.cpp` now calls the codegen traversal API. `module/module.hpp` no
-longer declares the traversal helpers, and the obsolete module translation unit
-was deleted and replaced in backend CMake sources. Direct function-context tests
-now include `codegen/traversal.hpp` and call the moved `aarch64_codegen`
-helpers; expectations were unchanged.
+`plan.md` no longer points active executors at deleted `module/*.cpp.md` files;
+its active read/target list now references the current `module/module.*` and
+`codegen/*.cpp/.hpp` implementation surfaces.
 
 ## Suggested Next
 
-Supervisor can review and commit this prepared-function traversal ownership
-move, then choose the next bounded lowering family or route-review packet.
+Supervisor can review and commit this docs/lifecycle cleanup, then proceed to
+the compatibility projection split or the next route-review packet.
 
 ## Watchouts
 
-- `codegen/traversal.hpp` still includes `module/module.hpp` because the moved
-  API consumes module lowering contexts, MIR container aliases, and diagnostics;
-  those shared module product/context structs were intentionally left in module
-  ownership.
+- Historical stage notes under `src/backend/mir/aarch64/module/` may still
+  mention the removed draft filenames as archive context; active `plan.md` no
+  longer depends on them.
 - Review checkpoint: the codegen headers introduced during the extraction
   remain target-private helper surfaces used by focused tests, not stable
   module public API.
-- No lowering expectations or testcase contracts were changed in this packet.
+- No implementation, lowering expectations, or testcase contracts were changed
+  in this packet.
 
 ## Proof
 
-Ran:
-`cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_function_traversal|backend_aarch64_instruction_dispatch|backend_aarch64_operand_resolution|backend_aarch64_return_lowering|backend_aarch64_branch_control_lowering|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke'`
-
-Result: passed; focused subset ran 7/7 tests after the build. Proof output is
-preserved in `test_after.log`.
+Docs/lifecycle-only cleanup. Validation is reference hygiene:
+`rg -n 'module/(module|function_traversal|operand_resolution|instruction_lowering|branch_control_lowering|call_lowering|public_assembly_bridge|compatibility_projection)\\.cpp\\.md|src/backend/mir/aarch64/module/.*\\.cpp\\.md' plan.md todo.md ideas/open tests`.

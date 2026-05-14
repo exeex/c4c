@@ -33,29 +33,37 @@ before claiming capability progress.
 - `src/backend/mir/mir.hpp`
 - `src/backend/mir/aarch64/module/module.md`
 - `src/backend/mir/aarch64/module/module.hpp.md`
-- `src/backend/mir/aarch64/module/module.cpp.md`
-- `src/backend/mir/aarch64/module/function_traversal.cpp.md`
-- `src/backend/mir/aarch64/module/operand_resolution.cpp.md`
-- `src/backend/mir/aarch64/module/instruction_lowering.cpp.md`
-- `src/backend/mir/aarch64/module/branch_control_lowering.cpp.md`
-- `src/backend/mir/aarch64/module/call_lowering.cpp.md`
-- `src/backend/mir/aarch64/module/public_assembly_bridge.cpp.md`
-- `src/backend/mir/aarch64/module/compatibility_projection.cpp.md`
+- `src/backend/mir/aarch64/module/module.hpp`
+- `src/backend/mir/aarch64/module/module.cpp`
+- `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/traversal.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/operands.cpp`
+- `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `src/backend/mir/aarch64/codegen/returns.cpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 
 ## Current Targets
 
-Implementation conversion targets from the reviewed Stage 3 draft map:
+Implementation conversion targets from the reviewed Stage 3 draft map now live
+as compiled C++ surfaces:
 
 - `src/backend/mir/mir.hpp`
-- `src/backend/mir/aarch64/module.hpp`
-- `src/backend/mir/aarch64/module.cpp`
-- `src/backend/mir/aarch64/module/function_traversal.cpp`
-- `src/backend/mir/aarch64/module/operand_resolution.cpp`
-- `src/backend/mir/aarch64/module/instruction_lowering.cpp`
-- `src/backend/mir/aarch64/module/branch_control_lowering.cpp`
-- `src/backend/mir/aarch64/module/call_lowering.cpp`
-- `src/backend/mir/aarch64/module/public_assembly_bridge.cpp`
-- `src/backend/mir/aarch64/module/compatibility_projection.cpp`
+- `src/backend/mir/aarch64/module/module.hpp`
+- `src/backend/mir/aarch64/module/module.cpp`
+- `src/backend/mir/aarch64/codegen/emit.cpp`
+- `src/backend/mir/aarch64/codegen/traversal.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/operands.cpp`
+- `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/comparison.cpp`
+- `src/backend/mir/aarch64/codegen/returns.cpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 - related build wiring only when needed to compile and route the converted
   implementation
 
