@@ -8,46 +8,34 @@ Current Step Title: Final Validation And Close Readiness
 
 ## Just Finished
 
-Step 5 is exhausted for the currently owned AArch64 codegen/module semantic register-string record families after commits `183aa2312`, `92a7e4508`, and `c336c0c70`.
+Step 6, `Final Validation And Close Readiness`, completed a no-code-change validation and close-readiness audit for idea 223.
 
-The audited AArch64 record/module register surfaces now expose typed `RegisterReference` identity and typed occupied-register identity for normal semantic use. Remaining register spelling strings in those families are compatibility/display mirrors or prepared legacy fields populated from typed target references where conversion succeeds.
+The delegated focused proof passed with 19/19 selected backend tests green. The audit found no unsupported expectation downgrades, no newly disabled or weakened supported cases, and no unrelated AArch64 public feature enablement in the idea-223 diff. The only new `Unsupported*` references found in the diff are fail-closed conversion errors for invalid prepared-register conversion inputs, not test expectation downgrades.
 
-Lifecycle decision: advance from Step 5 to Step 6, `Final Validation And Close Readiness`.
+Remaining register-string fields are compatibility/display surfaces rather than the normal semantic placement authority:
+- `prealloc` still carries legacy/display spelling mirrors such as `register_name`, `occupied_register_names`, source/destination register-name fields, and fixed/preferred/forbidden register-name vectors alongside structured `PreparedRegisterPlacement` / `PreparedSpillSlotPlacement` fields.
+- AArch64 module conversion now prefers structured placement and typed `aarch64::abi::RegisterReference` results; legacy prepared spelling conversion remains as fallback compatibility for older prepared records.
+- AArch64 codegen records still expose display string vectors such as `occupied_registers` and `occupied_scratch_registers`, but typed `occupied_register_references` / `occupied_scratch_register_references` are present for semantic identity.
+- ABI helpers still parse and print AArch64 register spellings at the target/printer boundary and for compatibility conversion diagnostics.
 
 ## Suggested Next
 
-Step 6 first packet recommendation: delegate final validation and close-readiness audit, not new implementation.
-
-Recommended proof packet:
-- Re-run the focused idea-223 proof set covering structured prealloc placement, AArch64 prepared mapping, target instruction records, scalar ALU/cast records, frame-control records, module identity, operand identity, data identity, branch records, and machine-printer records.
-- Run the supervisor-selected broader backend subset or full-suite baseline candidate again if the supervisor wants close confidence.
-- Inspect the Step 6 summary for unsupported expectation downgrades, unrelated AArch64 feature enablement, or remaining legacy string fields that are semantic rather than display/compatibility only.
-- Record the final legacy/display compatibility inventory in `todo.md` for close review.
-
-Suggested command shape for the first Step 6 executor packet:
-
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_(prepare_|aarch64_(prepared_|target_instruction_records|machine_printer)).*" --output-on-failure' > test_after.log 2>&1`
+Executor recommendation: close-ready for plan-owner review, subject to the supervisor's required close-scope regression guard.
 
 ## Watchouts
 
-- This packet intentionally left legacy string fields in the module records as compatibility/display surfaces; typed `RegisterReference` fields are now the authoritative register identity for the touched surfaces.
-- No remaining display-only callee-save, call-preserved, call-clobbered, or converted codegen/module record register spelling surfaces were found that still act as semantic register identity; their register names and occupied-register strings are compatibility/display mirrors.
+- This packet intentionally made no implementation changes.
+- `review/step4_placement_review.md` remains untracked and was pre-existing at executor start; it was intentionally left untouched.
 - `clang-format` is not installed in this environment, so touched C++ files were not auto-formatted beyond manual style matching.
 - Placement-backed scalar casts validate result storage placement, but `ScalarCastRecord` does not expose a result register field; selected cast instruction records still carry result identity through `result_value_id`/`result_value_name`.
 - AArch64 `CallArgument` and `CallResult` placement mapping is bounded to slot indexes 0..7. Return mapping currently accepts slot 0 only.
-- `review/step4_placement_review.md` was pre-existing and intentionally left untouched.
 
 ## Proof
 
-Step 5 proof recorded by prior executor packets:
+Step 6 proof:
 
-`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_aarch64_(prepared_frame_control|prepared_module_identity|target_instruction_records|prepared_operand_identity|prepared_scalar_alu_records|prepared_scalar_cast_records)$" --output-on-failure' > test_after.log 2>&1`
+`bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -R "backend_(prepare_|aarch64_(prepared_|target_instruction_records|machine_printer)).*" --output-on-failure' > test_after.log 2>&1`
 
-Result: passed; 6/6 selected AArch64 backend tests passed.
+Result: passed; 19/19 selected backend tests passed.
 
-Supervisor-reported recent validation at Step 5 exhaustion review:
-- focused AArch64 subset passed
-- backend subset passed
-- hook full-suite baseline candidate accepted with 3163 passed / 0 failed
-
-Plan-owner note: no local `test_after.log` file was present during this lifecycle update; Step 6 should refresh the canonical proof log.
+Proof log: `test_after.log`.
