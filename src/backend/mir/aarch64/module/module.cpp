@@ -2,9 +2,11 @@
 
 #include <algorithm>
 #include <iterator>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace c4c::backend::aarch64::module {
 namespace {
@@ -882,6 +884,97 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
   });
 }
 
+[[nodiscard]] bool is_returned_named_value(
+    const c4c::backend::bir::Function* source_function,
+    const c4c::backend::bir::Value& value) {
+  if (source_function == nullptr || value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return false;
+  }
+  for (const auto& block : source_function->blocks) {
+    if (block.terminator.kind == c4c::backend::bir::TerminatorKind::Return &&
+        block.terminator.value.has_value() &&
+        block.terminator.value->kind == c4c::backend::bir::Value::Kind::Named &&
+        block.terminator.value->name == value.name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool is_selected_return_scalar_alu_opcode(
+    c4c::backend::bir::BinaryOpcode opcode) {
+  return opcode == c4c::backend::bir::BinaryOpcode::Add ||
+         opcode == c4c::backend::bir::BinaryOpcode::Sub;
+}
+
+[[nodiscard]] std::optional<c4c::backend::aarch64::codegen::RegisterOperand>
+returned_scalar_result_register(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const std::vector<c4c::backend::aarch64::codegen::InstructionRecord>& scalar_nodes,
+    const c4c::backend::bir::Value& value) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+  if (value.kind != c4c::backend::bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  for (const auto& node : scalar_nodes) {
+    const auto* scalar = std::get_if<codegen::ScalarInstructionRecord>(&node.payload);
+    if (scalar == nullptr || !scalar->result_register.has_value() ||
+        scalar->result_value_name == c4c::kInvalidValueName) {
+      continue;
+    }
+    if (prepared.names.value_names.spelling(scalar->result_value_name) == value.name) {
+      return scalar->result_register;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<c4c::backend::aarch64::codegen::InstructionRecord>
+build_return_scalar_alu_machine_nodes(
+    const c4c::backend::prepare::PreparedBirModule& prepared,
+    const c4c::backend::bir::Function* source_function,
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const c4c::backend::prepare::PreparedValueLocationFunction* locations,
+    const c4c::backend::prepare::PreparedStoragePlanFunction* storage) {
+  namespace codegen = c4c::backend::aarch64::codegen;
+
+  std::vector<codegen::InstructionRecord> nodes;
+  if (source_function == nullptr || locations == nullptr || storage == nullptr) {
+    return nodes;
+  }
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    const auto* source_block = find_source_block(prepared, source_function, block.block_label);
+    if (source_block == nullptr) {
+      continue;
+    }
+    for (std::size_t instruction_index = 0; instruction_index < source_block->insts.size();
+         ++instruction_index) {
+      const auto* binary =
+          std::get_if<c4c::backend::bir::BinaryInst>(&source_block->insts[instruction_index]);
+      if (binary == nullptr || !is_selected_return_scalar_alu_opcode(binary->opcode) ||
+          !is_returned_named_value(source_function, binary->result)) {
+        continue;
+      }
+      const auto scalar =
+          codegen::make_prepared_scalar_alu_instruction_record(prepared.names,
+                                                               *locations,
+                                                               *storage,
+                                                               *binary);
+      if (!scalar.record.has_value()) {
+        continue;
+      }
+      auto node = codegen::make_scalar_instruction(*scalar.record);
+      node.function_name = function.function_name;
+      node.block_label = block.block_label;
+      node.block_index = block_index;
+      node.instruction_index = instruction_index;
+      nodes.push_back(std::move(node));
+    }
+  }
+  return nodes;
+}
+
 [[nodiscard]] c4c::backend::aarch64::codegen::MachinePseudoKind codegen_spill_reload_pseudo(
     SpillReloadPseudoKind pseudo) {
   using c4c::backend::aarch64::codegen::MachinePseudoKind;
@@ -984,7 +1077,8 @@ build_spill_reload_machine_nodes(
 build_return_machine_nodes(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::bir::Function* source_function,
-    const c4c::backend::prepare::PreparedControlFlowFunction& function) {
+    const c4c::backend::prepare::PreparedControlFlowFunction& function,
+    const std::vector<c4c::backend::aarch64::codegen::InstructionRecord>& scalar_nodes) {
   namespace codegen = c4c::backend::aarch64::codegen;
 
   std::vector<codegen::InstructionRecord> nodes;
@@ -1008,6 +1102,10 @@ build_return_machine_nodes(
       const auto& value = *source_block->terminator.value;
       if (value.kind == c4c::backend::bir::Value::Kind::Immediate) {
         ret.value = immediate_return_operand(value);
+      } else if (auto result_register =
+                     returned_scalar_result_register(prepared, scalar_nodes, value);
+                 result_register.has_value()) {
+        ret.value = codegen::make_register_operand(*result_register);
       } else {
         ret.value = codegen::make_prepared_value_operand(codegen::PreparedValueOperand{
             .function_name = function.function_name,
@@ -1197,7 +1295,21 @@ build_return_machine_nodes(
                                                           function,
                                                           regalloc,
                                                           record.spill_reloads);
-  auto return_nodes = build_return_machine_nodes(prepared, source_function, function);
+  auto scalar_nodes = build_return_scalar_alu_machine_nodes(prepared,
+                                                           source_function,
+                                                           function,
+                                                           locations,
+                                                           c4c::backend::prepare::
+                                                               find_prepared_storage_plan(
+                                                                   prepared,
+                                                                   function.function_name));
+  record.machine_nodes.insert(record.machine_nodes.end(),
+                              std::make_move_iterator(scalar_nodes.begin()),
+                              std::make_move_iterator(scalar_nodes.end()));
+  auto return_nodes = build_return_machine_nodes(prepared,
+                                                 source_function,
+                                                 function,
+                                                 record.machine_nodes);
   record.machine_nodes.insert(record.machine_nodes.end(),
                               std::make_move_iterator(return_nodes.begin()),
                               std::make_move_iterator(return_nodes.end()));
