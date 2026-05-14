@@ -605,6 +605,35 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_memory_return_storage(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryReturnPlan& memory_return,
+    std::size_t instruction_index) {
+  if (memory_return.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !memory_return.slot_id.has_value() ||
+      !memory_return.stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = memory_return.slot_id,
+      .byte_offset = static_cast<std::int64_t>(*memory_return.stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = memory_return.size_bytes,
+      .align_bytes = memory_return.align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,
@@ -625,6 +654,12 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       .wrapper_kind = call_plan->wrapper_kind,
       .variadic_fpr_arg_register_count = call_plan->variadic_fpr_arg_register_count,
       .memory_return = call_plan->memory_return,
+      .memory_return_storage =
+          call_plan->memory_return.has_value()
+              ? make_memory_return_storage(context,
+                                           *call_plan->memory_return,
+                                           instruction_index)
+              : std::nullopt,
       .prepared_indirect_callee = call_plan->indirect_callee,
       .prepared_arguments = call_plan->arguments,
       .prepared_result = call_plan->result,

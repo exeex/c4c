@@ -571,6 +571,73 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
                          "direct-call common-printer drift guard");
 }
 
+int selected_memory_return_call_prints_call_and_preserves_storage_effect() {
+  const prepare::PreparedMemoryReturnPlan memory_return{
+      .sret_arg_index = std::size_t{0},
+      .storage_slot_name = c4c::SlotNameId{8},
+      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .slot_id = prepare::PreparedFrameSlotId{9},
+      .stack_offset_bytes = std::size_t{32},
+      .size_bytes = 16,
+      .align_bytes = 8,
+  };
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"make_large"},
+      .memory_return = memory_return,
+  };
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{9},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "make_large",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .memory_return = prepared_call.memory_return,
+          .memory_return_storage =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{3},
+                  .instruction_index = 1,
+                  .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{9},
+                  .byte_offset = 32,
+                  .byte_offset_is_prepared_snapshot = true,
+                  .size_bytes = 16,
+                  .align_bytes = 8,
+                  .can_use_base_plus_offset = true,
+              },
+          .source_call = &prepared_call,
+          .calling_convention = bir::CallingConv::C,
+      });
+
+  if (call.defs.size() != 1 ||
+      call.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Memory ||
+      call.defs.front().frame_slot_id != prepare::PreparedFrameSlotId{9} ||
+      call.side_effects.size() != 2 ||
+      call.side_effects.back() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected memory-return call printer fixture to carry prepared storage effect");
+  }
+  const auto result = print_common_instruction_nodes({call});
+  if (!result.ok) {
+    return fail("expected memory-return call node to print the call itself: " +
+                result.diagnostic);
+  }
+  const auto call_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(call);
+  const std::string expected = "    " + std::string(call_mnemonic) + " make_large\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    bl make_large\n",
+                         "memory-return call common-printer drift guard");
+}
+
 int selected_indirect_call_prints_from_prepared_register_callee() {
   const prepare::PreparedCallPlan prepared_call{
       .block_index = 0,
@@ -1060,6 +1127,10 @@ int main() {
     return result;
   }
   if (const int result = selected_direct_call_prints_from_prepared_call_provenance();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_memory_return_call_prints_call_and_preserves_storage_effect();
       result != 0) {
     return result;
   }

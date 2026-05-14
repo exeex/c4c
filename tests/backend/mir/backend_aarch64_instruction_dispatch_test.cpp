@@ -117,6 +117,78 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_direct_memory_return_call_plan() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.memret");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.memret.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.memret.entry");
+  const auto actual_link = prepared.names.link_names.intern("make_large");
+  const auto storage_slot = prepared.names.slot_names.intern("lv.call.sret.storage");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.memret",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.memret.entry",
+          .insts = {bir::CallInst{
+              .callee = "make_large",
+              .callee_link_name_id = actual_link,
+              .args = {bir::Value::named(bir::TypeKind::Ptr, "lv.call.sret.storage")},
+              .arg_types = {bir::TypeKind::Ptr},
+              .arg_abi = {bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::Ptr,
+                  .size_bytes = 24,
+                  .align_bytes = 8,
+                  .primary_class = bir::AbiValueClass::Memory,
+                  .sret_pointer = true,
+              }},
+              .return_type = bir::TypeKind::Void,
+              .result_abi = bir::CallResultAbiInfo{
+                  .type = bir::TypeKind::Void,
+                  .primary_class = bir::AbiValueClass::Memory,
+                  .returned_in_memory = true,
+              },
+              .calling_convention = bir::CallingConv::C,
+              .sret_storage_name = "lv.call.sret.storage",
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"make_large"},
+          .memory_return =
+              prepare::PreparedMemoryReturnPlan{
+                  .sret_arg_index = std::size_t{0},
+                  .storage_slot_name = storage_slot,
+                  .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{7},
+                  .stack_offset_bytes = std::size_t{64},
+                  .size_bytes = 24,
+                  .align_bytes = 8,
+              },
+      }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_argument_register_move() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -683,6 +755,76 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
   return 0;
 }
 
+int block_dispatch_exposes_prepared_memory_return_storage_on_call_node() {
+  auto prepared = prepared_with_direct_memory_return_call_plan();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected prepared memory-return direct call dispatch to emit call plus return");
+  }
+
+  const auto& call_instruction = block.instructions.front();
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &call_instruction.target.payload);
+  if (call == nullptr ||
+      call_instruction.target.family != aarch64_module::codegen::InstructionFamily::Call ||
+      call_instruction.target.opcode != aarch64_module::codegen::MachineOpcode::DirectCall ||
+      call_instruction.target.function_name != function_cf.function_name ||
+      call_instruction.target.block_label != block_cf.block_label ||
+      !call->memory_return.has_value() ||
+      !call->memory_return_storage.has_value() ||
+      call->memory_return->slot_id != std::optional<prepare::PreparedFrameSlotId>{7} ||
+      call->memory_return->stack_offset_bytes != std::optional<std::size_t>{64} ||
+      call->memory_return_storage->base_kind !=
+          aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      call->memory_return_storage->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{7} ||
+      call->memory_return_storage->byte_offset != 64 ||
+      call->memory_return_storage->size_bytes != 24 ||
+      call->memory_return_storage->align_bytes != 8 ||
+      call->source_call != &function_context.call_plans->calls.front()) {
+    return fail("expected call node to preserve prepared memory-return storage facts");
+  }
+  if (call_instruction.target.defs.size() != 1 ||
+      call_instruction.target.defs.front().kind !=
+          aarch64_module::codegen::MachineEffectResourceKind::Memory ||
+      call_instruction.target.defs.front().frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{7} ||
+      call_instruction.target.side_effects.size() != 2 ||
+      call_instruction.target.side_effects.front() !=
+          aarch64_module::codegen::MachineSideEffectKind::Call ||
+      call_instruction.target.side_effects.back() !=
+          aarch64_module::codegen::MachineSideEffectKind::MemoryWrite ||
+      !call_instruction.target.defs.front().operand.has_value()) {
+    return fail("expected memory-return call to expose storage as a memory def effect");
+  }
+  const auto* storage = std::get_if<aarch64_module::codegen::MemoryOperand>(
+      &call_instruction.target.defs.front().operand->payload);
+  if (storage == nullptr ||
+      storage->base_kind != aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      storage->frame_slot_id != std::optional<prepare::PreparedFrameSlotId>{7} ||
+      storage->byte_offset != 64) {
+    return fail("expected memory-return effect operand to carry prepared slot and offset");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator to remain lowered after memory-return direct call");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1061,6 +1203,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_exposes_prepared_memory_return_storage_on_call_node();
       status != 0) {
     return status;
   }

@@ -611,6 +611,7 @@ struct CallInstructionRecord {
   std::optional<prepare::PreparedCallWrapperKind> wrapper_kind;
   std::size_t variadic_fpr_arg_register_count = 0;
   std::optional<prepare::PreparedMemoryReturnPlan> memory_return;
+  std::optional<MemoryOperand> memory_return_storage;
   std::optional<prepare::PreparedIndirectCalleePlan> prepared_indirect_callee;
   std::vector<prepare::PreparedCallArgumentPlan> prepared_arguments;
   std::optional<prepare::PreparedCallResultPlan> prepared_result;

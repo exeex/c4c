@@ -8,34 +8,34 @@ Current Step Title: Lower Memory-Return And Preservation Cases
 
 ## Just Finished
 
-Started Step 5, Lower Memory-Return And Preservation Cases, by reflecting
-prepared call clobber records into selected AArch64 call machine-node effects.
+Continued Step 5, Lower Memory-Return And Preservation Cases, by exposing
+prepared memory-return frame-slot storage on selected AArch64 call
+machine-node records.
 
-Implemented the narrow prepared clobber effect path:
+Implemented the narrow prepared memory-return storage path:
 
-- Populated `InstructionRecord::clobbers` for selected direct and indirect call
-  nodes from `CallInstructionRecord::clobbered_registers`, which is copied from
-  the authoritative `PreparedCallPlan`.
-- Converted only explicit prepared register spellings already present in each
-  `PreparedClobberedRegister`; no local caller-saved ABI set, call-clobber
-  policy, or placement inference was introduced.
-- Preserved raw prepared clobber records in the call payload while exposing
-  convertible GPR, FPR, and vector/grouped clobbers as structured register
-  machine effects with `CallAbi` register operands.
-- Kept malformed or unconvertible clobber facts fail-closed by omitting their
-  structured machine clobber effect while leaving the original prepared record
-  attached to the call payload for provenance.
-- Added target-record, dispatch, and printer coverage for singleton GPR/FPR
-  clobbers, a grouped vector clobber, printer stability with clobber effects,
-  and malformed clobber omission.
+- Added `CallInstructionRecord::memory_return_storage` as a structured
+  `MemoryOperand` carrier beside the raw `PreparedMemoryReturnPlan`.
+- Populated that carrier during AArch64 call dispatch only when
+  `PreparedCallPlan::memory_return` already provides `FrameSlot` encoding,
+  `slot_id`, and `stack_offset_bytes`; no sret register, outgoing stack area,
+  address materialization, or ABI reconstruction was introduced.
+- Reflected the structured memory-return storage on selected call nodes as a
+  memory def effect plus `MemoryWrite` side effect while preserving normal call
+  operands and clobber effects.
+- Kept direct-call printer output unchanged for memory-return calls; tests
+  prove the storage effect remains attached while the printed call line still
+  comes only from prepared callee provenance.
+- Added target-record, dispatch, and printer coverage for a direct
+  memory-return call with explicit prepared frame-slot and offset storage.
 
 ## Suggested Next
 
-Continue Step 5 with the next preservation/memory-return packet. A coherent
-next packet would be memory-return or preserved-value machine effects only if
-the existing `PreparedCallPlan` facts already provide explicit storage,
-slot/offset, and register identity; otherwise leave those cases deferred and
-route to the missing prepared-fact source.
+Continue Step 5 with a preserved-value packet that exposes
+`PreparedCallPreservedValue` facts on selected AArch64 call records/effects
+only where existing prepared facts already identify the preserved value and its
+storage/register carriers. If those facts are not explicit enough, stop and
+route the missing fact instead of inferring preservation policy locally.
 
 ## Watchouts
 
@@ -87,6 +87,10 @@ route to the missing prepared-fact source.
 - Malformed prepared clobber records are not diagnostics today because the call
   instruction record builder has no diagnostics channel; the raw prepared
   records remain in the payload and the structured effect simply fails closed.
+- Memory-return storage is exposed only for prepared frame-slot storage with an
+  explicit slot id and prepared stack offset. Other encodings or incomplete
+  memory-return plans remain raw payload provenance and do not gain structured
+  memory effects in AArch64 dispatch.
 
 ## Proof
 

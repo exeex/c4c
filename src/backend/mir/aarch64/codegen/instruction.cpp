@@ -2234,6 +2234,11 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   if (instruction.result.has_value()) {
     defs.push_back(effect_from_operand(*instruction.result));
   }
+  std::vector<MachineSideEffectKind> side_effects = {MachineSideEffectKind::Call};
+  if (instruction.memory_return_storage.has_value()) {
+    defs.push_back(effect_from_operand(make_memory_operand(*instruction.memory_return_storage)));
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
@@ -2243,7 +2248,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
       .defs = defs,
       .uses = effects_from_operands(operands),
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
-      .side_effects = {MachineSideEffectKind::Call},
+      .side_effects = std::move(side_effects),
       .payload = instruction,
   };
 }

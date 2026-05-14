@@ -380,6 +380,85 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   return 0;
 }
 
+int memory_return_call_record_exposes_prepared_frame_slot_storage() {
+  const prepare::PreparedMemoryReturnPlan memory_return{
+      .sret_arg_index = std::size_t{0},
+      .storage_slot_name = c4c::SlotNameId{8},
+      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .slot_id = prepare::PreparedFrameSlotId{12},
+      .stack_offset_bytes = std::size_t{48},
+      .size_bytes = 24,
+      .align_bytes = 8,
+  };
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 2,
+      .instruction_index = 5,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"make_large"},
+      .memory_return = memory_return,
+  };
+  const auto call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{4},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "make_large",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .memory_return = prepared_call.memory_return,
+          .memory_return_storage =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{3},
+                  .instruction_index = 5,
+                  .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+                  .frame_slot_id = prepare::PreparedFrameSlotId{12},
+                  .byte_offset = 48,
+                  .byte_offset_is_prepared_snapshot = true,
+                  .size_bytes = 24,
+                  .align_bytes = 8,
+                  .can_use_base_plus_offset = true,
+              },
+          .source_call = &prepared_call,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto* call_payload = std::get_if<aarch64_codegen::CallInstructionRecord>(&call.payload);
+
+  if (call_payload == nullptr || !call_payload->memory_return.has_value() ||
+      !call_payload->memory_return_storage.has_value() ||
+      call_payload->memory_return->slot_id != std::optional<prepare::PreparedFrameSlotId>{12} ||
+      call_payload->memory_return->stack_offset_bytes != std::optional<std::size_t>{48} ||
+      call_payload->memory_return_storage->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      call_payload->memory_return_storage->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{12} ||
+      call_payload->memory_return_storage->byte_offset != 48 ||
+      call_payload->memory_return_storage->size_bytes != 24 ||
+      call_payload->memory_return_storage->align_bytes != 8) {
+    return fail("expected memory-return call payload to preserve prepared frame-slot storage");
+  }
+  if (call.operands.size() != 1 || call.defs.size() != 1 ||
+      call.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Memory ||
+      call.defs.front().frame_slot_id != std::optional<prepare::PreparedFrameSlotId>{12} ||
+      !call.defs.front().operand.has_value() || call.side_effects.size() != 2 ||
+      call.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
+      call.side_effects.back() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected memory-return call to expose prepared storage as a memory def");
+  }
+  const auto* storage =
+      std::get_if<aarch64_codegen::MemoryOperand>(&call.defs.front().operand->payload);
+  if (storage == nullptr || storage->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      storage->frame_slot_id != std::optional<prepare::PreparedFrameSlotId>{12} ||
+      storage->byte_offset != 48) {
+    return fail("expected memory-return def operand to carry prepared slot and offset");
+  }
+
+  return 0;
+}
+
 int frame_instruction_records_preserve_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{6},
@@ -997,6 +1076,10 @@ int main() {
     return status;
   }
   if (const int status = call_return_assembler_and_object_families_are_explicit_placeholders();
+      status != 0) {
+    return status;
+  }
+  if (const int status = memory_return_call_record_exposes_prepared_frame_slot_storage();
       status != 0) {
     return status;
   }
