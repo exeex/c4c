@@ -8,48 +8,46 @@ Current Step Title: Add Call And Frame Machine Records
 
 ## Just Finished
 
-Continued Step 2, Add Call And Frame Machine Records, with the frame/prologue/
-epilogue record-carrier slice.
+Continued Step 2, Add Call And Frame Machine Records, with the call-boundary
+move/ABI-binding record-carrier slice.
 
-Implemented structured AArch64 frame machine-record/provenance surface without
-emitting frame setup from traversal:
+Implemented structured AArch64 call-boundary carriers without emitting argument
+or result moves from traversal:
 
-- Added explicit frame instruction family, frame instruction kinds, frame setup/
-  teardown and callee-save opcodes, frame setup/teardown side-effect names, and
-  central mnemonic mapping for simple setup/teardown.
-- Added `FrameInstructionRecord` and `CalleeSaveInstructionRecord` carriers that
-  preserve prepared frame facts from `PreparedFramePlanFunction`: function
-  identity, frame size/alignment, frame-slot order, saved callee-register list,
-  dynamic-stack flag, frame-pointer fixed-slot flag, callee-save slot/offset
-  snapshot, and `source_frame` provenance.
-- Added `make_frame_instruction` with fail-closed selection diagnostics for
-  missing prepared frame facts and incomplete callee-save records.
-- Added conservative printer support for only complete simple fixed-frame
-  setup/teardown records with no dynamic stack and no callee-save records:
-  `sub sp, sp, #N` and `add sp, sp, #N`.
-- Added fail-closed printer diagnostics for missing prepared frame provenance,
-  missing alignment, dynamic-stack frames, callee-save frames, unprintable frame
-  kinds, and frame adjustments outside the current plain immediate subset.
-- Updated focused AArch64 tests for frame record preservation, central mnemonic
-  coverage, simple frame printer output, and fail-closed frame diagnostics.
+- Added an explicit `CallBoundary` instruction family and opcodes for
+  `CallBoundaryMove` and `CallBoundaryAbiBinding`.
+- Added `CallBoundaryMoveInstructionRecord` to preserve
+  `PreparedMoveBundle`/`PreparedMoveResolution` facts: function, phase,
+  authority, block/instruction indexes, parallel-copy predecessor/successor
+  labels, the prepared move snapshot, and source bundle/move provenance.
+- Added `CallBoundaryAbiBindingInstructionRecord` to preserve
+  `PreparedMoveBundle`/`PreparedAbiBinding` facts: function, phase, authority,
+  block/instruction indexes, binding index, parallel-copy labels, prepared ABI
+  binding snapshot, and source bundle/binding provenance.
+- Added construction helpers with fail-closed selection diagnostics when
+  prepared move or binding provenance is missing.
+- Added printer diagnostics that reject selected call-boundary move and ABI
+  binding records until a later packet owns concrete AArch64 move lowering.
+- Updated focused AArch64 tests for record preservation and fail-closed printer
+  diagnostics for selected and missing-provenance call-boundary records.
 
 What this slice intentionally did not do:
 
-- It did not emit frame setup/teardown from traversal or dispatch.
-- It did not invent frame size, callee-save slots, frame-pointer policy,
-  dynamic-stack anchoring, ABI register choices, scratch-register choices, or
-  save/restore instruction forms inside AArch64 lowering.
-- It did not implement printable callee-save stores/loads yet; those records are
-  structured carriers and printer-fail closed until the later lowering packet
-  owns those facts.
+- It did not emit argument/result moves, call-boundary copies, or ABI-binding
+  text from traversal/dispatch.
+- It did not choose registers, stack slots, scratch registers, stack argument
+  areas, sret storage, or any concrete AArch64 move form locally.
+- It did not turn call-boundary metadata into printable `mov`/`ldr`/`str`
+  instructions; the printer rejects these records until lowering owns the
+  prepared source/destination facts.
 
 ## Suggested Next
 
-Continue Step 2 by wiring prepared frame facts into dispatch/traversal only as
-records if the supervisor wants the machine-node stream to carry prologue/
-epilogue placeholders, or move to the next call-boundary record slice. Keep the
-next packet narrow and do not lower callee-save save/restore text until the
-prepared slot/offset ownership is explicit.
+Continue Step 2 by either wiring prepared frame/call-boundary facts into the
+machine-node stream as placeholders, or split into Step 3 lowering for one
+concrete family. Keep the next packet narrow: do not lower printable moves until
+the prepared record source/destination categories and scratch authority are
+explicitly consumed.
 
 ## Watchouts
 
@@ -70,6 +68,9 @@ prepared slot/offset ownership is explicit.
 - Simple fixed-frame printer output is intentionally narrow and only covers
   complete no-save/no-dynamic records. Callee-save and dynamic-stack records
   preserve prepared facts but fail closed in the printer.
+- Call-boundary move and ABI-binding records are selected carriers only. Their
+  printer rejection is intentional until a later lowering packet owns concrete
+  AArch64 move forms.
 
 ## Proof
 

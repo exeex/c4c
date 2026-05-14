@@ -280,6 +280,30 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
   return target_printed({out.str()});
 }
 
+mir::TargetInstructionPrintResult print_call_boundary_move(
+    const InstructionRecord& instruction,
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (move.source_bundle == nullptr || move.source_move == nullptr) {
+    return target_unsupported(bad_header(instruction) +
+                              "call-boundary move node is missing prepared move provenance");
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "call-boundary move node requires later AArch64 move lowering");
+}
+
+mir::TargetInstructionPrintResult print_call_boundary_abi_binding(
+    const InstructionRecord& instruction,
+    const CallBoundaryAbiBindingInstructionRecord& binding) {
+  if (binding.source_bundle == nullptr || binding.source_binding == nullptr) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "call-boundary ABI binding node is missing prepared binding provenance");
+  }
+  return target_unsupported(
+      bad_header(instruction) +
+      "call-boundary ABI binding node requires later AArch64 move lowering");
+}
+
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
                                                const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
@@ -442,6 +466,14 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* frame = std::get_if<FrameInstructionRecord>(&instruction.payload)) {
     return print_frame(instruction, *frame);
+  }
+  if (const auto* move =
+          std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.payload)) {
+    return print_call_boundary_move(instruction, *move);
+  }
+  if (const auto* binding =
+          std::get_if<CallBoundaryAbiBindingInstructionRecord>(&instruction.payload)) {
+    return print_call_boundary_abi_binding(instruction, *binding);
   }
   if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
     return print_call(instruction, *call);

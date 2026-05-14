@@ -458,6 +458,147 @@ int frame_instruction_records_preserve_prepared_frame_facts() {
   return 0;
 }
 
+int call_boundary_records_preserve_prepared_move_and_abi_binding_facts() {
+  const prepare::PreparedMoveBundle bundle{
+      .function_name = c4c::FunctionNameId{9},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+      .block_index = 3,
+      .instruction_index = 7,
+      .source_parallel_copy_predecessor_label = c4c::BlockLabelId{11},
+      .source_parallel_copy_successor_label = c4c::BlockLabelId{12},
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{60},
+                  .to_value_id = prepare::PreparedValueId{61},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{1},
+                  .destination_register_name = std::string{"x1"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x1"},
+                  .block_index = 3,
+                  .instruction_index = 7,
+                  .uses_cycle_temp_source = true,
+                  .source_parallel_copy_step_index = std::size_t{2},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .authority_kind =
+                      prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                  .source_parallel_copy_predecessor_label = c4c::BlockLabelId{11},
+                  .source_parallel_copy_successor_label = c4c::BlockLabelId{12},
+                  .reason = "before-call arg move",
+              },
+          },
+      .abi_bindings =
+          {
+              prepare::PreparedAbiBinding{
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{1},
+                  .destination_register_name = std::string{"x1"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x1"},
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .authority_kind = bundle.authority_kind,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .source_parallel_copy_predecessor_label =
+              bundle.source_parallel_copy_predecessor_label,
+          .source_parallel_copy_successor_label =
+              bundle.source_parallel_copy_successor_label,
+          .move = bundle.moves.front(),
+          .source_bundle = &bundle,
+          .source_move = &bundle.moves.front(),
+      });
+  const auto binding = aarch64_codegen::make_call_boundary_abi_binding_instruction(
+      aarch64_codegen::CallBoundaryAbiBindingInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .authority_kind = bundle.authority_kind,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .binding_index = 0,
+          .source_parallel_copy_predecessor_label =
+              bundle.source_parallel_copy_predecessor_label,
+          .source_parallel_copy_successor_label =
+              bundle.source_parallel_copy_successor_label,
+          .binding = bundle.abi_bindings.front(),
+          .source_bundle = &bundle,
+          .source_binding = &bundle.abi_bindings.front(),
+      });
+
+  const auto* move_payload =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(&move.payload);
+  const auto* binding_payload =
+      std::get_if<aarch64_codegen::CallBoundaryAbiBindingInstructionRecord>(&binding.payload);
+
+  if (move_payload == nullptr ||
+      aarch64_codegen::instruction_family_name(move.family) != "call_boundary" ||
+      move.opcode != aarch64_codegen::MachineOpcode::CallBoundaryMove ||
+      aarch64_codegen::machine_opcode_name(move.opcode) != "call_boundary_move" ||
+      move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      move.function_name != c4c::FunctionNameId{9} ||
+      move.block_index != 3 || move.instruction_index != 7 ||
+      move.uses.size() != 1 || move.defs.size() != 1 ||
+      move.uses.front().value_id != prepare::PreparedValueId{60} ||
+      move.defs.front().value_id != prepare::PreparedValueId{61} ||
+      move_payload->source_bundle != &bundle ||
+      move_payload->source_move != &bundle.moves.front() ||
+      move_payload->phase != prepare::PreparedMovePhase::BeforeCall ||
+      prepare::prepared_move_phase_name(move_payload->phase) != "before_call" ||
+      move_payload->authority_kind !=
+          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      prepare::prepared_move_authority_kind_name(move_payload->authority_kind) !=
+          "out_of_ssa_parallel_copy" ||
+      move_payload->source_parallel_copy_predecessor_label != c4c::BlockLabelId{11} ||
+      move_payload->source_parallel_copy_successor_label != c4c::BlockLabelId{12} ||
+      move_payload->move.from_value_id != prepare::PreparedValueId{60} ||
+      move_payload->move.to_value_id != prepare::PreparedValueId{61} ||
+      move_payload->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move_payload->move.destination_storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      move_payload->move.destination_abi_index != std::size_t{1} ||
+      move_payload->move.destination_register_name != std::string{"x1"} ||
+      move_payload->move.destination_occupied_register_names.size() != 1 ||
+      move_payload->move.destination_occupied_register_names.front() != "x1" ||
+      !move_payload->move.uses_cycle_temp_source ||
+      move_payload->move.source_parallel_copy_step_index != std::size_t{2} ||
+      move_payload->move.reason != "before-call arg move") {
+    return fail("expected call-boundary move record to preserve prepared move facts");
+  }
+  if (binding_payload == nullptr ||
+      binding.family != aarch64_codegen::InstructionFamily::CallBoundary ||
+      binding.opcode != aarch64_codegen::MachineOpcode::CallBoundaryAbiBinding ||
+      aarch64_codegen::machine_opcode_name(binding.opcode) !=
+          "call_boundary_abi_binding" ||
+      binding.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      binding.function_name != c4c::FunctionNameId{9} ||
+      binding_payload->source_bundle != &bundle ||
+      binding_payload->source_binding != &bundle.abi_bindings.front() ||
+      binding_payload->binding_index != 0 ||
+      binding_payload->phase != prepare::PreparedMovePhase::BeforeCall ||
+      binding_payload->binding.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      binding_payload->binding.destination_storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      binding_payload->binding.destination_abi_index != std::size_t{1} ||
+      binding_payload->binding.destination_register_name != std::string{"x1"} ||
+      binding_payload->binding.destination_occupied_register_names.size() != 1 ||
+      binding_payload->binding.destination_occupied_register_names.front() != "x1") {
+    return fail("expected call-boundary ABI binding record to preserve prepared binding facts");
+  }
+
+  return 0;
+}
+
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
@@ -717,6 +858,10 @@ int main() {
     return status;
   }
   if (const int status = frame_instruction_records_preserve_prepared_frame_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = call_boundary_records_preserve_prepared_move_and_abi_binding_facts();
       status != 0) {
     return status;
   }

@@ -131,6 +131,8 @@ std::string_view instruction_family_name(InstructionFamily family) {
       return "frame";
     case InstructionFamily::Call:
       return "call";
+    case InstructionFamily::CallBoundary:
+      return "call_boundary";
     case InstructionFamily::Return:
       return "return";
     case InstructionFamily::Assembler:
@@ -163,6 +165,10 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "callee_save_store";
     case MachineOpcode::CalleeSaveLoad:
       return "callee_save_load";
+    case MachineOpcode::CallBoundaryMove:
+      return "call_boundary_move";
+    case MachineOpcode::CallBoundaryAbiBinding:
+      return "call_boundary_abi_binding";
     case MachineOpcode::Add:
       return "add";
     case MachineOpcode::Sub:
@@ -259,6 +265,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::CompareBranch:
     case MachineOpcode::CalleeSaveStore:
     case MachineOpcode::CalleeSaveLoad:
+    case MachineOpcode::CallBoundaryMove:
+    case MachineOpcode::CallBoundaryAbiBinding:
     case MachineOpcode::And:
     case MachineOpcode::Or:
     case MachineOpcode::Xor:
@@ -1820,6 +1828,28 @@ MachineNodeStatusRecord frame_selection_status(const FrameInstructionRecord& ins
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
+MachineNodeStatusRecord call_boundary_move_selection_status(
+    const CallBoundaryMoveInstructionRecord& instruction) {
+  if (instruction.source_bundle == nullptr || instruction.source_move == nullptr ||
+      instruction.function_name == c4c::kInvalidFunctionName) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "call-boundary move node is missing prepared move provenance"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord call_boundary_abi_binding_selection_status(
+    const CallBoundaryAbiBindingInstructionRecord& instruction) {
+  if (instruction.source_bundle == nullptr || instruction.source_binding == nullptr ||
+      instruction.function_name == c4c::kInvalidFunctionName) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "call-boundary ABI binding node is missing prepared binding provenance"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
 }  // namespace
 
 OperandRecord make_register_operand(RegisterOperand operand) {
@@ -2007,6 +2037,44 @@ InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
       .defs = defs,
       .uses = uses,
       .side_effects = frame_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_call_boundary_move_instruction(
+    CallBoundaryMoveInstructionRecord instruction) {
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.move.from_value_id != 0) {
+    uses.push_back(prepared_value_def(instruction.move.from_value_id, c4c::kInvalidValueName));
+  }
+  if (instruction.move.to_value_id != 0) {
+    defs.push_back(prepared_value_def(instruction.move.to_value_id, c4c::kInvalidValueName));
+  }
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::CallBoundaryMove,
+      .selection = call_boundary_move_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .defs = defs,
+      .uses = uses,
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_call_boundary_abi_binding_instruction(
+    CallBoundaryAbiBindingInstructionRecord instruction) {
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::CallBoundaryAbiBinding,
+      .selection = call_boundary_abi_binding_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
       .payload = instruction,
   };
 }

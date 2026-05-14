@@ -76,6 +76,7 @@ enum class InstructionFamily {
   Memory,
   Frame,
   Call,
+  CallBoundary,
   Return,
   Assembler,
   Object,
@@ -109,6 +110,8 @@ enum class MachineOpcode {
   FrameTeardown,
   CalleeSaveStore,
   CalleeSaveLoad,
+  CallBoundaryMove,
+  CallBoundaryAbiBinding,
   Add,
   Sub,
   And,
@@ -568,6 +571,35 @@ struct FrameInstructionRecord {
   const prepare::PreparedFramePlanFunction* source_frame = nullptr;
 };
 
+struct CallBoundaryMoveInstructionRecord {
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  prepare::PreparedMovePhase phase = prepare::PreparedMovePhase::BeforeCall;
+  prepare::PreparedMoveAuthorityKind authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::optional<c4c::BlockLabelId> source_parallel_copy_predecessor_label;
+  std::optional<c4c::BlockLabelId> source_parallel_copy_successor_label;
+  prepare::PreparedMoveResolution move;
+  const prepare::PreparedMoveBundle* source_bundle = nullptr;
+  const prepare::PreparedMoveResolution* source_move = nullptr;
+};
+
+struct CallBoundaryAbiBindingInstructionRecord {
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  prepare::PreparedMovePhase phase = prepare::PreparedMovePhase::BeforeCall;
+  prepare::PreparedMoveAuthorityKind authority_kind =
+      prepare::PreparedMoveAuthorityKind::None;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::size_t binding_index = 0;
+  std::optional<c4c::BlockLabelId> source_parallel_copy_predecessor_label;
+  std::optional<c4c::BlockLabelId> source_parallel_copy_successor_label;
+  prepare::PreparedAbiBinding binding;
+  const prepare::PreparedMoveBundle* source_bundle = nullptr;
+  const prepare::PreparedAbiBinding* source_binding = nullptr;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::string_view direct_callee_label;
@@ -611,6 +643,8 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         MemoryInstructionRecord,
                                         SpillReloadInstructionRecord,
                                         FrameInstructionRecord,
+                                        CallBoundaryMoveInstructionRecord,
+                                        CallBoundaryAbiBindingInstructionRecord,
                                         CallInstructionRecord,
                                         ReturnInstructionRecord,
                                         AssemblerInstructionRecord,
@@ -701,6 +735,10 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
     SpillReloadInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_frame_instruction(FrameInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_call_boundary_move_instruction(
+    CallBoundaryMoveInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_call_boundary_abi_binding_instruction(
+    CallBoundaryAbiBindingInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);

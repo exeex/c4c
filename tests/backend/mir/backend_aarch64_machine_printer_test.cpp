@@ -762,6 +762,83 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected dynamic-stack frame to fail closed");
   }
 
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{70},
+                  .to_value_id = prepare::PreparedValueId{71},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"x0"},
+              },
+          },
+      .abi_bindings =
+          {
+              prepare::PreparedAbiBinding{
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"x0"},
+              },
+          },
+  };
+  const auto call_boundary_move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+  const auto move_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(call_boundary_move);
+  if (move_result.ok ||
+      move_result.diagnostic.find("call-boundary move node requires later AArch64 move lowering") ==
+          std::string::npos) {
+    return fail("expected call-boundary move record to fail closed in printer");
+  }
+
+  const auto call_boundary_binding =
+      aarch64_codegen::make_call_boundary_abi_binding_instruction(
+          aarch64_codegen::CallBoundaryAbiBindingInstructionRecord{
+              .function_name = call_boundary_bundle.function_name,
+              .phase = call_boundary_bundle.phase,
+              .block_index = call_boundary_bundle.block_index,
+              .instruction_index = call_boundary_bundle.instruction_index,
+              .binding = call_boundary_bundle.abi_bindings.front(),
+              .source_bundle = &call_boundary_bundle,
+              .source_binding = &call_boundary_bundle.abi_bindings.front(),
+          });
+  const auto binding_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(call_boundary_binding);
+  if (binding_result.ok ||
+      binding_result.diagnostic.find(
+          "call-boundary ABI binding node requires later AArch64 move lowering") ==
+          std::string::npos) {
+    return fail("expected call-boundary ABI binding record to fail closed in printer");
+  }
+
+  const auto missing_move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = c4c::FunctionNameId{2},
+          .move = call_boundary_bundle.moves.front(),
+      });
+  const auto missing_move_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_move);
+  if (missing_move_result.ok ||
+      missing_move_result.diagnostic.find("missing prepared move provenance") ==
+          std::string::npos) {
+    return fail("expected call-boundary move without provenance to fail closed");
+  }
+
   return 0;
 }
 
