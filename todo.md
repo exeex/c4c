@@ -1,26 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/227_aarch64_module_phoenix_replacement_drafts.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Draft Replacement Index And Header Contract
+Current Step ID: 2
+Current Step Title: Draft Dispatch And Traversal Seams
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1 by rewriting
-`src/backend/mir/aarch64/module/module.md` as the Stage 3 replacement
-directory index and `src/backend/mir/aarch64/module/module.hpp.md` as the
-single public header contract draft. The drafts establish the direct
-prepared-BIR-to-typed-MIR boundary, canonical carrier vocabulary, lightweight
-provenance model, compatibility-projection boundary, target-owned printable
-surfaces, mandatory Stage 3 artifact map, no-extra-public-header rule, and
-`helper.hpp` exception conditions.
+Completed plan Step 2 by rewriting
+`src/backend/mir/aarch64/module/module.cpp.md` as the Stage 3 module dispatch
+replacement draft and adding
+`src/backend/mir/aarch64/module/function_traversal.cpp.md` as the Stage 3
+function traversal replacement draft. The drafts use the Step 1
+`MachineModule`, `MachineFunction`, `MachineBlock`, `MachineInstruction`,
+`MachineOperand`, and lightweight `Provenance` vocabulary; cover target
+profile resolution, AArch64 prepared-handoff validation, module data and
+relocation orchestration, `BuildResult` construction, public product assembly
+from completed canonical MIR functions, prepared function/block traversal,
+lowering context construction, MIR function/block creation, optional debug
+provenance, owned inputs/outputs, indirect queries, forbidden knowledge, and
+classification; and reject the legacy broad record assembler as the
+replacement driver.
 
 ## Suggested Next
 
-Delegate Step 2 to draft `module.cpp.md` and `function_traversal.cpp.md`
-against the Step 1 vocabulary.
+Delegate Step 3 to draft `operand_resolution.cpp.md` against the Step 1
+carrier/provenance vocabulary and the Step 2 dispatch/traversal seams.
 
 ## Watchouts
 
@@ -33,12 +39,19 @@ against the Step 1 vocabulary.
 - Do not introduce a target render API named `__repr__`.
 - If the Stage 2 artifact map appears wrong, stop and report a Stage 2 contract
   repair blocker instead of silently adding or removing files.
-- Step 2 drafts should use the Step 1 `MachineModule`, `MachineFunction`,
-  `MachineBlock`, `MachineInstruction`, `MachineOperand`, and
-  `MachineOrigin`-equivalent `Provenance` vocabulary instead of inventing a
-  second carrier.
+- Step 3 should keep storage precedence inside operand resolution so
+  instruction, branch, and call lowering do not choose among broad optional
+  public records.
+- Register spelling fallback belongs only in fail-closed compatibility
+  diagnostics; structured prepared facts must remain authoritative.
+- Do not let operand resolution reintroduce public `FunctionRecord` records or
+  flat `machine_nodes` as semantic inputs.
 
 ## Proof
 
-Markdown-only proof written to `test_after.log` with concise `rg` checks over
-`module.md` and `module.hpp.md`. No build was required by the delegated proof.
+Markdown-only proof written to `test_after.log` with concise read-only `rg`
+checks over `module.cpp.md` and `function_traversal.cpp.md`. The proof confirms
+the drafts exist, use the Step 1 prepared-BIR-to-typed-MIR vocabulary, keep the
+shared `mir_printer` boundary, avoid `FunctionRecord::machine_nodes` as a
+primary output, avoid `__repr__`, and did not require real source, build, or
+test edits.

@@ -1,241 +1,210 @@
-# `src/backend/mir/aarch64/module/module.cpp` Extraction
+# `src/backend/mir/aarch64/module/module.cpp` Replacement Draft
 
-## Purpose And Current Responsibility
+## Purpose
 
-`module.cpp` builds the AArch64 MIR module snapshot from
-`prepare::PreparedBirModule`. It is a broad adapter, not a clean domain owner:
-it validates the prepared AArch64 handoff, merges many prepared analysis tables,
-normalizes register names and stack locations, preserves source pointers, and
-packages the result into the record types declared by `module.hpp`.
+`module.cpp` owns the top-level AArch64 module dispatch from
+`prepare::PreparedBirModule` into the public `BuildResult`. It is a Stage 3
+replacement draft, not a Stage 1 extraction note and not a renamed copy of the
+legacy broad record assembler.
 
-The public surface is intentionally small:
+The replacement route is:
 
-```cpp
-BuildResult build(const prepare::PreparedBirModule& prepared);
-```
+`PreparedBirModule -> module dispatch -> function traversal -> canonical
+MachineModule -> public Module -> CompatibilityProjection`.
 
-The produced `Module` is mostly a read-only overlay over prepared state. Many
-records retain pointers back into `prepared`, so the returned module depends on
-the caller keeping the prepared module alive.
+Module dispatch validates the prepared handoff, coordinates module-level data
+and relocation facts, invokes function traversal, and assembles the public
+product from completed canonical MIR functions. It does not lower individual
+operations and it does not use `FunctionRecord::machine_nodes` as the
+replacement driver.
 
-## Important APIs And Contract Surfaces
+## Classification
 
-### Public Entry
+Dispatch.
 
-`build` is the only exported function in this implementation file. Its contract:
+This file is the public build entry and module orchestrator. It is neither core
+operation lowering, an optional fast path, public assembly bridging, nor
+compatibility projection.
 
-- resolve the target profile from prepared state
-- run AArch64 handoff validation before producing a module
-- build global, string, relocation, and function records
-- return either `{module, null error}` or `{null module, error}`
+## Public Entry
 
-```cpp
-BuildResult build(const prepare::PreparedBirModule& prepared);
-```
-
-### Internal Record Builders
-
-The internal API surface is a chain of `build_*_record(s)` helpers. These are
-not independent passes; they are adapters over prepared tables and are ordered
-by `build_function_record`.
+The only public entry remains:
 
 ```cpp
-FunctionRecord build_function_record(
-    const prepare::PreparedBirModule& prepared,
-    const prepare::PreparedControlFlowFunction& function);
-
-std::vector<FunctionRecord> build_function_records(
-    const prepare::PreparedBirModule& prepared);
+[[nodiscard]] BuildResult build(const prepare::PreparedBirModule& prepared);
 ```
 
-High-value internal builders:
+`build` returns a completed `Module` when target-profile resolution and the
+AArch64 prepared-module handoff validate. It returns `abi::HandoffError` when
+the prepared input cannot be accepted. It must not expose a partially lowered
+record pile as a fallback product.
 
-- operand merge: value homes, regalloc values, and storage-plan values into
-  `OperandRecord`
-- frame records: frame plan, stack layout slots, callee saves, dynamic stack
-  operations
-- call records: call arguments, results, preserved values, clobbers, indirect
-  callees, memory returns
-- move records: value-location moves, ABI bindings, regalloc move resolution
-- spill/reload records and provisional spill/reload machine nodes
-- return-related scalar ALU and return machine nodes
-- parallel-copy records and their resolved move-step targets
-- global/string data records and relocation needs
+## Dispatch Flow
 
-### Register And Storage Contracts
+1. Resolve the target profile from `prepared`.
+2. Validate that the prepared handoff is for AArch64 and is complete enough for
+   direct prepared-BIR-to-MIR lowering.
+3. Collect module-level data and relocation facts into `ModuleDataRecords` and
+   the `MachineModule` data/relocation carrier.
+4. Invoke function traversal for each prepared control-flow function, receiving
+   completed `MachineFunction` carriers with ordered `MachineBlock` contents.
+5. Build the canonical `MachineModule` from the completed function carriers and
+   module data.
+6. Build compatibility projections after canonical lowering completes.
+7. Return `BuildResult{Module{target_profile, mir, data, compatibility},
+   std::nullopt}`.
 
-Several helpers normalize prepared register representations into AArch64 ABI
-records. They accept both newer structured placements and legacy register-name
-strings:
+Failures before canonical lowering produce `BuildResult{std::nullopt, error}`.
+Failures discovered by subordinate lowerers are reported through the same
+handoff-error channel or a future typed module-lowering error shape; dispatch
+must not paper over missing prepared authority by falling back to source
+spellings or cached display strings.
+
+## Target Profile Resolution
+
+Target profile resolution is a module-level concern because the chosen profile
+affects ABI validation, register classes, data hooks, and target-owned
+rendering surfaces.
+
+The dispatch layer may read:
+
+- prepared target architecture and ABI profile records
+- AArch64 ABI handoff metadata
+- target data-layout facts already prepared for the module
+
+It must fail closed when the profile is absent, non-AArch64, or inconsistent
+with the prepared ABI facts. It must not infer the target from source file
+names, rendered assembly strings, or legacy register spellings.
+
+## AArch64 Prepared-Handoff Validation
+
+Dispatch calls the AArch64 ABI handoff validator before creating the public
+module product. Validation confirms that the prepared module carries the
+minimum authority required by the downstream seams:
+
+- prepared control-flow functions and block identities
+- frame, storage, value-home, regalloc, spill/reload, parallel-copy, and call
+  authority needed by traversal and lowerers
+- module data, string, global, and relocation facts needed by data
+  orchestration and the public assembly bridge
+- target profile consistency for AArch64 operands, registers, and ABI classes
+
+Validation is not instruction selection. It verifies that subordinate
+components have authority to lower; it does not choose scalar ALU, branch,
+spill/reload, return, or call instruction sequences.
+
+## Module Data And Relocation Orchestration
+
+Top-level data orchestration prepares canonical module data without becoming a
+second lowering path. It owns:
+
+- collecting globals and string constants from prepared module data
+- preserving relocation needs in `MachineModule::relocation_needs` and
+  `ModuleDataRecords`
+- attaching lightweight `Provenance` reason tags for prepared module-data and
+  relocation authorities
+- passing data hooks to the public assembly bridge through typed module data
+
+Data orchestration does not own common section traversal or `.s` file layout;
+those belong to the shared `mir_printer` through the public assembly bridge.
+
+## Public Product Assembly
+
+`Module` assembly consumes only completed canonical MIR and module-level data:
 
 ```cpp
-abi::PreparedRegisterConversionResult convert_prepared_register_reference(
-    const std::optional<prepare::PreparedRegisterPlacement>& placement,
-    const std::optional<std::string>& legacy_register_name,
-    prepare::PreparedRegisterBank bank,
-    prepare::PreparedRegisterClass reg_class,
-    std::optional<abi::RegisterView> expected_view = std::nullopt);
+MachineModule mir {
+  .functions = traverse_prepared_functions(...),
+  .data_items = module_data_items,
+  .relocation_needs = relocation_needs,
+};
+
+Module product {
+  .target_profile = target_profile,
+  .mir = std::move(mir),
+  .data = data_records,
+  .compatibility = project_compatibility(product.mir, prepared_facts),
+};
 ```
 
-Register records also carry allocation authority and snapshot kind:
+The exact code shape can differ, but the dependency direction cannot:
+compatibility projection runs after canonical `MachineModule` construction.
+`FunctionRecord::machine_nodes` is a derived migration view, never a product
+builder for `MachineFunction` or `MachineBlock`.
 
-- `ValueHome`
-- `RegallocAssignment`
-- `SpillAuthority`
-- `StoragePlan`
+## Owned Inputs
 
-This file decides how those authorities are reflected in `TargetRegisterRecord`
-and `OperandRecord`, but it does not own allocation itself.
+- `prepare::PreparedBirModule`
+- prepared target profile and AArch64 ABI handoff metadata
+- prepared module data, globals, strings, and relocation facts
+- prepared control-flow function list used to invoke function traversal
+- subordinate component entry points for function traversal and compatibility
+  projection
+- shared ID namespaces and durable source-location references when already
+  prepared
 
-## Dependency Direction And Hidden Inputs
+## Owned Outputs
 
-Primary dependency direction:
+- `BuildResult`
+- public `Module`
+- canonical `MachineModule`
+- module-level `ModuleDataRecords`
+- module-level data and relocation entries inside `MachineModule`
+- top-level `Provenance` for module data and dispatch diagnostics
+- compatibility projection assembled after canonical lowering
 
-`prepare::PreparedBirModule` -> AArch64 ABI validation/conversion -> module
-records -> limited `codegen::InstructionRecord` nodes -> generic MIR container.
+## Indirect Queries
 
-Important direct dependencies:
+Dispatch may ask subordinate seams for completed products:
 
-- `prepare`: name resolution, prepared locations, storage plans, call plans,
-  frame plans, dynamic stack plans, control flow, regalloc, parallel copies
-- `bir`: source functions, blocks, values, globals, string constants,
-  terminators, binary instructions
-- `abi`: target profile, handoff validation, register parsing/conversion,
-  register pools, reserved/long-lived register classification
-- `codegen`: operand and instruction-record constructors for scalar ALU,
-  spill/reload, return, and MIR conversion
-- `mir`: generic machine node/function/block containers
+- function traversal: completed `MachineFunction` carriers and any typed
+  per-function sideband facts needed for later compatibility projection
+- compatibility projection: migration records derived from canonical MIR and
+  prepared ABI facts
+- public assembly bridge: only through the final public module product, not as
+  a lowering-time dependency
 
-Hidden inputs and assumptions:
+Dispatch must not query operand-resolution tables, operation-specific lowering
+rules, branch fusion internals, call expansion details, or target assembly
+syntax. Those are private to their owning seams.
 
-- Name identity is recovered through both structured IDs and legacy spellings.
-  `find_source_function` and `find_source_block` fall back across link names,
-  block labels, and prepared-name lookup.
-- The returned module stores source pointers into `prepared`, so lifetime is
-  external and implicit.
-- Prepared stack offsets are treated as authoritative snapshots when present.
-- Register-name strings may still be needed when structured placements are
-  absent or conversion fails.
-- Some machine nodes are record-only and intentionally provisional, not final
-  lowering.
-- `prepared.control_flow.functions` is the driver list for functions; source
-  BIR functions are searched only to enrich records and synthesize limited
-  machine nodes.
+## Forbidden Knowledge
 
-## Responsibility Buckets
+`module.cpp` must not know:
 
-### 1. Prepared-State Lookup And Normalization
+- individual prepared operation lowering rules
+- scalar ALU, memory, move, spill/reload, parallel-copy, branch, return, or
+  call instruction selection details
+- register spelling fallbacks as semantic authority
+- source function or block recovery by spelling as the primary identity model
+- broad inspection records as inputs to lowering
+- public flat `FunctionRecord::machine_nodes` as a canonical carrier
+- AArch64 assembly punctuation, spacing, or file structure
+- cached display strings as instruction, operand, register, label, or symbol
+  authority
 
-The file contains many small lookup helpers for source functions/blocks,
-regalloc values, frame slots, stack objects, storage-plan values, destination
-slots, and prepared labels. These helpers compensate for prepared data being
-split across independent tables.
+## Provenance Rules
 
-### 2. Allocation And Operand Snapshot Assembly
+Dispatch may attach lightweight `Provenance` to the module and data records:
+stable function/block/value IDs when relevant, prepared indices, durable source
+locations, labels, and reason tags such as `PreparedTargetProfile`,
+`PreparedModuleData`, `PreparedRelocationNeed`, or `ValidatedAArch64Handoff`.
 
-`build_operands` merges value homes, regalloc assignments, and storage-plan
-values. Precedence is partly encoded by mutation order: value homes first,
-regalloc second, storage plan third. The record is a synthesized view with
-authority labels rather than a single source of truth.
+It must not make raw prepared/source object ownership, `std::string_view`
+lifetime coupling, or spelling recovery the replacement authority model. Raw
+views may appear only in compatibility or diagnostic projections with explicit
+lifetime notes.
 
-### 3. Frame, Stack, And Call Surface Assembly
+## Replacement Rejection Signals
 
-Frame construction joins frame plans, stack layout, callee saves, and dynamic
-stack plans. Call construction joins call plans with ABI argument/result
-locations, preserved values, clobbered registers, memory returns, and indirect
-callee metadata.
+Reject an implementation of this draft if it:
 
-### 4. Move, Spill/Reload, And Parallel-Copy Evidence
-
-The file records multiple movement systems:
-
-- value-location move bundles and ABI bindings
-- regalloc move resolution
-- spill/reload operations
-- out-of-SSA parallel-copy bundles and resolved target moves
-
-These are currently collected into records in one place, which makes the file a
-crossroads for allocation, ABI, and SSA-exit evidence.
-
-### 5. Limited Machine Node And MIR Assembly
-
-The file builds a provisional MIR function from selected `codegen` instruction
-records. Current node sources are spill/reload, selected return scalar ALU, and
-return instructions. Generic MIR operands are converted from `codegen` operands.
-
-### 6. Data And Relocation Records
-
-Module data extraction covers globals, string constants, visibility, initializer
-symbols, initializer-element symbols, and relocation-needs collection. This is
-separate from function lowering but lives in the same file.
-
-## Fast Paths, Compatibility Paths, And Overfit Pressure
-
-### Core Lowering
-
-- Handoff validation through `abi::validate_prepared_module_handoff`.
-- Register conversion through structured `PreparedRegisterPlacement` when
-  present.
-- Operand, frame, call, move, spill/reload, parallel-copy, global, string, and
-  relocation records derived from prepared plans.
-
-### Optional Fast Paths
-
-- `build_return_scalar_alu_machine_nodes` recognizes returned `add`/`sub`
-  scalar binary instructions and emits record-only scalar ALU machine nodes
-  when locations and storage agree.
-- `build_return_machine_nodes` can reuse a scalar ALU result register for the
-  return value.
-- Immediate return values become immediate operands directly.
-
-### Legacy Compatibility
-
-- Register conversion accepts legacy register-name strings and reparses them
-  if structured conversion fails.
-- Label/function matching falls back from structured IDs to string labels.
-- Occupied-register views can be rebuilt from parsed register references or
-  preserved from fallback string lists.
-- Storage and value-home paths support immediate, stack, register, symbol, and
-  non-register encodings even when not all structured fields are present.
-
-### Overfit Pressure
-
-- The return scalar ALU path is narrow: it only selects `Add` and `Sub`, only
-  when the result is returned, and has a fallback path that manually constructs
-  a return-ABI scalar instruction. This is behavior evidence, not a rebuild
-  design pattern to expand case by case.
-- The file mixes record assembly with opportunistic machine-node synthesis. A
-  rebuild should avoid adding more named-operation shortcuts here.
-- Register-name fallback logic is necessary compatibility evidence, but new
-  structured paths should not be forced through strings.
-- Function/block source recovery by spelling is fragile and should remain a
-  compatibility bridge rather than the primary identity model.
-
-## Rebuild Ownership Boundary
-
-This file should become the replacement lowering boundary from
-`prepare::PreparedBirModule` to target MIR nodes. The rebuild should not keep
-the current intermediate pile of module records as the primary product and then
-ask later code to rediscover instructions from those records. It should consume
-the prepared module directly, walk prepared functions/blocks/operations, and
-produce MIR nodes that already represent the target-owned instruction stream.
-
-The intended output boundary is a MIR tree that is sufficient for one shared
-`mir_printer` pass to scan and emit `.s` accepted by `gcc`/`as`. The common
-printer should be platform-independent: it owns traversal, spacing, section
-ordering hooks, and file emission mechanics, but it should not encode AArch64
-instruction syntax or operand spellings.
-
-Printing an individual node should dispatch to target-owned printable methods
-on AArch64 instruction, operand, and register representations. Operands should
-include printable immediates, physical/virtual registers, memory references,
-symbols, labels, and other target forms as needed by MIR lowering. Registers
-and operands should carry their own renderable target identity instead of
-forcing the common printer to inspect ad hoc record fields.
-
-This replacement boundary leaves `module.cpp` as a thin orchestrator over
-explicit contracts: validate/accept prepared input, drive semantic lowering
-from prepared BIR facts to MIR nodes, and return the public `BuildResult`.
-It should not own register allocation, ABI classification, prepared-plan
-construction, broad name recovery policy, scalar instruction selection,
-generic MIR operand semantics, target assembly syntax, or data-layout policy.
+- keeps the legacy broad `build_*_record` assembler as the replacement driver
+- constructs public records first and asks later code to rediscover canonical
+  MIR instructions from them
+- treats `FunctionRecord::machine_nodes` or another flat vector as canonical
+  output
+- routes operation-specific lowering through module dispatch
+- recovers missing prepared authority from strings instead of reporting a
+  handoff/lowering error
+- lets compatibility projection choose semantic lowering decisions
