@@ -3,53 +3,43 @@
 Status: Active
 Source Idea Path: ideas/open/224_common_mir_container_and_target_printer_boundary.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Adapt AArch64 Spelling To The Target Printer Interface
+Current Step ID: 5
+Current Step Title: Route Public AArch64 Assembly Through The Common Printer
 
 ## Just Finished
 
-Completed `plan.md` Step 4 by moving AArch64 instruction spelling behind a
-production target-printer adapter surface. `machine_printer.*` now exposes
-`MachineInstructionPrinter`, which implements
-`mir::TargetInstructionPrinter<InstructionRecord>`, plus
-`print_machine_instruction_line_payloads(...)` for unindented target-owned
-instruction payloads. The existing `print_machine_instruction_node(s)` APIs
-remain compatibility wrappers that apply the legacy indentation/newline shape,
-so public AArch64 assembly routing is still unchanged for Step 5.
+Completed `plan.md` Step 5 by routing the public AArch64 assembly helper
+through the shared hierarchical MIR printer. The route now passes each built
+`MachineFunction` directly to `mir::print_machine_function(...)` with
+`aarch64_codegen::MachineInstructionPrinter`, preserving the existing `.text`,
+function symbol/type/size scaffolding, GNU-stack footer, and unsupported
+diagnostic shape.
 
-Existing selected-node validation, target-owned mnemonic/register/immediate/
-memory/branch-label spelling, and unsupported-family diagnostics were preserved.
-The focused machine-printer coverage now uses the production adapter directly
-instead of a test-local bridge that stripped legacy assembly back into payloads.
+The public route no longer flattens `function.mir` into a temporary vector of
+target instruction records just to print terminal assembly. Flat compatibility
+views remain available for existing non-terminal compatibility callers.
 
 ## Suggested Next
 
-Execute Step 5 as the next narrow packet: route public AArch64 assembly through
-the shared MIR printer using the new production AArch64 target spelling
-adapter, while preserving existing section/function scaffolding behavior.
+Supervisor should decide the next packet from the active runbook. A coherent
+follow-up would be review/closeout validation for idea 224, because the public
+AArch64 assembly route now uses the common MIR printer while keeping the focused
+CLI smoke output green.
 
 ## Watchouts
 
+- The delegated owned-files list did not name `src/backend/backend.cpp`, but
+  AST lookup showed it is the only public AArch64 assembly call site and both
+  public AArch64 BIR/LIR entries call through it. The slice made the minimal
+  required route-boundary edit there.
+- The preserved failure text still says "machine-node printer" for compatibility
+  with existing diagnostics, even though traversal now flows through the shared
+  MIR printer.
+- `FunctionRecord::machine_nodes` and other flat views remain compatibility
+  projections; this packet did not alter those projections or broaden AArch64
+  instruction coverage.
 - Keep idea 229 as a follow-up markdown-shard conversion route unless the
   supervisor changes lifecycle direction.
-- Do not grow `src/backend/mir/aarch64/codegen/machine_printer.*` as the
-  permanent terminal assembly owner; it is still only the AArch64 instruction
-  spelling delegate.
-- Treat `FunctionRecord::machine_nodes` and other flat views as compatibility
-  projections, not as the desired public assembly carrier.
-- `backend.cpp` currently owns public function/section scaffolding while
-  `machine_printer.*` owns target instruction line spelling; Step 5 should
-  preserve that distinction when moving traversal/newline/indent policy under
-  shared MIR.
-- `compatibility_projection.cpp` currently excludes return records from
-  `FunctionRecord::machine_nodes`, but the public assembly route does not use
-  that field; it flattens `function.mir` directly and therefore includes return
-  records via `MachineInstruction::target`.
-- `flatten_instructions(...)` still exists for current flat-vector callers; the
-  new shared printer uses direct function/block/instruction iteration and Step 5
-  should avoid flattening when routing public assembly.
-- Separate idea file `ideas/open/230_aarch64_c_testsuite_backend_full_scan.md`
-  exists outside this packet and was not touched.
 
 ## Proof
 
