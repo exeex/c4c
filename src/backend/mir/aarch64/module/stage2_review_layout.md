@@ -7,9 +7,10 @@ accepted Stage 1 evidence. It describes the legacy emitter as evidence for
 later layout decisions, not as the replacement architecture and not as a set of
 helper boundaries to preserve.
 
-This Stage 2 artifact now covers the current subsystem reconstruction and the
-replacement architecture layout. It intentionally stops before the Stage 3
-draft map and Stage 2 handoff; those belong to later Stage 2 steps.
+This Stage 2 artifact now covers the current subsystem reconstruction,
+replacement architecture layout, and Stage 3 draft artifact map. It
+intentionally stops before the Stage 2 handoff, which belongs to a later Stage
+2 step.
 
 ## Current Entry Points
 
@@ -454,6 +455,78 @@ under the direct prepared-BIR-to-MIR layout above. A design that keeps the
 legacy broad module emitter, renames its helpers, and asks later code to infer
 instructions from record piles would fail parent 224 again.
 
+## Stage 3 Draft Artifact Map
+
+Stage 3 must draft the replacement for this directory through the artifacts
+below. This is the complete mandatory set for the initial replacement draft;
+Stage 3 should not invent additional layout scope while filling these files.
+
+### Directory Index Draft
+
+- `src/backend/mir/aarch64/module/module.md`: replacement directory-level
+  index. It must describe the new direct prepared-BIR-to-MIR module boundary,
+  list the draft artifacts in this map, and preserve the phoenix route
+  constraints from this review.
+
+### Mandatory Header Drafts
+
+- `src/backend/mir/aarch64/module/module.hpp.md`: the only mandatory
+  replacement `.hpp.md` artifact. It drafts the non-helper directory index
+  header for the public build entry point, public module product, durable MIR
+  carrier contract, compatibility projections, and target-owned printable
+  type surfaces.
+
+Phoenix header policy: `module.hpp` remains the single non-helper index header
+for this replacement directory. Stage 3 must not add component-level public
+headers for the seams below. `helper.hpp` is the only allowed header exception,
+and it is not part of the mandatory draft set unless Stage 3 explicitly proves
+that a private helper header is required without becoming a second public
+index.
+
+### Mandatory Implementation Drafts
+
+- `src/backend/mir/aarch64/module/module.cpp.md`: module dispatch, target
+  profile resolution, AArch64 prepared-handoff validation, top-level data and
+  relocation orchestration, `BuildResult` construction, and public product
+  assembly from completed canonical MIR functions.
+- `src/backend/mir/aarch64/module/function_traversal.cpp.md`: prepared
+  function/block traversal, per-function lowering context construction, MIR
+  function/block creation, and source/debug provenance attachment as optional
+  metadata.
+- `src/backend/mir/aarch64/module/operand_resolution.cpp.md`: typed prepared
+  value-location authority, target register/operand conversion, storage
+  precedence normalization, immediates, labels, symbols, memory forms, and
+  fail-closed compatibility register fallback.
+- `src/backend/mir/aarch64/module/instruction_lowering.cpp.md`: non-control
+  prepared operation lowering into AArch64 MIR machine nodes, including
+  scalar ALU, memory, moves, spill/reload, parallel-copy steps, and
+  return-value materialization as semantic families.
+- `src/backend/mir/aarch64/module/branch_control_lowering.cpp.md`: prepared
+  terminator lowering, conditional and unconditional branch nodes, return
+  control flow, compare/condition handling, block successor metadata, and
+  valid branch-fusion decisions.
+- `src/backend/mir/aarch64/module/call_lowering.cpp.md`: prepared call-plan
+  lowering, argument/result locations, call-adjacent moves, preserved values,
+  clobbers, indirect callees, memory returns, and call-site ABI bindings.
+- `src/backend/mir/aarch64/module/public_assembly_bridge.cpp.md`: bridge from
+  canonical MIR functions and module data to the shared `mir_printer`
+  traversal, with AArch64 owning opcode, operand, register, memory, immediate,
+  label, and symbol rendering.
+- `src/backend/mir/aarch64/module/compatibility_projection.cpp.md`:
+  migration-only projections for `FunctionRecord::machine_nodes`, broad
+  inspection records, raw source/prepared provenance, label views, and legacy
+  register-string fallback diagnostics derived after canonical lowering.
+
+### Evidence Repair Dependencies
+
+No Stage 1 extraction repair is required before the artifacts above are
+trustworthy to draft. The accepted Stage 1 correction remains a route
+constraint: `src/backend/mir/aarch64/module/module.cpp` is still compiled
+legacy evidence until replacement implementation and build wiring exist.
+Stage 3 should use `module.cpp.md`, `module.hpp.md`, and `module.md` as
+evidence, keep the correction visible, and avoid treating the legacy compiled
+source as an already-replaced implementation.
+
 ## Step 2 Decision Support
 
 The current subsystem is a broad adapter from prepared BIR evidence to an
@@ -469,5 +542,5 @@ design.
 Step 3 extends that decision support with a replacement architecture: prepared
 state drives typed MIR machine-node lowering through explicit module,
 function, operand, instruction, branch, call, printer-bridge, and compatibility
-seams. Stage 3 should fill draft artifacts for those seams later; this document
+seams. Step 4 maps those seams to exact Stage 3 draft artifacts; this document
 does not provide draft implementation contents.
