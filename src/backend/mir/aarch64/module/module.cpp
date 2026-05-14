@@ -98,6 +98,19 @@ namespace {
   return views;
 }
 
+[[nodiscard]] std::vector<c4c::backend::aarch64::abi::RegisterReference>
+register_references_from_names(const std::vector<std::string>& names) {
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> references;
+  references.reserve(names.size());
+  for (const auto& name : names) {
+    const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(name);
+    if (parsed.has_value()) {
+      references.push_back(*parsed);
+    }
+  }
+  return references;
+}
+
 [[nodiscard]] std::string_view stable_register_name(
     c4c::backend::aarch64::abi::RegisterReference reg) {
   static constexpr std::string_view gp_x_names[] = {
@@ -161,15 +174,77 @@ namespace {
   return "<invalid-aarch64-register>";
 }
 
+[[nodiscard]] std::vector<c4c::backend::aarch64::abi::RegisterReference>
+occupied_register_references_for(
+    const c4c::backend::aarch64::abi::PreparedRegisterConversionResult& converted,
+    const std::vector<std::string>& fallback_names) {
+  if (converted.reg.has_value()) {
+    return {*converted.reg};
+  }
+  return register_references_from_names(fallback_names);
+}
+
+[[nodiscard]] std::vector<std::string_view> register_name_views(
+    const std::vector<c4c::backend::aarch64::abi::RegisterReference>& references,
+    const std::vector<std::string>& fallback_names) {
+  if (references.empty()) {
+    return register_name_views(fallback_names);
+  }
+  std::vector<std::string_view> views;
+  views.reserve(references.size());
+  for (const auto& reference : references) {
+    views.push_back(stable_register_name(reference));
+  }
+  return views;
+}
+
+[[nodiscard]] c4c::backend::aarch64::abi::PreparedRegisterConversionResult
+convert_prepared_register_reference(
+    const std::optional<c4c::backend::prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<std::string>& legacy_register_name,
+    c4c::backend::prepare::PreparedRegisterBank bank,
+    c4c::backend::prepare::PreparedRegisterClass reg_class,
+    std::optional<c4c::backend::aarch64::abi::RegisterView> expected_view = std::nullopt) {
+  if (placement.has_value()) {
+    return c4c::backend::aarch64::abi::convert_prepared_register(*placement,
+                                                                 reg_class,
+                                                                 expected_view);
+  }
+  if (legacy_register_name.has_value()) {
+    auto converted = c4c::backend::aarch64::abi::convert_prepared_register(*legacy_register_name,
+                                                                           bank,
+                                                                           reg_class,
+                                                                           expected_view);
+    if (!converted.has_value()) {
+      if (auto parsed =
+              c4c::backend::aarch64::abi::parse_aarch64_register_name(*legacy_register_name);
+          parsed.has_value()) {
+        if (expected_view.has_value()) {
+          parsed->view = *expected_view;
+        }
+        converted.reg = parsed;
+      }
+    }
+    return converted;
+  }
+  return {};
+}
+
 [[nodiscard]] std::string_view resolved_prepared_register_name(
     const std::optional<c4c::backend::prepare::PreparedRegisterPlacement>& placement,
     const std::optional<std::string>& legacy_register_name) {
-  if (placement.has_value()) {
-    const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
-        *placement, register_class_from_bank(placement->bank), std::nullopt);
-    if (converted.reg.has_value()) {
-      return stable_register_name(*converted.reg);
-    }
+  const auto converted =
+      convert_prepared_register_reference(placement,
+                                          legacy_register_name,
+                                          placement.has_value() ? placement->bank
+                                                               : c4c::backend::prepare::
+                                                                     PreparedRegisterBank::None,
+                                          placement.has_value()
+                                              ? register_class_from_bank(placement->bank)
+                                              : c4c::backend::prepare::
+                                                    PreparedRegisterClass::None);
+  if (converted.reg.has_value()) {
+    return stable_register_name(*converted.reg);
   }
   return legacy_register_name.has_value() ? std::string_view{*legacy_register_name}
                                           : std::string_view{};
@@ -325,6 +400,11 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
   const auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(physical_register);
   const auto resolved_register = parsed.has_value() ? stable_register_name(*parsed)
                                                     : physical_register;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  if (parsed.has_value()) {
+    occupied_register_references.push_back(*parsed);
+    occupied_registers = register_name_views(occupied_register_references, {});
+  }
   registers.push_back(TargetRegisterRecord{.reference_kind = reference_kind,
                                            .allocation_snapshot = allocation_snapshot,
                                            .allocation_authority =
@@ -343,6 +423,8 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                                                    : std::nullopt,
                                            .physical_register = resolved_register,
                                            .contiguous_width = contiguous_width,
+                                           .occupied_register_references =
+                                               std::move(occupied_register_references),
                                            .occupied_registers = std::move(occupied_registers),
                                            .is_reserved_mir_scratch =
                                                parsed.has_value() &&
@@ -369,6 +451,11 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
     std::vector<std::string_view> occupied_registers) {
   const auto resolved_register =
       converted.reg.has_value() ? stable_register_name(*converted.reg) : fallback_register_name;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
+  if (converted.reg.has_value()) {
+    occupied_register_references.push_back(*converted.reg);
+    occupied_registers = register_name_views(occupied_register_references, {});
+  }
   registers.push_back(TargetRegisterRecord{
       .reference_kind = reference_kind,
       .allocation_snapshot = allocation_snapshot,
@@ -384,6 +471,7 @@ void attach_spill_slot_metadata(const c4c::backend::prepare::PreparedBirModule& 
                              : std::nullopt,
       .physical_register = resolved_register,
       .contiguous_width = contiguous_width,
+      .occupied_register_references = std::move(occupied_register_references),
       .occupied_registers = std::move(occupied_registers),
       .is_reserved_mir_scratch = converted.reg.has_value() &&
                                  c4c::backend::aarch64::abi::is_reserved_mir_scratch(
@@ -744,6 +832,19 @@ void merge_storage_operand(
 [[nodiscard]] CallArgumentRecord build_call_argument_record(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedCallArgumentPlan& argument) {
+  const auto destination_bank =
+      argument.destination_register_bank.value_or(
+          argument.destination_register_placement.has_value()
+              ? argument.destination_register_placement->bank
+              : c4c::backend::prepare::PreparedRegisterBank::None);
+  const auto destination_register =
+      convert_prepared_register_reference(argument.destination_register_placement,
+                                          argument.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       argument.destination_occupied_register_names);
   CallArgumentRecord record{
       .arg_index = argument.arg_index,
       .value_bank = argument.value_bank,
@@ -757,9 +858,17 @@ void merge_storage_operand(
       .source_stack_offset_is_prepared_snapshot = argument.source_stack_offset_bytes.has_value(),
       .source_base_value_name = argument.source_base_value_name,
       .source_pointer_byte_delta = argument.source_pointer_byte_delta,
-      .destination_register =
-          resolved_prepared_register_name(argument.destination_register_placement,
-                                         argument.destination_register_name),
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : argument.destination_register_name.has_value()
+                                        ? std::string_view{*argument.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = argument.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied,
+                              argument.destination_occupied_register_names),
       .destination_register_bank = argument.destination_register_bank,
       .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
@@ -781,20 +890,60 @@ void merge_storage_operand(
 
 [[nodiscard]] CallResultRecord build_call_result_record(
     const c4c::backend::prepare::PreparedCallResultPlan& result) {
+  const auto source_bank =
+      result.source_register_bank.value_or(
+          result.source_register_placement.has_value()
+              ? result.source_register_placement->bank
+              : c4c::backend::prepare::PreparedRegisterBank::None);
+  const auto source_register =
+      convert_prepared_register_reference(result.source_register_placement,
+                                          result.source_register_name,
+                                          source_bank,
+                                          register_class_from_bank(source_bank));
+  auto source_occupied =
+      occupied_register_references_for(source_register, result.source_occupied_register_names);
+  const auto destination_bank =
+      result.destination_register_bank.value_or(
+          result.destination_register_placement.has_value()
+              ? result.destination_register_placement->bank
+              : c4c::backend::prepare::PreparedRegisterBank::None);
+  const auto destination_register =
+      convert_prepared_register_reference(result.destination_register_placement,
+                                          result.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       result.destination_occupied_register_names);
   return CallResultRecord{
       .value_bank = result.value_bank,
       .source_storage_kind = result.source_storage_kind,
       .destination_storage_kind = result.destination_storage_kind,
       .destination_value_id = result.destination_value_id,
-      .source_register =
-          resolved_prepared_register_name(result.source_register_placement,
-                                         result.source_register_name),
+      .source_register_reference = source_register.reg,
+      .source_register = source_register.reg.has_value()
+                             ? stable_register_name(*source_register.reg)
+                             : result.source_register_name.has_value()
+                                   ? std::string_view{*result.source_register_name}
+                                   : std::string_view{},
+      .source_contiguous_width = result.source_contiguous_width,
+      .source_occupied_register_references = source_occupied,
+      .source_occupied_registers =
+          register_name_views(source_occupied, result.source_occupied_register_names),
       .source_register_bank = result.source_register_bank,
       .source_stack_offset_bytes = result.source_stack_offset_bytes,
       .source_stack_offset_is_prepared_snapshot = result.source_stack_offset_bytes.has_value(),
-      .destination_register =
-          resolved_prepared_register_name(result.destination_register_placement,
-                                         result.destination_register_name),
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : result.destination_register_name.has_value()
+                                        ? std::string_view{*result.destination_register_name}
+                                        : std::string_view{},
+      .destination_contiguous_width = result.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
+      .destination_occupied_registers =
+          register_name_views(destination_occupied,
+                              result.destination_occupied_register_names),
       .destination_register_bank = result.destination_register_bank,
       .destination_slot_id = result.destination_slot_id,
       .destination_stack_offset_bytes = result.destination_stack_offset_bytes,
@@ -878,6 +1027,17 @@ void merge_storage_operand(
     const c4c::backend::prepare::PreparedBirModule& prepared,
     const c4c::backend::prepare::PreparedMoveBundle& bundle,
     const c4c::backend::prepare::PreparedMoveResolution& move) {
+  const auto destination_bank = move.destination_register_placement.has_value()
+                                    ? move.destination_register_placement->bank
+                                    : c4c::backend::prepare::PreparedRegisterBank::None;
+  const auto destination_register =
+      convert_prepared_register_reference(move.destination_register_placement,
+                                          move.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       move.destination_occupied_register_names);
   return MoveRecord{
       .phase = bundle.phase,
       .authority_kind = move.authority_kind,
@@ -886,12 +1046,16 @@ void merge_storage_operand(
       .destination_kind = move.destination_kind,
       .destination_storage_kind = move.destination_storage_kind,
       .destination_abi_index = move.destination_abi_index,
-      .destination_register =
-          resolved_prepared_register_name(move.destination_register_placement,
-                                         move.destination_register_name),
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : move.destination_register_name.has_value()
+                                        ? std::string_view{*move.destination_register_name}
+                                        : std::string_view{},
       .destination_contiguous_width = move.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
       .destination_occupied_registers =
-          register_name_views(move.destination_occupied_register_names),
+          register_name_views(destination_occupied, move.destination_occupied_register_names),
       .destination_slot_id =
           find_destination_slot_id(prepared, bundle.function_name, move.to_value_id),
       .destination_stack_offset_bytes = move.destination_stack_offset_bytes,
@@ -915,18 +1079,34 @@ void merge_storage_operand(
 [[nodiscard]] AbiBindingRecord build_abi_binding_record(
     const c4c::backend::prepare::PreparedMoveBundle& bundle,
     const c4c::backend::prepare::PreparedAbiBinding& binding) {
+  const auto destination_bank = binding.destination_register_placement.has_value()
+                                    ? binding.destination_register_placement->bank
+                                    : c4c::backend::prepare::PreparedRegisterBank::None;
+  const auto destination_register =
+      convert_prepared_register_reference(binding.destination_register_placement,
+                                          binding.destination_register_name,
+                                          destination_bank,
+                                          register_class_from_bank(destination_bank));
+  auto destination_occupied =
+      occupied_register_references_for(destination_register,
+                                       binding.destination_occupied_register_names);
   return AbiBindingRecord{
       .phase = bundle.phase,
       .authority_kind = bundle.authority_kind,
       .destination_kind = binding.destination_kind,
       .destination_storage_kind = binding.destination_storage_kind,
       .destination_abi_index = binding.destination_abi_index,
-      .destination_register =
-          resolved_prepared_register_name(binding.destination_register_placement,
-                                         binding.destination_register_name),
+      .destination_register_reference = destination_register.reg,
+      .destination_register = destination_register.reg.has_value()
+                                  ? stable_register_name(*destination_register.reg)
+                                  : binding.destination_register_name.has_value()
+                                        ? std::string_view{*binding.destination_register_name}
+                                        : std::string_view{},
       .destination_contiguous_width = binding.destination_contiguous_width,
+      .destination_occupied_register_references = destination_occupied,
       .destination_occupied_registers =
-          register_name_views(binding.destination_occupied_register_names),
+          register_name_views(destination_occupied,
+                              binding.destination_occupied_register_names),
       .destination_stack_offset_bytes = binding.destination_stack_offset_bytes,
       .destination_stack_offset_is_prepared_snapshot =
           binding.destination_stack_offset_bytes.has_value(),
@@ -975,11 +1155,21 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
                                                                         register_class,
                                                                         std::nullopt);
     }
+    if (!converted.has_value() && op.register_name.has_value()) {
+      if (auto parsed = c4c::backend::aarch64::abi::parse_aarch64_register_name(*op.register_name);
+          parsed.has_value()) {
+        converted.reg = parsed;
+      }
+    }
     const std::string_view resolved_register_name =
         converted.reg.has_value()
             ? stable_register_name(*converted.reg)
             : op.register_name.has_value() ? std::string_view{*op.register_name}
                                            : std::string_view{};
+    auto occupied_register_references =
+        occupied_register_references_for(converted, op.occupied_register_names);
+    auto occupied_registers =
+        register_name_views(occupied_register_references, op.occupied_register_names);
     std::optional<std::size_t> scratch_register_authority;
     if (op.register_placement.has_value() || op.register_name.has_value()) {
       scratch_register_authority =
@@ -993,7 +1183,7 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
                                  converted,
                                  resolved_register_name,
                                  op.contiguous_width,
-                                 register_name_views(op.occupied_register_names));
+                                 occupied_registers);
     }
     records.push_back(SpillReloadRecord{
         .value_id = op.value_id,
@@ -1003,9 +1193,11 @@ void append_value_location_moves(const c4c::backend::prepare::PreparedBirModule&
         .instruction_index = op.instruction_index,
         .register_class = register_class,
         .register_bank = op.register_bank,
+        .register_reference = converted.reg,
         .register_name = resolved_register_name,
         .contiguous_width = op.contiguous_width,
-        .occupied_registers = register_name_views(op.occupied_register_names),
+        .occupied_register_references = occupied_register_references,
+        .occupied_registers = occupied_registers,
         .scratch_register_authority = scratch_register_authority,
         .slot_id = op.slot_id,
         .stack_offset_bytes = op.stack_offset_bytes,
@@ -1439,17 +1631,16 @@ build_spill_reload_machine_nodes(
     }
 
     std::optional<codegen::RegisterOperand> scratch;
-    if (!record.register_name.empty()) {
-      const auto parsed =
-          c4c::backend::aarch64::abi::parse_aarch64_register_name(record.register_name);
+    if (record.register_reference.has_value()) {
       scratch = codegen::RegisterOperand{
-          .reg = parsed.value_or(c4c::backend::aarch64::abi::RegisterReference{}),
+          .reg = *record.register_reference,
           .role = codegen::RegisterOperandRole::SpillAuthority,
           .value_id = record.value_id,
           .value_name = value_name,
           .prepared_class = record.register_class,
           .prepared_bank = record.register_bank,
           .contiguous_width = record.contiguous_width,
+          .occupied_register_references = record.occupied_register_references,
           .occupied_registers = record.occupied_registers,
       };
     }
@@ -1463,6 +1654,7 @@ build_spill_reload_machine_nodes(
             .pseudo_kind = codegen_spill_reload_pseudo(record.pseudo_kind),
             .slot = slot,
             .scratch = scratch,
+            .occupied_scratch_register_references = record.occupied_register_references,
             .occupied_scratch_registers = record.occupied_registers,
             .scratch_register_authority = record.scratch_register_authority,
             .slot_id = record.slot_id,
@@ -1557,13 +1749,33 @@ build_return_machine_nodes(
     record.source_move = move;
   }
   if (target_move != nullptr) {
+    const auto destination_bank = target_move->destination_register_placement.has_value()
+                                      ? target_move->destination_register_placement->bank
+                                      : c4c::backend::prepare::PreparedRegisterBank::None;
+    const auto destination_register =
+        convert_prepared_register_reference(target_move->destination_register_placement,
+                                            target_move->destination_register_name,
+                                            destination_bank,
+                                            register_class_from_bank(destination_bank));
+    auto destination_occupied =
+        occupied_register_references_for(destination_register,
+                                         target_move->destination_occupied_register_names);
     record.has_target_move_record = true;
     record.target_move_authority_kind = target_move->authority_kind;
     record.target_destination_kind = target_move->destination_kind;
     record.target_destination_storage_kind = target_move->destination_storage_kind;
-    record.target_destination_register =
-        resolved_prepared_register_name(target_move->destination_register_placement,
-                                        target_move->destination_register_name);
+    record.target_destination_register_reference = destination_register.reg;
+    record.target_destination_register = destination_register.reg.has_value()
+                                             ? stable_register_name(*destination_register.reg)
+                                             : target_move->destination_register_name.has_value()
+                                                   ? std::string_view{
+                                                         *target_move->destination_register_name}
+                                                   : std::string_view{};
+    record.target_destination_contiguous_width = target_move->destination_contiguous_width;
+    record.target_destination_occupied_register_references = destination_occupied;
+    record.target_destination_occupied_registers =
+        register_name_views(destination_occupied,
+                            target_move->destination_occupied_register_names);
     record.target_destination_stack_offset_bytes = target_move->destination_stack_offset_bytes;
     record.target_destination_stack_offset_is_prepared_snapshot =
         target_move->destination_stack_offset_bytes.has_value();
@@ -1658,6 +1870,17 @@ build_return_machine_nodes(
   append_value_location_moves(prepared, locations, record.moves, record.abi_bindings);
   if (regalloc != nullptr) {
     for (const auto& move : regalloc->move_resolution) {
+      const auto destination_bank = move.destination_register_placement.has_value()
+                                        ? move.destination_register_placement->bank
+                                        : c4c::backend::prepare::PreparedRegisterBank::None;
+      const auto destination_register =
+          convert_prepared_register_reference(move.destination_register_placement,
+                                              move.destination_register_name,
+                                              destination_bank,
+                                              register_class_from_bank(destination_bank));
+      auto destination_occupied =
+          occupied_register_references_for(destination_register,
+                                           move.destination_occupied_register_names);
       record.moves.push_back(MoveRecord{
           .authority_kind = move.authority_kind,
           .from_value_id = move.from_value_id,
@@ -1665,12 +1888,17 @@ build_return_machine_nodes(
           .destination_kind = move.destination_kind,
           .destination_storage_kind = move.destination_storage_kind,
           .destination_abi_index = move.destination_abi_index,
-          .destination_register =
-              resolved_prepared_register_name(move.destination_register_placement,
-                                             move.destination_register_name),
+          .destination_register_reference = destination_register.reg,
+          .destination_register = destination_register.reg.has_value()
+                                      ? stable_register_name(*destination_register.reg)
+                                      : move.destination_register_name.has_value()
+                                            ? std::string_view{*move.destination_register_name}
+                                            : std::string_view{},
           .destination_contiguous_width = move.destination_contiguous_width,
+          .destination_occupied_register_references = destination_occupied,
           .destination_occupied_registers =
-              register_name_views(move.destination_occupied_register_names),
+              register_name_views(destination_occupied,
+                                  move.destination_occupied_register_names),
           .destination_slot_id =
               find_destination_slot_id(prepared, function.function_name, move.to_value_id),
           .destination_stack_offset_bytes = move.destination_stack_offset_bytes,

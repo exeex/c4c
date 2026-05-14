@@ -62,6 +62,7 @@ struct TargetRegisterRecord {
   std::optional<c4c::backend::aarch64::abi::AllocationRegisterPool> allocation_pool;
   std::string_view physical_register;
   std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   bool is_reserved_mir_scratch = false;
   bool may_be_long_lived_home = false;
@@ -205,7 +206,12 @@ struct CallArgumentRecord {
   std::optional<c4c::ValueNameId> source_base_value_name;
   std::string_view source_base_label;
   std::optional<std::int64_t> source_pointer_byte_delta;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      destination_occupied_register_references;
+  std::vector<std::string_view> destination_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
   std::optional<std::size_t> destination_stack_offset_bytes;
   bool destination_stack_offset_is_prepared_snapshot = false;
@@ -220,11 +226,21 @@ struct CallResultRecord {
   c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
       c4c::backend::prepare::PreparedMoveStorageKind::None;
   std::optional<c4c::backend::prepare::PreparedValueId> destination_value_id;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> source_register_reference;
   std::string_view source_register;
+  std::size_t source_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      source_occupied_register_references;
+  std::vector<std::string_view> source_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> source_register_bank;
   std::optional<std::size_t> source_stack_offset_bytes;
   bool source_stack_offset_is_prepared_snapshot = false;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
+  std::size_t destination_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      destination_occupied_register_references;
+  std::vector<std::string_view> destination_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedRegisterBank> destination_register_bank;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
@@ -277,8 +293,11 @@ struct MoveRecord {
   c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
       c4c::backend::prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
@@ -308,8 +327,11 @@ struct AbiBindingRecord {
   c4c::backend::prepare::PreparedMoveStorageKind destination_storage_kind =
       c4c::backend::prepare::PreparedMoveStorageKind::None;
   std::optional<std::size_t> destination_abi_index;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> destination_register_reference;
   std::string_view destination_register;
   std::size_t destination_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      destination_occupied_register_references;
   std::vector<std::string_view> destination_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> destination_slot_id;
   std::optional<std::size_t> destination_stack_offset_bytes;
@@ -331,8 +353,10 @@ struct SpillReloadRecord {
       c4c::backend::prepare::PreparedRegisterClass::None;
   c4c::backend::prepare::PreparedRegisterBank register_bank =
       c4c::backend::prepare::PreparedRegisterBank::None;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference> register_reference;
   std::string_view register_name;
   std::size_t contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference> occupied_register_references;
   std::vector<std::string_view> occupied_registers;
   std::optional<std::size_t> scratch_register_authority;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> slot_id;
@@ -369,7 +393,13 @@ struct ParallelCopyStepRecord {
       c4c::backend::prepare::PreparedMoveDestinationKind::Value;
   c4c::backend::prepare::PreparedMoveStorageKind target_destination_storage_kind =
       c4c::backend::prepare::PreparedMoveStorageKind::None;
+  std::optional<c4c::backend::aarch64::abi::RegisterReference>
+      target_destination_register_reference;
   std::string_view target_destination_register;
+  std::size_t target_destination_contiguous_width = 1;
+  std::vector<c4c::backend::aarch64::abi::RegisterReference>
+      target_destination_occupied_register_references;
+  std::vector<std::string_view> target_destination_occupied_registers;
   std::optional<c4c::backend::prepare::PreparedFrameSlotId> target_destination_slot_id;
   std::optional<std::size_t> target_destination_stack_offset_bytes;
   bool target_destination_stack_offset_is_prepared_snapshot = false;

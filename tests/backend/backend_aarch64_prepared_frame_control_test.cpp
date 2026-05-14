@@ -600,12 +600,23 @@ int records_preserve_frame_control_call_and_move_identity() {
   const auto& call = function.calls.front();
   if (call.source_call != &prepared.call_plans.functions.front().calls.front() ||
       call.arguments.front().source_symbol_label != "callee.identity" ||
+      call.arguments.front().destination_register_reference != aarch64_abi::x_register(0) ||
       call.arguments.front().destination_register != "x0" ||
+      call.arguments.front().destination_occupied_register_references.size() != 1 ||
+      call.arguments.front().destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(0) ||
+      call.arguments.front().destination_occupied_registers.size() != 1 ||
+      call.arguments.front().destination_occupied_registers.front() != "x0" ||
       prepared.call_plans.functions.front().calls.front()
           .arguments.front()
           .destination_register_name.has_value() ||
       call.result->destination_value_id != 22 || call.result->destination_slot_id != 11 ||
+      call.result->source_register_reference != aarch64_abi::x_register(0) ||
       call.result->source_register != "x0" ||
+      call.result->source_occupied_register_references.size() != 1 ||
+      call.result->source_occupied_register_references.front() != aarch64_abi::x_register(0) ||
+      call.result->source_occupied_registers.size() != 1 ||
+      call.result->source_occupied_registers.front() != "x0" ||
       call.preserved_values.front().value_label != "source.value" ||
       call.preserved_values.front().register_name != "x20" ||
       call.preserved_values.front().callee_saved_save_index != std::size_t{2}) {
@@ -618,8 +629,12 @@ int records_preserve_frame_control_call_and_move_identity() {
   }
   if (function.moves[0].phase != prepare::PreparedMovePhase::BeforeCall ||
       function.moves[0].destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      function.moves[0].destination_register_reference != aarch64_abi::x_register(0) ||
       function.moves[0].destination_register != "x0" ||
       function.moves[0].destination_contiguous_width != 1 ||
+      function.moves[0].destination_occupied_register_references.size() != 1 ||
+      function.moves[0].destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(0) ||
       function.moves[0].destination_occupied_registers.size() != 1 ||
       function.moves[0].destination_occupied_registers.front() != "x0" ||
       prepared.value_locations.functions.front()
@@ -638,7 +653,11 @@ int records_preserve_frame_control_call_and_move_identity() {
           prepare::PreparedMoveResolutionOpKind::SaveDestinationToTemp ||
       !function.moves[2].uses_cycle_temp_source ||
       function.moves[2].source_parallel_copy_step_index != 1 ||
+      function.moves[2].destination_register_reference != aarch64_abi::x_register(4) ||
       function.moves[2].destination_register != "x4" ||
+      function.moves[2].destination_occupied_register_references.size() != 1 ||
+      function.moves[2].destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(4) ||
       function.moves[2].source_move->destination_register_name.has_value() ||
       function.parallel_copies.front().execution_block_label !=
           prepared.names.block_labels.intern("join")) {
@@ -661,7 +680,14 @@ int records_preserve_frame_control_call_and_move_identity() {
       !parallel_copy.steps.back().uses_cycle_temp_source ||
       parallel_copy.steps.back().source_move != &parallel_copy.source_bundle->moves.back() ||
       !parallel_copy.steps.back().has_target_move_record ||
+      parallel_copy.steps.back().target_destination_register_reference !=
+          aarch64_abi::x_register(4) ||
       parallel_copy.steps.back().target_destination_register != "x4" ||
+      parallel_copy.steps.back().target_destination_occupied_register_references.size() != 1 ||
+      parallel_copy.steps.back().target_destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(4) ||
+      parallel_copy.steps.back().target_destination_occupied_registers.size() != 1 ||
+      parallel_copy.steps.back().target_destination_occupied_registers.front() != "x4" ||
       parallel_copy.steps.back().source_target_move->destination_register_name.has_value() ||
       parallel_copy.steps.back().source_target_move != function.moves[2].source_move) {
     return fail("expected parallel-copy record to expose placement-only step target facts");
@@ -669,7 +695,11 @@ int records_preserve_frame_control_call_and_move_identity() {
   if (function.moves.back().authority_kind != prepare::PreparedMoveAuthorityKind::None ||
       function.moves.back().destination_kind !=
           prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      function.moves.back().destination_register_reference != aarch64_abi::x_register(0) ||
       function.moves.back().destination_register != "x0" ||
+      function.moves.back().destination_occupied_register_references.size() != 1 ||
+      function.moves.back().destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(0) ||
       function.moves.back().source_move->destination_register_name != std::string{"x7"}) {
     return fail("expected regalloc move record to prefer placement over legacy register name");
   }
@@ -684,8 +714,12 @@ int records_preserve_frame_control_call_and_move_identity() {
           prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
       function.abi_bindings.back().destination_storage_kind !=
           prepare::PreparedMoveStorageKind::Register ||
+      function.abi_bindings.back().destination_register_reference != aarch64_abi::x_register(2) ||
       function.abi_bindings.back().destination_register != "x2" ||
       function.abi_bindings.back().destination_contiguous_width != 1 ||
+      function.abi_bindings.back().destination_occupied_register_references.size() != 1 ||
+      function.abi_bindings.back().destination_occupied_register_references.front() !=
+          aarch64_abi::x_register(2) ||
       function.abi_bindings.back().destination_occupied_registers.size() != 1 ||
       function.abi_bindings.back().destination_occupied_registers.front() != "x2" ||
       prepared.value_locations.functions.front()
@@ -704,7 +738,12 @@ int records_preserve_frame_control_call_and_move_identity() {
       function.spill_reloads.back().slot_id != 11 ||
       function.spill_reloads.front().register_class != prepare::PreparedRegisterClass::General ||
       function.spill_reloads.front().register_bank != prepare::PreparedRegisterBank::Gpr ||
+      function.spill_reloads.front().register_reference != aarch64_abi::x_register(20) ||
+      function.spill_reloads.front().register_name != "x20" ||
       function.spill_reloads.front().contiguous_width != 1 ||
+      function.spill_reloads.front().occupied_register_references.size() != 1 ||
+      function.spill_reloads.front().occupied_register_references.front() !=
+          aarch64_abi::x_register(20) ||
       function.spill_reloads.front().occupied_registers.size() != 1 ||
       function.spill_reloads.front().occupied_registers.front() != "x20" ||
       !function.spill_reloads.front().scratch_register_authority.has_value() ||
@@ -727,6 +766,8 @@ int records_preserve_frame_control_call_and_move_identity() {
       spill_scratch.value_name != source_name ||
       spill_scratch.register_reference != aarch64_abi::x_register(20) ||
       spill_scratch.physical_register != "x20" ||
+      spill_scratch.occupied_register_references.size() != 1 ||
+      spill_scratch.occupied_register_references.front() != aarch64_abi::x_register(20) ||
       spill_scratch.occupied_registers.size() != 1 ||
       spill_scratch.occupied_registers.front() != "x20" ||
       reload_scratch.register_reference != aarch64_abi::x_register(20) ||
