@@ -15,7 +15,8 @@ extraction quality/no-repair status, replacement layout, parent 224 judgment,
 and the Stage 3 draft artifact map. It also confirmed that
 `stage2_to_stage3_handoff.md` exists, matches the mandatory draft map and route
 constraints, `module.cpp` still exists, and `plan.md`/`todo.md` still point to
-idea 226.
+idea 226. Stage 2 satisfies the source idea completion signal; no exact
+blockers are currently known for supervisor review/closure.
 
 ## Suggested Next
 
@@ -53,6 +54,6 @@ No build needed for this markdown-only acceptance packet. The delegated proof
 wrote concise read-only acceptance notes to `test_after.log`, verifying the
 Stage 2 review/layout artifact, the Stage 2 to Stage 3 handoff artifact, the
 mandatory Stage 3 draft map and route constraints, the continued existence of
-`src/backend/mir/aarch64/module/module.cpp`, clean non-doc implementation/build
-/test/expectation state, and continued plan/todo linkage to
+`src/backend/mir/aarch64/module/module.cpp`, clean non-doc implementation,
+build, test, and expectation state, and continued plan/todo linkage to
 `ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md`.
