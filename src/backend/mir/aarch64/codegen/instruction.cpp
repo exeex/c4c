@@ -1837,14 +1837,25 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "call-boundary move node is missing prepared move provenance"};
   }
-  if (instruction.phase != prepare::PreparedMovePhase::BeforeCall ||
-      instruction.move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      instruction.move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-      instruction.move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+  const bool selected_register_argument_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_register_result_move =
+      instruction.phase == prepare::PreparedMovePhase::AfterCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  if (!selected_register_argument_move && !selected_register_result_move) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
-            "call-boundary move node is outside the selected register argument move subset"};
+            "call-boundary move node is outside the selected register call-boundary move subset"};
   }
   if (!instruction.source_register.has_value() ||
       !instruction.destination_register.has_value()) {
@@ -1852,6 +1863,13 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
             "call-boundary move node requires prepared register source and destination"};
+  }
+  if (instruction.source_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      instruction.destination_register->prepared_bank != prepare::PreparedRegisterBank::Gpr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared GPR source and destination"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }

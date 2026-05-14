@@ -8,36 +8,33 @@ Current Step Title: Lower Direct And Indirect Calls
 
 ## Just Finished
 
-Continued Step 4, Lower Direct And Indirect Calls, by lowering the first
-prepared call-boundary move family: before-call register-to-register argument
+Continued Step 4, Lower Direct And Indirect Calls, by lowering the next
+prepared call-boundary move family: after-call register-to-register result
 moves.
 
-Implemented the narrow selected register argument move path:
+Implemented the narrow selected register result move path:
 
-- Added structured source and destination `RegisterOperand` carriers to
-  `CallBoundaryMoveInstructionRecord`.
-- Selected only `BeforeCall` `CallArgumentAbi` moves whose
-  `PreparedMoveResolution`, matching `PreparedAbiBinding`, prepared call
-  argument plan, and prepared value home all agree on an explicit GPR
-  register-to-register transfer.
-- Emitted prepared before-call move nodes before the direct call node in block
-  dispatch without deriving ABI placement, stack arguments, scratch registers,
-  or local classification.
-- Printed selected call-boundary register moves as `mov <dst>, <src>`.
-- Kept missing provenance, unsupported phases/destinations/op kinds, missing
-  register operands, non-register destinations, and non-GPR argument moves
-  fail-closed through node selection/printer diagnostics.
-- Added dispatch, target-record, and printer coverage for selected `x2 -> x0`
-  argument moves and retained fail-closed coverage for unresolved
-  call-boundary move records.
+- Selected `AfterCall` `CallResultAbi` moves whose `PreparedMoveResolution`,
+  matching `PreparedAbiBinding`, prepared call-result plan, and prepared value
+  home all agree on an explicit GPR register-to-register transfer.
+- Emitted prepared after-call move nodes immediately after the selected direct
+  or indirect call node, without deriving ABI placement, result storage, scratch
+  registers, or local classification.
+- Reused the structured call-boundary move node/printer path so selected
+  after-call result moves print as `mov <dst>, <src>`.
+- Kept unsupported move phases/destinations/op kinds, missing provenance,
+  missing register operands, non-register result storage, and non-GPR result
+  moves fail-closed through node selection/printer diagnostics.
+- Added dispatch, target-record, and printer coverage for selected `x0 -> x3`
+  after-call result moves.
 
 ## Suggested Next
 
-Continue Step 4 with the next narrow call-boundary move family, such as
-prepared after-call register-to-register result moves, only where prepared move
-records, ABI bindings, call-result plans, and value homes already provide
-explicit register authority. Keep stack arguments, memory returns,
-scratch-mediated indirect callees, and variadic entry work deferred.
+Continue Step 4 with the next narrow prepared call-boundary family. A coherent
+next packet would be stack/memory call-result movement only if prepared move
+records, ABI bindings, call-result plans, value homes, and frame-slot/offset
+facts already provide explicit authority; otherwise keep it deferred and move
+to another prepared call-node family such as clobber/preserved-value records.
 
 ## Watchouts
 
@@ -58,9 +55,10 @@ scratch-mediated indirect callees, and variadic entry work deferred.
 - Simple fixed-frame printer output is intentionally narrow and only covers
   complete no-save/no-dynamic records. Callee-save and dynamic-stack records
   preserve prepared facts but fail closed in the printer.
-- Call-boundary move and ABI-binding records are selected carriers only. Their
+- Call-boundary move and ABI-binding records are selected carriers only. Move
   printer support is intentionally limited to selected before-call
-  register-to-register argument moves.
+  register-to-register argument moves and after-call register-to-register
+  result moves.
 - Current frame traversal skips zero-byte frames. If later policy needs explicit
   zero-frame records, that should be a separate contract decision rather than
   inferred here.
@@ -76,6 +74,10 @@ scratch-mediated indirect callees, and variadic entry work deferred.
   register-to-register moves. Stack arguments, stack-to-register loads, FPR
   moves, grouped register spans beyond the plain single-register `mov` subset,
   and cycle-temp moves remain outside this packet.
+- After-call result move lowering currently selects only explicit GPR
+  register-to-register moves. Stack results, memory returns, FPR moves, grouped
+  register spans beyond the plain single-register `mov` subset, and
+  scratch-mediated transfers remain outside this packet.
 
 ## Proof
 

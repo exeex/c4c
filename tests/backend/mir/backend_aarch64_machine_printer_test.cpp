@@ -663,6 +663,58 @@ int selected_call_boundary_register_move_prints_prepared_mov() {
                          "call-boundary register-move drift guard");
 }
 
+int selected_after_call_result_register_move_prints_prepared_mov() {
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{71},
+                  .to_value_id = prepare::PreparedValueId{71},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"x0"},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+          },
+      .abi_bindings =
+          {
+              prepare::PreparedAbiBinding{
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"x0"},
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_register = xreg(0),
+          .destination_register = xreg(3),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+
+  const auto result = print_common_instruction_nodes({move});
+  if (!result.ok) {
+    return fail("expected after-call result register move to print: " + result.diagnostic);
+  }
+  const auto move_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(move);
+  const std::string expected = "    " + std::string(move_mnemonic) + " x3, x0\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    mov x3, x0\n",
+                         "after-call result register-move drift guard");
+}
+
 int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{2},
@@ -1005,6 +1057,10 @@ int main() {
     return result;
   }
   if (const int result = selected_call_boundary_register_move_prints_prepared_mov();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_after_call_result_register_move_prints_prepared_mov();
       result != 0) {
     return result;
   }

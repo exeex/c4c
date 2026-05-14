@@ -627,6 +627,83 @@ int call_boundary_records_preserve_prepared_move_and_abi_binding_facts() {
   return 0;
 }
 
+int after_call_result_move_record_selects_register_to_register_subset() {
+  const prepare::PreparedMoveBundle bundle{
+      .function_name = c4c::FunctionNameId{10},
+      .phase = prepare::PreparedMovePhase::AfterCall,
+      .block_index = 2,
+      .instruction_index = 5,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{71},
+                  .to_value_id = prepare::PreparedValueId{71},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallResultAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"x0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x0"},
+                  .block_index = 2,
+                  .instruction_index = 5,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "after-call result move",
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .move = bundle.moves.front(),
+          .source_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(0),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{71},
+                  .value_name = c4c::ValueNameId{17},
+                  .prepared_class = prepare::PreparedRegisterClass::General,
+                  .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                  .expected_view = aarch64_abi::RegisterView::X,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"x0"},
+              },
+          .destination_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(3),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{71},
+                  .value_name = c4c::ValueNameId{17},
+                  .prepared_class = prepare::PreparedRegisterClass::General,
+                  .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                  .expected_view = aarch64_abi::RegisterView::X,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"x3"},
+              },
+          .source_bundle = &bundle,
+          .source_move = &bundle.moves.front(),
+      });
+  const auto* payload =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(&move.payload);
+
+  if (payload == nullptr ||
+      move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      move.operands.size() != 2 || move.uses.size() != 1 || move.defs.size() != 1 ||
+      move.uses.front().reg != aarch64_abi::x_register(0) ||
+      move.defs.front().reg != aarch64_abi::x_register(3) ||
+      payload->phase != prepare::PreparedMovePhase::AfterCall ||
+      payload->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallResultAbi ||
+      payload->move.destination_register_name != std::optional<std::string>{"x0"} ||
+      payload->source_register->reg != aarch64_abi::x_register(0) ||
+      payload->destination_register->reg != aarch64_abi::x_register(3)) {
+    return fail("expected after-call result move record to select prepared x0 -> x3");
+  }
+
+  return 0;
+}
+
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
@@ -890,6 +967,10 @@ int main() {
     return status;
   }
   if (const int status = call_boundary_records_preserve_prepared_move_and_abi_binding_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = after_call_result_move_record_selects_register_to_register_subset();
       status != 0) {
     return status;
   }
