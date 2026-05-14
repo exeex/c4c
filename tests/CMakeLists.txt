@@ -35,6 +35,11 @@ option(ENABLE_CPP_EASTL_EXTERNAL_TESTS
 option(ENABLE_C_TESTSUITE_BACKEND_TESTS
     "Register c-testsuite backend execution tests such as x86_backend/aarch64_backend"
     OFF)
+option(ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN
+    "Register explicit c-testsuite AArch64 backend scan tests independent of host backend selection"
+    OFF)
+set(C_TESTSUITE_AARCH64_BACKEND_RUNNER "" CACHE STRING
+    "Optional command used to run AArch64 c-testsuite backend binaries on non-AArch64 hosts")
 
 # ── Auto-detect vendored roots ────────────────────────────────────────────────
 

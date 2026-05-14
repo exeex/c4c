@@ -2,6 +2,8 @@
 
 set(C_TESTSUITE_ALLOWLIST "${C_TESTSUITE_ROOT}/allowlist.txt")
 set(C_TESTSUITE_RUN_CASE "${CMAKE_CURRENT_SOURCE_DIR}/c-testsuite/RunCase.cmake")
+set(C_TESTSUITE_AARCH64_BACKEND_RUN_CASE
+    "${CMAKE_CURRENT_SOURCE_DIR}/c-testsuite-aarch64-backend-runner.cmake")
 
 if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
   if(NOT EXISTS "${C_TESTSUITE_ALLOWLIST}" OR NOT EXISTS "${C_TESTSUITE_RUN_CASE}")
@@ -29,6 +31,26 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
       set(C_TESTSUITE_BACKEND_LABEL "")
       set(C_TESTSUITE_BACKEND_DIR "")
     endif()
+
+    function(register_c_testsuite_backend_case backend_id backend_label backend_mode backend_triple backend_dir backend_run_case backend_runner)
+      set(backend_test_name "c_testsuite_${backend_id}_backend_${test_id}")
+      add_test(
+        NAME "${backend_test_name}"
+        COMMAND "${CMAKE_COMMAND}"
+                -DCODEGEN_MODE=${backend_mode}
+                -DCOMPILER=$<TARGET_FILE:c4cll>
+                -DCLANG=${CLANG_EXECUTABLE}
+                -DSRC=${src}
+                -DROOT=${C_TESTSUITE_ROOT}
+                -DTARGET_TRIPLE=${backend_triple}
+                -DBACKEND_ASM_SOURCE=${backend_asm_source}
+                -DBACKEND_RUNTIME_RUNNER=${backend_runner}
+                -DOUT_LL=${CMAKE_BINARY_DIR}/${backend_dir}/${rel_src}.s
+                -DOUT_BIN=${CMAKE_BINARY_DIR}/${backend_dir}/${rel_src}.bin
+                -P "${backend_run_case}"
+      )
+      set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;${backend_label}")
+    endfunction()
 
     file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
     foreach(entry_raw IN LISTS C_TESTSUITE_ALLOWLIST_RAW)
@@ -71,22 +93,29 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
 
       if(ENABLE_C_TESTSUITE_BACKEND_TESTS AND
          C_TESTSUITE_BACKEND_MODE AND C_TESTSUITE_BACKEND_LABEL AND C_TESTSUITE_BACKEND_TRIPLE)
-        set(backend_test_name "c_testsuite_${C_TESTSUITE_BACKEND_ID}_backend_${test_id}")
-        add_test(
-          NAME "${backend_test_name}"
-          COMMAND "${CMAKE_COMMAND}"
-                  -DCODEGEN_MODE=${C_TESTSUITE_BACKEND_MODE}
-                  -DCOMPILER=$<TARGET_FILE:c4cll>
-                  -DCLANG=${CLANG_EXECUTABLE}
-                  -DSRC=${src}
-                  -DROOT=${C_TESTSUITE_ROOT}
-                  -DTARGET_TRIPLE=${C_TESTSUITE_BACKEND_TRIPLE}
-                  -DBACKEND_ASM_SOURCE=${backend_asm_source}
-                  -DOUT_LL=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${rel_src}.s
-                  -DOUT_BIN=${CMAKE_BINARY_DIR}/${C_TESTSUITE_BACKEND_DIR}/${rel_src}.bin
-                  -P "${C_TESTSUITE_RUN_CASE}"
-        )
-        set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;${C_TESTSUITE_BACKEND_LABEL}")
+        register_c_testsuite_backend_case(
+          "${C_TESTSUITE_BACKEND_ID}"
+          "${C_TESTSUITE_BACKEND_LABEL}"
+          "${C_TESTSUITE_BACKEND_MODE}"
+          "${C_TESTSUITE_BACKEND_TRIPLE}"
+          "${C_TESTSUITE_BACKEND_DIR}"
+          "${C_TESTSUITE_RUN_CASE}"
+          "")
+      endif()
+
+      set(register_explicit_aarch64_backend_scan "${ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN}")
+      if(ENABLE_C_TESTSUITE_BACKEND_TESTS AND C_TESTSUITE_BACKEND_ID STREQUAL "aarch64")
+        set(register_explicit_aarch64_backend_scan OFF)
+      endif()
+      if(register_explicit_aarch64_backend_scan)
+        register_c_testsuite_backend_case(
+          "aarch64"
+          "aarch64_backend"
+          "backend-aarch64"
+          "aarch64-unknown-linux-gnu"
+          "c_testsuite_aarch64_backend"
+          "${C_TESTSUITE_AARCH64_BACKEND_RUN_CASE}"
+          "${C_TESTSUITE_AARCH64_BACKEND_RUNNER}")
       endif()
     endforeach()
   endif()
