@@ -261,11 +261,12 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::Store:
     case MachineOpcode::SpillToSlot:
       return MachinePrinterMnemonicKind::Store;
+    case MachineOpcode::CallBoundaryMove:
+      return MachinePrinterMnemonicKind::Move;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
     case MachineOpcode::CalleeSaveStore:
     case MachineOpcode::CalleeSaveLoad:
-    case MachineOpcode::CallBoundaryMove:
     case MachineOpcode::CallBoundaryAbiBinding:
     case MachineOpcode::And:
     case MachineOpcode::Or:
@@ -1836,6 +1837,22 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "call-boundary move node is missing prepared move provenance"};
   }
+  if (instruction.phase != prepare::PreparedMovePhase::BeforeCall ||
+      instruction.move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      instruction.move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      instruction.move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node is outside the selected register argument move subset"};
+  }
+  if (!instruction.source_register.has_value() ||
+      !instruction.destination_register.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared register source and destination"};
+  }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
@@ -2043,13 +2060,22 @@ InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
 
 InstructionRecord make_call_boundary_move_instruction(
     CallBoundaryMoveInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
   std::vector<MachineEffectResource> defs;
   std::vector<MachineEffectResource> uses;
-  if (instruction.move.from_value_id != 0) {
-    uses.push_back(prepared_value_def(instruction.move.from_value_id, c4c::kInvalidValueName));
-  }
-  if (instruction.move.to_value_id != 0) {
+  if (instruction.destination_register.has_value()) {
+    const auto destination = make_register_operand(*instruction.destination_register);
+    operands.push_back(destination);
+    defs.push_back(effect_from_operand(destination));
+  } else if (instruction.move.to_value_id != 0) {
     defs.push_back(prepared_value_def(instruction.move.to_value_id, c4c::kInvalidValueName));
+  }
+  if (instruction.source_register.has_value()) {
+    const auto source = make_register_operand(*instruction.source_register);
+    operands.push_back(source);
+    uses.push_back(effect_from_operand(source));
+  } else if (instruction.move.from_value_id != 0) {
+    uses.push_back(prepared_value_def(instruction.move.from_value_id, c4c::kInvalidValueName));
   }
   return InstructionRecord{
       .family = InstructionFamily::CallBoundary,
@@ -2059,6 +2085,7 @@ InstructionRecord make_call_boundary_move_instruction(
       .function_name = instruction.function_name,
       .block_index = instruction.block_index,
       .instruction_index = instruction.instruction_index,
+      .operands = operands,
       .defs = defs,
       .uses = uses,
       .payload = instruction,

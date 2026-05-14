@@ -298,8 +298,20 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
     return target_unsupported(bad_header(instruction) +
                               "call-boundary move node is missing prepared move provenance");
   }
-  return target_unsupported(bad_header(instruction) +
-                            "call-boundary move node requires later AArch64 move lowering");
+  if (!move.source_register.has_value() || !move.destination_register.has_value()) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "call-boundary move node requires prepared register source and destination");
+  }
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "call-boundary move mnemonic is not printable");
+  }
+  std::ostringstream out;
+  out << mnemonic << " " << register_name(*move.destination_register) << ", "
+      << register_name(*move.source_register);
+  return target_printed({out.str()});
 }
 
 mir::TargetInstructionPrintResult print_call_boundary_abi_binding(

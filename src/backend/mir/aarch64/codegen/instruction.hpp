@@ -581,6 +581,8 @@ struct CallBoundaryMoveInstructionRecord {
   std::optional<c4c::BlockLabelId> source_parallel_copy_predecessor_label;
   std::optional<c4c::BlockLabelId> source_parallel_copy_successor_label;
   prepare::PreparedMoveResolution move;
+  std::optional<RegisterOperand> source_register;
+  std::optional<RegisterOperand> destination_register;
   const prepare::PreparedMoveBundle* source_bundle = nullptr;
   const prepare::PreparedMoveResolution* source_move = nullptr;
 };

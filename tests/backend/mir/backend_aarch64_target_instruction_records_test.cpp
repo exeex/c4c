@@ -514,6 +514,30 @@ int call_boundary_records_preserve_prepared_move_and_abi_binding_facts() {
           .source_parallel_copy_successor_label =
               bundle.source_parallel_copy_successor_label,
           .move = bundle.moves.front(),
+          .source_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(2),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{60},
+                  .value_name = c4c::ValueNameId{14},
+                  .prepared_class = prepare::PreparedRegisterClass::General,
+                  .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                  .expected_view = aarch64_abi::RegisterView::X,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"x2"},
+              },
+          .destination_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::x_register(1),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{61},
+                  .value_name = c4c::ValueNameId{14},
+                  .prepared_class = prepare::PreparedRegisterClass::General,
+                  .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+                  .expected_view = aarch64_abi::RegisterView::X,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"x1"},
+              },
           .source_bundle = &bundle,
           .source_move = &bundle.moves.front(),
       });
@@ -546,11 +570,15 @@ int call_boundary_records_preserve_prepared_move_and_abi_binding_facts() {
       move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       move.function_name != c4c::FunctionNameId{9} ||
       move.block_index != 3 || move.instruction_index != 7 ||
-      move.uses.size() != 1 || move.defs.size() != 1 ||
-      move.uses.front().value_id != prepare::PreparedValueId{60} ||
-      move.defs.front().value_id != prepare::PreparedValueId{61} ||
+      move.operands.size() != 2 || move.uses.size() != 1 || move.defs.size() != 1 ||
+      move.uses.front().reg != aarch64_abi::x_register(2) ||
+      move.defs.front().reg != aarch64_abi::x_register(1) ||
       move_payload->source_bundle != &bundle ||
       move_payload->source_move != &bundle.moves.front() ||
+      !move_payload->source_register.has_value() ||
+      !move_payload->destination_register.has_value() ||
+      move_payload->source_register->reg != aarch64_abi::x_register(2) ||
+      move_payload->destination_register->reg != aarch64_abi::x_register(1) ||
       move_payload->phase != prepare::PreparedMovePhase::BeforeCall ||
       prepare::prepared_move_phase_name(move_payload->phase) != "before_call" ||
       move_payload->authority_kind !=

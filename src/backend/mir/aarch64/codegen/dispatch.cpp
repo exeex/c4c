@@ -6,6 +6,7 @@
 #include "returns.hpp"
 
 #include <cstddef>
+#include <vector>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -155,6 +156,237 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedCallArgumentPlan* find_prepared_argument_plan(
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveResolution& move) {
+  if (!move.destination_abi_index.has_value()) {
+    return nullptr;
+  }
+  for (const auto& argument : call_plan.arguments) {
+    if (argument.arg_index == *move.destination_abi_index &&
+        argument.source_value_id == move.from_value_id) {
+      return &argument;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedAbiBinding* find_prepared_argument_binding(
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move) {
+  for (const auto& binding : bundle.abi_bindings) {
+    if (binding.destination_kind == move.destination_kind &&
+        binding.destination_storage_kind == move.destination_storage_kind &&
+        binding.destination_abi_index == move.destination_abi_index &&
+        binding.destination_register_name == move.destination_register_name &&
+        binding.destination_register_placement == move.destination_register_placement) {
+      return &binding;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
+    prepare::PreparedRegisterBank bank) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+      return prepare::PreparedRegisterClass::General;
+    case prepare::PreparedRegisterBank::Fpr:
+      return prepare::PreparedRegisterClass::Float;
+    case prepare::PreparedRegisterBank::Vreg:
+      return prepare::PreparedRegisterClass::Vector;
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return prepare::PreparedRegisterClass::AggregateAddress;
+    case prepare::PreparedRegisterBank::None:
+      return prepare::PreparedRegisterClass::None;
+  }
+  return prepare::PreparedRegisterClass::None;
+}
+
+[[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
+    const std::optional<std::string>& register_name,
+    const std::optional<prepare::PreparedRegisterPlacement>& placement,
+    const std::optional<prepare::PreparedRegisterBank>& bank,
+    RegisterOperandRole role,
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name,
+    std::size_t contiguous_width,
+    const std::vector<std::string>& occupied_registers,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  const auto prepared_class =
+      bank.has_value() ? std::optional<prepare::PreparedRegisterClass>{
+                             register_class_from_bank(*bank)}
+                       : std::nullopt;
+  abi::PreparedRegisterConversionResult converted;
+  if (placement.has_value()) {
+    converted = abi::convert_prepared_register(*placement, prepared_class, std::nullopt);
+  } else if (register_name.has_value()) {
+    converted = abi::convert_prepared_register(
+        *register_name, bank, prepared_class, std::nullopt);
+  } else {
+    return std::nullopt;
+  }
+  if (!converted.reg.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        converted.error.has_value()
+            ? converted.error->message
+            : "prepared call-boundary move register could not be converted");
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = role,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepared_class.value_or(prepare::PreparedRegisterClass::None),
+      .prepared_bank = bank.value_or(prepare::PreparedRegisterBank::None),
+      .contiguous_width = contiguous_width,
+      .occupied_register_references = {*converted.reg},
+      .occupied_registers =
+          occupied_registers.empty()
+              ? std::vector<std::string_view>{abi::register_name(*converted.reg)}
+              : std::vector<std::string_view>(occupied_registers.begin(),
+                                               occupied_registers.end()),
+  };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* source_home =
+      context.function.value_locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_value_home(*context.function.value_locations,
+                                              move.from_value_id);
+  const auto* argument = find_prepared_argument_plan(call_plan, move);
+  const auto* binding = find_prepared_argument_binding(bundle, move);
+
+  CallBoundaryMoveInstructionRecord move_record{
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .phase = bundle.phase,
+      .authority_kind = bundle.authority_kind,
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .source_parallel_copy_predecessor_label =
+          bundle.source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label =
+          bundle.source_parallel_copy_successor_label,
+      .move = move,
+      .source_bundle = &bundle,
+      .source_move = &move,
+  };
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      source_home->register_name.has_value() && argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
+      argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      binding != nullptr &&
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
+    if (argument->source_register_name.has_value() &&
+        *argument->source_register_name != *source_home->register_name) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 call-boundary move source register disagrees with prepared value home");
+      return std::nullopt;
+    }
+    auto source = make_register_operand_from_prepared_authority(
+        source_home->register_name,
+        argument->source_register_placement,
+        argument->source_register_bank,
+        RegisterOperandRole::CallAbi,
+        source_home->value_id,
+        source_home->value_name,
+        1,
+        {},
+        diagnostics,
+        context,
+        instruction_index);
+    auto destination = make_register_operand_from_prepared_authority(
+        binding->destination_register_name,
+        binding->destination_register_placement,
+        argument->destination_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : std::nullopt,
+        source_home->value_name,
+        binding->destination_contiguous_width,
+        binding->destination_occupied_register_names,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      return std::nullopt;
+    }
+    move_record.source_register = *source;
+    move_record.destination_register = *destination;
+  }
+
+  InstructionRecord target = make_call_boundary_move_instruction(std::move(move_record));
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction> lower_before_call_moves(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  std::vector<module::MachineInstruction> lowered;
+  if (context.function.value_locations == nullptr) {
+    return lowered;
+  }
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      *context.function.value_locations,
+      prepare::PreparedMovePhase::BeforeCall,
+      context.block_index,
+      instruction_index);
+  if (bundle == nullptr) {
+    return lowered;
+  }
+  for (const auto& move : bundle->moves) {
+    if (auto instruction =
+            lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+      lowered.push_back(std::move(*instruction));
+    }
+  }
+  return lowered;
 }
 
 [[nodiscard]] std::optional<RegisterOperand> make_indirect_callee_register(
@@ -349,6 +581,14 @@ InstructionDispatchResult dispatch_prepared_block(
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (const auto* call_plan = find_prepared_call_plan(context, instruction_index);
+            call_plan != nullptr) {
+          auto before_call_moves =
+              lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);
+          for (auto& before_call_move : before_call_moves) {
+            block.instructions.push_back(std::move(before_call_move));
+          }
+        }
         if (auto lowered = lower_call_instruction(
                 context, *call, instruction_index, diagnostics)) {
           block.instructions.push_back(std::move(*lowered));
