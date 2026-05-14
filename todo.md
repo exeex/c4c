@@ -1,40 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/231_aarch64_call_frame_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Lower Direct And Indirect Calls
+Current Step ID: 5
+Current Step Title: Lower Memory-Return And Preservation Cases
 
 # Current Packet
 
 ## Just Finished
 
-Continued Step 4, Lower Direct And Indirect Calls, by lowering the next
-prepared call-boundary move family: after-call register-to-register result
-moves.
+Started Step 5, Lower Memory-Return And Preservation Cases, by reflecting
+prepared call clobber records into selected AArch64 call machine-node effects.
 
-Implemented the narrow selected register result move path:
+Implemented the narrow prepared clobber effect path:
 
-- Selected `AfterCall` `CallResultAbi` moves whose `PreparedMoveResolution`,
-  matching `PreparedAbiBinding`, prepared call-result plan, and prepared value
-  home all agree on an explicit GPR register-to-register transfer.
-- Emitted prepared after-call move nodes immediately after the selected direct
-  or indirect call node, without deriving ABI placement, result storage, scratch
-  registers, or local classification.
-- Reused the structured call-boundary move node/printer path so selected
-  after-call result moves print as `mov <dst>, <src>`.
-- Kept unsupported move phases/destinations/op kinds, missing provenance,
-  missing register operands, non-register result storage, and non-GPR result
-  moves fail-closed through node selection/printer diagnostics.
-- Added dispatch, target-record, and printer coverage for selected `x0 -> x3`
-  after-call result moves.
+- Populated `InstructionRecord::clobbers` for selected direct and indirect call
+  nodes from `CallInstructionRecord::clobbered_registers`, which is copied from
+  the authoritative `PreparedCallPlan`.
+- Converted only explicit prepared register spellings already present in each
+  `PreparedClobberedRegister`; no local caller-saved ABI set, call-clobber
+  policy, or placement inference was introduced.
+- Preserved raw prepared clobber records in the call payload while exposing
+  convertible GPR, FPR, and vector/grouped clobbers as structured register
+  machine effects with `CallAbi` register operands.
+- Kept malformed or unconvertible clobber facts fail-closed by omitting their
+  structured machine clobber effect while leaving the original prepared record
+  attached to the call payload for provenance.
+- Added target-record, dispatch, and printer coverage for singleton GPR/FPR
+  clobbers, a grouped vector clobber, printer stability with clobber effects,
+  and malformed clobber omission.
 
 ## Suggested Next
 
-Continue Step 4 with the next narrow prepared call-boundary family. A coherent
-next packet would be stack/memory call-result movement only if prepared move
-records, ABI bindings, call-result plans, value homes, and frame-slot/offset
-facts already provide explicit authority; otherwise keep it deferred and move
-to another prepared call-node family such as clobber/preserved-value records.
+Continue Step 5 with the next preservation/memory-return packet. A coherent
+next packet would be memory-return or preserved-value machine effects only if
+the existing `PreparedCallPlan` facts already provide explicit storage,
+slot/offset, and register identity; otherwise leave those cases deferred and
+route to the missing prepared-fact source.
 
 ## Watchouts
 
@@ -59,9 +60,9 @@ to another prepared call-node family such as clobber/preserved-value records.
   printer support is intentionally limited to selected before-call
   register-to-register argument moves and after-call register-to-register
   result moves.
-- Current frame traversal skips zero-byte frames. If later policy needs explicit
-  zero-frame records, that should be a separate contract decision rather than
-  inferred here.
+- Current frame traversal skips zero-byte frames. If later policy needs
+  explicit zero-frame records, that should be a separate contract decision
+  rather than inferred here.
 - Callee-save lowering is blocked on an explicit saved-register-to-frame-slot
   and offset prepared fact. Do not infer it from `save_index` or
   `frame_slot_order`.
@@ -78,6 +79,14 @@ to another prepared call-node family such as clobber/preserved-value records.
   register-to-register moves. Stack results, memory returns, FPR moves, grouped
   register spans beyond the plain single-register `mov` subset, and
   scratch-mediated transfers remain outside this packet.
+- Call clobber effects now reflect prepared clobber spellings and occupied
+  register names only. The helper intentionally does not use prepared placement
+  metadata to remap clobbers, because current clobber placement records can
+  describe the reserved-scratch authority identity rather than the physical
+  clobbered register spelling.
+- Malformed prepared clobber records are not diagnostics today because the call
+  instruction record builder has no diagnostics channel; the raw prepared
+  records remain in the payload and the structured effect simply fails closed.
 
 ## Proof
 

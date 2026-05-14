@@ -532,6 +532,12 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
       .instruction_index = 1,
       .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
       .direct_callee_name = std::string{"actual_function"},
+      .clobbered_registers = {prepare::PreparedClobberedRegister{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_name = "x13",
+          .contiguous_width = 1,
+          .occupied_register_names = {"x13"},
+      }},
   };
   const auto call = aarch64_codegen::make_call_instruction(
       aarch64_codegen::CallInstructionRecord{
@@ -543,10 +549,15 @@ int selected_direct_call_prints_from_prepared_call_provenance() {
               },
           .direct_callee_label = "actual_function",
           .wrapper_kind = prepared_call.wrapper_kind,
+          .clobbered_registers = prepared_call.clobbered_registers,
           .source_call = &prepared_call,
           .calling_convention = bir::CallingConv::C,
       });
 
+  if (call.clobbers.size() != 1 ||
+      call.clobbers.front().reg != aarch64_abi::x_register(13)) {
+    return fail("expected direct-call printer fixture to carry prepared clobber effect");
+  }
   const auto result = print_common_instruction_nodes({call});
   if (!result.ok) {
     return fail("expected direct call node to print from prepared provenance: " +

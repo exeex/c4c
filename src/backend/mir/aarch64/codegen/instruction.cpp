@@ -1240,9 +1240,108 @@ std::vector<std::string_view> occupied_register_views(
   return {display_name};
 }
 
+std::vector<std::string_view> occupied_register_views(
+    const std::vector<abi::RegisterReference>& regs) {
+  std::vector<std::string_view> views;
+  views.reserve(regs.size());
+  for (const auto reg : regs) {
+    const auto display_name = register_display_name(reg);
+    if (display_name.empty()) {
+      return {};
+    }
+    views.push_back(display_name);
+  }
+  return views;
+}
+
 std::vector<abi::RegisterReference> occupied_register_references(
     abi::RegisterReference reg) {
   return {reg};
+}
+
+std::optional<abi::RegisterView> prepared_clobber_expected_view(
+    prepare::PreparedRegisterBank bank) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return abi::RegisterView::X;
+    case prepare::PreparedRegisterBank::Fpr:
+    case prepare::PreparedRegisterBank::Vreg:
+    case prepare::PreparedRegisterBank::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<MachineEffectResource> effect_from_prepared_call_clobber(
+    const prepare::PreparedClobberedRegister& clobber) {
+  if (clobber.register_name.empty() || clobber.contiguous_width == 0 ||
+      clobber.bank == prepare::PreparedRegisterBank::None) {
+    return std::nullopt;
+  }
+
+  const auto prepared_class = register_class_from_bank(clobber.bank);
+  const auto expected_view = prepared_clobber_expected_view(clobber.bank);
+  const auto converted_primary = abi::convert_prepared_register(
+      clobber.register_name, clobber.bank, prepared_class, expected_view);
+  if (!converted_primary.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> occupied_names = clobber.occupied_register_names;
+  if (occupied_names.empty() && clobber.contiguous_width == 1) {
+    occupied_names.push_back(clobber.register_name);
+  }
+  if (occupied_names.size() != clobber.contiguous_width) {
+    return std::nullopt;
+  }
+
+  std::vector<abi::RegisterReference> occupied_refs;
+  occupied_refs.reserve(occupied_names.size());
+  for (const auto& occupied_name : occupied_names) {
+    const auto converted_occupied = abi::convert_prepared_register(
+        occupied_name, clobber.bank, prepared_class, expected_view);
+    if (!converted_occupied.has_value()) {
+      return std::nullopt;
+    }
+    occupied_refs.push_back(*converted_occupied.reg);
+  }
+  if (occupied_refs.empty() || occupied_refs.front() != *converted_primary.reg) {
+    return std::nullopt;
+  }
+
+  const auto occupied_views = occupied_register_views(occupied_refs);
+  if (occupied_views.size() != occupied_refs.size()) {
+    return std::nullopt;
+  }
+
+  const OperandRecord operand = make_register_operand(RegisterOperand{
+      .reg = *converted_primary.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .prepared_class = prepared_class,
+      .prepared_bank = clobber.bank,
+      .expected_view = expected_view,
+      .contiguous_width = clobber.contiguous_width,
+      .occupied_register_references = occupied_refs,
+      .occupied_registers = occupied_views,
+  });
+  return MachineEffectResource{
+      .kind = MachineEffectResourceKind::Register,
+      .operand = operand,
+      .reg = *converted_primary.reg,
+  };
+}
+
+std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
+    const std::vector<prepare::PreparedClobberedRegister>& clobbers) {
+  std::vector<MachineEffectResource> effects;
+  effects.reserve(clobbers.size());
+  for (const auto& clobber : clobbers) {
+    if (auto effect = effect_from_prepared_call_clobber(clobber)) {
+      effects.push_back(std::move(*effect));
+    }
+  }
+  return effects;
 }
 
 std::optional<RegisterOperand> make_prepared_register_operand(
@@ -2143,6 +2242,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
       .operands = operands,
       .defs = defs,
       .uses = effects_from_operands(operands),
+      .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
       .side_effects = {MachineSideEffectKind::Call},
       .payload = instruction,
   };

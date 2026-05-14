@@ -4,6 +4,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -216,9 +217,21 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
           .source_register_name = std::string{"x0"},
       },
       .clobbered_registers = {prepare::PreparedClobberedRegister{
-          .bank = prepare::PreparedRegisterBank::Gpr,
-          .register_name = "x0",
-      }},
+                                  .bank = prepare::PreparedRegisterBank::Gpr,
+                                  .register_name = "x0",
+                              },
+                              prepare::PreparedClobberedRegister{
+                                  .bank = prepare::PreparedRegisterBank::Fpr,
+                                  .register_name = "d13",
+                                  .contiguous_width = 1,
+                                  .occupied_register_names = {"d13"},
+                              },
+                              prepare::PreparedClobberedRegister{
+                                  .bank = prepare::PreparedRegisterBank::Gpr,
+                                  .register_name = "not_a_register",
+                                  .contiguous_width = 1,
+                                  .occupied_register_names = {"not_a_register"},
+                              }},
   };
   const auto call = aarch64_codegen::make_call_instruction(
       aarch64_codegen::CallInstructionRecord{
@@ -295,9 +308,34 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
       call_payload->source_call != &prepared_call ||
       call_payload->prepared_arguments.size() != 1 ||
       !call_payload->prepared_result.has_value() ||
-      call_payload->clobbered_registers.size() != 1 ||
+      call_payload->clobbered_registers.size() != 3 ||
       call_payload->arguments.size() != 1 || !call_payload->result.has_value()) {
     return fail("expected call record to preserve explicit callee, argument, and result operands");
+  }
+  if (call.clobbers.size() != 2 ||
+      call.clobbers[0].kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      call.clobbers[0].reg != aarch64_abi::x_register(0) ||
+      call.clobbers[1].kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      call.clobbers[1].reg != aarch64_abi::d_register(13)) {
+    return fail("expected call node to expose convertible prepared clobbers as register effects");
+  }
+  if (!call.clobbers[0].operand.has_value() || !call.clobbers[1].operand.has_value()) {
+    return fail("expected call clobber effects to carry register operands");
+  }
+  const auto* gpr_clobber =
+      std::get_if<aarch64_codegen::RegisterOperand>(&call.clobbers[0].operand->payload);
+  const auto* fpr_clobber =
+      std::get_if<aarch64_codegen::RegisterOperand>(&call.clobbers[1].operand->payload);
+  if (gpr_clobber == nullptr || fpr_clobber == nullptr ||
+      gpr_clobber->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      gpr_clobber->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      gpr_clobber->occupied_register_references !=
+          std::vector<aarch64_abi::RegisterReference>{aarch64_abi::x_register(0)} ||
+      fpr_clobber->role != aarch64_codegen::RegisterOperandRole::CallAbi ||
+      fpr_clobber->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      fpr_clobber->occupied_register_references !=
+          std::vector<aarch64_abi::RegisterReference>{aarch64_abi::d_register(13)}) {
+    return fail("expected prepared clobber operands to preserve call ABI register metadata");
   }
   if (return_payload == nullptr ||
       aarch64_codegen::instruction_family_name(ret.family) != "return" ||

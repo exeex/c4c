@@ -106,6 +106,12 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
           .instruction_index = 0,
           .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
           .direct_callee_name = std::string{"actual_function"},
+          .clobbered_registers = {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .register_name = "v13",
+              .contiguous_width = 2,
+              .occupied_register_names = {"v13", "v14"},
+          }},
       }},
   });
   return prepared;
@@ -648,8 +654,27 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
       call->direct_callee_label != "actual_function" ||
       call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
       call->source_call != &function_context.call_plans->calls.front() ||
+      call->clobbered_registers.size() != 1 ||
       !call->arguments.empty() || call->result.has_value()) {
-    return fail("expected direct call node to preserve prepared call provenance only");
+    return fail("expected direct call node to preserve prepared call provenance");
+  }
+  if (call_instruction.target.clobbers.size() != 1 ||
+      call_instruction.target.clobbers.front().kind !=
+          aarch64_module::codegen::MachineEffectResourceKind::Register ||
+      call_instruction.target.clobbers.front().reg != aarch64_module::abi::v_register(13) ||
+      !call_instruction.target.clobbers.front().operand.has_value()) {
+    return fail("expected direct call node to expose prepared grouped vector clobber effect");
+  }
+  const auto* clobber = std::get_if<aarch64_module::codegen::RegisterOperand>(
+      &call_instruction.target.clobbers.front().operand->payload);
+  if (clobber == nullptr ||
+      clobber->role != aarch64_module::codegen::RegisterOperandRole::CallAbi ||
+      clobber->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      clobber->contiguous_width != 2 ||
+      clobber->occupied_register_references.size() != 2 ||
+      clobber->occupied_register_references[0] != aarch64_module::abi::v_register(13) ||
+      clobber->occupied_register_references[1] != aarch64_module::abi::v_register(14)) {
+    return fail("expected grouped vector clobber to preserve prepared occupied registers");
   }
   if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
           block.instructions.back().target.payload)) {
