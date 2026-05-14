@@ -1,7 +1,8 @@
 # BIR MIR Abstract Slot Contract Reject String Names
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-14
 
 Depends On:
 - `ideas/closed/212_bir_mir_allocation_contract.md`
@@ -164,6 +165,16 @@ physical register interpretation.
 - Focused tests prove representative argument, return, long-lived, scratch,
   and spill placements without asserting target register spellings before the
   AArch64 target mapping step.
+
+## Completion Notes
+
+Closed after Step 6 validation confirmed the structured prepared placement
+contract, AArch64 target-layer mapping, and remaining legacy string surfaces as
+display or compatibility only. Focused proof passed 19/19 selected backend
+tests before close review. Close-scope regression guard compared the accepted
+full-suite baseline in `test_before.log` against refreshed full-suite
+`test_after.log`; both reported 3163 passed, 0 failed, and the guard passed
+with no new failures.
 
 ## Reviewer Reject Signals
 
