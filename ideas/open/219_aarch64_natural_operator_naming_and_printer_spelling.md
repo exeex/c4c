@@ -4,7 +4,7 @@ Status: Open
 Created: 2026-05-14
 
 Depends On:
-- `ideas/open/218_aarch64_structured_asm_encoder_linker_contract.md`
+- `ideas/closed/218_aarch64_structured_asm_encoder_linker_contract.md`
 
 ## Goal
 
