@@ -1,7 +1,7 @@
 #pragma once
 
 #include "../abi/abi.hpp"
-#include "../codegen/records.hpp"
+#include "../codegen/instruction.hpp"
 #include "../../mir.hpp"
 
 #include <cstddef>

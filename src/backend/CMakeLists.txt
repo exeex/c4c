@@ -8,7 +8,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/api/api.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/machine_printer.cpp"
-    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/records.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/instruction.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/branch_control_lowering.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/function_traversal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/module/instruction_lowering.cpp"
