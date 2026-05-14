@@ -142,7 +142,7 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
         instruction.result_value_name != fixture.result_name ||
         instruction.result_type != bir::TypeKind::I64 ||
         instruction.source_binary_opcode != opcode || !instruction.scalar_alu.has_value() ||
-        instruction.inputs.size() != 2) {
+        instruction.inputs.size() != 2 || !instruction.result_register.has_value()) {
       return fail("expected scalar instruction wrapper to preserve result and source opcode");
     }
 
@@ -152,8 +152,20 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
         alu.source_binary_opcode != opcode || alu.operand_type != bir::TypeKind::I64 ||
         alu.result_type != bir::TypeKind::I64 ||
         alu.result_value_id != prepare::PreparedValueId{12} ||
-        alu.result_value_name != fixture.result_name || !alu.supported_integer_operation) {
+        alu.result_value_name != fixture.result_name || !alu.supported_integer_operation ||
+        !alu.result_register.has_value()) {
       return fail("expected ALU record to preserve structured BIR and prepared ids");
+    }
+    if (alu.result_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
+        alu.result_register->value_id != prepare::PreparedValueId{12} ||
+        alu.result_register->value_name != fixture.result_name ||
+        alu.result_register->reg != aarch64_abi::x_register(0) ||
+        alu.result_register->expected_view != aarch64_abi::RegisterView::X ||
+        alu.result_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+        alu.result_register->prepared_class != prepare::PreparedRegisterClass::General ||
+        alu.result_register->occupied_registers.size() != 1 ||
+        alu.result_register->occupied_registers.front() != "x0") {
+      return fail("expected ALU result to become a typed prepared destination register");
     }
 
     const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
@@ -171,6 +183,32 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
         lhs->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
         rhs->prepared_class != prepare::PreparedRegisterClass::General) {
       return fail("expected named operands to become typed prepared register operands");
+    }
+    if (opcode == bir::BinaryOpcode::Add || opcode == bir::BinaryOpcode::Sub) {
+      const auto machine = aarch64_codegen::make_scalar_instruction(instruction);
+      if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+          machine.operands.size() != 2 || machine.uses.size() != 2 ||
+          machine.defs.size() != 1 ||
+          machine.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+          machine.defs.front().value_id != prepare::PreparedValueId{12} ||
+          machine.defs.front().reg != aarch64_abi::x_register(0) ||
+          machine.opcode != (opcode == bir::BinaryOpcode::Add
+                                 ? aarch64_codegen::MachineOpcode::Add
+                                 : aarch64_codegen::MachineOpcode::Sub)) {
+        return fail("expected add/sub selected machine nodes to carry lhs/rhs and destination");
+      }
+
+      const auto ret = aarch64_codegen::make_return_instruction(
+          aarch64_codegen::ReturnInstructionRecord{
+              .value = aarch64_codegen::make_register_operand(*instruction.result_register),
+              .value_type = instruction.result_type,
+          });
+      if (ret.operands.size() != 1 || ret.uses.size() != 1 ||
+          ret.uses.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+          ret.uses.front().value_id != prepare::PreparedValueId{12} ||
+          ret.uses.front().reg != aarch64_abi::x_register(0)) {
+        return fail("expected return record to reference the prepared scalar result");
+      }
     }
   }
   return 0;

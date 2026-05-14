@@ -24,10 +24,10 @@ int expect_equal(std::string_view actual, std::string_view expected, const char*
   return 0;
 }
 
-aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId value_id,
-                                                   c4c::ValueNameId value_name,
-                                                   unsigned index) {
-  return aarch64_codegen::make_register_operand(aarch64_codegen::RegisterOperand{
+aarch64_codegen::RegisterOperand value_register(prepare::PreparedValueId value_id,
+                                                c4c::ValueNameId value_name,
+                                                unsigned index) {
+  return aarch64_codegen::RegisterOperand{
       .reg = aarch64_abi::x_register(index),
       .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
       .value_id = value_id,
@@ -36,7 +36,13 @@ aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId valu
       .prepared_bank = prepare::PreparedRegisterBank::Gpr,
       .expected_view = aarch64_abi::RegisterView::X,
       .contiguous_width = 1,
-  });
+  };
+}
+
+aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
+                                                   unsigned index) {
+  return aarch64_codegen::make_register_operand(value_register(value_id, value_name, index));
 }
 
 int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
@@ -91,6 +97,8 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
           .result_value_id = prepare::PreparedValueId{11},
           .result_value_name = c4c::ValueNameId{4},
           .result_type = bir::TypeKind::I64,
+          .result_register =
+              value_register(prepare::PreparedValueId{11}, c4c::ValueNameId{4}, 0),
           .lhs = make_value_register(prepare::PreparedValueId{12}, c4c::ValueNameId{5}, 2),
           .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
               .kind = aarch64_codegen::ImmediateKind::SignedInteger,
@@ -161,8 +169,12 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       scalar.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       scalar.operands.size() != 2 || scalar.uses.size() != 2 ||
       scalar.defs.size() != 1 ||
-      scalar.defs.front().value_id != prepare::PreparedValueId{11}) {
-    return fail("expected scalar instruction record to retain BIR opcode and operand records");
+      scalar.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      scalar.defs.front().value_id != prepare::PreparedValueId{11} ||
+      scalar.defs.front().reg != aarch64_abi::x_register(0) ||
+      !scalar_payload->result_register.has_value() ||
+      scalar_payload->result_register->value_name != c4c::ValueNameId{4}) {
+    return fail("expected scalar instruction record to retain BIR opcode and destination register");
   }
 
   if (memory_payload == nullptr ||
@@ -205,6 +217,14 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
           .value = result,
           .value_type = bir::TypeKind::I64,
       });
+  const auto prepared_scalar_result = value_register(prepare::PreparedValueId{24},
+                                                     c4c::ValueNameId{11},
+                                                     0);
+  const auto prepared_result_ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_register_operand(prepared_scalar_result),
+          .value_type = bir::TypeKind::I64,
+      });
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{
           .operands = {result},
@@ -225,6 +245,8 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   const auto* call_payload = std::get_if<aarch64_codegen::CallInstructionRecord>(&call.payload);
   const auto* return_payload =
       std::get_if<aarch64_codegen::ReturnInstructionRecord>(&ret.payload);
+  const auto* prepared_result_return_payload =
+      std::get_if<aarch64_codegen::ReturnInstructionRecord>(&prepared_result_ret.payload);
   const auto* assembler_payload =
       std::get_if<aarch64_codegen::AssemblerInstructionRecord>(&assembler.payload);
   const auto* object_payload =
@@ -247,6 +269,15 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
       ret.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Return ||
       !return_payload->value.has_value() || return_payload->value_type != bir::TypeKind::I64) {
     return fail("expected return family to be an explicit machine-node placeholder");
+  }
+  if (prepared_result_return_payload == nullptr ||
+      !prepared_result_return_payload->value.has_value() ||
+      prepared_result_ret.operands.size() != 1 || prepared_result_ret.uses.size() != 1 ||
+      prepared_result_ret.uses.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::Register ||
+      prepared_result_ret.uses.front().reg != aarch64_abi::x_register(0) ||
+      prepared_result_ret.uses.front().value_id != prepare::PreparedValueId{24}) {
+    return fail("expected return record to reference a prepared scalar result register");
   }
   if (assembler_payload == nullptr ||
       aarch64_codegen::instruction_family_name(assembler.family) != "assembler" ||
@@ -429,6 +460,8 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
           .result_value_id = prepare::PreparedValueId{33},
           .result_value_name = c4c::ValueNameId{15},
           .result_type = bir::TypeKind::I64,
+          .result_register =
+              value_register(prepare::PreparedValueId{33}, c4c::ValueNameId{15}, 0),
           .lhs = make_value_register(prepare::PreparedValueId{34}, c4c::ValueNameId{16}, 3),
           .rhs = make_value_register(prepare::PreparedValueId{35}, c4c::ValueNameId{17}, 4),
           .supported_integer_operation = true,

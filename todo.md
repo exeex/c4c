@@ -1,62 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/222_aarch64_scalar_return_alu_selected_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Markdown Contracts And Existing AArch64 ALU/Return Surfaces
+Current Step ID: 2
+Current Step Title: Add Scalar ALU And Return Record Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 inspection completed for `plan.md` Step 1, `Inspect Markdown Contracts And Existing AArch64 ALU/Return Surfaces`.
+Step 2 implementation completed for `plan.md` Step 2, `Add Scalar ALU And Return Record Coverage`.
 
-Exact markdown obligations:
-- `ideas/open/222_aarch64_scalar_return_alu_selected_nodes.md` requires the route `alu.md` plus `returns.md` -> `records.cpp/.hpp` -> selected scalar machine-node/operator coverage -> `machine_printer.cpp` -> `tests/backend/case/return_add.c`.
-- `src/backend/mir/aarch64/codegen/alu.md` requires integer ALU lowering to select typed target MIR operations and then machine instruction nodes before final mnemonic spelling; add/sub must remain semantic scalar ALU lowering, not printer text or testcase matching.
-- `src/backend/mir/aarch64/codegen/returns.md` requires return lowering to publish structured return facts and machine instruction nodes for return-value movement and control transfer; final `ret` and register spelling belong to printer/encoding consumers.
-- Public `return_add.c` must stay disabled until structured selected-node/operator and printer coverage proves scalar add plus returned-result emission.
+Implemented record-layer coverage only:
+- Added optional structured `result_register` facts to `ScalarAluRecord` and `ScalarInstructionRecord`.
+- Converted prepared scalar ALU result storage into a typed AArch64 `RegisterOperand` with prepared value id/name, bank/class, view, contiguous width, and occupied register names.
+- Propagated scalar result registers into selected scalar machine-node defs while preserving the existing prepared-value fallback for records without a register fact.
+- Added focused add/sub coverage proving selected scalar machine nodes keep lhs/rhs uses and a destination register def.
+- Added return-record coverage proving a return node can reference a prepared scalar result register.
 
-Code owners and current surfaces:
-- `src/backend/mir/aarch64/codegen/records.hpp` owns `ScalarAluOperationKind::{Add, Sub, And, Or, Xor, Deferred}`, `ScalarAluRecord`, `ScalarInstructionRecord`, `ReturnInstructionRecord`, `MachineOpcode::{Add, Sub, ...}`, and `MachinePrinterMnemonicKind`, but printer mnemonics currently omit add/sub.
-- `src/backend/mir/aarch64/codegen/records.cpp` maps BIR add/sub to scalar ALU operations, maps scalar ALU add/sub to `MachineOpcode::Add`/`MachineOpcode::Sub`, marks supported scalar ALU records selected, and builds selected return instruction records with return/control-flow side effects.
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp` prints spill/reload, branch, store, and immediate-return nodes; selected scalar nodes currently fail closed with `scalar node is missing a structured destination register operand`, so add/sub text is not printable yet.
-
-Current focused tests and public smoke status:
-- Existing focused C++ tests already cover scalar ALU records and prepared scalar ALU conversion in `backend_aarch64_scalar_alu_records` and `backend_aarch64_prepared_scalar_alu_records`.
-- `backend_aarch64_target_instruction_records` covers scalar instruction records and return placeholders, plus existing mnemonic spelling for branch/load/store/mov/ret.
-- `backend_aarch64_machine_printer` covers selected spill/reload, branch/store, immediate `mov` + `ret`, and fail-closed scalar printing.
-- `tests/backend/case/return_add.c` exists and contains `int main() { return 2 + 3; }`, but no `return_add` CTest registration was found; the enabled AArch64 external smoke remains `backend_cli_aarch64_asm_external_return_zero_smoke` for `aarch64_return_zero_smoke.c`.
-
-Gaps:
-- No structured destination register/result operand is carried on scalar ALU nodes, so the machine printer cannot emit add/sub.
-- `MachinePrinterMnemonicKind` and `machine_opcode_printer_mnemonic_kind` do not spell add/sub.
-- Return records can print only immediate return values; there is no focused coverage for returning a previously selected scalar result through `x0`/`w0`.
-- The public `return_add.c` smoke is intentionally not enabled and should remain deferred until record, selected-node/operator, and printer coverage exist.
+Kept out of scope as required:
+- Did not edit `machine_printer.cpp`.
+- Did not enable `tests/backend/case/return_add.c`.
+- Did not edit backend case smoke wiring or `tests/backend/CMakeLists.txt`.
 
 ## Suggested Next
 
-Delegate Step 2 as a records-and-focused-tests packet:
-
-Owned files should be `src/backend/mir/aarch64/codegen/records.hpp`, `src/backend/mir/aarch64/codegen/records.cpp`, `tests/backend/backend_aarch64_scalar_alu_records_test.cpp`, `tests/backend/backend_aarch64_target_instruction_records_test.cpp`, and `tests/backend/backend_aarch64_prepared_scalar_alu_records_test.cpp`.
-
-Recommended implementation: extend the scalar ALU record/instruction shape with a structured destination/result register operand derived from prepared storage for add/sub, preserve existing prepared value identities and `MachineOpcode::Add`/`Sub`, and add focused tests proving add/sub selected machine nodes carry lhs/rhs plus destination register facts and return records can reference a prepared scalar result without printing or enabling the public case yet.
-
-Recommended narrow proof target after build: `ctest --test-dir build -R 'backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|target_instruction_records)$' --output-on-failure`.
+Delegate the next packet to add printer spelling and print coverage for selected scalar add/sub using the structured destination/result register facts now carried by scalar ALU records.
 
 ## Watchouts
 
-- Do not enable `tests/backend/case/return_add.c` before structured record, selected-node/operator, and printer coverage exists.
+- Do not enable `tests/backend/case/return_add.c` before printer coverage exists for selected scalar add/sub plus returned scalar results.
 - Reject named-case matching, fixture assembly text, expectation downgrades, or unsupported marking as progress.
 - Keep `return_add_sub_chain.c` and broader scalar ALU cases deferred unless they receive matching structured proof.
-- Step 2 should not edit `machine_printer.cpp` unless the supervisor deliberately folds printer support into the packet; the clean first cut is to establish the scalar destination/return-result record contract that Step 4 can print.
-- Watch for `I32` versus `I64` register views (`w` versus `x`) when converting prepared scalar result storage; current tests already enforce view mismatches fail closed.
+- The next printer packet should consume `ScalarInstructionRecord::result_register`; current `machine_printer.cpp` still intentionally fails selected scalar nodes closed.
+- Watch for `I32` versus `I64` register views (`w` versus `x`) when printing destination and operand registers.
 
 ## Proof
 
-Ran the supervisor-delegated inspection proof exactly:
+Ran the supervisor-delegated Step 2 narrow proof exactly:
 
 ```sh
-bash -lc 'set -o pipefail; { rg -n "ScalarInstructionRecord|ScalarAluOperationKind|ReturnInstructionRecord|MachinePrinterMnemonicKind|MachineOpcode::(Add|Sub|Branch)|return_add|aarch64|add|sub|ret|selected|machine node|machine-node" src/backend/mir/aarch64 tests/backend tests/backend/case/return_add.c CMakeLists.txt -g "*.md" -g "*.cpp" -g "*.hpp" -g "CMakeLists.txt"; } > test_after.log 2>&1; test -s test_after.log'
+bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|target_instruction_records)$"' > test_after.log 2>&1
 ```
 
-Result: passed; inspection output is preserved in `test_after.log`. This is sufficient for the inspection-only packet and intentionally does not include build/test execution.
+Result: passed; build plus 3 focused CTest tests passed for `backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|target_instruction_records)$`.
+
+Supervisor-side broader validation then replaced `test_after.log` with:
+
+```sh
+bash -lc 'set -o pipefail; cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R "^backend_aarch64_"' > test_after.log 2>&1
+```
+
+Result: passed; 24/24 `backend_aarch64_` tests passed. The broader validation output is now preserved in `test_after.log`.

@@ -1112,6 +1112,55 @@ c4c::backend::prepare::PreparedRegisterClass register_class_from_bank(
   return c4c::backend::prepare::PreparedRegisterClass::None;
 }
 
+std::vector<std::string_view> occupied_register_views(
+    const c4c::backend::prepare::PreparedStoragePlanValue& storage) {
+  std::vector<std::string_view> occupied;
+  occupied.reserve(storage.occupied_register_names.size());
+  for (const auto& name : storage.occupied_register_names) {
+    occupied.push_back(name);
+  }
+  if (occupied.empty() && storage.register_name.has_value()) {
+    occupied.push_back(*storage.register_name);
+  }
+  return occupied;
+}
+
+std::optional<RegisterOperand> make_prepared_register_operand(
+    const c4c::backend::prepare::PreparedValueHome& home,
+    const c4c::backend::prepare::PreparedStoragePlanValue& storage,
+    c4c::backend::bir::TypeKind type,
+    RegisterOperandRole role) {
+  if (home.kind != c4c::backend::prepare::PreparedValueHomeKind::Register ||
+      storage.encoding != c4c::backend::prepare::PreparedStorageEncodingKind::Register ||
+      !home.register_name.has_value() || !storage.register_name.has_value() ||
+      *home.register_name != *storage.register_name) {
+    return std::nullopt;
+  }
+
+  const auto expected_view = scalar_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto prepared_class = register_class_from_bank(storage.bank);
+  const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
+      *storage.register_name, storage.bank, prepared_class, expected_view);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = role,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = prepared_class,
+      .prepared_bank = storage.bank,
+      .expected_view = expected_view,
+      .contiguous_width = storage.contiguous_width,
+      .occupied_registers = occupied_register_views(storage),
+  };
+}
+
 std::optional<ImmediateOperand> make_scalar_immediate_operand(
     const c4c::backend::bir::Value& value,
     std::optional<c4c::backend::prepare::PreparedValueId> source_value_id = std::nullopt,
@@ -1189,27 +1238,12 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
     return PreparedScalarAluRecordError::UnsupportedOperandStorage;
   }
 
-  const auto expected_view = scalar_register_view(value.type);
-  if (!expected_view.has_value()) {
-    return PreparedScalarAluRecordError::UnsupportedOperandType;
-  }
-  const auto prepared_class = register_class_from_bank(storage->bank);
-  const auto converted = c4c::backend::aarch64::abi::convert_prepared_register(
-      *storage->register_name, storage->bank, prepared_class, expected_view);
-  if (!converted.has_value()) {
+  const auto reg =
+      make_prepared_register_operand(*home, *storage, value.type, RegisterOperandRole::StoragePlan);
+  if (!reg.has_value()) {
     return PreparedScalarAluRecordError::RegisterConversionFailed;
   }
-
-  out = make_register_operand(RegisterOperand{
-      .reg = *converted.reg,
-      .role = RegisterOperandRole::StoragePlan,
-      .value_id = home->value_id,
-      .value_name = home->value_name,
-      .prepared_class = prepared_class,
-      .prepared_bank = storage->bank,
-      .expected_view = expected_view,
-      .contiguous_width = storage->contiguous_width,
-  });
+  out = make_register_operand(*reg);
   return PreparedScalarAluRecordError::None;
 }
 
@@ -1667,7 +1701,9 @@ InstructionRecord make_branch_instruction(BranchInstructionRecord instruction) {
 
 InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
   std::vector<MachineEffectResource> defs;
-  if (instruction.result_value_id.has_value()) {
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value()) {
     defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
   }
   const auto selection = scalar_selection_status(instruction);
@@ -1688,6 +1724,7 @@ ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) 
       .result_value_id = alu.result_value_id,
       .result_value_name = alu.result_value_name,
       .result_type = alu.result_type,
+      .result_register = alu.result_register,
       .inputs = {alu.lhs, alu.rhs},
       .source_binary_opcode = alu.source_binary_opcode,
       .scalar_alu = alu,
@@ -2051,6 +2088,11 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       *result_home->register_name != *result_storage->register_name) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
   }
+  const auto result_register = make_prepared_register_operand(
+      *result_home, *result_storage, binary.result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::RegisterConversionFailed);
+  }
 
   OperandRecord lhs;
   OperandRecord rhs;
@@ -2075,6 +2117,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .result_value_id = result_home->value_id,
               .result_value_name = result_home->value_name,
               .result_type = binary.result.type,
+              .result_register = result_register,
               .lhs = lhs,
               .rhs = rhs,
               .supported_integer_operation = true,

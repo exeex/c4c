@@ -439,6 +439,7 @@ struct ScalarAluRecord {
   std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<RegisterOperand> result_register;
   OperandRecord lhs;
   OperandRecord rhs;
   bool supported_integer_operation = false;
@@ -460,6 +461,7 @@ struct ScalarInstructionRecord {
   std::optional<c4c::backend::prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<RegisterOperand> result_register;
   std::vector<OperandRecord> inputs;
   std::optional<c4c::backend::bir::BinaryOpcode> source_binary_opcode;
   std::optional<c4c::backend::bir::CastOpcode> source_cast_opcode;

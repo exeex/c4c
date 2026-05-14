@@ -48,6 +48,19 @@ aarch64_codegen::ScalarAluRecord scalar_alu_record(
       .result_value_id = result_id,
       .result_value_name = result_name,
       .result_type = type,
+      .result_register =
+          aarch64_codegen::RegisterOperand{
+              .reg = aarch64_abi::x_register(0),
+              .role = aarch64_codegen::RegisterOperandRole::StoragePlan,
+              .value_id = result_id,
+              .value_name = result_name,
+              .prepared_class = prepare::PreparedRegisterClass::General,
+              .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+              .expected_view = type == bir::TypeKind::I32 ? aarch64_abi::RegisterView::W
+                                                          : aarch64_abi::RegisterView::X,
+              .contiguous_width = 1,
+              .occupied_registers = {"x0"},
+          },
       .lhs = lhs,
       .rhs = rhs,
       .supported_integer_operation =
@@ -91,7 +104,15 @@ int add_and_sub_records_preserve_bir_and_prepared_value_facts() {
       alu.result_value_name != c4c::ValueNameId{6} || !alu.supported_integer_operation ||
       scalar->result_value_id != prepare::PreparedValueId{12} ||
       scalar->result_value_name != c4c::ValueNameId{6} ||
-      scalar->result_type != bir::TypeKind::I64 || scalar->inputs.size() != 2) {
+      scalar->result_type != bir::TypeKind::I64 || scalar->inputs.size() != 2 ||
+      !alu.result_register.has_value() || !scalar->result_register.has_value() ||
+      alu.result_register->reg != aarch64_abi::x_register(0) ||
+      alu.result_register->value_id != prepare::PreparedValueId{12} ||
+      scalar->result_register->expected_view != aarch64_abi::RegisterView::X ||
+      add_instruction.defs.size() != 1 ||
+      add_instruction.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      add_instruction.defs.front().reg != aarch64_abi::x_register(0) ||
+      add_instruction.defs.front().value_id != prepare::PreparedValueId{12}) {
     return fail("expected add ALU record to retain source opcode, types, and result identity");
   }
 
@@ -113,6 +134,15 @@ int add_and_sub_records_preserve_bir_and_prepared_value_facts() {
       aarch64_codegen::scalar_alu_operation_kind_name(sub_record.operation) != "sub" ||
       !sub_record.supported_integer_operation) {
     return fail("expected sub to use typed scalar ALU vocabulary");
+  }
+  const auto sub_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(sub_record));
+  if (!sub_record.result_register.has_value() ||
+      sub_record.result_register->expected_view != aarch64_abi::RegisterView::W ||
+      sub_instruction.defs.size() != 1 ||
+      sub_instruction.defs.front().reg != aarch64_abi::x_register(0) ||
+      sub_instruction.defs.front().value_id != prepare::PreparedValueId{20}) {
+    return fail("expected sub selected machine node to carry a typed destination register");
   }
 
   return 0;
