@@ -1,65 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/227_aarch64_module_phoenix_replacement_drafts.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Draft Public Bridge And Compatibility Projection
+Current Step ID: 7
+Current Step Title: Review Replacement Draft Set
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 6 by adding
-`src/backend/mir/aarch64/module/public_assembly_bridge.cpp.md` and
-`src/backend/mir/aarch64/module/compatibility_projection.cpp.md` as Stage 3
-replacement drafts. The public bridge routes canonical `MachineModule`,
-function, block, instruction, module-data, and relocation products to the
-shared `mir_printer`, with AArch64 owning only target render hooks. The
-compatibility projection derives `FunctionRecord::machine_nodes`, broad
-inspection records, provenance views, label views, and legacy register-string
-diagnostics after canonical lowering, with removal conditions and no semantic
-lowering authority.
+Completed plan Step 7 by reviewing the complete Stage 3 replacement draft set
+against `stage2_review_layout.md`, `stage2_to_stage3_handoff.md`, and parent
+224 constraints. Wrote
+`src/backend/mir/aarch64/module/stage3_draft_review.md` with an explicit accept
+decision for implementation conversion and no mandatory repair blockers.
 
 ## Suggested Next
 
-Delegate Step 7 to review the complete Stage 3 replacement draft set against
-the Stage 2 handoff and parent 224 boundary.
+Delegate the next plan step to convert the accepted Stage 3 draft set into the
+authorized implementation form, preserving the draft dependency order and
+header policy.
 
 ## Watchouts
 
-- Stage 3 is draft-only; do not edit real `.cpp`, `.hpp`, build, or test files.
-- Do not delete, disable, or build-disconnect the compiled legacy `module.cpp`.
-- Do not add component-level public headers. `helper.hpp` is the only allowed
-  header exception and must be justified before drafting.
-- Do not make `FunctionRecord::machine_nodes`, cached display strings, spelling
-  recovery, or broad public inspection records semantic lowering authority.
-- Do not introduce a target render API named `__repr__`.
-- If the Stage 2 artifact map appears wrong, stop and report a Stage 2 contract
-  repair blocker instead of silently adding or removing files.
-- Step 6 bridge/projection drafts should derive public assembly and
-  compatibility views from canonical `MachineModule`, `MachineFunction`,
-  `MachineBlock`, `MachineInstruction`, typed operands, prepared ABI facts,
-  and provenance after lowering.
-- The public bridge must route traversal and `.s` file structure through the
-  shared `mir_printer`; AArch64 should own only target rendering hooks.
-- Compatibility projection may expose broad public records and flat
-  `FunctionRecord::machine_nodes`, but only as migration views derived after
-  canonical lowering.
-- Step 7 should reject any draft that makes compatibility records, cached
-  strings, source spellings, flat `machine_nodes`, or public bridge output a
-  semantic lowering input.
+- Review accepted the draft set, but implementation conversion must not drift
+  into preserving the legacy catch-all record assembler.
+- Keep `FunctionRecord::machine_nodes`, broad inspection records, cached
+  display strings, source spellings, raw source/prepared views, and register
+  strings as compatibility or diagnostic outputs only.
+- Keep public assembly routed through the shared `mir_printer`; AArch64 should
+  own target rendering hooks only.
+- Do not introduce component-level public headers or a target render API named
+  `__repr__`.
 
 ## Proof
 
-Markdown-only proof written to `test_after.log` with concise read-only `rg`
-checks over both Step 6 drafts. The proof confirms both files are Stage 3
-replacement drafts. Public assembly bridge coverage includes canonical
-MIR/module data to shared `mir_printer`, AArch64 target-owned rendering hooks,
-`.s` emission through common traversal, owned inputs/outputs, indirect
-queries, forbidden knowledge, classification, and rejection of AArch64-owned
-traversal, cached string printing, and compatibility-vector printing.
-Compatibility projection coverage includes derived
-`FunctionRecord::machine_nodes`, broad inspection records, raw
-source/prepared provenance, label views, legacy register-string diagnostics,
-removal conditions, owned inputs/outputs, indirect queries, forbidden
-knowledge, classification, and rejection of projection as semantic lowering
-authority. No build was required for this markdown-only draft packet.
+Markdown-only proof written to `test_after.log`. The proof confirms every
+mandatory Stage 3 draft exists, only `module.hpp.md` exists among `.hpp.md`
+drafts, the review artifact records accept/block status, Stage 2 handoff
+alignment, parent 224 constraints, no cached display or flat-vector authority,
+no `__repr__` API, no real source/build/test edits, and no blockers or repair
+needs. No build was required for this markdown-only review packet.
