@@ -1,14 +1,22 @@
 # Common MIR Container And Target Printer Boundary
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 Last-Updated: 2026-05-14
 
+## Closure Note
+
+Closed after the active runbook completed Step 7 with full-suite validation.
+Backend MIR now has a common instruction-stream carrier under
+`src/backend/mir/`, AArch64 public assembly generation walks that carrier, and
+target spelling is delegated through AArch64 printer hooks. Remaining markdown
+shard conversion work stays with idea 229 and is not part of this closure.
+
 ## Lifecycle Note
 
-This idea remains the parent context for the common MIR/container boundary
-failure family, but it is superseded as the active route by the AArch64 module
-phoenix rebuild sequence:
+This idea was the parent context for the common MIR/container boundary failure
+family, and was superseded during execution by the AArch64 module phoenix
+rebuild sequence:
 
 - `ideas/open/225_aarch64_module_phoenix_extract_legacy_evidence.md`
 - `ideas/open/226_aarch64_module_phoenix_review_replacement_layout.md`
