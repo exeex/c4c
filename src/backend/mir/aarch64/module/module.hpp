@@ -157,8 +157,13 @@ struct BuildResult {
 [[nodiscard]] std::optional<MachineInstruction> lower_prepared_branch_terminator(
     const BlockLoweringContext& context,
     ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<MachineInstruction> lower_prepared_conditional_branch_terminator(
+    const BlockLoweringContext& context,
+    ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] c4c::backend::mir::MachineBlockSuccessor make_unconditional_branch_successor(
     const BlockLoweringContext& context);
+[[nodiscard]] std::vector<c4c::backend::mir::MachineBlockSuccessor>
+make_conditional_branch_successors(const BlockLoweringContext& context);
 [[nodiscard]] std::optional<ResolvedOperand> resolve_value_operand(
     prepare::PreparedValueId value_id,
     const FunctionLoweringContext& context,

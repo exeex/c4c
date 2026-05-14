@@ -601,6 +601,12 @@ InstructionDispatchResult dispatch_prepared_block(
       block.instructions.push_back(std::move(*lowered));
       block.successors.push_back(make_unconditional_branch_successor(context));
     }
+  } else if (context.control_flow_block->terminator_kind ==
+             c4c::backend::bir::TerminatorKind::CondBranch) {
+    if (auto lowered = lower_prepared_conditional_branch_terminator(context, diagnostics)) {
+      block.instructions.push_back(std::move(*lowered));
+      block.successors = make_conditional_branch_successors(context);
+    }
   } else {
     append_block_diagnostic(
         diagnostics,
