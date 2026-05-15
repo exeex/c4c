@@ -688,6 +688,8 @@ enum class InlineAsmOperandKind : unsigned char {
   RegisterOutput,
   TiedInput,
   IntegerImmediateInput,
+  MemoryInput,
+  AddressInput,
   Clobber,
 };
 
@@ -704,6 +706,10 @@ enum class InlineAsmOperandKind : unsigned char {
       return "tied_input";
     case InlineAsmOperandKind::IntegerImmediateInput:
       return "integer_immediate_input";
+    case InlineAsmOperandKind::MemoryInput:
+      return "memory_input";
+    case InlineAsmOperandKind::AddressInput:
+      return "address_input";
     case InlineAsmOperandKind::Clobber:
       return "clobber";
   }
@@ -718,6 +724,8 @@ struct InlineAsmOperandMetadata {
   std::optional<std::size_t> output_index;
   std::optional<std::size_t> tied_output_index;
   std::optional<std::string> name;
+  std::optional<MemoryAddress> memory_address;
+  std::optional<MemoryAddress> address;
 };
 
 struct InlineAsmMetadata {

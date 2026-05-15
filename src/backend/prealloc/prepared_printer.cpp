@@ -1841,6 +1841,12 @@ void append_inline_asm_carriers(std::ostringstream& out, const PreparedBirModule
         if (operand.name.has_value()) {
           out << ",name=\"" << escape_quoted_text(*operand.name) << "\"";
         }
+        if (operand.memory_address.has_value()) {
+          out << ",memory_address=yes";
+        }
+        if (operand.address.has_value()) {
+          out << ",address=yes";
+        }
         out << ",home=" << (operand.home.has_value() ? "yes" : "no") << "]";
       }
       for (std::size_t index = 0; index < carrier.clobbers.size(); ++index) {

@@ -176,6 +176,8 @@ struct InlineAsmTemplateModifierFacts {
         .output_index = std::nullopt,
         .tied_output_index = std::nullopt,
         .name = std::nullopt,
+        .memory_address = std::nullopt,
+        .address = std::nullopt,
     };
     if (token.empty()) {
       metadata.unsupported_facts.push_back(
@@ -188,6 +190,12 @@ struct InlineAsmTemplateModifierFacts {
       operand.output_index = next_output_index++;
     } else if (token == "i" || token == "I") {
       operand.kind = bir::InlineAsmOperandKind::IntegerImmediateInput;
+      operand.arg_index = next_arg_index++;
+    } else if (token == "m") {
+      operand.kind = bir::InlineAsmOperandKind::MemoryInput;
+      operand.arg_index = next_arg_index++;
+    } else if (token == "p") {
+      operand.kind = bir::InlineAsmOperandKind::AddressInput;
       operand.arg_index = next_arg_index++;
     } else if (decimal_digits_only(token)) {
       operand.kind = bir::InlineAsmOperandKind::TiedInput;

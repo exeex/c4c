@@ -1320,6 +1320,8 @@ prepared_intrinsic_operand_homes(
       .home = std::nullopt,
       .immediate_value = std::nullopt,
       .name = metadata.name,
+      .memory_address = metadata.memory_address,
+      .address = metadata.address,
   };
   if (metadata.arg_index.has_value() && *metadata.arg_index < call.args.size()) {
     operand.value = call.args[*metadata.arg_index];
@@ -1460,6 +1462,52 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
                                          carrier,
                                          "operand" + std::to_string(*operand.arg_index) +
                                              "_requires_integer_immediate");
+        }
+        break;
+      case bir::InlineAsmOperandKind::MemoryInput:
+        if (!operand.arg_index.has_value() || !operand.value.has_value()) {
+          append_inline_asm_missing_fact(
+              function_carriers,
+              carrier,
+              "missing_operand" +
+                  std::to_string(operand.arg_index.value_or(call.args.size())) + "_value");
+          break;
+        }
+        if (!operand.memory_address.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "missing_operand" +
+                                             std::to_string(*operand.arg_index) +
+                                             "_memory_address_authority");
+        } else {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "unsupported_operand" +
+                                             std::to_string(*operand.arg_index) +
+                                             "_memory_address_selection");
+        }
+        break;
+      case bir::InlineAsmOperandKind::AddressInput:
+        if (!operand.arg_index.has_value() || !operand.value.has_value()) {
+          append_inline_asm_missing_fact(
+              function_carriers,
+              carrier,
+              "missing_operand" +
+                  std::to_string(operand.arg_index.value_or(call.args.size())) + "_value");
+          break;
+        }
+        if (!operand.address.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "missing_operand" +
+                                             std::to_string(*operand.arg_index) +
+                                             "_address_authority");
+        } else {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "unsupported_operand" +
+                                             std::to_string(*operand.arg_index) +
+                                             "_address_selection");
         }
         break;
       case bir::InlineAsmOperandKind::Clobber:

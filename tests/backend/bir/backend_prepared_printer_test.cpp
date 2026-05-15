@@ -2708,7 +2708,9 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
     std::optional<std::size_t> arg_index = std::nullopt,
     std::optional<std::size_t> output_index = std::nullopt,
     std::optional<std::size_t> tied_output_index = std::nullopt,
-    std::optional<std::string> name = std::nullopt) {
+    std::optional<std::string> name = std::nullopt,
+    std::optional<bir::MemoryAddress> memory_address = std::nullopt,
+    std::optional<bir::MemoryAddress> address = std::nullopt) {
   return bir::InlineAsmOperandMetadata{
       .kind = kind,
       .constraint_index = constraint_index,
@@ -2717,6 +2719,8 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
       .output_index = output_index,
       .tied_output_index = tied_output_index,
       .name = std::move(name),
+      .memory_address = std::move(memory_address),
+      .address = std::move(address),
   };
 }
 
@@ -2837,33 +2841,80 @@ prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
   });
 
   bir::Block entry;
+  const bir::MemoryAddress pointer_address{
+      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+      .base_name = "x",
+      .base_value = bir::Value::named(bir::TypeKind::Ptr, "x"),
+      .byte_offset = 0,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
   entry.label = "entry";
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.inline_asm",
-      .args = {bir::Value::named(bir::TypeKind::I32, "x")},
-      .arg_types = {bir::TypeKind::I32},
-      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .args = {bir::Value::named(bir::TypeKind::I32, "x"),
+               bir::Value::named(bir::TypeKind::Ptr, "x")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::Ptr},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32),
+                  scalar_arg_abi(bir::TypeKind::Ptr)},
       .return_type = bir::TypeKind::Void,
       .inline_asm = bir::InlineAsmMetadata{
           .asm_text = "%q0 %[src]",
-          .constraints = "m,~{memory}",
+          .constraints = "m,p,~{memory}",
           .side_effects = true,
           .operands = {
-              inline_asm_operand(bir::InlineAsmOperandKind::Unsupported,
+              inline_asm_operand(bir::InlineAsmOperandKind::MemoryInput,
                                  0,
-                                 "m"),
-              inline_asm_operand(bir::InlineAsmOperandKind::Clobber,
+                                 "m",
+                                 std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::AddressInput,
                                  1,
+                                 "p",
+                                 std::size_t{1}),
+              inline_asm_operand(bir::InlineAsmOperandKind::Clobber,
+                                 2,
                                  "~{memory}"),
           },
           .unsupported_facts = {
-              "unsupported_constraint0:m",
-              "unsupported_clobber_constraint1",
+              "unsupported_clobber_constraint2",
               "unsupported_named_operands",
               "unsupported_template_modifiers",
           },
           .has_named_operand_references = true,
           .has_template_modifiers = true,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "x"),
+               bir::Value::named(bir::TypeKind::Ptr, "x")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::Ptr),
+                  scalar_arg_abi(bir::TypeKind::Ptr)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "",
+          .constraints = "m,p",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::MemoryInput,
+                                 0,
+                                 "m",
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 pointer_address),
+              inline_asm_operand(bir::InlineAsmOperandKind::AddressInput,
+                                 1,
+                                 "p",
+                                 std::size_t{1},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 pointer_address),
+          },
       },
   });
   entry.insts.push_back(bir::CallInst{
@@ -2974,18 +3025,45 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
   const auto prepared = prepare_inline_asm_fail_closed_dump_module();
   const auto* function_carriers =
       find_inline_asm_carriers(prepared, "inline_asm_fail_closed_dump_contract");
-  if (function_carriers == nullptr || function_carriers->carriers.size() != 2 ||
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 3 ||
       function_carriers->carriers[0].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing ||
       function_carriers->carriers[1].carrier_kind !=
+          prepare::PreparedInlineAsmCarrierKind::Missing ||
+      function_carriers->carriers[2].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing) {
     std::cerr << "[FAIL] expected fail-closed inline asm carrier diagnostics\n";
     return EXIT_FAILURE;
   }
+  const auto& memory_address_carrier = function_carriers->carriers[0];
+  if (memory_address_carrier.operands.size() != 3 ||
+      memory_address_carrier.operands[0].kind !=
+          bir::InlineAsmOperandKind::MemoryInput ||
+      memory_address_carrier.operands[0].arg_index.value_or(99) != 0 ||
+      memory_address_carrier.operands[0].memory_address.has_value() ||
+      memory_address_carrier.operands[1].kind !=
+          bir::InlineAsmOperandKind::AddressInput ||
+      memory_address_carrier.operands[1].arg_index.value_or(99) != 1 ||
+      memory_address_carrier.operands[1].address.has_value()) {
+    std::cerr << "[FAIL] expected structured memory/address inline asm operands\n";
+    return EXIT_FAILURE;
+  }
+  const auto& populated_authority_carrier = function_carriers->carriers[1];
+  if (populated_authority_carrier.operands.size() != 2 ||
+      !populated_authority_carrier.operands[0].memory_address.has_value() ||
+      !populated_authority_carrier.operands[1].address.has_value()) {
+    std::cerr << "[FAIL] expected populated memory/address authority to be retained\n";
+    return EXIT_FAILURE;
+  }
   const std::string dump = prepare::print(prepared);
   if (!expect_contains(dump,
-                       "missing fact=inst#0:unsupported_constraint0:m",
-                       "unsupported inline asm constraint diagnostic")) {
+                       "missing fact=inst#0:missing_operand0_memory_address_authority",
+                       "missing inline asm memory authority diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:missing_operand1_address_authority",
+                       "missing inline asm address authority diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
@@ -2999,17 +3077,27 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#0:unsupported_clobber_constraint1",
+                       "missing fact=inst#0:unsupported_clobber_constraint2",
                        "unsupported inline asm clobber diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#0:unsupported_clobber_operand1",
+                       "missing fact=inst#0:unsupported_clobber_operand2",
                        "unsupported inline asm clobber operand diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#1:missing_operand0_home",
+                       "missing fact=inst#1:unsupported_operand0_memory_address_selection",
+                       "unsupported inline asm memory selection diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#1:unsupported_operand1_address_selection",
+                       "unsupported inline asm address selection diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#2:missing_operand0_home",
                        "missing inline asm register home diagnostic")) {
     return EXIT_FAILURE;
   }

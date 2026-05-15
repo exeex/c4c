@@ -1895,6 +1895,8 @@ struct PreparedInlineAsmOperand {
   std::optional<PreparedValueHome> home;
   std::optional<std::int64_t> immediate_value;
   std::optional<std::string> name;
+  std::optional<c4c::backend::bir::MemoryAddress> memory_address;
+  std::optional<c4c::backend::bir::MemoryAddress> address;
 };
 
 struct PreparedInlineAsmCarrier {
