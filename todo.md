@@ -1,51 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/233_aarch64_global_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Print Remaining Relocation-Aware AArch64 Sequences
+Current Step ID: 9
+Current Step Title: Validate Semantic Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 8 printed the remaining terminal AArch64 address-materialization
-sequences from structured `AddressMaterializationRecord` fields.
+Step 9 validated semantic coverage for idea 233 and recorded the final handoff.
 
-- `LabelPageLow12` now prints the same page plus low-12 sequence as direct
-  globals, using the record's structured target-label text and result register.
-- `GotPageLow12` now prints a GOT load sequence from explicit symbol and
-  `GotRequired` policy facts:
-  `adrp <result>, :got:<symbol>` then
-  `ldr <result>, [<result>, :got_lo12:<symbol>]`.
-- `TlsRelative` now prints the local-exec thread-pointer-relative sequence from
-  TLS model/thread-pointer/relocation facts:
-  `mrs <result>, tpidr_el0`,
-  `add <result>, <result>, :tprel_hi12:<symbol>`, and
-  `add <result>, <result>, :tprel_lo12_nc:<symbol>`.
-- Nonzero prepared byte offsets still append an immediate `add` after GOT or
-  TLS base materialization; direct, string, and label keep the existing
-  relocation-offset spelling.
-- Printer tests cover label, GOT, and TLS output plus fail-closed missing GOT
-  policy and missing label text diagnostics.
+- Direct global and string-constant address materialization are covered by
+  structured prepared carriers, selected `DirectPageLow12`/string records, and
+  terminal ADRP plus low-12 ADD printer output.
+- Label address materialization is covered by structured target-label identity,
+  selected `LabelPageLow12` records, and terminal ADRP plus low-12 ADD output
+  from the selected record's target-label text.
+- GOT-backed global materialization is covered by explicit target/BIR/prepared
+  `GotRequired` policy, prepared `GotGlobal`, selected `GotPageLow12`, and
+  terminal `:got:`/`:got_lo12:` load output. Missing GOT policy remains
+  fail-closed.
+- TLS materialization is covered by explicit prepared/AArch64 local-exec
+  thread-pointer-relative facts (`tpidr_el0`, `tprel_hi12`,
+  `tprel_lo12_nc`) and terminal TLS output from the selected result register.
+- Global load/store memory addressing remains separate from result-producing
+  address materialization carriers; no load/store path was repurposed as an
+  address-materialization shortcut.
+- Selection and printing use structured symbol/text/label/policy/TLS fields;
+  the route does not infer behavior from rendered names, `is_extern`, storage
+  class text, or the archived implicit `x0` scratch convention.
 
 ## Suggested Next
 
-Plan-owner review/close decision for idea 233, or the next packet should be
-only residual validation/cleanup if the plan has an explicit remaining step.
+Idea 233 is ready for plan-owner close review.
 
 ## Watchouts
 
-- Output is driven by selected record fields and result registers, not by the
-  archived implicit `x0` scratch convention.
-- GOT printing requires the selected record's explicit `GotRequired` policy;
-  missing policy remains fail-closed.
-- Label printing requires structured `target_label_name`; missing label text
-  remains fail-closed.
-- TLS output is currently the local-exec AArch64 form represented by the
-  selected TLS facts.
+- The full-suite before/after baseline is now available as `test_before.log`
+  and `test_after.log`, both passing 3167/3167 tests.
+- Future expansion beyond the current TLS local-exec model should add explicit
+  policy/fact fields before selecting or printing new TLS forms.
+- Keep global load/store memory operands and result-producing address
+  materialization records separate in future backend work.
 
 ## Proof
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
 
-Result: passed, 139/139 backend tests green. Proof log: `test_after.log`.
+Result: passed, 3167/3167 full-suite tests green. Proof log: `test_after.log`.
