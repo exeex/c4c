@@ -1,7 +1,8 @@
 # AArch64 Variadic Machine Node Consumption
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/232_aarch64_variadic_function_entry_carriers.md
 
@@ -109,6 +110,33 @@ prepared/shared aggregate access-plan authority. Resume Step 4 at aggregate
 than reconstructing source selection, payload size/alignment, source
 coordinates, destination payload relationship, copy extent, or `va_list`
 progression in AArch64 target lowering.
+
+## Closure Notes
+
+Closed after selected AArch64 variadic helper consumption landed for the
+representative supported helper families:
+
+- `va_start` selected machine-node consumption in commit `6009e54a9`
+- scalar `va_arg` selected machine-node consumption in commit `b1a69adb6`
+- aggregate `va_arg` selected machine-node consumption in commit `8cacc4348`
+- `va_copy` selected machine-node consumption in commit `a52ccd25b`
+- final lifecycle summary in commit `6d039823e`
+
+The accepted route consumes prepared/shared homes, layout or access-plan facts,
+and helper scratch resources for the selected helper paths. It does not
+reconstruct AAPCS64 `va_list` layout, register-save or overflow offsets, named
+argument counts, operand homes, scalar or aggregate access plans, or scratch
+policy inside AArch64 selected-node lowering.
+
+Prerequisite ideas 244, 245, and 246 supplied the missing prepared/shared
+authority discovered during execution and are closed. No further blocker remains
+for this idea's selected helper-consumption scope.
+
+Close evidence: canonical backend proof in `test_before.log` records 139/139
+passing, and the close-time regression guard comparison against that accepted
+canonical proof passed with 139/139 before and after, no new failures. Recent
+milestone full-suite baseline reviews were also accepted by the supervisor,
+including 3167/3167.
 
 ## Reviewer Reject Signals
 
