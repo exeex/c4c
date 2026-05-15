@@ -1,40 +1,35 @@
 Status: Active
-Source Idea Path: ideas/open/245_prepared_scalar_va_arg_access_plan.md
+Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Validate And Hand Back To Idea 243
+Current Step ID: 3
+Current Step Title: Consume Prepared Facts For Scalar `va_arg`
 
 # Current Packet
 
 ## Just Finished
 
-Steps 1-3 of idea 245 are satisfied by the completed prerequisite slice:
-`helper_operand_homes.va_arg.scalar_access_plan` is defined, populated from
-prepared/shared AAPCS64 helper facts, and printed for focused tests. The fact
-records generic source class, scalar size/alignment, source/progression
-coordinates, overflow fallback progression, and the result-home relationship.
-Selected AArch64 scalar machine-node consumption remains intentionally
-unchanged and fail-closed.
+Lifecycle handoff completed: prerequisite idea 245 closed after supplying
+`helper_operand_homes.va_arg.scalar_access_plan`, and idea 243 is reactivated
+at scalar `va_arg` selected machine-node consumption.
 
 ## Suggested Next
 
-Have the supervisor or plan owner validate/close this prerequisite and hand
-back to parked idea 243. Do not start selected AArch64 scalar `va_arg`
-consumption while idea 245 is still the active lifecycle state.
+Execute Step 3 by consuming the prepared/shared scalar access-plan fact in
+AArch64 selected lowering. Start with the narrow scalar `va_arg` path and
+preserve fail-closed diagnostics for missing or incomplete prepared authority.
 
 ## Watchouts
 
-- Idea 245's remaining work is lifecycle validation and handoff, not selected
-  machine-node consumption.
-- Absence remains explicit in prepared dumps as `scalar_access_plan=<none>` for
-  scalar `va_arg` helper homes.
-- Reactivate idea 243 only after this prerequisite is accepted/closed; selected
-  lowering should then consume `scalar_access_plan` rather than recomputing
-  source classification from raw helper shape.
+- Do not reconstruct GP/FP/overflow source selection, scalar size/alignment,
+  result-home relationships, or `va_list` progression in AArch64 target
+  lowering.
+- Do not claim scalar `va_arg` support through prepared-printer coverage alone;
+  selected machine-node records and printer output are required.
+- Treat fixture-name matching, expectation-only changes, and unsupported
+  downgrades as route drift.
 
 ## Proof
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-Passed. `test_after.log` contains the canonical proof log with 139/139
-`backend_` tests passing.
+Lifecycle-only transition. Prerequisite proof was supplied for commit
+`770a457cf`: focused backend proof 139/139 and accepted full-suite baseline
+3167/3167.

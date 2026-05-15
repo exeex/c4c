@@ -1,7 +1,8 @@
 # Prepared Scalar `va_arg` Access Plan
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Blocked Idea: ideas/open/243_aarch64_variadic_machine_node_consumption.md
@@ -64,6 +65,22 @@ counts, or local ABI layout rules.
   without changing selected machine-node support claims.
 - Idea 243 can resume Step 3 with the access-plan fact as shared prepared
   authority instead of target-local reconstruction.
+
+## Closure Notes
+
+Commit `770a457cf` completed this prerequisite. It added the prepared/shared
+scalar `va_arg` access-plan carrier, populated it from AAPCS64 prepared helper
+facts, printed the fact for focused coverage, and preserved selected AArch64
+scalar `va_arg` consumption as a fail-closed non-goal.
+
+Accepted proof supplied by the supervisor:
+
+- focused backend proof: 139/139 `backend_` tests passing
+- full-suite baseline: 3167/3167 tests passing
+
+Idea 243 is clear to resume at scalar `va_arg` selected machine-node
+consumption, consuming `helper_operand_homes.va_arg.scalar_access_plan` as
+shared prepared authority.
 
 ## Reviewer Reject Signals
 
