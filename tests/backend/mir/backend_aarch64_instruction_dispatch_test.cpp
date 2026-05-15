@@ -1,8 +1,10 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
+#include "src/backend/mir/printer.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
@@ -22,12 +24,29 @@ namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
+namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
 int fail(std::string_view message) {
   std::cerr << message << "\n";
   return 1;
 }
+
+mir::MachinePrintResult print_route_block(
+    c4c::FunctionNameId function_name,
+    const aarch64_module::MachineBlock& block) {
+  aarch64_module::MachineFunction function;
+  function.function_name = function_name;
+  function.blocks.push_back(block);
+  return mir::print_machine_function(
+      function, aarch64_codegen::MachineInstructionPrinter{});
+}
+
+prepare::PreparedF128Carrier dispatch_f128_register_carrier(
+    c4c::FunctionNameId function_name,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const char* register_name);
 
 prepare::PreparedBirModule prepared_with_unsupported_instructions() {
   prepare::PreparedBirModule prepared;
@@ -2263,6 +2282,169 @@ prepare::PreparedBirModule prepared_with_f128_frame_slot_store(
             }},
     });
   }
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_f128_load_add_store_route() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.route");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.f128.route.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.route.entry");
+  const auto lhs_name = prepared.names.value_names.intern("%route.lhs.f128");
+  const auto rhs_name = prepared.names.value_names.intern("%route.rhs.f128");
+  const auto sum_name = prepared.names.value_names.intern("%route.sum.f128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.route",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.route.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                       .result =
+                           bir::Value::named(bir::TypeKind::F128, "%route.lhs.f128"),
+                       .slot_id = c4c::SlotNameId{10},
+                       .align_bytes = 16,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .size_bytes = 16,
+                               .align_bytes = 16,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_slot_id = c4c::SlotNameId{10},
+                           },
+                   },
+                   bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result =
+                           bir::Value::named(bir::TypeKind::F128, "%route.sum.f128"),
+                       .operand_type = bir::TypeKind::F128,
+                       .lhs = bir::Value::named(bir::TypeKind::F128, "%route.lhs.f128"),
+                       .rhs = bir::Value::named(bir::TypeKind::F128, "%route.rhs.f128"),
+                   },
+                   bir::StoreLocalInst{
+                       .slot_id = c4c::SlotNameId{11},
+                       .value =
+                           bir::Value::named(bir::TypeKind::F128, "%route.sum.f128"),
+                       .byte_offset = 16,
+                       .align_bytes = 16,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 16,
+                               .size_bytes = 16,
+                               .align_bytes = 16,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_slot_id = c4c::SlotNameId{11},
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  const auto lhs_carrier = dispatch_f128_register_carrier(
+      function_name, prepare::PreparedValueId{270}, lhs_name, "q6");
+  const auto rhs_carrier = dispatch_f128_register_carrier(
+      function_name, prepare::PreparedValueId{271}, rhs_name, "q8");
+  const auto sum_carrier = dispatch_f128_register_carrier(
+      function_name, prepare::PreparedValueId{272}, sum_name, "q4");
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = lhs_carrier.value_id,
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "q6",
+           },
+           prepare::PreparedValueHome{
+               .value_id = rhs_carrier.value_id,
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "q8",
+           },
+           prepare::PreparedValueHome{
+               .value_id = sum_carrier.value_id,
+               .function_name = function_name,
+               .value_name = sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "q4",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {fpr_storage(lhs_carrier.value_id, lhs_name, "q6"),
+                 fpr_storage(rhs_carrier.value_id, rhs_name, "q8"),
+                 fpr_storage(sum_carrier.value_id, sum_name, "q4")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 96,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = lhs_name,
+               .address_space = bir::AddressSpace::Default,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{30},
+                       .size_bytes = 16,
+                       .align_bytes = 16,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .stored_value_name = sum_name,
+               .address_space = bir::AddressSpace::Default,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{31},
+                       .byte_offset = 16,
+                       .size_bytes = 16,
+                       .align_bytes = 16,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers = {sum_carrier, lhs_carrier, rhs_carrier},
+  });
+  prepared.f128_runtime_helpers.functions.push_back(
+      prepare::PreparedF128RuntimeHelperFunction{
+          .function_name = function_name,
+          .helpers = {dispatch_f128_runtime_helper(function_name,
+                                                   1,
+                                                   bir::BinaryOpcode::Add,
+                                                   prepare::PreparedF128RuntimeHelperKind::Add,
+                                                   "__addtf3",
+                                                   sum_carrier,
+                                                   lhs_carrier,
+                                                   rhs_carrier)},
+      });
   return prepared;
 }
 
@@ -4787,6 +4969,81 @@ int block_dispatch_lowers_f128_frame_slot_store_from_prepared_carrier() {
   return 0;
 }
 
+int block_dispatch_prints_representative_f128_load_helper_store_route() {
+  auto prepared = prepared_with_f128_load_add_store_route();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 3 ||
+      !result.visited_terminator || result.emitted_instructions != 4 ||
+      block.instructions.size() != 4) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected representative f128 route to select load/helper/store/return");
+  }
+
+  const auto* load =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions[0].target.payload);
+  const auto* helper =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &block.instructions[1].target.payload);
+  const auto* store =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions[2].target.payload);
+  if (load == nullptr || helper == nullptr || store == nullptr ||
+      load->transport_kind != aarch64_codegen::F128TransportKind::LoadFromMemory ||
+      !load->reg.has_value() ||
+      !load->memory.has_value() ||
+      load->reg->reg != aarch64_abi::q_register(6) ||
+      load->memory->size_bytes != 16 ||
+      helper->callee_name != "__addtf3" ||
+      helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !helper->lhs.carrier_register.has_value() ||
+      !helper->rhs.carrier_register.has_value() ||
+      !helper->result.carrier_register.has_value() ||
+      helper->lhs.carrier_register->reg != aarch64_abi::q_register(6) ||
+      helper->rhs.carrier_register->reg != aarch64_abi::q_register(8) ||
+      helper->result.carrier_register->reg != aarch64_abi::q_register(4) ||
+      store->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
+      !store->reg.has_value() ||
+      !store->memory.has_value() ||
+      store->reg->reg != aarch64_abi::q_register(4) ||
+      store->memory->size_bytes != 16 ||
+      store->memory->stored_value_id != prepare::PreparedValueId{272}) {
+    return fail("expected representative f128 route to preserve full-width facts");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected representative f128 route to print: " + printed.diagnostic);
+  }
+  const std::string expected =
+      "    ldr q6, [sp]\n"
+      "    mov v0.16b, v6.16b\n"
+      "    mov v1.16b, v8.16b\n"
+      "    bl __addtf3\n"
+      "    mov v4.16b, v0.16b\n"
+      "    str q4, [sp, #16]\n"
+      "    ret\n";
+  if (printed.assembly != expected) {
+    std::cerr << printed.assembly;
+    return fail("expected representative f128 route to print canonical AArch64 text");
+  }
+  return 0;
+}
+
 int block_dispatch_reports_incomplete_f128_carrier_authority() {
   auto prepared = prepared_with_f128_frame_slot_store(true, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -5977,6 +6234,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_f128_frame_slot_store_from_prepared_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_prints_representative_f128_load_helper_store_route();
       status != 0) {
     return status;
   }
