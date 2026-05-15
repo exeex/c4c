@@ -1590,6 +1590,40 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
         out << "]";
         append_register_placement(out, "placement", binding->register_placement);
       };
+  auto append_marshaling_move =
+      [&](std::string_view label,
+          const std::optional<PreparedI128RuntimeHelper::MarshalingMove>& move) {
+        out << " " << label << "=";
+        if (!move.has_value()) {
+          out << "<missing>";
+          return;
+        }
+        out << prepared_i128_runtime_helper_marshal_direction_name(move->direction)
+            << "[phase=" << prepared_move_phase_name(move->phase)
+            << ",op=" << move_resolution_op_kind_name(move->op_kind)
+            << ",value=" << maybe_value_name(module.names, move->carrier_lane.value_name)
+            << "#" << move->carrier_lane.value_id
+            << ",lane=" << prepared_i128_lane_role_name(move->carrier_lane.role)
+            << "#" << move->carrier_lane.lane_index
+            << ",width=" << move->carrier_lane.width_bytes;
+        if (move->carrier_lane.register_name.has_value()) {
+          out << ",carrier_reg=" << *move->carrier_lane.register_name;
+        }
+        if (move->carrier_lane.slot_id.has_value()) {
+          out << ",carrier_slot=#" << *move->carrier_lane.slot_id;
+        }
+        if (move->carrier_lane.stack_offset_bytes.has_value()) {
+          out << ",carrier_stack_offset=" << *move->carrier_lane.stack_offset_bytes;
+        }
+        if (move->abi_register.helper_argument_index.has_value()) {
+          out << ",arg=" << *move->abi_register.helper_argument_index;
+        } else {
+          out << ",result";
+        }
+        out << ",abi_index=" << move->abi_register.abi_register_index
+            << ",abi_reg=" << move->abi_register.register_name << "]";
+        append_register_placement(out, "abi_placement", move->abi_register.register_placement);
+      };
   for (const auto& function_helpers : module.i128_runtime_helpers.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
         << "\n";
@@ -1683,6 +1717,13 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_abi_binding("rhs.high", helper.rhs_high_abi_argument);
       append_abi_binding("result.low", helper.result_low_abi_result);
       append_abi_binding("result.high", helper.result_high_abi_result);
+      out << " marshaling";
+      append_marshaling_move("lhs.low", helper.lhs_low_argument_move);
+      append_marshaling_move("lhs.high", helper.lhs_high_argument_move);
+      append_marshaling_move("rhs.low", helper.rhs_low_argument_move);
+      append_marshaling_move("rhs.high", helper.rhs_high_argument_move);
+      append_marshaling_move("result.low", helper.result_low_unmarshal_move);
+      append_marshaling_move("result.high", helper.result_high_unmarshal_move);
       if (!helper.missing_required_facts.empty()) {
         out << " missing_facts=";
         for (std::size_t index = 0; index < helper.missing_required_facts.size(); ++index) {

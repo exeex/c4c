@@ -1442,6 +1442,113 @@ void populate_i128_runtime_helper_abi_bindings(
   }
 }
 
+[[nodiscard]] std::optional<PreparedI128RuntimeHelper::MarshalingMove>
+make_i128_helper_marshaling_move(
+    const PreparedI128RuntimeHelper::LaneBinding& carrier_lane,
+    const PreparedI128RuntimeHelper::AbiRegisterBinding& abi_register,
+    PreparedI128RuntimeHelperMarshalDirection direction) {
+  return PreparedI128RuntimeHelper::MarshalingMove{
+      .direction = direction,
+      .phase = direction ==
+                       PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument
+                   ? PreparedMovePhase::BeforeCall
+                   : PreparedMovePhase::AfterCall,
+      .op_kind = PreparedMoveResolutionOpKind::Move,
+      .carrier_lane = carrier_lane,
+      .abi_register = abi_register,
+  };
+}
+
+void populate_i128_runtime_helper_marshaling(
+    PreparedI128RuntimeHelper& helper) {
+  helper.lhs_low_argument_move.reset();
+  helper.lhs_high_argument_move.reset();
+  helper.rhs_low_argument_move.reset();
+  helper.rhs_high_argument_move.reset();
+  helper.result_low_unmarshal_move.reset();
+  helper.result_high_unmarshal_move.reset();
+
+  auto bind_move =
+      [&](std::string_view fact_prefix,
+          const std::optional<PreparedI128RuntimeHelper::LaneBinding>& carrier_lane,
+          const std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>& abi_register,
+          PreparedI128RuntimeHelperMarshalDirection direction,
+          std::optional<PreparedI128RuntimeHelper::MarshalingMove>& output) {
+        output.reset();
+        if (!carrier_lane.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_carrier_lane");
+          return;
+        }
+        if (!abi_register.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_abi_binding");
+          return;
+        }
+        const bool has_register_lane = carrier_lane->register_name.has_value();
+        const bool has_memory_lane =
+            carrier_lane->slot_id.has_value() &&
+            carrier_lane->stack_offset_bytes.has_value();
+        if (carrier_lane->carrier_kind == PreparedI128CarrierKind::Missing ||
+            (!has_register_lane && !has_memory_lane)) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_complete_carrier_lane");
+          return;
+        }
+        if (abi_register->register_bank != PreparedRegisterBank::Gpr ||
+            abi_register->register_class != PreparedRegisterClass::General ||
+            abi_register->register_name.empty() ||
+            abi_register->occupied_register_names.empty() ||
+            abi_register->contiguous_width == 0 ||
+            !abi_register->register_placement.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_register_binding");
+          return;
+        }
+        if (carrier_lane->value_id != abi_register->value_id ||
+            carrier_lane->value_name != abi_register->value_name ||
+            carrier_lane->role != abi_register->role ||
+            carrier_lane->lane_index != abi_register->lane_index ||
+            carrier_lane->width_bytes != abi_register->width_bytes) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_matching_lane_identity");
+          return;
+        }
+        output = make_i128_helper_marshaling_move(*carrier_lane, *abi_register, direction);
+      };
+
+  bind_move("lhs_low",
+            helper.lhs_low_lane,
+            helper.lhs_low_abi_argument,
+            PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+            helper.lhs_low_argument_move);
+  bind_move("lhs_high",
+            helper.lhs_high_lane,
+            helper.lhs_high_abi_argument,
+            PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+            helper.lhs_high_argument_move);
+  bind_move("rhs_low",
+            helper.rhs_low_lane,
+            helper.rhs_low_abi_argument,
+            PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+            helper.rhs_low_argument_move);
+  bind_move("rhs_high",
+            helper.rhs_high_lane,
+            helper.rhs_high_abi_argument,
+            PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+            helper.rhs_high_argument_move);
+  bind_move("result_low",
+            helper.result_low_lane,
+            helper.result_low_abi_result,
+            PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane,
+            helper.result_low_unmarshal_move);
+  bind_move("result_high",
+            helper.result_high_lane,
+            helper.result_high_abi_result,
+            PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane,
+            helper.result_high_unmarshal_move);
+}
+
 void populate_i128_runtime_helper_boundary_policy(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function,
@@ -1507,6 +1614,12 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.rhs_high_lane.reset();
       helper.result_low_lane.reset();
       helper.result_high_lane.reset();
+      helper.lhs_low_argument_move.reset();
+      helper.lhs_high_argument_move.reset();
+      helper.rhs_low_argument_move.reset();
+      helper.rhs_high_argument_move.reset();
+      helper.result_low_unmarshal_move.reset();
+      helper.result_high_unmarshal_move.reset();
       helper.memory_return.reset();
       helper.missing_required_facts.clear();
       populate_i128_runtime_helper_boundary_policy(
@@ -1547,6 +1660,7 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
               helper, "missing_i128_helper_result_ownership_policy");
           break;
       }
+      populate_i128_runtime_helper_marshaling(helper);
     }
   }
 }

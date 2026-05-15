@@ -1724,6 +1724,22 @@ enum class PreparedI128RuntimeHelperAbiTransition {
   return "unknown";
 }
 
+enum class PreparedI128RuntimeHelperMarshalDirection {
+  CarrierLaneToAbiArgument,
+  AbiResultToCarrierLane,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_marshal_direction_name(
+    PreparedI128RuntimeHelperMarshalDirection direction) {
+  switch (direction) {
+    case PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument:
+      return "carrier_lane_to_abi_argument";
+    case PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane:
+      return "abi_result_to_carrier_lane";
+  }
+  return "unknown";
+}
+
 struct PreparedI128RuntimeHelper {
   struct LaneBinding {
     PreparedValueId value_id = 0;
@@ -1751,6 +1767,15 @@ struct PreparedI128RuntimeHelper {
     std::size_t contiguous_width = 1;
     std::vector<std::string> occupied_register_names;
     std::optional<PreparedRegisterPlacement> register_placement;
+  };
+
+  struct MarshalingMove {
+    PreparedI128RuntimeHelperMarshalDirection direction =
+        PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument;
+    PreparedMovePhase phase = PreparedMovePhase::BeforeCall;
+    PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
+    LaneBinding carrier_lane;
+    AbiRegisterBinding abi_register;
   };
 
   struct ResourcePolicy {
@@ -1809,6 +1834,12 @@ struct PreparedI128RuntimeHelper {
   std::optional<AbiRegisterBinding> rhs_high_abi_argument;
   std::optional<AbiRegisterBinding> result_low_abi_result;
   std::optional<AbiRegisterBinding> result_high_abi_result;
+  std::optional<MarshalingMove> lhs_low_argument_move;
+  std::optional<MarshalingMove> lhs_high_argument_move;
+  std::optional<MarshalingMove> rhs_low_argument_move;
+  std::optional<MarshalingMove> rhs_high_argument_move;
+  std::optional<MarshalingMove> result_low_unmarshal_move;
+  std::optional<MarshalingMove> result_high_unmarshal_move;
   std::optional<MemoryReturnOwnership> memory_return;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;

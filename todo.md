@@ -1,60 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Low/High ABI Argument And Result Bindings
+Current Step ID: 3
+Current Step Title: Add Structured Helper Marshaling Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added prepared/shared low/high ABI register-binding authority for
-supported direct-result i128 div/rem helpers.
+Step 3 added structured helper marshaling and unmarshaling facts for supported
+i128 div/rem helpers.
 
 What changed:
 
-- `PreparedI128RuntimeHelper` now carries structured `AbiRegisterBinding`
-  facts beside existing canonical carrier lane bindings.
-- Prepared helper records expose lhs/rhs low/high ABI argument bindings and
-  result low/high ABI result bindings. Each binding records value identity,
-  lane role/index, lane width, helper argument index where applicable, ABI
-  register index, register bank/class, concrete register name, occupied
-  register set, contiguous width, and register placement.
-- The prepared producer populates these bindings from target ABI policy during
-  helper enrichment in `prealloc.cpp`; AArch64 printer/dispatch code does not
-  synthesize or recover helper registers.
-- Unsupported targets, non-div/rem families, non-direct result ownership,
-  missing callee identity, and incomplete target register binding state remain
-  fail-closed through `missing_required_facts`.
-- Prepared printer output now dumps the helper ABI binding section, and focused
-  prepared tests prove low/high argument and result binding facts for supported
-  direct-result div/rem helpers.
+- `PreparedI128RuntimeHelper` now carries structured `MarshalingMove` facts for
+  lhs/rhs low/high source lanes and direct-result low/high lanes.
+- Source marshaling moves connect canonical `PreparedI128Carrier` lane
+  authority to Step 2 helper ABI argument-register bindings with explicit
+  `carrier_lane_to_abi_argument` direction and `before_call` phase.
+- Result unmarshaling moves connect helper ABI result-register bindings to
+  canonical result carrier lanes with explicit `abi_result_to_carrier_lane`
+  direction and `after_call` phase.
+- Marshaling facts preserve value identity, lane role/index, lane width,
+  carrier register or memory slot/offset authority, ABI register identity,
+  register placement, phase, and move operation kind.
+- Memory-backed carrier lanes are represented structurally through slot and
+  stack-offset fields; the producer does not require register-pair lanes just
+  to describe marshal/unmarshal movement.
+- Incomplete carrier lanes, missing ABI bindings, unsupported target register
+  bindings, and lane identity mismatches still diagnose through helper
+  `missing_required_facts`.
+- Prepared printer output now dumps helper marshaling facts, and focused
+  prepared tests prove source marshal, result unmarshal, and memory-backed
+  carrier-lane facts.
 
-No helper marshaling/unmarshaling move records, selected helper-call ownership,
-terminal `bl <callee>` helper-call output, fake `PreparedCallPlan` entries,
-target-local fixed-register marshaling, scalar-i64 substitute, conversion
-helper mapping, or memory-return helper support was added.
+No selected-call ownership, live-preservation authority, terminal `bl <callee>`
+helper-call output, fake `PreparedCallPlan` entries, target-local fixed-register
+marshaling, scalar-i64 substitute, conversion helper mapping, or memory-return
+helper support was added.
 
 ## Suggested Next
 
-Execute Step 3: add structured helper marshaling facts. The next packet should
-describe source carrier lane to helper ABI argument-register moves and helper
-ABI result-register to result carrier lane moves as producer-owned facts,
-consuming the Step 2 ABI bindings plus canonical `PreparedI128Carrier` lane
-authority. Keep terminal helper-call printing fail-closed until selected-call
-ownership and live-preservation facts are also present.
+Execute Step 4: add helper call-clobber, live-preservation, and selected-call
+ownership authority. The next packet should decide when a helper boundary has
+complete resource/clobber/live-preservation facts and explicit ownership of the
+terminal helper call, while keeping printer output fail-closed until those
+selected facts are consumed.
 
 ## Watchouts
 
-- Step 2 only adds ABI register bindings. Lane-to-ABI marshaling and
-  ABI-to-lane unmarshaling are still missing, so `I128RuntimeHelperBoundaryRecord`
-  printer output must continue to reject executable helper calls.
-- Do not reinterpret the new ABI bindings as proof that current carrier lanes
-  already occupy helper ABI registers. They are target ABI destinations/sources
-  for future move records.
-- Generic `PreparedMoveBundle` and `PreparedAbiBinding` remain real-call
-  surfaces. Helper div/rem operations need helper-specific marshaling facts
-  before they can share terminal call behavior.
+- Step 3 describes marshal/unmarshal moves as prepared facts only. It still
+  does not authorize terminal helper-call printing.
+- `I128RuntimeHelperBoundaryRecord` printer output must remain fail-closed
+  until selected-call ownership and live-preservation facts are structurally
+  available and consumed.
+- Do not convert helper div/rem operations into fake retained calls or generic
+  `PreparedCallPlan` records. The helper-specific facts now carry ABI binding
+  and marshal/unmarshal authority directly.
 - Float/i128 conversion helpers and memory-return helper families remain
   deferred.
 
@@ -74,7 +76,7 @@ passed, 6/6 tests. Proof log: `test_after.log`.
 
 Additional hygiene: `git diff --check` passed.
 
-Supervisor full-suite acceptance also passed for this Step 2 slice:
+Supervisor full-suite acceptance also passed for this Step 3 slice:
 
 ```sh
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1

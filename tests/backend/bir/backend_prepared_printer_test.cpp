@@ -2994,6 +2994,41 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
+                       "marshaling lhs.low=carrier_lane_to_abi_argument",
+                       "i128 helper marshaling section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "phase=before_call,op=move,value=lhs#",
+                       "i128 helper source lane marshaling phase")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "arg=0,abi_index=0,abi_reg=rdi",
+                       "i128 helper source lane ABI argument move target")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "carrier_slot=#",
+                       "i128 helper source lane memory-backed marshal source")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result.high=abi_result_to_carrier_lane",
+                       "i128 helper result unmarshal section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "phase=after_call,op=move,value=wide.div#",
+                       "i128 helper result lane unmarshal phase")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result,abi_index=1,abi_reg=rdx",
+                       "i128 helper result lane ABI source register")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
                        "carrier=memory_backed,slot=",
                        "i128 helper structured memory-backed lane authority")) {
     return EXIT_FAILURE;

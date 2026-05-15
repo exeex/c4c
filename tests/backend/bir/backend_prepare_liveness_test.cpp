@@ -2691,6 +2691,30 @@ int check_i128_runtime_helper_mapping_authority() {
          !helper.result_low_lane->stack_offset_bytes.has_value())) {
       return fail("prepared i128 runtime helper mapping lost source opcode, callee, or value authority");
     }
+    if (index == 0) {
+      if (!helper.lhs_low_argument_move.has_value() ||
+          !helper.lhs_high_argument_move.has_value() ||
+          !helper.rhs_low_argument_move.has_value() ||
+          !helper.rhs_high_argument_move.has_value() ||
+          !helper.result_low_unmarshal_move.has_value() ||
+          !helper.result_high_unmarshal_move.has_value() ||
+          helper.lhs_low_argument_move->direction !=
+              prepare::PreparedI128RuntimeHelperMarshalDirection::
+                  CarrierLaneToAbiArgument ||
+          helper.lhs_low_argument_move->phase != prepare::PreparedMovePhase::BeforeCall ||
+          helper.lhs_low_argument_move->carrier_lane.register_name !=
+              helper.lhs_low_lane->register_name ||
+          helper.lhs_low_argument_move->abi_register.register_name != "rdi" ||
+          helper.result_high_unmarshal_move->direction !=
+              prepare::PreparedI128RuntimeHelperMarshalDirection::
+                  AbiResultToCarrierLane ||
+          helper.result_high_unmarshal_move->phase != prepare::PreparedMovePhase::AfterCall ||
+          helper.result_high_unmarshal_move->abi_register.register_name != "rdx" ||
+          helper.result_high_unmarshal_move->carrier_lane.register_name !=
+              helper.result_high_lane->register_name) {
+        return fail("prepared i128 runtime helper lost structured marshaling move authority");
+      }
+    }
   }
 
   if (std::none_of(helpers->helpers.begin(),
@@ -2732,6 +2756,13 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("arg=1,abi_index=3,bank=gpr,class=general,reg=rcx") == std::string::npos ||
       dump.find("result.high=r.u#") == std::string::npos ||
       dump.find("result,abi_index=1,bank=gpr,class=general,reg=rdx") == std::string::npos ||
+      dump.find("marshaling lhs.low=carrier_lane_to_abi_argument") == std::string::npos ||
+      dump.find("phase=before_call,op=move,value=p.lhs#") == std::string::npos ||
+      dump.find("carrier_slot=#") == std::string::npos ||
+      dump.find("arg=0,abi_index=0,abi_reg=rdi") == std::string::npos ||
+      dump.find("result.high=abi_result_to_carrier_lane") == std::string::npos ||
+      dump.find("phase=after_call,op=move,value=q.s#") == std::string::npos ||
+      dump.find("result,abi_index=1,abi_reg=rdx") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||
       dump.find("result_requires_register_pair_carrier") == std::string::npos ||
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
