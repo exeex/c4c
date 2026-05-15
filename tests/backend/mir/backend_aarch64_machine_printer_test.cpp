@@ -257,6 +257,73 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
   return 0;
 }
 
+int selected_structured_memory_subset_prints_loads_and_stores() {
+  auto load_address = frame_slot(32);
+  load_address.result_value_id = prepare::PreparedValueId{24};
+  load_address.result_value_name = c4c::ValueNameId{25};
+  const auto load = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address = load_address,
+          .result_value_id = prepare::PreparedValueId{24},
+          .result_value_name = c4c::ValueNameId{25},
+          .value_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+      });
+
+  auto frame_store_address = frame_slot(40);
+  frame_store_address.size_bytes = 4;
+  frame_store_address.align_bytes = 4;
+  frame_store_address.stored_value_id = prepare::PreparedValueId{26};
+  frame_store_address.stored_value_name = c4c::ValueNameId{27};
+  const auto frame_store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = frame_store_address,
+          .value = aarch64_codegen::make_register_operand(wreg(1)),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto pointer_base = xreg(2);
+  const auto pointer_store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{3},
+                  .stored_value_id = prepare::PreparedValueId{28},
+                  .stored_value_name = c4c::ValueNameId{29},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+                  .base_register = pointer_base,
+                  .pointer_value_name = c4c::ValueNameId{30},
+                  .pointer_value_id = prepare::PreparedValueId{31},
+                  .byte_offset = 24,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .address_space = bir::AddressSpace::Tls,
+                  .can_use_base_plus_offset = true,
+              },
+          .value = aarch64_codegen::make_register_operand(wreg(3)),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto result = print_common_instruction_nodes({load, frame_store, pointer_store});
+  if (!result.ok) {
+    return fail("expected selected structured memory subset to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr w0, [sp, #32]\n"
+      "    str w1, [sp, #40]\n"
+      "    str w3, [x2, #24]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "structured memory load/store printer drift guard");
+}
+
 int selected_scalar_add_sub_and_register_return_print_from_structured_operands() {
   const auto add = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -1154,6 +1221,74 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected scalar with unprintable sub operands to fail closed");
   }
 
+  auto load_address = frame_slot(48);
+  load_address.result_value_id = prepare::PreparedValueId{34};
+  load_address.result_value_name = c4c::ValueNameId{35};
+  const auto load_missing_destination = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address = load_address,
+          .result_value_id = prepare::PreparedValueId{34},
+          .result_value_name = c4c::ValueNameId{35},
+          .value_type = bir::TypeKind::I32,
+      });
+  const auto load_missing_destination_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(load_missing_destination);
+  if (load_missing_destination_result.ok ||
+      load_missing_destination_result.diagnostic.find(
+          "load node is missing a structured destination register operand") ==
+          std::string::npos) {
+    return fail("expected selected load without destination register to fail closed");
+  }
+
+  const auto pointer_store_missing_base = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{3},
+                  .stored_value_id = prepare::PreparedValueId{36},
+                  .stored_value_name = c4c::ValueNameId{37},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+                  .byte_offset = 8,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .can_use_base_plus_offset = true,
+              },
+          .value = aarch64_codegen::make_register_operand(wreg(4)),
+          .value_type = bir::TypeKind::I32,
+      });
+  const auto pointer_store_missing_base_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(pointer_store_missing_base);
+  if (pointer_store_missing_base_result.ok ||
+      pointer_store_missing_base_result.diagnostic.find(
+          "memory address is not printable") == std::string::npos) {
+    return fail("expected pointer-value store without base register to fail closed");
+  }
+
+  auto unprepared_store_address = frame_slot(56);
+  unprepared_store_address.support =
+      aarch64_codegen::MemoryOperandSupportKind::DeferredUnsupported;
+  unprepared_store_address.stored_value_id = prepare::PreparedValueId{38};
+  unprepared_store_address.stored_value_name = c4c::ValueNameId{39};
+  const auto unprepared_store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = unprepared_store_address,
+          .value = aarch64_codegen::make_register_operand(wreg(5)),
+          .value_type = bir::TypeKind::I32,
+      });
+  const auto unprepared_store_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(unprepared_store);
+  if (unprepared_store_result.ok ||
+      unprepared_store_result.diagnostic.find("memory operand is outside the selected subset") ==
+          std::string::npos) {
+    return fail("expected unprepared memory base to fail closed before printing");
+  }
+
   const auto call_missing_provenance = aarch64_codegen::make_call_instruction(
       aarch64_codegen::CallInstructionRecord{
           .direct_callee =
@@ -1787,6 +1922,10 @@ int main() {
     return result;
   }
   if (const int result = selected_branch_and_store_nodes_print_without_semantic_roundtrip();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_structured_memory_subset_prints_loads_and_stores();
       result != 0) {
     return result;
   }

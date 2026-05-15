@@ -271,6 +271,8 @@ enum class PreparedMemoryOperandRecordError {
   AddressFactMismatch,
   MissingPointerValueName,
   MissingPointerValueHome,
+  MissingPointerValueStorage,
+  UnsupportedPointerValueStorage,
   AmbiguousPointerValueHome,
   PointerValueMismatch,
   StringIdentityMismatch,

@@ -330,9 +330,28 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
 
 mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruction,
                                                const MemoryInstructionRecord& memory) {
-  if (memory.memory_kind == MemoryInstructionKind::Load) {
+  if (memory.address.support != MemoryOperandSupportKind::Prepared ||
+      !memory.address.can_use_base_plus_offset) {
     return target_unsupported(bad_header(instruction) +
-                              "load node is missing a structured destination register operand");
+                              "memory address is not a prepared base+offset");
+  }
+  const auto address = memory_address(memory.address);
+  if (address.empty()) {
+    return target_unsupported(bad_header(instruction) + "memory address is not printable");
+  }
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) + "memory mnemonic is not printable");
+  }
+
+  if (memory.memory_kind == MemoryInstructionKind::Load) {
+    if (!memory.result_register.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "load node is missing a structured destination register operand");
+    }
+    std::ostringstream out;
+    out << mnemonic << " " << register_name(*memory.result_register) << ", " << address;
+    return target_printed({out.str()});
   }
   if (!memory.value.has_value()) {
     return target_unsupported(bad_header(instruction) +
@@ -342,21 +361,6 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   if (memory.value->kind != OperandKind::Register || value == nullptr) {
     return target_unsupported(bad_header(instruction) + "store value is not a register operand");
   }
-  if (memory.address.support != MemoryOperandSupportKind::Prepared ||
-      !memory.address.can_use_base_plus_offset) {
-    return target_unsupported(bad_header(instruction) +
-                              "store address is not a prepared base+offset");
-  }
-  const auto address = memory_address(memory.address);
-  if (address.empty()) {
-    return target_unsupported(bad_header(instruction) + "store address is not printable");
-  }
-
-  const auto mnemonic = required_primary_mnemonic(instruction);
-  if (mnemonic.empty()) {
-    return target_unsupported(bad_header(instruction) + "store mnemonic is not printable");
-  }
-
   std::ostringstream out;
   out << mnemonic << " " << register_name(*value) << ", " << address;
   return target_printed({out.str()});

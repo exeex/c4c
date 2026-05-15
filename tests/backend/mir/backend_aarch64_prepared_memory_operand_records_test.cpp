@@ -553,6 +553,13 @@ int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
       stored_register->occupied_registers.front() != "w1") {
     return fail("expected pointer-value store source register authority");
   }
+  if (!store_record.address.base_register.has_value() ||
+      store_record.address.base_register->value_id != prepare::PreparedValueId{12} ||
+      store_record.address.base_register->value_name != fixture.pointer_name ||
+      store_record.address.base_register->occupied_registers.empty() ||
+      store_record.address.base_register->occupied_registers.front() != "x2") {
+    return fail("expected pointer-value store base register authority");
+  }
   const auto instruction = aarch64_codegen::make_memory_instruction(store_record);
   if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       instruction.opcode != aarch64_codegen::MachineOpcode::Store ||
