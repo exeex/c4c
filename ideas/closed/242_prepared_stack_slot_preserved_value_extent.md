@@ -1,8 +1,17 @@
 # Prepared Stack-Slot Preserved-Value Extents
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 Parent Context: ideas/open/231_aarch64_call_frame_machine_nodes.md
+
+## Closure Summary
+
+Prepared stack-slot preserved values now carry explicit size and alignment
+facts from prepared/shared authority, prepared observations expose those facts,
+and AArch64 consumes complete prepared records into structured memory-preserve
+effects without target-local extent inference. Missing prepared extents fail
+closed.
 
 ## Intent
 
