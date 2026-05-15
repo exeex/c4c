@@ -1,9 +1,25 @@
 # AArch64 Cache Hint Builtin Intrinsic Carriers
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/242_aarch64_barrier_cache_hint_builtin_intrinsic_carriers.md
+
+## Closure Summary
+
+Closed after adding carrier-only support for `llvm.aarch64.dc.cvau` and
+`llvm.aarch64.hint(i32 1)`, with BIR semantic facts, prepared carrier
+visibility, fail-closed tests, and dispatch/printer boundary tests proving the
+new carriers are not selected or printed by this route.
+
+Builtin-address scope was concluded as an ownership boundary: no concrete
+non-materialization representative currently belongs to this intrinsic-carrier
+route. Existing direct, GOT, string, label, and TLS address cases remain owned
+by address-materialization or TLS materialization routes.
+
+Closure validation used matching `^backend_` before/after logs with 139/139
+tests passing and no new failures.
 
 ## Goal
 
