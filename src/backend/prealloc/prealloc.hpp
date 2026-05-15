@@ -1687,6 +1687,18 @@ enum class PreparedI128RuntimeHelperKind {
 }
 
 struct PreparedI128RuntimeHelper {
+  struct LaneBinding {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    PreparedI128CarrierKind carrier_kind = PreparedI128CarrierKind::Missing;
+    PreparedI128LaneRole role = PreparedI128LaneRole::Low;
+    std::size_t lane_index = 0;
+    std::size_t width_bytes = 8;
+    std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
   FunctionNameId function_name = kInvalidFunctionName;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -1702,6 +1714,13 @@ struct PreparedI128RuntimeHelper {
   PreparedI128RuntimeHelperFamily helper_family = PreparedI128RuntimeHelperFamily::DivRem;
   PreparedI128RuntimeHelperKind helper_kind = PreparedI128RuntimeHelperKind::SignedDiv;
   std::string callee_name;
+  std::optional<LaneBinding> lhs_low_lane;
+  std::optional<LaneBinding> lhs_high_lane;
+  std::optional<LaneBinding> rhs_low_lane;
+  std::optional<LaneBinding> rhs_high_lane;
+  std::optional<LaneBinding> result_low_lane;
+  std::optional<LaneBinding> result_high_lane;
+  std::vector<std::string> missing_required_facts;
 };
 
 struct PreparedI128RuntimeHelperFunction {

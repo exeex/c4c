@@ -1201,6 +1201,101 @@ void populate_i128_carriers(PreparedBirModule& prepared) {
   }
 }
 
+void append_i128_runtime_helper_fact(PreparedI128RuntimeHelper& helper,
+                                     std::string fact) {
+  if (std::find(helper.missing_required_facts.begin(),
+                helper.missing_required_facts.end(),
+                fact) == helper.missing_required_facts.end()) {
+    helper.missing_required_facts.push_back(std::move(fact));
+  }
+}
+
+[[nodiscard]] PreparedI128RuntimeHelper::LaneBinding make_i128_helper_lane_binding(
+    const PreparedI128Carrier& carrier,
+    const PreparedI128LaneCarrier& lane) {
+  return PreparedI128RuntimeHelper::LaneBinding{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
+      .role = lane.role,
+      .lane_index = lane.lane_index,
+      .width_bytes = lane.width_bytes,
+      .register_name = lane.register_name,
+      .slot_id = lane.slot_id,
+      .stack_offset_bytes = lane.stack_offset_bytes,
+  };
+}
+
+void populate_i128_helper_lanes_from_carrier(
+    const PreparedI128CarrierFunction* function_carriers,
+    PreparedI128RuntimeHelper& helper,
+    PreparedValueId value_id,
+    std::optional<PreparedI128RuntimeHelper::LaneBinding>& low,
+    std::optional<PreparedI128RuntimeHelper::LaneBinding>& high,
+    std::string_view fact_prefix) {
+  low.reset();
+  high.reset();
+  if (function_carriers == nullptr) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_missing_prepared_i128_carriers");
+    return;
+  }
+
+  const auto* carrier = find_prepared_i128_carrier(*function_carriers, value_id);
+  if (carrier == nullptr) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_missing_prepared_i128_carrier");
+    return;
+  }
+
+  low = make_i128_helper_lane_binding(*carrier, carrier->low_lane);
+  high = make_i128_helper_lane_binding(*carrier, carrier->high_lane);
+
+  if (carrier->kind != PreparedI128CarrierKind::RegisterPair) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_requires_register_pair_carrier");
+  }
+  for (const auto& fact : carrier->missing_required_facts) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_carrier_fact:" + fact);
+  }
+}
+
+void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
+  for (auto& function_helpers : prepared.i128_runtime_helpers.functions) {
+    const auto* function_carriers =
+        find_prepared_i128_carriers(prepared.i128_carriers, function_helpers.function_name);
+    for (auto& helper : function_helpers.helpers) {
+      helper.lhs_low_lane.reset();
+      helper.lhs_high_lane.reset();
+      helper.rhs_low_lane.reset();
+      helper.rhs_high_lane.reset();
+      helper.result_low_lane.reset();
+      helper.result_high_lane.reset();
+      helper.missing_required_facts.clear();
+
+      populate_i128_helper_lanes_from_carrier(function_carriers,
+                                             helper,
+                                             helper.lhs_value_id,
+                                             helper.lhs_low_lane,
+                                             helper.lhs_high_lane,
+                                             "lhs");
+      populate_i128_helper_lanes_from_carrier(function_carriers,
+                                             helper,
+                                             helper.rhs_value_id,
+                                             helper.rhs_low_lane,
+                                             helper.rhs_high_lane,
+                                             "rhs");
+      populate_i128_helper_lanes_from_carrier(function_carriers,
+                                             helper,
+                                             helper.result_value_id,
+                                             helper.result_low_lane,
+                                             helper.result_high_lane,
+                                             "result");
+    }
+  }
+}
+
 [[nodiscard]] std::optional<PreparedIndirectCalleePlan> build_indirect_callee_plan(
     const PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
@@ -2323,6 +2418,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);
   populate_i128_carriers(prepared_);
+  populate_i128_runtime_helper_lanes(prepared_);
 }
 
 PreparedBirModule prepare_semantic_bir_module_with_options(

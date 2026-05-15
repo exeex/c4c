@@ -1531,6 +1531,30 @@ void append_i128_carriers(std::ostringstream& out, const PreparedBirModule& modu
 
 void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-i128-runtime-helpers ---\n";
+  auto append_lane = [&](std::string_view label,
+                         const std::optional<PreparedI128RuntimeHelper::LaneBinding>& lane) {
+    out << " " << label << "=";
+    if (!lane.has_value()) {
+      out << "<missing>";
+      return;
+    }
+    out << maybe_value_name(module.names, lane->value_name)
+        << "#" << lane->value_id
+        << ":" << prepared_i128_lane_role_name(lane->role)
+        << "[index=" << lane->lane_index
+        << ",width=" << lane->width_bytes
+        << ",carrier=" << prepared_i128_carrier_kind_name(lane->carrier_kind);
+    if (lane->register_name.has_value()) {
+      out << ",reg=" << *lane->register_name;
+    }
+    if (lane->slot_id.has_value()) {
+      out << ",slot=#" << *lane->slot_id;
+    }
+    if (lane->stack_offset_bytes.has_value()) {
+      out << ",stack_offset=" << *lane->stack_offset_bytes;
+    }
+    out << "]";
+  };
   for (const auto& function_helpers : module.i128_runtime_helpers.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
         << "\n";
@@ -1549,7 +1573,23 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
           << "#" << helper.lhs_value_id
           << " rhs=" << maybe_value_name(module.names, helper.rhs_value_name)
           << "#" << helper.rhs_value_id
-          << "\n";
+          << " lanes";
+      append_lane("lhs.low", helper.lhs_low_lane);
+      append_lane("lhs.high", helper.lhs_high_lane);
+      append_lane("rhs.low", helper.rhs_low_lane);
+      append_lane("rhs.high", helper.rhs_high_lane);
+      append_lane("result.low", helper.result_low_lane);
+      append_lane("result.high", helper.result_high_lane);
+      if (!helper.missing_required_facts.empty()) {
+        out << " missing_facts=";
+        for (std::size_t index = 0; index < helper.missing_required_facts.size(); ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          out << helper.missing_required_facts[index];
+        }
+      }
+      out << "\n";
     }
     for (const auto& fact : function_helpers.missing_required_facts) {
       out << "    missing fact=" << fact << "\n";

@@ -1844,7 +1844,7 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
               "i128_div_rem_helper_requires_prepared_value_id_for_result_lhs_rhs");
           continue;
         }
-        function_helpers.helpers.push_back(PreparedI128RuntimeHelper{
+        PreparedI128RuntimeHelper helper{
             .function_name = regalloc_function.function_name,
             .block_index = block_index,
             .instruction_index = instruction_index,
@@ -1860,7 +1860,8 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
             .helper_family = PreparedI128RuntimeHelperFamily::DivRem,
             .helper_kind = i128_div_rem_helper_kind(binary->opcode),
             .callee_name = std::string(i128_div_rem_helper_callee(binary->opcode)),
-        });
+        };
+        function_helpers.helpers.push_back(std::move(helper));
         continue;
       }
 

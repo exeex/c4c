@@ -9,6 +9,7 @@
 #include <iostream>
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -2220,8 +2221,9 @@ bir::Block* find_block(bir::Function& function, const char* block_label) {
 }
 
 prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
+  prepare::PreparedBirModule seeded;
   bir::Module module;
-  module.target_triple = "riscv64-unknown-linux-gnu";
+  module.target_triple = "x86_64-unknown-linux-gnu";
 
   bir::Function function;
   function.name = "i128_runtime_helper_mapping_dump_contract";
@@ -2258,16 +2260,36 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
   entry.terminator = bir::ReturnTerminator{};
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
+  seeded.module = std::move(module);
+  seeded.target_profile = c4c::default_target_profile(c4c::TargetArch::X86_64);
 
-  return prepare::prepare_semantic_bir_module_with_options(
-      module,
-      riscv_target_profile(),
-      prepare::PrepareOptions{
-          .run_legalize = true,
-          .run_stack_layout = true,
-          .run_liveness = true,
-          .run_regalloc = true,
-      });
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  for (const std::string_view value_name : {"lhs", "rhs", "wide.div", "wide.rem"}) {
+    set_register_group_override(prepared,
+                                "i128_runtime_helper_mapping_dump_contract",
+                                value_name,
+                                prepare::PreparedRegisterClass::General,
+                                2);
+  }
+
+  options.run_legalize = false;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), options);
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
 }
 
 }  // namespace
@@ -2917,6 +2939,26 @@ int main() {
   if (!expect_contains(i128_helper_dump,
                        "i128_helper block=0 inst=1 family=div_rem kind=unsigned_rem opcode=urem callee=__umodti3 source_type=i128 result_type=i128 result=wide.rem#",
                        "i128 unsigned rem helper mapping detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "lhs.low=lhs#",
+                       "i128 helper lhs low lane identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result.high=wide.rem#",
+                       "i128 helper result high lane identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "carrier=memory_backed,slot=",
+                       "i128 helper structured memory-backed lane authority")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result_requires_register_pair_carrier",
+                       "i128 helper non-register lane fail-closed diagnostic")) {
     return EXIT_FAILURE;
   }
 
