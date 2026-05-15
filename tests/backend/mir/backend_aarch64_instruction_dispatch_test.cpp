@@ -170,10 +170,11 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
 
 enum class InlineAsmCarrierFixtureKind {
   Complete,
+  SupportedTemplateModifier,
   Incomplete,
   MissingResultHome,
   UnsupportedOperand,
-  TemplateModifier,
+  UnsupportedTemplateModifier,
 };
 
 prepare::PreparedValueHome inline_asm_register_home(
@@ -226,7 +227,11 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
   const auto imm_value = bir::Value::immediate_i32(7);
 
   bir::InlineAsmMetadata inline_asm{
-      .asm_text = "add %0, %1, %2",
+      .asm_text = kind == InlineAsmCarrierFixtureKind::SupportedTemplateModifier
+                      ? "add %w0, %w1, %w2\nmov %x0, %x1"
+                      : kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
+                            ? "add %q0, %w1, %w2"
+                            : "add %0, %1, %2",
       .constraints = "=r,0,r,i",
       .side_effects = true,
       .operands =
@@ -256,7 +261,13 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .constraint = "i",
                .arg_index = std::size_t{2},
            }},
-      .has_template_modifiers = kind == InlineAsmCarrierFixtureKind::TemplateModifier,
+      .unsupported_facts =
+          kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
+              ? std::vector<std::string>{"unsupported_template_modifiers"}
+              : std::vector<std::string>{},
+      .has_template_modifiers =
+          kind == InlineAsmCarrierFixtureKind::SupportedTemplateModifier ||
+          kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
   };
 
   prepared.module.functions.push_back(bir::Function{
@@ -296,7 +307,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
 
   prepare::PreparedInlineAsmCarrier carrier{
       .function_name = function_name,
-      .carrier_kind = kind == InlineAsmCarrierFixtureKind::Incomplete
+      .carrier_kind = kind == InlineAsmCarrierFixtureKind::Incomplete ||
+                              kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
                           ? prepare::PreparedInlineAsmCarrierKind::Missing
                           : prepare::PreparedInlineAsmCarrierKind::Complete,
       .block_index = 0,
@@ -348,9 +360,12 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
       .result_home = kind == InlineAsmCarrierFixtureKind::MissingResultHome
                          ? std::nullopt
                          : std::optional<prepare::PreparedValueHome>{out_home},
-      .missing_required_facts = kind == InlineAsmCarrierFixtureKind::Incomplete
-                                    ? std::vector<std::string>{"missing_result_home"}
-                                    : std::vector<std::string>{},
+      .missing_required_facts =
+          kind == InlineAsmCarrierFixtureKind::Incomplete
+              ? std::vector<std::string>{"missing_result_home"}
+              : kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
+                    ? std::vector<std::string>{"unsupported_template_modifiers"}
+                    : std::vector<std::string>{},
   };
 
   prepared.inline_asm_carriers.functions.push_back(
@@ -4319,7 +4334,8 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
 
 int block_dispatch_selects_complete_inline_asm_machine_record() {
   auto prepared =
-      prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::Complete);
+      prepared_with_inline_asm_carrier(
+          InlineAsmCarrierFixtureKind::SupportedTemplateModifier);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -4349,9 +4365,9 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
     return fail("expected selected inline-asm assembler machine record");
   }
   if (!assembler->has_inline_asm_payload ||
-      assembler->inline_asm_template != "add %0, %1, %2" ||
+      assembler->inline_asm_template != "add %w0, %w1, %w2\nmov %x0, %x1" ||
       assembler->inline_asm_constraints != "=r,0,r,i" ||
-      !assembler->side_effects || assembler->inline_asm_has_template_modifiers ||
+      !assembler->side_effects || !assembler->inline_asm_has_template_modifiers ||
       assembler->inline_asm_has_named_operand_references) {
     return fail("expected inline-asm record to preserve raw payload facts");
   }
@@ -4395,6 +4411,13 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
           aarch64_codegen::MachineSideEffectKind::InlineAssembly) {
     return fail("expected inline-asm side-effect marker on selected record");
   }
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      block.instructions.front().target);
+  if (!printed.ok || printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0] != "add w0, w0, w1" ||
+      printed.instruction_lines[1] != "mov x0, x0") {
+    return fail("expected supported inline-asm modifiers to print after dispatch");
+  }
   if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
           block.instructions.back().target.payload)) {
     return fail("expected return after selected inline-asm record");
@@ -4410,7 +4433,7 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{"missing_result_register_home"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
-      std::pair{InlineAsmCarrierFixtureKind::TemplateModifier,
+      std::pair{InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
                 std::string_view{"unsupported_template_modifiers"}},
   };
 

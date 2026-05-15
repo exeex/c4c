@@ -96,7 +96,20 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   return asm_text.find("%[") != std::string_view::npos;
 }
 
-[[nodiscard]] bool inline_asm_template_has_modifier(std::string_view asm_text) {
+struct InlineAsmTemplateModifierFacts {
+  bool has_modifier = false;
+  bool has_unsupported_modifier = false;
+};
+
+[[nodiscard]] bool inline_asm_template_modifier_is_supported(char modifier,
+                                                             char operand) {
+  return (modifier == 'w' || modifier == 'x') &&
+         operand >= '0' && operand <= '9';
+}
+
+[[nodiscard]] InlineAsmTemplateModifierFacts inline_asm_template_modifier_facts(
+    std::string_view asm_text) {
+  InlineAsmTemplateModifierFacts facts;
   for (std::size_t index = 0; index + 2 < asm_text.size(); ++index) {
     if (asm_text[index] != '%') {
       continue;
@@ -109,14 +122,19 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
     const char operand = asm_text[index + 2];
     if (((modifier >= 'A' && modifier <= 'Z') || (modifier >= 'a' && modifier <= 'z')) &&
         ((operand >= '0' && operand <= '9') || operand == '[')) {
-      return true;
+      facts.has_modifier = true;
+      if (!inline_asm_template_modifier_is_supported(modifier, operand)) {
+        facts.has_unsupported_modifier = true;
+      }
     }
   }
-  return false;
+  return facts;
 }
 
 [[nodiscard]] bir::InlineAsmMetadata make_inline_asm_metadata(
     const c4c::codegen::lir::LirInlineAsmOp& inline_asm) {
+  const auto template_modifier_facts =
+      inline_asm_template_modifier_facts(inline_asm.asm_text);
   bir::InlineAsmMetadata metadata{
       .asm_text = inline_asm.asm_text,
       .constraints = inline_asm.constraints,
@@ -126,7 +144,7 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
       .unsupported_facts = {},
       .has_named_operand_references =
           inline_asm_template_has_named_operand_reference(inline_asm.asm_text),
-      .has_template_modifiers = inline_asm_template_has_modifier(inline_asm.asm_text),
+      .has_template_modifiers = template_modifier_facts.has_modifier,
   };
 
   std::size_t next_arg_index = 0;
@@ -173,7 +191,7 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   if (metadata.has_named_operand_references) {
     metadata.unsupported_facts.push_back("unsupported_named_operands");
   }
-  if (metadata.has_template_modifiers) {
+  if (template_modifier_facts.has_unsupported_modifier) {
     metadata.unsupported_facts.push_back("unsupported_template_modifiers");
   }
   return metadata;

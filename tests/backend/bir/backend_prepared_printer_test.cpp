@@ -2763,7 +2763,7 @@ prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
           .primary_class = bir::AbiValueClass::Integer,
       },
       .inline_asm = bir::InlineAsmMetadata{
-          .asm_text = "add %0, %0, #7",
+          .asm_text = "add %w0, %x0, #7",
           .constraints = "=r,0,I",
           .side_effects = true,
           .operands = {
@@ -2783,6 +2783,7 @@ prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
                                  "I",
                                  std::size_t{1}),
           },
+          .has_template_modifiers = true,
       },
   });
   entry.terminator = bir::ReturnTerminator{
@@ -2817,7 +2818,7 @@ prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
       .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
       .return_type = bir::TypeKind::Void,
       .inline_asm = bir::InlineAsmMetadata{
-          .asm_text = "%w0 %[src]",
+          .asm_text = "%q0 %[src]",
           .constraints = "m,~{memory}",
           .side_effects = true,
           .operands = {
@@ -2889,6 +2890,7 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
       tied_carrier.operands[2].kind !=
           bir::InlineAsmOperandKind::IntegerImmediateInput ||
       tied_carrier.operands[2].immediate_value.value_or(0) != 7 ||
+      !tied_carrier.has_template_modifiers ||
       !tied_carrier.result_home.has_value() ||
       !tied_carrier.missing_required_facts.empty()) {
     std::cerr << "[FAIL] output/tie/immediate inline asm carrier incomplete\n";
@@ -2902,7 +2904,7 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "inline_asm_carrier asm=\"add %0, %0, #7\" "
+                       "inline_asm_carrier asm=\"add %w0, %x0, #7\" "
                        "constraints=\"=r,0,I\" block_index=0 inst_index=1 "
                        "side_effects=yes operands=3 result=out result_home=yes",
                        "complete inline asm carrier")) {
@@ -2956,7 +2958,7 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
     return EXIT_FAILURE;
   }
   if (!expect_not_contains(dump,
-                           "inline_asm_carrier asm=\"%w0 %[src]\"",
+                           "inline_asm_carrier asm=\"%q0 %[src]\"",
                            "incomplete inline asm carrier printer record")) {
     return EXIT_FAILURE;
   }

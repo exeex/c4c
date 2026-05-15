@@ -112,6 +112,87 @@ aarch64_codegen::RegisterOperand qreg(unsigned index) {
   };
 }
 
+aarch64_codegen::InstructionRecord selected_inline_asm_instruction(
+    aarch64_codegen::AssemblerInstructionRecord record) {
+  auto instruction = aarch64_codegen::make_assembler_instruction(std::move(record));
+  instruction.surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode;
+  instruction.selection =
+      aarch64_codegen::MachineNodeStatusRecord{
+          .status = aarch64_codegen::MachineNodeSelectionStatus::Selected};
+  return instruction;
+}
+
+aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
+    std::string templ = "add %w0, %w1, %w2\nmov %x0, #%3") {
+  auto output = wreg(0);
+  output.role = aarch64_codegen::RegisterOperandRole::ValueHome;
+  output.value_id = prepare::PreparedValueId{50};
+  output.value_name = c4c::ValueNameId{50};
+  auto tied = wreg(0);
+  tied.role = aarch64_codegen::RegisterOperandRole::ValueHome;
+  tied.value_id = prepare::PreparedValueId{51};
+  tied.value_name = c4c::ValueNameId{51};
+  auto input = wreg(1);
+  input.role = aarch64_codegen::RegisterOperandRole::ValueHome;
+  input.value_id = prepare::PreparedValueId{52};
+  input.value_name = c4c::ValueNameId{52};
+
+  const auto immediate = aarch64_codegen::make_immediate_operand(
+      aarch64_codegen::ImmediateOperand{
+          .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+          .type = bir::TypeKind::I32,
+          .signed_value = 7,
+          .unsigned_value = 7,
+          .source_value_id = prepare::PreparedValueId{53},
+          .source_value_name = c4c::ValueNameId{53},
+      });
+
+  return aarch64_codegen::AssemblerInstructionRecord{
+      .operands =
+          {aarch64_codegen::make_register_operand(output),
+           aarch64_codegen::make_register_operand(tied),
+           aarch64_codegen::make_register_operand(input),
+           immediate},
+      .has_inline_asm_payload = true,
+      .side_effects = true,
+      .inline_asm_template = std::move(templ),
+      .inline_asm_constraints = "=r,0,r,i",
+      .inline_asm_has_template_modifiers = true,
+      .inline_asm_operands =
+          {aarch64_codegen::InlineAsmMachineOperandRecord{
+               .kind = bir::InlineAsmOperandKind::RegisterOutput,
+               .constraint_index = 0,
+               .constraint = "=r",
+               .output_index = std::size_t{0},
+               .selected_operand = aarch64_codegen::make_register_operand(output),
+           },
+           aarch64_codegen::InlineAsmMachineOperandRecord{
+               .kind = bir::InlineAsmOperandKind::TiedInput,
+               .constraint_index = 1,
+               .constraint = "0",
+               .arg_index = std::size_t{0},
+               .tied_output_index = std::size_t{0},
+               .selected_operand = aarch64_codegen::make_register_operand(tied),
+           },
+           aarch64_codegen::InlineAsmMachineOperandRecord{
+               .kind = bir::InlineAsmOperandKind::RegisterInput,
+               .constraint_index = 2,
+               .constraint = "r",
+               .arg_index = std::size_t{1},
+               .name = std::string{"rhs"},
+               .selected_operand = aarch64_codegen::make_register_operand(input),
+           },
+           aarch64_codegen::InlineAsmMachineOperandRecord{
+               .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+               .constraint_index = 3,
+               .constraint = "i",
+               .arg_index = std::size_t{2},
+               .immediate_value = std::int64_t{7},
+               .selected_operand = immediate,
+           }},
+  };
+}
+
 const prepare::PreparedAtomicOperationCarrier* complete_atomic_carrier() {
   static const prepare::PreparedAtomicOperationCarrier carrier{
       .carrier_kind = prepare::PreparedAtomicOperationCarrierKind::Complete,
@@ -3515,6 +3596,117 @@ int remaining_address_materialization_printer_paths_use_structured_facts() {
   return 0;
 }
 
+int selected_inline_asm_template_prints_from_structured_operands() {
+  const auto inline_asm =
+      selected_inline_asm_instruction(selected_inline_asm_record());
+  const auto result = print_common_instruction_nodes({inline_asm});
+  if (!result.ok) {
+    return fail("expected selected inline-asm template to print: " +
+                result.diagnostic);
+  }
+  if (const int check = expect_equal(result.assembly,
+                                     "    add w0, w0, w1\n"
+                                     "    mov x0, #7\n",
+                                     "selected inline-asm substitution");
+      check != 0) {
+    return check;
+  }
+
+  const auto literal_percent = selected_inline_asm_instruction(
+      selected_inline_asm_record("mov %0, %2 // %%literal"));
+  const auto literal_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(literal_percent);
+  if (!literal_result.ok) {
+    return fail("expected selected inline-asm literal percent to print: " +
+                literal_result.diagnostic);
+  }
+  if (const int check = expect_equal(literal_result.instruction_lines.front(),
+                                     "mov w0, w1 // %literal",
+                                     "selected inline-asm literal percent");
+      check != 0) {
+    return check;
+  }
+  return 0;
+}
+
+int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
+  auto unknown_operand = selected_inline_asm_instruction(
+      selected_inline_asm_record("add %w0, %w1, %w9"));
+  const auto unknown_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(unknown_operand);
+  if (unknown_result.ok ||
+      unknown_result.diagnostic.find("unknown operand") == std::string::npos) {
+    return fail("expected inline-asm unknown operand to fail closed");
+  }
+
+  auto unsupported_modifier = selected_inline_asm_instruction(
+      selected_inline_asm_record("add %q0, %w1, %w2"));
+  const auto modifier_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(unsupported_modifier);
+  if (modifier_result.ok ||
+      modifier_result.diagnostic.find("unsupported template modifier") ==
+          std::string::npos) {
+    return fail("expected inline-asm unsupported modifier to fail closed");
+  }
+
+  auto missing_selected = selected_inline_asm_record("add %w0, %w1, %w2");
+  missing_selected.inline_asm_operands[2].selected_operand = std::nullopt;
+  const auto missing_selected_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(missing_selected)));
+  if (missing_selected_result.ok ||
+      missing_selected_result.diagnostic.find("missing selected operand") ==
+          std::string::npos) {
+    return fail("expected inline-asm missing selected operand to fail closed");
+  }
+
+  auto missing_tie = selected_inline_asm_record("add %w0, %w1, %w2");
+  missing_tie.inline_asm_operands[1].tied_output_index = std::nullopt;
+  const auto missing_tie_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(missing_tie)));
+  if (missing_tie_result.ok ||
+      missing_tie_result.diagnostic.find("missing tied output index") ==
+          std::string::npos) {
+    return fail("expected inline-asm missing tie to fail closed");
+  }
+
+  auto unsupported_constraint = selected_inline_asm_record("add %w0, %w1, %w2");
+  unsupported_constraint.inline_asm_operands[2].constraint = "m";
+  const auto unsupported_constraint_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(unsupported_constraint)));
+  if (unsupported_constraint_result.ok ||
+      unsupported_constraint_result.diagnostic.find("unsupported constraint") ==
+          std::string::npos) {
+    return fail("expected inline-asm unsupported constraint to fail closed");
+  }
+
+  auto named_operand = selected_inline_asm_record("add %w0, %w1, %[rhs]");
+  named_operand.inline_asm_has_named_operand_references = true;
+  const auto named_operand_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(named_operand)));
+  if (named_operand_result.ok ||
+      named_operand_result.diagnostic.find("named operand references") ==
+          std::string::npos) {
+    return fail("expected inline-asm named operand reference to fail closed");
+  }
+
+  auto clobber = selected_inline_asm_record("add %w0, %w1, %w2");
+  clobber.inline_asm_operands[2].kind = bir::InlineAsmOperandKind::Clobber;
+  clobber.inline_asm_operands[2].constraint = "~{x1}";
+  const auto clobber_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(clobber)));
+  if (clobber_result.ok ||
+      clobber_result.diagnostic.find("unsupported constraint") ==
+          std::string::npos) {
+    return fail("expected inline-asm clobber operand to fail closed");
+  }
+  return 0;
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -4432,6 +4624,15 @@ int main() {
     return result;
   }
   if (const int result = remaining_address_materialization_printer_paths_use_structured_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_inline_asm_template_prints_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_inline_asm_template_rejects_incomplete_or_unsupported_records();
       result != 0) {
     return result;
   }

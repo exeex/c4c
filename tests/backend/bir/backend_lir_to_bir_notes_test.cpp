@@ -2428,10 +2428,44 @@ LirModule make_structured_inline_asm_metadata_module() {
   entry.insts.push_back(LirInlineAsmOp{
       .result = LirOperand("%out"),
       .ret_type = "i32",
-      .asm_text = "add %0, %1, #7",
+      .asm_text = "add %w0, %x1, #7",
       .constraints = "=r,0,I",
       .side_effects = true,
       .args_str = "i32 %x, i32 7",
+  });
+  entry.terminator = LirRet{
+      .value_str = "%out",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_unsupported_template_modifier_inline_asm_metadata_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+
+  LirFunction function;
+  function.name = "unsupported_template_modifier_inline_asm_metadata";
+  function.signature_text =
+      "define i32 @unsupported_template_modifier_inline_asm_metadata(i32 %x)";
+  function.params.push_back({"%x", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand("%out"),
+      .ret_type = "i32",
+      .asm_text = "mov %q0, %1",
+      .constraints = "=r,0",
+      .side_effects = true,
+      .args_str = "i32 %x",
   });
   entry.terminator = LirRet{
       .value_str = "%out",
@@ -2456,13 +2490,13 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
     return fail("structured inline asm fixture should lower to an inline asm call");
   }
   const auto& inline_asm = *call->inline_asm;
-  if (inline_asm.asm_text != "add %0, %1, #7" ||
+  if (inline_asm.asm_text != "add %w0, %x1, #7" ||
       inline_asm.constraints != "=r,0,I" ||
       !inline_asm.side_effects ||
       !inline_asm.args_text.empty() ||
       inline_asm.operands.size() != 3 ||
       inline_asm.has_named_operand_references ||
-      inline_asm.has_template_modifiers ||
+      !inline_asm.has_template_modifiers ||
       !inline_asm.unsupported_facts.empty()) {
     return fail("structured inline asm metadata lost top-level facts");
   }
@@ -2482,6 +2516,29 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
       call->args[0] != c4c::backend::bir::Value::named(TypeKind::I32, "%x") ||
       call->args[1] != c4c::backend::bir::Value::immediate_i32(7)) {
     return fail("structured inline asm typed operands were not lowered");
+  }
+
+  auto unsupported_result = try_lower_to_bir_with_options(
+      make_unsupported_template_modifier_inline_asm_metadata_module(),
+      BirLoweringOptions{});
+  if (!unsupported_result.module.has_value()) {
+    return fail("unsupported inline asm modifier fixture should still lower to BIR facts");
+  }
+  const auto& unsupported_function = unsupported_result.module->functions.front();
+  const auto* unsupported_call =
+      std::get_if<c4c::backend::bir::CallInst>(
+          &unsupported_function.blocks.front().insts.front());
+  if (unsupported_call == nullptr || !unsupported_call->inline_asm.has_value() ||
+      !unsupported_call->inline_asm->has_template_modifiers) {
+    return fail("unsupported inline asm modifier fixture lost modifier visibility");
+  }
+  bool saw_unsupported_modifier_fact = false;
+  for (const auto& fact : unsupported_call->inline_asm->unsupported_facts) {
+    saw_unsupported_modifier_fact =
+        saw_unsupported_modifier_fact || fact == "unsupported_template_modifiers";
+  }
+  if (!saw_unsupported_modifier_fact) {
+    return fail("unsupported inline asm modifier should emit fail-closed fact");
   }
   return 0;
 }

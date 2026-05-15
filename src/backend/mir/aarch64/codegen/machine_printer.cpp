@@ -198,6 +198,33 @@ std::string immediate_name(const ImmediateOperand& operand) {
   return "#" + std::to_string(operand.signed_value);
 }
 
+bool decimal_digits_only(std::string_view text) {
+  if (text.empty()) {
+    return false;
+  }
+  for (const char ch : text) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+std::optional<std::size_t> parse_decimal_index(std::string_view text) {
+  if (!decimal_digits_only(text)) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (const char ch : text) {
+    const auto digit = static_cast<std::size_t>(ch - '0');
+    if (value > (static_cast<std::size_t>(-1) - digit) / 10U) {
+      return std::nullopt;
+    }
+    value = value * 10U + digit;
+  }
+  return value;
+}
+
 std::string prepared_value_home_name(const prepare::PreparedValueHome& home) {
   std::ostringstream out;
   out << "value#" << home.value_id << ":"
@@ -657,6 +684,232 @@ std::string tls_relocation_prefix(prepare::PreparedTlsRelocationKind kind) {
   return {};
 }
 
+struct InlineAsmSubstitutionResult {
+  std::optional<std::vector<std::string>> lines;
+  std::string diagnostic;
+};
+
+const InlineAsmMachineOperandRecord* find_inline_asm_constraint_operand(
+    const AssemblerInstructionRecord& assembler,
+    std::size_t constraint_index) {
+  for (const auto& operand : assembler.inline_asm_operands) {
+    if (operand.constraint_index == constraint_index) {
+      return &operand;
+    }
+  }
+  return nullptr;
+}
+
+const InlineAsmMachineOperandRecord* find_inline_asm_output_operand(
+    const AssemblerInstructionRecord& assembler,
+    std::size_t output_index) {
+  for (const auto& operand : assembler.inline_asm_operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        operand.output_index.has_value() && *operand.output_index == output_index) {
+      return &operand;
+    }
+  }
+  return nullptr;
+}
+
+bool inline_asm_constraint_matches_kind(const InlineAsmMachineOperandRecord& operand) {
+  switch (operand.kind) {
+    case bir::InlineAsmOperandKind::RegisterInput:
+      return operand.constraint == "r";
+    case bir::InlineAsmOperandKind::RegisterOutput:
+      return operand.constraint == "=r";
+    case bir::InlineAsmOperandKind::TiedInput:
+      return decimal_digits_only(operand.constraint);
+    case bir::InlineAsmOperandKind::IntegerImmediateInput:
+      return operand.constraint == "i" || operand.constraint == "I";
+    case bir::InlineAsmOperandKind::Clobber:
+    case bir::InlineAsmOperandKind::Unsupported:
+      return false;
+  }
+  return false;
+}
+
+std::optional<std::string> inline_asm_register_operand_text(
+    const RegisterOperand& reg,
+    std::optional<char> modifier) {
+  if (!modifier.has_value()) {
+    return register_name(reg);
+  }
+  switch (*modifier) {
+    case 'w':
+      return register_name_with_view(reg, abi::RegisterView::W);
+    case 'x':
+      return register_name_with_view(reg, abi::RegisterView::X);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string> inline_asm_operand_text(
+    const AssemblerInstructionRecord& assembler,
+    const InlineAsmMachineOperandRecord& operand,
+    std::optional<char> modifier,
+    std::string* diagnostic) {
+  if (!inline_asm_constraint_matches_kind(operand)) {
+    *diagnostic = "inline-asm operand has unsupported constraint for selected printer";
+    return std::nullopt;
+  }
+
+  const InlineAsmMachineOperandRecord* printable_operand = &operand;
+  if (operand.kind == bir::InlineAsmOperandKind::TiedInput) {
+    if (!operand.tied_output_index.has_value()) {
+      *diagnostic = "inline-asm tied input is missing tied output index";
+      return std::nullopt;
+    }
+    printable_operand = find_inline_asm_output_operand(assembler, *operand.tied_output_index);
+    if (printable_operand == nullptr || !printable_operand->selected_operand.has_value()) {
+      *diagnostic = "inline-asm tied input is missing selected tied output operand";
+      return std::nullopt;
+    }
+    if (!operand.selected_operand.has_value()) {
+      *diagnostic = "inline-asm tied input is missing selected operand";
+      return std::nullopt;
+    }
+  }
+
+  if (!printable_operand->selected_operand.has_value()) {
+    *diagnostic = "inline-asm operand is missing selected operand";
+    return std::nullopt;
+  }
+  const auto& selected = *printable_operand->selected_operand;
+  if (const auto* reg = std::get_if<RegisterOperand>(&selected.payload);
+      selected.kind == OperandKind::Register && reg != nullptr) {
+    const auto text = inline_asm_register_operand_text(*reg, modifier);
+    if (!text.has_value()) {
+      *diagnostic = modifier.has_value()
+                        ? "inline-asm register operand has unsupported template modifier"
+                        : "inline-asm register operand is not printable";
+      return std::nullopt;
+    }
+    return text;
+  }
+  if (const auto* immediate = std::get_if<ImmediateOperand>(&selected.payload);
+      selected.kind == OperandKind::Immediate && immediate != nullptr) {
+    if (modifier.has_value()) {
+      *diagnostic = "inline-asm immediate operand has unsupported template modifier";
+      return std::nullopt;
+    }
+    if (immediate->kind != ImmediateKind::SignedInteger) {
+      *diagnostic = "inline-asm immediate operand is not a signed integer";
+      return std::nullopt;
+    }
+    return std::to_string(immediate->signed_value);
+  }
+
+  *diagnostic = "inline-asm operand kind is outside the selected printer subset";
+  return std::nullopt;
+}
+
+void append_inline_asm_output_character(std::vector<std::string>* lines,
+                                        char ch) {
+  if (ch == '\n') {
+    lines->emplace_back();
+    return;
+  }
+  if (ch != '\r') {
+    lines->back().push_back(ch);
+  }
+}
+
+void append_inline_asm_output_text(std::vector<std::string>* lines,
+                                   std::string_view text) {
+  for (const char ch : text) {
+    append_inline_asm_output_character(lines, ch);
+  }
+}
+
+InlineAsmSubstitutionResult substitute_inline_asm_template(
+    const AssemblerInstructionRecord& assembler) {
+  if (!assembler.has_inline_asm_payload) {
+    return {.diagnostic = "assembler node is missing inline-asm payload"};
+  }
+  if (assembler.inline_asm_has_named_operand_references) {
+    return {.diagnostic = "inline-asm named operand references are not printable"};
+  }
+  if (!assembler.inline_asm_clobbers.empty()) {
+    return {.diagnostic = "inline-asm clobbers are outside the selected printer subset"};
+  }
+  if (assembler.inline_asm_template.empty()) {
+    return {.diagnostic = "inline-asm template is empty"};
+  }
+  for (const auto& operand : assembler.inline_asm_operands) {
+    if (!inline_asm_constraint_matches_kind(operand)) {
+      return {.diagnostic = "inline-asm operand has unsupported constraint for selected printer"};
+    }
+  }
+
+  std::vector<std::string> lines;
+  lines.emplace_back();
+  const auto& templ = assembler.inline_asm_template;
+  for (std::size_t index = 0; index < templ.size(); ++index) {
+    const char ch = templ[index];
+    if (ch != '%') {
+      append_inline_asm_output_character(&lines, ch);
+      continue;
+    }
+    if (index + 1 >= templ.size()) {
+      return {.diagnostic = "inline-asm template has unterminated placeholder"};
+    }
+    if (templ[index + 1] == '%') {
+      append_inline_asm_output_character(&lines, '%');
+      ++index;
+      continue;
+    }
+    if (templ[index + 1] == '[') {
+      return {.diagnostic = "inline-asm named operand references are not printable"};
+    }
+
+    std::optional<char> modifier;
+    std::size_t operand_start = index + 1;
+    if ((templ[operand_start] >= 'A' && templ[operand_start] <= 'Z') ||
+        (templ[operand_start] >= 'a' && templ[operand_start] <= 'z')) {
+      modifier = templ[operand_start];
+      ++operand_start;
+    }
+    if (operand_start >= templ.size() || templ[operand_start] < '0' ||
+        templ[operand_start] > '9') {
+      return {.diagnostic = "inline-asm template has malformed placeholder"};
+    }
+    std::size_t operand_end = operand_start;
+    while (operand_end < templ.size() && templ[operand_end] >= '0' &&
+           templ[operand_end] <= '9') {
+      ++operand_end;
+    }
+    const auto constraint_index =
+        parse_decimal_index(std::string_view{templ}.substr(operand_start,
+                                                           operand_end - operand_start));
+    if (!constraint_index.has_value()) {
+      return {.diagnostic = "inline-asm template operand index is not printable"};
+    }
+    const auto* operand =
+        find_inline_asm_constraint_operand(assembler, *constraint_index);
+    if (operand == nullptr) {
+      return {.diagnostic = "inline-asm template references unknown operand"};
+    }
+
+    std::string diagnostic;
+    const auto replacement = inline_asm_operand_text(assembler, *operand, modifier, &diagnostic);
+    if (!replacement.has_value()) {
+      return {.diagnostic = std::move(diagnostic)};
+    }
+    append_inline_asm_output_text(&lines, *replacement);
+    index = operand_end - 1;
+  }
+
+  if (!lines.empty() && lines.back().empty() && templ.back() == '\n') {
+    lines.pop_back();
+  }
+  if (lines.empty()) {
+    return {.diagnostic = "inline-asm template produced no printable lines"};
+  }
+  return {.lines = std::move(lines)};
+}
+
 std::string bad_header(const InstructionRecord& instruction) {
   return std::string("cannot print AArch64 machine node family=") +
          std::string(instruction_family_name(instruction.family)) + " opcode=" +
@@ -690,6 +943,20 @@ std::optional<std::string> validate_selected_machine_node(const InstructionRecor
     return diagnostic;
   }
   return std::nullopt;
+}
+
+mir::TargetInstructionPrintResult print_assembler(
+    const InstructionRecord& instruction,
+    const AssemblerInstructionRecord& assembler) {
+  if (instruction.family != InstructionFamily::Assembler) {
+    return target_unsupported(bad_header(instruction) +
+                              "inline-asm printer requires an assembler machine node");
+  }
+  const auto substituted = substitute_inline_asm_template(assembler);
+  if (!substituted.lines.has_value()) {
+    return target_unsupported(bad_header(instruction) + substituted.diagnostic);
+  }
+  return target_printed(*substituted.lines);
 }
 
 mir::TargetInstructionPrintResult print_address_materialization(
@@ -2758,6 +3025,9 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* intrinsic = std::get_if<VectorAddIntrinsicRecord>(&instruction.payload)) {
     return print_vector_add_intrinsic(instruction, *intrinsic);
+  }
+  if (const auto* assembler = std::get_if<AssemblerInstructionRecord>(&instruction.payload)) {
+    return print_assembler(instruction, *assembler);
   }
   if (const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload)) {
     return print_return(instruction, *ret);

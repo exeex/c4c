@@ -1,45 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/240_aarch64_inline_asm_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select AArch64 Inline-Asm Machine Records
+Current Step ID: 4
+Current Step Title: Implement Template Substitution
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 3 AArch64 inline-asm machine-record selection for complete
-prepared carriers without adding template substitution or printer behavior.
+Completed the refined Plan Step 4 AArch64 inline-asm template substitution
+slice so supported `%wN` and `%xN` modifiers are reachable through BIR,
+prepared carriers, dispatch, and final machine-printer output.
 
 Implemented:
 
-- Selected AArch64 assembler machine records for retained inline-asm calls only
-  when the matching prepared inline-asm carrier is complete and target-valid.
-- The selected record carries raw template text, constraints, side-effect
-  state, operands, selected homes/registers/immediates, output/result facts,
-  numeric tie facts, placeholder indexes, and retained operand names when
-  available from BIR metadata.
-- Dispatch fails closed for missing carriers, incomplete carriers, missing
-  result/register homes, unsupported clobber/operand kinds, template modifiers,
-  and non-AArch64 target profiles.
-- Dispatch tests cover the complete selected carrier shape and representative
-  malformed/incomplete carriers staying diagnostic-only.
+- Changed BIR inline-asm modifier classification so supported AArch64 GP
+  width modifiers keep modifier visibility without adding
+  `unsupported_template_modifiers`; unsupported modifier forms still add the
+  fail-closed fact.
+- Kept prepared inline-asm carriers complete when the only template modifiers
+  are supported `%wN`/`%xN` forms.
+- Removed the dispatch-side blanket rejection of complete modifier carriers,
+  allowing supported-modifier carriers to become selected assembler machine
+  records.
+- Added machine-printer substitution for selected inline-asm assembler records,
+  using structured operand records as authority for positional placeholders.
+- Tied input placeholders resolve through the selected tied output operand, and
+  raw signed integer immediates substitute without fabricating a `#` prefix.
+- Supported AArch64 GP register-width modifiers `%wN` and `%xN` print from
+  selected register operands.
+- Printer diagnostics fail closed for unknown placeholders, unsupported
+  modifiers, missing selected operands, missing tie facts, unsupported
+  constraints, named operand references, and clobber/unsupported operand kinds.
+- Tests now cover supported modifiers through LIR-to-BIR metadata, prepared
+  carrier completeness, dispatch selection, and machine-printer substitution,
+  plus unsupported modifier diagnostics.
 
 ## Suggested Next
 
-Next coherent packet: implement Step 4 template substitution/printing from the
-selected structured inline-asm record, still using the raw template and
-structured operands as authority instead of formatting during dispatch.
+Next coherent packet: execute Plan Step 5 by hardening output, tie, clobber,
+and side-effect coverage around the selected and printed inline-asm path while
+keeping allocator-scale and broader constraint support diagnostic-only.
 
 ## Watchouts
 
-- The selected record intentionally keeps `%0`/placeholder text unsubstituted;
-  no machine-printer behavior changed in this packet.
-- Clobbers and template modifiers remain fail-closed. Named operand references
-  remain unsupported, though retained operand names are copied when present.
-- Inline-asm register operands consume existing prepared GPR homes only; no
-  scratch assignment, allocator, spill, or broader constraint family work was
-  added.
+- Named operand references, clobbers, memory constraints, allocator/spill work,
+  and broader constraint families remain outside this packet.
+- Immediate substitution intentionally emits the raw integer string so templates
+  can decide whether to include `#`.
+- `clang-format` is not installed in this environment; changed formatting was
+  checked manually.
 
 ## Proof
 

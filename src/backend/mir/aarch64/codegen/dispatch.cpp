@@ -2611,16 +2611,6 @@ struct LowerMemoryInstructionResult {
         inline_asm_carrier_error_message("unsupported_named_operand_references"));
     return std::nullopt;
   }
-  if (carrier->has_template_modifiers) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-        context,
-        instruction_index,
-        inline_asm_carrier_error_message("unsupported_template_modifiers"));
-    return std::nullopt;
-  }
-
   AssemblerInstructionRecord record{
       .has_inline_asm_payload = true,
       .side_effects = carrier->side_effects,
