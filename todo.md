@@ -1,58 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/232_aarch64_variadic_function_entry_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Fail-Closed AArch64 Consumption Guards
+Current Step ID: 6
+Current Step Title: Validate And Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Step 5, Add Fail-Closed AArch64 Consumption Guards, completed the focused
-AArch64 consumption-guard slice for prepared variadic function-entry carriers.
+Step 6, Validate And Summarize, reran broader backend validation and recorded
+the current prepared-carrier route status for supervisor lifecycle review.
 
-Implementation notes:
-- AArch64 dispatch now recognizes retained `llvm.va_start.p0`,
-  `llvm.va_arg.*`, `llvm.va_arg.aggregate`, and `llvm.va_copy.p0.p0` helper
-  calls as variadic entry helper consumers.
-- Helper dispatch requires a `PreparedVariadicEntryPlanFunction` for the
-  current function before consulting normal call-boundary lowering, and rejects
-  incomplete carriers with explicit diagnostics naming the first missing
-  prepared fact.
-- The guard checks only prepared carrier presence/completeness. It does not
-  reconstruct register-save-area, overflow-area, `va_list`, helper scratch, or
-  call-boundary variadic ABI policy in AArch64 target lowering.
-- AArch64 call records now preserve observed prepared variadic-entry provenance
-  and helper kind, while marking helper machine-node lowering as
-  `deferred_unsupported` until a later delegated consumption slice.
-- Focused AArch64 dispatch, record, and printer tests cover missing carriers,
-  incomplete carriers, retained record state, and printer fail-closed behavior.
+Route status:
+- The prepared variadic-entry carrier route is now present through prepared BIR,
+  AArch64 helper dispatch recognition, structured AArch64 helper-call records,
+  printer diagnostics, and fail-closed consumption guards.
+- The route validates the existence and completeness of prepared carrier facts
+  before AArch64 helper lowering may proceed. It intentionally stops before
+  target-local reconstruction of AAPCS64 storage or helper semantics.
+- Broader backend validation passed with all `backend_` tests green, including
+  the focused AArch64 variadic-entry guard, record, and printer coverage added
+  by the preceding slices.
 
 ## Suggested Next
 
-Start Step 6 by validating whether the current prepared-carrier route is enough
-to summarize remaining downstream unsupported `va_start`, `va_arg`, `va_copy`,
-and machine-node consumption states for supervisor lifecycle review.
+Supervisor should decide the lifecycle status for
+`ideas/open/232_aarch64_variadic_function_entry_carriers.md`: close if prepared
+entry carriers plus fail-closed AArch64 consumption guards satisfy the source
+idea, mark blocked if downstream machine-node consumption is required by the
+idea but lacks prepared storage/scratch authority, or leave open for a new
+downstream AArch64 machine-node consumption packet.
 
 ## Watchouts
 
-- Current AAPCS64 prepared carriers still intentionally fail closed for helper
-  lowering because prepared storage facts such as `register_save_area.slot_id`,
-  `register_save_area.stack_offset_bytes`, `overflow_area.base_slot_id`,
-  `overflow_area.base_stack_offset_bytes`, and helper scratch-resource counts
-  are not allocated by the prepared/frame authority yet.
-- The helper-kind carrier remains family-level for scalar `va_arg`, so
-  `llvm.va_arg.i32` and `llvm.va_arg.f64` both consume the generic `va_arg`
-  observation unless a later plan adds typed per-helper observations.
-- A later machine-node consumption slice should consume these structured facts
-  directly or remain blocked; it should not add target-local AAPCS64 ABI
-  reconstruction.
+- `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy` remain
+  unsupported at the final AArch64 machine-node consumption point. Current
+  helper records preserve the prepared provenance and helper kind but still use
+  `deferred_unsupported` for actual lowering.
+- Storage and scratch-resource consumption remains unsupported because the
+  prepared/frame authority does not yet allocate or expose complete AAPCS64
+  facts such as register-save-area slot/offset, overflow-area base slot/offset,
+  `va_list` layout storage, helper scratch counts, and any machine-node
+  operands needed to materialize the helper side effects.
+- A downstream consumption slice should consume prepared structured facts
+  directly. It should not rebuild the AAPCS64 variadic ABI inside AArch64
+  target lowering, and it should not claim support by weakening diagnostics or
+  rewriting expectations around the known helper calls.
 
 ## Proof
 
 Ran the delegated proof command:
 
-`(cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_prepare_liveness_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test -j2 && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-Result: passed. `test_after.log` contains the successful build and six-test
-CTest run.
+Result: passed. `test_after.log` contains the successful build and broader
+backend CTest run: 139/139 tests passed.
