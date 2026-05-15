@@ -1319,6 +1319,7 @@ prepared_intrinsic_operand_homes(
       .value_name = std::nullopt,
       .home = std::nullopt,
       .immediate_value = std::nullopt,
+      .name = metadata.name,
   };
   if (metadata.arg_index.has_value() && *metadata.arg_index < call.args.size()) {
     operand.value = call.args[*metadata.arg_index];
@@ -1462,10 +1463,12 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
         }
         break;
       case bir::InlineAsmOperandKind::Clobber:
-        append_inline_asm_missing_fact(function_carriers,
-                                       carrier,
-                                       "unsupported_clobber_operand" +
-                                           std::to_string(operand.constraint_index));
+        if (!operand.name.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "unsupported_clobber_operand" +
+                                             std::to_string(operand.constraint_index));
+        }
         break;
       case bir::InlineAsmOperandKind::Unsupported:
         append_inline_asm_missing_fact(function_carriers,
@@ -2034,6 +2037,7 @@ void validate_pause_hint_intrinsic(
       .has_named_operand_references = inline_asm.has_named_operand_references,
       .has_template_modifiers = inline_asm.has_template_modifiers,
       .operands = {},
+      .clobbers = inline_asm.clobbers,
       .result = call.result,
       .result_value_name = prepared_intrinsic_named_value_id(names, call.result),
       .result_home = call.result.has_value()

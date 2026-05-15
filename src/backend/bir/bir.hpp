@@ -728,6 +728,7 @@ struct InlineAsmMetadata {
   std::string args_text;
   bool side_effects = false;
   std::vector<InlineAsmOperandMetadata> operands;
+  std::vector<std::string> clobbers;
   std::vector<std::string> unsupported_facts;
   bool has_named_operand_references = false;
   bool has_template_modifiers = false;

@@ -425,8 +425,7 @@ void Lowerer::lower_stmt_node(FunctionCtx& ctx, const Node* n) {
             n->children[n->asm_num_outputs + n->asm_num_inputs + i];
         std::string name = decode_string_node(clobber);
         if (name.empty()) continue;
-        if (!s.constraints.empty()) s.constraints += ",";
-        s.constraints += "~{" + name + "}";
+        s.clobbers.push_back(std::move(name));
       }
       append_stmt(ctx, Stmt{StmtPayload{s}, make_span(n)});
       return;

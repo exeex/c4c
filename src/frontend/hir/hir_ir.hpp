@@ -859,6 +859,7 @@ struct InlineAsmStmt {
   std::vector<QualType> output_types;
   std::vector<bool> output_readwrite;
   std::vector<ExprId> inputs;
+  std::vector<std::string> clobbers;
   bool has_side_effects = true;
 };
 

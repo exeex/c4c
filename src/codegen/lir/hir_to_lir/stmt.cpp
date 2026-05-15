@@ -269,6 +269,11 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
     const std::string in = emit_rval_id(ctx, input, in_ts);
     asm_args.push_back(llvm_ty(in_ts) + " " + in);
   }
+  for (const auto& clobber : s.clobbers) {
+    if (!clobber.empty()) {
+      rendered_constraints.push_back("~{" + clobber + "}");
+    }
+  }
   std::string asm_args_str;
   for (size_t i = 0; i < asm_args.size(); ++i) {
     if (i) asm_args_str += ", ";
@@ -279,7 +284,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   if (!scalar_result_output) {
     emit_lir_op(ctx, lir::LirInlineAsmOp{
                          {}, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
-                         asm_args_str});
+                         asm_args_str, s.clobbers});
     return;
   }
 
@@ -287,7 +292,7 @@ void StmtEmitter::emit_non_control_flow_stmt(FnCtx& ctx, const InlineAsmStmt& s)
   emit_lir_op(
       ctx,
       lir::LirInlineAsmOp{result, ret_ty, asm_text, rendered_constraint_text, s.has_side_effects,
-                          asm_args_str});
+                          asm_args_str, s.clobbers});
   TypeSpec out_pointee_ts{};
   const std::string out_ptr = emit_lval(ctx, outputs[0], out_pointee_ts);
   const std::string coerced = coerce(ctx, result, ret_ts, out_pointee_ts);

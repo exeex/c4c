@@ -392,6 +392,7 @@ struct LirInlineAsmOp {
   std::string constraints;    // constraint string
   bool side_effects = false;  // sideeffect flag
   std::string args_str;       // pre-formatted argument string
+  std::vector<std::string> clobbers;
 };
 
 using LirInst = std::variant<

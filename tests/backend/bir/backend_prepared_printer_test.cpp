@@ -2707,7 +2707,8 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
     std::string constraint,
     std::optional<std::size_t> arg_index = std::nullopt,
     std::optional<std::size_t> output_index = std::nullopt,
-    std::optional<std::size_t> tied_output_index = std::nullopt) {
+    std::optional<std::size_t> tied_output_index = std::nullopt,
+    std::optional<std::string> name = std::nullopt) {
   return bir::InlineAsmOperandMetadata{
       .kind = kind,
       .constraint_index = constraint_index,
@@ -2715,7 +2716,7 @@ bir::InlineAsmOperandMetadata inline_asm_operand(
       .arg_index = arg_index,
       .output_index = output_index,
       .tied_output_index = tied_output_index,
-      .name = std::nullopt,
+      .name = std::move(name),
   };
 }
 
@@ -2784,6 +2785,32 @@ prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
                                  std::size_t{1}),
           },
           .has_template_modifiers = true,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "x")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "mov %0, %0",
+          .constraints = "r,~{memory}",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::RegisterInput,
+                                 0,
+                                 "r",
+                                 std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::Clobber,
+                                 1,
+                                 "~{memory}",
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::string("memory")),
+          },
+          .clobbers = {"memory"},
       },
   });
   entry.terminator = bir::ReturnTerminator{
@@ -2866,12 +2893,13 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
   const auto prepared = prepare_inline_asm_carrier_dump_module();
   const auto* function_carriers =
       find_inline_asm_carriers(prepared, "inline_asm_carrier_dump_contract");
-  if (function_carriers == nullptr || function_carriers->carriers.size() != 2) {
-    std::cerr << "[FAIL] expected two prepared inline asm carrier facts\n";
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 3) {
+    std::cerr << "[FAIL] expected three prepared inline asm carrier facts\n";
     return EXIT_FAILURE;
   }
   const auto& input_carrier = function_carriers->carriers[0];
   const auto& tied_carrier = function_carriers->carriers[1];
+  const auto& clobber_carrier = function_carriers->carriers[2];
   if (input_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
       input_carrier.operands.size() != 1 ||
       input_carrier.operands.front().kind !=
@@ -2896,6 +2924,16 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
     std::cerr << "[FAIL] output/tie/immediate inline asm carrier incomplete\n";
     return EXIT_FAILURE;
   }
+  if (clobber_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      clobber_carrier.operands.size() != 2 ||
+      clobber_carrier.operands[1].kind != bir::InlineAsmOperandKind::Clobber ||
+      clobber_carrier.operands[1].name.value_or("") != "memory" ||
+      clobber_carrier.clobbers.size() != 1 ||
+      clobber_carrier.clobbers[0] != "memory" ||
+      !clobber_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] structured clobber inline asm carrier incomplete\n";
+    return EXIT_FAILURE;
+  }
 
   const std::string dump = prepare::print(prepared);
   if (!expect_contains(dump,
@@ -2914,6 +2952,19 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
                        "operand2[kind=integer_immediate_input,constraint=\"I\","
                        "arg=1,immediate=7,home=no]",
                        "integer immediate inline asm operand")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "inline_asm_carrier asm=\"mov %0, %0\" "
+                       "constraints=\"r,~{memory}\" block_index=0 inst_index=2 "
+                       "side_effects=yes operands=2 result_home=no clobbers=1",
+                       "complete inline asm clobber carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "operand1[kind=clobber,constraint=\"~{memory}\","
+                       "name=\"memory\",home=no] clobber0=\"memory\"",
+                       "structured inline asm clobber detail")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;

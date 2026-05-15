@@ -1817,7 +1817,8 @@ void append_inline_asm_carriers(std::ostringstream& out, const PreparedBirModule
       if (carrier.result_value_name.has_value()) {
         out << " result=" << maybe_value_name(module.names, *carrier.result_value_name);
       }
-      out << " result_home=" << (carrier.result_home.has_value() ? "yes" : "no");
+      out << " result_home=" << (carrier.result_home.has_value() ? "yes" : "no")
+          << " clobbers=" << carrier.clobbers.size();
       for (const auto& operand : carrier.operands) {
         out << " operand" << operand.constraint_index
             << "[kind=" << bir::inline_asm_operand_kind_name(operand.kind)
@@ -1837,7 +1838,14 @@ void append_inline_asm_carriers(std::ostringstream& out, const PreparedBirModule
         if (operand.immediate_value.has_value()) {
           out << ",immediate=" << *operand.immediate_value;
         }
+        if (operand.name.has_value()) {
+          out << ",name=\"" << escape_quoted_text(*operand.name) << "\"";
+        }
         out << ",home=" << (operand.home.has_value() ? "yes" : "no") << "]";
+      }
+      for (std::size_t index = 0; index < carrier.clobbers.size(); ++index) {
+        out << " clobber" << index << "=\""
+            << escape_quoted_text(carrier.clobbers[index]) << "\"";
       }
       out << "\n";
     }

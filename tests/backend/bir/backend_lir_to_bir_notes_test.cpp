@@ -2429,13 +2429,48 @@ LirModule make_structured_inline_asm_metadata_module() {
       .result = LirOperand("%out"),
       .ret_type = "i32",
       .asm_text = "add %w0, %x1, #7",
-      .constraints = "=r,0,I",
+      .constraints = "=r,0,I,~{memory},~{cc}",
       .side_effects = true,
       .args_str = "i32 %x, i32 7",
+      .clobbers = {"memory", "cc"},
   });
   entry.terminator = LirRet{
       .value_str = "%out",
       .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_rendered_only_clobber_inline_asm_metadata_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+
+  LirFunction function;
+  function.name = "rendered_only_clobber_inline_asm_metadata";
+  function.signature_text =
+      "define void @rendered_only_clobber_inline_asm_metadata(i32 %x)";
+  function.params.push_back({"%x", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand(""),
+      .ret_type = "void",
+      .asm_text = "mov %0, %0",
+      .constraints = "r,~{memory}",
+      .side_effects = true,
+      .args_str = "i32 %x",
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
   };
 
   function.blocks.push_back(std::move(entry));
@@ -2491,10 +2526,13 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   }
   const auto& inline_asm = *call->inline_asm;
   if (inline_asm.asm_text != "add %w0, %x1, #7" ||
-      inline_asm.constraints != "=r,0,I" ||
+      inline_asm.constraints != "=r,0,I,~{memory},~{cc}" ||
       !inline_asm.side_effects ||
       !inline_asm.args_text.empty() ||
-      inline_asm.operands.size() != 3 ||
+      inline_asm.clobbers.size() != 2 ||
+      inline_asm.clobbers[0] != "memory" ||
+      inline_asm.clobbers[1] != "cc" ||
+      inline_asm.operands.size() != 5 ||
       inline_asm.has_named_operand_references ||
       !inline_asm.has_template_modifiers ||
       !inline_asm.unsupported_facts.empty()) {
@@ -2509,7 +2547,13 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
       inline_asm.operands[1].tied_output_index.value_or(99) != 0 ||
       inline_asm.operands[2].kind !=
           c4c::backend::bir::InlineAsmOperandKind::IntegerImmediateInput ||
-      inline_asm.operands[2].arg_index.value_or(99) != 1) {
+      inline_asm.operands[2].arg_index.value_or(99) != 1 ||
+      inline_asm.operands[3].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::Clobber ||
+      inline_asm.operands[3].name.value_or("") != "memory" ||
+      inline_asm.operands[4].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::Clobber ||
+      inline_asm.operands[4].name.value_or("") != "cc") {
     return fail("structured inline asm operand facts were not preserved");
   }
   if (call->args.size() != 2 ||
@@ -2539,6 +2583,33 @@ int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
   }
   if (!saw_unsupported_modifier_fact) {
     return fail("unsupported inline asm modifier should emit fail-closed fact");
+  }
+
+  auto rendered_only_result = try_lower_to_bir_with_options(
+      make_rendered_only_clobber_inline_asm_metadata_module(), BirLoweringOptions{});
+  if (!rendered_only_result.module.has_value()) {
+    return fail("rendered-only clobber fixture should still lower to BIR facts");
+  }
+  const auto& rendered_only_function = rendered_only_result.module->functions.front();
+  const auto* rendered_only_call =
+      std::get_if<c4c::backend::bir::CallInst>(
+          &rendered_only_function.blocks.front().insts.front());
+  if (rendered_only_call == nullptr ||
+      !rendered_only_call->inline_asm.has_value() ||
+      !rendered_only_call->inline_asm->clobbers.empty() ||
+      rendered_only_call->inline_asm->operands.size() != 2 ||
+      rendered_only_call->inline_asm->operands[1].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::Clobber ||
+      rendered_only_call->inline_asm->operands[1].name.has_value()) {
+    return fail("rendered-only clobber should not become structured BIR authority");
+  }
+  bool saw_rendered_only_clobber_fact = false;
+  for (const auto& fact : rendered_only_call->inline_asm->unsupported_facts) {
+    saw_rendered_only_clobber_fact =
+        saw_rendered_only_clobber_fact || fact == "unsupported_clobber_constraint1";
+  }
+  if (!saw_rendered_only_clobber_fact) {
+    return fail("rendered-only clobber should emit fail-closed fact");
   }
   return 0;
 }

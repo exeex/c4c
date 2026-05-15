@@ -1894,6 +1894,7 @@ struct PreparedInlineAsmOperand {
   std::optional<ValueNameId> value_name;
   std::optional<PreparedValueHome> home;
   std::optional<std::int64_t> immediate_value;
+  std::optional<std::string> name;
 };
 
 struct PreparedInlineAsmCarrier {
@@ -1907,6 +1908,7 @@ struct PreparedInlineAsmCarrier {
   bool has_named_operand_references = false;
   bool has_template_modifiers = false;
   std::vector<PreparedInlineAsmOperand> operands;
+  std::vector<std::string> clobbers;
   std::optional<c4c::backend::bir::Value> result;
   std::optional<ValueNameId> result_value_name;
   std::optional<PreparedValueHome> result_home;

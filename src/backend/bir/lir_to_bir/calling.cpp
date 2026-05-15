@@ -74,6 +74,20 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   return value;
 }
 
+[[nodiscard]] std::optional<std::string> inline_asm_clobber_name_from_constraint(
+    std::string_view token) {
+  if (token.size() < 4 || token.substr(0, 2) != "~{" || token.back() != '}') {
+    return std::nullopt;
+  }
+  return std::string(token.substr(2, token.size() - 3));
+}
+
+[[nodiscard]] bool inline_asm_has_structured_clobber(
+    const std::vector<std::string>& clobbers,
+    std::string_view name) {
+  return std::find(clobbers.begin(), clobbers.end(), name) != clobbers.end();
+}
+
 [[nodiscard]] std::vector<std::string_view> split_inline_asm_constraint_tokens(
     std::string_view constraints) {
   std::vector<std::string_view> tokens;
@@ -141,6 +155,7 @@ struct InlineAsmTemplateModifierFacts {
       .args_text = inline_asm.args_str,
       .side_effects = inline_asm.side_effects,
       .operands = {},
+      .clobbers = inline_asm.clobbers,
       .unsupported_facts = {},
       .has_named_operand_references =
           inline_asm_template_has_named_operand_reference(inline_asm.asm_text),
@@ -178,10 +193,14 @@ struct InlineAsmTemplateModifierFacts {
       operand.kind = bir::InlineAsmOperandKind::TiedInput;
       operand.arg_index = next_arg_index++;
       operand.tied_output_index = parse_decimal_index(token);
-    } else if (token.rfind("~{", 0) == 0) {
+    } else if (const auto clobber_name = inline_asm_clobber_name_from_constraint(token)) {
       operand.kind = bir::InlineAsmOperandKind::Clobber;
-      metadata.unsupported_facts.push_back(
-          "unsupported_clobber_constraint" + std::to_string(index));
+      if (inline_asm_has_structured_clobber(metadata.clobbers, *clobber_name)) {
+        operand.name = *clobber_name;
+      } else {
+        metadata.unsupported_facts.push_back(
+            "unsupported_clobber_constraint" + std::to_string(index));
+      }
     } else {
       metadata.unsupported_facts.push_back(
           "unsupported_constraint" + std::to_string(index) + ":" + token);
