@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <string>
 #include <unordered_set>
 
 namespace c4c::backend::prepare {
@@ -280,6 +281,44 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
     return find_prepared_frame_slot(prepared.stack_layout, object.object_id);
   }
   return nullptr;
+}
+
+[[nodiscard]] std::size_t saved_register_slot_unit_size(
+    const c4c::TargetProfile& target_profile,
+    PreparedRegisterBank bank) {
+  switch (bank) {
+    case PreparedRegisterBank::Gpr:
+    case PreparedRegisterBank::AggregateAddress:
+      return target_profile.arch == c4c::TargetArch::I686 ? 4U : 8U;
+    case PreparedRegisterBank::Fpr:
+      return 8U;
+    case PreparedRegisterBank::Vreg:
+      return 16U;
+    case PreparedRegisterBank::None:
+      return 0U;
+  }
+  return 0U;
+}
+
+[[nodiscard]] PreparedSavedRegisterSlotPlacement make_saved_register_slot_placement(
+    const PreparedSavedRegister& saved,
+    PreparedFrameSlotId slot_id,
+    std::size_t offset_bytes,
+    std::size_t size_bytes,
+    std::size_t align_bytes) {
+  return PreparedSavedRegisterSlotPlacement{
+      .bank = saved.bank,
+      .register_name = saved.register_name,
+      .contiguous_width = saved.contiguous_width,
+      .occupied_register_names = saved.occupied_register_names,
+      .save_index = saved.save_index,
+      .register_placement = saved.placement,
+      .slot_id = slot_id,
+      .stack_offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .fixed_location = true,
+  };
 }
 
 PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
@@ -2638,17 +2677,6 @@ void populate_frame_plan(PreparedBirModule& prepared) {
             std::max(plan.frame_alignment_bytes, slot.align_bytes);
       }
     }
-    std::sort(plan.frame_slot_order.begin(), plan.frame_slot_order.end(), [&prepared](auto lhs, auto rhs) {
-      const auto* lhs_slot = find_prepared_frame_slot(prepared.stack_layout, lhs);
-      const auto* rhs_slot = find_prepared_frame_slot(prepared.stack_layout, rhs);
-      if (lhs_slot == nullptr || rhs_slot == nullptr) {
-        return lhs < rhs;
-      }
-      if (lhs_slot->offset_bytes != rhs_slot->offset_bytes) {
-        return lhs_slot->offset_bytes < rhs_slot->offset_bytes;
-      }
-      return lhs < rhs;
-    });
 
     std::vector<PreparedSavedRegister> saved_registers;
     if (const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
@@ -2697,8 +2725,6 @@ void populate_frame_plan(PreparedBirModule& prepared) {
                 }
                 return lhs.register_name < rhs.register_name;
               });
-    plan.saved_callee_registers = std::move(saved_registers);
-
     for (const auto& block : function.blocks) {
       for (const auto& inst : block.insts) {
         const auto* call = std::get_if<bir::CallInst>(&inst);
@@ -2711,6 +2737,41 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         }
       }
     }
+    if (!plan.has_dynamic_stack) {
+      PreparedFrameSlotId next_saved_slot_id =
+          next_prepared_frame_slot_id(prepared.stack_layout);
+      std::size_t next_saved_offset = plan.frame_size_bytes;
+      for (auto& saved : saved_registers) {
+        const std::size_t unit_size =
+            saved_register_slot_unit_size(prepared.target_profile, saved.bank);
+        if (unit_size == 0U || !saved.placement.has_value()) {
+          continue;
+        }
+        const std::size_t align_bytes = unit_size;
+        const std::size_t size_bytes =
+            unit_size * std::max<std::size_t>(saved.contiguous_width, 1);
+        next_saved_offset = align_prepared_offset(next_saved_offset, align_bytes);
+        saved.slot_placement = make_saved_register_slot_placement(saved,
+                                                                   next_saved_slot_id++,
+                                                                   next_saved_offset,
+                                                                   size_bytes,
+                                                                   align_bytes);
+        next_saved_offset += size_bytes;
+      }
+    }
+    std::sort(plan.frame_slot_order.begin(), plan.frame_slot_order.end(), [&prepared](auto lhs, auto rhs) {
+      const auto* lhs_slot = find_prepared_frame_slot(prepared.stack_layout, lhs);
+      const auto* rhs_slot = find_prepared_frame_slot(prepared.stack_layout, rhs);
+      if (lhs_slot == nullptr || rhs_slot == nullptr) {
+        return lhs < rhs;
+      }
+      if (lhs_slot->offset_bytes != rhs_slot->offset_bytes) {
+        return lhs_slot->offset_bytes < rhs_slot->offset_bytes;
+      }
+      return lhs < rhs;
+    });
+    plan.saved_callee_registers = std::move(saved_registers);
+
     plan.uses_frame_pointer_for_fixed_slots =
         plan.has_dynamic_stack && !plan.frame_slot_order.empty();
 

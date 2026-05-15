@@ -1,44 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/241_prepared_callee_save_slot_placement.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define The Placement Carrier
+Current Step ID: 3
+Current Step Title: Populate Placement Facts
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 from `plan.md`: defined the prepared saved-register
-slot-placement carrier and attached it to `PreparedSavedRegister`.
+Completed Step 3 from `plan.md`: populated prepared saved-register
+slot-placement facts for representative fixed-frame callee-save cases.
 
 Concrete work completed:
 
-- Added `PreparedSavedRegisterSlotPlacement` in
-  `src/backend/prealloc/prealloc.hpp`.
-- The carrier preserves register bank, register name, contiguous width,
-  occupied register names, save index, optional register placement, optional
-  frame slot id, optional stack offset, optional size, optional alignment, and
-  the fixed-location bit.
-- Added `has_complete_prepared_saved_register_slot_placement` so incomplete
-  placement data remains fail-closed instead of being silently consumed.
-- Added a focused prepared frame/call contract check proving the carrier can
-  hold the structured facts and rejects incomplete stack-offset or register
-  placement facts.
+- `populate_frame_plan` now computes frame-plan-local fixed callee-save
+  placements in deterministic saved-register order and fills
+  `PreparedSavedRegister::slot_placement` with slot id, stack offset, size,
+  alignment, fixed-location, register placement, save index, bank, register
+  name, contiguous width, and occupied-register facts.
+- Existing `PreparedStackLayout::frame_slots`, frame size/alignment, and
+  `frame_slot_order` publication remain unchanged so prepared printer,
+  variadic, and CLI dump contracts keep their prior observable layout.
+- The placement path is prepared-layer owned; no AArch64 save-index,
+  register-spelling, or sorted-slot reconstruction was added.
+- Dynamic-stack functions remain fail-closed for this fixed-frame packet, so
+  existing no-fixed-slot frame-pointer behavior is preserved.
+- Focused prepared frame/call contract coverage now checks one-register GPR
+  placement and grouped multi-register placement without mutating existing
+  frame-slot order.
 
 ## Suggested Next
 
-Proceed to Step 3: populate `PreparedSavedRegister::slot_placement` from
-prepared frame/layout authority, preserving deterministic saved-register order
-and avoiding target-local reconstruction from `save_index`, register spelling,
-or `frame_slot_order`.
+Proceed to Step 4: publish and observe the placement relation in prepared dump
+or another prepared observation surface so tests can assert the mapping without
+direct structure inspection.
 
 ## Watchouts
 
-- The carrier is defined but not populated yet; current prepared output still
-  publishes saved registers and frame slots separately.
-- Do not place saved-register slots by deriving offsets in AArch64 from
-  `save_index`, sorted slot order, or register spelling. AArch64 should consume
-  prepared slot facts after they are published.
+- Placement is populated for fixed-frame functions only. Dynamic-stack
+  functions deliberately keep missing slot placement for this packet so the
+  pre-existing fixed-slot frame-pointer contract does not change.
+- Prepared dump output still does not print the new placement mapping; Step 4
+  should make the relationship directly observable.
 - `src/backend/mir/aarch64/codegen/traversal.cpp` currently treats any nonempty
   `saved_callee_registers` as outside the simple fixed-frame path, and
   `machine_printer.cpp` still rejects callee-save frame nodes; those are later
@@ -55,6 +58,7 @@ or `frame_slot_order`.
 
 Ran the delegated proof:
 
-`(cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test -j2 && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$' --output-on-failure) > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_printer|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$') > test_after.log 2>&1`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed. Also ran `git diff --check`, which passed. Proof log:
+`test_after.log`.

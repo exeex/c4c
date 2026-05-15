@@ -3263,6 +3263,25 @@ int check_cross_call_preservation_contract() {
           std::optional<prepare::PreparedRegisterBank>{prepare::PreparedRegisterBank::Gpr}) {
     return fail("cross-call preservation contract: call_plans lost direct preserved-value authority");
   }
+  if (!saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(*saved_it->slot_placement) ||
+      saved_it->slot_placement->bank != saved_it->bank ||
+      saved_it->slot_placement->register_name != saved_it->register_name ||
+      saved_it->slot_placement->occupied_register_names != saved_it->occupied_register_names ||
+      saved_it->slot_placement->save_index != saved_it->save_index ||
+      saved_it->slot_placement->register_placement != saved_it->placement ||
+      saved_it->slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      saved_it->slot_placement->align_bytes != std::optional<std::size_t>{8} ||
+      !saved_it->slot_placement->fixed_location) {
+    return fail("cross-call preservation contract: saved-register placement lost prepared slot facts");
+  }
+  if (saved_it->slot_placement->stack_offset_bytes !=
+          std::optional<std::size_t>{frame_plan->frame_size_bytes} ||
+      std::find(frame_plan->frame_slot_order.begin(),
+                frame_plan->frame_slot_order.end(),
+                *saved_it->slot_placement->slot_id) != frame_plan->frame_slot_order.end()) {
+    return fail("cross-call preservation contract: saved-register placement perturbed frame-slot order");
+  }
 
   return 0;
 }
@@ -3438,6 +3457,25 @@ int check_grouped_cross_call_preservation_contract() {
   }
   if (saved_it->contiguous_width != 2 || saved_it->occupied_register_names.size() != 2) {
     return fail("grouped cross-call preservation contract: frame plan lost grouped saved-register span");
+  }
+  if (!saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(*saved_it->slot_placement) ||
+      saved_it->slot_placement->bank != saved_it->bank ||
+      saved_it->slot_placement->register_name != saved_it->register_name ||
+      saved_it->slot_placement->contiguous_width != 2 ||
+      saved_it->slot_placement->occupied_register_names != saved_it->occupied_register_names ||
+      saved_it->slot_placement->size_bytes != std::optional<std::size_t>{32} ||
+      saved_it->slot_placement->align_bytes != std::optional<std::size_t>{16} ||
+      !saved_it->slot_placement->fixed_location) {
+    return fail("grouped cross-call preservation contract: grouped saved-register placement lost prepared slot facts");
+  }
+  if (!saved_it->slot_placement->slot_id.has_value() ||
+      !saved_it->slot_placement->stack_offset_bytes.has_value() ||
+      *saved_it->slot_placement->stack_offset_bytes < frame_plan->frame_size_bytes ||
+      std::find(frame_plan->frame_slot_order.begin(),
+                frame_plan->frame_slot_order.end(),
+                *saved_it->slot_placement->slot_id) != frame_plan->frame_slot_order.end()) {
+    return fail("grouped cross-call preservation contract: grouped saved-register placement perturbed frame-slot order");
   }
   if (carry->bank != prepare::PreparedRegisterBank::Vreg ||
       carry->contiguous_width != 2 ||
