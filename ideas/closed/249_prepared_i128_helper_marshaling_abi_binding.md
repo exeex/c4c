@@ -1,6 +1,6 @@
 # Prepared I128 Helper Marshaling ABI Binding
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
 
 Parent Context: ideas/open/236_aarch64_i128_pair_lowering.md
@@ -82,3 +82,34 @@ opcodes and rendered names.
 - The route broadens into float/i128 conversion helpers, memory-return helper
   families, binary128, atomics, intrinsics, inline asm, generic call lowering,
   callee-save placement, or preserved-value extent work.
+
+## Closure Notes
+
+Closed: 2026-05-15
+
+The active runbook completed the prepared/shared marshaling and ABI
+register-binding authority needed for supported direct-result i128 div/rem
+helpers:
+
+- supported direct-result i128 `SDiv`, `UDiv`, `SRem`, and `URem` helpers carry
+  source-operation mapping, helper kind, callee identity, and result ownership
+- low/high ABI argument and direct-result ABI bindings are structured for lhs,
+  rhs, and result lanes
+- marshal/unmarshal facts connect canonical `PreparedI128Carrier` lanes to
+  helper ABI argument/result bindings without fixed-register inference
+- helper resource and clobber policy is explicit for the runtime helper
+  boundary
+- helper instruction program points are evaluated against liveness intervals
+  to build `PreparedCallPreservedValue` facts for values live across supported
+  i128 div/rem helper boundaries
+- selected-call ownership becomes true only when callee identity, resources,
+  clobbers, ABI bindings, marshaling/unmarshaling, and live preservation are
+  structurally complete
+
+Float/i128 conversion helpers and memory-return helper families remain
+deferred. Idea 236 can resume terminal helper-call printer consumption from
+these structured facts and must keep incomplete live-preservation or
+unsupported helper shapes fail-closed.
+
+Close proof used the accepted full-suite regression artifact in
+`test_before.log`: 3167/3167 tests passed.

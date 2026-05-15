@@ -70,11 +70,12 @@ authority route supplies those facts.
 Step 8 validated the accepted structured i128 pair-lowering subset, but the
 source idea is not closeable while div/rem helper-boundary terminal call
 printing still lacks structured helper marshaling and ABI register-binding
-authority. The active follow-up prerequisite is now
-`ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md`.
+authority. The follow-up prerequisite
+`ideas/closed/249_prepared_i128_helper_marshaling_abi_binding.md` is now
+closed for supported direct-result i128 div/rem helpers.
 
-That prerequisite must supply the remaining helper-call printing authority for
-supported i128 div/rem helper boundaries:
+That prerequisite supplied the remaining helper-call printing authority for
+supported direct-result i128 div/rem helper boundaries:
 
 - ABI argument and result register bindings for low/high lanes
 - structured moves between prepared carrier lanes and helper ABI registers
@@ -83,6 +84,8 @@ supported i128 div/rem helper boundaries:
 - fail-closed diagnostics for incomplete marshaling, wrong carrier shape, or
   unsupported memory-return/helper-family cases
 
-This idea should resume only after selected AArch64 helper-boundary printing
-can consume those facts without target-local fixed-register assumptions,
-register-adjacency inference, or opcode-shaped helper synthesis.
+This idea can resume terminal helper-call printer consumption for supported
+direct-result i128 div/rem helpers. Float/i128 conversion helpers,
+memory-return helper families, and incomplete live-preservation states remain
+deferred or fail-closed unless a separate source idea supplies the missing
+authority.

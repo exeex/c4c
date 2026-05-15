@@ -1,51 +1,64 @@
-# Prepared I128 Helper Marshaling ABI Binding Runbook
+# AArch64 I128 Pair Lowering Runbook
 
 Status: Active
-Source Idea: ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md
-Activated from: ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md
-Supersedes active runbook: ideas/open/236_aarch64_i128_pair_lowering.md is parked on a helper-marshaling ABI-binding blocker.
+Source Idea: ideas/open/236_aarch64_i128_pair_lowering.md
+Activated from: ideas/open/236_aarch64_i128_pair_lowering.md
+Resumed after prerequisites:
+- ideas/closed/248_prepared_i128_runtime_helper_authority.md
+- ideas/closed/249_prepared_i128_helper_marshaling_abi_binding.md
 
 ## Purpose
 
-Provide prepared/shared marshaling and ABI register-binding facts required
-before AArch64 i128 div/rem helper-boundary records can print executable
-terminal helper calls.
+Finish the supported AArch64 i128 pair lowering route by consuming structured
+helper-boundary marshaling and ABI register-binding facts for terminal div/rem
+helper-call printing.
 
 ## Goal
 
-Make low/high lane-to-ABI-register bindings, result bindings, helper-call
-marshaling moves, clobber/live-value preservation, and selected-call operand
-ownership explicit enough for idea 236 to consume without hard-coded helper
-register assumptions.
+Print supported direct-result i128 `SDiv`, `UDiv`, `SRem`, and `URem`
+helper-boundary calls from selected records and prepared marshaling facts,
+without hard-coded helper ABI registers, rendered-name recovery, or scalar-i64
+shortcuts.
 
 ## Core Rule
 
-This runbook prepares helper marshaling authority only. It must not print
-helper calls by hard-coding `x0`/`x1`, inferring adjacent registers, lowering
-i128 as scalar i64, or synthesizing helper operands from opcodes/rendered text.
+AArch64 i128 helper-call printing must consume structured selected-record,
+carrier, ABI binding, marshal/unmarshal, clobber/resource, live-preservation,
+and selected-call ownership facts. Do not infer operands from fixed `x0`/`x1`
+conventions, register adjacency, opcodes, rendered names, or helper callee
+strings.
 
 ## Read First
 
-- `ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md`
 - `ideas/open/236_aarch64_i128_pair_lowering.md`
 - `ideas/closed/248_prepared_i128_runtime_helper_authority.md`
-- prepared i128 carrier, runtime-helper, ABI, call-clobber, and value-home
-  facts
+- `ideas/closed/249_prepared_i128_helper_marshaling_abi_binding.md`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- prepared i128 carrier, runtime-helper, marshaling, ABI binding,
+  call-clobber, live-preservation, and selected-call ownership facts
 - focused backend tests under `tests/backend/mir/`
 
 ## Current Targets
 
-- ABI argument register bindings for low/high i128 helper lanes.
-- Direct-result register bindings for supported i128 div/rem helpers.
-- Structured carrier-lane to helper-register marshaling facts.
-- Helper call-clobber, live-value preservation, and resource facts.
-- Selected-call operand ownership for terminal `bl <callee>` output.
-- Fail-closed diagnostics for incomplete marshaling authority.
+- Terminal printing for supported direct-result i128 div/rem helper-boundary
+  records.
+- Structured marshal moves from prepared carrier lanes to helper ABI argument
+  registers.
+- Structured terminal `bl <callee>` output from selected-call ownership.
+- Structured unmarshal moves from helper ABI result registers to prepared
+  result carrier lanes.
+- Fail-closed diagnostics for incomplete selected-call ownership,
+  live-preservation gaps, wrong carrier shapes, float/i128 conversions, and
+  memory-return helper families.
 
 ## Non-Goals
 
 - Do not add float/i128 conversion helper mapping.
-- Do not add memory-return helper-family support without a separate source idea.
+- Do not add memory-return helper-family support without a separate source
+  idea.
 - Do not implement generic call lowering, retained-call rewrites, binary128,
   atomics, intrinsics, inline asm, callee-save placement, or preserved-value
   extent work.
@@ -54,121 +67,136 @@ i128 as scalar i64, or synthesizing helper operands from opcodes/rendered text.
 
 ## Working Model
 
-Idea 236 has selected `I128RuntimeHelperBoundaryRecord` values for supported
-div/rem helpers, but terminal helper-call printing is still fail-closed because
-helper marshaling and ABI register bindings are not structured. This runbook
-adds the missing producer-owned facts so idea 236 can resume and print helper
-boundaries from selected records.
+The earlier i128 runbook established carriers, selected pair operations,
+selected div/rem helper-boundary records, and printer support for the
+non-helper selected subset. Idea 249 now supplies the missing ABI binding,
+marshal/unmarshal, clobber/resource, live-preservation, and selected-call
+ownership facts. The next code packet should consume those facts in the
+AArch64 printer and keep unsupported helper shapes fail-closed.
 
 ## Execution Rules
 
 - Keep routine packet progress and proof in `todo.md`.
-- Start by inspecting current selected helper-boundary records and prepared
-  helper/call ABI facts.
-- Add prepared/shared carriers where helper ABI binding and marshaling policy
-  are already owned.
-- Preserve fail-closed diagnostics for incomplete bindings, wrong carrier
-  shapes, memory-return helpers, and unsupported helper families.
-- Treat hard-coded ABI registers, rendered-name recovery, scalar-i64
-  shortcuts, and expectation-only changes as route drift.
-- For code-changing packets, prove with a build plus the supervisor-chosen
-  focused prepared/i128 backend subset. Escalate to broader backend validation
-  after shared ABI, call, or printer-visible facts change.
+- Resume at Step 7; do not redo completed carrier, operation-selection, or
+  prepared-helper authority work unless a direct dependency is stale.
+- Print helper calls only when selected-call ownership and marshaling facts are
+  complete.
+- Preserve fail-closed diagnostics for incomplete live preservation, missing
+  ABI bindings, missing marshal/unmarshal facts, non-direct result ownership,
+  float/i128 conversions, and memory-return helpers.
+- Treat hard-coded ABI registers, fixed-register matching, scalar-i64
+  lowering, target-local helper selection, and expectation-only changes as
+  route drift.
+- For every code-changing packet, prove with a build plus the
+  supervisor-chosen focused AArch64 i128 backend subset. Escalate to broader
+  backend validation after printer-visible helper-call behavior changes.
 
 ## Ordered Steps
 
-### Step 1: Inspect Helper Marshaling And ABI Binding Gap
+### Step 1: Inspect I128 Prepared And AArch64 Surfaces
 
-Goal: identify the exact facts missing between selected div/rem helper-boundary
-records and terminal call printing.
-
-Actions:
-
-- Trace selected `I128RuntimeHelperBoundaryRecord` div/rem records into the
-  current printer fail-closed diagnostic.
-- Identify required ABI argument/result register bindings for low/high lanes.
-- Identify required carrier-lane to ABI-register move/marshaling facts.
-- Identify call-clobber, live-value preservation, and selected-call operand
-  ownership facts needed for `bl <callee>` output.
-- Record the first implementation packet target and proof subset in `todo.md`.
+Status: Completed before prerequisite splits.
 
 Completion check:
 
-- `todo.md` names the exact producer-owned marshaling or ABI-binding carrier
-  to implement first.
+- Prepared/shared i128 carrier and helper-boundary requirements were recorded.
 
-### Step 2: Add Low/High ABI Argument And Result Bindings
+### Step 2: Establish I128 Pair Or Memory Carrier Authority
 
-Goal: expose structured helper ABI register bindings for supported i128
-div/rem helper arguments and direct results.
-
-Actions:
-
-- Define low/high argument register-binding facts for each supported div/rem
-  helper operand.
-- Define direct low/high result register-binding facts for supported div/rem
-  helper results.
-- Preserve lane order, lane width, register bank, helper kind, and callee
-  identity as structured facts.
-- Add diagnostics and focused coverage for incomplete binding state.
+Status: Completed before prerequisite splits.
 
 Completion check:
 
-- Supported div/rem helper boundaries expose complete ABI argument and result
-  register bindings for selected consumers.
+- I128 values expose explicit low/high or memory-backed authority for selected
+  AArch64 records.
 
-### Step 3: Add Structured Helper Marshaling Facts
+### Step 3: Select I128 Transport Nodes
 
-Goal: describe moves between prepared carrier lanes and helper ABI registers
-without target-local register inference.
-
-Actions:
-
-- Define marshaling records from prepared source carrier lanes to helper ABI
-  argument registers.
-- Define result unmarshal records from helper ABI result registers to prepared
-  result carrier lanes.
-- Preserve value identity, lane identity, register bank, and move direction.
-- Keep wrong carrier shapes and unsupported memory-return helpers fail-closed.
+Status: Completed before prerequisite splits.
 
 Completion check:
 
-- Selected consumers can see every required carrier-to-helper and
-  helper-to-carrier move as structured facts.
+- Supported i128 transport emits structured selected records from prepared
+  pair or memory facts.
 
-### Step 4: Add Call-Clobber And Live Preservation Authority
+### Step 4: Select I128 Arithmetic And Bitwise Nodes
 
-Goal: make helper-call clobber/resource and live-value preservation facts
-explicit enough for terminal helper-call emission.
-
-Actions:
-
-- Connect helper clobber policy to the selected helper boundary.
-- Preserve live carrier lanes that must survive the helper call.
-- Expose selected-call operand ownership for terminal `bl <callee>` output.
-- Add focused coverage for complete and incomplete helper-call policy facts.
+Status: Completed before prerequisite splits.
 
 Completion check:
 
-- Helper-boundary consumers can emit or reject terminal calls from structured
-  clobber/resource and selected-call ownership facts.
+- Supported i128 arithmetic and bitwise cases produce selected pair records
+  without scalar-i64 shortcuts or fixed-register assumptions.
 
-### Step 5: Validate And Hand Back To I128 Pair Lowering
+### Step 5: Select I128 Shift And Comparison Nodes
 
-Goal: prove the marshaling/ABI-binding prerequisite and hand back to idea 236.
-
-Actions:
-
-- Run the supervisor-chosen build and focused prepared/i128 backend subset.
-- Escalate to broader backend validation if shared ABI, call, or
-  printer-visible facts changed beyond one carrier.
-- Summarize available div/rem helper ABI bindings, marshaling facts, and
-  remaining unsupported helper shapes in `todo.md`.
-- Ask the supervisor to route plan-owner to reactivate idea 236 only if helper
-  call printing can consume these facts directly.
+Status: Completed before prerequisite splits.
 
 Completion check:
 
-- The prerequisite facts are structurally present, incomplete facts still fail
-  closed, and `todo.md` names whether idea 236 can resume helper-call printer
-  consumption.
+- Supported i128 shifts and comparisons emit structured selected records with
+  correct lane and signedness semantics.
+
+### Step 6: Consume Prepared I128 Runtime Helper Boundaries
+
+Status: Completed before idea-249 prerequisite split.
+
+Completion check:
+
+- Supported div/rem helper paths expose structured selected AArch64
+  helper-boundary records from prepared facts.
+
+### Step 7: Print I128 Runtime Helper Boundary Calls
+
+Goal: print supported direct-result i128 div/rem helper-boundary calls from
+structured selected records and prepared marshaling facts.
+
+Primary targets:
+
+- `I128RuntimeHelperBoundaryRecord`
+- AArch64 terminal machine printer helper-boundary path
+- selected-call ownership diagnostics
+- focused machine-printer and instruction-dispatch tests
+
+Actions:
+
+- Emit marshal moves from prepared carrier lanes to helper ABI argument
+  registers using structured marshal facts.
+- Emit terminal `bl <callee>` only when selected-call ownership is complete.
+- Emit unmarshal moves from helper ABI result registers back to prepared result
+  carrier lanes using structured unmarshal facts.
+- Consume helper clobber/resource and live-preservation facts as diagnostics or
+  selected-record fields required for terminal output.
+- Keep incomplete live preservation, missing ABI bindings, wrong carrier
+  shapes, float/i128 conversions, and memory-return helper families
+  fail-closed.
+- Add focused printer coverage for at least one signed and one unsigned
+  direct-result div/rem helper path plus incomplete-authority diagnostics.
+
+Completion check:
+
+- Supported direct-result div/rem helper-boundary records print from structured
+  fields, and unsupported helper shapes remain explicitly diagnosed.
+
+### Step 8: Validate And Summarize
+
+Goal: prove the accepted i128 pair lowering and helper-call printing coverage
+without expanding into deferred helper families.
+
+Actions:
+
+- Run the supervisor-chosen build and focused i128 backend subset.
+- Escalate to broader backend validation because terminal helper-call printer
+  behavior changed.
+- Summarize supported transport, arithmetic, comparison, shift, and direct
+  div/rem helper-call printing paths in `todo.md`.
+- Record remaining binary128, scalar FP, atomic, intrinsic, inline-asm,
+  float/i128 helper, memory-return helper, or prepared-frame blockers as
+  separate lifecycle candidates rather than expanding this route.
+
+Completion check:
+
+- Supported i128 pair paths and direct-result div/rem helper paths pass through
+  structured lowering/printing or fail with explicit unsupported diagnostics,
+  and no supported case depends on name-shaped matching, target-local helper
+  selection, hard-coded ABI registers, or scalar-i64 shortcuts.
