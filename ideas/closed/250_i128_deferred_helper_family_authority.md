@@ -1,7 +1,8 @@
 # I128 Deferred Helper Family Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/236_aarch64_i128_pair_lowering.md
 
@@ -71,3 +72,25 @@ or printing can consume them.
   shortcuts.
 - The route broadens into binary128, atomics, intrinsics, inline asm, generic
   call lowering, callee-save placement, or unrelated frame allocation work.
+
+## Closure Summary
+
+The active runbook completed the prepared/shared authority for the supported
+direct-result F32/F64 i128 conversion helper family:
+`__fixsfti`, `__fixdfti`, `__fixunssfti`, `__fixunsdfti`,
+`__floattisf`, `__floattidf`, `__floatuntisf`, and `__floatuntidf`.
+Those helpers now expose structural source-operation mapping, helper
+family/kind, callee identity, direct result and argument lane ownership,
+ABI/register-bank bindings, marshal/unmarshal moves, runtime-helper resources,
+caller-saved clobber policy, live-preservation evaluation, and selected-call
+ownership.
+
+F128/binary128 conversion mappings remain intentionally deferred by the
+idea's out-of-scope boundary. I128 helper memory-return shapes remain
+fail-closed because destination identity, storage extent/alignment, slot,
+offset, producer authority, and helper ABI policy are not complete for
+helper-selected memory results.
+
+Close-time regression guard used matching full-suite logs:
+`test_before.log` and `test_after.log` both reported 3167/3167 passing tests
+with no new failures.
