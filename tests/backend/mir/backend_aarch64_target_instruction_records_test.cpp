@@ -3438,6 +3438,24 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
               IncompletePreparedF128RuntimeHelper) {
     return fail("expected incomplete f128 cast helper facts to fail closed");
   }
+
+  auto sign_bit_like = make_f128_runtime_helper(function_name,
+                                                10,
+                                                bir::BinaryOpcode::Xor,
+                                                prepare::PreparedF128RuntimeHelperKind::Add,
+                                                "__addtf3",
+                                                carriers.carriers[0],
+                                                carriers.carriers[1],
+                                                carriers.carriers[2]);
+  const auto unsupported_sign_bit =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, sign_bit_like);
+  if (unsupported_sign_bit.record.has_value() ||
+      unsupported_sign_bit.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              UnsupportedSourceOperation) {
+    return fail("expected f128 sign-bit-like xor to fail closed without distinct prepared authority");
+  }
   return 0;
 }
 

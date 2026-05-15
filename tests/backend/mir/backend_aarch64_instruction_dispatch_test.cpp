@@ -5169,6 +5169,59 @@ int block_dispatch_reports_missing_f128_runtime_helper_authority() {
   return 0;
 }
 
+int block_dispatch_keeps_f128_sign_bit_candidate_fail_closed() {
+  auto missing_helper_prepared =
+      prepared_with_f128_runtime_helper_operation(bir::BinaryOpcode::Xor, false);
+  const auto& function_cf = missing_helper_prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      missing_helper_prepared, missing_helper_prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics missing_helper_diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, missing_helper_diagnostics);
+  if (result.visited_operations != 1 ||
+      result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 ||
+      missing_helper_diagnostics.entries.size() != 1 ||
+      missing_helper_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      missing_helper_diagnostics.entries.front().message.find(
+          "missing_prepared_f128_runtime_helper") == std::string::npos) {
+    return fail("expected f128 sign-bit candidate to require prepared full-width authority");
+  }
+
+  auto mismatched_prepared =
+      prepared_with_f128_runtime_helper_operation(bir::BinaryOpcode::Xor);
+  const auto& mismatched_function_cf =
+      mismatched_prepared.control_flow.functions.front();
+  const auto& mismatched_block_cf = mismatched_function_cf.blocks.front();
+  const auto mismatched_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          mismatched_prepared, mismatched_prepared.target_profile, mismatched_function_cf);
+  const auto mismatched_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          mismatched_function_context, mismatched_block_cf, 0);
+
+  aarch64_module::MachineBlock mismatched_block;
+  aarch64_module::ModuleLoweringDiagnostics mismatched_diagnostics;
+  const auto mismatched_result =
+      aarch64_codegen::dispatch_prepared_block(
+          mismatched_block_context, mismatched_block, mismatched_diagnostics);
+  if (mismatched_result.visited_operations != 1 ||
+      mismatched_result.emitted_instructions != 1 ||
+      mismatched_block.instructions.size() != 1 ||
+      mismatched_diagnostics.entries.size() != 1 ||
+      mismatched_diagnostics.entries.front().message.find(
+          "unsupported_source_operation") == std::string::npos) {
+    return fail("expected f128 sign-bit candidate to reject arithmetic helper guesses");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_f128_compare_helper_boundary_into_i1_result() {
   auto prepared = prepared_with_f128_comparison_helper_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -5915,6 +5968,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_f128_runtime_helper_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_f128_sign_bit_candidate_fail_closed();
       status != 0) {
     return status;
   }

@@ -1,25 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4.3
-Current Step Title: Cast Helper Boundary
+Current Step ID: 4.4
+Current Step Title: Sign-Bit Negation Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4.3 completed the F128 cast helper boundary hardening. The modeled
-`F32`/`F64`<->`F128` helper pairs remain owned by prepared F128 runtime helper
-facts, scalar cast records now explicitly reject all four helper pairs instead
-of falling back through scalar F64 lowering, and record construction now proves
-that mismatched cast helper identity or incomplete prepared cast facts fail
-closed before instruction selection or callee guessing.
+Step 4.4 completed the F128 sign-bit negation boundary decision as a
+deliberate fail-closed slice. F128 sign-bit-like `xor` candidates now stay out
+of scalar ALU records, dispatch routes them through the F128 helper boundary
+only far enough to report missing prepared authority, and record construction
+rejects arithmetic-helper guesses instead of accepting scalar `F64`
+approximations, fixed scratch snippets, or dispatch-side callee inference.
 
 ## Suggested Next
 
-Start Step 4.4 with the next narrow helper-family packet: model or deliberately
-defer F128 sign-bit negation from prepared helper authority without using scalar
-F64 approximations or dispatch-side helper guesses.
+Start Step 4.5 with unsupported helper-family diagnostics for the remaining
+unmodeled F128 helper cases, keeping unsigned div/rem and bitwise/logical
+families outside selected helper records unless complete prepared authority is
+added deliberately.
 
 ## Watchouts
 
@@ -95,9 +96,15 @@ F64 approximations or dispatch-side helper guesses.
   `FPExt`/`FPTrunc` pairs. Unsupported F128 casts, mismatched helper identities,
   and missing prepared helper facts should continue to diagnose instead of
   manufacturing scalar fallback records.
+- Step 4.4 did not add positive F128 sign-bit negation support. Exact missing
+  authority is a distinct prepared sign-bit/full-width bit-operation contract:
+  semantic source identity, full-width operand/result carrier ownership, mask or
+  helper identity, clobber/resource policy, live preservation, and a selected
+  terminal operation. Until that lands, F128 sign-bit-like `xor` remains
+  diagnostic-only.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_alu_records)$'; } 2>&1 | tee test_after.log`
 
 Passed, 6/6 tests. Proof log: `test_after.log`.

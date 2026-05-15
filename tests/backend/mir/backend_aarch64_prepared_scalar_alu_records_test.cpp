@@ -561,6 +561,14 @@ int unsupported_and_incomplete_facts_fail_closed() {
     return fail("expected F128 scalar ALU to fail closed");
   }
 
+  const auto f128_sign_bit_like = aarch64_codegen::make_prepared_scalar_alu_record(
+      fp.names, fp.locations, fp.storage, binary(bir::BinaryOpcode::Xor, bir::TypeKind::F128));
+  if (f128_sign_bit_like.record.has_value() ||
+      f128_sign_bit_like.error !=
+          aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+    return fail("expected F128 sign-bit-like xor to stay out of scalar ALU records");
+  }
+
   fp.storage.values[0] = register_storage(prepare::PreparedValueId{20}, fp.lhs_name, "x1");
   fp.locations.value_homes[0].register_name = "x1";
   const auto wrong_bank = aarch64_codegen::make_prepared_scalar_alu_record(

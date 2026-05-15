@@ -799,6 +799,11 @@ struct LowerMemoryInstructionResult {
         cast->operand.type == bir::TypeKind::F128 &&
         (cast->result.type == bir::TypeKind::F32 ||
          cast->result.type == bir::TypeKind::F64)));
+  const bool f128_sign_bit_candidate =
+      binary != nullptr &&
+      binary->opcode == bir::BinaryOpcode::Xor &&
+      binary->operand_type == bir::TypeKind::F128 &&
+      binary->result.type == bir::TypeKind::F128;
   if ((binary == nullptr ||
        (!supported_f128_comparison &&
         ((binary->opcode != bir::BinaryOpcode::Add &&
@@ -806,7 +811,8 @@ struct LowerMemoryInstructionResult {
           binary->opcode != bir::BinaryOpcode::Mul &&
           binary->opcode != bir::BinaryOpcode::SDiv) ||
          binary->operand_type != bir::TypeKind::F128 ||
-         binary->result.type != bir::TypeKind::F128))) &&
+         binary->result.type != bir::TypeKind::F128) &&
+        !f128_sign_bit_candidate)) &&
       !supported_f128_cast) {
     return LowerMemoryInstructionResult{.handled = false};
   }
