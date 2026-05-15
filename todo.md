@@ -8,20 +8,18 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 4 added the first record-only prepared binary128 soft-float helper
-ABI slice for F128 add. `PreparedF128RuntimeHelper` now maps an F128 `add` BIR
-instruction to `__addtf3`, preserves helper identity/source opcode/value ids,
-keeps full-width 16-byte F128 carrier references, and adds structured AAPCS64
-q-register ABI bindings plus marshaling/unmarshaling moves for lhs, rhs, and
-result. Selected-call ownership now has callee identity, ABI bindings, and
-marshaling authority, but still fails closed on missing caller-saved clobber
-and live-preservation authority. No AArch64 machine selection was added.
+Step 4 added explicit caller-saved clobber authority to the prepared binary128
+soft-float helper record for F128 add. `PreparedF128RuntimeHelper` now reuses
+the prepared call-boundary clobber set for `__addtf3`, publishes the clobber
+resource in the F128 helper printer, and lets selected-call ownership report
+clobber authority while still keeping `owns_terminal_call=no`. The remaining
+fail-closed reason is live-preservation authority; no AArch64 machine
+selection was added.
 
 ## Suggested Next
 
-Stay on Step 4 and fill the next exact F128 helper-boundary gap: add explicit
-caller-saved clobber authority for the prepared F128 soft-float helper record,
-then add live-preservation facts before any AArch64 dispatch consumes the
+Stay on Step 4 and add live-preservation facts for the prepared F128
+soft-float helper call boundary before any AArch64 dispatch consumes the
 helper.
 
 ## Watchouts
@@ -71,14 +69,14 @@ helper.
   approximations or dispatch-only callee guesses.
 - The new F128 add helper record intentionally keeps
   `owns_terminal_call=no`; the prepared fact is not complete enough for AArch64
-  dispatch until clobbers and live preservation become structured authority.
+  dispatch until live preservation becomes structured authority.
 - Only F128 add maps to a helper callee in this slice. Sub/mul/div/compare/cast
   helpers remain unsupported until their semantic helper identities and ABI
   facts are added deliberately.
-- This packet models ABI marshaling only for the existing record-only F128 add
-  helper on AAPCS64: lhs uses `q0`, rhs uses `q1`, and the result uses `q0`.
-  Caller-saved clobbers, live-preservation, selected dispatch, and final
-  assembly printing remain out of scope.
+- This packet models ABI marshaling plus caller-saved clobbers only for the
+  existing record-only F128 add helper on AAPCS64: lhs uses `q0`, rhs uses
+  `q1`, and the result uses `q0`. Live-preservation, selected dispatch, and
+  final assembly printing remain out of scope.
 
 ## Proof
 

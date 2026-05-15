@@ -1624,11 +1624,18 @@ void populate_f128_runtime_helper_marshaling(PreparedF128RuntimeHelper& helper) 
                 "result");
 }
 
-void populate_f128_runtime_helper_boundary_policy(PreparedF128RuntimeHelper& helper) {
+[[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function);
+
+void populate_f128_runtime_helper_boundary_policy(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function,
+    PreparedF128RuntimeHelper& helper) {
   helper.resource_policy = PreparedF128RuntimeHelper::ResourcePolicy{
       .call_boundary = true,
       .runtime_helper_callee = !helper.callee_name.empty(),
-      .caller_saved_clobbers = false,
+      .caller_saved_clobbers = true,
       .preserves_source_operation_identity = true,
   };
   helper.abi_policy = PreparedF128RuntimeHelper::AbiPolicy{
@@ -1645,13 +1652,15 @@ void populate_f128_runtime_helper_boundary_policy(PreparedF128RuntimeHelper& hel
       .no_additional_live_preservation_required = false,
       .preserved_values = {},
   };
-  helper.clobbered_registers.clear();
+  helper.clobbered_registers = build_call_clobber_set(target_profile, regalloc_function);
 
   if (helper.callee_name.empty()) {
     append_f128_runtime_helper_fact(helper, "f128_helper_boundary_requires_callee_identity");
   }
-  append_f128_runtime_helper_fact(
-      helper, "f128_helper_boundary_requires_caller_saved_clobber_policy");
+  if (helper.clobbered_registers.empty()) {
+    append_f128_runtime_helper_fact(
+        helper, "f128_helper_boundary_requires_caller_saved_clobbers");
+  }
   append_f128_runtime_helper_fact(
       helper, "f128_helper_boundary_requires_live_preservation_policy");
 }
@@ -1723,12 +1732,15 @@ void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
   for (auto& function_helpers : prepared.f128_runtime_helpers.functions) {
     const auto* function_carriers =
         find_prepared_f128_carriers(prepared.f128_carriers, function_helpers.function_name);
+    const auto* regalloc_function =
+        find_regalloc_function(prepared.regalloc, function_helpers.function_name);
     for (auto& helper : function_helpers.helpers) {
       helper.lhs_carrier.reset();
       helper.rhs_carrier.reset();
       helper.result_carrier.reset();
       helper.missing_required_facts.clear();
-      populate_f128_runtime_helper_boundary_policy(helper);
+      populate_f128_runtime_helper_boundary_policy(
+          prepared.target_profile, regalloc_function, helper);
       populate_f128_helper_carrier_from_fact(
           function_carriers, helper, helper.lhs_value_id, helper.lhs_carrier, "lhs");
       populate_f128_helper_carrier_from_fact(
@@ -1746,10 +1758,6 @@ void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
     }
   }
 }
-
-[[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
-    const c4c::TargetProfile& target_profile,
-    const PreparedRegallocFunction* regalloc_function);
 
 void append_i128_runtime_helper_fact(PreparedI128RuntimeHelper& helper,
                                      std::string fact) {

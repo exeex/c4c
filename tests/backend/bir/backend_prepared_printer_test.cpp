@@ -3598,6 +3598,8 @@ int main() {
       !f128_helper->lhs_argument_move.has_value() ||
       !f128_helper->rhs_argument_move.has_value() ||
       !f128_helper->result_unmarshal_move.has_value() ||
+      !f128_helper->resource_policy.caller_saved_clobbers ||
+      f128_helper->clobbered_registers.empty() ||
       f128_helper->lhs_carrier->width_bytes != 16 ||
       f128_helper->rhs_carrier->width_bytes != 16 ||
       f128_helper->result_carrier->width_bytes != 16 ||
@@ -3613,8 +3615,27 @@ int main() {
           prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument ||
       f128_helper->result_unmarshal_move->direction !=
           prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier ||
+      !f128_helper->selected_call_ownership.has_clobber_policy ||
       f128_helper->selected_call_ownership.owns_terminal_call) {
     std::cerr << "[FAIL] prepared f128 soft-float helper lost structured record authority\n";
+    return EXIT_FAILURE;
+  }
+  const auto f128_vreg_clobber_it = std::find_if(
+      f128_helper->clobbered_registers.begin(),
+      f128_helper->clobbered_registers.end(),
+      [](const prepare::PreparedClobberedRegister& clobber) {
+        return clobber.bank == prepare::PreparedRegisterBank::Vreg &&
+               clobber.register_name == "v0" &&
+               clobber.contiguous_width == 1 &&
+               clobber.occupied_register_names.size() == 1 &&
+               clobber.occupied_register_names.front() == "v0" &&
+               clobber.placement.has_value() &&
+               clobber.placement->pool ==
+                   prepare::PreparedRegisterSlotPool::ReservedScratch;
+      });
+  if (f128_vreg_clobber_it == f128_helper->clobbered_registers.end()) {
+    std::cerr
+        << "[FAIL] prepared f128 soft-float helper lost structured vreg clobber authority\n";
     return EXIT_FAILURE;
   }
   const auto has_f128_missing_fact = [&](std::string_view fact) {
@@ -3624,10 +3645,11 @@ int main() {
                          return candidate == fact;
                        });
   };
-  if (!has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
-      !has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
-      !has_f128_missing_fact("selected_call_ownership_requires_clobber_policy") ||
+  if (!has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
       !has_f128_missing_fact("selected_call_ownership_requires_live_preservation_policy") ||
+      has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
+      has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobbers") ||
+      has_f128_missing_fact("selected_call_ownership_requires_clobber_policy") ||
       has_f128_missing_fact("selected_call_ownership_requires_resource_policy") ||
       has_f128_missing_fact("selected_call_ownership_requires_abi_bindings") ||
       has_f128_missing_fact("selected_call_ownership_requires_marshaling")) {
@@ -3649,8 +3671,14 @@ int main() {
   }
   if (!expect_contains(f128_helper_dump,
                        "result_ownership=full_width_carrier "
-                       "resources=[call_boundary,runtime_helper_callee,source_operation_identity]",
+                       "resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"
+                       "source_operation_identity]",
                        "f128 helper resource record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "clobbers=gpr:x13/w1[x13],fpr:d13/w1[d13],vreg:v0/w1[v0]",
+                       "f128 helper caller-saved clobber summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
@@ -3715,13 +3743,8 @@ int main() {
   }
   if (!expect_contains(f128_helper_dump,
                        "selected_call_ownership=[owns_terminal_call=no,callee=yes,resources=yes,"
-                       "clobbers=no,abi_bindings=yes,marshaling=yes,live_preservation=no]",
+                       "clobbers=yes,abi_bindings=yes,marshaling=yes,live_preservation=no]",
                        "f128 helper fail-closed selected ownership")) {
-    return EXIT_FAILURE;
-  }
-  if (!expect_contains(f128_helper_dump,
-                       "f128_helper_boundary_requires_caller_saved_clobber_policy",
-                       "f128 helper missing clobber diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,

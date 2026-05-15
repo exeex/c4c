@@ -1745,8 +1745,17 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
           << " result_bank=" << prepared_register_bank_name(helper.abi_policy.result_bank)
           << " arg_count=" << helper.abi_policy.argument_count
           << " result_count=" << helper.abi_policy.result_count
-          << " width=" << helper.abi_policy.width_bytes
-          << " carriers";
+          << " width=" << helper.abi_policy.width_bytes;
+      if (!helper.clobbered_registers.empty()) {
+        out << " clobbers=";
+        for (std::size_t index = 0; index < helper.clobbered_registers.size(); ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          append_clobbered_register_summary(out, helper.clobbered_registers[index]);
+        }
+      }
+      out << " carriers";
       append_carrier("lhs", helper.lhs_carrier);
       append_carrier("rhs", helper.rhs_carrier);
       append_carrier("result", helper.result_carrier);
