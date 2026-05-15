@@ -1,7 +1,8 @@
 # Inline Assembly Structured Clobber Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/240_aarch64_inline_asm_machine_nodes.md
 
@@ -48,6 +49,25 @@ provide source/LIR/BIR structured clobber authority for the backend to consume.
 - Existing supported inline-asm operand, name, immediate, modifier, side-effect,
   output, and tied-home tests continue to pass.
 - A regression guard over the supervisor-selected scope passes.
+
+## Completion Notes
+
+Closed after Step 4 lifecycle review. Structured inline-asm clobbers are carried
+from source/LIR through BIR, prepared records, and selected AArch64 machine
+records without reconstructing clobber authority from template text, final
+assembly, or diagnostic strings. Supported AArch64 clobber representatives are
+covered, and unsupported or target-invalid clobbers remain fail-closed with
+diagnostics. Memory/address constraints and tied-home allocation policy remain
+separate open ideas.
+
+Closure proof:
+
+- Supervisor full-suite validation at current `HEAD`: `3167/3167` tests passed
+  in `test_after.log`.
+- Accepted full-suite baseline in `test_before.log`: `3167/3167` tests passed.
+- Close-time regression guard:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  passed with no new failing tests.
 
 ## Reviewer Reject Signals
 
