@@ -2476,25 +2476,38 @@ int main() {
       aapcs64_entry_plan->named_register_counts.fp != std::optional<std::size_t>{1} ||
       !aapcs64_entry_plan->register_save_area.required ||
       aapcs64_entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
+      aapcs64_entry_plan->register_save_area.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{0} ||
+      aapcs64_entry_plan->register_save_area.stack_offset_bytes !=
+          std::optional<std::size_t>{0} ||
       aapcs64_entry_plan->register_save_area.initial_gp_offset_bytes !=
           std::optional<std::ptrdiff_t>{-56} ||
       aapcs64_entry_plan->register_save_area.initial_fp_offset_bytes !=
           std::optional<std::ptrdiff_t>{-112} ||
       !aapcs64_entry_plan->overflow_area.required ||
+      aapcs64_entry_plan->overflow_area.base_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{1} ||
+      aapcs64_entry_plan->overflow_area.base_stack_offset_bytes !=
+          std::optional<std::size_t>{192} ||
       !aapcs64_entry_plan->va_list_layout.required ||
       aapcs64_entry_plan->va_list_layout.fields.size() != 5 ||
       aapcs64_entry_plan->helper_resources.required_helpers.size() != 1 ||
       aapcs64_entry_plan->helper_resources.required_helpers.front() !=
           prepare::PreparedVariadicEntryHelperKind::VaStart ||
-      aapcs64_entry_plan->missing_required_facts.empty()) {
+      !aapcs64_entry_plan->missing_required_facts.empty()) {
     std::cerr << "[FAIL] AAPCS64 variadic entry carrier did not publish structured ABI facts "
-                 "or unsupported blockers\n";
+                 "and prepared storage authority\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(
           aapcs64_variadic_dump,
-          "register_save_area required=yes size=192 align=16 slot=<none> stack_offset=<unknown> gp_offset=0 fp_offset=64 gp_slot=8 fp_slot=16 saved_gp=7 saved_fp=7 initial_gp_offset=-56 initial_fp_offset=-112",
+          "register_save_area required=yes size=192 align=16 slot=#0 stack_offset=0 gp_offset=0 fp_offset=64 gp_slot=8 fp_slot=16 saved_gp=7 saved_fp=7 initial_gp_offset=-56 initial_fp_offset=-112",
           "AAPCS64 variadic entry register-save facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "overflow_area required=yes base_slot=#1 base_stack_offset=192 align=8",
+                       "AAPCS64 variadic overflow-area storage facts")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_variadic_dump,
@@ -2515,11 +2528,6 @@ int main() {
   if (!expect_contains(aapcs64_variadic_dump,
                        "helper kind=va_start",
                        "AAPCS64 variadic va_start helper need")) {
-    return EXIT_FAILURE;
-  }
-  if (!expect_contains(aapcs64_variadic_dump,
-                       "missing fact=register_save_area.slot_id",
-                       "AAPCS64 variadic unsupported save-area storage fact")) {
     return EXIT_FAILURE;
   }
   const auto aapcs64_helper_family_prepared =

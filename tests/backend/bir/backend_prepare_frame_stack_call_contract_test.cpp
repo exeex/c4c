@@ -5182,12 +5182,29 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
   }
   if (entry_plan->helper_resources.required_helpers.size() != 4 ||
       entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
+      !entry_plan->register_save_area.slot_id.has_value() ||
+      !entry_plan->register_save_area.stack_offset_bytes.has_value() ||
       entry_plan->register_save_area.saved_gp_register_count !=
           std::optional<std::size_t>{7} ||
       entry_plan->register_save_area.saved_fp_register_count !=
           std::optional<std::size_t>{7} ||
+      !entry_plan->overflow_area.base_slot_id.has_value() ||
+      !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8}) {
     return fail("AAPCS64 variadic helper-family frame contract: lost prepared entry facts");
+  }
+  const auto* register_save_slot =
+      prepare::find_prepared_frame_slot(prepared.stack_layout,
+                                        *entry_plan->register_save_area.slot_id);
+  const auto* overflow_base_slot =
+      prepare::find_prepared_frame_slot(prepared.stack_layout,
+                                        *entry_plan->overflow_area.base_slot_id);
+  if (register_save_slot == nullptr ||
+      overflow_base_slot == nullptr ||
+      register_save_slot->offset_bytes != *entry_plan->register_save_area.stack_offset_bytes ||
+      register_save_slot->size_bytes != *entry_plan->register_save_area.size_bytes ||
+      overflow_base_slot->offset_bytes != *entry_plan->overflow_area.base_stack_offset_bytes) {
+    return fail("AAPCS64 variadic helper-family frame contract: storage facts lost frame-slot authority");
   }
   for (const auto& call_plan : call_plans->calls) {
     if (call_plan.variadic_fpr_arg_register_count != 0 ||

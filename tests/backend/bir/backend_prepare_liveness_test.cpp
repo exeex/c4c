@@ -5759,7 +5759,12 @@ int check_aapcs64_variadic_entry_helper_family_liveness() {
       entry_plan->named_register_counts.gp != std::optional<std::size_t>{1} ||
       entry_plan->named_register_counts.fp != std::optional<std::size_t>{1} ||
       entry_plan->helper_resources.required_helpers.size() != 4 ||
-      !entry_plan->register_save_area.required || !entry_plan->va_list_layout.required) {
+      !entry_plan->register_save_area.required ||
+      !entry_plan->register_save_area.slot_id.has_value() ||
+      !entry_plan->register_save_area.stack_offset_bytes.has_value() ||
+      !entry_plan->overflow_area.base_slot_id.has_value() ||
+      !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
+      !entry_plan->va_list_layout.required) {
     return fail("AAPCS64 variadic helper-family liveness: carrier lost named counts, helpers, or ABI facts");
   }
   return 0;

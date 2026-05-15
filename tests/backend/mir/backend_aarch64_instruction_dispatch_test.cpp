@@ -215,7 +215,8 @@ prepare::PreparedBirModule prepared_with_direct_memory_return_call_plan() {
 }
 
 prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
-    bool include_entry_plan) {
+    bool include_entry_plan,
+    bool complete_storage_facts = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -276,6 +277,8 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
                     .required = true,
                     .size_bytes = std::size_t{192},
                     .align_bytes = std::size_t{16},
+                    .slot_id = prepare::PreparedFrameSlotId{5},
+                    .stack_offset_bytes = std::size_t{16},
                     .gp_offset_bytes = std::size_t{0},
                     .fp_offset_bytes = std::size_t{64},
                     .gp_slot_size_bytes = std::size_t{8},
@@ -288,6 +291,12 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
             .overflow_area =
                 prepare::PreparedVariadicEntryOverflowArea{
                     .required = true,
+                    .base_slot_id =
+                        complete_storage_facts
+                            ? std::optional<prepare::PreparedFrameSlotId>{
+                                  prepare::PreparedFrameSlotId{6}}
+                            : std::nullopt,
+                    .base_stack_offset_bytes = std::size_t{208},
                     .align_bytes = std::size_t{8},
                 },
             .va_list_layout =
@@ -309,8 +318,16 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
                 prepare::PreparedVariadicEntryHelperResources{
                     .required_helpers =
                         {prepare::PreparedVariadicEntryHelperKind::VaStart},
+                    .scratch_register_count = complete_storage_facts
+                                                  ? std::optional<std::size_t>{0}
+                                                  : std::nullopt,
+                    .scratch_stack_bytes = complete_storage_facts
+                                               ? std::optional<std::size_t>{0}
+                                               : std::nullopt,
                 },
-            .missing_required_facts = {"register_save_area.slot_id"},
+            .missing_required_facts =
+                complete_storage_facts ? std::vector<std::string>{}
+                                       : std::vector<std::string>{"overflow_area.base_slot_id"},
         });
   }
   return prepared;
@@ -1030,10 +1047,48 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       incomplete_diagnostics.entries.front().message.find(
           "complete prepared variadic entry facts") == std::string::npos ||
       incomplete_diagnostics.entries.front().message.find(
-          "register_save_area.slot_id") == std::string::npos ||
+          "overflow_area.base_slot_id") == std::string::npos ||
       !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
           incomplete_block.instructions.front().target.payload)) {
-    return fail("expected incomplete va_start prepared entry facts to fail closed");
+    return fail("expected incomplete va_start prepared overflow storage facts to fail closed");
+  }
+
+  auto complete_entry_prepared = prepared_with_variadic_entry_helper_call(true, true);
+  const auto& complete_function_cf = complete_entry_prepared.control_flow.functions.front();
+  const auto& complete_block_cf = complete_function_cf.blocks.front();
+  const auto complete_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          complete_entry_prepared,
+          complete_entry_prepared.target_profile,
+          complete_function_cf);
+  const auto complete_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          complete_function_context, complete_block_cf, 0);
+  aarch64_module::MachineBlock complete_block;
+  aarch64_module::ModuleLoweringDiagnostics complete_diagnostics;
+  const auto complete_result = aarch64_codegen::dispatch_prepared_block(
+      complete_block_context, complete_block, complete_diagnostics);
+  if (complete_result.visited_operations != 1 ||
+      !complete_result.visited_terminator ||
+      complete_result.emitted_instructions != 2 ||
+      complete_block.instructions.size() != 2 ||
+      !complete_diagnostics.entries.empty()) {
+    return fail("expected complete va_start prepared storage facts to reach deferred helper record");
+  }
+  const auto* complete_call =
+      std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+          &complete_block.instructions.front().target.payload);
+  if (complete_call == nullptr ||
+      complete_call->source_variadic_entry == nullptr ||
+      complete_call->source_variadic_entry->register_save_area.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{5} ||
+      complete_call->source_variadic_entry->register_save_area.stack_offset_bytes !=
+          std::optional<std::size_t>{16} ||
+      complete_call->source_variadic_entry->overflow_area.base_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{6} ||
+      complete_call->source_variadic_entry->overflow_area.base_stack_offset_bytes !=
+          std::optional<std::size_t>{208}) {
+    return fail("expected deferred va_start helper record to expose prepared storage authority");
   }
 
   return 0;

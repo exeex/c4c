@@ -194,6 +194,106 @@ void append_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
   }
 }
 
+void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& function_plan,
+                                        std::string_view fact) {
+  auto& facts = function_plan.missing_required_facts;
+  facts.erase(std::remove(facts.begin(), facts.end(), fact), facts.end());
+}
+
+[[nodiscard]] std::size_t align_prepared_offset(std::size_t value,
+                                                std::size_t alignment) {
+  if (alignment <= 1) {
+    return value;
+  }
+  const std::size_t remainder = value % alignment;
+  return remainder == 0 ? value : value + (alignment - remainder);
+}
+
+[[nodiscard]] PreparedObjectId next_prepared_object_id(
+    const PreparedStackLayout& stack_layout) {
+  PreparedObjectId next = 0;
+  for (const auto& object : stack_layout.objects) {
+    next = std::max(next, object.object_id + 1);
+  }
+  return next;
+}
+
+[[nodiscard]] PreparedFrameSlotId next_prepared_frame_slot_id(
+    const PreparedStackLayout& stack_layout) {
+  PreparedFrameSlotId next = 0;
+  for (const auto& slot : stack_layout.frame_slots) {
+    next = std::max(next, slot.slot_id + 1);
+  }
+  return next;
+}
+
+[[nodiscard]] std::size_t function_frame_end_offset(
+    const PreparedStackLayout& stack_layout,
+    FunctionNameId function_name) {
+  std::size_t end_offset = 0;
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.function_name != function_name) {
+      continue;
+    }
+    end_offset = std::max(end_offset, slot.offset_bytes + slot.size_bytes);
+  }
+  return end_offset;
+}
+
+[[nodiscard]] const PreparedFrameSlot* find_variadic_storage_slot(
+    const PreparedBirModule& prepared,
+    FunctionNameId function_name,
+    std::string_view source_kind) {
+  for (const auto& object : prepared.stack_layout.objects) {
+    if (object.function_name != function_name ||
+        object.source_kind != source_kind) {
+      continue;
+    }
+    return find_prepared_frame_slot(prepared.stack_layout, object.object_id);
+  }
+  return nullptr;
+}
+
+PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
+                                                FunctionNameId function_name,
+                                                std::string_view slot_name,
+                                                std::string_view source_kind,
+                                                std::size_t size_bytes,
+                                                std::size_t align_bytes) {
+  const PreparedObjectId object_id = next_prepared_object_id(prepared.stack_layout);
+  const PreparedFrameSlotId slot_id = next_prepared_frame_slot_id(prepared.stack_layout);
+  const std::size_t offset_bytes =
+      align_prepared_offset(function_frame_end_offset(prepared.stack_layout, function_name),
+                            align_bytes);
+
+  prepared.stack_layout.objects.push_back(PreparedStackObject{
+      .object_id = object_id,
+      .function_name = function_name,
+      .slot_name = prepared.names.slot_names.intern(slot_name),
+      .source_kind = std::string(source_kind),
+      .type = bir::TypeKind::Void,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .address_exposed = true,
+      .requires_home_slot = true,
+      .permanent_home_slot = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(PreparedFrameSlot{
+      .slot_id = slot_id,
+      .object_id = object_id,
+      .function_name = function_name,
+      .offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.frame_size_bytes =
+      std::max(prepared.stack_layout.frame_size_bytes, offset_bytes + size_bytes);
+  prepared.stack_layout.frame_alignment_bytes =
+      std::max(prepared.stack_layout.frame_alignment_bytes, align_bytes);
+  return prepared.stack_layout.frame_slots.back();
+}
+
 void populate_aapcs64_variadic_entry_abi_facts(
     PreparedVariadicEntryPlanFunction& function_plan) {
   if (function_plan.helper_resources.required_helpers.empty()) {
@@ -276,7 +376,57 @@ void populate_aapcs64_variadic_entry_abi_facts(
 
   append_missing_variadic_entry_fact(function_plan, "register_save_area.slot_id");
   append_missing_variadic_entry_fact(function_plan, "register_save_area.stack_offset_bytes");
+  append_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
   append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
+}
+
+void attach_aapcs64_variadic_entry_storage_authority(
+    PreparedBirModule& prepared,
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  if (function_plan.helper_resources.required_helpers.empty() ||
+      !function_plan.register_save_area.required ||
+      !function_plan.overflow_area.required ||
+      !function_plan.register_save_area.size_bytes.has_value() ||
+      !function_plan.register_save_area.align_bytes.has_value() ||
+      !function_plan.overflow_area.align_bytes.has_value()) {
+    return;
+  }
+
+  const PreparedFrameSlot* register_save_slot =
+      find_variadic_storage_slot(prepared,
+                                 function_plan.function_name,
+                                 "aapcs64_variadic_register_save_area");
+  if (register_save_slot == nullptr) {
+    register_save_slot = &append_variadic_storage_slot(
+        prepared,
+        function_plan.function_name,
+        "__aapcs64_variadic_register_save_area",
+        "aapcs64_variadic_register_save_area",
+        *function_plan.register_save_area.size_bytes,
+        *function_plan.register_save_area.align_bytes);
+  }
+  function_plan.register_save_area.slot_id = register_save_slot->slot_id;
+  function_plan.register_save_area.stack_offset_bytes = register_save_slot->offset_bytes;
+  remove_missing_variadic_entry_fact(function_plan, "register_save_area.slot_id");
+  remove_missing_variadic_entry_fact(function_plan, "register_save_area.stack_offset_bytes");
+
+  const PreparedFrameSlot* overflow_base_slot =
+      find_variadic_storage_slot(prepared,
+                                 function_plan.function_name,
+                                 "aapcs64_variadic_overflow_area_base");
+  if (overflow_base_slot == nullptr) {
+    overflow_base_slot = &append_variadic_storage_slot(
+        prepared,
+        function_plan.function_name,
+        "__aapcs64_variadic_overflow_area_base",
+        "aapcs64_variadic_overflow_area_base",
+        0,
+        *function_plan.overflow_area.align_bytes);
+  }
+  function_plan.overflow_area.base_slot_id = overflow_base_slot->slot_id;
+  function_plan.overflow_area.base_stack_offset_bytes = overflow_base_slot->offset_bytes;
+  remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_slot_id");
+  remove_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
 }
 
 [[nodiscard]] std::string dynamic_alloca_type_text(std::string_view callee) {
@@ -959,6 +1109,10 @@ void populate_frame_plan(PreparedBirModule& prepared) {
     for (const auto& slot : prepared.stack_layout.frame_slots) {
       if (slot.function_name == function_name_id) {
         plan.frame_slot_order.push_back(slot.slot_id);
+        plan.frame_size_bytes =
+            std::max(plan.frame_size_bytes, slot.offset_bytes + slot.size_bytes);
+        plan.frame_alignment_bytes =
+            std::max(plan.frame_alignment_bytes, slot.align_bytes);
       }
     }
     std::sort(plan.frame_slot_order.begin(), plan.frame_slot_order.end(), [&prepared](auto lhs, auto rhs) {
@@ -1584,6 +1738,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
 
     if (prepared.target_profile.backend_abi == c4c::BackendAbiKind::Aapcs64) {
       populate_aapcs64_variadic_entry_abi_facts(function_plan);
+      attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
     }
 
     prepared.variadic_entry_plans.functions.push_back(std::move(function_plan));
@@ -1693,6 +1848,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_dynamic_stack_plan(prepared_);
   populate_call_plans(prepared_);
   populate_variadic_entry_plans(prepared_);
+  populate_frame_plan(prepared_);
   populate_storage_plans(prepared_);
 }
 

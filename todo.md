@@ -8,25 +8,29 @@ Current Step Title: Attach Register-Save And Overflow Storage Authority
 
 ## Just Finished
 
-Lifecycle split completed: idea 243 is parked on a prepared-authority blocker,
-and idea 244 is now active as the prerequisite runbook.
+Step 1 completed: AAPCS64 variadic entry plans now attach prepared
+register-save-area slot id/stack offset and overflow-area base slot id/stack
+offset storage authority when helper facts require them. Focused prepared
+printer, frame, liveness, and AArch64 dispatch tests cover populated storage
+facts and incomplete overflow-base diagnostics without adding selected helper
+machine-node lowering.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: attach register-save-area and overflow-area
-storage authority by populating slot id and stack offset facts, including
-missing-fact diagnostics for incomplete overflow base storage.
+Execute Step 2 from `plan.md`: decide or delegate the remaining prepared helper
+resource authority needed before selected `va_start`/`va_arg` machine-node
+consumption can proceed.
 
 ## Watchouts
 
 - Do not implement selected `va_start`, `va_arg`, aggregate `va_arg`, or
   `va_copy` machine-node lowering in this prerequisite.
-- Do not infer AAPCS64 frame placement, overflow offsets, `va_list` layout,
-  named argument counts, or scratch policy inside AArch64 target lowering.
-- Preserve fail-closed diagnostics; expectation-only or diagnostic-only
-  changes are not capability progress.
+- The delegated dispatch proof for a complete helper fixture still needs
+  preexisting scratch-resource facts; this packet intentionally did not add
+  helper scratch policy.
+- Preserve fail-closed diagnostics for missing prepared storage facts.
 
 ## Proof
 
-Lifecycle-only split/reset. No build or test proof was required, and canonical
-regression logs were not modified.
+Supervisor-selected proof passed and was written to `test_after.log`:
+`cmake --build build --target backend_aarch64_instruction_dispatch_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_prepare_liveness_test backend_prepare_frame_stack_call_contract_test backend_prepared_printer_test -j2 && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$'`.
