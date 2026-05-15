@@ -1,6 +1,6 @@
 # AArch64 Global Address Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
@@ -56,3 +56,24 @@ gap.
   Remaining work in this idea is TLS materialization facts, terminal printing
   for label/GOT/TLS where records are complete, and final semantic coverage
   validation.
+- 2026-05-15: Closed after commit `bfee85f5d` recorded full-suite validation.
+  Direct global, string constant, label, GOT-backed global, and TLS local-exec
+  address materialization now use structured prepared/AArch64 records and
+  terminal printer output. Global load/store memory operands remain separate
+  from result-producing address materialization.
+
+## Completion Notes
+
+- Direct globals and string constants materialize through structured
+  direct page+low12 records and terminal `adrp` plus low-12 `add` output.
+- Labels materialize through structured target-label identity and selected
+  label page+low12 records.
+- GOT-backed globals require explicit `GotRequired` policy and materialize
+  through prepared `GotGlobal`, selected `GotPageLow12`, and terminal GOT load
+  output.
+- TLS local-exec materialization carries explicit thread-pointer-relative facts
+  and prints from selected `tpidr_el0`, `tprel_hi12`, and `tprel_lo12_nc`
+  fields.
+- Close gate used full-suite `test_before.log` and `test_after.log`, both
+  passing 3167/3167 tests, with `c4c-regression-guard` passing in
+  non-decreasing pass-count mode and no new failures.
