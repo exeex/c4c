@@ -1791,6 +1791,22 @@ enum class PreparedF128RuntimeHelperAbiTransition {
   return "unknown";
 }
 
+enum class PreparedF128RuntimeHelperMarshalDirection {
+  CarrierToAbiArgument,
+  AbiResultToCarrier,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_marshal_direction_name(
+    PreparedF128RuntimeHelperMarshalDirection direction) {
+  switch (direction) {
+    case PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument:
+      return "carrier_to_abi_argument";
+    case PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier:
+      return "abi_result_to_carrier";
+  }
+  return "unknown";
+}
+
 struct PreparedF128RuntimeHelper {
   struct CarrierBinding {
     PreparedValueId value_id = 0;
@@ -1803,6 +1819,27 @@ struct PreparedF128RuntimeHelper {
     std::optional<std::string> register_name;
     std::optional<PreparedFrameSlotId> slot_id;
     std::optional<std::size_t> stack_offset_bytes;
+  };
+
+  struct AbiRegisterBinding {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    std::optional<std::size_t> helper_argument_index;
+    std::size_t abi_register_index = 0;
+    std::size_t width_bytes = 16;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedRegisterClass register_class = PreparedRegisterClass::None;
+    std::string register_name;
+    std::size_t contiguous_width = 1;
+    std::vector<std::string> occupied_register_names;
+    std::optional<PreparedRegisterPlacement> register_placement;
+  };
+
+  struct MarshalingMove {
+    PreparedF128RuntimeHelperMarshalDirection direction =
+        PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument;
+    CarrierBinding carrier;
+    AbiRegisterBinding abi_register;
   };
 
   struct ResourcePolicy {
@@ -1859,6 +1896,12 @@ struct PreparedF128RuntimeHelper {
   std::optional<CarrierBinding> lhs_carrier;
   std::optional<CarrierBinding> rhs_carrier;
   std::optional<CarrierBinding> result_carrier;
+  std::optional<AbiRegisterBinding> lhs_abi_argument;
+  std::optional<AbiRegisterBinding> rhs_abi_argument;
+  std::optional<AbiRegisterBinding> result_abi_result;
+  std::optional<MarshalingMove> lhs_argument_move;
+  std::optional<MarshalingMove> rhs_argument_move;
+  std::optional<MarshalingMove> result_unmarshal_move;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;
   LivePreservationPolicy live_preservation_policy;

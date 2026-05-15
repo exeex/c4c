@@ -1658,6 +1658,46 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
   for (const auto& function_helpers : module.f128_runtime_helpers.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
         << "\n";
+    auto append_abi_binding =
+        [&](std::string_view label,
+            const std::optional<PreparedF128RuntimeHelper::AbiRegisterBinding>& binding) {
+          out << " " << label << "=";
+          if (!binding.has_value()) {
+            out << "<missing>";
+            return;
+          }
+          out << maybe_value_name(module.names, binding->value_name)
+              << "#" << binding->value_id
+              << "[width=" << binding->width_bytes;
+          if (binding->helper_argument_index.has_value()) {
+            out << ",arg=" << *binding->helper_argument_index;
+          } else {
+            out << ",result";
+          }
+          out << ",abi_index=" << binding->abi_register_index
+              << ",bank=" << prepared_register_bank_name(binding->register_bank)
+              << ",class=" << prepared_register_class_name(binding->register_class)
+              << ",abi_reg=" << binding->register_name
+              << ",width_units=" << binding->contiguous_width << "]";
+          append_register_placement(out, "abi_placement", binding->register_placement);
+        };
+    auto append_marshaling_move =
+        [&](std::string_view label,
+            const std::optional<PreparedF128RuntimeHelper::MarshalingMove>& move) {
+          out << " " << label << "=";
+          if (!move.has_value()) {
+            out << "<missing>";
+            return;
+          }
+          out << prepared_f128_runtime_helper_marshal_direction_name(move->direction)
+              << "[value=" << maybe_value_name(module.names, move->carrier.value_name)
+              << "#" << move->carrier.value_id
+              << ",carrier_kind="
+              << prepared_f128_carrier_kind_name(move->carrier.carrier_kind)
+              << ",carrier_width=" << move->carrier.width_bytes
+              << ",abi_index=" << move->abi_register.abi_register_index
+              << ",abi_reg=" << move->abi_register.register_name << "]";
+        };
     for (const auto& helper : function_helpers.helpers) {
       out << "  f128_helper block=" << helper.block_index
           << " inst=" << helper.instruction_index
@@ -1710,6 +1750,14 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_carrier("lhs", helper.lhs_carrier);
       append_carrier("rhs", helper.rhs_carrier);
       append_carrier("result", helper.result_carrier);
+      out << " abi_bindings";
+      append_abi_binding("lhs", helper.lhs_abi_argument);
+      append_abi_binding("rhs", helper.rhs_abi_argument);
+      append_abi_binding("result", helper.result_abi_result);
+      out << " marshaling";
+      append_marshaling_move("lhs", helper.lhs_argument_move);
+      append_marshaling_move("rhs", helper.rhs_argument_move);
+      append_marshaling_move("result", helper.result_unmarshal_move);
       out << " live_preservation=[evaluated="
           << (helper.live_preservation_policy.evaluated ? "yes" : "no")
           << ",caller_saved_clobbers="

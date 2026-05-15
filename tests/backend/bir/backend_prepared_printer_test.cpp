@@ -3592,9 +3592,27 @@ int main() {
       !f128_helper->lhs_carrier.has_value() ||
       !f128_helper->rhs_carrier.has_value() ||
       !f128_helper->result_carrier.has_value() ||
+      !f128_helper->lhs_abi_argument.has_value() ||
+      !f128_helper->rhs_abi_argument.has_value() ||
+      !f128_helper->result_abi_result.has_value() ||
+      !f128_helper->lhs_argument_move.has_value() ||
+      !f128_helper->rhs_argument_move.has_value() ||
+      !f128_helper->result_unmarshal_move.has_value() ||
       f128_helper->lhs_carrier->width_bytes != 16 ||
       f128_helper->rhs_carrier->width_bytes != 16 ||
       f128_helper->result_carrier->width_bytes != 16 ||
+      f128_helper->lhs_abi_argument->width_bytes != 16 ||
+      f128_helper->rhs_abi_argument->width_bytes != 16 ||
+      f128_helper->result_abi_result->width_bytes != 16 ||
+      f128_helper->lhs_abi_argument->register_name != "q0" ||
+      f128_helper->rhs_abi_argument->register_name != "q1" ||
+      f128_helper->result_abi_result->register_name != "q0" ||
+      f128_helper->lhs_argument_move->direction !=
+          prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument ||
+      f128_helper->rhs_argument_move->direction !=
+          prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument ||
+      f128_helper->result_unmarshal_move->direction !=
+          prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier ||
       f128_helper->selected_call_ownership.owns_terminal_call) {
     std::cerr << "[FAIL] prepared f128 soft-float helper lost structured record authority\n";
     return EXIT_FAILURE;
@@ -3606,11 +3624,15 @@ int main() {
                          return candidate == fact;
                        });
   };
-  if (!has_f128_missing_fact("f128_helper_boundary_requires_explicit_abi_marshaling_policy") ||
-      !has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
+  if (!has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
       !has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
-      !has_f128_missing_fact("selected_call_ownership_requires_abi_bindings")) {
-    std::cerr << "[FAIL] prepared f128 soft-float helper did not fail closed on missing authority\n";
+      !has_f128_missing_fact("selected_call_ownership_requires_clobber_policy") ||
+      !has_f128_missing_fact("selected_call_ownership_requires_live_preservation_policy") ||
+      has_f128_missing_fact("selected_call_ownership_requires_resource_policy") ||
+      has_f128_missing_fact("selected_call_ownership_requires_abi_bindings") ||
+      has_f128_missing_fact("selected_call_ownership_requires_marshaling")) {
+    std::cerr
+        << "[FAIL] prepared f128 soft-float helper did not fail closed on missing authority\n";
     return EXIT_FAILURE;
   }
   const std::string f128_helper_dump = prepare::print(f128_helper_prepared);
@@ -3620,12 +3642,14 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "f128_helper block=0 inst=0 family=arithmetic kind=add opcode=add callee=__addtf3 source_type=f128 result_type=f128 result=sum#",
+                       "f128_helper block=0 inst=0 family=arithmetic kind=add opcode=add "
+                       "callee=__addtf3 source_type=f128 result_type=f128 result=sum#",
                        "f128 add helper identity and callee")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "result_ownership=full_width_carrier resources=[call_boundary,runtime_helper_callee,source_operation_identity]",
+                       "result_ownership=full_width_carrier "
+                       "resources=[call_boundary,runtime_helper_callee,source_operation_identity]",
                        "f128 helper resource record")) {
     return EXIT_FAILURE;
   }
@@ -3645,13 +3669,64 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "selected_call_ownership=[owns_terminal_call=no,callee=yes,resources=no,clobbers=no,abi_bindings=no,marshaling=no,live_preservation=no]",
+                       "abi_bindings lhs=lhs#",
+                       "f128 helper lhs ABI binding section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "arg=0,abi_index=0,bank=vreg,class=vector,abi_reg=q0",
+                       "f128 helper lhs ABI q-register")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "rhs=rhs#",
+                       "f128 helper rhs ABI binding section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "arg=1,abi_index=1,bank=vreg,class=vector,abi_reg=q1",
+                       "f128 helper rhs ABI q-register")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "result=sum#",
+                       "f128 helper result ABI binding section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "result,abi_index=0,bank=vreg,class=vector,abi_reg=q0",
+                       "f128 helper result ABI q-register")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "marshaling lhs=carrier_to_abi_argument",
+                       "f128 helper lhs marshaling")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "rhs=carrier_to_abi_argument",
+                       "f128 helper rhs marshaling")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "result=abi_result_to_carrier",
+                       "f128 helper result unmarshaling")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "selected_call_ownership=[owns_terminal_call=no,callee=yes,resources=yes,"
+                       "clobbers=no,abi_bindings=yes,marshaling=yes,live_preservation=no]",
                        "f128 helper fail-closed selected ownership")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "f128_helper_boundary_requires_explicit_abi_marshaling_policy",
-                       "f128 helper missing ABI diagnostic")) {
+                       "f128_helper_boundary_requires_caller_saved_clobber_policy",
+                       "f128 helper missing clobber diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "f128_helper_boundary_requires_live_preservation_policy",
+                       "f128 helper missing live-preservation diagnostic")) {
     return EXIT_FAILURE;
   }
 

@@ -1435,6 +1435,195 @@ void populate_f128_helper_carrier_from_fact(
   }
 }
 
+[[nodiscard]] PreparedRegisterBank f128_helper_abi_bank_for_register(
+    const std::string& register_name) {
+  return !register_name.empty() && register_name.front() == 'q'
+             ? PreparedRegisterBank::Vreg
+             : PreparedRegisterBank::Fpr;
+}
+
+[[nodiscard]] std::optional<PreparedF128RuntimeHelper::AbiRegisterBinding>
+make_f128_helper_abi_register_binding(
+    const c4c::TargetProfile& target_profile,
+    PreparedValueId value_id,
+    ValueNameId value_name,
+    std::optional<std::size_t> helper_argument_index,
+    std::size_t abi_register_index) {
+  std::optional<std::string> register_name;
+  std::optional<PreparedRegisterPlacement> placement;
+
+  if (helper_argument_index.has_value()) {
+    const auto arg_abi = infer_call_arg_abi(target_profile, bir::TypeKind::F128);
+    if (!arg_abi.has_value() || !arg_abi->passed_in_register) {
+      return std::nullopt;
+    }
+    register_name =
+        call_arg_destination_register_name(target_profile, *arg_abi, abi_register_index);
+    placement =
+        call_arg_destination_register_placement(target_profile, *arg_abi, abi_register_index);
+  } else {
+    const bir::CallResultAbiInfo result_abi{
+        .type = bir::TypeKind::F128,
+        .primary_class = target_profile.has_float_return_registers
+                             ? bir::AbiValueClass::Sse
+                             : bir::AbiValueClass::Integer,
+    };
+    register_name = call_result_destination_register_name(target_profile, result_abi);
+    placement = call_result_destination_register_placement(target_profile, result_abi);
+  }
+
+  if (!register_name.has_value() || register_name->empty() || !placement.has_value()) {
+    return std::nullopt;
+  }
+
+  const PreparedRegisterBank bank = f128_helper_abi_bank_for_register(*register_name);
+  PreparedRegisterPlacement normalized_placement = *placement;
+  normalized_placement.bank = bank;
+  normalized_placement.contiguous_width = 1;
+
+  return PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = helper_argument_index,
+      .abi_register_index = abi_register_index,
+      .width_bytes = 16,
+      .register_bank = bank,
+      .register_class = register_class_from_bank(bank),
+      .register_name = *register_name,
+      .contiguous_width = 1,
+      .occupied_register_names = {*register_name},
+      .register_placement = normalized_placement,
+  };
+}
+
+void populate_f128_runtime_helper_abi_bindings(
+    const c4c::TargetProfile& target_profile,
+    PreparedF128RuntimeHelper& helper) {
+  helper.lhs_abi_argument.reset();
+  helper.rhs_abi_argument.reset();
+  helper.result_abi_result.reset();
+
+  if (helper.callee_name.empty()) {
+    append_f128_runtime_helper_fact(helper, "f128_helper_abi_bindings_require_callee_identity");
+    return;
+  }
+
+  helper.lhs_abi_argument =
+      make_f128_helper_abi_register_binding(target_profile,
+                                            helper.lhs_value_id,
+                                            helper.lhs_value_name,
+                                            std::size_t{0},
+                                            0);
+  helper.rhs_abi_argument =
+      make_f128_helper_abi_register_binding(target_profile,
+                                            helper.rhs_value_id,
+                                            helper.rhs_value_name,
+                                            std::size_t{1},
+                                            1);
+  helper.result_abi_result =
+      make_f128_helper_abi_register_binding(target_profile,
+                                            helper.result_value_id,
+                                            helper.result_value_name,
+                                            std::nullopt,
+                                            0);
+
+  helper.abi_policy = PreparedF128RuntimeHelper::AbiPolicy{
+      .transition = PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult,
+      .argument_bank = PreparedRegisterBank::Vreg,
+      .result_bank = PreparedRegisterBank::Vreg,
+      .argument_count = 2,
+      .result_count = 1,
+      .width_bytes = 16,
+  };
+
+  if (!helper.lhs_abi_argument.has_value() || !helper.rhs_abi_argument.has_value() ||
+      !helper.result_abi_result.has_value()) {
+    append_f128_runtime_helper_fact(
+        helper, "f128_helper_abi_bindings_require_supported_full_width_f128_registers");
+  }
+}
+
+[[nodiscard]] std::optional<PreparedF128RuntimeHelper::MarshalingMove>
+make_f128_helper_marshaling_move(
+    PreparedF128RuntimeHelper& helper,
+    const PreparedF128RuntimeHelper::CarrierBinding& carrier,
+    const PreparedF128RuntimeHelper::AbiRegisterBinding& abi_register,
+    PreparedF128RuntimeHelperMarshalDirection direction,
+    std::string_view fact_prefix) {
+  if (carrier.carrier_kind != PreparedF128CarrierKind::FullWidthRegister) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_marshaling_requires_full_width_register_carrier");
+  }
+  if (carrier.width_bytes != 16 || abi_register.width_bytes != 16) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_marshaling_requires_16_byte_f128_values");
+  }
+  if (carrier.value_id != abi_register.value_id ||
+      carrier.value_name != abi_register.value_name) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_marshaling_requires_matching_value_identity");
+  }
+  if (abi_register.register_bank != PreparedRegisterBank::Vreg ||
+      abi_register.register_class != PreparedRegisterClass::Vector ||
+      abi_register.register_name.empty() ||
+      abi_register.occupied_register_names.empty() ||
+      abi_register.contiguous_width != 1 ||
+      !abi_register.register_placement.has_value()) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_marshaling_requires_q_register_binding");
+  }
+  return PreparedF128RuntimeHelper::MarshalingMove{
+      .direction = direction,
+      .carrier = carrier,
+      .abi_register = abi_register,
+  };
+}
+
+void populate_f128_runtime_helper_marshaling(PreparedF128RuntimeHelper& helper) {
+  helper.lhs_argument_move.reset();
+  helper.rhs_argument_move.reset();
+  helper.result_unmarshal_move.reset();
+
+  auto populate_move =
+      [&](const std::optional<PreparedF128RuntimeHelper::CarrierBinding>& carrier,
+          const std::optional<PreparedF128RuntimeHelper::AbiRegisterBinding>& abi_register,
+          PreparedF128RuntimeHelperMarshalDirection direction,
+          std::optional<PreparedF128RuntimeHelper::MarshalingMove>& output,
+          std::string_view fact_prefix) {
+        if (!carrier.has_value()) {
+          append_f128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_carrier");
+          return;
+        }
+        if (!abi_register.has_value()) {
+          append_f128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_abi_binding");
+          return;
+        }
+        output = make_f128_helper_marshaling_move(helper,
+                                                  *carrier,
+                                                  *abi_register,
+                                                  direction,
+                                                  fact_prefix);
+      };
+
+  populate_move(helper.lhs_carrier,
+                helper.lhs_abi_argument,
+                PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument,
+                helper.lhs_argument_move,
+                "lhs");
+  populate_move(helper.rhs_carrier,
+                helper.rhs_abi_argument,
+                PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument,
+                helper.rhs_argument_move,
+                "rhs");
+  populate_move(helper.result_carrier,
+                helper.result_abi_result,
+                PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier,
+                helper.result_unmarshal_move,
+                "result");
+}
+
 void populate_f128_runtime_helper_boundary_policy(PreparedF128RuntimeHelper& helper) {
   helper.resource_policy = PreparedF128RuntimeHelper::ResourcePolicy{
       .call_boundary = true,
@@ -1462,8 +1651,6 @@ void populate_f128_runtime_helper_boundary_policy(PreparedF128RuntimeHelper& hel
     append_f128_runtime_helper_fact(helper, "f128_helper_boundary_requires_callee_identity");
   }
   append_f128_runtime_helper_fact(
-      helper, "f128_helper_boundary_requires_explicit_abi_marshaling_policy");
-  append_f128_runtime_helper_fact(
       helper, "f128_helper_boundary_requires_caller_saved_clobber_policy");
   append_f128_runtime_helper_fact(
       helper, "f128_helper_boundary_requires_live_preservation_policy");
@@ -1477,7 +1664,6 @@ void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
   const bool has_resource_policy =
       helper.resource_policy.call_boundary &&
       helper.resource_policy.runtime_helper_callee &&
-      helper.resource_policy.caller_saved_clobbers &&
       helper.resource_policy.preserves_source_operation_identity;
   const bool has_clobber_policy =
       helper.resource_policy.caller_saved_clobbers && !helper.clobbered_registers.empty();
@@ -1489,7 +1675,10 @@ void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
       helper.abi_policy.argument_count == 2 &&
       helper.abi_policy.result_count == 1 &&
       helper.abi_policy.width_bytes == 16;
-  const bool has_marshaling = has_abi_bindings;
+  const bool has_marshaling =
+      helper.lhs_argument_move.has_value() &&
+      helper.rhs_argument_move.has_value() &&
+      helper.result_unmarshal_move.has_value();
   const bool has_live_preservation =
       helper.live_preservation_policy.evaluated &&
       helper.live_preservation_policy.caller_saved_clobbers_modeled &&
@@ -1546,6 +1735,8 @@ void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
           function_carriers, helper, helper.rhs_value_id, helper.rhs_carrier, "rhs");
       populate_f128_helper_carrier_from_fact(
           function_carriers, helper, helper.result_value_id, helper.result_carrier, "result");
+      populate_f128_runtime_helper_abi_bindings(prepared.target_profile, helper);
+      populate_f128_runtime_helper_marshaling(helper);
       if (helper.result_ownership !=
           PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
         append_f128_runtime_helper_fact(
