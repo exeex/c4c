@@ -28,11 +28,15 @@ Intrinsic support must come from structured semantic/prepared/AArch64 records. D
 - `tests/backend/bir/`
 - `tests/backend/mir/`
 
-## Scope
+## Current Repaired Scope
 
-- Barrier, cache, pause/hint, scalar FP unary, CRC, builtin address, vector memory, and vector operation intrinsic families.
-- Carriers and records only for accepted AArch64 intrinsic families.
-- Dependency notes for families whose semantic carriers do not yet exist.
+- Scalar FP unary F32/F64 `fabs` intrinsic machine-node selection and printer
+  emission from complete structured carrier facts.
+- Dependency split for CRC, vector memory, and vector operation carriers that
+  do not yet have semantic/prepared authority.
+- Explicit unsupported or incomplete-family diagnostics for barrier, cache,
+  pause/hint, builtin address, CRC, vector, F128, and x86-only cases already
+  covered by the completed packets.
 - Fail-closed diagnostics for unsupported x86-only, missing-feature, missing-operand, or incomplete-carrier cases.
 
 ## Non-Goals
@@ -56,7 +60,9 @@ Intrinsic support must come from structured semantic/prepared/AArch64 records. D
 - Keep each step small enough to validate with `cmake --build --preset default` plus the delegated backend subset.
 - Add fail-closed tests before or with each new carrier boundary.
 - Preserve existing scalar, call, vector, binary128, atomic, and inline-asm behavior unless the source idea explicitly requires intrinsic integration.
-- If a family lacks upstream semantic authority, record the dependency in `todo.md` and add a separate source idea only if it is a distinct initiative.
+- If a family lacks upstream semantic authority, do not select or print it in
+  this runbook. CRC/vector semantic and prepared carrier work is split to
+  `ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md`.
 - Treat expectation downgrades, string-only intrinsic matching, and single-fixture hard-coding as route drift.
 
 ## Step 1: Inventory Intrinsic Authority And Fail-Closed Gaps
@@ -103,9 +109,9 @@ Completion check:
 - Unsupported x86-only or partial facts still fail closed.
 - No AArch64 assembly printing is added in this step.
 
-## Step 3: Select Scalar And Control Intrinsic Machine Records
+## Step 3: Select Scalar FP Unary Intrinsic Machine Records
 
-Goal: Consume complete prepared carriers for scalar FP unary, barrier, cache, pause/hint, and builtin-address families into AArch64 selected records.
+Goal: Consume complete prepared scalar FP unary F32/F64 `fabs` carriers into AArch64 selected records.
 
 Primary targets:
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
@@ -114,48 +120,47 @@ Primary targets:
 - `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
 
 Actions:
-- Add selected records for scalar FP unary and control-style intrinsic families with explicit register and feature authority.
+- Add selected records for scalar FP unary F32/F64 `fabs` with explicit register and feature authority.
 - Reject missing feature facts, missing operands, unsupported operations, or non-AArch64 families.
 - Avoid local scratch-register conventions unless the prepared/allocation layer published them structurally.
 
 Completion check:
 - Dispatch tests prove selected records preserve operation, features, operand/result registers, and side-effect facts.
 - Unsupported or incomplete intrinsic facts produce explicit diagnostics.
-- Vector, CRC, and printer emission remain out of this step unless already structurally ready.
+- Barrier, cache, hint, builtin-address, CRC, vector, and printer emission remain out of this step unless already structurally ready.
 
-## Step 4: Select CRC And Vector Intrinsic Machine Records
+## Step 4: Split Missing CRC And Vector Carrier Dependency
 
-Goal: Extend selection to CRC and vector intrinsic families whose carriers are complete.
+Goal: Preserve the scalar selected-record progress and park CRC/vector selection until complete carrier authority exists.
 
 Primary targets:
-- `src/backend/mir/aarch64/codegen/instruction.hpp`
-- `src/backend/mir/aarch64/codegen/instruction.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
+- `todo.md`
+- `ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md`
 
 Actions:
-- Add selected records for CRC, vector memory, and vector operation families where structured operands and feature facts exist.
-- Preserve 128-bit vector operand and destination contracts without string-matching named fixtures.
-- Fail closed for missing vector width, unsupported lane/type, unsupported feature, or x86-only intrinsic families.
-- Record dependency ideas for semantic gaps that cannot be responsibly solved in this route.
+- Record that CRC, vector memory, and vector operation carriers are not complete in the active codebase.
+- Keep the completed scalar F32/F64 `fabs` selected records as valid progress.
+- Create or update the separate carrier dependency idea for CRC/vector semantic and prepared facts.
+- Do not add CRC/vector selected records from intrinsic names, ordinary call plans, or archived scratch-register conventions.
 
 Completion check:
-- Dispatch tests cover at least one representative complete route per supported family.
-- Nearby unsupported families remain explicitly rejected or diagnosed.
-- No printer text is emitted without selected machine-record authority.
+- Dependency idea exists under `ideas/open/` with concrete scope and reviewer reject signals.
+- `todo.md` points execution to the next responsible scalar-only step.
+- Existing Step 4 proof logs remain monotonic and show no regression in the selected backend subset.
 
-## Step 5: Print Structured AArch64 Intrinsic Records
+## Step 5: Print Scalar AArch64 Intrinsic Records
 
-Goal: Emit AArch64 assembly text only from selected intrinsic records.
+Goal: Emit AArch64 assembly text only from selected scalar FP unary intrinsic records.
 
 Primary targets:
 - `src/backend/mir/aarch64/codegen/machine_printer.cpp`
 - `tests/backend/mir/backend_aarch64_machine_printer_test.cpp`
 
 Actions:
-- Add printer support for selected scalar FP unary, barrier/cache/hint, CRC, builtin-address, and vector intrinsic records supported by prior steps.
+- Add printer support for selected scalar FP unary F32/F64 `fabs` records supported by Step 3.
 - Require explicit selected register, immediate, feature, and side-effect facts before printing.
 - Keep unsupported x86-only and incomplete records fail-closed at printer boundaries.
+- Do not print barrier/cache/hint, builtin-address, CRC, or vector intrinsic forms in this runbook unless a later lifecycle repair proves complete carriers and selected records exist.
 
 Completion check:
 - Printer tests prove final spelling comes from selected records and preserves operand/register contracts.
@@ -164,7 +169,7 @@ Completion check:
 
 ## Step 6: Prove Route And Decide Closure
 
-Goal: Prove the structured intrinsic route end to end and decide whether the source idea is complete.
+Goal: Prove the repaired scalar intrinsic route end to end and decide whether the active runbook should be retired, replaced, or kept open.
 
 Primary targets:
 - `tests/backend/bir/`
@@ -172,11 +177,12 @@ Primary targets:
 - `ideas/open/239_aarch64_intrinsic_machine_nodes.md`
 
 Actions:
-- Add representative route coverage from carrier facts through selected records and printer output for supported families.
+- Add representative route coverage from scalar carrier facts through selected records and printer output for supported F32/F64 `fabs`.
 - Confirm binary128 helpers remain delegated to the closed binary128 route and unsupported x86-only intrinsics remain rejected, trapped, or diagnosed by policy.
-- Run the supervisor-delegated proof subset, then request lifecycle closure or repair if remaining source scope is real.
+- Confirm CRC/vector work is tracked by `ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md` rather than silently absorbed into this scalar-only runbook.
+- Run the supervisor-delegated proof subset, then request lifecycle retirement or follow-on planning. Do not close the source idea unless its full scope is complete.
 
 Completion check:
 - Backend proof passes with no regressions.
-- `todo.md` records supported families, explicit unsupported families, and any separate dependency ideas.
-- Plan owner can determine whether idea 239 is complete, blocked, or needs a follow-on runbook.
+- `todo.md` records supported scalar families, explicit unsupported families, and the separate CRC/vector dependency idea.
+- Plan owner can determine whether this repaired runbook is complete while leaving idea 239 open for remaining source scope.
