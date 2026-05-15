@@ -380,6 +380,56 @@ void populate_aapcs64_variadic_entry_abi_facts(
   append_missing_variadic_entry_fact(function_plan, "overflow_area.base_stack_offset_bytes");
 }
 
+struct VariadicHelperScratchRequirement {
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+};
+
+[[nodiscard]] constexpr VariadicHelperScratchRequirement
+aapcs64_variadic_helper_scratch_requirement(PreparedVariadicEntryHelperKind kind) {
+  switch (kind) {
+    case PreparedVariadicEntryHelperKind::VaStart:
+      return VariadicHelperScratchRequirement{
+          .scratch_register_count = 1,
+          .scratch_stack_bytes = 0,
+      };
+    case PreparedVariadicEntryHelperKind::VaArg:
+    case PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return VariadicHelperScratchRequirement{
+          .scratch_register_count = 2,
+          .scratch_stack_bytes = 0,
+      };
+    case PreparedVariadicEntryHelperKind::VaCopy:
+      return VariadicHelperScratchRequirement{
+          .scratch_register_count = 1,
+          .scratch_stack_bytes = 0,
+      };
+  }
+  return VariadicHelperScratchRequirement{};
+}
+
+void populate_aapcs64_variadic_entry_helper_resource_authority(
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  if (function_plan.helper_resources.required_helpers.empty()) {
+    return;
+  }
+
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+  for (const auto helper : function_plan.helper_resources.required_helpers) {
+    const auto requirement = aapcs64_variadic_helper_scratch_requirement(helper);
+    scratch_register_count =
+        std::max(scratch_register_count, requirement.scratch_register_count);
+    scratch_stack_bytes =
+        std::max(scratch_stack_bytes, requirement.scratch_stack_bytes);
+  }
+  function_plan.helper_resources.scratch_register_count = scratch_register_count;
+  function_plan.helper_resources.scratch_stack_bytes = scratch_stack_bytes;
+  remove_missing_variadic_entry_fact(function_plan,
+                                     "helper_resources.scratch_register_count");
+  remove_missing_variadic_entry_fact(function_plan, "helper_resources.scratch_stack_bytes");
+}
+
 void attach_aapcs64_variadic_entry_storage_authority(
     PreparedBirModule& prepared,
     PreparedVariadicEntryPlanFunction& function_plan) {
@@ -1738,6 +1788,7 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
 
     if (prepared.target_profile.backend_abi == c4c::BackendAbiKind::Aapcs64) {
       populate_aapcs64_variadic_entry_abi_facts(function_plan);
+      populate_aapcs64_variadic_entry_helper_resource_authority(function_plan);
       attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
     }
 

@@ -977,6 +977,8 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       .helper_resources =
           prepare::PreparedVariadicEntryHelperResources{
               .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
+              .scratch_register_count = std::size_t{1},
+              .scratch_stack_bytes = std::size_t{0},
           },
   };
   const auto va_start_call = aarch64_codegen::make_call_instruction(

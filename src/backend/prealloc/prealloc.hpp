@@ -1282,6 +1282,8 @@ enum class PreparedVariadicEntryHelperKind {
 
 struct PreparedVariadicEntryHelperResources {
   std::vector<PreparedVariadicEntryHelperKind> required_helpers;
+  // Maximum simultaneous reserved MIR scratch resources required by any
+  // recognized helper in this entry plan.
   std::optional<std::size_t> scratch_register_count;
   std::optional<std::size_t> scratch_stack_bytes;
 };

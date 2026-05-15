@@ -567,6 +567,8 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
       .helper_resources =
           prepare::PreparedVariadicEntryHelperResources{
               .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
+              .scratch_register_count = std::size_t{1},
+              .scratch_stack_bytes = std::size_t{0},
           },
   };
 
@@ -612,6 +614,10 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
           "variadic entry helper machine-node lowering requires a delegated consumption slice" ||
       helper_payload->source_call != &prepared_call ||
       helper_payload->source_variadic_entry != &variadic_entry ||
+      helper_payload->source_variadic_entry->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{1} ||
+      helper_payload->source_variadic_entry->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0} ||
       helper_payload->variadic_entry_helper !=
           std::optional<prepare::PreparedVariadicEntryHelperKind>{
               prepare::PreparedVariadicEntryHelperKind::VaStart} ||

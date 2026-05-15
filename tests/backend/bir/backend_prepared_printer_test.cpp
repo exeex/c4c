@@ -2494,9 +2494,13 @@ int main() {
       aapcs64_entry_plan->helper_resources.required_helpers.size() != 1 ||
       aapcs64_entry_plan->helper_resources.required_helpers.front() !=
           prepare::PreparedVariadicEntryHelperKind::VaStart ||
+      aapcs64_entry_plan->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{1} ||
+      aapcs64_entry_plan->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0} ||
       !aapcs64_entry_plan->missing_required_facts.empty()) {
     std::cerr << "[FAIL] AAPCS64 variadic entry carrier did not publish structured ABI facts "
-                 "and prepared storage authority\n";
+                 "and prepared storage/scratch authority\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(
@@ -2526,6 +2530,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_variadic_dump,
+                       "helper_resources scratch_registers=1 scratch_stack=0 helpers=[va_start]",
+                       "AAPCS64 variadic va_start helper scratch facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_variadic_dump,
                        "helper kind=va_start",
                        "AAPCS64 variadic va_start helper need")) {
     return EXIT_FAILURE;
@@ -2545,8 +2554,12 @@ int main() {
           std::optional<std::size_t>{1} ||
       aapcs64_helper_family_entry_plan->named_register_counts.fp !=
           std::optional<std::size_t>{1} ||
-      aapcs64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4) {
-    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts or helpers\n";
+      aapcs64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4 ||
+      aapcs64_helper_family_entry_plan->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{2} ||
+      aapcs64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0}) {
+    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts, helpers, or scratch facts\n";
     return EXIT_FAILURE;
   }
   const auto& helper_family = aapcs64_helper_family_entry_plan->helper_resources.required_helpers;
@@ -2568,7 +2581,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_helper_family_dump,
-                       "helper_resources scratch_registers=<unknown> scratch_stack=<unknown> helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
+                       "helper_resources scratch_registers=2 scratch_stack=0 helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
                        "AAPCS64 variadic helper-family summary")) {
     return EXIT_FAILURE;
   }

@@ -5181,6 +5181,10 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
     return fail("AAPCS64 variadic helper-family frame contract: missing carrier or helper calls");
   }
   if (entry_plan->helper_resources.required_helpers.size() != 4 ||
+      entry_plan->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{2} ||
+      entry_plan->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0} ||
       entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
       !entry_plan->register_save_area.slot_id.has_value() ||
       !entry_plan->register_save_area.stack_offset_bytes.has_value() ||
@@ -5191,7 +5195,7 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       !entry_plan->overflow_area.base_slot_id.has_value() ||
       !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8}) {
-    return fail("AAPCS64 variadic helper-family frame contract: lost prepared entry facts");
+    return fail("AAPCS64 variadic helper-family frame contract: lost prepared entry scratch or storage facts");
   }
   const auto* register_save_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,

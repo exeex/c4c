@@ -216,7 +216,8 @@ prepare::PreparedBirModule prepared_with_direct_memory_return_call_plan() {
 
 prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
     bool include_entry_plan,
-    bool complete_storage_facts = false) {
+    bool complete_storage_facts = false,
+    bool complete_scratch_facts = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -318,10 +319,10 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
                 prepare::PreparedVariadicEntryHelperResources{
                     .required_helpers =
                         {prepare::PreparedVariadicEntryHelperKind::VaStart},
-                    .scratch_register_count = complete_storage_facts
-                                                  ? std::optional<std::size_t>{0}
+                    .scratch_register_count = complete_scratch_facts
+                                                  ? std::optional<std::size_t>{1}
                                                   : std::nullopt,
-                    .scratch_stack_bytes = complete_storage_facts
+                    .scratch_stack_bytes = complete_scratch_facts
                                                ? std::optional<std::size_t>{0}
                                                : std::nullopt,
                 },
@@ -1053,7 +1054,73 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
     return fail("expected incomplete va_start prepared overflow storage facts to fail closed");
   }
 
-  auto complete_entry_prepared = prepared_with_variadic_entry_helper_call(true, true);
+  auto missing_scratch_prepared = prepared_with_variadic_entry_helper_call(true, true);
+  const auto& missing_scratch_function_cf =
+      missing_scratch_prepared.control_flow.functions.front();
+  const auto& missing_scratch_block_cf = missing_scratch_function_cf.blocks.front();
+  const auto missing_scratch_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          missing_scratch_prepared,
+          missing_scratch_prepared.target_profile,
+          missing_scratch_function_cf);
+  const auto missing_scratch_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          missing_scratch_function_context, missing_scratch_block_cf, 0);
+  aarch64_module::MachineBlock missing_scratch_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_scratch_diagnostics;
+  const auto missing_scratch_result = aarch64_codegen::dispatch_prepared_block(
+      missing_scratch_block_context, missing_scratch_block, missing_scratch_diagnostics);
+  if (missing_scratch_result.visited_operations != 1 ||
+      !missing_scratch_result.visited_terminator ||
+      missing_scratch_result.emitted_instructions != 1 ||
+      missing_scratch_block.instructions.size() != 1 ||
+      missing_scratch_diagnostics.entries.size() != 1 ||
+      missing_scratch_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+      missing_scratch_diagnostics.entries.front().message.find(
+          "helper_resources.scratch_register_count") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_scratch_block.instructions.front().target.payload)) {
+    return fail("expected incomplete va_start prepared scratch facts to fail closed");
+  }
+
+  auto missing_scratch_stack_prepared =
+      prepared_with_variadic_entry_helper_call(true, true, true);
+  missing_scratch_stack_prepared.variadic_entry_plans.functions.front()
+      .helper_resources.scratch_stack_bytes = std::nullopt;
+  const auto& missing_scratch_stack_function_cf =
+      missing_scratch_stack_prepared.control_flow.functions.front();
+  const auto& missing_scratch_stack_block_cf =
+      missing_scratch_stack_function_cf.blocks.front();
+  const auto missing_scratch_stack_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          missing_scratch_stack_prepared,
+          missing_scratch_stack_prepared.target_profile,
+          missing_scratch_stack_function_cf);
+  const auto missing_scratch_stack_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          missing_scratch_stack_function_context, missing_scratch_stack_block_cf, 0);
+  aarch64_module::MachineBlock missing_scratch_stack_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_scratch_stack_diagnostics;
+  const auto missing_scratch_stack_result = aarch64_codegen::dispatch_prepared_block(
+      missing_scratch_stack_block_context,
+      missing_scratch_stack_block,
+      missing_scratch_stack_diagnostics);
+  if (missing_scratch_stack_result.visited_operations != 1 ||
+      !missing_scratch_stack_result.visited_terminator ||
+      missing_scratch_stack_result.emitted_instructions != 1 ||
+      missing_scratch_stack_block.instructions.size() != 1 ||
+      missing_scratch_stack_diagnostics.entries.size() != 1 ||
+      missing_scratch_stack_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+      missing_scratch_stack_diagnostics.entries.front().message.find(
+          "helper_resources.scratch_stack_bytes") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_scratch_stack_block.instructions.front().target.payload)) {
+    return fail("expected incomplete va_start prepared scratch-stack facts to fail closed");
+  }
+
+  auto complete_entry_prepared = prepared_with_variadic_entry_helper_call(true, true, true);
   const auto& complete_function_cf = complete_entry_prepared.control_flow.functions.front();
   const auto& complete_block_cf = complete_function_cf.blocks.front();
   const auto complete_function_context =
@@ -1087,8 +1154,12 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       complete_call->source_variadic_entry->overflow_area.base_slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{6} ||
       complete_call->source_variadic_entry->overflow_area.base_stack_offset_bytes !=
-          std::optional<std::size_t>{208}) {
-    return fail("expected deferred va_start helper record to expose prepared storage authority");
+          std::optional<std::size_t>{208} ||
+      complete_call->source_variadic_entry->helper_resources.scratch_register_count !=
+          std::optional<std::size_t>{1} ||
+      complete_call->source_variadic_entry->helper_resources.scratch_stack_bytes !=
+          std::optional<std::size_t>{0}) {
+    return fail("expected deferred va_start helper record to expose prepared storage and scratch authority");
   }
 
   return 0;
