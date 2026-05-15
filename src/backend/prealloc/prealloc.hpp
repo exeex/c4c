@@ -1737,6 +1737,65 @@ struct PreparedF128Carriers {
   std::vector<PreparedF128CarrierFunction> functions;
 };
 
+enum class PreparedAtomicOperationCarrierKind {
+  Missing,
+  Complete,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_atomic_operation_carrier_kind_name(
+    PreparedAtomicOperationCarrierKind kind) {
+  switch (kind) {
+    case PreparedAtomicOperationCarrierKind::Missing:
+      return "missing";
+    case PreparedAtomicOperationCarrierKind::Complete:
+      return "complete";
+  }
+  return "unknown";
+}
+
+struct PreparedAtomicOperationCarrier {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedAtomicOperationCarrierKind carrier_kind =
+      PreparedAtomicOperationCarrierKind::Missing;
+  c4c::backend::bir::AtomicOperationKind operation_kind =
+      c4c::backend::bir::AtomicOperationKind::None;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t inst_index = 0;
+  c4c::backend::bir::TypeKind value_type = c4c::backend::bir::TypeKind::Void;
+  std::size_t width_bytes = 0;
+  std::optional<c4c::backend::bir::Value> result;
+  std::optional<c4c::backend::bir::Value> pointer;
+  std::optional<c4c::backend::bir::Value> value;
+  std::optional<c4c::backend::bir::Value> expected;
+  std::optional<c4c::backend::bir::Value> desired;
+  std::optional<ValueNameId> result_value_name;
+  std::optional<ValueNameId> pointer_value_name;
+  std::optional<ValueNameId> value_name;
+  std::optional<ValueNameId> expected_value_name;
+  std::optional<ValueNameId> desired_value_name;
+  c4c::backend::bir::AtomicOrdering ordering =
+      c4c::backend::bir::AtomicOrdering::None;
+  c4c::backend::bir::AtomicOrdering failure_ordering =
+      c4c::backend::bir::AtomicOrdering::None;
+  c4c::backend::bir::AtomicRmwOpcode rmw_opcode =
+      c4c::backend::bir::AtomicRmwOpcode::None;
+  c4c::backend::bir::AtomicResultMode result_mode =
+      c4c::backend::bir::AtomicResultMode::None;
+  c4c::backend::bir::AddressSpace address_space =
+      c4c::backend::bir::AddressSpace::Default;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedAtomicOperationFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedAtomicOperationCarrier> operations;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedAtomicOperations {
+  std::vector<PreparedAtomicOperationFunction> functions;
+};
+
 enum class PreparedF128RuntimeHelperFamily {
   Arithmetic,
   Comparison,
@@ -5328,6 +5387,7 @@ struct PreparedBirModule {
   PreparedStoragePlans storage_plans;
   PreparedI128Carriers i128_carriers;
   PreparedF128Carriers f128_carriers;
+  PreparedAtomicOperations atomic_operations;
   PreparedF128RuntimeHelpers f128_runtime_helpers;
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
@@ -5526,6 +5586,23 @@ find_prepared_variadic_entry_helper_operand_homes(
     const PreparedBirModule& module,
     FunctionNameId function_name) {
   return find_prepared_f128_carriers(module.f128_carriers, function_name);
+}
+
+[[nodiscard]] inline const PreparedAtomicOperationFunction*
+find_prepared_atomic_operations(const PreparedAtomicOperations& operations,
+                                FunctionNameId function_name) {
+  for (const auto& function_operations : operations.functions) {
+    if (function_operations.function_name == function_name) {
+      return &function_operations;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedAtomicOperationFunction*
+find_prepared_atomic_operations(const PreparedBirModule& module,
+                                FunctionNameId function_name) {
+  return find_prepared_atomic_operations(module.atomic_operations, function_name);
 }
 
 [[nodiscard]] inline const PreparedI128RuntimeHelperFunction*

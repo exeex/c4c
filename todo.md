@@ -1,70 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/238_aarch64_atomic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inventory Atomic Authority And Fail-Closed Gaps
+Current Step ID: 2
+Current Step Title: Define Structured Atomic Operation Carriers
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 `Inventory Atomic Authority And Fail-Closed Gaps` completed the first
-backend inventory and added a focused fail-closed memory test.
+Step 2 `Define Structured Atomic Operation Carriers` added the first
+target-neutral/prepared atomic operation carrier boundary.
 
-Current atomic authority inventory:
-- `docs/backend/x86_codegen_legacy/atomics.cpp.md` and
-  `src/backend/mir/aarch64/codegen/atomics.md` preserve legacy atomic intent:
-  ordering, width, pointer/value operands, RMW operation, compare-exchange
-  success/failure ordering, result mode, exclusive loops, signed narrow-load
-  normalization, and fences.
-- Current BIR has only ordinary `LoadLocalInst`, `LoadGlobalInst`,
-  `StoreLocalInst`, and `StoreGlobalInst` memory instructions. Their structured
-  memory facts are base, offset, size, alignment, address space, and
-  `is_volatile`; there is no BIR owner for atomic ordering, fences, RMW,
-  compare-exchange, result mode, or failure ordering.
-- Prepared addressing preserves ordinary memory facts in
-  `PreparedMemoryAccess`; it carries address-space and volatility only, not
-  atomic operation facts.
-- AArch64 selected memory nodes consume `PreparedMemoryAccess` and emit plain
-  `Load`/`Store` machine nodes with optional `VolatileMemoryAccess` side
-  effect. There are no atomic/fence/RMW/CAS selected records yet.
-- Prepared printer surfaces do not currently dump memory-operation authority
-  beyond existing prepared call/address/value facts, so printer text is not an
-  atomic source of truth.
+Changed behavior:
+- BIR functions can now carry structured `AtomicOperation` facts before AArch64
+  selection. The facts explicitly model kind
+  `load/store/fence/rmw/compare_exchange`, success ordering, failure ordering
+  for compare-exchange, width/type, pointer/value operands, compare
+  expected/desired operands, RMW opcode, result mode, and address space.
+- Prepared state now publishes `PreparedAtomicOperationCarrier` records from
+  those BIR facts. Complete carriers are marked `complete`; partial carriers
+  stay `missing` and accumulate specific missing-fact diagnostics instead of
+  falling back to volatile memory or target-local reconstruction.
+- Prepared printer debug output now exposes complete atomic carrier facts under
+  `--- prepared-atomic-operations ---`; incomplete carriers are not printed as
+  usable operation records and only surface missing-fact diagnostics.
 
 Added test coverage:
-- `volatile_memory_does_not_fabricate_atomic_authority` in
-  `tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp`
-  proves a volatile prepared load remains ordinary volatile memory, not
-  inferred atomic authority.
-- The same test proves missing structured BIR memory facts fail closed with
-  `AddressFactMismatch` instead of accepting prepared volatility as enough
-  authority.
+- `backend_prepared_printer_test` now proves complete load, store, fence, RMW,
+  and compare-exchange carrier facts preserve their fields and print only as
+  structured prepared atomic records.
+- The same test proves incomplete RMW and compare-exchange facts fail closed
+  with missing width/value/expected/failure-ordering diagnostics and do not
+  print as usable atomic operation records.
 
 ## Suggested Next
 
-Begin Step 2 `Define Structured Atomic Operation Carriers` by adding the
-smallest target-neutral BIR/prepared atomic carrier boundary:
-`AtomicOperation` facts attached before AArch64 selection, with kind
-`load/store/fence/rmw/compare_exchange`, ordering, width/type, pointer operand,
-value operand where required, result mode, RMW opcode, compare expected/desired
-operands, and compare-exchange failure ordering.
-
-The first implementation packet should define the data shapes and printer/debug
-dump for complete carrier facts only; AArch64 instruction selection should wait
-until those facts are preserved in tests.
+Begin Step 3 `Select Ordered Loads, Stores, And Fences` by consuming only
+complete `PreparedAtomicOperationCarrier` records for ordered load, ordered
+store, and fence selection. Keep RMW and compare-exchange selection for Step 4.
 
 ## Watchouts
 
 - Do not infer atomic semantics from volatile flags, rendered text, fixed
   scratch-register snippets, or named testcase shortcuts.
-- Keep unsupported or partial atomic facts fail-closed; a carrier missing
-  ordering, width/type, pointer/value, result mode, or compare-exchange failure
-  ordering must diagnose before selection.
+- Selection must reject `PreparedAtomicOperationCarrierKind::Missing` and any
+  missing function-level atomic carrier table rather than reconstructing facts
+  from volatile memory or printer text.
+- Step 3 should leave RMW and compare-exchange carriers unselected/fail-closed;
+  this packet only established their facts for later Step 4 consumption.
 - Preserve ordinary volatile memory behavior separately from atomic behavior.
-- RMW and compare-exchange must preserve old-value result semantics; compare
-  exchange also needs explicit boolean-vs-old-value result mode and failure
-  ordering.
+- RMW and compare-exchange must preserve old-value result semantics when Step 4
+  consumes them; compare exchange also carries explicit boolean-vs-old-value
+  result mode and failure ordering.
 - Do not fold intrinsic, inline-assembly, binary128, scalar FP, or i128 behavior
   into this route.
 

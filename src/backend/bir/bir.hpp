@@ -98,6 +98,112 @@ enum class AddressSpace : unsigned char {
   Tls,
 };
 
+enum class AtomicOperationKind : unsigned char {
+  None,
+  Load,
+  Store,
+  Fence,
+  Rmw,
+  CompareExchange,
+};
+
+[[nodiscard]] constexpr std::string_view atomic_operation_kind_name(
+    AtomicOperationKind kind) {
+  switch (kind) {
+    case AtomicOperationKind::None:
+      return "none";
+    case AtomicOperationKind::Load:
+      return "load";
+    case AtomicOperationKind::Store:
+      return "store";
+    case AtomicOperationKind::Fence:
+      return "fence";
+    case AtomicOperationKind::Rmw:
+      return "rmw";
+    case AtomicOperationKind::CompareExchange:
+      return "compare_exchange";
+  }
+  return "unknown";
+}
+
+enum class AtomicOrdering : unsigned char {
+  None,
+  Relaxed,
+  Acquire,
+  Release,
+  AcqRel,
+  SeqCst,
+};
+
+[[nodiscard]] constexpr std::string_view atomic_ordering_name(AtomicOrdering ordering) {
+  switch (ordering) {
+    case AtomicOrdering::None:
+      return "none";
+    case AtomicOrdering::Relaxed:
+      return "relaxed";
+    case AtomicOrdering::Acquire:
+      return "acquire";
+    case AtomicOrdering::Release:
+      return "release";
+    case AtomicOrdering::AcqRel:
+      return "acq_rel";
+    case AtomicOrdering::SeqCst:
+      return "seq_cst";
+  }
+  return "unknown";
+}
+
+enum class AtomicRmwOpcode : unsigned char {
+  None,
+  Exchange,
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+};
+
+[[nodiscard]] constexpr std::string_view atomic_rmw_opcode_name(AtomicRmwOpcode opcode) {
+  switch (opcode) {
+    case AtomicRmwOpcode::None:
+      return "none";
+    case AtomicRmwOpcode::Exchange:
+      return "exchange";
+    case AtomicRmwOpcode::Add:
+      return "add";
+    case AtomicRmwOpcode::Sub:
+      return "sub";
+    case AtomicRmwOpcode::And:
+      return "and";
+    case AtomicRmwOpcode::Or:
+      return "or";
+    case AtomicRmwOpcode::Xor:
+      return "xor";
+  }
+  return "unknown";
+}
+
+enum class AtomicResultMode : unsigned char {
+  None,
+  LoadedValue,
+  OldValue,
+  BooleanSuccess,
+};
+
+[[nodiscard]] constexpr std::string_view atomic_result_mode_name(AtomicResultMode mode) {
+  switch (mode) {
+    case AtomicResultMode::None:
+      return "none";
+    case AtomicResultMode::LoadedValue:
+      return "loaded_value";
+    case AtomicResultMode::OldValue:
+      return "old_value";
+    case AtomicResultMode::BooleanSuccess:
+      return "boolean_success";
+  }
+  return "unknown";
+}
+
 enum class CallingConv : unsigned char {
   C,
   SysV,
@@ -553,6 +659,27 @@ struct Block {
   BlockLabelId label_id = kInvalidBlockLabel;
 };
 
+struct AtomicOperation {
+  AtomicOperationKind kind = AtomicOperationKind::None;
+  // Compatibility/display label spelling. block_label_id is the semantic block
+  // identity when present.
+  std::string block_label;
+  BlockLabelId block_label_id = kInvalidBlockLabel;
+  std::size_t inst_index = 0;
+  TypeKind value_type = TypeKind::Void;
+  std::size_t width_bytes = 0;
+  std::optional<Value> result;
+  std::optional<Value> pointer;
+  std::optional<Value> value;
+  std::optional<Value> expected;
+  std::optional<Value> desired;
+  AtomicOrdering ordering = AtomicOrdering::None;
+  AtomicOrdering failure_ordering = AtomicOrdering::None;
+  AtomicRmwOpcode rmw_opcode = AtomicRmwOpcode::None;
+  AtomicResultMode result_mode = AtomicResultMode::None;
+  AddressSpace address_space = AddressSpace::Default;
+};
+
 struct Function {
   // Final/display function spelling. link_name_id is semantic identity when
   // present.
@@ -567,6 +694,7 @@ struct Function {
   std::vector<Param> params;
   std::vector<LocalSlot> local_slots;
   std::vector<Block> blocks;
+  std::vector<AtomicOperation> atomic_operations;
   bool is_declaration = false;
   GlobalAddressMaterializationPolicy address_materialization_policy =
       GlobalAddressMaterializationPolicy::Unspecified;

@@ -2232,6 +2232,252 @@ bool expect_not_contains(const std::string& text,
   return false;
 }
 
+prepare::PreparedBirModule prepare_atomic_carrier_dump_module(bool complete) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = complete ? "atomic_carrier_dump_contract"
+                           : "atomic_incomplete_carrier_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "ptr",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "value",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "expected",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "desired",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+
+  if (complete) {
+    function.atomic_operations = {
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::Load,
+            .block_label = "entry",
+            .inst_index = 0,
+            .value_type = bir::TypeKind::I32,
+            .width_bytes = 4,
+            .result = bir::Value::named(bir::TypeKind::I32, "loaded"),
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+            .ordering = bir::AtomicOrdering::Acquire,
+            .result_mode = bir::AtomicResultMode::LoadedValue,
+        },
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::Store,
+            .block_label = "entry",
+            .inst_index = 1,
+            .value_type = bir::TypeKind::I32,
+            .width_bytes = 4,
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+            .value = bir::Value::named(bir::TypeKind::I32, "value"),
+            .ordering = bir::AtomicOrdering::Release,
+        },
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::Fence,
+            .block_label = "entry",
+            .inst_index = 2,
+            .ordering = bir::AtomicOrdering::SeqCst,
+        },
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::Rmw,
+            .block_label = "entry",
+            .inst_index = 3,
+            .value_type = bir::TypeKind::I32,
+            .width_bytes = 4,
+            .result = bir::Value::named(bir::TypeKind::I32, "old"),
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+            .value = bir::Value::named(bir::TypeKind::I32, "value"),
+            .ordering = bir::AtomicOrdering::AcqRel,
+            .rmw_opcode = bir::AtomicRmwOpcode::Add,
+            .result_mode = bir::AtomicResultMode::OldValue,
+        },
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::CompareExchange,
+            .block_label = "entry",
+            .inst_index = 4,
+            .value_type = bir::TypeKind::I32,
+            .width_bytes = 4,
+            .result = bir::Value::named(bir::TypeKind::I1, "success"),
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+            .expected = bir::Value::named(bir::TypeKind::I32, "expected"),
+            .desired = bir::Value::named(bir::TypeKind::I32, "desired"),
+            .ordering = bir::AtomicOrdering::SeqCst,
+            .failure_ordering = bir::AtomicOrdering::Acquire,
+            .result_mode = bir::AtomicResultMode::BooleanSuccess,
+        },
+    };
+  } else {
+    function.atomic_operations = {
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::Rmw,
+            .block_label = "entry",
+            .inst_index = 0,
+            .value_type = bir::TypeKind::I32,
+            .result = bir::Value::named(bir::TypeKind::I32, "old"),
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+        },
+        bir::AtomicOperation{
+            .kind = bir::AtomicOperationKind::CompareExchange,
+            .block_label = "entry",
+            .inst_index = 1,
+            .value_type = bir::TypeKind::I32,
+            .width_bytes = 4,
+            .result = bir::Value::named(bir::TypeKind::I1, "success"),
+            .pointer = bir::Value::named(bir::TypeKind::Ptr, "ptr"),
+            .desired = bir::Value::named(bir::TypeKind::I32, "desired"),
+            .ordering = bir::AtomicOrdering::Acquire,
+        },
+    };
+  }
+
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+int atomic_carrier_facts_preserve_fields_and_printer_visibility() {
+  const auto prepared = prepare_atomic_carrier_dump_module(true);
+  const c4c::FunctionNameId function_id =
+      prepared.names.function_names.find("atomic_carrier_dump_contract");
+  const auto* function_operations =
+      function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_atomic_operations(prepared, function_id);
+  if (function_operations == nullptr || function_operations->operations.size() != 5) {
+    std::cerr << "[FAIL] expected five prepared atomic carrier facts\n";
+    return EXIT_FAILURE;
+  }
+  const auto& compare_exchange = function_operations->operations[4];
+  if (compare_exchange.carrier_kind !=
+          prepare::PreparedAtomicOperationCarrierKind::Complete ||
+      compare_exchange.operation_kind != bir::AtomicOperationKind::CompareExchange ||
+      compare_exchange.value_type != bir::TypeKind::I32 ||
+      compare_exchange.width_bytes != 4 ||
+      compare_exchange.ordering != bir::AtomicOrdering::SeqCst ||
+      compare_exchange.failure_ordering != bir::AtomicOrdering::Acquire ||
+      compare_exchange.result_mode != bir::AtomicResultMode::BooleanSuccess ||
+      !compare_exchange.pointer_value_name.has_value() ||
+      !compare_exchange.expected_value_name.has_value() ||
+      !compare_exchange.desired_value_name.has_value() ||
+      !compare_exchange.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] prepared compare-exchange carrier lost required fields\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "--- prepared-atomic-operations ---",
+                       "prepared atomic operations section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "atomic_operation kind=load block=entry inst_index=0 type=i32 "
+                       "width=4 ordering=acquire",
+                       "complete load atomic carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "atomic_operation kind=fence block=entry inst_index=2 type=void "
+                       "width=0 ordering=seq_cst",
+                       "complete fence atomic carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "atomic_operation kind=compare_exchange block=entry inst_index=4 "
+                       "type=i32 width=4 ordering=seq_cst failure_ordering=acquire "
+                       "result_mode=boolean_success",
+                       "complete compare-exchange atomic carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "pointer=ptr expected=expected desired=desired",
+                       "compare-exchange operand identity")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int incomplete_atomic_carrier_facts_fail_closed() {
+  const auto prepared = prepare_atomic_carrier_dump_module(false);
+  const c4c::FunctionNameId function_id =
+      prepared.names.function_names.find("atomic_incomplete_carrier_dump_contract");
+  const auto* function_operations =
+      function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_atomic_operations(prepared, function_id);
+  if (function_operations == nullptr || function_operations->operations.size() != 2) {
+    std::cerr << "[FAIL] expected two incomplete prepared atomic carrier facts\n";
+    return EXIT_FAILURE;
+  }
+  const auto& rmw = function_operations->operations[0];
+  if (rmw.carrier_kind != prepare::PreparedAtomicOperationCarrierKind::Missing ||
+      rmw.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] expected incomplete RMW carrier diagnostics\n";
+    return EXIT_FAILURE;
+  }
+  const auto& compare_exchange = function_operations->operations[1];
+  if (compare_exchange.carrier_kind !=
+          prepare::PreparedAtomicOperationCarrierKind::Missing ||
+      compare_exchange.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] expected incomplete compare-exchange carrier diagnostics\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:missing_atomic_width",
+                       "RMW missing width diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:rmw_requires_value",
+                       "RMW missing value diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#1:compare_exchange_requires_expected",
+                       "compare-exchange missing expected diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#1:compare_exchange_requires_failure_ordering",
+                       "compare-exchange missing failure ordering diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "atomic_operation kind=rmw block=entry inst_index=0",
+                           "incomplete RMW carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "atomic_operation kind=compare_exchange block=entry inst_index=1",
+                           "incomplete compare-exchange carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
 prepare::PreparedControlFlowFunction* find_control_flow_function(
     prepare::PreparedBirModule& prepared,
     const char* function_name) {
@@ -2654,6 +2900,14 @@ prepare::PreparedBirModule prepare_f128_cast_helper_dump_module(
 }  // namespace
 
 int main() {
+  if (const int status = atomic_carrier_facts_preserve_fields_and_printer_visibility();
+      status != 0) {
+    return status;
+  }
+  if (const int status = incomplete_atomic_carrier_facts_fail_closed(); status != 0) {
+    return status;
+  }
+
   auto prepared = legalize_short_circuit_or_guard_module();
   const std::string dump = prepare::print(prepared);
 
