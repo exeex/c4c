@@ -2619,7 +2619,8 @@ int scalar_fp_unary_intrinsic_carrier_preserves_fields_and_printer_visibility() 
   }
   if (!expect_contains(dump,
                        "intrinsic_carrier family=scalar_fp_unary operation=fabs "
-                       "block_index=0 inst_index=0 operand_type=f64 result_type=f64 "
+                       "feature=none block_index=0 inst_index=0 operand_type=f64 "
+                       "result_type=f64 signedness=none memory_access=none "
                        "side_effects=no requires_feature=no prepared_call_plan=yes "
                        "source_callee=llvm.fabs.double operand=x result=abs",
                        "complete scalar fabs carrier")) {
@@ -2683,6 +2684,316 @@ int partial_and_unsupported_intrinsic_carriers_fail_closed() {
       prepare_intrinsic_carrier_dump_module(bir::TypeKind::F64, true, false);
   if (find_intrinsic_carriers(call_only, "intrinsic_carrier_dump_contract") != nullptr) {
     std::cerr << "[FAIL] ordinary call plan fabricated intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+bir::CallArgAbiInfo scalar_arg_abi(bir::TypeKind type) {
+  return *prepare::infer_call_arg_abi(aarch64_target_profile(), type);
+}
+
+bir::CallArgAbiInfo vector_arg_abi() {
+  return bir::CallArgAbiInfo{
+      .type = bir::TypeKind::I128,
+      .size_bytes = 16,
+      .align_bytes = 16,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  };
+}
+
+bir::CallResultAbiInfo result_abi(bir::TypeKind type) {
+  return bir::CallResultAbiInfo{
+      .type = type,
+      .primary_class = bir::AbiValueClass::Integer,
+  };
+}
+
+prepare::PreparedBirModule prepare_crc_intrinsic_carrier_dump_module(
+    prepare::PrepareOptions options = prepare::PrepareOptions{},
+    bool immediate_accumulator = false) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "crc_intrinsic_carrier_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I32, .name = "acc"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I32, .name = "data"});
+
+  bir::CallInst call{
+      .result = bir::Value::named(bir::TypeKind::I32, "crc"),
+      .callee = "llvm.aarch64.crc32w",
+      .args = {immediate_accumulator ? bir::Value::immediate_i32(0)
+                                     : bir::Value::named(bir::TypeKind::I32, "acc"),
+               bir::Value::named(bir::TypeKind::I32, "data")},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32),
+                  scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = result_abi(bir::TypeKind::I32),
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::Crc,
+          .operation = bir::IntrinsicOperationKind::Crc32W,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+          .operand_type = bir::TypeKind::I32,
+          .result_type = bir::TypeKind::I32,
+          .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                            bir::IntrinsicOperandRole::Data},
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .memory_access = bir::IntrinsicMemoryAccessKind::None,
+          .has_side_effects = false,
+      },
+  };
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "crc"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), options);
+}
+
+prepare::PreparedBirModule prepare_vector_load_intrinsic_carrier_dump_module(
+    bool complete = true) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = complete ? "vector_load_intrinsic_carrier_dump_contract"
+                           : "vector_load_intrinsic_incomplete_carrier_dump_contract";
+  function.return_type = bir::TypeKind::I128;
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Ptr, .name = "p"});
+
+  bir::CallInst call{
+      .result = bir::Value::named(bir::TypeKind::I128, "vec"),
+      .callee = "llvm.aarch64.neon.ld1.v16i8.p0i8",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "p")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::Ptr)},
+      .return_type = bir::TypeKind::I128,
+      .result_abi = result_abi(bir::TypeKind::I128),
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::VectorMemory,
+          .operation = bir::IntrinsicOperationKind::VectorLoad,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+          .operand_type = bir::TypeKind::Ptr,
+          .result_type = bir::TypeKind::I128,
+          .operand_roles = {bir::IntrinsicOperandRole::Pointer},
+          .vector_element_type = bir::TypeKind::I8,
+          .vector_element_width_bytes = 1,
+          .vector_lane_count = complete ? std::size_t{16} : std::size_t{8},
+          .vector_total_width_bytes = complete ? std::size_t{16} : std::size_t{8},
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .memory_operand = bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_name = "p",
+              .size_bytes = 16,
+              .align_bytes = 16,
+          },
+          .memory_access = bir::IntrinsicMemoryAccessKind::Read,
+          .has_side_effects = false,
+      },
+  };
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I128, "vec"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_vector_add_intrinsic_carrier_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "vector_add_intrinsic_carrier_dump_contract";
+  function.return_type = bir::TypeKind::I128;
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I128, .name = "lhs"});
+  function.params.push_back(bir::Param{.type = bir::TypeKind::I128, .name = "rhs"});
+
+  bir::CallInst call{
+      .result = bir::Value::named(bir::TypeKind::I128, "sum"),
+      .callee = "llvm.aarch64.neon.add.v16i8",
+      .args = {bir::Value::named(bir::TypeKind::I128, "lhs"),
+               bir::Value::named(bir::TypeKind::I128, "rhs")},
+      .arg_types = {bir::TypeKind::I128, bir::TypeKind::I128},
+      .arg_abi = {vector_arg_abi(), vector_arg_abi()},
+      .return_type = bir::TypeKind::I128,
+      .result_abi = result_abi(bir::TypeKind::I128),
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::VectorOperation,
+          .operation = bir::IntrinsicOperationKind::VectorAdd,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+          .operand_type = bir::TypeKind::I128,
+          .result_type = bir::TypeKind::I128,
+          .operand_roles = {bir::IntrinsicOperandRole::VectorLhs,
+                            bir::IntrinsicOperandRole::VectorRhs},
+          .vector_element_type = bir::TypeKind::I8,
+          .vector_element_width_bytes = 1,
+          .vector_lane_count = 16,
+          .vector_total_width_bytes = 16,
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .memory_access = bir::IntrinsicMemoryAccessKind::None,
+          .has_side_effects = false,
+      },
+  };
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I128, "sum"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
+  const auto crc = prepare_crc_intrinsic_carrier_dump_module();
+  const auto* crc_carriers =
+      find_intrinsic_carriers(crc, "crc_intrinsic_carrier_dump_contract");
+  if (crc_carriers == nullptr || crc_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one CRC prepared intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& crc_carrier = crc_carriers->carriers.front();
+  if (crc_carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      crc_carrier.family != bir::IntrinsicFamilyKind::Crc ||
+      crc_carrier.operation != bir::IntrinsicOperationKind::Crc32W ||
+      crc_carrier.required_feature != bir::IntrinsicFeatureKind::AArch64Crc ||
+      crc_carrier.operand_value_names.size() != 2 ||
+      crc_carrier.operand_homes.size() != 2 ||
+      !crc_carrier.operand_homes[0].has_value() ||
+      !crc_carrier.operand_homes[1].has_value() ||
+      !crc_carrier.result_home.has_value() ||
+      crc_carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] CRC carrier lost required semantic/home fields\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto vector_load = prepare_vector_load_intrinsic_carrier_dump_module();
+  const auto* load_carriers =
+      find_intrinsic_carriers(vector_load, "vector_load_intrinsic_carrier_dump_contract");
+  if (load_carriers == nullptr || load_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one vector-load prepared intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& load_carrier = load_carriers->carriers.front();
+  if (load_carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      load_carrier.family != bir::IntrinsicFamilyKind::VectorMemory ||
+      load_carrier.operation != bir::IntrinsicOperationKind::VectorLoad ||
+      load_carrier.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+      load_carrier.vector_element_type != bir::TypeKind::I8 ||
+      load_carrier.vector_element_width_bytes != 1 ||
+      load_carrier.vector_lane_count != 16 ||
+      load_carrier.vector_total_width_bytes != 16 ||
+      !load_carrier.memory_operand.has_value() ||
+      load_carrier.memory_access != bir::IntrinsicMemoryAccessKind::Read ||
+      load_carrier.operand_homes.size() != 1 ||
+      !load_carrier.operand_homes[0].has_value() ||
+      !load_carrier.result_home.has_value() ||
+      load_carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] vector-load carrier lost required semantic/home fields\n";
+    return EXIT_FAILURE;
+  }
+
+  const auto vector_add = prepare_vector_add_intrinsic_carrier_dump_module();
+  const auto* add_carriers =
+      find_intrinsic_carriers(vector_add, "vector_add_intrinsic_carrier_dump_contract");
+  if (add_carriers == nullptr || add_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one vector-add prepared intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& add_carrier = add_carriers->carriers.front();
+  if (add_carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      add_carrier.family != bir::IntrinsicFamilyKind::VectorOperation ||
+      add_carrier.operation != bir::IntrinsicOperationKind::VectorAdd ||
+      add_carrier.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+      add_carrier.operand_roles.size() != 2 ||
+      add_carrier.vector_total_width_bytes != 16 ||
+      add_carrier.operand_homes.size() != 2 ||
+      !add_carrier.operand_homes[0].has_value() ||
+      !add_carrier.operand_homes[1].has_value() ||
+      !add_carrier.result_home.has_value() ||
+      add_carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] vector-add carrier lost required semantic/home fields\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(vector_add);
+  if (!expect_contains(dump,
+                       "intrinsic_carrier family=vector_operation operation=vector_add "
+                       "feature=aarch64_neon block_index=0 inst_index=0 "
+                       "operand_type=i128 result_type=i128 roles=vector_lhs,vector_rhs "
+                       "vector_element_type=i8 vector_element_width=1 vector_lanes=16 "
+                       "vector_width=16 signedness=unsigned memory_access=none "
+                       "side_effects=no requires_feature=yes prepared_call_plan=yes "
+                       "source_callee=llvm.aarch64.neon.add.v16i8 operand=lhs "
+                       "operands=lhs,rhs result=sum operand_homes=2 result_home=yes",
+                       "complete vector-add carrier")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts() {
+  const auto crc_without_homes = prepare_crc_intrinsic_carrier_dump_module(
+      prepare::PrepareOptions{}, true);
+  const auto* crc_carriers =
+      find_intrinsic_carriers(crc_without_homes, "crc_intrinsic_carrier_dump_contract");
+  if (crc_carriers == nullptr ||
+      crc_carriers->carriers.size() != 1 ||
+      crc_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing ||
+      !crc_carriers->carriers.front().has_prepared_call_plan) {
+    std::cerr << "[FAIL] CRC carrier should remain missing with call plan but no homes\n";
+    return EXIT_FAILURE;
+  }
+  const std::string crc_dump = prepare::print(crc_without_homes);
+  if (!expect_contains(crc_dump,
+                       "missing fact=inst#0:missing_operand0_home",
+                       "CRC missing operand home diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(crc_dump,
+                           "intrinsic_carrier family=crc operation=crc32w",
+                           "incomplete CRC carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto bad_vector_load = prepare_vector_load_intrinsic_carrier_dump_module(false);
+  const auto* bad_load_carriers = find_intrinsic_carriers(
+      bad_vector_load, "vector_load_intrinsic_incomplete_carrier_dump_contract");
+  if (bad_load_carriers == nullptr ||
+      bad_load_carriers->carriers.size() != 1 ||
+      bad_load_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] malformed vector-load carrier should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string bad_load_dump = prepare::print(bad_vector_load);
+  if (!expect_contains(bad_load_dump,
+                       "missing fact=inst#0:vector_load_requires_v16i8_shape",
+                       "vector-load malformed shape diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(bad_load_dump,
+                           "intrinsic_carrier family=vector_memory operation=vector_load",
+                           "incomplete vector-load carrier printer record")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -3123,6 +3434,15 @@ int main() {
     return status;
   }
   if (const int status = partial_and_unsupported_intrinsic_carriers_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status = crc_and_vector_intrinsic_carriers_preserve_semantic_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts();
       status != 0) {
     return status;
   }

@@ -1,50 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extend BIR semantic intrinsic facts
+Current Step ID: 3
+Current Step Title: Extend prepared intrinsic carriers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2, "Extend BIR semantic intrinsic facts", completed for BIR-only
-semantic representatives.
+Step 3, "Extend prepared intrinsic carriers", completed for CRC/vector
+prepared carrier facts.
 
-- Added BIR intrinsic families and operations for `Crc/Crc32W`,
+- Extended prepared intrinsic carriers to preserve required feature, operand
+  roles, all operands, vector shape, signedness, memory/access facts,
+  immediate flags, and operand/result home authority from BIR intrinsic facts.
+- Added family-specific completeness checks for scalar FAbs, `Crc/Crc32W`,
   `VectorMemory/VectorLoad`, and `VectorOperation/VectorAdd`.
-- Extended `bir::IntrinsicOperation` with required feature identity, operand
-  roles, vector element/lane/width facts, signedness, memory operand/access
-  facts, and immediate-presence fields.
-- Lowered accepted AArch64 representatives into structured BIR facts:
-  `llvm.aarch64.crc32w`, `llvm.aarch64.neon.ld1.v16i8.p0i8`, and
-  `llvm.aarch64.neon.add.v16i8`.
-- Added BIR notes tests proving the accepted CRC/vector representatives and
-  fail-closed behavior for x86-only, wrong CRC type, missing vector-load
-  pointer, and mismatched vector-lane/type cases.
-- Prepared carrier completion remains intentionally unwired for Step 3.
+- Kept CRC/vector completion fail-closed when semantic facts or prepared
+  register/home authority are missing; ordinary call-plan presence alone is
+  not sufficient.
+- Extended prepared-printer output and tests for accepted CRC/vector carriers,
+  malformed vector facts, and missing operand-home authority.
 
 ## Suggested Next
 
-Start Step 3 by extending prepared intrinsic carriers to consume these BIR
-facts, require family-specific completeness, and keep CRC/vector carriers
-missing until register/home authority and prepared call-plan facts are present.
+Start Step 4 by verifying the prepared-printer and diagnostic proof surface
+against `plan.md`: the current slice may already satisfy most of Step 4, so the
+supervisor should check remaining prepared-printer/diagnostic gaps before
+moving to Step 5.
 
 ## Watchouts
 
-- Vector values are represented on the existing 16-byte `I128` storage lane at
-  the BIR call boundary; semantic vector authority is the explicit element,
-  lane, and width facts on `IntrinsicOperation`.
-- Recognized malformed AArch64 semantic intrinsic calls and x86-only LLVM
-  intrinsic spellings are blocked from generic direct-call fallback so they
-  fail closed at the BIR notes level.
-- Do not wire prepared completion from ordinary call-plan presence alone;
-  Step 3 still needs register/home authority before marking carriers complete.
+- The prepared carrier records vector values on the existing `I128` storage
+  lane and preserves vector semantic authority through explicit vector fields.
+- The current fail-closed home-authority test uses an immediate CRC operand to
+  prove a populated call plan cannot complete without a corresponding prepared
+  operand home.
+- `PreparedIntrinsicCarrier` now stores full `PreparedValueHome` snapshots for
+  operands/results; downstream consumers should use them as prepared-route
+  authority instead of re-resolving raw names.
 
 ## Proof
 
 Proof command:
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_lir_to_bir_notes'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(prepared_printer|lir_to_bir_notes)'; } 2>&1 | tee test_after.log`
 
 Result: passed. Proof log: `test_after.log`.

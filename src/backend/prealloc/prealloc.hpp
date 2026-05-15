@@ -1819,14 +1819,33 @@ struct PreparedIntrinsicCarrier {
       c4c::backend::bir::IntrinsicFamilyKind::None;
   c4c::backend::bir::IntrinsicOperationKind operation =
       c4c::backend::bir::IntrinsicOperationKind::None;
+  c4c::backend::bir::IntrinsicFeatureKind required_feature =
+      c4c::backend::bir::IntrinsicFeatureKind::None;
   std::size_t block_index = 0;
   std::size_t inst_index = 0;
   c4c::backend::bir::TypeKind operand_type = c4c::backend::bir::TypeKind::Void;
   c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  std::vector<c4c::backend::bir::IntrinsicOperandRole> operand_roles;
+  c4c::backend::bir::TypeKind vector_element_type =
+      c4c::backend::bir::TypeKind::Void;
+  std::size_t vector_element_width_bytes = 0;
+  std::size_t vector_lane_count = 0;
+  std::size_t vector_total_width_bytes = 0;
+  c4c::backend::bir::IntrinsicSignedness signedness =
+      c4c::backend::bir::IntrinsicSignedness::None;
+  std::optional<c4c::backend::bir::MemoryAddress> memory_operand;
+  c4c::backend::bir::IntrinsicMemoryAccessKind memory_access =
+      c4c::backend::bir::IntrinsicMemoryAccessKind::None;
+  bool has_immediate_operand = false;
+  bool requires_immediate_operand = false;
   std::optional<c4c::backend::bir::Value> operand;
+  std::vector<c4c::backend::bir::Value> operands;
   std::optional<c4c::backend::bir::Value> result;
   std::optional<ValueNameId> operand_value_name;
+  std::vector<ValueNameId> operand_value_names;
   std::optional<ValueNameId> result_value_name;
+  std::vector<std::optional<PreparedValueHome>> operand_homes;
+  std::optional<PreparedValueHome> result_home;
   bool has_side_effects = false;
   bool requires_feature = false;
   std::optional<std::string> source_callee_name;
