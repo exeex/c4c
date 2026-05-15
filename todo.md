@@ -8,32 +8,32 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 3 resolved the remaining constant-transport question as blocked, not as a
-code slice. I inspected the AArch64 F128 transport boundary through
-`make_prepared_f128_carrier_transport_record`, `f128_transport_selection_status`,
-`make_f128_transport_instruction`, `lower_f128_transport_instruction`, and the
-existing F128 record/dispatch tests. That boundary only has structured
-authority for prepared named F128 carriers plus optional 16-byte memory
-operands. I also inspected `bir::Value`, `BirFunctionLowerer::lower_value`,
-`build_f128_carrier`, and `PreparedF128Carrier`; BIR immediates currently carry
-only 64-bit `immediate` / `immediate_bits`, F128 literals are not parsed into
-full 128-bit low/high halves, and prepared F128 carriers are only derived from
-named regalloc/storage facts. There is therefore no genuine prepared constant
-carrier fact for a structured AArch64 Binary128 constant transport selection
-case yet.
+Step 4 started with the smallest real helper-boundary check and resolved it as
+blocked, not as a code slice. I inspected the prepared and AArch64 dispatch
+surfaces for helper calls: `PreparedF128Carrier`, `PreparedI128RuntimeHelper`,
+`append_i128_runtime_helper_mappings`, `populate_i128_runtime_helper_*`,
+`make_prepared_i128_runtime_helper_boundary_record`, and the dispatch path that
+selects only prepared i128 div/rem helpers. The current prepared F128 authority
+is carrier-only: named full-width q-register or memory-backed 16-byte storage
+facts. There is no genuine prepared binary128 soft-float helper boundary yet.
 
-The plan owner split the missing full-width F128 constant-carrier authority
-into `ideas/open/241_f128_full_width_constant_carriers.md` and narrowed active
-Step 3 so it covers load/store/copy transport only. F128 constant transport
-remains fail-closed in this runbook until that dependency provides structured
-16-byte payload facts.
+Exact missing prepared helper authority: a structured F128 soft-float helper
+fact family that maps one binary128 arithmetic operation to a concrete helper
+identity/callee, records 16-byte F128 argument and result carriers, models
+argument marshaling and result unmarshaling across the helper ABI, publishes
+caller-saved clobbers and preserved live values, and exposes selected
+call-ownership flags equivalent to the existing i128 helper boundary policy.
+Without that fact family, selecting an AArch64 F128 helper node would require
+guessing from BIR operation shape or scalar FP behavior instead of consuming
+prepared authority.
 
 ## Suggested Next
 
-Proceed with Step 4: Select Binary128 Soft-Float Helper Nodes. The smallest
-future packet should map one supported helper-boundary case to structured
-binary128 helper-call records from prepared facts without reopening constant
-transport or printer support.
+Stay on Step 4 and add the first prepared binary128 soft-float helper authority
+slice. The smallest coherent packet is to introduce a record-only prepared F128
+helper fact for one operation such as F128 add, with helper identity, full-width
+operand/result carrier references, ABI marshaling facts, clobber policy, and
+live-preservation ownership before AArch64 dispatch selects a machine node.
 
 ## Watchouts
 
@@ -73,6 +73,13 @@ transport or printer support.
 - Exact missing authority: a prepared full-width F128 constant carrier carrying
   both 64-bit halves or equivalent 16-byte payload provenance, linked to a BIR
   value or storage fact that instruction selection can consume.
+- Step 4 cannot reuse `PreparedI128RuntimeHelper` as-is without overfitting:
+  its helper family, ABI transition, operand lanes, and selected record
+  builder are i128-specific and require GPR low/high lanes, while binary128
+  helper calls need F128 full-width carriers and a soft-float ABI contract.
+- Unsupported F128 arithmetic/cast/comparison operations should remain
+  diagnosed until the prepared helper fact family exists; do not add scalar F64
+  approximations or dispatch-only callee guesses.
 
 ## Proof
 
