@@ -3459,10 +3459,10 @@ MachineNodeStatusRecord f128_transport_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 transport carrier is missing complete full-width authority"};
   }
-  if (instruction.total_size_bytes != 16 || instruction.total_align_bytes == 0) {
+  if (instruction.total_size_bytes != 16 || instruction.total_align_bytes != 16) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-        .diagnostic = "f128 transport carrier has invalid size or alignment"};
+        .diagnostic = "f128 transport carrier requires complete 16-byte size and alignment"};
   }
   if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
       !instruction.reg.has_value()) {
@@ -5154,7 +5154,7 @@ PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
     return f128_transport_record_error(
         PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
   }
-  if (carrier->total_size_bytes != 16 || carrier->total_align_bytes == 0) {
+  if (carrier->total_size_bytes != 16 || carrier->total_align_bytes != 16) {
     return f128_transport_record_error(
         PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
   }

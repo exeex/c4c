@@ -47,6 +47,45 @@ aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId valu
   return aarch64_codegen::make_register_operand(value_register(value_id, value_name, index));
 }
 
+aarch64_codegen::MemoryOperand f128_frame_slot_memory_operand(
+    c4c::FunctionNameId function_name,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  return aarch64_codegen::MemoryOperand{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .function_name = function_name,
+      .block_label = block_label,
+      .instruction_index = instruction_index,
+      .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+      .frame_slot_id = prepare::PreparedFrameSlotId{40},
+      .byte_offset = 32,
+      .size_bytes = 16,
+      .align_bytes = 16,
+      .address_space = bir::AddressSpace::Default,
+  };
+}
+
+prepare::PreparedF128Carrier f128_full_width_register_carrier(
+    c4c::FunctionNameId function_name,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const char* register_name) {
+  return prepare::PreparedF128Carrier{
+      .function_name = function_name,
+      .value_id = value_id,
+      .value_name = value_name,
+      .source_type = bir::TypeKind::F128,
+      .kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .contiguous_width = 1,
+      .register_name = std::string{register_name},
+      .occupied_register_names = {register_name},
+  };
+}
+
 int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
   const auto condition = make_value_register(prepare::PreparedValueId{10},
                                              c4c::ValueNameId{3},
@@ -2331,6 +2370,73 @@ int i128_transport_records_preserve_prepared_carrier_lanes() {
   return 0;
 }
 
+int f128_transport_records_preserve_full_width_carrier_and_memory_facts() {
+  const auto function_name = c4c::FunctionNameId{12};
+  const auto value_name = c4c::ValueNameId{120};
+  prepare::PreparedF128CarrierFunction carriers{
+      .function_name = function_name,
+      .carriers =
+          {f128_full_width_register_carrier(
+              function_name, prepare::PreparedValueId{220}, value_name, "q6")},
+  };
+  auto prepared = aarch64_codegen::make_prepared_f128_carrier_transport_record(
+      carriers,
+      value_name,
+      aarch64_codegen::F128TransportKind::StoreToMemory,
+      f128_frame_slot_memory_operand(function_name, c4c::BlockLabelId{4}, 3));
+  if (!prepared.record.has_value() ||
+      prepared.error != aarch64_codegen::PreparedF128TransportRecordError::None) {
+    return fail("expected complete f128 full-width carrier to select memory transport record");
+  }
+  const auto instruction =
+      aarch64_codegen::make_f128_transport_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::F128TransportRecord>(&instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::F128Transport ||
+      aarch64_codegen::instruction_family_name(instruction.family) != "f128_transport" ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::F128Transport ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) != "f128_transport" ||
+      instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      payload->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
+      payload->value_id != prepare::PreparedValueId{220} ||
+      payload->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      payload->register_bank != prepare::PreparedRegisterBank::Vreg ||
+      payload->register_class != prepare::PreparedRegisterClass::Vector ||
+      payload->occupied_register_names.size() != 1 ||
+      payload->occupied_register_names.front() != "q6" ||
+      !payload->reg.has_value() ||
+      payload->reg->reg != aarch64_abi::q_register(6) ||
+      payload->total_size_bytes != 16 ||
+      payload->total_align_bytes != 16 ||
+      !payload->memory.has_value() ||
+      payload->memory->size_bytes != 16 ||
+      payload->memory->align_bytes != 16 ||
+      instruction.operands.size() != 2 ||
+      instruction.defs.size() != 1 ||
+      instruction.uses.size() != 1 ||
+      instruction.side_effects.size() != 1 ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected f128 memory transport record to preserve full-width carrier facts");
+  }
+
+  carriers.carriers.front().total_align_bytes = 8;
+  carriers.carriers.front().missing_required_facts = {"f128_full_width_align"};
+  const auto incomplete = aarch64_codegen::make_prepared_f128_carrier_transport_record(
+      carriers,
+      value_name,
+      aarch64_codegen::F128TransportKind::StoreToMemory,
+      f128_frame_slot_memory_operand(function_name, c4c::BlockLabelId{4}, 4));
+  if (incomplete.record.has_value() ||
+      incomplete.error !=
+          aarch64_codegen::PreparedF128TransportRecordError::IncompletePreparedF128Carrier ||
+      aarch64_codegen::prepared_f128_transport_record_error_name(incomplete.error) !=
+          "incomplete_prepared_f128_carrier") {
+    return fail("expected incomplete f128 full-width carrier to fail closed");
+  }
+  return 0;
+}
+
 int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
   const auto function_name = c4c::FunctionNameId{9};
   const auto result_name = c4c::ValueNameId{90};
@@ -2678,6 +2784,11 @@ int main() {
     return status;
   }
   if (const int status = i128_transport_records_preserve_prepared_carrier_lanes();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          f128_transport_records_preserve_full_width_carrier_and_memory_facts();
       status != 0) {
     return status;
   }
