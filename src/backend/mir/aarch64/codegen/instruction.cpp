@@ -623,6 +623,12 @@ std::string_view prepared_memory_operand_record_error_name(
       return "missing_result_storage";
     case PreparedMemoryOperandRecordError::UnsupportedResultStorage:
       return "unsupported_result_storage";
+    case PreparedMemoryOperandRecordError::MissingStoredValueHome:
+      return "missing_stored_value_home";
+    case PreparedMemoryOperandRecordError::MissingStoredStorage:
+      return "missing_stored_storage";
+    case PreparedMemoryOperandRecordError::UnsupportedStoredStorage:
+      return "unsupported_stored_storage";
     case PreparedMemoryOperandRecordError::RegisterConversionFailed:
       return "register_conversion_failed";
   }
@@ -3699,6 +3705,64 @@ make_prepared_frame_slot_load_memory_instruction_record(
   };
 }
 
+PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
+    PreparedMemoryOperandRecordResult operand,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& stored_value) {
+  if (!operand.record.has_value()) {
+    return memory_instruction_record_error(operand.error);
+  }
+  if (operand.record->base_kind != MemoryBaseKind::FrameSlot &&
+      operand.record->base_kind != MemoryBaseKind::PointerValue) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  if (!operand.record->stored_value_id.has_value() ||
+      !operand.record->stored_value_name.has_value()) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingStoredValueHome);
+  }
+
+  const auto* stored_home =
+      prepare::find_prepared_value_home(value_locations, *operand.record->stored_value_id);
+  if (stored_home == nullptr ||
+      stored_home->value_name != *operand.record->stored_value_name ||
+      stored_home->kind != prepare::PreparedValueHomeKind::Register) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingStoredValueHome);
+  }
+
+  const auto* stored_storage =
+      find_storage_plan_value(storage_plan, *operand.record->stored_value_id);
+  if (stored_storage == nullptr ||
+      stored_storage->value_name != *operand.record->stored_value_name) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingStoredStorage);
+  }
+  if (stored_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::UnsupportedStoredStorage);
+  }
+
+  auto stored_register =
+      make_prepared_register_operand(
+          *stored_home, *stored_storage, stored_value.type, RegisterOperandRole::StoragePlan);
+  if (!stored_register.has_value()) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::RegisterConversionFailed);
+  }
+
+  return PreparedMemoryInstructionRecordResult{
+      .record =
+          MemoryInstructionRecord{
+              .memory_kind = MemoryInstructionKind::Store,
+              .address = *operand.record,
+              .value = make_register_operand(*stored_register),
+              .value_type = stored_value.type,
+          },
+      .error = PreparedMemoryOperandRecordError::None,
+  };
+}
+
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
@@ -3739,6 +3803,26 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     return memory_operand_record_error(error);
   }
   return result;
+}
+
+PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::StoreLocalInst& store) {
+  if (storage_plan.function_name != value_locations.function_name ||
+      storage_plan.function_name != addressing.function_name) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
+  }
+  return make_store_memory_instruction_record(
+      make_prepared_memory_operand_record(
+          names, value_locations, addressing, block_label, instruction_index, store),
+      value_locations,
+      storage_plan,
+      store.value);
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
@@ -3823,6 +3907,26 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     return memory_operand_record_error(error);
   }
   return result;
+}
+
+PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::StoreGlobalInst& store) {
+  if (storage_plan.function_name != value_locations.function_name ||
+      storage_plan.function_name != addressing.function_name) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
+  }
+  return make_store_memory_instruction_record(
+      make_prepared_memory_operand_record(
+          names, value_locations, addressing, block_label, instruction_index, store),
+      value_locations,
+      storage_plan,
+      store.value);
 }
 
 PreparedAddressMaterializationRecordResult make_prepared_address_materialization_record(

@@ -182,6 +182,23 @@ PreparedMemoryFixture make_fixture() {
               prepare::PreparedMemoryAccess{
                   .function_name = fixture.function_name,
                   .block_label = fixture.block_label,
+                  .inst_index = 6,
+                  .stored_value_name = fixture.stored_name,
+                  .address_space = bir::AddressSpace::Fs,
+                  .is_volatile = true,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{21},
+                          .byte_offset = 12,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
                   .inst_index = 5,
                   .result_value_name = fixture.load_name,
                   .address_space = bir::AddressSpace::Gs,
@@ -512,6 +529,88 @@ int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
       memory.address_space != bir::AddressSpace::Tls || memory.is_volatile ||
       !memory.can_use_base_plus_offset) {
     return fail("expected pointer-value record to preserve prepared and BIR facts");
+  }
+
+  const auto selected = aarch64_codegen::make_prepared_store_memory_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 4, store);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected pointer-value store machine record to select");
+  }
+  const auto& store_record = *selected.record;
+  if (store_record.memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      store_record.address.base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      !store_record.value.has_value() ||
+      store_record.value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected pointer-value store to carry structured register source");
+  }
+  const auto* stored_register =
+      std::get_if<aarch64_codegen::RegisterOperand>(&store_record.value->payload);
+  if (stored_register == nullptr ||
+      stored_register->value_id != prepare::PreparedValueId{11} ||
+      stored_register->value_name != fixture.stored_name ||
+      stored_register->occupied_registers.empty() ||
+      stored_register->occupied_registers.front() != "w1") {
+    return fail("expected pointer-value store source register authority");
+  }
+  const auto instruction = aarch64_codegen::make_memory_instruction(store_record);
+  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::Store ||
+      instruction.side_effects.empty() ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite ||
+      instruction.uses.size() < 2 ||
+      instruction.uses.back().kind != aarch64_codegen::MachineEffectResourceKind::Register) {
+    return fail("expected selected pointer-value store instruction to use source register");
+  }
+  return 0;
+}
+
+int frame_slot_store_conversion_selects_structured_register_source() {
+  auto fixture = make_fixture();
+  const bir::StoreLocalInst store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 12,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .byte_offset = 12,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .address_space = bir::AddressSpace::Fs,
+              .is_volatile = true,
+              .base_slot_id = c4c::SlotNameId{5},
+          },
+  };
+
+  const auto selected = aarch64_codegen::make_prepared_store_memory_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 6, store);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected frame-slot store machine record to select");
+  }
+  const auto& store_record = *selected.record;
+  if (store_record.address.base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      store_record.address.frame_slot_id != prepare::PreparedFrameSlotId{21} ||
+      store_record.address.byte_offset != 12 || store_record.address.size_bytes != 4 ||
+      store_record.address.align_bytes != 4 ||
+      store_record.address.address_space != bir::AddressSpace::Fs ||
+      !store_record.address.is_volatile ||
+      !store_record.value.has_value() ||
+      store_record.value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected frame-slot store record to preserve address and source facts");
+  }
+
+  fixture.storage.values.clear();
+  const auto missing_storage = aarch64_codegen::make_prepared_store_memory_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 6, store);
+  if (missing_storage.record.has_value() ||
+      missing_storage.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::MissingStoredStorage ||
+      aarch64_codegen::prepared_memory_operand_record_error_name(missing_storage.error) !=
+          "missing_stored_storage") {
+    return fail("expected missing stored-source storage to fail closed");
   }
   return 0;
 }
@@ -1202,6 +1301,10 @@ int main() {
     return status;
   }
   if (const int status = pointer_value_store_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = frame_slot_store_conversion_selects_structured_register_source();
       status != 0) {
     return status;
   }

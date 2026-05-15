@@ -1305,6 +1305,173 @@ prepare::PreparedBirModule prepared_with_frame_slot_load(bool include_storage = 
   return prepared;
 }
 
+enum class StoreDispatchFixtureKind {
+  FrameSlot,
+  PointerValue,
+  GlobalSymbol,
+};
+
+prepare::PreparedBirModule prepared_with_store(StoreDispatchFixtureKind kind,
+                                               bool include_storage = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.store");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.store.entry");
+  const auto stored_name = prepared.names.value_names.intern("%stored");
+  const auto pointer_name = prepared.names.value_names.intern("%ptr");
+  const auto global_name = prepared.names.link_names.intern("g.store");
+
+  bir::Inst store_inst;
+  prepare::PreparedAddress address;
+  bir::AddressSpace address_space = bir::AddressSpace::Fs;
+  bool is_volatile = true;
+  if (kind == StoreDispatchFixtureKind::FrameSlot) {
+    store_inst = bir::StoreLocalInst{
+        .slot_id = c4c::SlotNameId{5},
+        .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+        .byte_offset = 12,
+        .align_bytes = 4,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .byte_offset = 12,
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .address_space = bir::AddressSpace::Fs,
+                .is_volatile = true,
+                .base_slot_id = c4c::SlotNameId{5},
+            },
+    };
+    address = prepare::PreparedAddress{
+        .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+        .frame_slot_id = prepare::PreparedFrameSlotId{21},
+        .byte_offset = 12,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .can_use_base_plus_offset = true,
+    };
+  } else if (kind == StoreDispatchFixtureKind::PointerValue) {
+    store_inst = bir::StoreLocalInst{
+        .slot_id = c4c::SlotNameId{5},
+        .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+        .byte_offset = 24,
+        .align_bytes = 8,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                .base_value = bir::Value::named(bir::TypeKind::Ptr, "%ptr"),
+                .byte_offset = 24,
+                .size_bytes = 8,
+                .align_bytes = 8,
+                .address_space = bir::AddressSpace::Tls,
+            },
+    };
+    address_space = bir::AddressSpace::Tls;
+    is_volatile = false;
+    address = prepare::PreparedAddress{
+        .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+        .pointer_value_name = pointer_name,
+        .byte_offset = 24,
+        .size_bytes = 8,
+        .align_bytes = 8,
+        .can_use_base_plus_offset = true,
+    };
+  } else {
+    store_inst = bir::StoreGlobalInst{
+        .global_name_id = global_name,
+        .value = bir::Value::named(bir::TypeKind::I32, "%stored"),
+        .byte_offset = 16,
+        .align_bytes = 4,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                .byte_offset = 16,
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .address_space = bir::AddressSpace::Gs,
+                .is_volatile = true,
+                .base_link_name_id = global_name,
+            },
+    };
+    address_space = bir::AddressSpace::Gs;
+    address = prepare::PreparedAddress{
+        .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+        .symbol_name = global_name,
+        .byte_offset = 16,
+        .size_bytes = 4,
+        .align_bytes = 4,
+        .can_use_base_plus_offset = true,
+    };
+  }
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.store.entry",
+              .insts = {store_inst},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{11},
+               .function_name = function_name,
+               .value_name = stored_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w1",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{12},
+               .function_name = function_name,
+               .value_name = pointer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x2",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          include_storage
+              ? std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{11}, stored_name, "w1"),
+                    register_storage(prepare::PreparedValueId{12}, pointer_name, "x2")}
+              : std::vector<prepare::PreparedStoragePlanValue>{},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .stored_value_name = stored_name,
+              .address_space = address_space,
+              .is_volatile = is_volatile,
+              .address = address,
+          }},
+  });
+  return prepared;
+}
+
 int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -2507,6 +2674,122 @@ int block_dispatch_reports_missing_frame_slot_load_destination_authority() {
   return 0;
 }
 
+int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
+  for (const auto kind :
+       {StoreDispatchFixtureKind::FrameSlot, StoreDispatchFixtureKind::PointerValue}) {
+    auto prepared = prepared_with_store(kind);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected dispatch to select store plus return");
+    }
+
+    const auto* memory =
+        std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+            &block.instructions.front().target.payload);
+    if (memory == nullptr ||
+        block.instructions.front().target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+        !memory->value.has_value() ||
+        memory->value->kind != aarch64_codegen::OperandKind::Register ||
+        memory->address.stored_value_id != prepare::PreparedValueId{11} ||
+        memory->address.stored_value_name !=
+            prepared.names.value_names.find("%stored")) {
+      return fail("expected selected store to preserve source identity");
+    }
+    const auto* stored_register =
+        std::get_if<aarch64_codegen::RegisterOperand>(&memory->value->payload);
+    if (stored_register == nullptr ||
+        stored_register->value_id != prepare::PreparedValueId{11} ||
+        stored_register->occupied_registers.empty() ||
+        stored_register->occupied_registers.front() != "w1") {
+      return fail("expected selected store to carry structured source register");
+    }
+    if (kind == StoreDispatchFixtureKind::FrameSlot) {
+      if (memory->address.base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+          memory->address.frame_slot_id != prepare::PreparedFrameSlotId{21} ||
+          memory->address.byte_offset != 12 ||
+          memory->address.address_space != bir::AddressSpace::Fs ||
+          !memory->address.is_volatile) {
+        return fail("expected frame-slot store address facts");
+      }
+    } else if (memory->address.base_kind !=
+                   aarch64_codegen::MemoryBaseKind::PointerValue ||
+               memory->address.pointer_value_id != prepare::PreparedValueId{12} ||
+               memory->address.byte_offset != 24 ||
+               memory->address.address_space != bir::AddressSpace::Tls ||
+               memory->address.is_volatile) {
+      return fail("expected pointer-value store address facts");
+    }
+    if (block.instructions.front().target.side_effects.empty() ||
+        block.instructions.front().target.side_effects.front() !=
+            aarch64_codegen::MachineSideEffectKind::MemoryWrite ||
+        block.instructions.front().target.uses.size() < 2 ||
+        block.instructions.front().target.uses.back().kind !=
+            aarch64_codegen::MachineEffectResourceKind::Register) {
+      return fail("expected store target to expose register use and memory write");
+    }
+  }
+  return 0;
+}
+
+int block_dispatch_reports_missing_store_source_authority_and_unsupported_base() {
+  {
+    auto prepared = prepared_with_store(StoreDispatchFixtureKind::FrameSlot, false);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().message.find("missing_stored_storage") ==
+            std::string::npos) {
+      return fail("expected missing stored-source storage diagnostic");
+    }
+  }
+
+  {
+    auto prepared = prepared_with_store(StoreDispatchFixtureKind::GlobalSymbol);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().message.find("unsupported_base") == std::string::npos) {
+      return fail("expected unsupported global-symbol store diagnostic");
+    }
+  }
+
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -2527,6 +2810,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_frame_slot_load_destination_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_reports_missing_store_source_authority_and_unsupported_base();
       status != 0) {
     return status;
   }

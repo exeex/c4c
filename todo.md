@@ -1,54 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/234_aarch64_memory_load_store_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Select Frame-Slot Load Nodes
+Current Step ID: 3
+Current Step Title: Select Frame-Slot And Pointer-Value Store Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 selected prepared frame-slot BIR loads into structured AArch64
-`MemoryInstructionRecord` nodes without adding terminal load printer output.
+Step 3 selected prepared frame-slot and pointer-value BIR stores into structured
+AArch64 `MemoryInstructionRecord` nodes without expanding terminal printer
+behavior.
 
 Completed work:
 
-- Added `MemoryInstructionRecord::result_register` and a
-  `PreparedMemoryInstructionRecordResult` builder for frame-slot `LoadLocalInst`
-  records.
-- The new builder reuses `PreparedMemoryAccess` validation, requires a frame-slot
-  base, resolves the result through prepared value homes plus storage-plan
-  register authority, and fails closed with explicit
-  `missing_result_value_home`, `missing_result_storage`,
-  `unsupported_result_storage`, or `register_conversion_failed` errors.
-- `make_memory_instruction` now emits a register definition for loads when the
-  structured result register is present while preserving existing prepared-value
-  fallback behavior for older hand-built records.
-- `dispatch_prepared_block` now consumes prepared frame-slot loads, records the
-  selected result register for later scalar/return consumers, preserves
-  frame-slot id, byte offset, size, alignment, volatility, address space, and
-  memory-read side effect, and reports memory-family diagnostics for missing
-  prepared access or destination authority.
-- Focused MIR tests cover direct record construction, dispatch selection from
-  prepared facts, and missing load-destination storage diagnostics.
+- Added prepared store machine-record builders for `StoreLocalInst` and
+  `StoreGlobalInst`.
+- The selected store builder reuses `PreparedMemoryAccess` validation, accepts
+  only `FrameSlot` and `PointerValue` bases, resolves the stored source through
+  prepared value homes plus storage-plan register authority, and places the
+  source as a structured register operand on `MemoryInstructionRecord::value`.
+- Store failures now diagnose explicit stored-source authority gaps through
+  `missing_stored_value_home`, `missing_stored_storage`,
+  `unsupported_stored_storage`, or `register_conversion_failed`.
+- `dispatch_prepared_block` now consumes prepared frame-slot and pointer-value
+  store facts, preserving base identity, byte offset, size, alignment,
+  volatility, address space, and memory-write side effects.
+- Unsupported symbol/global store bases are handled by the prepared store
+  builder and reported as memory-family `unsupported_base` diagnostics instead
+  of being selected or inferred from rendered names.
+- Focused MIR tests cover direct frame-slot/pointer-value store record
+  construction, dispatch selection, missing stored-source storage diagnostics,
+  and unsupported global-symbol store diagnostics.
 
 ## Suggested Next
 
-Step 3 implementation packet: select frame-slot store nodes by resolving the
-stored source value through prepared value-home/storage authority into a
-structured register operand on `MemoryInstructionRecord`, without terminal
-store-printer expansion beyond existing behavior.
+Step 4 implementation packet: add terminal AArch64 printer support for the
+selected frame-slot load/store subset only, driven by structured
+`MemoryInstructionRecord` fields. Keep global/symbol/string memory printing and
+any unstructured base handling deferred.
 
 ## Watchouts
 
-- Terminal load printer output is still deferred; this packet only selected
-  machine records and structured defs.
-- The selected dispatch path is intentionally frame-slot loads only. Stores,
-  pointer-value memory, and symbol/string memory access remain later packets.
+- Terminal load printer output is still deferred. Existing store printer
+  behavior was not expanded in this packet.
+- Selected memory coverage is currently frame-slot loads plus frame-slot and
+  pointer-value stores. Pointer-value loads, global/symbol memory, and string
+  memory remain later packets unless the plan-owner narrows them differently.
 - Global address materialization remains separate from global load/store
   lowering. Do not infer memory access policy from rendered names.
-- Other memory instructions still fall through to the existing unsupported
-  memory-family diagnostics until their packets add selected builders.
+- `StoreGlobalInst` can now reach explicit memory diagnostics for unsupported
+  bases, but selected global memory access is still deferred.
 
 ## Proof
 

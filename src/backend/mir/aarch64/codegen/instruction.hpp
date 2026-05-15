@@ -279,6 +279,9 @@ enum class PreparedMemoryOperandRecordError {
   MissingResultValueHome,
   MissingResultStorage,
   UnsupportedResultStorage,
+  MissingStoredValueHome,
+  MissingStoredStorage,
+  UnsupportedStoredStorage,
   RegisterConversionFailed,
 };
 
@@ -1028,6 +1031,15 @@ make_prepared_frame_slot_load_memory_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreLocalInst& store);
+[[nodiscard]] PreparedMemoryInstructionRecordResult
+make_prepared_store_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::StoreLocalInst& store);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
@@ -1038,6 +1050,15 @@ make_prepared_frame_slot_load_memory_instruction_record(
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::StoreGlobalInst& store);
+[[nodiscard]] PreparedMemoryInstructionRecordResult
+make_prepared_store_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,

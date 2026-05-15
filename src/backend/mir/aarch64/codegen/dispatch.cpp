@@ -508,7 +508,9 @@ struct LowerMemoryInstructionResult {
     std::size_t instruction_index,
   module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
-  if (load == nullptr) {
+  const auto* local_store = std::get_if<bir::StoreLocalInst>(&inst);
+  const auto* global_store = std::get_if<bir::StoreGlobalInst>(&inst);
+  if (load == nullptr && local_store == nullptr && global_store == nullptr) {
     return LowerMemoryInstructionResult{.handled = false};
   }
 
@@ -539,14 +541,35 @@ struct LowerMemoryInstructionResult {
     return LowerMemoryInstructionResult{.handled = true};
   }
 
-  const auto prepared = make_prepared_frame_slot_load_memory_instruction_record(
-      context.function.prepared->names,
-      *context.function.value_locations,
-      *context.function.storage_plan,
-      *addressing,
-      context.control_flow_block->block_label,
-      instruction_index,
-      *load);
+  PreparedMemoryInstructionRecordResult prepared;
+  if (load != nullptr) {
+    prepared = make_prepared_frame_slot_load_memory_instruction_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *load);
+  } else if (local_store != nullptr) {
+    prepared = make_prepared_store_memory_instruction_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *local_store);
+  } else {
+    prepared = make_prepared_store_memory_instruction_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *global_store);
+  }
   if (!prepared.record.has_value()) {
     append_memory_diagnostic(
         diagnostics,
