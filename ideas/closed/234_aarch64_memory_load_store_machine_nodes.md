@@ -1,6 +1,6 @@
 # AArch64 Memory Load Store Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
@@ -47,3 +47,26 @@ This is a current AArch64 lowering gap, not a reason to revive the archived
   prepared address and stored-value facts.
 - Unsupported symbol/string or unprepared bases remain deferred with explicit
   diagnostics rather than silently printing invalid assembly.
+
+## Closure Notes
+
+Closed: 2026-05-15
+
+The active runbook completed the intended semantic subset:
+
+- frame-slot loads lower through prepared memory facts, selected structured
+  destination-register authority, and terminal `ldr` output
+- frame-slot stores lower through prepared memory facts, selected structured
+  source-register operands, and terminal `str` output
+- pointer-value stores lower through prepared pointer base identity, selected
+  structured pointer base/source registers, and terminal `str` output
+- unsupported and unprepared memory bases remain fail-closed through explicit
+  diagnostics
+- global address materialization remains separate from global memory access
+
+Pointer-value loads and selected global/symbol memory access remain outside
+this closed route and should be handled by a separate source idea if they
+become required.
+
+Close proof used the accepted full-suite regression artifact in
+`test_before.log`: 3167/3167 tests passed.
