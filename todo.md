@@ -1,51 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/247_explicit_got_materialization_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume GOT Policy In AArch64 Selection
+Current Step ID: 4
+Current Step Title: Validate And Hand Back To Address Materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 consumed prepared `GotGlobal` address-materialization carriers in
-AArch64 selected records without adding terminal GOT printer output.
+Step 4 validated the explicit GOT policy prerequisite and recorded the handoff
+back to the address-materialization work.
 
-- Added `AddressMaterializationKind::GotPageLow12` as the selected AArch64
-  record kind for prepared `GotGlobal` carriers.
-- Added `address_materialization_policy` to `AddressMaterializationRecord` so
-  selected records preserve the explicit prepared `GotRequired` policy.
-- Updated prepared address-materialization record construction so `GotGlobal`
-  requires explicit `GotRequired` policy, structured symbol identity, non-TLS
-  facts, result value home, and register storage before it selects.
-- Kept direct globals selecting as `DirectPageLow12` and preserved existing
-  direct printer fixtures by requiring direct policy on the prepared conversion
-  path, not on hand-built printer records.
-- Extended focused AArch64 MIR tests to prove GOT selected records, dispatch
-  consumption from prepared carriers, and fail-closed missing/mismatched GOT
-  policy diagnostics.
-- Fixed the Step 3 terminal-printer acceptance issue by making selected
-  `GotPageLow12` and `LabelPageLow12` records explicitly fail closed with
-  deferred-printer diagnostics instead of falling through to empty relocation
-  labels.
+- Fresh backend proof confirms the accepted prerequisite state carries explicit
+  GOT policy end to end through target options, BIR symbol metadata, prepared
+  address-materialization facts, and AArch64 selected `GotPageLow12` records.
+- Prepared/AArch64 selection now depends on structured `GotGlobal` plus
+  explicit `GotRequired` policy, symbol identity, result home, and register
+  facts. It does not infer GOT from symbol spelling or `is_extern`.
+- Terminal GOT and label printing remain intentionally deferred; selected
+  `GotPageLow12` and `LabelPageLow12` printer paths fail closed with explicit
+  diagnostics until their relocation sequences are specified.
+- This completes the policy prerequisite that blocked the earlier address
+  materialization route. Idea 233 can resume at its GOT materialization step
+  using the prepared/AArch64 selected GOT carrier instead of inventing policy.
 
 ## Suggested Next
 
-Step 4 implementation packet: define terminal AArch64 GOT printer behavior only
-after the GOT relocation operand sequence is fully specified.
+Resume idea 233 Step 6: populate/continue GOT-backed global materialization from
+the explicit prepared/AArch64 selected `GotPageLow12` carrier, keeping terminal
+GOT printer output in the idea 233 printer-owned step.
 
 ## Watchouts
 
-- Terminal GOT and label printer output is still deferred. The printer now
-  rejects selected `GotPageLow12` and `LabelPageLow12` records explicitly until
-  their relocation sequences are specified.
-- `GotPageLow12` records now have selected machine-node status, so future
-  printer work must handle that kind explicitly before routing GOT records to
-  terminal output.
-- Do not infer GOT from rendered names or `is_extern`; the AArch64 selector now
-  depends on the prepared `GotGlobal` kind plus explicit `GotRequired` policy.
-- TLS/GOT remains unsupported and fails closed through the prepared record
-  validation path.
+- This handoff did not implement terminal GOT assembly output.
+- Idea 233 printer work should consume `AddressMaterializationRecord` fields and
+  reject unsupported GOT/label/TLS cases explicitly rather than formatting from
+  names.
+- TLS/GOT remains unsupported and fails closed through the prepared/AArch64
+  record validation path.
+- If the next route needs broader visibility/preemptibility policy, add it by
+  populating the explicit BIR policy field instead of reintroducing external
+  linkage inference.
 
 ## Proof
 
