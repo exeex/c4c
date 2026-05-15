@@ -78,6 +78,24 @@ std::string relocation_operand(std::string_view label, std::int64_t byte_offset)
   return operand;
 }
 
+std::string prefixed_relocation_operand(std::string_view prefix, std::string_view label) {
+  std::string operand(prefix);
+  operand += label;
+  return operand;
+}
+
+std::string tls_relocation_prefix(prepare::PreparedTlsRelocationKind kind) {
+  switch (kind) {
+    case prepare::PreparedTlsRelocationKind::Aarch64TprelHi12:
+      return ":tprel_hi12:";
+    case prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc:
+      return ":tprel_lo12_nc:";
+    case prepare::PreparedTlsRelocationKind::None:
+      return {};
+  }
+  return {};
+}
+
 std::string bad_header(const InstructionRecord& instruction) {
   return std::string("cannot print AArch64 machine node family=") +
          std::string(instruction_family_name(instruction.family)) + " opcode=" +
@@ -131,8 +149,17 @@ mir::TargetInstructionPrintResult print_address_materialization(
       }
       break;
     case AddressMaterializationKind::GotPageLow12:
-      return target_unsupported(bad_header(instruction) +
-                                "GOT address materialization printer path is deferred");
+      label = address.symbol_label;
+      if (label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "GOT address materialization is missing symbol label");
+      }
+      if (address.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+        return target_unsupported(bad_header(instruction) +
+                                  "GOT address materialization is missing GOT-required policy");
+      }
+      break;
     case AddressMaterializationKind::StringConstant:
       label = address.text_label;
       if (label.empty()) {
@@ -141,11 +168,32 @@ mir::TargetInstructionPrintResult print_address_materialization(
       }
       break;
     case AddressMaterializationKind::LabelPageLow12:
-      return target_unsupported(bad_header(instruction) +
-                                "label address materialization printer path is deferred");
+      label = address.target_label_name;
+      if (label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "label address materialization is missing target label text");
+      }
+      break;
     case AddressMaterializationKind::TlsRelative:
-      return target_unsupported(bad_header(instruction) +
-                                "TLS address materialization printer path is deferred");
+      label = address.symbol_label;
+      if (label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "TLS address materialization is missing symbol label");
+      }
+      if (address.tls_model !=
+              prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative ||
+          address.tls_thread_pointer_register !=
+              prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0) {
+        return target_unsupported(bad_header(instruction) +
+                                  "TLS address materialization is missing local-exec TLS facts");
+      }
+      if (address.tls_high_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
+          address.tls_low_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "TLS address materialization is missing thread-pointer-relative relocations");
+      }
+      break;
     case AddressMaterializationKind::DeferredUnsupported:
       return target_unsupported(bad_header(instruction) +
                                 "address materialization printer path is deferred for " +
@@ -154,6 +202,33 @@ mir::TargetInstructionPrintResult print_address_materialization(
   }
 
   const std::string result = register_name(*address.result_register);
+  if (address.kind == AddressMaterializationKind::GotPageLow12) {
+    std::vector<std::string> lines{
+        "adrp " + result + ", " + prefixed_relocation_operand(":got:", label),
+        "ldr " + result + ", [" + result + ", " +
+            prefixed_relocation_operand(":got_lo12:", label) + "]",
+    };
+    if (address.byte_offset != 0) {
+      lines.push_back("add " + result + ", " + result + ", #" +
+                      std::to_string(address.byte_offset));
+    }
+    return target_printed(std::move(lines));
+  }
+  if (address.kind == AddressMaterializationKind::TlsRelative) {
+    std::vector<std::string> lines{
+        "mrs " + result + ", tpidr_el0",
+        "add " + result + ", " + result + ", " +
+            prefixed_relocation_operand(tls_relocation_prefix(address.tls_high_relocation), label),
+        "add " + result + ", " + result + ", " +
+            prefixed_relocation_operand(tls_relocation_prefix(address.tls_low_relocation), label),
+    };
+    if (address.byte_offset != 0) {
+      lines.push_back("add " + result + ", " + result + ", #" +
+                      std::to_string(address.byte_offset));
+    }
+    return target_printed(std::move(lines));
+  }
+
   const std::string reloc = relocation_operand(label, address.byte_offset);
   return target_printed({
       "adrp " + result + ", " + reloc,

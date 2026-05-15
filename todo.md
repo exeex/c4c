@@ -1,47 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/233_aarch64_global_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Specify TLS Materialization Facts
+Current Step ID: 8
+Current Step Title: Print Remaining Relocation-Aware AArch64 Sequences
 
 # Current Packet
 
 ## Just Finished
 
-Step 7 specified and carried explicit TLS address-materialization facts through
-prepared data and AArch64 selected records without enabling terminal TLS
-assembly output.
+Step 8 printed the remaining terminal AArch64 address-materialization
+sequences from structured `AddressMaterializationRecord` fields.
 
-- Prepared `TlsGlobal` address materializations now carry a structured
-  local-exec thread-pointer-relative model, the AArch64 thread-pointer register
-  fact `tpidr_el0`, and explicit high/low TLS relocation identities
-  `tprel_hi12` and `tprel_lo12_nc`.
-- Prepared dumps expose those TLS facts beside the existing symbol, policy,
-  address-space, and TLS booleans.
-- AArch64 `AddressMaterializationRecord` now preserves the TLS model,
-  thread-pointer register, and relocation identities from prepared facts.
-- AArch64 selection for `TlsRelative` fails closed when TLS address-space facts
-  or thread-pointer-relative relocation facts are missing; it does not infer TLS
-  behavior from symbol spelling or storage-class text.
-- Terminal TLS printing remains deferred and continues to reject selected TLS
-  records with an explicit diagnostic.
+- `LabelPageLow12` now prints the same page plus low-12 sequence as direct
+  globals, using the record's structured target-label text and result register.
+- `GotPageLow12` now prints a GOT load sequence from explicit symbol and
+  `GotRequired` policy facts:
+  `adrp <result>, :got:<symbol>` then
+  `ldr <result>, [<result>, :got_lo12:<symbol>]`.
+- `TlsRelative` now prints the local-exec thread-pointer-relative sequence from
+  TLS model/thread-pointer/relocation facts:
+  `mrs <result>, tpidr_el0`,
+  `add <result>, <result>, :tprel_hi12:<symbol>`, and
+  `add <result>, <result>, :tprel_lo12_nc:<symbol>`.
+- Nonzero prepared byte offsets still append an immediate `add` after GOT or
+  TLS base materialization; direct, string, and label keep the existing
+  relocation-offset spelling.
+- Printer tests cover label, GOT, and TLS output plus fail-closed missing GOT
+  policy and missing label text diagnostics.
 
 ## Suggested Next
 
-Execute Step 8 from `plan.md`: implement the printer-owned terminal address
-materialization output for the selected record kinds whose relocation sequences
-are now fully specified, while keeping unsupported cases fail-closed.
+Plan-owner review/close decision for idea 233, or the next packet should be
+only residual validation/cleanup if the plan has an explicit remaining step.
 
 ## Watchouts
 
-- Terminal TLS printer output is still deferred; this packet only made TLS facts
-  explicit and selected-record-visible.
-- TLS facts currently model the local-exec thread-pointer-relative AArch64 form
-  from the legacy surface: `tpidr_el0`, `tprel_hi12`, and `tprel_lo12_nc`.
-- Do not revive the archived implicit `x0` scratch convention; result authority
-  remains the selected record's prepared result register.
-- Direct global, string constant, label, and GOT selected-record behavior should
-  remain stable except where printer work consumes the structured fields.
+- Output is driven by selected record fields and result registers, not by the
+  archived implicit `x0` scratch convention.
+- GOT printing requires the selected record's explicit `GotRequired` policy;
+  missing policy remains fail-closed.
+- Label printing requires structured `target_label_name`; missing label text
+  remains fail-closed.
+- TLS output is currently the local-exec AArch64 form represented by the
+  selected TLS facts.
 
 ## Proof
 

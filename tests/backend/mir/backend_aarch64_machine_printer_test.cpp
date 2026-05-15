@@ -917,7 +917,7 @@ int selected_string_address_materialization_prints_page_low12_sequence() {
       result.instruction_lines[1], "add x10, x10, :lo12:.L.str0", "string address low12 ADD");
 }
 
-int unsupported_address_materialization_printer_paths_fail_closed() {
+int remaining_address_materialization_printer_paths_use_structured_facts() {
   prepare::PreparedAddressMaterialization source;
   const auto tls = aarch64_codegen::make_address_materialization_instruction(
       aarch64_codegen::AddressMaterializationRecord{
@@ -943,10 +943,28 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
           .source_materialization = &source,
       });
   const auto tls_result = aarch64_codegen::print_machine_instruction_line_payloads(tls);
-  if (tls_result.ok ||
-      tls_result.diagnostic.find("TLS address materialization printer path is deferred") ==
-          std::string::npos) {
-    return fail("expected TLS address materialization printer path to be explicitly deferred");
+  if (!tls_result.ok || !tls_result.diagnostic.empty()) {
+    return fail("expected TLS address materialization to print local-exec sequence");
+  }
+  if (tls_result.instruction_lines.size() != 3) {
+    return fail("expected TLS address materialization to print three lines");
+  }
+  if (const int check =
+          expect_equal(tls_result.instruction_lines[0], "mrs x11, tpidr_el0", "TLS MRS");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(tls_result.instruction_lines[1],
+                                     "add x11, x11, :tprel_hi12:g.tls",
+                                     "TLS high relocation ADD");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(tls_result.instruction_lines[2],
+                                     "add x11, x11, :tprel_lo12_nc:g.tls",
+                                     "TLS low relocation ADD");
+      check != 0) {
+    return check;
   }
 
   const auto got = aarch64_codegen::make_address_materialization_instruction(
@@ -967,10 +985,22 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
           .source_materialization = &source,
       });
   const auto got_result = aarch64_codegen::print_machine_instruction_line_payloads(got);
-  if (got_result.ok ||
-      got_result.diagnostic.find("GOT address materialization printer path is deferred") ==
-          std::string::npos) {
-    return fail("expected selected GOT address materialization printer path to be deferred");
+  if (!got_result.ok || !got_result.diagnostic.empty()) {
+    return fail("expected GOT address materialization to print GOT load sequence");
+  }
+  if (got_result.instruction_lines.size() != 2) {
+    return fail("expected GOT address materialization to print two lines");
+  }
+  if (const int check =
+          expect_equal(got_result.instruction_lines[0], "adrp x12, :got:g.got", "GOT ADRP");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(got_result.instruction_lines[1],
+                                     "ldr x12, [x12, :got_lo12:g.got]",
+                                     "GOT low12 LDR");
+      check != 0) {
+    return check;
   }
 
   const auto label = aarch64_codegen::make_address_materialization_instruction(
@@ -989,10 +1019,65 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
           .source_materialization = &source,
       });
   const auto label_result = aarch64_codegen::print_machine_instruction_line_payloads(label);
-  if (label_result.ok ||
-      label_result.diagnostic.find("label address materialization printer path is deferred") ==
-          std::string::npos) {
-    return fail("expected selected label address materialization printer path to be deferred");
+  if (!label_result.ok || !label_result.diagnostic.empty()) {
+    return fail("expected label address materialization to print ADRP/ADD");
+  }
+  if (label_result.instruction_lines.size() != 2) {
+    return fail("expected label address materialization to print two lines");
+  }
+  if (const int check =
+          expect_equal(label_result.instruction_lines[0], "adrp x13, target", "label ADRP");
+      check != 0) {
+    return check;
+  }
+  if (const int check = expect_equal(label_result.instruction_lines[1],
+                                     "add x13, x13, :lo12:target",
+                                     "label low12 ADD");
+      check != 0) {
+    return check;
+  }
+
+  const auto missing_got_policy = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::GotPageLow12,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::GotGlobal,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 9,
+          .result_value_id = prepare::PreparedValueId{50},
+          .result_value_name = c4c::ValueNameId{51},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(14),
+          .symbol_name = c4c::LinkNameId{52},
+          .symbol_label = "g.got",
+          .source_materialization = &source,
+      });
+  const auto missing_got_policy_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_got_policy);
+  if (missing_got_policy_result.ok ||
+      missing_got_policy_result.diagnostic.find("GOT-required policy") == std::string::npos) {
+    return fail("expected GOT address materialization without policy to fail closed");
+  }
+
+  const auto missing_label_text = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::LabelPageLow12,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::Label,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 10,
+          .result_value_id = prepare::PreparedValueId{52},
+          .result_value_name = c4c::ValueNameId{53},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(15),
+          .target_label = c4c::BlockLabelId{54},
+          .source_materialization = &source,
+      });
+  const auto missing_label_text_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_label_text);
+  if (missing_label_text_result.ok ||
+      missing_label_text_result.diagnostic.find("target label text") == std::string::npos) {
+    return fail("expected label address materialization without label text to fail closed");
   }
   return 0;
 }
@@ -1759,7 +1844,7 @@ int main() {
       result != 0) {
     return result;
   }
-  if (const int result = unsupported_address_materialization_printer_paths_fail_closed();
+  if (const int result = remaining_address_materialization_printer_paths_use_structured_facts();
       result != 0) {
     return result;
   }
