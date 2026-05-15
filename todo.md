@@ -8,22 +8,18 @@ Current Step Title: Cast Helper Boundary
 
 ## Just Finished
 
-Step 4.3 started the F128 cast helper boundary. Prepared F128 runtime helpers
-now have an explicit `cast` family with `f32_to_f128`, `f64_to_f128`,
-`f128_to_f32`, and `f128_to_f64` helper identities, source cast opcode
-ownership, unary operand/result identities, scalar-side ownership, scalar/F128
-ABI transitions, marshaling moves, caller-saved clobber facts, live
-preservation, and selected-call ownership. AArch64 record construction and
-dispatch now consume those prepared facts for `FPExt`/`FPTrunc` between
-`F32`/`F64` and `F128` instead of routing through scalar cast records or
-dispatch-side callee guesses. Integer/I128/bitcast and other unsupported F128
-cast pairs remain fail-closed.
+Step 4.3 completed the F128 cast helper boundary hardening. The modeled
+`F32`/`F64`<->`F128` helper pairs remain owned by prepared F128 runtime helper
+facts, scalar cast records now explicitly reject all four helper pairs instead
+of falling back through scalar F64 lowering, and record construction now proves
+that mismatched cast helper identity or incomplete prepared cast facts fail
+closed before instruction selection or callee guessing.
 
 ## Suggested Next
 
-Continue Step 4.3 with the next narrow cast-helper packet: inspect whether any
-additional fail-closed diagnostics or prepared-printer/record text should be
-tightened before Step 5 final assembly/printer authority starts.
+Start Step 4.4 with the next narrow helper-family packet: model or deliberately
+defer F128 sign-bit negation from prepared helper authority without using scalar
+F64 approximations or dispatch-side helper guesses.
 
 ## Watchouts
 
@@ -95,9 +91,13 @@ tightened before Step 5 final assembly/printer authority starts.
   q/s/d-register fixtures because the current prepared F128 carrier printer can
   still expose generic FP storage register names before carrier normalization.
   Do not weaken that into scalar `F64` cast records.
+- Step 4.3 did not add new production cast support beyond the modeled
+  `FPExt`/`FPTrunc` pairs. Unsupported F128 casts, mismatched helper identities,
+  and missing prepared helper facts should continue to diagnose instead of
+  manufacturing scalar fallback records.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records)$'; } 2>&1 | tee test_after.log`
 
-Passed, 8/8 tests. Proof log: `test_after.log`.
+Passed, 6/6 tests. Proof log: `test_after.log`.

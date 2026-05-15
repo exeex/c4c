@@ -3413,6 +3413,31 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       f128_to_f32_instruction.uses.size() != 2) {
     return fail("expected selected f128 to f32 helper instruction effects");
   }
+
+  auto mismatched_cast = f64_to_f128;
+  mismatched_cast.helper_kind = prepare::PreparedF128RuntimeHelperKind::F128ToF64;
+  mismatched_cast.callee_name = "__trunctfdf2";
+  const auto mismatched =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, mismatched_cast);
+  if (mismatched.record.has_value() ||
+      mismatched.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              UnsupportedSourceOperation) {
+    return fail("expected mismatched f128 cast helper identity to fail closed");
+  }
+
+  auto missing_cast_facts = f64_to_f128;
+  missing_cast_facts.missing_required_facts.push_back("cast_operand_missing_scalar_storage");
+  const auto incomplete_cast =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, missing_cast_facts);
+  if (incomplete_cast.record.has_value() ||
+      incomplete_cast.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              IncompletePreparedF128RuntimeHelper) {
+    return fail("expected incomplete f128 cast helper facts to fail closed");
+  }
   return 0;
 }
 

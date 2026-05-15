@@ -374,26 +374,31 @@ int unsupported_and_incomplete_cast_facts_fail_closed() {
     return fail("expected unsupported cast opcode to fail closed");
   }
 
+  struct F128CastCase {
+    bir::CastOpcode opcode;
+    bir::TypeKind source_type;
+    bir::TypeKind result_type;
+  };
+  const F128CastCase f128_casts[] = {
+      {bir::CastOpcode::FPExt, bir::TypeKind::F32, bir::TypeKind::F128},
+      {bir::CastOpcode::FPExt, bir::TypeKind::F64, bir::TypeKind::F128},
+      {bir::CastOpcode::FPTrunc, bir::TypeKind::F128, bir::TypeKind::F32},
+      {bir::CastOpcode::FPTrunc, bir::TypeKind::F128, bir::TypeKind::F64},
+  };
+  for (const auto& f128_cast : f128_casts) {
+    auto f128_fixture = make_fixture(bir::TypeKind::F64, bir::TypeKind::F32);
+    const auto f128 = aarch64_codegen::make_prepared_scalar_cast_record(
+        f128_fixture.names,
+        f128_fixture.locations,
+        f128_fixture.storage,
+        cast_inst(f128_cast.opcode, f128_cast.source_type, f128_cast.result_type));
+    if (f128.record.has_value() ||
+        f128.error !=
+            aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOperandType) {
+      return fail("expected all F128 helper casts to stay out of scalar cast records");
+    }
+  }
   auto f128_fixture = make_fixture(bir::TypeKind::F64, bir::TypeKind::F32);
-  const auto f128 = aarch64_codegen::make_prepared_scalar_cast_record(
-      f128_fixture.names,
-      f128_fixture.locations,
-      f128_fixture.storage,
-      cast_inst(bir::CastOpcode::FPExt, bir::TypeKind::F64, bir::TypeKind::F128));
-  if (f128.record.has_value() ||
-      f128.error != aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOperandType) {
-    return fail("expected F128 conversion cast to fail closed");
-  }
-  const auto f128_trunc = aarch64_codegen::make_prepared_scalar_cast_record(
-      f128_fixture.names,
-      f128_fixture.locations,
-      f128_fixture.storage,
-      cast_inst(bir::CastOpcode::FPTrunc, bir::TypeKind::F128, bir::TypeKind::F64));
-  if (f128_trunc.record.has_value() ||
-      f128_trunc.error !=
-          aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOperandType) {
-    return fail("expected F128 truncation cast to stay out of scalar cast records");
-  }
   const auto f128_bitcast = aarch64_codegen::make_prepared_scalar_cast_record(
       f128_fixture.names,
       f128_fixture.locations,
