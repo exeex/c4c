@@ -1,50 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/233_aarch64_global_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Populate Label Address Materialization
+Current Step ID: 6
+Current Step Title: Populate GOT-Backed Global Materialization
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 populated label address materialization through prepared addressing and
-AArch64 selected machine records without adding terminal label printer output.
+Step 6 is blocked before implementation: there is no real backend-owned
+GOT-required global address policy input to consume.
 
-Completed work:
+Findings:
 
-- Added `target_label` to prepared address-materialization carriers and the
-  prepared printer dump, preserving structured `BlockLabelId` identity for
-  label address producers.
-- Recognized BIR label-backed memory addresses when pointer-valued load results
-  materialize a label address, including byte offset and address-space facts,
-  and diagnosed missing target labels instead of inferring from rendered text.
-- Added `LabelPageLow12` as a distinct AArch64 address-materialization kind so
-  label records can select without being mistaken for direct globals.
-- Selected prepared `Label` carriers into `AddressMaterializationRecord` values
-  with result register authority, target label identity/name, byte offset, and
-  branch-target operand/effect facts.
-- Added focused prepared and AArch64 MIR tests for label carrier population,
-  selected label records, and missing-label diagnostics.
+- `PreparedAddressMaterializationKind::GotGlobal` exists as a placeholder, but
+  no prepared producer currently classifies a real global address as GOT-backed.
+- `TargetProfile` carries target triple, arch, OS, ABI, and float-register
+  capabilities only; it has no PIC/PIE, relocation-model, code-model, or
+  preemptibility policy field.
+- The CLI accepts `-fPIC/-fpic/-fPIE/-fpie`, but those flags currently define
+  preprocessor macros only and are not carried into BIR, prepared state, or
+  AArch64 selection policy.
+- BIR globals expose `is_extern`, `is_thread_local`, `is_constant`, link-name
+  identity, size/alignment, and initializer facts, but do not expose visibility,
+  interposition/preemptibility, import model, or a target relocation policy that
+  would distinguish direct page+low12 from GOT materialization.
+- AArch64 GOT relocation spellings exist only in the external assembler encoder
+  compatibility layer (`AdrGotPage21`, `Ld64GotLo12`); that is downstream text
+  parsing support, not a structured source policy for prepared/MIR selection.
 
 ## Suggested Next
 
-Next packet should execute Step 6 from `plan.md`: populate/select GOT
-address-materialization facts as structured records while keeping terminal GOT
-printer output deferred until its relocation sequence is fully specified.
+Next packet should add an explicit GOT policy source before trying selection:
+for example a target/prepared relocation-model or global-preemptibility field
+that says a specific global address must use GOT materialization, plus the
+relocation identity facts AArch64 should preserve. After that, Step 6 can be
+re-run to populate and select `GotGlobal` records.
 
 ## Watchouts
 
-Label records now select as `LabelPageLow12`, but terminal label printer output
-is still intentionally absent and remains Step 8 work. The selected kind is
-separate from `DirectPageLow12` to avoid accidentally routing labels through
-the direct-global printer path. GOT and TLS policy must remain explicit and
-must not be inferred from rendered names.
+Do not infer GOT from symbol spelling, `is_extern` alone, or the presence of
+external-assembler relocation enum names. The missing source is an explicit
+frontend/target/prepared policy that marks an address-producing global as
+GOT-required and carries the relocation identity to preserve.
 
 ## Proof
 
-Ran delegated proof:
-
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-Result: passed; 139 backend tests passed. Proof log: `test_after.log`.
+No implementation proof was run for Step 6 because the packet is blocked before
+code changes by the missing GOT policy source described above. No Step 6
+`test_after.log` was produced.
