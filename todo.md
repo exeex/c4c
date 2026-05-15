@@ -1,38 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Consume Prepared Facts For `va_start`
+Current Step ID: 3
+Current Step Title: Consume Prepared Facts For Scalar `va_arg`
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed: AArch64 `va_start` helper calls now consume prepared variadic
-entry facts and helper operand-home records into a structured selected
-`VariadicVaStartRecord`, expose prepared destination/register-save/overflow/
-layout/scratch facts on the machine node, and print pseudo `va.start` records
-from that structured payload. Existing incomplete prepared/shared fact paths
-still fail closed with explicit diagnostics.
+Step 3 stopped at a lifecycle blocker: scalar `va_arg` has prepared entry
+storage, helper scratch, source `va_list` home, and scalar result home facts,
+but no prepared/shared scalar access plan that selects GP/FP register-save
+versus overflow source, preserves per-access size/alignment, and records
+`va_list` progression. AArch64 dispatch and direct call-record construction now
+fail closed with the exact missing fact
+`helper_operand_homes.va_arg.scalar_access_plan` instead of reconstructing those
+facts in target lowering.
 
 ## Suggested Next
 
-Delegate an executor packet for Step 3: consume prepared/shared facts for
-scalar `va_arg` lowering, covering at least one register-save-area-backed and
-one overflow-backed scalar path if the prepared operand-home/result facts are
-complete.
+Route a lifecycle/prepared-authority packet to add a shared scalar `va_arg`
+access-plan fact covering source classification, value size/alignment, and
+overflow/register-save progression before retrying Step 3 machine-node
+consumption.
 
 ## Watchouts
 
-- `va_start` selection is intentionally limited to records derivable from
-  `PreparedVariadicEntryPlanFunction` plus the matching helper operand-home
-  record; other variadic helpers still defer outside the selected `va_start`
-  subset.
-- `VariadicVaStartRecord` stores prepared layout/storage/scratch snapshots; do
-  not infer field offsets, named register counts, stack offsets, or scratch
-  policy in AArch64 lowering.
-- Keep incomplete fact handling fail-closed with explicit diagnostics when
-  extending scalar `va_arg`.
+- Existing prepared helper operand-home records for scalar `va_arg` are useful
+  but not sufficient for selected lowering; they identify `%ap` and the scalar
+  result home only.
+- The missing fact must be shared/prepared authority, not an AArch64-local
+  reconstruction from helper name, result type, named register counts, or
+  legacy AAPCS64 layout rules.
+- `va_start` selected lowering and incomplete prepared-fact diagnostics remain
+  unchanged.
 
 ## Proof
 

@@ -270,6 +270,21 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
   return false;
 }
 
+[[nodiscard]] std::string variadic_helper_missing_consumption_fact_message(
+    prepare::PreparedVariadicEntryHelperKind helper) {
+  switch (helper) {
+    case prepare::PreparedVariadicEntryHelperKind::VaStart:
+      return {};
+    case prepare::PreparedVariadicEntryHelperKind::VaArg:
+      return "AArch64 scalar va_arg lowering requires prepared fact "
+             "helper_operand_homes.va_arg.scalar_access_plan";
+    case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
+    case prepare::PreparedVariadicEntryHelperKind::VaCopy:
+      return {};
+  }
+  return {};
+}
+
 [[nodiscard]] std::string variadic_entry_missing_fact_message(
     const std::vector<std::string>& missing) {
   std::string message =
@@ -847,6 +862,17 @@ require_prepared_variadic_entry_plan(
           context,
           instruction_index,
           "AArch64 variadic entry helper lowering requires prepared helper operand-home facts");
+      return std::nullopt;
+    }
+    const auto missing_consumption_fact =
+        variadic_helper_missing_consumption_fact_message(*variadic_helper);
+    if (!missing_consumption_fact.empty()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          missing_consumption_fact);
       return std::nullopt;
     }
   }

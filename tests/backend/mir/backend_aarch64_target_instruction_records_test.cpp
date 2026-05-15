@@ -704,6 +704,122 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
   return 0;
 }
 
+int scalar_va_arg_call_record_requires_prepared_access_plan() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 4,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_arg.i32"},
+  };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_arg_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .block_index = 0,
+      .instruction_index = 4,
+      .source_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{50},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{10},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x2"},
+          },
+      .scalar_result =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{51},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{11},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"w0"},
+          },
+  };
+  const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
+      .function_name = c4c::FunctionNameId{9},
+      .named_parameter_count = 1,
+      .named_register_counts =
+          prepare::PreparedVariadicEntryNamedRegisterCounts{
+              .gp = std::size_t{1},
+              .fp = std::size_t{0},
+          },
+      .register_save_area =
+          prepare::PreparedVariadicEntryRegisterSaveArea{
+              .required = true,
+              .size_bytes = std::size_t{192},
+              .align_bytes = std::size_t{16},
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .stack_offset_bytes = std::size_t{16},
+              .gp_offset_bytes = std::size_t{0},
+              .fp_offset_bytes = std::size_t{64},
+              .gp_slot_size_bytes = std::size_t{8},
+              .fp_slot_size_bytes = std::size_t{16},
+              .saved_gp_register_count = std::size_t{7},
+              .saved_fp_register_count = std::size_t{8},
+              .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+              .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+          },
+      .overflow_area =
+          prepare::PreparedVariadicEntryOverflowArea{
+              .required = true,
+              .base_slot_id = prepare::PreparedFrameSlotId{6},
+              .base_stack_offset_bytes = std::size_t{208},
+              .align_bytes = std::size_t{8},
+          },
+      .va_list_layout =
+          prepare::PreparedVariadicVaListLayout{
+              .required = true,
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+              .fields =
+                  {
+                      prepare::PreparedVariadicVaListField{
+                          .kind = prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                          .offset_bytes = 0,
+                          .size_bytes = 4,
+                      },
+                  },
+          },
+      .helper_resources =
+          prepare::PreparedVariadicEntryHelperResources{
+              .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaArg},
+              .scratch_register_count = std::size_t{2},
+              .scratch_stack_bytes = std::size_t{0},
+          },
+      .helper_operand_homes = {va_arg_homes},
+  };
+
+  const auto helper_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{24},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_arg.i32",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .source_variadic_entry = &variadic_entry,
+          .source_variadic_helper_operand_homes = &variadic_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto* helper_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&helper_call.payload);
+  if (helper_payload == nullptr ||
+      helper_call.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
+      helper_call.selection.diagnostic.find(
+          "helper_operand_homes.va_arg.scalar_access_plan") == std::string::npos ||
+      helper_payload->source_variadic_entry != &variadic_entry ||
+      helper_payload->source_variadic_helper_operand_homes !=
+          &variadic_entry.helper_operand_homes.front() ||
+      !helper_payload->source_variadic_helper_operand_homes->source_va_list.has_value() ||
+      !helper_payload->source_variadic_helper_operand_homes->scalar_result.has_value()) {
+    return fail("expected scalar va_arg call record to stop on missing prepared access plan");
+  }
+
+  return 0;
+}
+
 int frame_instruction_records_preserve_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{6},
@@ -1333,6 +1449,10 @@ int main() {
     return status;
   }
   if (const int status = variadic_entry_helper_call_records_select_prepared_va_start();
+      status != 0) {
+    return status;
+  }
+  if (const int status = scalar_va_arg_call_record_requires_prepared_access_plan();
       status != 0) {
     return status;
   }
