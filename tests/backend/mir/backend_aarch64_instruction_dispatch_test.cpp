@@ -4979,16 +4979,9 @@ int block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier() {
   return 0;
 }
 
-int block_dispatch_keeps_complete_crc_vector_intrinsic_carriers_fail_closed() {
-  const auto cases = std::array{
-      prepared_with_complete_aarch64_crc32w_intrinsic_carrier(),
-      prepared_with_complete_aarch64_vector_intrinsic_carrier(
-          bir::IntrinsicOperationKind::VectorLoad),
-      prepared_with_complete_aarch64_vector_intrinsic_carrier(
-          bir::IntrinsicOperationKind::VectorAdd),
-  };
-
-  for (const auto& prepared : cases) {
+int block_dispatch_selects_complete_crc_vector_intrinsic_carriers() {
+  {
+    auto prepared = prepared_with_complete_aarch64_crc32w_intrinsic_carrier();
     const auto& function_cf = prepared.control_flow.functions.front();
     const auto& block_cf = function_cf.blocks.front();
     const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -5000,19 +4993,164 @@ int block_dispatch_keeps_complete_crc_vector_intrinsic_carriers_fail_closed() {
     const auto result =
         aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
-        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
-        diagnostics.entries.front().message.find("unsupported_intrinsic_family") ==
-            std::string::npos ||
-        !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
-            block.instructions.front().target.payload)) {
-      return fail("expected complete CRC/vector intrinsic carriers to remain MIR boundary-only");
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected complete CRC32W carrier dispatch to select intrinsic plus return");
     }
-    if (std::holds_alternative<aarch64_codegen::ScalarFpUnaryIntrinsicRecord>(
-            block.instructions.front().target.payload) ||
-        std::holds_alternative<aarch64_codegen::CallInstructionRecord>(
-            block.instructions.front().target.payload)) {
-      return fail("expected complete CRC/vector carriers not to select intrinsic or call nodes");
+    const auto& instruction = block.instructions.front();
+    const auto* intrinsic =
+        std::get_if<aarch64_codegen::Crc32WIntrinsicRecord>(
+            &instruction.target.payload);
+    if (intrinsic == nullptr ||
+        instruction.target.family != aarch64_codegen::InstructionFamily::Intrinsic ||
+        instruction.target.opcode != aarch64_codegen::MachineOpcode::Crc32WIntrinsic ||
+        instruction.target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        intrinsic->source_carrier != &function_context.prepared->intrinsic_carriers.functions
+                                          .front()
+                                          .carriers.front() ||
+        intrinsic->family != bir::IntrinsicFamilyKind::Crc ||
+        intrinsic->operation != bir::IntrinsicOperationKind::Crc32W ||
+        intrinsic->required_feature != bir::IntrinsicFeatureKind::AArch64Crc ||
+        intrinsic->operand_type != bir::TypeKind::I32 ||
+        intrinsic->result_type != bir::TypeKind::I32 ||
+        intrinsic->signedness != bir::IntrinsicSignedness::Unsigned ||
+        !intrinsic->requires_feature || !intrinsic->has_prepared_call_plan ||
+        !intrinsic->result_register.has_value()) {
+      return fail("expected selected CRC32W intrinsic to preserve carrier facts");
+    }
+    const auto* accumulator =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->accumulator.payload);
+    const auto* data =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->data.payload);
+    if (accumulator == nullptr || data == nullptr ||
+        accumulator->reg != aarch64_abi::w_register(0) ||
+        data->reg != aarch64_abi::w_register(1) ||
+        intrinsic->result_register->reg != aarch64_abi::w_register(0) ||
+        instruction.target.defs.size() != 1 ||
+        instruction.target.defs.front().reg != aarch64_abi::w_register(0) ||
+        instruction.target.uses.size() != 2 ||
+        instruction.target.uses[0].reg != aarch64_abi::w_register(0) ||
+        instruction.target.uses[1].reg != aarch64_abi::w_register(1) ||
+        !instruction.target.side_effects.empty()) {
+      return fail("expected selected CRC32W intrinsic to preserve register authority");
+    }
+  }
+
+  {
+    auto prepared = prepared_with_complete_aarch64_vector_intrinsic_carrier(
+        bir::IntrinsicOperationKind::VectorLoad);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected complete vector-load carrier dispatch to select intrinsic plus return");
+    }
+    const auto& instruction = block.instructions.front();
+    const auto* intrinsic =
+        std::get_if<aarch64_codegen::VectorLoadIntrinsicRecord>(
+            &instruction.target.payload);
+    if (intrinsic == nullptr ||
+        instruction.target.opcode != aarch64_codegen::MachineOpcode::VectorLoadIntrinsic ||
+        instruction.target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        intrinsic->source_carrier != &function_context.prepared->intrinsic_carriers.functions
+                                          .front()
+                                          .carriers.front() ||
+        intrinsic->family != bir::IntrinsicFamilyKind::VectorMemory ||
+        intrinsic->operation != bir::IntrinsicOperationKind::VectorLoad ||
+        intrinsic->required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+        intrinsic->vector_element_type != bir::TypeKind::I8 ||
+        intrinsic->vector_element_width_bytes != 1 ||
+        intrinsic->vector_lane_count != 16 ||
+        intrinsic->vector_total_width_bytes != 16 ||
+        intrinsic->memory_access != bir::IntrinsicMemoryAccessKind::Read ||
+        !intrinsic->requires_feature || !intrinsic->has_prepared_call_plan ||
+        !intrinsic->result_register.has_value()) {
+      return fail("expected selected vector-load intrinsic to preserve carrier facts");
+    }
+    const auto* pointer =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->pointer.payload);
+    if (pointer == nullptr || pointer->reg != aarch64_abi::x_register(0) ||
+        intrinsic->memory.base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+        !intrinsic->memory.base_register.has_value() ||
+        intrinsic->memory.base_register->reg != aarch64_abi::x_register(0) ||
+        intrinsic->memory.size_bytes != 16 ||
+        intrinsic->result_register->reg != aarch64_abi::q_register(0) ||
+        instruction.target.defs.size() != 1 ||
+        instruction.target.defs.front().reg != aarch64_abi::q_register(0) ||
+        instruction.target.uses.size() != 2 ||
+        instruction.target.uses.front().reg != aarch64_abi::x_register(0) ||
+        instruction.target.side_effects.size() != 1 ||
+        instruction.target.side_effects.front() !=
+            aarch64_codegen::MachineSideEffectKind::MemoryRead) {
+      return fail("expected selected vector-load intrinsic to preserve register and memory authority");
+    }
+  }
+
+  {
+    auto prepared = prepared_with_complete_aarch64_vector_intrinsic_carrier(
+        bir::IntrinsicOperationKind::VectorAdd);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected complete vector-add carrier dispatch to select intrinsic plus return");
+    }
+    const auto& instruction = block.instructions.front();
+    const auto* intrinsic =
+        std::get_if<aarch64_codegen::VectorAddIntrinsicRecord>(
+            &instruction.target.payload);
+    if (intrinsic == nullptr ||
+        instruction.target.opcode != aarch64_codegen::MachineOpcode::VectorAddIntrinsic ||
+        instruction.target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        intrinsic->source_carrier != &function_context.prepared->intrinsic_carriers.functions
+                                          .front()
+                                          .carriers.front() ||
+        intrinsic->family != bir::IntrinsicFamilyKind::VectorOperation ||
+        intrinsic->operation != bir::IntrinsicOperationKind::VectorAdd ||
+        intrinsic->required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+        intrinsic->vector_element_type != bir::TypeKind::I8 ||
+        intrinsic->vector_lane_count != 16 ||
+        intrinsic->memory_access != bir::IntrinsicMemoryAccessKind::None ||
+        !intrinsic->requires_feature || !intrinsic->has_prepared_call_plan ||
+        !intrinsic->result_register.has_value()) {
+      return fail("expected selected vector-add intrinsic to preserve carrier facts");
+    }
+    const auto* lhs =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->lhs.payload);
+    const auto* rhs =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->rhs.payload);
+    if (lhs == nullptr || rhs == nullptr ||
+        lhs->reg != aarch64_abi::q_register(1) ||
+        rhs->reg != aarch64_abi::q_register(2) ||
+        intrinsic->result_register->reg != aarch64_abi::q_register(0) ||
+        instruction.target.defs.size() != 1 ||
+        instruction.target.defs.front().reg != aarch64_abi::q_register(0) ||
+        instruction.target.uses.size() != 2 ||
+        instruction.target.uses[0].reg != aarch64_abi::q_register(1) ||
+        instruction.target.uses[1].reg != aarch64_abi::q_register(2) ||
+        !instruction.target.side_effects.empty()) {
+      return fail("expected selected vector-add intrinsic to preserve register authority");
     }
   }
   return 0;
@@ -8073,7 +8211,7 @@ int main() {
     return status;
   }
   if (const int status =
-          block_dispatch_keeps_complete_crc_vector_intrinsic_carriers_fail_closed();
+          block_dispatch_selects_complete_crc_vector_intrinsic_carriers();
       status != 0) {
     return status;
   }
