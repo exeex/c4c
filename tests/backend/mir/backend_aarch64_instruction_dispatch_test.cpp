@@ -180,6 +180,8 @@ enum class InlineAsmCarrierFixtureKind {
   TargetInvalidTiedInputHome,
   ClassInvalidTiedInputHome,
   MismatchedTiedInputHome,
+  MissingTiedHomeAuthority,
+  AuthorityOutputMismatchedTiedInputHome,
   AuthorityMismatchedTiedInputHome,
   AliasAwareTiedInputHome,
   UnsupportedOperand,
@@ -471,11 +473,16 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                            kind == InlineAsmCarrierFixtureKind::TargetInvalidTiedInputHome ||
                            kind == InlineAsmCarrierFixtureKind::ClassInvalidTiedInputHome ||
                            kind == InlineAsmCarrierFixtureKind::MissingTiedInputHome ||
-                           kind == InlineAsmCarrierFixtureKind::MissingTiedOutputIndex
+                           kind == InlineAsmCarrierFixtureKind::MissingTiedOutputIndex ||
+                           kind == InlineAsmCarrierFixtureKind::MissingTiedHomeAuthority
                        ? std::nullopt
                        : std::optional<prepare::PreparedInlineAsmTiedHomeAuthority>{
                              inline_asm_tied_home_authority(
-                                 0,
+                                 kind ==
+                                         InlineAsmCarrierFixtureKind::
+                                             AuthorityOutputMismatchedTiedInputHome
+                                     ? 1
+                                     : 0,
                                  kind == InlineAsmCarrierFixtureKind::AuthorityMismatchedTiedInputHome
                                      ? 4
                                      : 3)},
@@ -4805,6 +4812,11 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                     "tied_input_output_home_incompatible_register_class"}},
       std::pair{InlineAsmCarrierFixtureKind::MismatchedTiedInputHome,
                 std::string_view{"tied_input_output_home_mismatch"}},
+      std::pair{InlineAsmCarrierFixtureKind::MissingTiedHomeAuthority,
+                std::string_view{"missing_tied_home_coallocation_authority"}},
+      std::pair{InlineAsmCarrierFixtureKind::AuthorityOutputMismatchedTiedInputHome,
+                std::string_view{
+                    "tied_home_coallocation_authority_output_mismatch"}},
       std::pair{InlineAsmCarrierFixtureKind::AuthorityMismatchedTiedInputHome,
                 std::string_view{
                     "tied_home_coallocation_authority_home_mismatch"}},

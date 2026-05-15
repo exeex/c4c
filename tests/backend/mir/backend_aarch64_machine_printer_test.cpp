@@ -3819,6 +3819,19 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
     return fail("expected inline-asm missing tie to fail closed");
   }
 
+  auto missing_tied_output_selected =
+      selected_inline_asm_record("mov %w1, %w2");
+  missing_tied_output_selected.inline_asm_operands[0].selected_operand =
+      std::nullopt;
+  const auto missing_tied_output_selected_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(missing_tied_output_selected)));
+  if (missing_tied_output_selected_result.ok ||
+      missing_tied_output_selected_result.diagnostic.find(
+          "missing selected tied output operand") == std::string::npos) {
+    return fail("expected inline-asm missing tied output selected operand to fail closed");
+  }
+
   auto missing_tie_home = selected_inline_asm_record("add %w0, %w1, %w2");
   missing_tie_home.inline_asm_operands[1].home = std::nullopt;
   const auto missing_tie_home_result =

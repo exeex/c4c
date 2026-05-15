@@ -1,41 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/243_inline_asm_tied_home_allocation_policy.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Accept Proven Alias-Aware Tied Homes In AArch64 Selection
+Current Step ID: 5
+Current Step Title: Harden Tests And Regression Scope
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 is complete without adding redundant selected-record fields:
+Step 5 is complete for backend inline-asm tied-home regression hardening:
 
-- The current selected `PreparedValueHome::target_register_identity` bridge
-  already carries proven alias-aware tied-home authority through AArch64
-  dispatch into `InlineAsmMachineOperandRecord::home`.
-- AArch64 dispatch accepts tied inputs only after
-  `PreparedInlineAsmTiedHomeAuthority` agrees with the tied output index and
-  the target-normalized shared register identity, then selects the tied register
-  from the prepared home rather than local allocation policy.
-- The selected inline-asm printer prints the accepted tied operand from the
-  selected structured operand while revalidating the selected input/output
-  register identities against the prepared homes, so selected records without
-  proven shared-home authority remain fail-closed.
+- Added AArch64 dispatch fail-closed coverage for complete-looking tied homes
+  that lack coallocation authority and for authority whose tied output index
+  disagrees with the operand tie.
+- Added selected inline-asm printer coverage for an incomplete selected tied
+  output record, proving the tied input cannot print from a selected record
+  that lacks structured selected-output authority.
+- Existing supported alias-aware tied-home, operand/name/immediate/modifier,
+  side-effect/output, memory/address, numeric-tie, and nearby fail-closed
+  backend coverage remains green under the supervisor-selected backend subset.
 
 ## Suggested Next
 
-Proceed to Step 5 by hardening the regression scope around the existing
-alias-aware accepted representative and nearby fail-closed cases.
+No executor closure blocker remains in this packet. Supervisor should decide
+whether Step 5 completion is enough for lifecycle review or whether an
+independent reviewer pass is wanted before closure.
 
 ## Watchouts
 
-- `InlineAsmMachineOperandRecord` still intentionally does not carry
-  `PreparedInlineAsmTiedHomeAuthority` directly; dispatch consumes that authority
-  before selection, and the printer validates the selected record through copied
-  prepared homes plus selected register identities.
-- Keep allocator-dependent, missing, target-invalid, class-invalid, mismatched,
-  and authority-mismatched tied homes on the explicit unsupported path.
-- Do not add printer-local allocation or rendered-text matching in Step 5.
+- The dispatch coverage now distinguishes missing coallocation authority,
+  authority output-index mismatch, and authority home mismatch as separate
+  unsupported paths.
+- The selected printer still validates copied prepared homes plus selected
+  register identities; it does not carry `PreparedInlineAsmTiedHomeAuthority`
+  directly and does not allocate locally.
+- No expectation downgrades, skips, or named-case shortcuts were used.
 
 ## Proof
 
