@@ -232,6 +232,7 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   });
   module.string_constants.push_back(bir::StringConstant{
       .name = ".L.str0",
+      .name_id = module.names.texts.intern(".L.str0"),
       .bytes = "stack-layout",
       .align_bytes = 1,
   });
@@ -534,6 +535,38 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   if (prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 0) != nullptr ||
       prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, 1) != nullptr) {
     return fail("expected coalesced scratch accesses to stay out of prepared frame-slot records");
+  }
+  if (function_addressing->address_materializations.size() != 2) {
+    return fail("expected prepared addressing to publish string address materializations separately from accesses");
+  }
+  const auto* string_materialization =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 5);
+  if (string_materialization == nullptr) {
+    return fail("expected prepared addressing to record the global-inst string address materialization");
+  }
+  if (string_materialization->kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+      !string_materialization->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *string_materialization->result_value_name) !=
+          "message.ptr" ||
+      string_materialization->symbol_name.has_value() ||
+      !string_materialization->text_name.has_value() ||
+      prepared.names.texts.lookup(*string_materialization->text_name) != ".L.str0" ||
+      string_materialization->byte_offset != 0 ||
+      string_materialization->address_space != bir::AddressSpace::Fs ||
+      string_materialization->is_thread_local ||
+      string_materialization->has_tls_address_space) {
+    return fail("expected string address materialization to preserve result, text, offset, and address-space facts");
+  }
+  const auto* local_string_materialization =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 7);
+  if (local_string_materialization == nullptr ||
+      local_string_materialization->kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+      !local_string_materialization->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *local_string_materialization->result_value_name) !=
+          "local.message.ptr" ||
+      local_string_materialization->address_space != bir::AddressSpace::Tls ||
+      !local_string_materialization->has_tls_address_space) {
+    return fail("expected local-inst string materialization to preserve TLS address-space facts");
   }
   if (prepare::find_prepared_addressing(
           prepared, find_function_name_id(prepared, "missing_function")) != nullptr) {
@@ -2072,6 +2105,15 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .size_bytes = 4,
       .align_bytes = 4,
   });
+  const c4c::LinkNameId tls_global_id = module.names.link_names.intern("g.tls");
+  module.globals.push_back(bir::Global{
+      .name = "g.tls",
+      .link_name_id = tls_global_id,
+      .type = bir::TypeKind::I32,
+      .is_thread_local = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
 
   bir::Function function;
   function.name = "stack_layout_link_name_authoritative_global_access_activation";
@@ -2094,6 +2136,16 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .global_name = "g.compat",
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
       .align_bytes = 4,
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named_symbol_pointer("@g.authoritative", canonical_global_id),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.global.source"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named_symbol_pointer("@g.tls", tls_global_id),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.tls.source"),
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
@@ -3567,6 +3619,44 @@ int check_link_name_authoritative_global_access_activation(
       prepare::prepared_link_name(prepared.names, *compat_store_access->address.symbol_name) !=
           "g.compat") {
     return fail("expected raw-only compatibility global store to resolve by spelling");
+  }
+
+  if (function_addressing->address_materializations.size() != 2) {
+    return fail("expected link-name global fixture to publish direct global address materializations");
+  }
+  const auto* direct_global =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 3);
+  if (direct_global == nullptr) {
+    return fail("expected prepared addressing to record direct global address materialization");
+  }
+  if (direct_global->kind != prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+      !direct_global->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *direct_global->result_value_name) !=
+          "@g.authoritative" ||
+      !direct_global->symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *direct_global->symbol_name) !=
+          "g.authoritative" ||
+      direct_global->text_name.has_value() ||
+      direct_global->byte_offset != 0 ||
+      direct_global->address_space != bir::AddressSpace::Default ||
+      direct_global->is_thread_local ||
+      direct_global->has_tls_address_space) {
+    return fail("expected direct global materialization to preserve result and symbol identity");
+  }
+  const auto* tls_global =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 4);
+  if (tls_global == nullptr) {
+    return fail("expected prepared addressing to record TLS global address materialization");
+  }
+  if (tls_global->kind != prepare::PreparedAddressMaterializationKind::TlsGlobal ||
+      !tls_global->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *tls_global->result_value_name) != "@g.tls" ||
+      !tls_global->symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *tls_global->symbol_name) != "g.tls" ||
+      tls_global->address_space != bir::AddressSpace::Tls ||
+      !tls_global->is_thread_local ||
+      !tls_global->has_tls_address_space) {
+    return fail("expected TLS global materialization to preserve structured TLS facts");
   }
 
   return 0;

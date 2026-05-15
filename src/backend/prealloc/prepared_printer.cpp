@@ -65,6 +65,28 @@ std::string_view maybe_link_name(const PreparedNameTables& names, std::optional<
   return prepared_link_name(names, *id);
 }
 
+std::string_view maybe_text_name(const PreparedNameTables& names, std::optional<TextId> id) {
+  if (!id.has_value() || *id == kInvalidText) {
+    return "<none>";
+  }
+  const std::string_view spelling = names.texts.lookup(*id);
+  return spelling.empty() ? std::string_view{"<none>"} : spelling;
+}
+
+std::string_view address_space_name(bir::AddressSpace address_space) {
+  switch (address_space) {
+    case bir::AddressSpace::Default:
+      return "default";
+    case bir::AddressSpace::Fs:
+      return "fs";
+    case bir::AddressSpace::Gs:
+      return "gs";
+    case bir::AddressSpace::Tls:
+      return "tls";
+  }
+  return "unknown";
+}
+
 std::string source_symbol_name(const PreparedNameTables& names,
                                const PreparedCallArgumentPlan& arg) {
   if (arg.source_symbol_name_id.has_value()) {
@@ -1507,6 +1529,37 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
           << " align=" << access.address.align_bytes
           << " base_plus_offset="
           << (access.address.can_use_base_plus_offset ? "yes" : "no")
+          << "\n";
+    }
+    for (const auto& materialization : function_addressing.address_materializations) {
+      out << "  address_materialization block="
+          << maybe_block_label(module.names, materialization.block_label)
+          << " inst_index=" << materialization.inst_index
+          << " kind="
+          << prepared_address_materialization_kind_name(materialization.kind);
+      if (materialization.result_value_name.has_value()) {
+        out << " result="
+            << prepared_value_name(module.names, *materialization.result_value_name);
+      }
+      if (materialization.result_value_id.has_value()) {
+        out << " result_id=#" << *materialization.result_value_id;
+      }
+      if (materialization.result_home_kind.has_value()) {
+        out << " home="
+            << prepared_value_home_kind_name(*materialization.result_home_kind);
+      }
+      if (materialization.symbol_name.has_value()) {
+        out << " symbol="
+            << prepared_link_name(module.names, *materialization.symbol_name);
+      }
+      if (materialization.text_name.has_value()) {
+        out << " text=" << maybe_text_name(module.names, materialization.text_name);
+      }
+      out << " offset=" << materialization.byte_offset
+          << " address_space=" << address_space_name(materialization.address_space)
+          << " tls_global=" << (materialization.is_thread_local ? "yes" : "no")
+          << " tls_address_space="
+          << (materialization.has_tls_address_space ? "yes" : "no")
           << "\n";
     }
   }

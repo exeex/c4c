@@ -29,6 +29,63 @@ struct ResolvedFrameSlot {
   return address.has_value() && address->is_volatile;
 }
 
+[[nodiscard]] const bir::Global* find_global_by_link_name_id(const bir::Module& module,
+                                                             LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return nullptr;
+  }
+  for (const auto& global : module.globals) {
+    if (global.link_name_id == link_name_id) {
+      return &global;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool module_has_function_link_name_id(const bir::Module& module,
+                                                    LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return false;
+  }
+  for (const auto& function : module.functions) {
+    if (function.link_name_id == link_name_id) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<LinkNameId> resolve_prepared_link_name_id(
+    PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return std::nullopt;
+  }
+  const std::string_view spelling = bir_names.link_names.spelling(link_name_id);
+  if (spelling.empty()) {
+    return std::nullopt;
+  }
+  return names.link_names.intern(spelling);
+}
+
+[[nodiscard]] std::optional<TextId> resolve_prepared_text_id(
+    PreparedNameTables& names,
+    const bir::Module& module,
+    std::string_view text_name) {
+  if (text_name.empty()) {
+    return std::nullopt;
+  }
+  for (const auto& string_constant : module.string_constants) {
+    if (string_constant.name == text_name) {
+      const std::string_view structured_name =
+          module.names.texts.lookup(string_constant.name_id);
+      return names.texts.intern(structured_name.empty() ? text_name : structured_name);
+    }
+  }
+  return names.texts.intern(text_name);
+}
+
 [[nodiscard]] BlockLabelId intern_preferred_block_label(PreparedNameTables& names,
                                                         const bir::NameTables& bir_names,
                                                         BlockLabelId block_label_id,
@@ -748,6 +805,168 @@ void append_direct_frame_slot_accesses(PreparedNameTables& names,
   }
 }
 
+void append_missing_address_materialization_fact(std::vector<PrepareNote>& notes,
+                                                 std::string message) {
+  notes.push_back(PrepareNote{
+      .phase = "stack_layout",
+      .message = std::move(message),
+  });
+}
+
+void append_direct_global_address_materialization(PreparedNameTables& names,
+                                                  PreparedAddressingFunction& function_addressing,
+                                                  std::vector<PrepareNote>& notes,
+                                                  const bir::Module& module,
+                                                  FunctionNameId function_name_id,
+                                                  BlockLabelId block_label_id,
+                                                  std::size_t inst_index,
+                                                  const bir::Value& result) {
+  if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named) {
+    return;
+  }
+  if (result.pointer_symbol_link_name_id == kInvalidLinkName) {
+    if (!result.name.empty() && result.name.front() == '@') {
+      append_missing_address_materialization_fact(
+          notes,
+          "prepared address materialization for '" + result.name +
+              "' is missing a structured symbol LinkNameId");
+    }
+    return;
+  }
+  const auto prepared_symbol_name =
+      resolve_prepared_link_name_id(names, module.names, result.pointer_symbol_link_name_id);
+  if (!prepared_symbol_name.has_value()) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared address materialization for '" + result.name +
+            "' references a missing structured symbol spelling");
+    return;
+  }
+  const bir::Global* global =
+      find_global_by_link_name_id(module, result.pointer_symbol_link_name_id);
+  if (global == nullptr &&
+      !module_has_function_link_name_id(module, result.pointer_symbol_link_name_id)) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared address materialization for '" + result.name +
+            "' references an unknown global/function symbol");
+    return;
+  }
+
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = global != nullptr && global->is_thread_local
+                  ? PreparedAddressMaterializationKind::TlsGlobal
+                  : PreparedAddressMaterializationKind::DirectGlobal,
+      .result_value_name = prepared_named_value_id(names, result),
+      .symbol_name = *prepared_symbol_name,
+      .address_space = global != nullptr && global->is_thread_local ? bir::AddressSpace::Tls
+                                                                    : bir::AddressSpace::Default,
+      .is_thread_local = global != nullptr && global->is_thread_local,
+      .has_tls_address_space = global != nullptr && global->is_thread_local,
+  });
+}
+
+void append_string_constant_address_materialization(PreparedNameTables& names,
+                                                    PreparedAddressingFunction& function_addressing,
+                                                    std::vector<PrepareNote>& notes,
+                                                    const bir::Module& module,
+                                                    FunctionNameId function_name_id,
+                                                    BlockLabelId block_label_id,
+                                                    std::size_t inst_index,
+                                                    const bir::Value& result,
+                                                    const std::optional<bir::MemoryAddress>& address,
+                                                    std::int64_t inst_byte_offset) {
+  if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named ||
+      !address.has_value() ||
+      address->base_kind != bir::MemoryAddress::BaseKind::StringConstant) {
+    return;
+  }
+  const auto prepared_text_name =
+      resolve_prepared_text_id(names, module, address->base_name);
+  if (!prepared_text_name.has_value()) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared string-constant address materialization for '" + result.name +
+            "' is missing a string text identity");
+    return;
+  }
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = PreparedAddressMaterializationKind::StringConstant,
+      .result_value_name = prepared_named_value_id(names, result),
+      .text_name = *prepared_text_name,
+      .byte_offset = address->byte_offset + inst_byte_offset,
+      .address_space = address->address_space,
+      .has_tls_address_space = address->address_space == bir::AddressSpace::Tls,
+  });
+}
+
+void append_address_materializations(PreparedNameTables& names,
+                                     PreparedAddressingFunction& function_addressing,
+                                     std::vector<PrepareNote>& notes,
+                                     const bir::Module& module,
+                                     FunctionNameId function_name_id,
+                                     const bir::Function& function) {
+  for (const auto& block : function.blocks) {
+    const BlockLabelId block_label_id =
+        intern_preferred_block_label(names, module.names, block.label_id, block.label);
+    for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
+      const auto& inst = block.insts[inst_index];
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, binary->result);
+      } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, select->result);
+      } else if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, cast->result);
+      } else if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, phi->result);
+      } else if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (call->result.has_value()) {
+          append_direct_global_address_materialization(
+              names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, *call->result);
+        }
+      } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, load_local->result);
+        append_string_constant_address_materialization(
+            names,
+            function_addressing,
+            notes,
+            module,
+            function_name_id,
+            block_label_id,
+            inst_index,
+            load_local->result,
+            load_local->address,
+            static_cast<std::int64_t>(load_local->byte_offset));
+      } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
+        append_direct_global_address_materialization(
+            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, load_global->result);
+        append_string_constant_address_materialization(
+            names,
+            function_addressing,
+            notes,
+            module,
+            function_name_id,
+            block_label_id,
+            inst_index,
+            load_global->result,
+            load_global->address,
+            static_cast<std::int64_t>(load_global->byte_offset));
+      }
+    }
+  }
+}
+
 }  // namespace
 
 void BirPreAlloc::run_stack_layout() {
@@ -795,6 +1014,12 @@ void BirPreAlloc::run_stack_layout() {
         prepared_.module.names,
         function,
         build_frame_slot_map(function_objects, function_slots));
+    append_address_materializations(prepared_.names,
+                                    function_addressing,
+                                    prepared_.notes,
+                                    prepared_.module,
+                                    function_name_id,
+                                    function);
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),

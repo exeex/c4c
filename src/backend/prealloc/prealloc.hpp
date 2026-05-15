@@ -508,6 +508,52 @@ struct PreparedAddress {
   bool can_use_base_plus_offset = false;
 };
 
+enum class PreparedValueHomeKind;
+
+enum class PreparedAddressMaterializationKind {
+  None,
+  DirectGlobal,
+  StringConstant,
+  Label,
+  GotGlobal,
+  TlsGlobal,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_address_materialization_kind_name(
+    PreparedAddressMaterializationKind kind) {
+  switch (kind) {
+    case PreparedAddressMaterializationKind::None:
+      return "none";
+    case PreparedAddressMaterializationKind::DirectGlobal:
+      return "direct_global";
+    case PreparedAddressMaterializationKind::StringConstant:
+      return "string_constant";
+    case PreparedAddressMaterializationKind::Label:
+      return "label";
+    case PreparedAddressMaterializationKind::GotGlobal:
+      return "got_global";
+    case PreparedAddressMaterializationKind::TlsGlobal:
+      return "tls_global";
+  }
+  return "unknown";
+}
+
+struct PreparedAddressMaterialization {
+  FunctionNameId function_name = kInvalidFunctionName;
+  BlockLabelId block_label = kInvalidBlockLabel;
+  std::size_t inst_index = 0;
+  PreparedAddressMaterializationKind kind = PreparedAddressMaterializationKind::None;
+  std::optional<ValueNameId> result_value_name;
+  std::optional<PreparedValueId> result_value_id;
+  std::optional<PreparedValueHomeKind> result_home_kind;
+  std::optional<LinkNameId> symbol_name;
+  std::optional<TextId> text_name;
+  std::int64_t byte_offset = 0;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
+  bool is_thread_local = false;
+  bool has_tls_address_space = false;
+};
+
 struct PreparedMemoryAccess {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId block_label = kInvalidBlockLabel;
@@ -524,6 +570,7 @@ struct PreparedAddressingFunction {
   std::size_t frame_size_bytes = 0;
   std::size_t frame_alignment_bytes = 0;
   std::vector<PreparedMemoryAccess> accesses;
+  std::vector<PreparedAddressMaterialization> address_materializations;
 };
 
 struct PreparedAddressing {
@@ -573,6 +620,20 @@ struct PreparedAddressing {
     matched = &access;
   }
   return matched;
+}
+
+[[nodiscard]] inline const PreparedAddressMaterialization*
+find_prepared_address_materialization(
+    const PreparedAddressingFunction& function_addressing,
+    BlockLabelId block_label,
+    std::size_t inst_index) {
+  for (const auto& materialization : function_addressing.address_materializations) {
+    if (materialization.block_label == block_label &&
+        materialization.inst_index == inst_index) {
+      return &materialization;
+    }
+  }
+  return nullptr;
 }
 
 namespace stack_layout {
