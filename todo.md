@@ -1,39 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/240_aarch64_inline_asm_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement Named Operand Substitution
+Current Step ID: 5
+Current Step Title: Resolve Tied Output Coallocation Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2 - Implement Named Operand Substitution: removed the blanket
-AArch64 selected-inline-asm rejection for complete carriers with named
-references, resolved `%[name]` placeholders against unique selected operand
-names, and substituted named register/tied-output/integer-immediate operands
-while keeping malformed, unknown, duplicate, missing-name, clobber, unsupported
-constraint, and unsupported modifier cases diagnostic-only.
+Plan Step 5 - Resolve Tied Output Coallocation Boundaries: selected AArch64
+inline-asm tied inputs now require the prepared tied input and output homes to
+name the same concrete register before dispatch accepts the carrier. Missing
+tied input homes, missing tied output indexes, allocator-dependent homes
+without concrete register names, and mismatched tied homes fail closed with
+explicit diagnostics; selected-printer guards also reject malformed tied-home
+records instead of printing through an unproven output.
 
 ## Suggested Next
 
-Next coherent packet: tighten selected tied input/output validation so selected
-tied inputs only print through the output when the prepared tied input and
-output homes agree, leaving allocator-side coallocation policy outside this
-backend printer/dispatch slice.
+Next coherent packet: Step 6 remaining-scope validation and lifecycle decision
+for the active AArch64 inline-asm runbook, including whether broader backend
+proof is enough to request close or whether clobber, memory/address, or
+allocator-policy leftovers need durable follow-up ownership.
 
 ## Watchouts
 
 - Do not touch `plan.md` or `ideas/open/240_aarch64_inline_asm_machine_nodes.md`
   for routine packet progress.
-- Source/LIR still marks parsed named operands unsupported in semantic carriers;
-  this packet only accepts selected records/carriers that already provide
-  matching structured operand-name metadata.
-- Clobbers and memory/address constraints still need upstream/source-LIR or
-  allocator ownership before real support.
-- Tied coallocation must not be "fixed" by printing the output register when
-  prepared homes disagree; mismatches should be diagnostics unless allocator
-  ownership supplies a shared home.
+- This slice did not add allocator coallocation policy, scratch allocation, or
+  spill behavior; it only trusts homes that prepared records already make
+  concrete.
+- Tied homes compare the prepared register-name authority directly. If future
+  work needs alias-aware `wN`/`xN` coallocation, that should be an allocator or
+  prepared-home policy packet rather than a printer shortcut.
+- Clobbers and memory/address constraints still need upstream/source-LIR,
+  prepared-home, or allocator ownership before real support.
 
 ## Proof
 

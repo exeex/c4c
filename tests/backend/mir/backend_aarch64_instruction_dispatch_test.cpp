@@ -174,6 +174,10 @@ enum class InlineAsmCarrierFixtureKind {
   NamedReferences,
   Incomplete,
   MissingResultHome,
+  MissingTiedInputHome,
+  MissingTiedOutputIndex,
+  AllocatorDependentTiedInputHome,
+  MismatchedTiedInputHome,
   UnsupportedOperand,
   UnsupportedClobber,
   UnsupportedTemplateModifier,
@@ -308,8 +312,21 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
 
   const auto out_home = inline_asm_register_home(
       prepare::PreparedValueId{50}, function_name, out_name, "w3");
-  const auto seed_home = inline_asm_register_home(
+  auto seed_home = inline_asm_register_home(
       prepare::PreparedValueId{51}, function_name, seed_name, "w3");
+  if (kind == InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome) {
+    seed_home.register_name = std::nullopt;
+  } else if (kind == InlineAsmCarrierFixtureKind::MismatchedTiedInputHome) {
+    seed_home.register_name = std::string{"w4"};
+  }
+  std::optional<prepare::PreparedValueHome> seed_operand_home{seed_home};
+  if (kind == InlineAsmCarrierFixtureKind::MissingTiedInputHome) {
+    seed_operand_home = std::nullopt;
+  }
+  std::optional<std::size_t> tied_output_index{std::size_t{0}};
+  if (kind == InlineAsmCarrierFixtureKind::MissingTiedOutputIndex) {
+    tied_output_index = std::nullopt;
+  }
   const auto input_home = inline_asm_register_home(
       prepare::PreparedValueId{52}, function_name, input_name, "w5");
   const auto imm_home = inline_asm_immediate_home(
@@ -352,10 +369,10 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .constraint_index = 1,
                .constraint = "0",
                .arg_index = std::size_t{0},
-               .tied_output_index = std::size_t{0},
+               .tied_output_index = tied_output_index,
                .value = seed_value,
                .value_name = seed_name,
-               .home = seed_home,
+               .home = seed_operand_home,
            },
            prepare::PreparedInlineAsmOperand{
                .kind = selected_input_kind,
@@ -4452,6 +4469,15 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{"missing_result_home"}},
       std::pair{InlineAsmCarrierFixtureKind::MissingResultHome,
                 std::string_view{"missing_result_register_home"}},
+      std::pair{InlineAsmCarrierFixtureKind::MissingTiedInputHome,
+                std::string_view{"missing_tied_input_register_home"}},
+      std::pair{InlineAsmCarrierFixtureKind::MissingTiedOutputIndex,
+                std::string_view{"missing_tied_output_index"}},
+      std::pair{InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome,
+                std::string_view{
+                    "tied_input_output_home_requires_concrete_registers"}},
+      std::pair{InlineAsmCarrierFixtureKind::MismatchedTiedInputHome,
+                std::string_view{"tied_input_output_home_mismatch"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedClobber,

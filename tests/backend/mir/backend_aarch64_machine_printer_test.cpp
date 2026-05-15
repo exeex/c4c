@@ -128,7 +128,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
   output.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   output.value_id = prepare::PreparedValueId{50};
   output.value_name = c4c::ValueNameId{50};
-  auto tied = wreg(4);
+  auto tied = wreg(3);
   tied.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   tied.value_id = prepare::PreparedValueId{51};
   tied.value_name = c4c::ValueNameId{51};
@@ -136,6 +136,25 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
   input.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   input.value_id = prepare::PreparedValueId{52};
   input.value_name = c4c::ValueNameId{52};
+
+  const prepare::PreparedValueHome output_home{
+      .value_id = prepare::PreparedValueId{50},
+      .value_name = c4c::ValueNameId{50},
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"w3"},
+  };
+  const prepare::PreparedValueHome tied_home{
+      .value_id = prepare::PreparedValueId{51},
+      .value_name = c4c::ValueNameId{51},
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"w3"},
+  };
+  const prepare::PreparedValueHome input_home{
+      .value_id = prepare::PreparedValueId{52},
+      .value_name = c4c::ValueNameId{52},
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string{"w5"},
+  };
 
   const auto immediate = aarch64_codegen::make_immediate_operand(
       aarch64_codegen::ImmediateOperand{
@@ -165,6 +184,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .constraint = "=r",
                .output_index = std::size_t{0},
                .name = std::string{"dst"},
+               .home = output_home,
                .selected_operand = aarch64_codegen::make_register_operand(output),
            },
            aarch64_codegen::InlineAsmMachineOperandRecord{
@@ -174,6 +194,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .arg_index = std::size_t{0},
                .tied_output_index = std::size_t{0},
                .name = std::string{"seed"},
+               .home = tied_home,
                .selected_operand = aarch64_codegen::make_register_operand(tied),
            },
            aarch64_codegen::InlineAsmMachineOperandRecord{
@@ -182,6 +203,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .constraint = "r",
                .arg_index = std::size_t{1},
                .name = std::string{"rhs"},
+               .home = input_home,
                .selected_operand = aarch64_codegen::make_register_operand(input),
            },
            aarch64_codegen::InlineAsmMachineOperandRecord{
@@ -193,6 +215,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .immediate_value = std::int64_t{7},
                .selected_operand = immediate,
            }},
+      .inline_asm_result_home = output_home,
   };
 }
 
@@ -3689,6 +3712,43 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
       missing_tie_result.diagnostic.find("missing tied output index") ==
           std::string::npos) {
     return fail("expected inline-asm missing tie to fail closed");
+  }
+
+  auto missing_tie_home = selected_inline_asm_record("add %w0, %w1, %w2");
+  missing_tie_home.inline_asm_operands[1].home = std::nullopt;
+  const auto missing_tie_home_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(missing_tie_home)));
+  if (missing_tie_home_result.ok ||
+      missing_tie_home_result.diagnostic.find("missing prepared tied home") ==
+          std::string::npos) {
+    return fail("expected inline-asm missing tied home to fail closed");
+  }
+
+  auto allocator_dependent_tie =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  allocator_dependent_tie.inline_asm_operands[1].home->register_name =
+      std::nullopt;
+  const auto allocator_dependent_tie_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(allocator_dependent_tie)));
+  if (allocator_dependent_tie_result.ok ||
+      allocator_dependent_tie_result.diagnostic.find(
+          "concrete prepared register homes") == std::string::npos) {
+    return fail("expected inline-asm allocator-dependent tied home to fail closed");
+  }
+
+  auto mismatched_tie_home =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  mismatched_tie_home.inline_asm_operands[1].home->register_name =
+      std::string{"w4"};
+  const auto mismatched_tie_home_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(mismatched_tie_home)));
+  if (mismatched_tie_home_result.ok ||
+      mismatched_tie_home_result.diagnostic.find("prepared home disagrees") ==
+          std::string::npos) {
+    return fail("expected inline-asm mismatched tied home to fail closed");
   }
 
   auto unsupported_constraint = selected_inline_asm_record("add %w0, %w1, %w2");

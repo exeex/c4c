@@ -582,6 +582,77 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
+[[nodiscard]] const prepare::PreparedInlineAsmOperand*
+find_inline_asm_prepared_output_operand(
+    const prepare::PreparedInlineAsmCarrier& carrier,
+    std::size_t output_index) {
+  for (const auto& operand : carrier.operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput &&
+        operand.output_index.has_value() && *operand.output_index == output_index) {
+      return &operand;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool inline_asm_prepared_home_is_concrete_register(
+    const prepare::PreparedValueHome& home) {
+  return home.kind == prepare::PreparedValueHomeKind::Register &&
+         home.register_name.has_value();
+}
+
+[[nodiscard]] bool inline_asm_tied_prepared_homes_agree(
+    const prepare::PreparedValueHome& tied_home,
+    const prepare::PreparedValueHome& output_home) {
+  return inline_asm_prepared_home_is_concrete_register(tied_home) &&
+         inline_asm_prepared_home_is_concrete_register(output_home) &&
+         *tied_home.register_name == *output_home.register_name;
+}
+
+[[nodiscard]] bool require_inline_asm_tied_home_agreement(
+    const prepare::PreparedInlineAsmCarrier& carrier,
+    const prepare::PreparedInlineAsmOperand& operand,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  const auto append_tied_diagnostic = [&](std::string_view fact) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message(fact));
+  };
+
+  if (!operand.tied_output_index.has_value()) {
+    append_tied_diagnostic("missing_tied_output_index");
+    return false;
+  }
+  if (find_inline_asm_prepared_output_operand(carrier, *operand.tied_output_index) ==
+      nullptr) {
+    append_tied_diagnostic("missing_tied_output_operand");
+    return false;
+  }
+  if (!operand.home.has_value()) {
+    append_tied_diagnostic("missing_tied_input_register_home");
+    return false;
+  }
+  if (!carrier.result_home.has_value()) {
+    append_tied_diagnostic("missing_tied_output_register_home");
+    return false;
+  }
+  if (!inline_asm_prepared_home_is_concrete_register(*operand.home) ||
+      !inline_asm_prepared_home_is_concrete_register(*carrier.result_home)) {
+    append_tied_diagnostic("tied_input_output_home_requires_concrete_registers");
+    return false;
+  }
+  if (!inline_asm_tied_prepared_homes_agree(*operand.home, *carrier.result_home)) {
+    append_tied_diagnostic("tied_input_output_home_mismatch");
+    return false;
+  }
+  return true;
+}
+
 [[nodiscard]] std::string address_materialization_error_message(
     PreparedAddressMaterializationRecordError error) {
   std::string message =
@@ -2664,8 +2735,7 @@ struct LowerMemoryInstructionResult {
         selected.selected_operand = make_register_operand(*reg);
         break;
       }
-      case bir::InlineAsmOperandKind::RegisterInput:
-      case bir::InlineAsmOperandKind::TiedInput: {
+      case bir::InlineAsmOperandKind::RegisterInput: {
         if (!operand.home.has_value()) {
           append_call_diagnostic(
               diagnostics,
@@ -2683,6 +2753,19 @@ struct LowerMemoryInstructionResult {
               context,
               instruction_index,
               inline_asm_carrier_error_message("register_operand_home_not_a_gpr"));
+          return std::nullopt;
+        }
+        const auto reg = make_inline_asm_register_operand(
+            *operand.home, diagnostics, context, instruction_index);
+        if (!reg.has_value()) {
+          return std::nullopt;
+        }
+        selected.selected_operand = make_register_operand(*reg);
+        break;
+      }
+      case bir::InlineAsmOperandKind::TiedInput: {
+        if (!require_inline_asm_tied_home_agreement(
+                *carrier, operand, diagnostics, context, instruction_index)) {
           return std::nullopt;
         }
         const auto reg = make_inline_asm_register_operand(
