@@ -5,8 +5,10 @@
 #include <array>
 #include <algorithm>
 #include <charconv>
+#include <iomanip>
 #include <limits>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <type_traits>
@@ -38,6 +40,119 @@ struct PreparedPointerCarrierState {
 };
 
 using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointerCarrierState>;
+
+[[nodiscard]] bool is_f128_immediate_constant(const bir::Value& value) {
+  return value.kind == bir::Value::Kind::Immediate &&
+         value.type == bir::TypeKind::F128 &&
+         value.f128_payload.has_value();
+}
+
+[[nodiscard]] std::string f128_constant_prepared_name(const bir::Value::F128Payload& payload) {
+  std::ostringstream out;
+  out << "__f128.const." << std::hex << std::nouppercase << std::setfill('0')
+      << std::setw(16) << payload.high_bits
+      << std::setw(16) << payload.low_bits;
+  return out.str();
+}
+
+void append_f128_constant_value(std::vector<PreparedRegallocValue>& values,
+                                PreparedNameTables& names,
+                                FunctionNameId function_name,
+                                PreparedValueId& next_value_id,
+                                std::unordered_map<std::string, PreparedValueId>& seen_constants,
+                                const bir::Value& value) {
+  if (!is_f128_immediate_constant(value)) {
+    return;
+  }
+  const std::string value_name = f128_constant_prepared_name(*value.f128_payload);
+  if (seen_constants.find(value_name) != seen_constants.end()) {
+    return;
+  }
+  const ValueNameId value_name_id = names.value_names.intern(value_name);
+  if (value_name_id == kInvalidValueName) {
+    return;
+  }
+  const PreparedValueId value_id = next_value_id++;
+  seen_constants.emplace(value_name, value_id);
+  values.push_back(PreparedRegallocValue{
+      .value_id = value_id,
+      .stack_object_id = std::nullopt,
+      .function_name = function_name,
+      .value_name = value_name_id,
+      .type = bir::TypeKind::F128,
+      .constant_f128_payload = value.f128_payload,
+      .value_kind = PreparedValueKind::Temporary,
+      .register_class = PreparedRegisterClass::None,
+      .register_group_width = 1,
+      .allocation_status = PreparedAllocationStatus::Unallocated,
+      .spillable = false,
+      .requires_home_slot = false,
+      .crosses_call = false,
+      .priority = 0,
+      .spill_weight = 0.0,
+      .live_interval = std::nullopt,
+      .assigned_register = std::nullopt,
+      .assigned_stack_slot = std::nullopt,
+      .spill_register_authority = std::nullopt,
+  });
+}
+
+void append_f128_constant_values_for_function(std::vector<PreparedRegallocValue>& values,
+                                              PreparedNameTables& names,
+                                              const bir::Function* function,
+                                              FunctionNameId function_name,
+                                              PreparedValueId& next_value_id) {
+  if (function == nullptr) {
+    return;
+  }
+  std::unordered_map<std::string, PreparedValueId> seen_constants;
+  for (const auto& block : function->blocks) {
+    for (const auto& inst : block.insts) {
+      std::visit(
+          [&](const auto& typed_inst) {
+            using T = std::decay_t<decltype(typed_inst)>;
+            auto append_value = [&](const bir::Value& value) {
+              append_f128_constant_value(
+                  values, names, function_name, next_value_id, seen_constants, value);
+            };
+            if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+              append_value(typed_inst.lhs);
+              append_value(typed_inst.rhs);
+            } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+              append_value(typed_inst.lhs);
+              append_value(typed_inst.rhs);
+              append_value(typed_inst.true_value);
+              append_value(typed_inst.false_value);
+            } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+              append_value(typed_inst.operand);
+            } else if constexpr (std::is_same_v<T, bir::PhiInst>) {
+              for (const auto& incoming : typed_inst.incomings) {
+                append_value(incoming.value);
+              }
+            } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+              if (typed_inst.callee_value.has_value()) {
+                append_value(*typed_inst.callee_value);
+              }
+              for (const auto& arg : typed_inst.args) {
+                append_value(arg);
+              }
+            } else if constexpr (std::is_same_v<T, bir::StoreGlobalInst> ||
+                                 std::is_same_v<T, bir::StoreLocalInst>) {
+              append_value(typed_inst.value);
+            }
+          },
+          inst);
+    }
+    if (block.terminator.kind == bir::TerminatorKind::Return &&
+        block.terminator.value.has_value()) {
+      append_f128_constant_value(
+          values, names, function_name, next_value_id, seen_constants, *block.terminator.value);
+    } else if (block.terminator.kind == bir::TerminatorKind::CondBranch) {
+      append_f128_constant_value(
+          values, names, function_name, next_value_id, seen_constants, block.terminator.condition);
+    }
+  }
+}
 
 [[nodiscard]] PreparedRegisterClass classify_register_class(const PreparedLivenessValue& value) {
   switch (value.type) {
@@ -1322,9 +1437,15 @@ template <typename CanEvict>
       .size_bytes = std::nullopt,
       .align_bytes = std::nullopt,
       .immediate_i32 = std::nullopt,
+      .immediate_f128 = std::nullopt,
       .pointer_base_value_name = std::nullopt,
       .pointer_byte_delta = std::nullopt,
   };
+  if (value.constant_f128_payload.has_value()) {
+    home.kind = PreparedValueHomeKind::RematerializableImmediate;
+    home.immediate_f128 = value.constant_f128_payload;
+    return home;
+  }
   if (function != nullptr && value.value_kind == PreparedValueKind::Parameter) {
     const std::string_view value_name = prepared_value_name(names, value.value_name);
     for (std::size_t param_index = 0; param_index < function->params.size(); ++param_index) {
@@ -3200,6 +3321,13 @@ void BirPreAlloc::run_regalloc() {
   prepared_.value_locations.functions.reserve(prepared_.liveness.functions.size());
   prepared_.i128_runtime_helpers.functions.clear();
 
+  PreparedValueId next_synthetic_value_id = 0;
+  for (const auto& liveness_function : prepared_.liveness.functions) {
+    for (const auto& value : liveness_function.values) {
+      next_synthetic_value_id = std::max(next_synthetic_value_id, value.value_id + 1U);
+    }
+  }
+
   for (const auto& liveness_function : prepared_.liveness.functions) {
     PreparedRegallocFunction regalloc_function{
         .function_name = liveness_function.function_name,
@@ -3240,6 +3368,7 @@ void BirPreAlloc::run_regalloc() {
           .function_name = liveness_value.function_name,
           .value_name = liveness_value.value_name,
           .type = liveness_value.type,
+          .constant_f128_payload = std::nullopt,
           .value_kind = liveness_value.value_kind,
           .register_class = register_class,
           .register_group_width = register_group_width,
@@ -3277,13 +3406,19 @@ void BirPreAlloc::run_regalloc() {
           .fixed_register_placement = std::nullopt,
           .preferred_register_placements =
               materialize_register_placements(liveness_value.crosses_call ? callee_saved_spans
-                                                                          : caller_saved_spans),
+                                                                           : caller_saved_spans),
           .forbidden_register_placements =
               liveness_value.crosses_call
                   ? materialize_register_placements(caller_saved_spans)
                   : std::vector<PreparedRegisterPlacement>{},
       });
     }
+
+    append_f128_constant_values_for_function(regalloc_function.values,
+                                             prepared_.names,
+                                             function,
+                                             liveness_function.function_name,
+                                             next_synthetic_value_id);
 
     for (std::size_t lhs_index = 0; lhs_index < regalloc_function.values.size(); ++lhs_index) {
       const auto& lhs = regalloc_function.values[lhs_index];

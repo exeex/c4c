@@ -1,37 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/241_f128_full_width_constant_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define The Full-Width Constant Carrier
+Current Step ID: 3
+Current Step Title: Transport F128 Constants Through Prepared State
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 full-width constant carrier data model is complete. BIR `Value` now has
-an exact F128 payload with explicit low/high 64-bit halves, a factory for
-structured binary128 immediates, BIR/prepared printer rendering for structured
-F128 literals, and prepared F128 carrier state that can publish an exact
-constant payload without reusing F64, `double`, rendered text, or a single
-64-bit lane. `backend_prepared_printer` proves the BIR literal, prepared
-source literal, and shared F128 carrier dump preserve both halves.
+Step 3 F128 constant transport is complete. Regalloc now gives real BIR F128
+immediate literals synthetic prepared value identity, value homes and storage
+plans carry the full low/high payload as `immediate_f128`, call plans attach
+the prepared source value id to immediate F128 arguments, and F128 carriers
+publish the same full-width payload from prepared storage identity. The tests
+cover the real prepared route, existing scalar immediate/i128 behavior, and the
+AArch64 missing-carrier diagnostic without adding AArch64 constant selection.
 
 ## Suggested Next
 
-Delegate Step 3 to transport real F128 constants through prepared value homes
-or storage plans so normal backend selection can find the full-width payload by
-prepared value identity instead of only in manually seeded carrier/printer
-fixtures.
+Delegate Step 4 to add the next bounded backend-facing behavior for F128
+constant carriers, keeping AArch64 constant selection separate from unrelated
+scalar immediate and helper routes.
 
 ## Watchouts
 
-- The Step 2 fixture seeds prepared F128 constant carrier state directly; it
-  does not yet prove regalloc/storage-plan transport for lowered scalar F128
-  constants.
-- `immediate` and `immediate_bits` retain low-lane compatibility for existing
-  scalar code, but F128 authority must come from `f128_payload`.
-- Do not add AArch64 constant assembly printing until Step 3/4 can prove
-  selected values have a complete structured payload.
+- F128 immediate carriers are intentionally still `kind=missing` with a
+  complete `constant_payload`; this exposes payload authority by prepared value
+  id without teaching AArch64 to select or print the constant yet.
+- Existing scalar immediates still use `immediate_i32`; do not route F128
+  constants through that field, F64, rendered text, or a single 64-bit lane.
+- The synthetic prepared constant name is stable payload-derived spelling; the
+  authority remains the prepared value id plus `constant_payload`.
 
 ## Proof
 

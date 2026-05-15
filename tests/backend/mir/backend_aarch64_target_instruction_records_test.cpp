@@ -2913,6 +2913,20 @@ int f128_transport_records_preserve_full_width_carrier_and_memory_facts() {
           "incomplete_prepared_f128_carrier") {
     return fail("expected incomplete f128 full-width carrier to fail closed");
   }
+
+  carriers.carriers.clear();
+  const auto missing = aarch64_codegen::make_prepared_f128_carrier_transport_record(
+      carriers,
+      value_name,
+      aarch64_codegen::F128TransportKind::StoreToMemory,
+      f128_frame_slot_memory_operand(function_name, c4c::BlockLabelId{4}, 5));
+  if (missing.record.has_value() ||
+      missing.error !=
+          aarch64_codegen::PreparedF128TransportRecordError::MissingPreparedF128Carrier ||
+      aarch64_codegen::prepared_f128_transport_record_error_name(missing.error) !=
+          "missing_prepared_f128_carrier") {
+    return fail("expected missing f128 carrier to produce missing-carrier diagnostic");
+  }
   return 0;
 }
 

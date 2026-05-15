@@ -784,6 +784,12 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
         if (value.immediate_i32.has_value()) {
           out << " imm=" << *value.immediate_i32;
         }
+        if (value.immediate_f128.has_value()) {
+          out << " imm_f128=0x" << std::hex << std::uppercase << std::setfill('0')
+              << std::setw(16) << value.immediate_f128->high_bits
+              << std::setw(16) << value.immediate_f128->low_bits
+              << std::dec;
+        }
         out << "\n";
       }
     }
@@ -1177,6 +1183,12 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
       if (home.immediate_i32.has_value()) {
         out << " imm_i32=" << *home.immediate_i32;
       }
+      if (home.immediate_f128.has_value()) {
+        out << " imm_f128=0x" << std::hex << std::uppercase << std::setfill('0')
+            << std::setw(16) << home.immediate_f128->high_bits
+            << std::setw(16) << home.immediate_f128->low_bits
+            << std::dec;
+      }
       out << "\n";
     }
 
@@ -1521,6 +1533,12 @@ void append_storage_plans(std::ostringstream& out, const PreparedBirModule& modu
       }
       if (value.immediate_i32.has_value()) {
         out << " imm_i32=" << *value.immediate_i32;
+      }
+      if (value.immediate_f128.has_value()) {
+        out << " imm_f128=0x" << std::hex << std::uppercase << std::setfill('0')
+            << std::setw(16) << value.immediate_f128->high_bits
+            << std::setw(16) << value.immediate_f128->low_bits
+            << std::dec;
       }
       if (value.symbol_name.has_value()) {
         out << " symbol=" << prepared_link_name(module.names, *value.symbol_name);

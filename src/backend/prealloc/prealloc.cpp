@@ -1018,6 +1018,23 @@ struct DirectCalleeResolution {
   return nullptr;
 }
 
+[[nodiscard]] const PreparedRegallocValue* find_f128_constant_regalloc_value(
+    const PreparedRegallocFunction& function,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Immediate ||
+      value.type != bir::TypeKind::F128 ||
+      !value.f128_payload.has_value()) {
+    return nullptr;
+  }
+  for (const auto& regalloc_value : function.values) {
+    if (regalloc_value.type == bir::TypeKind::F128 &&
+        regalloc_value.constant_f128_payload == value.f128_payload) {
+      return &regalloc_value;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] const PreparedLivenessFunction* find_liveness_function(
     const PreparedLiveness& liveness,
     FunctionNameId function_name) {
@@ -1132,6 +1149,7 @@ struct DirectCalleeResolution {
       .slot_id = home.slot_id,
       .stack_offset_bytes = home.offset_bytes,
       .immediate_i32 = home.immediate_i32,
+      .immediate_f128 = home.immediate_f128,
       .symbol_name = std::nullopt,
       .register_placement = register_placement,
       .spill_slot_placement = make_spill_slot_placement(home.slot_id, home.offset_bytes),
@@ -1279,6 +1297,7 @@ void append_f128_missing_fact(PreparedF128CarrierFunction& function_carriers,
       .register_bank = register_bank_from_class(value.register_class),
       .register_class = value.register_class,
       .contiguous_width = std::max<std::size_t>(value.register_group_width, 1),
+      .constant_payload = value.constant_f128_payload,
   };
 
   if (storage == nullptr) {
@@ -1299,6 +1318,21 @@ void append_f128_missing_fact(PreparedF128CarrierFunction& function_carriers,
   carrier.register_placement = storage->register_placement;
   carrier.slot_id = storage->slot_id;
   carrier.stack_offset_bytes = storage->stack_offset_bytes;
+  if (storage->immediate_f128.has_value()) {
+    carrier.constant_payload = storage->immediate_f128;
+  }
+
+  if (storage->encoding == PreparedStorageEncodingKind::Immediate) {
+    if (!storage->immediate_f128.has_value()) {
+      append_f128_missing_fact(
+          function_carriers,
+          carrier,
+          "immediate_f128_constant_requires_full_width_payload");
+      return carrier;
+    }
+    carrier.kind = PreparedF128CarrierKind::Missing;
+    return carrier;
+  }
 
   if (storage->encoding == PreparedStorageEncodingKind::Register) {
     const bool has_full_width_register =
@@ -4084,6 +4118,15 @@ void populate_call_plans(PreparedBirModule& prepared) {
             } else if (call->args[arg_index].kind != bir::Value::Kind::Named) {
               arg_plan.source_encoding = PreparedStorageEncodingKind::Immediate;
               arg_plan.source_literal = call->args[arg_index];
+              if (regalloc_function != nullptr) {
+                if (const auto* constant_value =
+                        find_f128_constant_regalloc_value(*regalloc_function, call->args[arg_index]);
+                    constant_value != nullptr) {
+                  arg_plan.source_value_id = constant_value->value_id;
+                  arg_plan.source_register_bank =
+                      register_bank_from_class(constant_value->register_class);
+                }
+              }
             }
           }
 

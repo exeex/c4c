@@ -1048,6 +1048,7 @@ struct PreparedRegallocValue {
   FunctionNameId function_name = kInvalidFunctionName;
   ValueNameId value_name = kInvalidValueName;
   c4c::backend::bir::TypeKind type = c4c::backend::bir::TypeKind::Void;
+  std::optional<c4c::backend::bir::Value::F128Payload> constant_f128_payload;
   PreparedValueKind value_kind = PreparedValueKind::Temporary;
   PreparedRegisterClass register_class = PreparedRegisterClass::None;
   std::size_t register_group_width = 1;
@@ -1136,6 +1137,7 @@ struct PreparedValueHome {
   std::optional<std::size_t> size_bytes;
   std::optional<std::size_t> align_bytes;
   std::optional<std::int64_t> immediate_i32;
+  std::optional<c4c::backend::bir::Value::F128Payload> immediate_f128;
   std::optional<ValueNameId> pointer_base_value_name;
   std::optional<std::int64_t> pointer_byte_delta;
 };
@@ -1596,6 +1598,7 @@ struct PreparedStoragePlanValue {
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
   std::optional<std::int64_t> immediate_i32;
+  std::optional<c4c::backend::bir::Value::F128Payload> immediate_f128;
   std::optional<LinkNameId> symbol_name;
   std::optional<PreparedRegisterPlacement> register_placement;
   std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
