@@ -157,17 +157,27 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::And) ||
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Or) ||
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Xor) ||
+      !aarch64_codegen::is_scalar_alu_floating_opcode(bir::BinaryOpcode::Mul) ||
+      !aarch64_codegen::is_scalar_alu_floating_opcode(bir::BinaryOpcode::SDiv) ||
+      !aarch64_codegen::is_scalar_alu_floating_type(bir::TypeKind::F32) ||
+      !aarch64_codegen::is_scalar_alu_floating_type(bir::TypeKind::F64) ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Add) != "add" ||
       aarch64_codegen::scalar_alu_operation_kind_name(
-          aarch64_codegen::ScalarAluOperationKind::Xor) != "xor") {
+          aarch64_codegen::ScalarAluOperationKind::Xor) != "xor" ||
+      aarch64_codegen::scalar_alu_operation_kind_name(
+          aarch64_codegen::ScalarAluOperationKind::Mul) != "mul" ||
+      aarch64_codegen::scalar_alu_operation_kind_name(
+          aarch64_codegen::ScalarAluOperationKind::Div) != "div") {
     return fail("expected supported scalar ALU vocabulary to be explicit");
   }
   if (aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Mul) ||
       aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Shl) ||
       aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Eq) ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Mul) !=
-          aarch64_codegen::ScalarAluOperationKind::Deferred ||
+          aarch64_codegen::ScalarAluOperationKind::Mul ||
+      aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::SDiv) !=
+          aarch64_codegen::ScalarAluOperationKind::Div ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Eq) !=
           aarch64_codegen::ScalarAluOperationKind::Deferred) {
     return fail("expected unsupported scalar ALU forms to defer explicitly");
@@ -197,8 +207,9 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
   const auto deferred_cast = cast_record(bir::CastOpcode::FPExt,
                                          bir::TypeKind::F32,
                                          bir::TypeKind::F64);
-  if (deferred_alu.operation != aarch64_codegen::ScalarAluOperationKind::Deferred ||
+  if (deferred_alu.operation != aarch64_codegen::ScalarAluOperationKind::Mul ||
       deferred_alu.supported_integer_operation ||
+      deferred_alu.supported_floating_operation ||
       deferred_alu.source_binary_opcode != bir::BinaryOpcode::Mul ||
       deferred_cast.operation != aarch64_codegen::ScalarCastOperationKind::Deferred ||
       deferred_cast.supported_simple_integer_cast ||
@@ -214,7 +225,7 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
           aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
       deferred_cast_node.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
-      deferred_alu_node.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
+      deferred_alu_node.opcode != aarch64_codegen::MachineOpcode::Mul ||
       deferred_cast_node.opcode != aarch64_codegen::MachineOpcode::Unspecified ||
       deferred_alu_node.selection.diagnostic !=
           "scalar ALU operation is outside the selected subset" ||

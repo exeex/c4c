@@ -16,6 +16,7 @@
 
 namespace {
 
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
@@ -1215,6 +1216,20 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedStoragePlanValue fpr_storage(prepare::PreparedValueId value_id,
+                                              c4c::ValueNameId value_name,
+                                              const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
 prepare::PreparedBirModule prepared_with_frame_slot_load(bool include_storage = true) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1543,6 +1558,91 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
       .values = values,
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_f64_scalar_alu(
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Mul,
+    bool use_fpr_storage = true,
+    bir::TypeKind type = bir::TypeKind::F64) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.fp");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.fp.entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("dispatch.fp.entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto result_name = prepared.names.value_names.intern("%fp");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.fp",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.fp.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = opcode,
+                      .result = bir::Value::named(type, "%fp"),
+                      .operand_type = type,
+                      .lhs = bir::Value::named(type, "%lhs"),
+                      .rhs = bir::Value::named(type, "%rhs"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  const char* lhs_register = type == bir::TypeKind::F32 ? "s1" : "d1";
+  const char* rhs_register = type == bir::TypeKind::F32 ? "s2" : "d2";
+  const char* result_register = type == bir::TypeKind::F32 ? "s0" : "d0";
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{30},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = lhs_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{31},
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = rhs_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{32},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = result_register,
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          use_fpr_storage
+              ? std::vector<prepare::PreparedStoragePlanValue>{
+                    fpr_storage(prepare::PreparedValueId{30}, lhs_name, lhs_register),
+                    fpr_storage(prepare::PreparedValueId{31}, rhs_name, rhs_register),
+                    fpr_storage(prepare::PreparedValueId{32}, result_name, result_register)}
+              : std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{30}, lhs_name, lhs_register),
+                    register_storage(prepare::PreparedValueId{31}, rhs_name, rhs_register),
+                    register_storage(prepare::PreparedValueId{32}, result_name, result_register)},
   });
   return prepared;
 }
@@ -2843,6 +2943,79 @@ int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
   return 0;
 }
 
+int block_dispatch_lowers_prepared_f64_scalar_alu_with_fpr_registers() {
+  auto prepared = prepared_with_f64_scalar_alu();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected dispatch to select F64 scalar ALU plus return");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (scalar == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !scalar->scalar_alu.has_value() || scalar->source_binary_opcode != bir::BinaryOpcode::Mul ||
+      scalar->scalar_alu->operation != aarch64_codegen::ScalarAluOperationKind::Mul ||
+      !scalar->scalar_alu->supported_floating_operation ||
+      scalar->scalar_alu->supported_integer_operation ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->reg != aarch64_abi::d_register(0)) {
+    return fail("expected selected F64 scalar ALU to preserve result FPR facts");
+  }
+  const auto* lhs =
+      std::get_if<aarch64_codegen::RegisterOperand>(&scalar->scalar_alu->lhs.payload);
+  const auto* rhs =
+      std::get_if<aarch64_codegen::RegisterOperand>(&scalar->scalar_alu->rhs.payload);
+  if (lhs == nullptr || rhs == nullptr || lhs->reg != aarch64_abi::d_register(1) ||
+      rhs->reg != aarch64_abi::d_register(2) ||
+      block.instructions.front().target.defs.front().reg != aarch64_abi::d_register(0)) {
+    return fail("expected selected F64 scalar ALU to preserve source FPR facts");
+  }
+  return 0;
+}
+
+int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
+  auto prepared = prepared_with_f64_scalar_alu(bir::BinaryOpcode::Add, false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 || diagnostics.entries.empty()) {
+    return fail("expected F64 scalar ALU without FPR facts to stay fail-closed");
+  }
+  bool saw_scalar_diagnostic = false;
+  for (const auto& diagnostic : diagnostics.entries) {
+    saw_scalar_diagnostic =
+        saw_scalar_diagnostic ||
+        diagnostic.instruction_family == aarch64_module::InstructionLoweringFamily::Scalar;
+  }
+  if (!saw_scalar_diagnostic) {
+    return fail("expected F64 scalar ALU without FPR facts to stay fail-closed");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   for (const auto kind :
        {StoreDispatchFixtureKind::FrameSlot, StoreDispatchFixtureKind::PointerValue}) {
@@ -2989,6 +3162,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_f64_scalar_alu_with_fpr_registers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_defers_floating_scalar_alu_missing_fpr_facts();
       status != 0) {
     return status;
   }

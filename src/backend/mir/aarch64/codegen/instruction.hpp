@@ -115,6 +115,8 @@ enum class MachineOpcode {
   CallBoundaryAbiBinding,
   Add,
   Sub,
+  Mul,
+  Div,
   And,
   Or,
   Xor,
@@ -187,6 +189,8 @@ enum class MachineSideEffectKind {
 enum class ScalarAluOperationKind {
   Add,
   Sub,
+  Mul,
+  Div,
   And,
   Or,
   Xor,
@@ -517,6 +521,7 @@ struct ScalarAluRecord {
   OperandRecord lhs;
   OperandRecord rhs;
   bool supported_integer_operation = false;
+  bool supported_floating_operation = false;
 };
 
 struct ScalarCastRecord {
@@ -946,6 +951,8 @@ struct InstructionRecord {
     PreparedAddressMaterializationRecordError error);
 [[nodiscard]] bool is_compare_predicate(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode);
+[[nodiscard]] bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode);
+[[nodiscard]] bool is_scalar_alu_floating_type(bir::TypeKind type);
 [[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     bir::BinaryOpcode opcode);

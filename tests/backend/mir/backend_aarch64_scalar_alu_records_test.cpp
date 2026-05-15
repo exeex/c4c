@@ -32,6 +32,24 @@ aarch64_codegen::OperandRecord prepared_register_operand(prepare::PreparedValueI
   });
 }
 
+aarch64_codegen::OperandRecord prepared_fpr_operand(prepare::PreparedValueId value_id,
+                                                    c4c::ValueNameId value_name,
+                                                    bir::TypeKind type,
+                                                    unsigned reg_index) {
+  return aarch64_codegen::make_register_operand(aarch64_codegen::RegisterOperand{
+      .reg = type == bir::TypeKind::F32 ? aarch64_abi::s_register(reg_index)
+                                        : aarch64_abi::d_register(reg_index),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepare::PreparedRegisterClass::Float,
+      .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+      .expected_view = type == bir::TypeKind::F32 ? aarch64_abi::RegisterView::S
+                                                  : aarch64_abi::RegisterView::D,
+      .contiguous_width = 1,
+  });
+}
+
 aarch64_codegen::ScalarAluRecord scalar_alu_record(
     aarch64_codegen::ScalarAluOperationKind operation,
     bir::BinaryOpcode source_opcode,
@@ -65,6 +83,9 @@ aarch64_codegen::ScalarAluRecord scalar_alu_record(
       .rhs = rhs,
       .supported_integer_operation =
           aarch64_codegen::is_scalar_alu_integer_opcode(source_opcode),
+      .supported_floating_operation =
+          aarch64_codegen::is_scalar_alu_floating_type(type) &&
+          aarch64_codegen::is_scalar_alu_floating_opcode(source_opcode),
   };
 }
 
@@ -211,9 +232,15 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
     return fail("expected non-slice opcodes to remain outside supported scalar ALU vocabulary");
   }
   if (aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Mul) !=
-          aarch64_codegen::ScalarAluOperationKind::Deferred ||
+          aarch64_codegen::ScalarAluOperationKind::Mul ||
+      aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::SDiv) !=
+          aarch64_codegen::ScalarAluOperationKind::Div ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Eq) !=
           aarch64_codegen::ScalarAluOperationKind::Deferred ||
+      aarch64_codegen::scalar_alu_operation_kind_name(
+          aarch64_codegen::ScalarAluOperationKind::Mul) != "mul" ||
+      aarch64_codegen::scalar_alu_operation_kind_name(
+          aarch64_codegen::ScalarAluOperationKind::Div) != "div" ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Deferred) != "deferred") {
     return fail("expected deferred scalar forms to be named explicitly");
@@ -234,10 +261,45 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
                                                                     7));
   if (deferred.operation != aarch64_codegen::ScalarAluOperationKind::Deferred ||
       deferred.source_binary_opcode != bir::BinaryOpcode::Mul ||
-      deferred.supported_integer_operation) {
+      deferred.supported_integer_operation || deferred.supported_floating_operation) {
     return fail("expected deferred record to preserve source opcode without claiming support");
   }
 
+  return 0;
+}
+
+int floating_records_preserve_fp_simd_register_facts_without_integer_support() {
+  const auto f32_mul = scalar_alu_record(
+      aarch64_codegen::ScalarAluOperationKind::Mul,
+      bir::BinaryOpcode::Mul,
+      bir::TypeKind::F32,
+      prepare::PreparedValueId{50},
+      c4c::ValueNameId{17},
+      prepared_fpr_operand(prepare::PreparedValueId{51}, c4c::ValueNameId{18}, bir::TypeKind::F32, 1),
+      prepared_fpr_operand(prepare::PreparedValueId{52}, c4c::ValueNameId{19}, bir::TypeKind::F32, 2));
+  const auto f64_div = scalar_alu_record(
+      aarch64_codegen::ScalarAluOperationKind::Div,
+      bir::BinaryOpcode::SDiv,
+      bir::TypeKind::F64,
+      prepare::PreparedValueId{53},
+      c4c::ValueNameId{20},
+      prepared_fpr_operand(prepare::PreparedValueId{54}, c4c::ValueNameId{21}, bir::TypeKind::F64, 3),
+      prepared_fpr_operand(prepare::PreparedValueId{55}, c4c::ValueNameId{22}, bir::TypeKind::F64, 4));
+
+  if (!f32_mul.supported_floating_operation || f32_mul.supported_integer_operation ||
+      !f64_div.supported_floating_operation || f64_div.supported_integer_operation) {
+    return fail("expected F32/F64 ALU records to claim only floating support");
+  }
+  const auto f32_node =
+      aarch64_codegen::make_scalar_instruction(aarch64_codegen::make_scalar_alu_instruction_record(f32_mul));
+  const auto f64_node =
+      aarch64_codegen::make_scalar_instruction(aarch64_codegen::make_scalar_alu_instruction_record(f64_div));
+  if (f32_node.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      f64_node.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      f32_node.opcode != aarch64_codegen::MachineOpcode::Mul ||
+      f64_node.opcode != aarch64_codegen::MachineOpcode::Div) {
+    return fail("expected F32/F64 ALU records to select structured machine nodes");
+  }
   return 0;
 }
 
@@ -253,6 +315,10 @@ int main() {
     return status;
   }
   if (const int status = deferred_scalar_forms_are_explicit_records_not_generic_support();
+      status != 0) {
+    return status;
+  }
+  if (const int status = floating_records_preserve_fp_simd_register_facts_without_integer_support();
       status != 0) {
     return status;
   }

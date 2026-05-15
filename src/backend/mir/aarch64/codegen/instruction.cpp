@@ -175,6 +175,10 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "add";
     case MachineOpcode::Sub:
       return "sub";
+    case MachineOpcode::Mul:
+      return "mul";
+    case MachineOpcode::Div:
+      return "div";
     case MachineOpcode::And:
       return "and";
     case MachineOpcode::Or:
@@ -296,6 +300,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::CalleeSaveLoad:
     case MachineOpcode::CallBoundaryAbiBinding:
     case MachineOpcode::And:
+    case MachineOpcode::Mul:
+    case MachineOpcode::Div:
     case MachineOpcode::Or:
     case MachineOpcode::Xor:
     case MachineOpcode::SignExtend:
@@ -438,6 +444,10 @@ std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
       return "add";
     case ScalarAluOperationKind::Sub:
       return "sub";
+    case ScalarAluOperationKind::Mul:
+      return "mul";
+    case ScalarAluOperationKind::Div:
+      return "div";
     case ScalarAluOperationKind::And:
       return "and";
     case ScalarAluOperationKind::Or:
@@ -758,6 +768,41 @@ bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
   return false;
 }
 
+bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+      return true;
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+bool is_scalar_alu_floating_type(bir::TypeKind type) {
+  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
+}
+
 bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
   switch (opcode) {
     case bir::CastOpcode::SExt:
@@ -785,18 +830,20 @@ ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
       return ScalarAluOperationKind::Add;
     case bir::BinaryOpcode::Sub:
       return ScalarAluOperationKind::Sub;
+    case bir::BinaryOpcode::Mul:
+      return ScalarAluOperationKind::Mul;
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+      return ScalarAluOperationKind::Div;
     case bir::BinaryOpcode::And:
       return ScalarAluOperationKind::And;
     case bir::BinaryOpcode::Or:
       return ScalarAluOperationKind::Or;
     case bir::BinaryOpcode::Xor:
       return ScalarAluOperationKind::Xor;
-    case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
     case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
     case bir::BinaryOpcode::Eq:
@@ -1281,6 +1328,33 @@ std::optional<abi::RegisterView> scalar_register_view(
   return std::nullopt;
 }
 
+std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<abi::RegisterView> scalar_storage_register_view(bir::TypeKind type) {
+  if (const auto integer_view = scalar_register_view(type)) {
+    return integer_view;
+  }
+  return scalar_fp_register_view(type);
+}
+
 prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
@@ -1558,7 +1632,7 @@ std::optional<RegisterOperand> make_prepared_register_operand(
     return std::nullopt;
   }
 
-  const auto expected_view = scalar_register_view(type);
+  const auto expected_view = scalar_storage_register_view(type);
   if (!expected_view.has_value()) {
     return std::nullopt;
   }
@@ -1933,6 +2007,10 @@ MachineOpcode machine_opcode_from_scalar_alu(ScalarAluOperationKind operation) {
       return MachineOpcode::Add;
     case ScalarAluOperationKind::Sub:
       return MachineOpcode::Sub;
+    case ScalarAluOperationKind::Mul:
+      return MachineOpcode::Mul;
+    case ScalarAluOperationKind::Div:
+      return MachineOpcode::Div;
     case ScalarAluOperationKind::And:
       return MachineOpcode::And;
     case ScalarAluOperationKind::Or:
@@ -2271,7 +2349,8 @@ MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& i
 
 MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& instruction) {
   if (instruction.scalar_alu.has_value()) {
-    if (instruction.scalar_alu->supported_integer_operation &&
+    if ((instruction.scalar_alu->supported_integer_operation ||
+         instruction.scalar_alu->supported_floating_operation) &&
         instruction.scalar_alu->operation != ScalarAluOperationKind::Deferred) {
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
@@ -3444,14 +3523,21 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       storage_plan.function_name != value_locations.function_name) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::InvalidFunction);
   }
-  if (!is_scalar_alu_integer_opcode(binary.opcode)) {
+  const bool is_integer_operation =
+      scalar_register_view(binary.operand_type).has_value() &&
+      scalar_register_view(binary.result.type).has_value() &&
+      is_scalar_alu_integer_opcode(binary.opcode);
+  const bool is_floating_operation = is_scalar_alu_floating_type(binary.operand_type) &&
+                                     is_scalar_alu_floating_type(binary.result.type) &&
+                                     is_scalar_alu_floating_opcode(binary.opcode);
+  if (!is_integer_operation && !is_floating_operation) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
   if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultValue);
   }
-  if (!scalar_register_view(binary.result.type).has_value() ||
-      !scalar_register_view(binary.operand_type).has_value()) {
+  if (!scalar_storage_register_view(binary.result.type).has_value() ||
+      !scalar_storage_register_view(binary.operand_type).has_value()) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOperandType);
   }
 
@@ -3502,7 +3588,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .result_register = result_register,
               .lhs = lhs,
               .rhs = rhs,
-              .supported_integer_operation = true,
+              .supported_integer_operation = is_integer_operation,
+              .supported_floating_operation = is_floating_operation,
           },
       .error = PreparedScalarAluRecordError::None,
   };

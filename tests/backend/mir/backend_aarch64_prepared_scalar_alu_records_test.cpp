@@ -66,6 +66,20 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedStoragePlanValue fpr_storage(prepare::PreparedValueId value_id,
+                                              c4c::ValueNameId value_name,
+                                              const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
 prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
   return prepare::PreparedRegisterPlacement{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -122,6 +136,33 @@ PreparedScalarFixture make_i64_fixture() {
               register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "x1"),
               register_storage(prepare::PreparedValueId{11}, fixture.rhs_name, "x2"),
               register_storage(prepare::PreparedValueId{12}, fixture.result_name, "x0"),
+          },
+  };
+  return fixture;
+}
+
+PreparedScalarFixture make_f64_fixture() {
+  PreparedScalarFixture fixture;
+  fixture.function_name = fixture.names.function_names.intern("f.fp");
+  fixture.lhs_name = fixture.names.value_names.intern("%lhs");
+  fixture.rhs_name = fixture.names.value_names.intern("%rhs");
+  fixture.result_name = fixture.names.value_names.intern("%sum");
+  fixture.locations = prepare::PreparedValueLocationFunction{
+      .function_name = fixture.function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{20}, fixture.function_name, fixture.lhs_name, "d1"),
+              register_home(prepare::PreparedValueId{21}, fixture.function_name, fixture.rhs_name, "d2"),
+              register_home(prepare::PreparedValueId{22}, fixture.function_name, fixture.result_name, "d0"),
+          },
+  };
+  fixture.storage = prepare::PreparedStoragePlanFunction{
+      .function_name = fixture.function_name,
+      .values =
+          {
+              fpr_storage(prepare::PreparedValueId{20}, fixture.lhs_name, "d1"),
+              fpr_storage(prepare::PreparedValueId{21}, fixture.rhs_name, "d2"),
+              fpr_storage(prepare::PreparedValueId{22}, fixture.result_name, "d0"),
           },
   };
   return fixture;
@@ -226,6 +267,60 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
       }
     }
   }
+  return 0;
+}
+
+int supported_floating_scalar_alu_records_preserve_fpr_facts() {
+  for (const auto opcode :
+       {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub, bir::BinaryOpcode::Mul,
+        bir::BinaryOpcode::SDiv}) {
+    auto fixture = make_f64_fixture();
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names, fixture.locations, fixture.storage, binary(opcode, bir::TypeKind::F64));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
+      return fail("expected supported F64 scalar ALU prepared conversion to succeed");
+    }
+
+    const auto& instruction = *result.record;
+    const auto& alu = *instruction.scalar_alu;
+    const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
+    const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
+    if (!alu.supported_floating_operation || alu.supported_integer_operation ||
+        alu.operand_type != bir::TypeKind::F64 || alu.result_type != bir::TypeKind::F64 ||
+        !alu.result_register.has_value() || lhs == nullptr || rhs == nullptr ||
+        alu.result_register->reg != aarch64_abi::d_register(0) ||
+        lhs->reg != aarch64_abi::d_register(1) ||
+        rhs->reg != aarch64_abi::d_register(2) ||
+        alu.result_register->expected_view != aarch64_abi::RegisterView::D ||
+        lhs->expected_view != aarch64_abi::RegisterView::D ||
+        rhs->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+        rhs->prepared_class != prepare::PreparedRegisterClass::Float) {
+      return fail("expected F64 ALU record to preserve typed FPR/SIMD register facts");
+    }
+    const auto machine = aarch64_codegen::make_scalar_instruction(instruction);
+    if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        machine.defs.size() != 1 || machine.uses.size() != 2 ||
+        machine.defs.front().reg != aarch64_abi::d_register(0)) {
+      return fail("expected F64 ALU machine node to select with FPR def/use facts");
+    }
+  }
+
+  auto f32 = make_f64_fixture();
+  f32.locations.value_homes[0].register_name = "s1";
+  f32.locations.value_homes[1].register_name = "s2";
+  f32.locations.value_homes[2].register_name = "s0";
+  f32.storage.values[0] = fpr_storage(prepare::PreparedValueId{20}, f32.lhs_name, "s1");
+  f32.storage.values[1] = fpr_storage(prepare::PreparedValueId{21}, f32.rhs_name, "s2");
+  f32.storage.values[2] = fpr_storage(prepare::PreparedValueId{22}, f32.result_name, "s0");
+  const auto f32_result = aarch64_codegen::make_prepared_scalar_alu_record(
+      f32.names, f32.locations, f32.storage, binary(bir::BinaryOpcode::Mul, bir::TypeKind::F32));
+  if (!f32_result.record.has_value() || !f32_result.record->result_register.has_value() ||
+      f32_result.record->result_register->reg != aarch64_abi::s_register(0) ||
+      f32_result.record->result_register->expected_view != aarch64_abi::RegisterView::S) {
+    return fail("expected F32 ALU record to preserve S-register destination facts");
+  }
+
   return 0;
 }
 
@@ -458,6 +553,23 @@ int unsupported_and_incomplete_facts_fail_closed() {
     return fail("expected unsupported scalar opcode to fail closed");
   }
 
+  auto fp = make_f64_fixture();
+  const auto f128 = aarch64_codegen::make_prepared_scalar_alu_record(
+      fp.names, fp.locations, fp.storage, binary(bir::BinaryOpcode::Mul, bir::TypeKind::F128));
+  if (f128.record.has_value() ||
+      f128.error != aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+    return fail("expected F128 scalar ALU to fail closed");
+  }
+
+  fp.storage.values[0] = register_storage(prepare::PreparedValueId{20}, fp.lhs_name, "x1");
+  fp.locations.value_homes[0].register_name = "x1";
+  const auto wrong_bank = aarch64_codegen::make_prepared_scalar_alu_record(
+      fp.names, fp.locations, fp.storage, binary(bir::BinaryOpcode::Add, bir::TypeKind::F64));
+  if (wrong_bank.record.has_value() ||
+      wrong_bank.error != aarch64_codegen::PreparedScalarAluRecordError::RegisterConversionFailed) {
+    return fail("expected F64 scalar ALU with GPR storage to fail closed");
+  }
+
   const auto compare = aarch64_codegen::make_prepared_scalar_alu_record(
       fixture.names, fixture.locations, fixture.storage, binary(bir::BinaryOpcode::Eq, bir::TypeKind::I64));
   if (compare.record.has_value() ||
@@ -514,6 +626,10 @@ int unsupported_and_incomplete_facts_fail_closed() {
 
 int main() {
   if (const int status = supported_scalar_alu_records_preserve_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = supported_floating_scalar_alu_records_preserve_fpr_facts();
       status != 0) {
     return status;
   }
