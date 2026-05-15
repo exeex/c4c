@@ -1,14 +1,14 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Select Binary128 Soft-Float Helper Nodes
+Current Step ID: 4.2
+Current Step Title: Comparison Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 extended prepared F128 soft-float helper identity and record-only
+Step 4.1 extended prepared F128 soft-float helper identity and record-only
 AArch64 helper-boundary selection from add/sub/mul to binary128 division.
 Prepared F128 `SDiv` now maps to `PreparedF128RuntimeHelperKind::Div` and
 `__divtf3`, dispatch admits division into the existing complete
@@ -17,15 +17,20 @@ full-width carrier, ABI, marshaling, clobber, live-preservation, and
 selected-call ownership facts. Unsupported adjacent helper families remain
 fail-closed. No final assembly printing was added.
 
+Plan-owner split Step 4 after review
+`review/237_step4_after_div_route_review.md`: Step 4.1 is the completed
+binary arithmetic helper boundary, and the active packet is now Step 4.2 for
+comparison helper semantics. Remaining cast, sign-bit negation, and unsupported
+helper-family work are separate Step 4 substeps in `plan.md`.
+
 ## Suggested Next
 
-Stay on Step 4 and choose the next focused helper-family/helper-identity
-packet, or hand the completed add/sub/mul/div helper-boundary slice back for
-supervisor review. Extend prepared helper identity and record-only selection
-beyond F128 add/sub/mul/div only when the semantic helper contract, ownership
-facts, ABI/marshaling, clobber policy, and live-preservation facts are
-complete; comparison, cast, sign-bit, unsigned division/remainder, and other
-helper-family work remain Step 4 work.
+Delegate Step 4.2 as the next focused packet: define predicate-to-helper
+identity, comparison result ownership, and later-user full-source reload or
+preservation requirements before admitting F128 comparison selection. Keep cast
+work in Step 4.3, sign-bit negation in Step 4.4, and unsupported helper-family
+diagnostics in Step 4.5 unless the supervisor deliberately chooses a different
+substep order.
 
 ## Watchouts
 

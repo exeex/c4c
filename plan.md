@@ -171,7 +171,8 @@ Completion check:
 ### Step 4: Select Binary128 Soft-Float Helper Nodes
 
 Goal: lower binary128 arithmetic, comparisons, casts, and sign-bit negation
-through structured helper-call records.
+through structured records backed by the correct prepared helper or
+full-width-operation authority.
 
 Primary targets:
 - `src/backend/prealloc/regalloc.cpp`
@@ -180,17 +181,107 @@ Primary targets:
 - helper-boundary tests
 
 Actions:
-- Map supported binary128 operations to explicit helper identities and operand
-  contracts.
-- Model argument marshaling, result unmarshaling, live-value preservation, and
-  clobbers from prepared facts.
+- Keep the completed add/sub/mul/div route as the binary arithmetic helper
+  boundary only; do not reuse that record shape for comparison, cast, or
+  sign-bit work by analogy.
+- For each remaining helper family, define the prepared helper identity,
+  operand/result ownership, ABI/marshaling, clobber policy, live-preservation,
+  and later-user reload contract before admitting selection.
 - Keep unsupported operations diagnosed until their helper contract is
   structured.
 
+#### Step 4.1: Binary Arithmetic Helper Boundary
+
+Goal: select F128 add, sub, mul, and signed division through structured
+soft-float helper-call records.
+
+Actions:
+- Map only the binary arithmetic opcodes with complete prepared authority to
+  explicit helper identities such as `__addtf3`, `__subtf3`, `__multf3`, and
+  `__divtf3`.
+- Require full F128 operand/result types, q-register or equivalent full-width
+  carrier facts, ABI/marshaling facts, clobbers, live-preservation policy, and
+  selected-call ownership.
+- Keep unsigned division, remainders, comparisons, casts, bitwise/logical
+  families, and sign-bit negation outside this record until their contracts
+  are deliberately modeled.
+
 Completion check:
-- Tests prove arithmetic helper calls preserve full 16-byte operands/results.
-- Comparison and cast tests prove later users reload the full tracked source
-  instead of scalar approximations.
+- Record-level tests prove add/sub/mul/div helper calls preserve full 16-byte
+  operands/results and remain fail-closed for adjacent unsupported helper
+  families.
+
+#### Step 4.2: Comparison Helper Boundary
+
+Goal: lower F128 comparisons only after predicate-specific helper semantics and
+non-F128 result ownership are prepared.
+
+Actions:
+- Define predicate-to-helper identity and result shape for ordered/unordered
+  comparison cases selected by the supervisor.
+- Model how later users consume the comparison result while reloading or
+  preserving the full tracked F128 sources.
+- Prove missing predicate/helper authority reports diagnostics instead of
+  falling through to scalar `F64` comparison or arithmetic helper records.
+
+Completion check:
+- Comparison tests prove helper identity, result ownership, full-source
+  preservation, and fail-closed behavior for unmodeled predicates.
+
+#### Step 4.3: Cast Helper Boundary
+
+Goal: lower F128 casts only after unary source/result type-pair contracts and
+ABI ownership are prepared.
+
+Actions:
+- Define supported F128 cast source/result pairs and their helper identities.
+- Model unary argument marshaling, result ownership, source preservation, and
+  clobbers from prepared facts.
+- Keep unsupported casts diagnosed until their type-pair helper contracts are
+  explicit.
+
+Completion check:
+- Cast tests prove full-width F128 source preservation, correct result
+  ownership for the destination type, and fail-closed behavior for unsupported
+  cast pairs.
+
+#### Step 4.4: Sign-Bit Negation Boundary
+
+Goal: decide and implement the sign-bit negation route as a distinct semantic
+boundary, not as binary arithmetic by analogy.
+
+Actions:
+- Determine whether F128 sign-bit negation belongs to a helper call,
+  full-width bit operation, or separate prepared transport/mask authority.
+- Add selection only after the chosen route has complete full-width operand,
+  result, clobber, and preservation facts.
+- Reject scalar `F64` sign manipulation and fixed scratch-register snippets.
+
+Completion check:
+- Sign-bit negation tests prove the chosen full-width route and keep incomplete
+  or unmodeled authority diagnosed.
+
+#### Step 4.5: Unsupported Helper-Family Diagnostics
+
+Goal: preserve explicit diagnostics for helper families whose prepared
+contracts are still absent.
+
+Actions:
+- Keep unsigned division, remainders, bitwise/logical families, and other
+  unmodeled F128 helper cases unsupported unless a focused packet adds complete
+  prepared authority.
+- Test that unsupported cases do not silently select binary arithmetic helper
+  records, scalar `F64` operations, or testcase-shaped callee guesses.
+
+Completion check:
+- Unsupported-family tests prove fail-closed diagnostics remain clear after
+  comparison, cast, and sign-bit packets land.
+
+Completion check:
+- Step 4.1 through Step 4.5 completion checks are satisfied.
+- Any helper family that lacks complete prepared authority remains diagnosed
+  instead of selected through scalar approximations or binary-arithmetic record
+  reuse.
 
 ### Step 5: Print Supported Binary128 Machine Nodes
 
