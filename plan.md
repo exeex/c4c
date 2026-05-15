@@ -7,7 +7,10 @@ Source Idea: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 
 Transcribe the binary128 AArch64 route into small executable steps that add
 structured prepared facts, selected machine nodes, and printer support without
-collapsing `F128` values into scalar `F64` shortcuts.
+collapsing `F128` values into scalar `F64` shortcuts. Full-width F128 constant
+carrier design is tracked separately in
+`ideas/open/241_f128_full_width_constant_carriers.md` and must not be absorbed
+into this runbook as backend Step 3 expansion.
 
 ## Goal
 
@@ -38,8 +41,11 @@ or by named-testcase helper shortcuts.
 
 - Prepared carrier facts for `bir::TypeKind::F128` source tracking,
   16-byte temporary storage, and helper-call resource/clobber boundaries.
-- AArch64 instruction records for binary128 load, store, copy, constant,
-  sign-bit negation, comparison, cast, and soft-float helper-call cases.
+- AArch64 instruction records for binary128 load, store, copy, sign-bit
+  negation, comparison, cast, and soft-float helper-call cases.
+- F128 constant transport remains fail-closed here until
+  `ideas/open/241_f128_full_width_constant_carriers.md` provides prepared
+  full-width constant payload authority.
 - Machine-printer support for only the structured records that have complete
   prepared authority.
 - Focused backend tests proving full-width transport and helper-boundary facts.
@@ -56,6 +62,9 @@ or by named-testcase helper shortcuts.
   claim capability progress.
 - Do not merge atomic, intrinsic, or inline-assembly machine-node work into
   this plan.
+- Do not design BIR or prepared full-width F128 constant carriers inside this
+  AArch64 backend runbook; use
+  `ideas/open/241_f128_full_width_constant_carriers.md` for that dependency.
 
 ## Working Model
 
@@ -133,8 +142,9 @@ Completion check:
 
 ### Step 3: Select Binary128 Memory And Copy Nodes
 
-Goal: lower binary128 load, store, copy, and constant transport into structured
-AArch64 machine records.
+Goal: lower binary128 load, store, and copy transport into structured AArch64
+machine records while leaving constant transport fail-closed until the separate
+full-width constant-carrier dependency exists.
 
 Primary targets:
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
@@ -143,16 +153,20 @@ Primary targets:
 
 Actions:
 - Add binary128 instruction-family or opcode ownership for full-width memory
-  transport and constants.
+  transport.
 - Lower only when prepared carrier facts prove the source, destination, and
   16-byte storage contract.
 - Preserve failure diagnostics for missing carrier facts instead of falling
   through to scalar memory or unsupported text output.
+- Keep F128 constant transport unsupported here unless a structured full-width
+  constant carrier from
+  `ideas/open/241_f128_full_width_constant_carriers.md` has first landed.
 
 Completion check:
 - Dispatch tests prove selected binary128 load/store/copy nodes preserve
   low/high halves or equivalent full-width storage facts.
-- Missing-fact tests remain fail-closed.
+- Missing-fact and F128 constant-transport tests remain fail-closed when no
+  full-width constant carrier exists.
 
 ### Step 4: Select Binary128 Soft-Float Helper Nodes
 

@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select Binary128 Memory And Copy Nodes
+Current Step ID: 4
+Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 # Current Packet
 
@@ -22,13 +22,18 @@ named regalloc/storage facts. There is therefore no genuine prepared constant
 carrier fact for a structured AArch64 Binary128 constant transport selection
 case yet.
 
+The plan owner split the missing full-width F128 constant-carrier authority
+into `ideas/open/241_f128_full_width_constant_carriers.md` and narrowed active
+Step 3 so it covers load/store/copy transport only. F128 constant transport
+remains fail-closed in this runbook until that dependency provides structured
+16-byte payload facts.
+
 ## Suggested Next
 
-Ask the plan owner to split or schedule a prepared F128 constant-carrier
-initiative before any backend constant transport selection work. The smallest
-future packet should first define how BIR or prepared state represents full
-16-byte Binary128 constants and then expose that fact to AArch64 instruction
-selection without using rendered-assembly substring matching.
+Proceed with Step 4: Select Binary128 Soft-Float Helper Nodes. The smallest
+future packet should map one supported helper-boundary case to structured
+binary128 helper-call records from prepared facts without reopening constant
+transport or printer support.
 
 ## Watchouts
 
