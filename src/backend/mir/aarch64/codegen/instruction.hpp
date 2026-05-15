@@ -302,6 +302,7 @@ enum class PreparedAddressMaterializationRecordError {
   MissingLabelIdentity,
   MissingAddressMaterializationPolicy,
   AddressMaterializationPolicyMismatch,
+  MissingTlsMaterializationFacts,
   TlsFactMismatch,
 };
 
@@ -592,6 +593,14 @@ struct AddressMaterializationRecord {
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;
   bool has_tls_address_space = false;
+  prepare::PreparedTlsMaterializationModel tls_model =
+      prepare::PreparedTlsMaterializationModel::None;
+  prepare::PreparedTlsThreadPointerRegister tls_thread_pointer_register =
+      prepare::PreparedTlsThreadPointerRegister::None;
+  prepare::PreparedTlsRelocationKind tls_high_relocation =
+      prepare::PreparedTlsRelocationKind::None;
+  prepare::PreparedTlsRelocationKind tls_low_relocation =
+      prepare::PreparedTlsRelocationKind::None;
   const prepare::PreparedAddressMaterialization* source_materialization = nullptr;
 };
 

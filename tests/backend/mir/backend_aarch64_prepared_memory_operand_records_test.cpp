@@ -276,6 +276,12 @@ PreparedAddressFixture make_address_fixture() {
                   .address_space = bir::AddressSpace::Tls,
                   .is_thread_local = true,
                   .has_tls_address_space = true,
+                  .tls_model =
+                      prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative,
+                  .tls_thread_pointer_register =
+                      prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0,
+                  .tls_high_relocation = prepare::PreparedTlsRelocationKind::Aarch64TprelHi12,
+                  .tls_low_relocation = prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc,
               },
               prepare::PreparedAddressMaterialization{
                   .function_name = fixture.function_name,
@@ -875,6 +881,12 @@ int address_materialization_records_preserve_prepared_carrier_facts() {
       !tls.record->has_tls_address_space ||
       tls.record->address_materialization_policy !=
           bir::GlobalAddressMaterializationPolicy::Direct ||
+      tls.record->tls_model !=
+          prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative ||
+      tls.record->tls_thread_pointer_register !=
+          prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0 ||
+      tls.record->tls_high_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
+      tls.record->tls_low_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc ||
       tls.record->result_value_id != prepare::PreparedValueId{22}) {
     return fail("expected TLS global address materialization to preserve TLS and result facts");
   }
@@ -973,6 +985,26 @@ int address_materialization_policy_and_identity_fail_closed() {
       aarch64_codegen::prepared_address_materialization_record_error_name(
           missing_symbol.error) != "missing_symbol_identity") {
     return fail("expected missing global address symbol identity to fail closed");
+  }
+
+  fixture = make_address_fixture();
+  fixture.addressing.address_materializations[2].tls_high_relocation =
+      prepare::PreparedTlsRelocationKind::None;
+  const auto missing_tls_fact =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          2);
+  if (missing_tls_fact.record.has_value() ||
+      missing_tls_fact.error !=
+          aarch64_codegen::PreparedAddressMaterializationRecordError::
+              MissingTlsMaterializationFacts ||
+      aarch64_codegen::prepared_address_materialization_record_error_name(
+          missing_tls_fact.error) != "missing_tls_materialization_facts") {
+    return fail("expected TLS address materialization without relocation facts to fail closed");
   }
 
   fixture = make_address_fixture();

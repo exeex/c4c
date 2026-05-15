@@ -887,25 +887,34 @@ void append_direct_global_address_materialization(PreparedNameTables& names,
     return;
   }
 
+  const bool is_tls_global = global != nullptr && global->is_thread_local;
   function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
       .function_name = function_name_id,
       .block_label = block_label_id,
       .inst_index = inst_index,
       .kind = policy == bir::GlobalAddressMaterializationPolicy::GotRequired
                   ? PreparedAddressMaterializationKind::GotGlobal
-                  : (global != nullptr && global->is_thread_local
-                         ? PreparedAddressMaterializationKind::TlsGlobal
-                         : PreparedAddressMaterializationKind::DirectGlobal),
+                  : (is_tls_global ? PreparedAddressMaterializationKind::TlsGlobal
+                                   : PreparedAddressMaterializationKind::DirectGlobal),
       .result_value_name = prepared_named_value_id(names, result),
       .symbol_name = *prepared_symbol_name,
       .address_materialization_policy =
           policy == bir::GlobalAddressMaterializationPolicy::Unspecified
               ? bir::GlobalAddressMaterializationPolicy::Direct
               : policy,
-      .address_space = global != nullptr && global->is_thread_local ? bir::AddressSpace::Tls
-                                                                    : bir::AddressSpace::Default,
-      .is_thread_local = global != nullptr && global->is_thread_local,
-      .has_tls_address_space = global != nullptr && global->is_thread_local,
+      .address_space = is_tls_global ? bir::AddressSpace::Tls : bir::AddressSpace::Default,
+      .is_thread_local = is_tls_global,
+      .has_tls_address_space = is_tls_global,
+      .tls_model = is_tls_global
+                       ? PreparedTlsMaterializationModel::LocalExecThreadPointerRelative
+                       : PreparedTlsMaterializationModel::None,
+      .tls_thread_pointer_register =
+          is_tls_global ? PreparedTlsThreadPointerRegister::Aarch64TpidrEl0
+                        : PreparedTlsThreadPointerRegister::None,
+      .tls_high_relocation = is_tls_global ? PreparedTlsRelocationKind::Aarch64TprelHi12
+                                           : PreparedTlsRelocationKind::None,
+      .tls_low_relocation = is_tls_global ? PreparedTlsRelocationKind::Aarch64TprelLo12Nc
+                                          : PreparedTlsRelocationKind::None,
   });
 }
 

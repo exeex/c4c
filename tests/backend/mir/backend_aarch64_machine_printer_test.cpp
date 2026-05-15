@@ -935,6 +935,11 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
           .address_space = bir::AddressSpace::Tls,
           .is_thread_local = true,
           .has_tls_address_space = true,
+          .tls_model = prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative,
+          .tls_thread_pointer_register =
+              prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0,
+          .tls_high_relocation = prepare::PreparedTlsRelocationKind::Aarch64TprelHi12,
+          .tls_low_relocation = prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc,
           .source_materialization = &source,
       });
   const auto tls_result = aarch64_codegen::print_machine_instruction_line_payloads(tls);

@@ -1566,8 +1566,23 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
           << " address_space=" << address_space_name(materialization.address_space)
           << " tls_global=" << (materialization.is_thread_local ? "yes" : "no")
           << " tls_address_space="
-          << (materialization.has_tls_address_space ? "yes" : "no")
-          << "\n";
+          << (materialization.has_tls_address_space ? "yes" : "no");
+      if (materialization.kind == PreparedAddressMaterializationKind::TlsGlobal ||
+          materialization.tls_model != PreparedTlsMaterializationModel::None ||
+          materialization.tls_thread_pointer_register != PreparedTlsThreadPointerRegister::None ||
+          materialization.tls_high_relocation != PreparedTlsRelocationKind::None ||
+          materialization.tls_low_relocation != PreparedTlsRelocationKind::None) {
+        out << " tls_model="
+            << prepared_tls_materialization_model_name(materialization.tls_model)
+            << " tls_thread_pointer="
+            << prepared_tls_thread_pointer_register_name(
+                   materialization.tls_thread_pointer_register)
+            << " tls_high_reloc="
+            << prepared_tls_relocation_kind_name(materialization.tls_high_relocation)
+            << " tls_low_reloc="
+            << prepared_tls_relocation_kind_name(materialization.tls_low_relocation);
+      }
+      out << "\n";
     }
   }
 }

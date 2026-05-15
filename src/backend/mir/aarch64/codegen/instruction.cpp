@@ -670,6 +670,8 @@ std::string_view prepared_address_materialization_record_error_name(
       return "missing_address_materialization_policy";
     case PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch:
       return "address_materialization_policy_mismatch";
+    case PreparedAddressMaterializationRecordError::MissingTlsMaterializationFacts:
+      return "missing_tls_materialization_facts";
     case PreparedAddressMaterializationRecordError::TlsFactMismatch:
       return "tls_fact_mismatch";
   }
@@ -1626,6 +1628,16 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
           materialization.address_space != bir::AddressSpace::Tls) {
         return PreparedAddressMaterializationRecordError::TlsFactMismatch;
       }
+      if (materialization.tls_model !=
+              prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative ||
+          materialization.tls_thread_pointer_register !=
+              prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0 ||
+          materialization.tls_high_relocation !=
+              prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
+          materialization.tls_low_relocation !=
+              prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc) {
+        return PreparedAddressMaterializationRecordError::MissingTlsMaterializationFacts;
+      }
       record.symbol_name = materialization.symbol_name;
       record.symbol_label = prepare::prepared_link_name(names, *materialization.symbol_name);
       if (record.symbol_label.empty()) {
@@ -1718,6 +1730,10 @@ PreparedAddressMaterializationRecordResult make_address_record_from_prepared_mat
       .address_space = materialization->address_space,
       .is_thread_local = materialization->is_thread_local,
       .has_tls_address_space = materialization->has_tls_address_space,
+      .tls_model = materialization->tls_model,
+      .tls_thread_pointer_register = materialization->tls_thread_pointer_register,
+      .tls_high_relocation = materialization->tls_high_relocation,
+      .tls_low_relocation = materialization->tls_low_relocation,
       .source_materialization = materialization,
   };
 
@@ -2350,6 +2366,19 @@ MachineNodeStatusRecord address_materialization_selection_status(
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "TLS address materialization is missing TLS facts"};
+  }
+  if (instruction.kind == AddressMaterializationKind::TlsRelative &&
+      (instruction.tls_model !=
+           prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative ||
+       instruction.tls_thread_pointer_register !=
+           prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0 ||
+       instruction.tls_high_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
+       instruction.tls_low_relocation !=
+           prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic =
+            "TLS address materialization is missing thread-pointer-relative relocation facts"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }

@@ -538,6 +538,57 @@ enum class PreparedAddressMaterializationKind {
   return "unknown";
 }
 
+enum class PreparedTlsMaterializationModel {
+  None,
+  LocalExecThreadPointerRelative,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_tls_materialization_model_name(
+    PreparedTlsMaterializationModel model) {
+  switch (model) {
+    case PreparedTlsMaterializationModel::None:
+      return "none";
+    case PreparedTlsMaterializationModel::LocalExecThreadPointerRelative:
+      return "local_exec_thread_pointer_relative";
+  }
+  return "unknown";
+}
+
+enum class PreparedTlsThreadPointerRegister {
+  None,
+  Aarch64TpidrEl0,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_tls_thread_pointer_register_name(
+    PreparedTlsThreadPointerRegister reg) {
+  switch (reg) {
+    case PreparedTlsThreadPointerRegister::None:
+      return "none";
+    case PreparedTlsThreadPointerRegister::Aarch64TpidrEl0:
+      return "aarch64_tpidr_el0";
+  }
+  return "unknown";
+}
+
+enum class PreparedTlsRelocationKind {
+  None,
+  Aarch64TprelHi12,
+  Aarch64TprelLo12Nc,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_tls_relocation_kind_name(
+    PreparedTlsRelocationKind kind) {
+  switch (kind) {
+    case PreparedTlsRelocationKind::None:
+      return "none";
+    case PreparedTlsRelocationKind::Aarch64TprelHi12:
+      return "aarch64_tprel_hi12";
+    case PreparedTlsRelocationKind::Aarch64TprelLo12Nc:
+      return "aarch64_tprel_lo12_nc";
+  }
+  return "unknown";
+}
+
 struct PreparedAddressMaterialization {
   FunctionNameId function_name = kInvalidFunctionName;
   BlockLabelId block_label = kInvalidBlockLabel;
@@ -555,6 +606,11 @@ struct PreparedAddressMaterialization {
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;
   bool has_tls_address_space = false;
+  PreparedTlsMaterializationModel tls_model = PreparedTlsMaterializationModel::None;
+  PreparedTlsThreadPointerRegister tls_thread_pointer_register =
+      PreparedTlsThreadPointerRegister::None;
+  PreparedTlsRelocationKind tls_high_relocation = PreparedTlsRelocationKind::None;
+  PreparedTlsRelocationKind tls_low_relocation = PreparedTlsRelocationKind::None;
 };
 
 struct PreparedMemoryAccess {

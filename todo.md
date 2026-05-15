@@ -8,29 +8,43 @@ Current Step Title: Specify TLS Materialization Facts
 
 ## Just Finished
 
-Lifecycle close/switch completed: prerequisite idea 247 is closed after
-explicit GOT policy reached target options, BIR symbol metadata, prepared
-address-materialization facts, and selected AArch64 `GotPageLow12` records.
-Idea 233 is active again with completed direct, label, and GOT-policy/selected
-record progress preserved.
+Step 7 specified and carried explicit TLS address-materialization facts through
+prepared data and AArch64 selected records without enabling terminal TLS
+assembly output.
+
+- Prepared `TlsGlobal` address materializations now carry a structured
+  local-exec thread-pointer-relative model, the AArch64 thread-pointer register
+  fact `tpidr_el0`, and explicit high/low TLS relocation identities
+  `tprel_hi12` and `tprel_lo12_nc`.
+- Prepared dumps expose those TLS facts beside the existing symbol, policy,
+  address-space, and TLS booleans.
+- AArch64 `AddressMaterializationRecord` now preserves the TLS model,
+  thread-pointer register, and relocation identities from prepared facts.
+- AArch64 selection for `TlsRelative` fails closed when TLS address-space facts
+  or thread-pointer-relative relocation facts are missing; it does not infer TLS
+  behavior from symbol spelling or storage-class text.
+- Terminal TLS printing remains deferred and continues to reject selected TLS
+  records with an explicit diagnostic.
 
 ## Suggested Next
 
-Execute Step 7 from `plan.md`: specify and carry explicit TLS materialization
-facts so selected TLS records expose thread-pointer-relative policy and
-relocation operands before any terminal TLS printer output is enabled.
+Execute Step 8 from `plan.md`: implement the printer-owned terminal address
+materialization output for the selected record kinds whose relocation sequences
+are now fully specified, while keeping unsupported cases fail-closed.
 
 ## Watchouts
 
-- Terminal GOT and label printing remain deferred to Step 8; do not format
-  them from names.
-- Do not infer TLS behavior from symbol spelling or storage-class text.
-- Keep direct global, string constant, label, and GOT selected-record behavior
-  stable except for shared carrier coherence needed by TLS or printer work.
+- Terminal TLS printer output is still deferred; this packet only made TLS facts
+  explicit and selected-record-visible.
+- TLS facts currently model the local-exec thread-pointer-relative AArch64 form
+  from the legacy surface: `tpidr_el0`, `tprel_hi12`, and `tprel_lo12_nc`.
+- Do not revive the archived implicit `x0` scratch convention; result authority
+  remains the selected record's prepared result register.
+- Direct global, string constant, label, and GOT selected-record behavior should
+  remain stable except where printer work consumes the structured fields.
 
 ## Proof
 
-Close gate for prerequisite idea 247 used canonical backend logs:
-`test_before.log` and `test_after.log` both report 139/139 backend tests
-passing. `c4c-regression-guard` passed with non-decreasing pass-count mode and
-no new failures.
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+
+Result: passed, 139/139 backend tests green. Proof log: `test_after.log`.

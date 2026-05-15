@@ -3746,7 +3746,14 @@ int check_link_name_authoritative_global_access_activation(
           bir::GlobalAddressMaterializationPolicy::Direct ||
       tls_global->address_space != bir::AddressSpace::Tls ||
       !tls_global->is_thread_local ||
-      !tls_global->has_tls_address_space) {
+      !tls_global->has_tls_address_space ||
+      tls_global->tls_model !=
+          prepare::PreparedTlsMaterializationModel::LocalExecThreadPointerRelative ||
+      tls_global->tls_thread_pointer_register !=
+          prepare::PreparedTlsThreadPointerRegister::Aarch64TpidrEl0 ||
+      tls_global->tls_high_relocation != prepare::PreparedTlsRelocationKind::Aarch64TprelHi12 ||
+      tls_global->tls_low_relocation !=
+          prepare::PreparedTlsRelocationKind::Aarch64TprelLo12Nc) {
     return fail("expected TLS global materialization to preserve structured TLS facts");
   }
   const auto* got_global =
