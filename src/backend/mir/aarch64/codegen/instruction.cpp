@@ -629,6 +629,8 @@ std::string_view address_materialization_kind_name(AddressMaterializationKind ki
       return "tls_relative";
     case AddressMaterializationKind::StringConstant:
       return "string_constant";
+    case AddressMaterializationKind::LabelPageLow12:
+      return "label_page_low12";
     case AddressMaterializationKind::DeferredUnsupported:
       return "deferred_unsupported";
   }
@@ -660,6 +662,8 @@ std::string_view prepared_address_materialization_record_error_name(
       return "missing_symbol_identity";
     case PreparedAddressMaterializationRecordError::MissingStringIdentity:
       return "missing_string_identity";
+    case PreparedAddressMaterializationRecordError::MissingLabelIdentity:
+      return "missing_label_identity";
     case PreparedAddressMaterializationRecordError::TlsFactMismatch:
       return "tls_fact_mismatch";
   }
@@ -1568,6 +1572,7 @@ std::optional<AddressMaterializationKind> selected_address_materialization_kind(
     case prepare::PreparedAddressMaterializationKind::StringConstant:
       return AddressMaterializationKind::StringConstant;
     case prepare::PreparedAddressMaterializationKind::Label:
+      return AddressMaterializationKind::LabelPageLow12;
     case prepare::PreparedAddressMaterializationKind::GotGlobal:
       return AddressMaterializationKind::DeferredUnsupported;
     case prepare::PreparedAddressMaterializationKind::None:
@@ -1616,6 +1621,15 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
       }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::Label:
+      if (!materialization.target_label.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingLabelIdentity;
+      }
+      record.target_label = materialization.target_label;
+      record.target_label_name = prepare::prepared_block_label(names, *materialization.target_label);
+      if (record.target_label_name.empty()) {
+        return PreparedAddressMaterializationRecordError::MissingLabelIdentity;
+      }
+      return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::GotGlobal:
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::None:
@@ -1900,6 +1914,7 @@ MachineOpcode machine_opcode_from_address_materialization(
     case AddressMaterializationKind::DirectPageLow12:
     case AddressMaterializationKind::TlsRelative:
     case AddressMaterializationKind::StringConstant:
+    case AddressMaterializationKind::LabelPageLow12:
       return MachineOpcode::AddressMaterialization;
     case AddressMaterializationKind::DeferredUnsupported:
       return MachineOpcode::Unspecified;
@@ -2262,6 +2277,14 @@ MachineNodeStatusRecord address_materialization_selection_status(
       return MachineNodeStatusRecord{
           .status = MachineNodeSelectionStatus::MissingRequiredFacts,
           .diagnostic = "string address materialization is missing text identity"};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (instruction.kind == AddressMaterializationKind::LabelPageLow12) {
+    if (!instruction.target_label.has_value()) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic = "label address materialization is missing target label identity"};
     }
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
   }
@@ -2806,6 +2829,14 @@ InstructionRecord make_address_materialization_instruction(
     });
     operands.push_back(symbol);
     uses.push_back(effect_from_operand(symbol));
+  } else if (instruction.target_label.has_value()) {
+    const auto target = make_branch_target_operand(BranchTargetOperand{
+        .surface = RecordSurfaceKind::RecordOnly,
+        .block_label = *instruction.target_label,
+        .function_name = instruction.function_name,
+    });
+    operands.push_back(target);
+    uses.push_back(effect_from_operand(target));
   }
   const auto selection = address_materialization_selection_status(instruction);
   return InstructionRecord{

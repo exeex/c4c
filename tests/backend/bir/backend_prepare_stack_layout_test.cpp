@@ -2121,6 +2121,7 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
 
   bir::Block entry;
   entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
   entry.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
       .global_name_id = canonical_global_id,
@@ -2147,11 +2148,28 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .result = bir::Value::named_symbol_pointer("@g.tls", tls_global_id),
       .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.tls.source"),
   });
+  entry.insts.push_back(bir::LoadGlobalInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "label.ptr"),
+      .byte_offset = 12,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::Label,
+              .base_name = "target",
+              .byte_offset = 4,
+              .address_space = bir::AddressSpace::Fs,
+              .base_label_id = block_label_id(module, "target"),
+          },
+  });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
   };
 
   function.blocks.push_back(std::move(entry));
+  bir::Block target;
+  target.label = "target";
+  target.label_id = block_label_id(module, "target");
+  target.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(target));
   module.functions.push_back(std::move(function));
 
   prepare::PreparedBirModule prepared;
@@ -3621,8 +3639,8 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected raw-only compatibility global store to resolve by spelling");
   }
 
-  if (function_addressing->address_materializations.size() != 2) {
-    return fail("expected link-name global fixture to publish direct global address materializations");
+  if (function_addressing->address_materializations.size() != 3) {
+    return fail("expected link-name fixture to publish global and label address materializations");
   }
   const auto* direct_global =
       prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 3);
@@ -3657,6 +3675,25 @@ int check_link_name_authoritative_global_access_activation(
       !tls_global->is_thread_local ||
       !tls_global->has_tls_address_space) {
     return fail("expected TLS global materialization to preserve structured TLS facts");
+  }
+  const auto* label_address =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 5);
+  if (label_address == nullptr) {
+    return fail("expected prepared addressing to record label address materialization");
+  }
+  if (label_address->kind != prepare::PreparedAddressMaterializationKind::Label ||
+      !label_address->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *label_address->result_value_name) !=
+          "label.ptr" ||
+      label_address->symbol_name.has_value() ||
+      label_address->text_name.has_value() ||
+      !label_address->target_label.has_value() ||
+      prepare::prepared_block_label(prepared.names, *label_address->target_label) != "target" ||
+      label_address->byte_offset != 16 ||
+      label_address->address_space != bir::AddressSpace::Fs ||
+      label_address->is_thread_local ||
+      label_address->has_tls_address_space) {
+    return fail("expected label materialization to preserve target label and address facts");
   }
 
   return 0;

@@ -282,6 +282,7 @@ enum class AddressMaterializationKind {
   DirectPageLow12,
   TlsRelative,
   StringConstant,
+  LabelPageLow12,
   DeferredUnsupported,
 };
 
@@ -297,6 +298,7 @@ enum class PreparedAddressMaterializationRecordError {
   RegisterConversionFailed,
   MissingSymbolIdentity,
   MissingStringIdentity,
+  MissingLabelIdentity,
   TlsFactMismatch,
 };
 
@@ -579,6 +581,8 @@ struct AddressMaterializationRecord {
   std::string_view symbol_label;
   std::optional<c4c::TextId> text_name;
   std::string_view text_label;
+  std::optional<c4c::BlockLabelId> target_label;
+  std::string_view target_label_name;
   std::int64_t byte_offset = 0;
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;

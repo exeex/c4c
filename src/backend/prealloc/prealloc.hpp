@@ -548,6 +548,7 @@ struct PreparedAddressMaterialization {
   std::optional<PreparedValueHomeKind> result_home_kind;
   std::optional<LinkNameId> symbol_name;
   std::optional<TextId> text_name;
+  std::optional<BlockLabelId> target_label;
   std::int64_t byte_offset = 0;
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;

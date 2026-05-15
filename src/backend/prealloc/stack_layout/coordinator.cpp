@@ -906,6 +906,71 @@ void append_string_constant_address_materialization(PreparedNameTables& names,
   });
 }
 
+[[nodiscard]] std::optional<BlockLabelId> resolve_label_address_target(
+    PreparedNameTables& names,
+    const bir::NameTables& bir_names,
+    const bir::Function& function,
+    const bir::MemoryAddress& address) {
+  if (address.base_kind != bir::MemoryAddress::BaseKind::Label) {
+    return std::nullopt;
+  }
+  if (address.base_label_id != kInvalidBlockLabel) {
+    const std::string_view label = bir_names.block_labels.spelling(address.base_label_id);
+    if (!label.empty()) {
+      for (const auto& block : function.blocks) {
+        if (block.label_id == address.base_label_id || block.label == label) {
+          return names.block_labels.intern(label);
+        }
+      }
+    }
+  }
+  if (!address.base_name.empty()) {
+    for (const auto& block : function.blocks) {
+      if (block.label == address.base_name) {
+        return intern_preferred_block_label(names, bir_names, block.label_id, block.label);
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+void append_label_address_materialization(PreparedNameTables& names,
+                                          PreparedAddressingFunction& function_addressing,
+                                          std::vector<PrepareNote>& notes,
+                                          const bir::Module& module,
+                                          const bir::Function& function,
+                                          FunctionNameId function_name_id,
+                                          BlockLabelId block_label_id,
+                                          std::size_t inst_index,
+                                          const bir::Value& result,
+                                          const std::optional<bir::MemoryAddress>& address,
+                                          std::int64_t inst_byte_offset) {
+  if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named ||
+      !address.has_value() || address->base_kind != bir::MemoryAddress::BaseKind::Label) {
+    return;
+  }
+  const auto target_label =
+      resolve_label_address_target(names, module.names, function, *address);
+  if (!target_label.has_value()) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared label address materialization for '" + result.name +
+            "' is missing a target BlockLabelId");
+    return;
+  }
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = PreparedAddressMaterializationKind::Label,
+      .result_value_name = prepared_named_value_id(names, result),
+      .target_label = *target_label,
+      .byte_offset = address->byte_offset + inst_byte_offset,
+      .address_space = address->address_space,
+      .has_tls_address_space = address->address_space == bir::AddressSpace::Tls,
+  });
+}
+
 void append_address_materializations(PreparedNameTables& names,
                                      PreparedAddressingFunction& function_addressing,
                                      std::vector<PrepareNote>& notes,
@@ -948,6 +1013,18 @@ void append_address_materializations(PreparedNameTables& names,
             load_local->result,
             load_local->address,
             static_cast<std::int64_t>(load_local->byte_offset));
+        append_label_address_materialization(
+            names,
+            function_addressing,
+            notes,
+            module,
+            function,
+            function_name_id,
+            block_label_id,
+            inst_index,
+            load_local->result,
+            load_local->address,
+            static_cast<std::int64_t>(load_local->byte_offset));
       } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
         append_direct_global_address_materialization(
             names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, load_global->result);
@@ -956,6 +1033,18 @@ void append_address_materializations(PreparedNameTables& names,
             function_addressing,
             notes,
             module,
+            function_name_id,
+            block_label_id,
+            inst_index,
+            load_global->result,
+            load_global->address,
+            static_cast<std::int64_t>(load_global->byte_offset));
+        append_label_address_materialization(
+            names,
+            function_addressing,
+            notes,
+            module,
+            function,
             function_name_id,
             block_label_id,
             inst_index,

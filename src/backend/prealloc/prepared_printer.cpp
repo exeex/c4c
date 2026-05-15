@@ -1555,6 +1555,10 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
       if (materialization.text_name.has_value()) {
         out << " text=" << maybe_text_name(module.names, materialization.text_name);
       }
+      if (materialization.target_label.has_value()) {
+        out << " target_label="
+            << maybe_block_label(module.names, *materialization.target_label);
+      }
       out << " offset=" << materialization.byte_offset
           << " address_space=" << address_space_name(materialization.address_space)
           << " tls_global=" << (materialization.is_thread_local ? "yes" : "no")

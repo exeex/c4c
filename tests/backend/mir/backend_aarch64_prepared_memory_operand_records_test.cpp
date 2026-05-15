@@ -52,9 +52,11 @@ struct PreparedAddressFixture {
   prepare::PreparedNameTables names;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  c4c::BlockLabelId target_label = c4c::kInvalidBlockLabel;
   c4c::ValueNameId direct_result_name = c4c::kInvalidValueName;
   c4c::ValueNameId tls_result_name = c4c::kInvalidValueName;
   c4c::ValueNameId string_result_name = c4c::kInvalidValueName;
+  c4c::ValueNameId label_result_name = c4c::kInvalidValueName;
   c4c::LinkNameId global_name = c4c::kInvalidLinkName;
   c4c::LinkNameId tls_name = c4c::kInvalidLinkName;
   c4c::TextId string_text_name = c4c::kInvalidText;
@@ -187,9 +189,11 @@ PreparedAddressFixture make_address_fixture() {
   PreparedAddressFixture fixture;
   fixture.function_name = fixture.names.function_names.intern("addr.f");
   fixture.block_label = fixture.names.block_labels.intern("entry");
+  fixture.target_label = fixture.names.block_labels.intern("target");
   fixture.direct_result_name = fixture.names.value_names.intern("%direct.addr");
   fixture.tls_result_name = fixture.names.value_names.intern("%tls.addr");
   fixture.string_result_name = fixture.names.value_names.intern("%string.addr");
+  fixture.label_result_name = fixture.names.value_names.intern("%label.addr");
   fixture.global_name = fixture.names.link_names.intern("g.direct");
   fixture.tls_name = fixture.names.link_names.intern("g.tls");
   fixture.string_text_name = fixture.names.texts.intern(".L.str0");
@@ -209,6 +213,10 @@ PreparedAddressFixture make_address_fixture() {
                             fixture.function_name,
                             fixture.string_result_name,
                             "x5"),
+              register_home(prepare::PreparedValueId{23},
+                            fixture.function_name,
+                            fixture.label_result_name,
+                            "x6"),
           },
   };
   fixture.storage = prepare::PreparedStoragePlanFunction{
@@ -218,6 +226,7 @@ PreparedAddressFixture make_address_fixture() {
               register_storage(prepare::PreparedValueId{20}, fixture.direct_result_name, "x3"),
               register_storage(prepare::PreparedValueId{21}, fixture.tls_result_name, "x4"),
               register_storage(prepare::PreparedValueId{22}, fixture.string_result_name, "x5"),
+              register_storage(prepare::PreparedValueId{23}, fixture.label_result_name, "x6"),
           },
   };
   fixture.addressing = prepare::PreparedAddressingFunction{
@@ -253,6 +262,15 @@ PreparedAddressFixture make_address_fixture() {
                   .text_name = fixture.string_text_name,
                   .byte_offset = 8,
                   .address_space = bir::AddressSpace::Gs,
+              },
+              prepare::PreparedAddressMaterialization{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 3,
+                  .kind = prepare::PreparedAddressMaterializationKind::Label,
+                  .result_value_name = fixture.label_result_name,
+                  .target_label = fixture.target_label,
+                  .byte_offset = 24,
               },
           },
   };
@@ -820,6 +838,28 @@ int address_materialization_records_preserve_prepared_carrier_facts() {
       string.record->result_value_id != prepare::PreparedValueId{22}) {
     return fail("expected string address materialization to preserve text and result facts");
   }
+  const auto label = aarch64_codegen::make_prepared_address_materialization_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 3);
+  if (!label.record.has_value() ||
+      label.record->kind != aarch64_codegen::AddressMaterializationKind::LabelPageLow12 ||
+      label.record->prepared_kind != prepare::PreparedAddressMaterializationKind::Label ||
+      label.record->target_label != fixture.target_label ||
+      label.record->target_label_name != "target" ||
+      label.record->symbol_name.has_value() ||
+      label.record->text_name.has_value() ||
+      label.record->byte_offset != 24 ||
+      label.record->result_value_id != prepare::PreparedValueId{23}) {
+    return fail("expected label address materialization to preserve target label and result facts");
+  }
+  const auto label_instruction =
+      aarch64_codegen::make_address_materialization_instruction(*label.record);
+  if (label_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      label_instruction.operands.size() != 2 ||
+      !std::holds_alternative<aarch64_codegen::AddressMaterializationRecord>(
+          label_instruction.payload)) {
+    return fail("expected label address materialization to become selected machine node");
+  }
 
   return 0;
 }
@@ -830,13 +870,13 @@ int unsupported_address_materialization_kinds_defer_explicitly() {
       prepare::PreparedAddressMaterialization{
           .function_name = fixture.function_name,
           .block_label = fixture.block_label,
-          .inst_index = 3,
+          .inst_index = 4,
           .kind = prepare::PreparedAddressMaterializationKind::GotGlobal,
           .result_value_name = fixture.direct_result_name,
           .symbol_name = fixture.global_name,
       });
   const auto got = aarch64_codegen::make_prepared_address_materialization_instruction_record(
-      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 3);
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 4);
   if (!got.record.has_value() ||
       got.record->kind != aarch64_codegen::AddressMaterializationKind::DeferredUnsupported) {
     return fail("expected GOT address materialization carrier to produce deferred record");
@@ -866,6 +906,24 @@ int unsupported_address_materialization_kinds_defer_explicitly() {
       aarch64_codegen::prepared_address_materialization_record_error_name(
           missing_symbol.error) != "missing_symbol_identity") {
     return fail("expected missing global address symbol identity to fail closed");
+  }
+
+  fixture = make_address_fixture();
+  fixture.addressing.address_materializations[3].target_label = std::nullopt;
+  const auto missing_label =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          3);
+  if (missing_label.record.has_value() ||
+      missing_label.error !=
+          aarch64_codegen::PreparedAddressMaterializationRecordError::MissingLabelIdentity ||
+      aarch64_codegen::prepared_address_materialization_record_error_name(missing_label.error) !=
+          "missing_label_identity") {
+    return fail("expected missing label address identity to fail closed");
   }
 
   return 0;
