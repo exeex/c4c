@@ -1,38 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/246_prepared_aggregate_va_arg_access_plan.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Populate Aggregate Access Plans In Shared Preparation
+Current Step ID: 3
+Current Step Title: Print And Prove Prepared Aggregate Access Plans
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 2 populated complete prepared/shared aggregate `va_arg` access plans
-for the supported AAPCS64 sret aggregate helper shape. Shared preparation now
-fills `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` from
-prepared helper operand homes plus explicit sret payload ABI metadata, carrying
-overflow source selection, payload size/alignment, source coordinates, copy
-extent, destination payload home, and overflow `va_list` progression. Aggregate
-helper calls without the required payload metadata still fail closed with
-`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
+Plan Step 3 confirmed prepared-printer coverage for aggregate `va_arg` access
+plans without adding selected AArch64 aggregate machine-node consumption. The
+existing focused prepared-printer test asserts populated aggregate access-plan
+fields for the supported AAPCS64 path, `aggregate_access_plan=<none>` for the
+incomplete path, and the missing fact
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`. Existing selected
+AArch64 dispatch coverage still fails closed on that same missing fact.
 
 ## Suggested Next
 
-Execute Step 3 by keeping the populated aggregate access plan inspectable
-through prepared printer coverage and confirming selected AArch64 aggregate
-machine-node consumption remains deferred to idea 243.
+Execute Step 4 by validating the prerequisite handoff and asking the supervisor
+to close idea 246 or reactivate idea 243 when lifecycle acceptance is ready.
 
 ## Watchouts
 
-- Aggregate plan population currently supports the explicit sret payload
-  aggregate helper shape; calls missing that ABI metadata intentionally retain
-  the exact missing prepared fact.
-- Do not reconstruct aggregate source selection, size/alignment, copy extent,
-  or `va_list` progression in AArch64 target lowering.
+- No Step 3 code changes were needed; committed tests already covered the
+  prepared-printer and fail-closed diagnostic contracts requested by the packet.
 - Keep selected aggregate `va_arg` machine-node consumption parked in idea 243
-  until this prerequisite closes.
-- This packet did not add selected AArch64 aggregate machine-node consumption.
+  until the supervisor accepts and closes this prerequisite.
+- The fail-closed selected AArch64 diagnostic remains
+  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
 
 ## Proof
 
