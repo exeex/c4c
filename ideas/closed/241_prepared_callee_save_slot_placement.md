@@ -1,7 +1,8 @@
 # Prepared Callee-Save Slot Placement
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 Parent Context: ideas/open/231_aarch64_call_frame_machine_nodes.md
 
 ## Intent
@@ -62,6 +63,20 @@ structured `CalleeSaveStore` and `CalleeSaveLoad` records.
 - Existing simple fixed-frame cases continue to expose the same frame facts.
 - Missing or unsupported callee-save placement states fail with explicit
   diagnostics instead of target-local inference.
+
+## Completion Note
+
+Closed after the active runbook added the prepared saved-register slot
+placement surface and direct prepared-printer observations for fixed-frame
+callee-save homes. The carrier records slot id, stack offset, size, alignment,
+fixed-location state, register bank/name, save index, contiguous width,
+occupied registers, and structured register placement. Dynamic-stack cases
+remain fail-closed instead of fabricating target-local save homes.
+
+Follow-up AArch64 save/restore lowering should consume
+`PreparedSavedRegister::slot_placement` directly and must not reconstruct
+callee-save homes from `save_index`, `frame_slot_order`, register names, or
+sorted offsets.
 
 ## Reviewer Reject Signals
 
