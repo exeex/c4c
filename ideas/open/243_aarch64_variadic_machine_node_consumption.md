@@ -1,6 +1,6 @@
 # AArch64 Variadic Machine Node Consumption
 
-Status: Open
+Status: Parked
 Created: 2026-05-15
 
 Parent Context: ideas/closed/232_aarch64_variadic_function_entry_carriers.md
@@ -80,6 +80,13 @@ by this idea:
 This idea is reactivated for selected machine-node consumption. AArch64 target
 lowering must consume those facts without reconstructing AAPCS64 frame,
 layout, or scratch policy locally.
+
+Parked on 2026-05-15 after Step 3 found a narrower prepared/shared prerequisite:
+`helper_operand_homes.va_arg.scalar_access_plan`. Commit `a9b41b2a2` proved the
+backend still passes while failing closed on that exact missing fact. Resume
+this idea at scalar `va_arg` consumption only after
+`ideas/open/245_prepared_scalar_va_arg_access_plan.md` closes or otherwise
+supplies equivalent prepared/shared scalar access-plan authority.
 
 ## Reviewer Reject Signals
 

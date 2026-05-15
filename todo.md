@@ -1,43 +1,31 @@
 Status: Active
-Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Source Idea Path: ideas/open/245_prepared_scalar_va_arg_access_plan.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume Prepared Facts For Scalar `va_arg`
+Current Step ID: 1
+Current Step Title: Define Scalar Access-Plan Carrier
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 stopped at a lifecycle blocker: scalar `va_arg` has prepared entry
-storage, helper scratch, source `va_list` home, and scalar result home facts,
-but no prepared/shared scalar access plan that selects GP/FP register-save
-versus overflow source, preserves per-access size/alignment, and records
-`va_list` progression. AArch64 dispatch and direct call-record construction now
-fail closed with the exact missing fact
-`helper_operand_homes.va_arg.scalar_access_plan` instead of reconstructing those
-facts in target lowering.
+Lifecycle switch completed: idea 243 is parked on the missing prepared/shared
+fact `helper_operand_homes.va_arg.scalar_access_plan`, and this prerequisite
+idea is active.
 
 ## Suggested Next
 
-Route a lifecycle/prepared-authority packet to add a shared scalar `va_arg`
-access-plan fact covering source classification, value size/alignment, and
-overflow/register-save progression before retrying Step 3 machine-node
-consumption.
+Start Step 1 by defining the prepared/shared scalar `va_arg` access-plan
+carrier. Keep the work in prepared/shared authority and do not implement
+selected AArch64 scalar `va_arg` consumption in this prerequisite.
 
 ## Watchouts
 
-- Existing prepared helper operand-home records for scalar `va_arg` are useful
-  but not sufficient for selected lowering; they identify `%ap` and the scalar
-  result home only.
-- The missing fact must be shared/prepared authority, not an AArch64-local
-  reconstruction from helper name, result type, named register counts, or
-  legacy AAPCS64 layout rules.
-- `va_start` selected lowering and incomplete prepared-fact diagnostics remain
-  unchanged.
+- The access plan must cover source classification, value size/alignment,
+  result-home relationship, and `va_list` progression.
+- Do not reconstruct AAPCS64 access selection in AArch64 target lowering.
+- Do not weaken the existing fail-closed diagnostic for
+  `helper_operand_homes.va_arg.scalar_access_plan`.
 
 ## Proof
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-Result: passed. Build succeeded and CTest reported 139/139 backend tests passed.
-Proof log: `test_after.log`.
+Lifecycle-only switch; no build proof run.
