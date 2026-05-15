@@ -4468,6 +4468,73 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
   return 0;
 }
 
+int block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed() {
+  auto prepared = prepared_with_direct_call_plan();
+  auto& bir_call = std::get<bir::CallInst>(
+      prepared.module.functions.front().blocks.front().insts.front());
+  bir_call.callee = "llvm.x86.aesni.aesenc";
+  bir_call.callee_link_name_id = c4c::kInvalidLinkName;
+  prepared.call_plans.functions.front().calls.front().direct_callee_name =
+      std::string{"llvm.x86.aesni.aesenc"};
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected unsupported intrinsic spelling to remain an ordinary prepared call");
+  }
+
+  const auto& call_instruction = block.instructions.front();
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &call_instruction.target.payload);
+  if (call == nullptr ||
+      call_instruction.target.family != aarch64_module::codegen::InstructionFamily::Call ||
+      call_instruction.target.opcode != aarch64_module::codegen::MachineOpcode::DirectCall ||
+      call->direct_callee_label != "llvm.x86.aesni.aesenc" ||
+      call->wrapper_kind != prepare::PreparedCallWrapperKind::DirectExternFixedArity ||
+      call->source_call != &function_context.call_plans->calls.front()) {
+    return fail("expected intrinsic spelling not to fabricate an AArch64 intrinsic record");
+  }
+
+  prepared.call_plans.functions.clear();
+  const auto missing_function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto missing_block_context =
+      aarch64_codegen::make_block_lowering_context(missing_function_context, block_cf, 0);
+  aarch64_module::MachineBlock missing_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  const auto missing_result = aarch64_codegen::dispatch_prepared_block(
+      missing_block_context, missing_block, missing_diagnostics);
+
+  if (missing_result.visited_operations != 1 || !missing_result.visited_terminator ||
+      missing_result.emitted_instructions != 1 || missing_block.instructions.size() != 1 ||
+      missing_diagnostics.entries.size() != 1 ||
+      missing_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan ||
+      missing_diagnostics.entries.front().instruction_family !=
+          aarch64_module::InstructionLoweringFamily::Call ||
+      missing_diagnostics.entries.front().message.find("PreparedCallPlan") ==
+          std::string::npos) {
+    return fail("expected incomplete intrinsic call facts to stay fail-closed");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_block.instructions.front().target.payload)) {
+    return fail("expected incomplete intrinsic call facts to preserve return lowering only");
+  }
+  return 0;
+}
+
 int block_dispatch_exposes_prepared_memory_return_storage_on_call_node() {
   auto prepared = prepared_with_direct_memory_return_call_plan();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -7400,6 +7467,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed();
       status != 0) {
     return status;
   }
