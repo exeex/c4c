@@ -204,6 +204,38 @@ enum class AtomicResultMode : unsigned char {
   return "unknown";
 }
 
+enum class IntrinsicFamilyKind : unsigned char {
+  None,
+  ScalarFpUnary,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_family_kind_name(
+    IntrinsicFamilyKind kind) {
+  switch (kind) {
+    case IntrinsicFamilyKind::None:
+      return "none";
+    case IntrinsicFamilyKind::ScalarFpUnary:
+      return "scalar_fp_unary";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicOperationKind : unsigned char {
+  None,
+  FAbs,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_operation_kind_name(
+    IntrinsicOperationKind kind) {
+  switch (kind) {
+    case IntrinsicOperationKind::None:
+      return "none";
+    case IntrinsicOperationKind::FAbs:
+      return "fabs";
+  }
+  return "unknown";
+}
+
 enum class CallingConv : unsigned char {
   C,
   SysV,
@@ -510,6 +542,14 @@ struct InlineAsmMetadata {
   bool side_effects = false;
 };
 
+struct IntrinsicOperation {
+  IntrinsicFamilyKind family = IntrinsicFamilyKind::None;
+  IntrinsicOperationKind operation = IntrinsicOperationKind::None;
+  TypeKind operand_type = TypeKind::Void;
+  TypeKind result_type = TypeKind::Void;
+  bool has_side_effects = false;
+};
+
 struct CallInst {
   std::optional<Value> result;
   std::string callee;
@@ -532,6 +572,7 @@ struct CallInst {
   bool is_variadic = false;
   bool is_noreturn = false;
   std::optional<InlineAsmMetadata> inline_asm;
+  std::optional<IntrinsicOperation> intrinsic;
   // Route-local sret storage spelling used to relate generated local slots.
   std::optional<std::string> sret_storage_name;
   SlotNameId sret_storage_name_id = kInvalidSlotName;

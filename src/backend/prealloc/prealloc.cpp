@@ -1194,6 +1194,14 @@ void append_atomic_missing_fact(PreparedAtomicOperationFunction& function_operat
       "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
 }
 
+void append_intrinsic_missing_fact(PreparedIntrinsicCarrierFunction& function_carriers,
+                                   PreparedIntrinsicCarrier& carrier,
+                                   std::string fact) {
+  carrier.missing_required_facts.push_back(fact);
+  function_carriers.missing_required_facts.push_back(
+      "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
+}
+
 [[nodiscard]] std::optional<ValueNameId> prepared_atomic_named_value_id(
     PreparedNameTables& names,
     const std::optional<bir::Value>& value) {
@@ -1201,6 +1209,31 @@ void append_atomic_missing_fact(PreparedAtomicOperationFunction& function_operat
     return std::nullopt;
   }
   return prepared_named_value_id(names, *value);
+}
+
+[[nodiscard]] std::optional<ValueNameId> prepared_intrinsic_named_value_id(
+    PreparedNameTables& names,
+    const std::optional<bir::Value>& value) {
+  if (!value.has_value()) {
+    return std::nullopt;
+  }
+  return prepared_named_value_id(names, *value);
+}
+
+[[nodiscard]] const PreparedCallPlan* find_call_plan_for_instruction(
+    const PreparedCallPlansFunction* function_call_plans,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (function_call_plans == nullptr) {
+    return nullptr;
+  }
+  for (const auto& call_plan : function_call_plans->calls) {
+    if (call_plan.block_index == block_index &&
+        call_plan.instruction_index == instruction_index) {
+      return &call_plan;
+    }
+  }
+  return nullptr;
 }
 
 [[nodiscard]] PreparedAtomicOperationCarrier build_atomic_operation_carrier(
@@ -1321,6 +1354,81 @@ void append_atomic_missing_fact(PreparedAtomicOperationFunction& function_operat
   }
   if (carrier.missing_required_facts.empty()) {
     carrier.carrier_kind = PreparedAtomicOperationCarrierKind::Complete;
+  }
+  return carrier;
+}
+
+[[nodiscard]] PreparedIntrinsicCarrier build_intrinsic_carrier(
+    PreparedNameTables& names,
+    PreparedIntrinsicCarrierFunction& function_carriers,
+    const bir::CallInst& call,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const PreparedCallPlan* call_plan) {
+  const bir::IntrinsicOperation intrinsic =
+      call.intrinsic.value_or(bir::IntrinsicOperation{});
+  PreparedIntrinsicCarrier carrier{
+      .function_name = function_carriers.function_name,
+      .carrier_kind = PreparedIntrinsicCarrierKind::Missing,
+      .family = intrinsic.family,
+      .operation = intrinsic.operation,
+      .block_index = block_index,
+      .inst_index = instruction_index,
+      .operand_type = intrinsic.operand_type,
+      .result_type = intrinsic.result_type,
+      .operand = call.args.empty() ? std::nullopt
+                                   : std::optional<bir::Value>{call.args.front()},
+      .result = call.result,
+      .operand_value_name = prepared_intrinsic_named_value_id(
+          names, call.args.empty() ? std::nullopt
+                                   : std::optional<bir::Value>{call.args.front()}),
+      .result_value_name = prepared_intrinsic_named_value_id(names, call.result),
+      .has_side_effects = intrinsic.has_side_effects,
+      .requires_feature = false,
+      .source_callee_name = call.callee.empty()
+                                ? std::nullopt
+                                : std::optional<std::string>{call.callee},
+      .has_prepared_call_plan = call_plan != nullptr,
+      .missing_required_facts = {},
+  };
+
+  if (!call.intrinsic.has_value()) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "missing_intrinsic_operation");
+  }
+  if (carrier.family != bir::IntrinsicFamilyKind::ScalarFpUnary) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_intrinsic_family");
+  }
+  if (carrier.operation != bir::IntrinsicOperationKind::FAbs) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_intrinsic_operation");
+  }
+  if (call.args.size() != 1 || call.arg_types.size() != 1) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "scalar_fp_unary_requires_one_operand");
+  }
+  if (!carrier.result.has_value()) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "scalar_fp_unary_requires_result");
+  }
+  if (carrier.operand_type != carrier.result_type) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "scalar_fp_unary_requires_matching_types");
+  }
+  if (carrier.operand_type != bir::TypeKind::F32 &&
+      carrier.operand_type != bir::TypeKind::F64) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_scalar_fp_unary_type");
+  }
+  if (!carrier.has_prepared_call_plan) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "missing_prepared_call_plan");
+  }
+  if (call_plan != nullptr) {
+    if (call_plan->arguments.size() != 1) {
+      append_intrinsic_missing_fact(
+          function_carriers, carrier, "prepared_call_plan_requires_one_argument");
+    }
+    if (!call_plan->result.has_value()) {
+      append_intrinsic_missing_fact(
+          function_carriers, carrier, "prepared_call_plan_requires_result");
+    }
+  }
+  if (carrier.missing_required_facts.empty()) {
+    carrier.carrier_kind = PreparedIntrinsicCarrierKind::Complete;
   }
   return carrier;
 }
@@ -1599,6 +1707,49 @@ void populate_atomic_operations(PreparedBirModule& prepared) {
               prepared.names, prepared.module.names, function_operations, operation));
     }
     prepared.atomic_operations.functions.push_back(std::move(function_operations));
+  }
+}
+
+void populate_intrinsic_carriers(PreparedBirModule& prepared) {
+  prepared.intrinsic_carriers.functions.clear();
+
+  for (const auto& function : prepared.module.functions) {
+    const FunctionNameId function_name =
+        prepared.names.function_names.find(function.name);
+    if (function_name == kInvalidFunctionName) {
+      continue;
+    }
+    const auto* function_call_plans =
+        find_prepared_call_plans(prepared.call_plans, function_name);
+    PreparedIntrinsicCarrierFunction function_carriers{
+        .function_name = function_name,
+        .carriers = {},
+        .missing_required_facts = {},
+    };
+
+    for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+      const auto& block = function.blocks[block_index];
+      for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+           ++instruction_index) {
+        const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+        if (call == nullptr || !call->intrinsic.has_value()) {
+          continue;
+        }
+        const auto* call_plan =
+            find_call_plan_for_instruction(function_call_plans, block_index, instruction_index);
+        function_carriers.carriers.push_back(
+            build_intrinsic_carrier(prepared.names,
+                                    function_carriers,
+                                    *call,
+                                    block_index,
+                                    instruction_index,
+                                    call_plan));
+      }
+    }
+    if (!function_carriers.carriers.empty() ||
+        !function_carriers.missing_required_facts.empty()) {
+      prepared.intrinsic_carriers.functions.push_back(std::move(function_carriers));
+    }
   }
 }
 
@@ -4589,6 +4740,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_i128_carriers(prepared_);
   populate_f128_carriers(prepared_);
   populate_atomic_operations(prepared_);
+  populate_intrinsic_carriers(prepared_);
   populate_f128_runtime_helper_facts(prepared_);
   populate_i128_runtime_helper_lanes(prepared_);
 }

@@ -2083,6 +2083,16 @@ const prepare::PreparedF128Carrier* find_f128_carrier(
   return prepare::find_prepared_f128_carrier(*function_carriers, value_id);
 }
 
+const prepare::PreparedIntrinsicCarrierFunction* find_intrinsic_carriers(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_intrinsic_carriers(prepared, function_id);
+}
+
 const prepare::PreparedF128RuntimeHelper* find_first_f128_runtime_helper(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
@@ -2473,6 +2483,206 @@ int incomplete_atomic_carrier_facts_fail_closed() {
   if (!expect_not_contains(dump,
                            "atomic_operation kind=compare_exchange block=entry inst_index=1",
                            "incomplete compare-exchange carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+prepare::PreparedBirModule prepare_intrinsic_carrier_dump_module(
+    bir::TypeKind value_type,
+    bool complete,
+    bool structured_intrinsic = true) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = complete ? "intrinsic_carrier_dump_contract"
+                           : "intrinsic_incomplete_carrier_dump_contract";
+  function.return_type = value_type;
+  function.params.push_back(bir::Param{
+      .type = value_type,
+      .name = "x",
+      .size_bytes = value_type == bir::TypeKind::F64 ? std::size_t{8} : std::size_t{4},
+      .align_bytes = value_type == bir::TypeKind::F64 ? std::size_t{8} : std::size_t{4},
+  });
+
+  bir::CallInst call{
+      .result = complete ? std::optional<bir::Value>{bir::Value::named(value_type, "abs")}
+                         : std::nullopt,
+      .callee = value_type == bir::TypeKind::F64 ? "llvm.fabs.double" : "llvm.fabs.float",
+      .args = {bir::Value::named(value_type, "x")},
+      .arg_types = {value_type},
+      .arg_abi = {*prepare::infer_call_arg_abi(aarch64_target_profile(), value_type)},
+      .return_type = value_type,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = value_type,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
+  };
+  if (structured_intrinsic) {
+    call.intrinsic = bir::IntrinsicOperation{
+        .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+        .operation = bir::IntrinsicOperationKind::FAbs,
+        .operand_type = value_type,
+        .result_type = value_type,
+        .has_side_effects = false,
+    };
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = complete
+                         ? bir::ReturnTerminator{
+                               .value = bir::Value::named(value_type, "abs"),
+                           }
+                         : bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_unsupported_intrinsic_carrier_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "intrinsic_unsupported_carrier_dump_contract";
+  function.return_type = bir::TypeKind::F128;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "x",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  bir::CallInst call{
+      .result = bir::Value::named(bir::TypeKind::F128, "abs"),
+      .callee = "llvm.fabs.x86_fp80",
+      .args = {bir::Value::named(bir::TypeKind::F128, "x")},
+      .arg_types = {bir::TypeKind::F128},
+      .arg_abi = {*prepare::infer_call_arg_abi(aarch64_target_profile(), bir::TypeKind::F128)},
+      .return_type = bir::TypeKind::F128,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::F128,
+          .primary_class = bir::AbiValueClass::Sse,
+      },
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+          .operation = bir::IntrinsicOperationKind::FAbs,
+          .operand_type = bir::TypeKind::F128,
+          .result_type = bir::TypeKind::F128,
+          .has_side_effects = false,
+      },
+  };
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F128, "abs"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+int scalar_fp_unary_intrinsic_carrier_preserves_fields_and_printer_visibility() {
+  const auto prepared = prepare_intrinsic_carrier_dump_module(bir::TypeKind::F64, true);
+  const auto* function_carriers =
+      find_intrinsic_carriers(prepared, "intrinsic_carrier_dump_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one prepared intrinsic carrier fact\n";
+    return EXIT_FAILURE;
+  }
+  const auto& carrier = function_carriers->carriers.front();
+  if (carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      carrier.family != bir::IntrinsicFamilyKind::ScalarFpUnary ||
+      carrier.operation != bir::IntrinsicOperationKind::FAbs ||
+      carrier.operand_type != bir::TypeKind::F64 ||
+      carrier.result_type != bir::TypeKind::F64 ||
+      !carrier.operand_value_name.has_value() ||
+      !carrier.result_value_name.has_value() ||
+      carrier.has_side_effects ||
+      carrier.requires_feature ||
+      !carrier.has_prepared_call_plan ||
+      carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] prepared intrinsic carrier lost required fields\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "--- prepared-intrinsic-carriers ---",
+                       "prepared intrinsic carriers section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "intrinsic_carrier family=scalar_fp_unary operation=fabs "
+                       "block_index=0 inst_index=0 operand_type=f64 result_type=f64 "
+                       "side_effects=no requires_feature=no prepared_call_plan=yes "
+                       "source_callee=llvm.fabs.double operand=x result=abs",
+                       "complete scalar fabs carrier")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int partial_and_unsupported_intrinsic_carriers_fail_closed() {
+  const auto missing_result =
+      prepare_intrinsic_carrier_dump_module(bir::TypeKind::F32, false);
+  const auto* missing_result_carriers =
+      find_intrinsic_carriers(missing_result, "intrinsic_incomplete_carrier_dump_contract");
+  if (missing_result_carriers == nullptr ||
+      missing_result_carriers->carriers.size() != 1 ||
+      missing_result_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] expected incomplete intrinsic carrier diagnostic\n";
+    return EXIT_FAILURE;
+  }
+  const std::string missing_result_dump = prepare::print(missing_result);
+  if (!expect_contains(missing_result_dump,
+                       "missing fact=inst#0:scalar_fp_unary_requires_result",
+                       "intrinsic missing result diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(missing_result_dump,
+                       "missing fact=inst#0:prepared_call_plan_requires_result",
+                       "intrinsic missing prepared result diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(missing_result_dump,
+                           "intrinsic_carrier family=scalar_fp_unary operation=fabs",
+                           "incomplete intrinsic carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto unsupported = prepare_unsupported_intrinsic_carrier_dump_module();
+  const auto* unsupported_carriers =
+      find_intrinsic_carriers(unsupported, "intrinsic_unsupported_carrier_dump_contract");
+  if (unsupported_carriers == nullptr ||
+      unsupported_carriers->carriers.size() != 1 ||
+      unsupported_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] expected unsupported x86/F128 intrinsic carrier diagnostic\n";
+    return EXIT_FAILURE;
+  }
+  const std::string unsupported_dump = prepare::print(unsupported);
+  if (!expect_contains(unsupported_dump,
+                       "missing fact=inst#0:unsupported_scalar_fp_unary_type",
+                       "unsupported x86/F128 intrinsic diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(unsupported_dump,
+                           "source_callee=llvm.fabs.x86_fp80 operand=x result=abs",
+                           "unsupported x86/F128 intrinsic carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto call_only =
+      prepare_intrinsic_carrier_dump_module(bir::TypeKind::F64, true, false);
+  if (find_intrinsic_carriers(call_only, "intrinsic_carrier_dump_contract") != nullptr) {
+    std::cerr << "[FAIL] ordinary call plan fabricated intrinsic carrier\n";
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -2905,6 +3115,15 @@ int main() {
     return status;
   }
   if (const int status = incomplete_atomic_carrier_facts_fail_closed(); status != 0) {
+    return status;
+  }
+  if (const int status =
+          scalar_fp_unary_intrinsic_carrier_preserves_fields_and_printer_visibility();
+      status != 0) {
+    return status;
+  }
+  if (const int status = partial_and_unsupported_intrinsic_carriers_fail_closed();
+      status != 0) {
     return status;
   }
 

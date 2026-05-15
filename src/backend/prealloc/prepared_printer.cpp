@@ -1702,6 +1702,42 @@ void append_atomic_operations(std::ostringstream& out, const PreparedBirModule& 
   }
 }
 
+void append_intrinsic_carriers(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-intrinsic-carriers ---\n";
+  for (const auto& function_carriers : module.intrinsic_carriers.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_carriers.function_name)
+        << "\n";
+    for (const auto& carrier : function_carriers.carriers) {
+      if (carrier.carrier_kind != PreparedIntrinsicCarrierKind::Complete) {
+        continue;
+      }
+      out << "  intrinsic_carrier family="
+          << bir::intrinsic_family_kind_name(carrier.family)
+          << " operation=" << bir::intrinsic_operation_kind_name(carrier.operation)
+          << " block_index=" << carrier.block_index
+          << " inst_index=" << carrier.inst_index
+          << " operand_type=" << type_kind_name(carrier.operand_type)
+          << " result_type=" << type_kind_name(carrier.result_type)
+          << " side_effects=" << (carrier.has_side_effects ? "yes" : "no")
+          << " requires_feature=" << (carrier.requires_feature ? "yes" : "no")
+          << " prepared_call_plan=" << (carrier.has_prepared_call_plan ? "yes" : "no");
+      if (carrier.source_callee_name.has_value()) {
+        out << " source_callee=" << *carrier.source_callee_name;
+      }
+      if (carrier.operand_value_name.has_value()) {
+        out << " operand=" << maybe_value_name(module.names, *carrier.operand_value_name);
+      }
+      if (carrier.result_value_name.has_value()) {
+        out << " result=" << maybe_value_name(module.names, *carrier.result_value_name);
+      }
+      out << "\n";
+    }
+    for (const auto& fact : function_carriers.missing_required_facts) {
+      out << "    missing fact=" << fact << "\n";
+    }
+  }
+}
+
 void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-f128-runtime-helpers ---\n";
   auto append_carrier =
@@ -2461,6 +2497,7 @@ std::string print(const PreparedBirModule& module) {
   append_i128_carriers(out, module);
   append_f128_carriers(out, module);
   append_atomic_operations(out, module);
+  append_intrinsic_carriers(out, module);
   append_f128_runtime_helpers(out, module);
   append_i128_runtime_helpers(out, module);
   append_addressing(out, module);

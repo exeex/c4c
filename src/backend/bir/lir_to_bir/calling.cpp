@@ -1397,6 +1397,13 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .arg_abi = {*compute_call_arg_abi(context_.target_profile, value_type)},
         .return_type = value_type,
         .result_abi = compute_function_return_abi(context_.target_profile, value_type, false),
+        .intrinsic = bir::IntrinsicOperation{
+            .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+            .operation = bir::IntrinsicOperationKind::FAbs,
+            .operand_type = value_type,
+            .result_type = value_type,
+            .has_side_effects = false,
+        },
     });
     return true;
   };

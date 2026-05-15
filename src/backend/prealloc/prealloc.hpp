@@ -1796,6 +1796,54 @@ struct PreparedAtomicOperations {
   std::vector<PreparedAtomicOperationFunction> functions;
 };
 
+enum class PreparedIntrinsicCarrierKind {
+  Missing,
+  Complete,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_intrinsic_carrier_kind_name(
+    PreparedIntrinsicCarrierKind kind) {
+  switch (kind) {
+    case PreparedIntrinsicCarrierKind::Missing:
+      return "missing";
+    case PreparedIntrinsicCarrierKind::Complete:
+      return "complete";
+  }
+  return "unknown";
+}
+
+struct PreparedIntrinsicCarrier {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedIntrinsicCarrierKind carrier_kind = PreparedIntrinsicCarrierKind::Missing;
+  c4c::backend::bir::IntrinsicFamilyKind family =
+      c4c::backend::bir::IntrinsicFamilyKind::None;
+  c4c::backend::bir::IntrinsicOperationKind operation =
+      c4c::backend::bir::IntrinsicOperationKind::None;
+  std::size_t block_index = 0;
+  std::size_t inst_index = 0;
+  c4c::backend::bir::TypeKind operand_type = c4c::backend::bir::TypeKind::Void;
+  c4c::backend::bir::TypeKind result_type = c4c::backend::bir::TypeKind::Void;
+  std::optional<c4c::backend::bir::Value> operand;
+  std::optional<c4c::backend::bir::Value> result;
+  std::optional<ValueNameId> operand_value_name;
+  std::optional<ValueNameId> result_value_name;
+  bool has_side_effects = false;
+  bool requires_feature = false;
+  std::optional<std::string> source_callee_name;
+  bool has_prepared_call_plan = false;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedIntrinsicCarrierFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedIntrinsicCarrier> carriers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedIntrinsicCarriers {
+  std::vector<PreparedIntrinsicCarrierFunction> functions;
+};
+
 enum class PreparedF128RuntimeHelperFamily {
   Arithmetic,
   Comparison,
@@ -5388,6 +5436,7 @@ struct PreparedBirModule {
   PreparedI128Carriers i128_carriers;
   PreparedF128Carriers f128_carriers;
   PreparedAtomicOperations atomic_operations;
+  PreparedIntrinsicCarriers intrinsic_carriers;
   PreparedF128RuntimeHelpers f128_runtime_helpers;
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
@@ -5603,6 +5652,23 @@ find_prepared_atomic_operations(const PreparedAtomicOperations& operations,
 find_prepared_atomic_operations(const PreparedBirModule& module,
                                 FunctionNameId function_name) {
   return find_prepared_atomic_operations(module.atomic_operations, function_name);
+}
+
+[[nodiscard]] inline const PreparedIntrinsicCarrierFunction*
+find_prepared_intrinsic_carriers(const PreparedIntrinsicCarriers& carriers,
+                                 FunctionNameId function_name) {
+  for (const auto& function_carriers : carriers.functions) {
+    if (function_carriers.function_name == function_name) {
+      return &function_carriers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedIntrinsicCarrierFunction*
+find_prepared_intrinsic_carriers(const PreparedBirModule& module,
+                                 FunctionNameId function_name) {
+  return find_prepared_intrinsic_carriers(module.intrinsic_carriers, function_name);
 }
 
 [[nodiscard]] inline const PreparedI128RuntimeHelperFunction*
