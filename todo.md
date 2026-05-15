@@ -1,43 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/241_prepared_callee_save_slot_placement.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Publish And Observe Placement
+Current Step ID: 5
+Current Step Title: Validate And Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 from `plan.md`: published prepared saved-register
-slot-placement facts through prepared printer output and added direct
-observation coverage.
+Completed Step 5 from `plan.md`: validated and summarized the prepared
+callee-save slot-placement contract.
 
 Concrete work completed:
 
-- `prepared_printer.cpp` now emits `slot_placement` on saved-register lines in
-  both prepared function summaries and the prepared frame-plan section.
-- The emitted placement surface includes slot id, stack offset, size,
-  alignment, fixed-location, register bank/name, save index, contiguous width,
-  occupied registers, and structured register placement from
-  `PreparedSavedRegister::slot_placement`.
-- `backend_prepared_printer_test` now observes the mapping for both a
-  single-register GPR save and a grouped vector-register save without relying
-  on AArch64 target-local inference.
-- Existing prepared printer, CLI prepared dump, prepared frame, and AArch64
-  printer/record tests remain stable with the intentional new saved-register
-  placement fields.
+- Full-suite build and CTest validation passed.
+- Supported placement states are fixed-frame saved-register homes where
+  prepared frame authority can connect each saved callee register to a
+  concrete frame slot and stack offset.
+- The prepared placement surface records slot id, stack offset, size,
+  alignment, fixed-location state, register bank/name, save index, contiguous
+  width, occupied registers, and structured register placement.
+- Direct prepared-printer observations cover both a single-register GPR save
+  and a grouped vector-register save without requiring AArch64 target-local
+  layout reconstruction.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected packet. A coherent next slice would be
-consumer-side use of the prepared saved-register slot placement, if the active
-plan intends to move beyond observation.
+Runbook is ready for supervisor plan-owner close/deactivate review. A later
+consumer route can teach AArch64 save/restore lowering to consume
+`PreparedSavedRegister::slot_placement` directly.
 
 ## Watchouts
 
-- Placement remains populated for fixed-frame functions only. Dynamic-stack
-  functions deliberately keep missing slot placement from the prior packet, so
-  the pre-existing fixed-slot frame-pointer contract does not change.
+- Placement remains populated for fixed-frame functions only.
+- Dynamic-stack functions deliberately fail closed with missing slot placement,
+  preserving the pre-existing fixed-slot frame-pointer contract instead of
+  fabricating target-local save homes.
 - `src/backend/mir/aarch64/codegen/traversal.cpp` currently treats any nonempty
   `saved_callee_registers` as outside the simple fixed-frame path, and
   `machine_printer.cpp` still rejects callee-save frame nodes; those are later
@@ -54,6 +52,6 @@ plan intends to move beyond observation.
 
 Ran the delegated proof:
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepared_printer|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed; 3167/3167 tests passed. Proof log: `test_after.log`.
