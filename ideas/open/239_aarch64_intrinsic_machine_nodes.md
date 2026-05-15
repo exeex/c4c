@@ -49,3 +49,38 @@ fallbacks.
   contract without named-case string matching.
 - Unsupported x86-only intrinsics are rejected, trapped, or explicitly
   diagnosed by policy rather than silently zero-filled.
+
+## Lifecycle Checkpoint - 2026-05-15
+
+The repaired scalar runbook for this idea is complete and retired, but this
+source idea remains open.
+
+Completed scalar route:
+
+- Structured prepared carriers now cover scalar FP unary F32/F64 `fabs`.
+- AArch64 selection consumes those complete carriers into selected scalar
+  intrinsic machine records.
+- The machine printer emits scalar `fabs` assembly only from selected records
+  with explicit operand/result register authority.
+- Unsupported x86-only, F128, missing-feature, missing-operand, incomplete
+  carrier, and non-selected intrinsic paths fail closed with diagnostics rather
+  than fabricated registers, zero-fill output, or intrinsic-name matching.
+
+Dependency split:
+
+- CRC, vector memory, and vector operation carrier authority is tracked by
+  `ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md`.
+- Those families must not be selected or printed by this idea until complete
+  semantic and prepared carrier facts exist.
+
+Remaining source scope:
+
+- Barrier, cache, pause/hint, builtin-address, CRC, vector memory, and vector
+  operation machine-node selection/printing remain open unless a future
+  runbook proves complete structured carrier authority for each family.
+- Binary128 helpers remain delegated outside this idea.
+
+Latest broad backend proof for the retired scalar runbook:
+
+- `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
+- Result: 139/139 backend tests passed in `test_before.log`.
