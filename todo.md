@@ -1,53 +1,46 @@
 Status: Active
-Source Idea Path: ideas/open/240_aarch64_inline_asm_machine_nodes.md
+Source Idea Path: ideas/open/241_inline_asm_clobber_authority.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Remaining-Scope Validation And Lifecycle Decision
+Current Step ID: 1
+Current Step Title: Inventory Clobber Ingress
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 6 - Remaining-Scope Validation And Lifecycle Decision: ran matching
-backend-scope validation for the remaining-scope runbook after named operand
-substitution and tied-home validation.
+Lifecycle split from `ideas/closed/240_aarch64_inline_asm_machine_nodes.md`.
+The closed idea completed backend-local inline-asm machine-node support for
+currently structured operand, name, output, tie, immediate, modifier, and
+side-effect surfaces. Remaining durable clobber, memory/address, and
+allocator-policy work now lives in separate open ideas.
 
 ## Suggested Next
 
-Ask the plan owner to decide lifecycle state. The current backend-local
-remaining-scope runbook has completed named operand substitution and tied-home
-validation, but clobber ingress and memory/address constraints still appear to
-need source/LIR, prepared-home, or allocator ownership before true backend
-support can continue. Do not close the source idea unless those leftovers are
-split into durable follow-up ownership or judged outside the source idea.
+Execute Plan Step 1: inventory clobber ingress across source/LIR/BIR, identify
+the first structured carrier packet, and record the delegated proof subset
+before implementation begins.
 
 ## Watchouts
 
-- Do not touch `plan.md` or `ideas/open/240_aarch64_inline_asm_machine_nodes.md`
-  for routine packet progress.
-- Completed backend-local support now includes structured positional operands,
-  named operand substitution, one register output, numeric tie facts with
-  concrete prepared-home agreement, integer immediates, `%wN`/`%xN` modifiers,
-  side-effect marking, and explicit diagnostics for unsupported forms.
-- Clobbers remain diagnostic-only because inline-asm source/LIR/BIR still lacks
-  structured clobber authority.
-- Memory/address constraints remain diagnostic-only until prepared homes expose
-  target-valid memory/address authority for inline-asm operands.
-- Alias-aware tied-home coallocation, scratch allocation, and spill policy
-  remain allocator/prepared-home policy, not printer behavior.
+- Do not parse clobbers from rendered template text, final assembly, or
+  diagnostic strings.
+- Preserve the completed inline-asm behavior from closed idea 240.
+- Keep memory/address constraints in
+  `ideas/open/242_inline_asm_memory_address_constraints.md`.
+- Keep alias-aware tied-home allocation policy in
+  `ideas/open/243_inline_asm_tied_home_allocation_policy.md`.
 
 ## Proof
 
-Ran matching backend validation twice for regression comparison:
+Lifecycle-only transition. Existing close gate for idea 240 used the matching
+backend logs already produced at Step 6:
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_before.log 2>&1`
+`test_before.log`: 139/139 backend tests passing.
 
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+`test_after.log`: 139/139 backend tests passing.
 
-Result: passed; both logs contain 139/139 backend tests passing.
-
-Regression guard:
+Regression guard command:
 
 `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
 
-Result: passed with no new failures and no new slow-test entries.
+Result: passed with no new failures.

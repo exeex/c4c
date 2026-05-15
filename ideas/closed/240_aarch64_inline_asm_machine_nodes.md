@@ -1,7 +1,8 @@
 # AArch64 Inline Assembly Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 
@@ -46,3 +47,25 @@ already-rendered assembly text.
   records without local scratch-register shortcuts.
 - Unknown operands or unsupported constraints produce explicit diagnostics
   instead of fabricated registers.
+
+## Closure Notes
+
+The backend-local machine-node route completed the supported inline-asm surfaces
+that currently have structured authority: positional operands, named operand
+substitution, one register output, numeric ties with concrete prepared-home
+agreement, integer immediates, `%wN`/`%xN` modifiers, side effects, and
+fail-closed diagnostics for unsupported forms.
+
+Matching backend validation passed before and after the final lifecycle
+checkpoint with 139/139 tests passing in both logs. The regression guard passed
+with no new failures.
+
+Remaining durable scope was split instead of hidden inside this closed idea:
+
+- `ideas/open/241_inline_asm_clobber_authority.md` owns structured
+  source/LIR/BIR clobber ingress and backend carriage.
+- `ideas/open/242_inline_asm_memory_address_constraints.md` owns
+  memory/address constraint support once prepared homes expose target-valid
+  memory or address authority.
+- `ideas/open/243_inline_asm_tied_home_allocation_policy.md` owns alias-aware
+  tied-home coallocation, scratch allocation, and spill policy.
