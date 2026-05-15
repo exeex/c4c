@@ -25,9 +25,9 @@ Concrete work completed:
 
 ## Suggested Next
 
-Next packet: supervisor should decide whether the active runbook is ready for
-review/closure handling or needs a final lifecycle-only note; no additional
-executor code packet is suggested from this Step 5 slice.
+Next packet: close handling is blocked until the close-time regression guard can
+pass over canonical logs. No additional executor code packet is suggested from
+this Step 5 slice.
 
 ## Watchouts
 
@@ -47,3 +47,11 @@ Passed:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
 Proof log: `test_after.log`
+
+Close gate checked:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: close rejected because canonical `test_before.log` and `test_after.log`
+both report 139/139 passing backend tests, and the guard requires a strictly
+increased pass count for acceptance.
