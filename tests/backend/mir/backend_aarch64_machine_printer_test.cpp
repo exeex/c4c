@@ -946,7 +946,7 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
 
   const auto got = aarch64_codegen::make_address_materialization_instruction(
       aarch64_codegen::AddressMaterializationRecord{
-          .kind = aarch64_codegen::AddressMaterializationKind::DeferredUnsupported,
+          .kind = aarch64_codegen::AddressMaterializationKind::GotPageLow12,
           .prepared_kind = prepare::PreparedAddressMaterializationKind::GotGlobal,
           .function_name = c4c::FunctionNameId{2},
           .block_label = c4c::BlockLabelId{3},
@@ -957,13 +957,37 @@ int unsupported_address_materialization_printer_paths_fail_closed() {
           .result_register = xreg(12),
           .symbol_name = c4c::LinkNameId{48},
           .symbol_label = "g.got",
+          .address_materialization_policy =
+              bir::GlobalAddressMaterializationPolicy::GotRequired,
           .source_materialization = &source,
       });
   const auto got_result = aarch64_codegen::print_machine_instruction_line_payloads(got);
   if (got_result.ok ||
-      got_result.diagnostic.find("deferred_unsupported: address materialization kind is outside "
-                                 "the selected subset") == std::string::npos) {
-    return fail("expected GOT address materialization to remain non-selected before printing");
+      got_result.diagnostic.find("GOT address materialization printer path is deferred") ==
+          std::string::npos) {
+    return fail("expected selected GOT address materialization printer path to be deferred");
+  }
+
+  const auto label = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::LabelPageLow12,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::Label,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 8,
+          .result_value_id = prepare::PreparedValueId{48},
+          .result_value_name = c4c::ValueNameId{49},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(13),
+          .target_label = c4c::BlockLabelId{50},
+          .target_label_name = "target",
+          .source_materialization = &source,
+      });
+  const auto label_result = aarch64_codegen::print_machine_instruction_line_payloads(label);
+  if (label_result.ok ||
+      label_result.diagnostic.find("label address materialization printer path is deferred") ==
+          std::string::npos) {
+    return fail("expected selected label address materialization printer path to be deferred");
   }
   return 0;
 }

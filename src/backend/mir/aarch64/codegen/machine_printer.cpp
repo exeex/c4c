@@ -130,6 +130,9 @@ mir::TargetInstructionPrintResult print_address_materialization(
                                   "direct address materialization is missing symbol label");
       }
       break;
+    case AddressMaterializationKind::GotPageLow12:
+      return target_unsupported(bad_header(instruction) +
+                                "GOT address materialization printer path is deferred");
     case AddressMaterializationKind::StringConstant:
       label = address.text_label;
       if (label.empty()) {
@@ -137,6 +140,9 @@ mir::TargetInstructionPrintResult print_address_materialization(
                                   "string address materialization is missing text label");
       }
       break;
+    case AddressMaterializationKind::LabelPageLow12:
+      return target_unsupported(bad_header(instruction) +
+                                "label address materialization printer path is deferred");
     case AddressMaterializationKind::TlsRelative:
       return target_unsupported(bad_header(instruction) +
                                 "TLS address materialization printer path is deferred");

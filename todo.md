@@ -1,48 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/247_explicit_got_materialization_policy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Publish Explicit GOT Policy Into Prepared Facts
+Current Step ID: 3
+Current Step Title: Consume GOT Policy In AArch64 Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 published explicit GOT-required address-materialization policy carriers
-into target/BIR/prepared facts without selecting or printing GOT.
+Step 3 consumed prepared `GotGlobal` address-materialization carriers in
+AArch64 selected records without adding terminal GOT printer output.
 
-- Added `TargetRelocationModel` to `TargetProfile`, wired `-fPIC`/`-fpic` to
-  `Pic`, `-fPIE`/`-fpie` to `Pie`, and rejected mixed PIC plus PIE inputs.
-- Added `GlobalAddressMaterializationPolicy` with `Unspecified`, `Direct`, and
-  `GotRequired` to BIR global/function symbol metadata.
-- Passed `TargetProfile` into global lowering so static globals lower as
-  `Direct`, same-module internal PIC/PIE globals lower as `Direct`, and PIC/PIE
-  globals without real per-symbol policy remain `Unspecified`.
-- Extended prepared address materialization to preserve/dump the policy,
-  convert explicit `GotRequired` globals into `PreparedAddressMaterializationKind::GotGlobal`,
-  and diagnose unresolved PIC/PIE policy instead of inferring GOT from spelling
-  or `is_extern`.
-- Added focused prepared tests proving explicit `GotRequired` carrier
-  preservation and PIC unresolved-policy diagnostics.
+- Added `AddressMaterializationKind::GotPageLow12` as the selected AArch64
+  record kind for prepared `GotGlobal` carriers.
+- Added `address_materialization_policy` to `AddressMaterializationRecord` so
+  selected records preserve the explicit prepared `GotRequired` policy.
+- Updated prepared address-materialization record construction so `GotGlobal`
+  requires explicit `GotRequired` policy, structured symbol identity, non-TLS
+  facts, result value home, and register storage before it selects.
+- Kept direct globals selecting as `DirectPageLow12` and preserved existing
+  direct printer fixtures by requiring direct policy on the prepared conversion
+  path, not on hand-built printer records.
+- Extended focused AArch64 MIR tests to prove GOT selected records, dispatch
+  consumption from prepared carriers, and fail-closed missing/mismatched GOT
+  policy diagnostics.
+- Fixed the Step 3 terminal-printer acceptance issue by making selected
+  `GotPageLow12` and `LabelPageLow12` records explicitly fail closed with
+  deferred-printer diagnostics instead of falling through to empty relocation
+  labels.
 
 ## Suggested Next
 
-Step 3 implementation packet: consume prepared `GotGlobal` carriers in AArch64
-selection records without terminal GOT printer output.
+Step 4 implementation packet: define terminal AArch64 GOT printer behavior only
+after the GOT relocation operand sequence is fully specified.
 
 ## Watchouts
 
-- This packet intentionally does not infer `GotRequired` from external linkage;
-  PIC/PIE externs without a real resolved policy remain `Unspecified` and emit
-  a prepared diagnostic.
-- BIR still lacks full visibility/preemptibility/import metadata. Future policy
-  resolution should populate the explicit BIR policy field instead of replacing
-  it with name-shaped shortcuts.
-- `GotRequired` for TLS globals is explicitly deferred and diagnosed in
-  prepared facts until the TLS/GOT interaction is specified.
-- `src/backend/bir/lir_to_bir/module.cpp` changed only as the required call
-  site to pass `TargetProfile` into owned global lowering.
-- Terminal GOT printer output and AArch64 GOT selection were left untouched.
+- Terminal GOT and label printer output is still deferred. The printer now
+  rejects selected `GotPageLow12` and `LabelPageLow12` records explicitly until
+  their relocation sequences are specified.
+- `GotPageLow12` records now have selected machine-node status, so future
+  printer work must handle that kind explicitly before routing GOT records to
+  terminal output.
+- Do not infer GOT from rendered names or `is_extern`; the AArch64 selector now
+  depends on the prepared `GotGlobal` kind plus explicit `GotRequired` policy.
+- TLS/GOT remains unsupported and fails closed through the prepared record
+  validation path.
 
 ## Proof
 

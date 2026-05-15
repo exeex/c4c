@@ -625,6 +625,8 @@ std::string_view address_materialization_kind_name(AddressMaterializationKind ki
   switch (kind) {
     case AddressMaterializationKind::DirectPageLow12:
       return "direct_page_low12";
+    case AddressMaterializationKind::GotPageLow12:
+      return "got_page_low12";
     case AddressMaterializationKind::TlsRelative:
       return "tls_relative";
     case AddressMaterializationKind::StringConstant:
@@ -664,6 +666,10 @@ std::string_view prepared_address_materialization_record_error_name(
       return "missing_string_identity";
     case PreparedAddressMaterializationRecordError::MissingLabelIdentity:
       return "missing_label_identity";
+    case PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy:
+      return "missing_address_materialization_policy";
+    case PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch:
+      return "address_materialization_policy_mismatch";
     case PreparedAddressMaterializationRecordError::TlsFactMismatch:
       return "tls_fact_mismatch";
   }
@@ -1567,14 +1573,14 @@ std::optional<AddressMaterializationKind> selected_address_materialization_kind(
   switch (kind) {
     case prepare::PreparedAddressMaterializationKind::DirectGlobal:
       return AddressMaterializationKind::DirectPageLow12;
+    case prepare::PreparedAddressMaterializationKind::GotGlobal:
+      return AddressMaterializationKind::GotPageLow12;
     case prepare::PreparedAddressMaterializationKind::TlsGlobal:
       return AddressMaterializationKind::TlsRelative;
     case prepare::PreparedAddressMaterializationKind::StringConstant:
       return AddressMaterializationKind::StringConstant;
     case prepare::PreparedAddressMaterializationKind::Label:
       return AddressMaterializationKind::LabelPageLow12;
-    case prepare::PreparedAddressMaterializationKind::GotGlobal:
-      return AddressMaterializationKind::DeferredUnsupported;
     case prepare::PreparedAddressMaterializationKind::None:
       return std::nullopt;
   }
@@ -1587,6 +1593,14 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
     AddressMaterializationRecord& record) {
   switch (materialization.kind) {
     case prepare::PreparedAddressMaterializationKind::DirectGlobal:
+      if (materialization.address_materialization_policy ==
+          bir::GlobalAddressMaterializationPolicy::Unspecified) {
+        return PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy;
+      }
+      if (materialization.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct) {
+        return PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch;
+      }
       if (!materialization.symbol_name.has_value()) {
         return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
       }
@@ -1597,6 +1611,14 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
       }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::TlsGlobal:
+      if (materialization.address_materialization_policy ==
+          bir::GlobalAddressMaterializationPolicy::Unspecified) {
+        return PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy;
+      }
+      if (materialization.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct) {
+        return PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch;
+      }
       if (!materialization.symbol_name.has_value()) {
         return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
       }
@@ -1631,6 +1653,26 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
       }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::GotGlobal:
+      if (materialization.address_materialization_policy ==
+          bir::GlobalAddressMaterializationPolicy::Unspecified) {
+        return PreparedAddressMaterializationRecordError::MissingAddressMaterializationPolicy;
+      }
+      if (materialization.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+        return PreparedAddressMaterializationRecordError::AddressMaterializationPolicyMismatch;
+      }
+      if (!materialization.symbol_name.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
+      if (materialization.is_thread_local || materialization.has_tls_address_space ||
+          materialization.address_space == bir::AddressSpace::Tls) {
+        return PreparedAddressMaterializationRecordError::TlsFactMismatch;
+      }
+      record.symbol_name = materialization.symbol_name;
+      record.symbol_label = prepare::prepared_link_name(names, *materialization.symbol_name);
+      if (record.symbol_label.empty()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::None:
       return PreparedAddressMaterializationRecordError::UnsupportedAddressKind;
@@ -1671,6 +1713,7 @@ PreparedAddressMaterializationRecordResult make_address_record_from_prepared_mat
       .function_name = materialization->function_name,
       .block_label = materialization->block_label,
       .instruction_index = materialization->inst_index,
+      .address_materialization_policy = materialization->address_materialization_policy,
       .byte_offset = materialization->byte_offset,
       .address_space = materialization->address_space,
       .is_thread_local = materialization->is_thread_local,
@@ -1912,6 +1955,7 @@ MachineOpcode machine_opcode_from_address_materialization(
     const AddressMaterializationRecord& instruction) {
   switch (instruction.kind) {
     case AddressMaterializationKind::DirectPageLow12:
+    case AddressMaterializationKind::GotPageLow12:
     case AddressMaterializationKind::TlsRelative:
     case AddressMaterializationKind::StringConstant:
     case AddressMaterializationKind::LabelPageLow12:
@@ -2292,6 +2336,13 @@ MachineNodeStatusRecord address_materialization_selection_status(
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "global address materialization is missing symbol identity"};
+  }
+  if (instruction.kind == AddressMaterializationKind::GotPageLow12 &&
+      instruction.address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "GOT address materialization is missing GOT-required policy"};
   }
   if (instruction.kind == AddressMaterializationKind::TlsRelative &&
       (!instruction.is_thread_local || !instruction.has_tls_address_space ||

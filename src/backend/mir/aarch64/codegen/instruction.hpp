@@ -280,6 +280,7 @@ enum class PreparedMemoryOperandRecordError {
 
 enum class AddressMaterializationKind {
   DirectPageLow12,
+  GotPageLow12,
   TlsRelative,
   StringConstant,
   LabelPageLow12,
@@ -299,6 +300,8 @@ enum class PreparedAddressMaterializationRecordError {
   MissingSymbolIdentity,
   MissingStringIdentity,
   MissingLabelIdentity,
+  MissingAddressMaterializationPolicy,
+  AddressMaterializationPolicyMismatch,
   TlsFactMismatch,
 };
 
@@ -583,6 +586,8 @@ struct AddressMaterializationRecord {
   std::string_view text_label;
   std::optional<c4c::BlockLabelId> target_label;
   std::string_view target_label_name;
+  bir::GlobalAddressMaterializationPolicy address_materialization_policy =
+      bir::GlobalAddressMaterializationPolicy::Unspecified;
   std::int64_t byte_offset = 0;
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;
