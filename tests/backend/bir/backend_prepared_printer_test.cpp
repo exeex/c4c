@@ -2884,6 +2884,18 @@ int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
     std::cerr << "[FAIL] CRC carrier lost required semantic/home fields\n";
     return EXIT_FAILURE;
   }
+  const std::string crc_dump = prepare::print(crc);
+  if (!expect_contains(crc_dump,
+                       "intrinsic_carrier family=crc operation=crc32w "
+                       "feature=aarch64_crc block_index=0 inst_index=0 "
+                       "operand_type=i32 result_type=i32 roles=accumulator,data "
+                       "signedness=unsigned memory_access=none side_effects=no "
+                       "requires_feature=yes prepared_call_plan=yes "
+                       "source_callee=llvm.aarch64.crc32w operand=acc "
+                       "operands=acc,data result=crc operand_homes=2 result_home=yes",
+                       "complete CRC carrier")) {
+    return EXIT_FAILURE;
+  }
 
   const auto vector_load = prepare_vector_load_intrinsic_carrier_dump_module();
   const auto* load_carriers =
@@ -2908,6 +2920,20 @@ int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
       !load_carrier.result_home.has_value() ||
       load_carrier.missing_required_facts.empty() == false) {
     std::cerr << "[FAIL] vector-load carrier lost required semantic/home fields\n";
+    return EXIT_FAILURE;
+  }
+  const std::string load_dump = prepare::print(vector_load);
+  if (!expect_contains(load_dump,
+                       "intrinsic_carrier family=vector_memory operation=vector_load "
+                       "feature=aarch64_neon block_index=0 inst_index=0 "
+                       "operand_type=ptr result_type=i128 roles=pointer "
+                       "vector_element_type=i8 vector_element_width=1 vector_lanes=16 "
+                       "vector_width=16 signedness=unsigned memory_access=read "
+                       "memory_size=16 memory_align=16 memory_volatile=no "
+                       "side_effects=no requires_feature=yes prepared_call_plan=yes "
+                       "source_callee=llvm.aarch64.neon.ld1.v16i8.p0i8 operand=p "
+                       "result=vec operand_homes=1 result_home=yes",
+                       "complete vector-load carrier")) {
     return EXIT_FAILURE;
   }
 
