@@ -3,8 +3,10 @@
 
 #include <iostream>
 #include <initializer_list>
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace {
 
@@ -112,6 +114,94 @@ aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
       .align_bytes = 8,
       .address_space = bir::AddressSpace::Default,
       .can_use_base_plus_offset = true,
+  };
+}
+
+aarch64_codegen::I128PairOperandRecord i128_pair_operand(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    unsigned low_register) {
+  auto low = xreg(low_register);
+  auto high = xreg(low_register + 1);
+  low.value_id = value_id;
+  low.value_name = value_name;
+  high.value_id = value_id;
+  high.value_name = value_name;
+  return aarch64_codegen::I128PairOperandRecord{
+      .value_id = value_id,
+      .value_name = value_name,
+      .carrier_kind = prepare::PreparedI128CarrierKind::RegisterPair,
+      .low_lane =
+          aarch64_codegen::I128LaneTransportRecord{
+              .role = prepare::PreparedI128LaneRole::Low,
+              .lane_index = 0,
+              .width_bytes = 8,
+              .reg = low,
+          },
+      .high_lane =
+          aarch64_codegen::I128LaneTransportRecord{
+              .role = prepare::PreparedI128LaneRole::High,
+              .lane_index = 1,
+              .width_bytes = 8,
+              .reg = high,
+          },
+      .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
+  };
+}
+
+aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record() {
+  return aarch64_codegen::I128RuntimeHelperBoundaryRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .boundary_kind = aarch64_codegen::I128RuntimeHelperBoundaryKind::SignedDiv,
+      .helper_family = prepare::PreparedI128RuntimeHelperFamily::DivRem,
+      .helper_kind = prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+      .callee_name = "__divti3",
+      .source_binary_opcode = bir::BinaryOpcode::SDiv,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .source_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .result_value_id = prepare::PreparedValueId{70},
+      .result_value_name = c4c::ValueNameId{70},
+      .lhs_value_id = prepare::PreparedValueId{71},
+      .lhs_value_name = c4c::ValueNameId{71},
+      .rhs_value_id = prepare::PreparedValueId{72},
+      .rhs_value_name = c4c::ValueNameId{72},
+      .result_ownership =
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
+      .lane_width_bytes = 8,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .result = i128_pair_operand(prepare::PreparedValueId{70}, c4c::ValueNameId{70}, 0),
+      .lhs = i128_pair_operand(prepare::PreparedValueId{71}, c4c::ValueNameId{71}, 2),
+      .rhs = i128_pair_operand(prepare::PreparedValueId{72}, c4c::ValueNameId{72}, 4),
+      .resource_policy =
+          prepare::PreparedI128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedI128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedI128RuntimeHelperAbiTransition::
+                      DirectRegisterPairArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Gpr,
+              .result_bank = prepare::PreparedRegisterBank::Gpr,
+              .argument_count = 2,
+              .lanes_per_argument = 2,
+              .result_lane_count = 2,
+              .lane_width_bytes = 8,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x13",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x13"},
+          }},
+      .source_helper = reinterpret_cast<const prepare::PreparedI128RuntimeHelper*>(0x1),
   };
 }
 
@@ -655,6 +745,154 @@ int selected_fp_conversions_print_from_structured_operands() {
                          expected,
                          expected,
                          "FP conversion common-printer drift guard");
+}
+
+int selected_i128_records_print_from_structured_fields() {
+  auto load_memory = frame_slot(32);
+  load_memory.size_bytes = 16;
+  load_memory.align_bytes = 16;
+  const auto load_pair = i128_pair_operand(prepare::PreparedValueId{60},
+                                           c4c::ValueNameId{60},
+                                           6);
+  const auto transport_load =
+      aarch64_codegen::make_i128_transport_instruction(aarch64_codegen::I128TransportRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .transport_kind = aarch64_codegen::I128TransportKind::LoadFromMemory,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .value_id = prepare::PreparedValueId{60},
+          .value_name = c4c::ValueNameId{60},
+          .carrier_kind = prepare::PreparedI128CarrierKind::RegisterPair,
+          .lane_width_bytes = 8,
+          .total_size_bytes = 16,
+          .total_align_bytes = 16,
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .register_class = prepare::PreparedRegisterClass::General,
+          .low_lane = load_pair.low_lane,
+          .high_lane = load_pair.high_lane,
+          .memory = load_memory,
+          .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
+      });
+  const auto pair_add = aarch64_codegen::make_i128_pair_operation_instruction(
+      aarch64_codegen::I128PairOperationRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::I128PairOperationKind::Add,
+          .lane_semantics = aarch64_codegen::I128PairLaneSemantics::CarryPropagating,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .result =
+              i128_pair_operand(prepare::PreparedValueId{61}, c4c::ValueNameId{61}, 8),
+          .lhs = i128_pair_operand(prepare::PreparedValueId{62}, c4c::ValueNameId{62}, 10),
+          .rhs = i128_pair_operand(prepare::PreparedValueId{63}, c4c::ValueNameId{63}, 12),
+      });
+  const auto shift = aarch64_codegen::make_i128_shift_instruction(
+      aarch64_codegen::I128ShiftRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .shift_kind = aarch64_codegen::I128ShiftKind::LogicalRight,
+          .lane_semantics = aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight,
+          .count_kind = aarch64_codegen::I128ShiftCountKind::Immediate,
+          .source_binary_opcode = bir::BinaryOpcode::LShr,
+          .result =
+              i128_pair_operand(prepare::PreparedValueId{64}, c4c::ValueNameId{64}, 14),
+          .source =
+              i128_pair_operand(prepare::PreparedValueId{65}, c4c::ValueNameId{65}, 16),
+          .shift_count =
+              aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 12,
+              }),
+      });
+  const auto compare = aarch64_codegen::make_i128_compare_instruction(
+      aarch64_codegen::I128CompareRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .predicate = bir::BinaryOpcode::Eq,
+          .signedness = aarch64_codegen::I128CompareSignedness::Equality,
+          .high_word_semantics =
+              aarch64_codegen::I128CompareHighWordSemantics::EqualityBothLanes,
+          .result_value_id = prepare::PreparedValueId{66},
+          .result_value_name = c4c::ValueNameId{66},
+          .result_register = wreg(0),
+          .lhs = i128_pair_operand(prepare::PreparedValueId{67}, c4c::ValueNameId{67}, 18),
+          .rhs = i128_pair_operand(prepare::PreparedValueId{68}, c4c::ValueNameId{68}, 20),
+      });
+  const auto unsigned_compare = aarch64_codegen::make_i128_compare_instruction(
+      aarch64_codegen::I128CompareRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .predicate = bir::BinaryOpcode::Ult,
+          .signedness = aarch64_codegen::I128CompareSignedness::Unsigned,
+          .high_word_semantics =
+              aarch64_codegen::I128CompareHighWordSemantics::UnsignedHighWordFirst,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 9,
+          .result_value_id = prepare::PreparedValueId{69},
+          .result_value_name = c4c::ValueNameId{69},
+          .result_register = wreg(1),
+          .lhs = i128_pair_operand(prepare::PreparedValueId{70}, c4c::ValueNameId{70}, 22),
+          .rhs = i128_pair_operand(prepare::PreparedValueId{71}, c4c::ValueNameId{71}, 24),
+      });
+  const auto result = print_common_instruction_nodes(
+      {transport_load, pair_add, shift, compare, unsigned_compare});
+  if (!result.ok) {
+    return fail("expected selected i128 nodes to print from structured fields: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    ldp x6, x7, [sp, #32]\n"
+      "    adds x8, x10, x12\n"
+      "    adc x9, x11, x13\n"
+      "    extr x14, x16, x17, #12\n"
+      "    lsr x15, x17, #12\n"
+      "    cmp x19, x21\n"
+      "    ccmp x18, x20, #0, eq\n"
+      "    cset w0, eq\n"
+      "    cmp x23, x25\n"
+      "    b.lo .L_i128cmp_2_3_9_true\n"
+      "    b.hi .L_i128cmp_2_3_9_false\n"
+      "    cmp x22, x24\n"
+      "    b.lo .L_i128cmp_2_3_9_true\n"
+      "    b .L_i128cmp_2_3_9_false\n"
+      "    .L_i128cmp_2_3_9_true:\n"
+      "    mov w1, #1\n"
+      "    b .L_i128cmp_2_3_9_done\n"
+      "    .L_i128cmp_2_3_9_false:\n"
+      "    mov w1, #0\n"
+      "    .L_i128cmp_2_3_9_done:\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "i128 structured common-printer drift guard");
+}
+
+int selected_i128_records_reject_incomplete_structured_fields() {
+  const auto helper_record = i128_helper_record();
+  const auto helper =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(helper_record);
+  const auto helper_result = aarch64_codegen::print_machine_instruction_line_payloads(helper);
+  if (helper_result.ok ||
+      helper_result.diagnostic.find("helper marshaling") == std::string::npos ||
+      helper_result.diagnostic.find("ABI register-binding facts") == std::string::npos) {
+    return fail("expected i128 helper boundary without marshaling facts to fail closed");
+  }
+
+  auto pair_record = aarch64_codegen::I128PairOperationRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .operation = aarch64_codegen::I128PairOperationKind::Sub,
+      .lane_semantics = aarch64_codegen::I128PairLaneSemantics::BorrowPropagating,
+      .source_binary_opcode = bir::BinaryOpcode::Sub,
+      .result = i128_pair_operand(prepare::PreparedValueId{80}, c4c::ValueNameId{80}, 2),
+      .lhs = i128_pair_operand(prepare::PreparedValueId{81}, c4c::ValueNameId{81}, 4),
+      .rhs = i128_pair_operand(prepare::PreparedValueId{82}, c4c::ValueNameId{82}, 6),
+  };
+  pair_record.rhs.high_lane.reg.reset();
+  const auto pair = aarch64_codegen::make_i128_pair_operation_instruction(pair_record);
+  const auto pair_result = aarch64_codegen::print_machine_instruction_line_payloads(pair);
+  if (pair_result.ok ||
+      pair_result.diagnostic.find("missing_required_facts") == std::string::npos ||
+      pair_result.diagnostic.find("source register-pair carriers") == std::string::npos) {
+    return fail("expected incomplete i128 pair operation to fail closed");
+  }
+  return 0;
 }
 
 int selected_immediate_return_node_prints_callable_epilogue() {
@@ -2256,6 +2494,13 @@ int main() {
     return result;
   }
   if (const int result = selected_fp_conversions_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_i128_records_print_from_structured_fields(); result != 0) {
+    return result;
+  }
+  if (const int result = selected_i128_records_reject_incomplete_structured_fields();
       result != 0) {
     return result;
   }

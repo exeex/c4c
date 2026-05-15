@@ -164,6 +164,21 @@ std::string memory_address(const MemoryOperand& address) {
   return out.str();
 }
 
+std::optional<std::string> lane_register_name(const I128LaneTransportRecord& lane) {
+  if (!lane.reg.has_value()) {
+    return std::nullopt;
+  }
+  return register_name(*lane.reg);
+}
+
+std::optional<std::string> pair_low_register_name(const I128PairOperandRecord& operand) {
+  return lane_register_name(operand.low_lane);
+}
+
+std::optional<std::string> pair_high_register_name(const I128PairOperandRecord& operand) {
+  return lane_register_name(operand.high_lane);
+}
+
 std::string relocation_operand(std::string_view label, std::int64_t byte_offset) {
   std::string operand(label);
   if (byte_offset > 0) {
@@ -461,6 +476,355 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   std::ostringstream out;
   out << mnemonic << " " << register_name(*value) << ", " << address;
   return target_printed({out.str()});
+}
+
+mir::TargetInstructionPrintResult print_i128_transport(
+    const InstructionRecord& instruction,
+    const I128TransportRecord& transport) {
+  const auto low = lane_register_name(transport.low_lane);
+  const auto high = lane_register_name(transport.high_lane);
+  if (!low.has_value() || !high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 transport node is missing structured low/high registers");
+  }
+  if (transport.transport_kind == I128TransportKind::CarrierSnapshot) {
+    std::ostringstream out;
+    out << "// i128 carrier " << *low << ", " << *high;
+    return target_printed({out.str()});
+  }
+  if (!transport.memory.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 memory transport is missing structured memory operand");
+  }
+  const auto address = memory_address(*transport.memory);
+  if (address.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 memory transport address is not printable");
+  }
+  std::ostringstream out;
+  if (transport.transport_kind == I128TransportKind::LoadFromMemory) {
+    out << "ldp " << *low << ", " << *high << ", " << address;
+    return target_printed({out.str()});
+  }
+  if (transport.transport_kind == I128TransportKind::StoreToMemory) {
+    out << "stp " << *low << ", " << *high << ", " << address;
+    return target_printed({out.str()});
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 transport kind is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_pair_operation(
+    const InstructionRecord& instruction,
+    const I128PairOperationRecord& pair) {
+  const auto result_low = pair_low_register_name(pair.result);
+  const auto result_high = pair_high_register_name(pair.result);
+  const auto lhs_low = pair_low_register_name(pair.lhs);
+  const auto lhs_high = pair_high_register_name(pair.lhs);
+  const auto rhs_low = pair_low_register_name(pair.rhs);
+  const auto rhs_high = pair_high_register_name(pair.rhs);
+  if (!result_low.has_value() || !result_high.has_value() ||
+      !lhs_low.has_value() || !lhs_high.has_value() ||
+      !rhs_low.has_value() || !rhs_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 pair node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  auto emit_independent = [&](std::string_view mnemonic) {
+    std::ostringstream low;
+    low << mnemonic << " " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+    lines.push_back(low.str());
+    std::ostringstream high;
+    high << mnemonic << " " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+    lines.push_back(high.str());
+  };
+
+  switch (pair.operation) {
+    case I128PairOperationKind::Add: {
+      std::ostringstream low;
+      low << "adds " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "adc " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128PairOperationKind::Sub: {
+      std::ostringstream low;
+      low << "subs " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "sbc " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128PairOperationKind::And:
+      emit_independent("and");
+      return target_printed(std::move(lines));
+    case I128PairOperationKind::Or:
+      emit_independent("orr");
+      return target_printed(std::move(lines));
+    case I128PairOperationKind::Xor:
+      emit_independent("eor");
+      return target_printed(std::move(lines));
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 pair operation is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_shift(const InstructionRecord& instruction,
+                                                   const I128ShiftRecord& shift) {
+  if (shift.count_kind != I128ShiftCountKind::Immediate) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift printer currently requires an immediate shift count");
+  }
+  const auto* immediate = std::get_if<ImmediateOperand>(&shift.shift_count.payload);
+  if (shift.shift_count.kind != OperandKind::Immediate || immediate == nullptr ||
+      immediate->signed_value < 0 || immediate->signed_value >= 64) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift immediate is outside the printable 0..63 subset");
+  }
+  const auto amount = immediate->signed_value;
+  const auto result_low = pair_low_register_name(shift.result);
+  const auto result_high = pair_high_register_name(shift.result);
+  const auto source_low = pair_low_register_name(shift.source);
+  const auto source_high = pair_high_register_name(shift.source);
+  if (!result_low.has_value() || !result_high.has_value() ||
+      !source_low.has_value() || !source_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  auto emit_mov_pair = [&]() {
+    std::ostringstream low;
+    low << "mov " << *result_low << ", " << *source_low;
+    lines.push_back(low.str());
+    std::ostringstream high;
+    high << "mov " << *result_high << ", " << *source_high;
+    lines.push_back(high.str());
+  };
+  if (amount == 0) {
+    emit_mov_pair();
+    return target_printed(std::move(lines));
+  }
+
+  switch (shift.shift_kind) {
+    case I128ShiftKind::Left: {
+      std::ostringstream low;
+      low << "lsl " << *result_low << ", " << *source_low << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "extr " << *result_high << ", " << *source_high << ", " << *source_low
+           << ", #" << (64 - amount);
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128ShiftKind::LogicalRight: {
+      std::ostringstream low;
+      low << "extr " << *result_low << ", " << *source_low << ", " << *source_high
+          << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "lsr " << *result_high << ", " << *source_high << ", #" << amount;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128ShiftKind::ArithmeticRight: {
+      std::ostringstream low;
+      low << "extr " << *result_low << ", " << *source_low << ", " << *source_high
+          << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "asr " << *result_high << ", " << *source_high << ", #" << amount;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 shift kind is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_compare(const InstructionRecord& instruction,
+                                                     const I128CompareRecord& compare) {
+  if (!compare.result_register.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 compare node is missing structured result register");
+  }
+  const auto result = register_name(*compare.result_register);
+  const auto lhs_low = pair_low_register_name(compare.lhs);
+  const auto lhs_high = pair_high_register_name(compare.lhs);
+  const auto rhs_low = pair_low_register_name(compare.rhs);
+  const auto rhs_high = pair_high_register_name(compare.rhs);
+  if (!lhs_low.has_value() || !lhs_high.has_value() ||
+      !rhs_low.has_value() || !rhs_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 compare node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  switch (compare.predicate) {
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne: {
+      const auto condition = compare.predicate == bir::BinaryOpcode::Eq ? "eq" : "ne";
+      {
+        std::ostringstream high;
+        high << "cmp " << *lhs_high << ", " << *rhs_high;
+        lines.push_back(high.str());
+      }
+      {
+        std::ostringstream low;
+        low << "ccmp " << *lhs_low << ", " << *rhs_low << ", #0, eq";
+        lines.push_back(low.str());
+      }
+      {
+        std::ostringstream cset;
+        cset << "cset " << result << ", " << condition;
+        lines.push_back(cset.str());
+      }
+      return target_printed(std::move(lines));
+    }
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+    default:
+      return target_unsupported(
+          bad_header(instruction) +
+          "i128 compare printer supports equality and relational predicates only");
+  }
+
+  const auto signed_high =
+      compare.predicate == bir::BinaryOpcode::Slt ||
+      compare.predicate == bir::BinaryOpcode::Sle ||
+      compare.predicate == bir::BinaryOpcode::Sgt ||
+      compare.predicate == bir::BinaryOpcode::Sge;
+  const auto greater_predicate =
+      compare.predicate == bir::BinaryOpcode::Sgt ||
+      compare.predicate == bir::BinaryOpcode::Sge ||
+      compare.predicate == bir::BinaryOpcode::Ugt ||
+      compare.predicate == bir::BinaryOpcode::Uge;
+  const auto inclusive_predicate =
+      compare.predicate == bir::BinaryOpcode::Sle ||
+      compare.predicate == bir::BinaryOpcode::Sge ||
+      compare.predicate == bir::BinaryOpcode::Ule ||
+      compare.predicate == bir::BinaryOpcode::Uge;
+  const auto high_true = greater_predicate ? "gt" : "lt";
+  const auto high_false = greater_predicate ? "lt" : "gt";
+  const auto unsigned_high_true = greater_predicate ? "hi" : "lo";
+  const auto unsigned_high_false = greater_predicate ? "lo" : "hi";
+  const auto low_true =
+      greater_predicate ? (inclusive_predicate ? "hs" : "hi")
+                        : (inclusive_predicate ? "ls" : "lo");
+  const auto true_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                          std::to_string(compare.block_label) + "_" +
+                          std::to_string(compare.instruction_index) + "_true";
+  const auto false_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                           std::to_string(compare.block_label) + "_" +
+                           std::to_string(compare.instruction_index) + "_false";
+  const auto done_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                          std::to_string(compare.block_label) + "_" +
+                          std::to_string(compare.instruction_index) + "_done";
+  {
+    std::ostringstream high;
+    high << "cmp " << *lhs_high << ", " << *rhs_high;
+    lines.push_back(high.str());
+  }
+  {
+    std::ostringstream high_true_branch;
+    high_true_branch << "b." << (signed_high ? high_true : unsigned_high_true) << " "
+                     << true_label;
+    lines.push_back(high_true_branch.str());
+  }
+  {
+    std::ostringstream high_false_branch;
+    high_false_branch << "b." << (signed_high ? high_false : unsigned_high_false) << " "
+                      << false_label;
+    lines.push_back(high_false_branch.str());
+  }
+  {
+    std::ostringstream low;
+    low << "cmp " << *lhs_low << ", " << *rhs_low;
+    lines.push_back(low.str());
+  }
+  {
+    std::ostringstream low_true_branch;
+    low_true_branch << "b." << low_true << " " << true_label;
+    lines.push_back(low_true_branch.str());
+  }
+  {
+    std::ostringstream fallthrough;
+    fallthrough << "b " << false_label;
+    lines.push_back(fallthrough.str());
+  }
+  lines.push_back(true_label + ":");
+  {
+    std::ostringstream set_true;
+    set_true << "mov " << result << ", #1";
+    lines.push_back(set_true.str());
+  }
+  {
+    std::ostringstream done;
+    done << "b " << done_label;
+    lines.push_back(done.str());
+  }
+  lines.push_back(false_label + ":");
+  {
+    std::ostringstream set_false;
+    set_false << "mov " << result << ", #0";
+    lines.push_back(set_false.str());
+  }
+  lines.push_back(done_label + ":");
+  return target_printed(std::move(lines));
+}
+
+mir::TargetInstructionPrintResult print_i128_runtime_helper(
+    const InstructionRecord& instruction,
+    const I128RuntimeHelperBoundaryRecord& helper) {
+  if (helper.source_helper == nullptr) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing prepared helper provenance");
+  }
+  if (helper.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem ||
+      helper.callee_name.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing div/rem callee facts");
+  }
+  if (helper.result_ownership !=
+      prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary requires direct low/high result ownership");
+  }
+  if (!helper.resource_policy.call_boundary ||
+      !helper.resource_policy.runtime_helper_callee ||
+      !helper.resource_policy.caller_saved_clobbers ||
+      !helper.resource_policy.preserves_source_operation_identity ||
+      helper.clobbered_registers.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing resource or clobber policy");
+  }
+  if (helper.abi_policy.transition !=
+          prepare::PreparedI128RuntimeHelperAbiTransition::
+              DirectRegisterPairArgumentsAndResult ||
+      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.argument_count != 2 ||
+      helper.abi_policy.lanes_per_argument != 2 ||
+      helper.abi_policy.result_lane_count != 2 ||
+      helper.abi_policy.lane_width_bytes != 8) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing ABI/register-bank policy");
+  }
+  return target_unsupported(
+      bad_header(instruction) +
+      "i128 helper boundary printing requires structured helper marshaling "
+      "and ABI register-binding facts");
 }
 
 mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
@@ -1217,6 +1581,22 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* address = std::get_if<AddressMaterializationRecord>(&instruction.payload)) {
     return print_address_materialization(instruction, *address);
+  }
+  if (const auto* transport = std::get_if<I128TransportRecord>(&instruction.payload)) {
+    return print_i128_transport(instruction, *transport);
+  }
+  if (const auto* pair = std::get_if<I128PairOperationRecord>(&instruction.payload)) {
+    return print_i128_pair_operation(instruction, *pair);
+  }
+  if (const auto* shift = std::get_if<I128ShiftRecord>(&instruction.payload)) {
+    return print_i128_shift(instruction, *shift);
+  }
+  if (const auto* compare = std::get_if<I128CompareRecord>(&instruction.payload)) {
+    return print_i128_compare(instruction, *compare);
+  }
+  if (const auto* helper =
+          std::get_if<I128RuntimeHelperBoundaryRecord>(&instruction.payload)) {
+    return print_i128_runtime_helper(instruction, *helper);
   }
   if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     return print_scalar(instruction, *scalar);
