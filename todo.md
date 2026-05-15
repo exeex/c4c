@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/242_inline_asm_memory_address_constraints.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select And Print Supported Memory/Address Operands
+Current Step ID: 4
+Current Step Title: Bridge Prepared Authority Into Selected Memory/Address Operands
 
 # Current Packet
 
@@ -32,10 +32,16 @@ Concrete work completed:
 
 ## Suggested Next
 
-Next packet: add the missing selected-machine authority bridge only when the
-design can carry a structured prepared `MemoryAddress` into a target-valid
-AArch64 inline-asm memory/address operand record and printer form without using
-rendered text or adding allocator/scratch/spill policy.
+Lifecycle decision: keep `ideas/open/242_inline_asm_memory_address_constraints.md`
+active and rewrite the runbook in place. The selected-machine authority bridge
+is required current-scope work, not a separate idea, because the source idea
+already requires AArch64 selection to accept complete target-valid structured
+memory/address operands when expressible.
+
+Next packet: Step 4, add the missing selected-machine authority bridge only
+when the design can carry a structured prepared `MemoryAddress` into a
+target-valid AArch64 inline-asm memory/address operand record and printer form
+without using rendered text or adding allocator/scratch/spill policy.
 
 ## Watchouts
 

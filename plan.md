@@ -35,6 +35,8 @@ facts that are complete for the AArch64 target.
 - Define the prepared-home authority needed for inline-asm address operands.
 - Preserve structured BIR/prepared facts so AArch64 selection can distinguish
   supported target-valid homes from unsupported or incomplete forms.
+- Bridge structured `MemoryAddress` authority into selected AArch64 inline-asm
+  machine operands before claiming any supported `m` or `p` representative.
 - Select and print memory/address operands only when those homes are complete.
 - Diagnose unsupported constraints, missing homes, and target-invalid address
   forms explicitly.
@@ -68,8 +70,13 @@ facts that are complete for the AArch64 target.
   parallel memory/address-only protocol.
 - Preserve existing supported inline-asm behavior while adding fail-closed
   coverage near the new route.
-- Record blockers in `todo.md` when the prepared-home model cannot express a
-  supported representative yet; do not mask that gap with expectation rewrites.
+- Treat the selected-machine authority bridge as required current-scope work:
+  do not proceed to final hardening or closure with only fail-closed diagnostics
+  if a structured bridge can be added without allocator, spill, or scratch
+  policy.
+- Record blockers in `todo.md` when the prepared-home or selected-machine model
+  cannot express a supported representative yet; do not mask that gap with
+  expectation rewrites.
 - For code-changing steps, run at least a fresh build or compile proof plus the
   supervisor-selected narrow inline-asm test subset. Escalate to broader
   regression guard when the touched surface crosses backend contracts.
@@ -127,10 +134,10 @@ Completion check:
 - Existing non-memory inline-asm tests continue to pass under the delegated
   narrow proof.
 
-### Step 3: Select And Print Supported Memory/Address Operands
+### Step 3: Harden The Fail-Closed Selected-Machine Boundary
 
-Goal: accept memory/address operands only after Step 2 proves complete
-target-valid authority.
+Goal: keep memory/address operands fail-closed at AArch64 selection and printing
+until selected machine operands have structured target-valid authority.
 
 Primary targets:
 
@@ -139,20 +146,55 @@ Primary targets:
 
 Actions:
 
-- Route structured memory/address operands into machine nodes only when the
-  prepared-home contract is satisfied.
-- Print accepted operands from structured machine operands, not from parsed
-  final text.
-- Preserve fail-closed behavior for incomplete or invalid homes.
+- Reject complete-but-not-selectable prepared `MemoryInput` and `AddressInput`
+  operands with explicit diagnostics instead of silently dropping authority.
+- Reject selected inline-asm memory/address operand kinds that lack a structured
+  selected payload before printing.
+- Record whether the missing selected-machine bridge prevents any supported
+  representative from being expressible.
 
 Completion check:
 
-- At least one supported representative passes if the prepared-home model can
-  express it.
-- Nearby missing-home, unsupported-constraint, and target-invalid cases fail
-  closed with explicit diagnostics.
+- Prepared carriers can retain optional `MemoryAddress` authority, and selected
+  dispatch/printer tests prove unsupported selected memory/address records fail
+  closed instead of being inferred from template or final assembly text.
+- `todo.md` records the selected-machine bridge gap if no supported `m` or `p`
+  representative is currently expressible.
 
-### Step 4: Harden Tests And Regression Scope
+### Step 4: Bridge Prepared Authority Into Selected Memory/Address Operands
+
+Goal: add the missing selected-machine authority carrier so a complete prepared
+`MemoryAddress` can become a target-valid AArch64 inline-asm memory/address
+operand without local allocation policy.
+
+Primary targets:
+
+- `InlineAsmMachineOperandRecord` and adjacent selected inline-asm machine-node
+  data.
+- AArch64 inline-asm dispatch bridge from prepared carriers into selected
+  machine operands.
+- AArch64 inline-asm printer form for selected memory/address operands.
+
+Actions:
+
+- Add structured selected payload fields for accepted memory/address operands,
+  reusing existing `MemoryAddress` facts or the nearest established AArch64
+  selected-address representation.
+- Convert prepared `MemoryInput` and `AddressInput` operands into selected
+  records only when their retained authority is complete and target-valid.
+- Print accepted operands from the selected structured payload, never from
+  rendered template text, final assembly text, or testcase-shaped spelling.
+- Keep missing, partial, target-invalid, allocator-dependent, scratch-dependent,
+  and spill-dependent forms on the explicit unsupported diagnostic path.
+
+Completion check:
+
+- At least one supported memory or address representative passes through
+  preparation, AArch64 selection, and printing from structured authority.
+- Existing fail-closed selected-machine diagnostics remain covered for records
+  without the selected payload.
+
+### Step 5: Harden Tests And Regression Scope
 
 Goal: prove the route as a backend capability rather than a narrow fixture.
 
