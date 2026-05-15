@@ -4535,6 +4535,327 @@ int block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed() {
   return 0;
 }
 
+prepare::PreparedBirModule prepared_with_scalar_fp_unary_fabs_intrinsic(
+    bir::TypeKind type = bir::TypeKind::F64,
+    prepare::PreparedIntrinsicCarrierKind carrier_kind =
+        prepare::PreparedIntrinsicCarrierKind::Complete,
+    bool use_fpr_storage = true,
+    bool has_prepared_call_plan = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.fabs");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.fabs.entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("dispatch.fabs.entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto result_name = prepared.names.value_names.intern("%fabs");
+  const auto fabs_link =
+      prepared.names.link_names.intern(type == bir::TypeKind::F32 ? "llvm.fabs.float"
+                                                                  : "llvm.fabs.double");
+  const char* source_register = type == bir::TypeKind::F32 ? "s1" : "d1";
+  const char* result_register = type == bir::TypeKind::F32 ? "s0" : "d0";
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.fabs",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.fabs.entry",
+              .insts =
+                  {bir::CallInst{
+                      .result = bir::Value::named(type, "%fabs"),
+                      .callee = type == bir::TypeKind::F32 ? "llvm.fabs.float"
+                                                           : "llvm.fabs.double",
+                      .callee_link_name_id = fabs_link,
+                      .args = {bir::Value::named(type, "%src")},
+                      .arg_types = {type},
+                      .return_type = type,
+                      .intrinsic =
+                          bir::IntrinsicOperation{
+                              .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+                              .operation = bir::IntrinsicOperationKind::FAbs,
+                              .operand_type = type,
+                              .result_type = type,
+                              .has_side_effects = false,
+                          },
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  if (has_prepared_call_plan) {
+    prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+        .function_name = function_name,
+        .calls = {prepare::PreparedCallPlan{
+            .block_index = 0,
+            .instruction_index = 0,
+            .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+            .direct_callee_name = type == bir::TypeKind::F32 ? std::string{"llvm.fabs.float"}
+                                                             : std::string{"llvm.fabs.double"},
+            .arguments = {prepare::PreparedCallArgumentPlan{
+                .arg_index = 0,
+                .value_bank = prepare::PreparedRegisterBank::Fpr,
+                .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                .source_value_id = prepare::PreparedValueId{50},
+                .source_register_name = source_register,
+                .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+                .destination_register_name = source_register,
+                .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+            }},
+            .result = prepare::PreparedCallResultPlan{
+                .value_bank = prepare::PreparedRegisterBank::Fpr,
+                .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                .destination_value_id = prepare::PreparedValueId{51},
+                .source_register_name = result_register,
+                .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+                .destination_register_name = result_register,
+                .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+            },
+        }},
+    });
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{50},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = source_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{51},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = result_register,
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          use_fpr_storage
+              ? std::vector<prepare::PreparedStoragePlanValue>{
+                    fpr_storage(prepare::PreparedValueId{50}, source_name, source_register),
+                    fpr_storage(prepare::PreparedValueId{51}, result_name, result_register)}
+              : std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{50}, source_name, source_register),
+                    register_storage(prepare::PreparedValueId{51}, result_name, result_register)},
+  });
+  prepared.intrinsic_carriers.functions.push_back(prepare::PreparedIntrinsicCarrierFunction{
+      .function_name = function_name,
+      .carriers = {prepare::PreparedIntrinsicCarrier{
+          .function_name = function_name,
+          .carrier_kind = carrier_kind,
+          .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+          .operation = bir::IntrinsicOperationKind::FAbs,
+          .block_index = 0,
+          .inst_index = 0,
+          .operand_type = type,
+          .result_type = type,
+          .operand = bir::Value::named(type, "%src"),
+          .result = bir::Value::named(type, "%fabs"),
+          .operand_value_name = source_name,
+          .result_value_name = result_name,
+          .has_side_effects = false,
+          .requires_feature = false,
+          .source_callee_name = type == bir::TypeKind::F32
+                                    ? std::optional<std::string>{"llvm.fabs.float"}
+                                    : std::optional<std::string>{"llvm.fabs.double"},
+          .has_prepared_call_plan = has_prepared_call_plan,
+          .missing_required_facts =
+              carrier_kind == prepare::PreparedIntrinsicCarrierKind::Complete
+                  ? std::vector<std::string>{}
+                  : std::vector<std::string>{"missing_prepared_call_plan"},
+      }},
+  });
+  return prepared;
+}
+
+int block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier() {
+  for (const auto type : {bir::TypeKind::F32, bir::TypeKind::F64}) {
+    auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(type);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected complete fabs carrier dispatch to select intrinsic plus return");
+    }
+    const auto& instruction = block.instructions.front();
+    const auto* intrinsic =
+        std::get_if<aarch64_codegen::ScalarFpUnaryIntrinsicRecord>(
+            &instruction.target.payload);
+    if (intrinsic == nullptr ||
+        instruction.target.family != aarch64_codegen::InstructionFamily::Intrinsic ||
+        instruction.target.opcode !=
+            aarch64_codegen::MachineOpcode::ScalarFpUnaryIntrinsic ||
+        instruction.target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        intrinsic->source_carrier != &function_context.prepared->intrinsic_carriers.functions
+                                          .front()
+                                          .carriers.front() ||
+        intrinsic->family != bir::IntrinsicFamilyKind::ScalarFpUnary ||
+        intrinsic->operation != bir::IntrinsicOperationKind::FAbs ||
+        intrinsic->operand_type != type || intrinsic->result_type != type ||
+        intrinsic->has_side_effects || intrinsic->requires_feature ||
+        !intrinsic->has_prepared_call_plan ||
+        intrinsic->source_callee_name !=
+            std::optional<std::string>{type == bir::TypeKind::F32 ? "llvm.fabs.float"
+                                                                  : "llvm.fabs.double"} ||
+        !intrinsic->result_register.has_value()) {
+      return fail("expected fabs intrinsic node to preserve structured carrier facts");
+    }
+    const auto* operand =
+        std::get_if<aarch64_codegen::RegisterOperand>(&intrinsic->operand.payload);
+    const auto expected_result =
+        type == bir::TypeKind::F32 ? aarch64_abi::s_register(0)
+                                   : aarch64_abi::d_register(0);
+    const auto expected_operand =
+        type == bir::TypeKind::F32 ? aarch64_abi::s_register(1)
+                                   : aarch64_abi::d_register(1);
+    if (operand == nullptr || operand->reg != expected_operand ||
+        intrinsic->result_register->reg != expected_result ||
+        instruction.target.defs.size() != 1 ||
+        instruction.target.defs.front().reg != expected_result ||
+        instruction.target.uses.size() != 1 ||
+        instruction.target.uses.front().reg != expected_operand ||
+        !instruction.target.side_effects.empty()) {
+      return fail("expected fabs intrinsic node to preserve operand/result FPR authority");
+    }
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_incomplete_scalar_fp_unary_intrinsic_fail_closed() {
+  {
+    auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(
+        bir::TypeKind::F64,
+        prepare::PreparedIntrinsicCarrierKind::Missing);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().message.find("incomplete_prepared_intrinsic_carrier") ==
+            std::string::npos ||
+        !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail("expected incomplete fabs carrier to fail closed without ordinary call");
+    }
+  }
+  {
+    auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(
+        bir::TypeKind::F64,
+        prepare::PreparedIntrinsicCarrierKind::Complete,
+        false);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.empty() ||
+        !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail("expected fabs carrier without FPR authority to fail closed");
+    }
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_f128_fabs_intrinsic_carrier_fail_closed() {
+  auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(
+      bir::TypeKind::F64,
+      prepare::PreparedIntrinsicCarrierKind::Complete);
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions.front().blocks.front().insts.front());
+  call.result = bir::Value::named(bir::TypeKind::F128, "%fabs");
+  call.callee = "llvm.fabs.f128";
+  call.callee_link_name_id = prepared.names.link_names.intern("llvm.fabs.f128");
+  call.args = {bir::Value::named(bir::TypeKind::F128, "%src")};
+  call.arg_types = {bir::TypeKind::F128};
+  call.return_type = bir::TypeKind::F128;
+  call.intrinsic = bir::IntrinsicOperation{
+      .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+      .operation = bir::IntrinsicOperationKind::FAbs,
+      .operand_type = bir::TypeKind::F128,
+      .result_type = bir::TypeKind::F128,
+      .has_side_effects = false,
+  };
+  prepared.call_plans.functions.front().calls.front().direct_callee_name =
+      std::string{"llvm.fabs.f128"};
+  auto& carrier = prepared.intrinsic_carriers.functions.front().carriers.front();
+  carrier.carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete;
+  carrier.family = bir::IntrinsicFamilyKind::ScalarFpUnary;
+  carrier.operation = bir::IntrinsicOperationKind::FAbs;
+  carrier.operand_type = bir::TypeKind::F128;
+  carrier.result_type = bir::TypeKind::F128;
+  carrier.operand = bir::Value::named(bir::TypeKind::F128, "%src");
+  carrier.result = bir::Value::named(bir::TypeKind::F128, "%fabs");
+  carrier.source_callee_name = std::string{"llvm.fabs.f128"};
+  carrier.has_prepared_call_plan = true;
+  carrier.missing_required_facts.clear();
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().message.find("unsupported_operand_type") ==
+          std::string::npos ||
+      !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected F128 fabs-shaped carrier to fail closed without call fallback");
+  }
+  if (std::holds_alternative<aarch64_codegen::ScalarFpUnaryIntrinsicRecord>(
+          block.instructions.front().target.payload) ||
+      std::holds_alternative<aarch64_codegen::CallInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected F128 fabs-shaped carrier not to select intrinsic or call");
+  }
+  return 0;
+}
+
 int block_dispatch_exposes_prepared_memory_return_storage_on_call_node() {
   auto prepared = prepared_with_direct_memory_return_call_plan();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -7472,6 +7793,21 @@ int main() {
   }
   if (const int status =
           block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_incomplete_scalar_fp_unary_intrinsic_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_f128_fabs_intrinsic_carrier_fail_closed();
       status != 0) {
     return status;
   }

@@ -450,12 +450,41 @@ require_prepared_variadic_entry_plan(
   return nullptr;
 }
 
+[[nodiscard]] const prepare::PreparedIntrinsicCarrier* find_prepared_intrinsic_carrier(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr || context.function.control_flow == nullptr) {
+    return nullptr;
+  }
+  const auto* function_carriers = prepare::find_prepared_intrinsic_carriers(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  for (const auto& carrier : function_carriers->carriers) {
+    if (carrier.block_index == context.block_index &&
+        carrier.inst_index == instruction_index) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::string address_materialization_error_message(
     PreparedAddressMaterializationRecordError error) {
   std::string message =
       "AArch64 address materialization lowering requires prepared address facts";
   message += "; error=";
   message += prepared_address_materialization_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] std::string intrinsic_error_message(
+    PreparedScalarFpUnaryIntrinsicRecordError error) {
+  std::string message =
+      "AArch64 intrinsic lowering requires a complete prepared scalar FP unary carrier";
+  message += "; error=";
+  message += prepared_scalar_fp_unary_intrinsic_record_error_name(error);
   return message;
 }
 
@@ -2166,6 +2195,60 @@ struct LowerMemoryInstructionResult {
   };
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction> lower_intrinsic_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* carrier = find_prepared_intrinsic_carrier(context, instruction_index);
+  if (carrier == nullptr) {
+    return std::nullopt;
+  }
+  if (context.function.prepared == nullptr || context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr || context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        intrinsic_error_message(
+            PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedIntrinsicCarrier));
+    return std::nullopt;
+  }
+
+  const auto prepared = make_prepared_scalar_fp_unary_intrinsic_instruction_record(
+      context.function.prepared->names,
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      *carrier);
+  if (!prepared.record.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        intrinsic_error_message(prepared.error));
+    return std::nullopt;
+  }
+
+  InstructionRecord target =
+      make_scalar_fp_unary_intrinsic_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_call_diagnostic(diagnostics,
+                           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+                           context,
+                           instruction_index,
+                           std::string{target.selection.diagnostic});
+    return std::nullopt;
+  }
+
+  return make_bir_machine_instruction(context, instruction_index, std::move(target));
+}
+
 }  // namespace
 
 module::BlockLoweringContext make_block_lowering_context(
@@ -2213,6 +2296,14 @@ InstructionDispatchResult dispatch_prepared_block(
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (find_prepared_intrinsic_carrier(context, instruction_index) != nullptr) {
+          if (auto lowered = lower_intrinsic_instruction(
+                  context, instruction_index, diagnostics)) {
+            block.instructions.push_back(std::move(*lowered));
+          }
+          ++result.visited_operations;
+          continue;
+        }
         const auto* call_plan = find_prepared_call_plan(context, instruction_index);
         if (call_plan != nullptr) {
           auto before_call_moves =

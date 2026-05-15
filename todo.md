@@ -1,36 +1,36 @@
 Status: Active
 Source Idea Path: ideas/open/239_aarch64_intrinsic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Structured Intrinsic Carrier Facts
+Current Step ID: 3
+Current Step Title: Select Scalar And Control Intrinsic Machine Records
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: `Define Structured Intrinsic Carrier Facts`.
+Step 3: `Select Scalar And Control Intrinsic Machine Records`.
 
-Added explicit target-neutral intrinsic metadata for BIR `llvm.fabs` calls and
-published prepared intrinsic carrier facts for scalar FP unary F32/F64 `fabs`
-only. Complete carriers preserve family, operation, operand/result type,
-operand/result identity, side-effect and feature facts, source call provenance,
-and the presence of the authoritative `PreparedCallPlan`.
+Consumed only complete prepared scalar FP unary F32/F64 `fabs` intrinsic
+carriers into explicit AArch64 selected intrinsic machine records.
 
-The prepared printer now exposes complete intrinsic carriers in a dedicated
-debug section and emits missing-fact diagnostics for incomplete carriers. It
-does not print incomplete or unsupported carriers as usable records.
+The selected record preserves the structured carrier family, operation,
+operand/result type, operand/result register authority, source callee,
+side-effect and feature facts, and complete-carrier provenance. A matching
+ordinary `PreparedCallPlan` alone remains insufficient to select an intrinsic.
 
-Fail-closed coverage now proves that missing result facts, missing prepared
-call-result facts, x86/F128 `fabs`, and ordinary call plans without structured
-BIR intrinsic metadata do not become selected-intrinsic authority.
+Fail-closed coverage now proves incomplete intrinsic carriers and carriers
+without FPR operand/result authority do not fall back to ordinary call lowering
+or fabricate selected intrinsic records. It also proves a structured
+F128/x86-only `llvm.fabs.f128`-shaped scalar FP unary carrier remains
+unsupported at AArch64 dispatch and does not select an intrinsic or fall back to
+ordinary call lowering.
 
 ## Suggested Next
 
-Execute Step 3 by consuming only complete prepared scalar FP unary F32/F64
-`fabs` carriers into AArch64 selected intrinsic records. Keep ordinary
-`PreparedCallPlan` facts insufficient for intrinsic selection and preserve
-F128, x86-only, CRC/vector/barrier/cache/hint, and builtin-address families as
-unsupported until they have explicit structured carrier authority.
+Execute Step 4 by selecting CRC/vector intrinsic machine records only for
+families whose prepared carriers are complete. If CRC/vector carriers still
+lack feature, width, lane, or register authority, record the dependency instead
+of selecting from names or ordinary calls.
 
 ## Watchouts
 
@@ -45,9 +45,14 @@ unsupported until they have explicit structured carrier authority.
   delegated to the closed binary128 route.
 - CRC, vector, barrier/cache/hint, and builtin-address families still need
   structured semantic feature/operand facts before this route can accept them.
+- Step 3 intentionally selected only scalar FP unary F32/F64 `fabs`; barrier,
+  cache, hint, builtin-address, CRC, vector, F128, and x86-only intrinsic
+  families remain unsupported/fail-closed in this packet.
+- Step 5 still owns final AArch64 assembly printer emission for selected
+  intrinsic records.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(instruction_dispatch|target_instruction_records)|backend_prepared_printer'; } 2>&1 | tee test_after.log`
 
-Result: passed, `139/139` backend tests. Proof log: `test_after.log`.
+Result: passed, `3/3` selected tests. Proof log: `test_after.log`.

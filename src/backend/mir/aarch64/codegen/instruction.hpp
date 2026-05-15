@@ -80,6 +80,7 @@ enum class InstructionFamily {
   Frame,
   Call,
   CallBoundary,
+  Intrinsic,
   Return,
   Assembler,
   Object,
@@ -146,6 +147,7 @@ enum class MachineOpcode {
   VariadicVaArgScalar,
   VariadicVaArgAggregate,
   VariadicVaCopy,
+  ScalarFpUnaryIntrinsic,
 };
 
 enum class MachinePseudoKind {
@@ -760,9 +762,52 @@ struct ScalarInstructionRecord {
   std::optional<ScalarCastRecord> scalar_cast;
 };
 
+struct ScalarFpUnaryIntrinsicRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  const prepare::PreparedIntrinsicCarrier* source_carrier = nullptr;
+  bir::IntrinsicFamilyKind family = bir::IntrinsicFamilyKind::None;
+  bir::IntrinsicOperationKind operation = bir::IntrinsicOperationKind::None;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::optional<prepare::PreparedValueId> operand_value_id;
+  c4c::ValueNameId operand_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  OperandRecord operand;
+  std::optional<RegisterOperand> result_register;
+  bool has_side_effects = false;
+  bool requires_feature = false;
+  std::optional<std::string> source_callee_name;
+  bool has_prepared_call_plan = false;
+};
+
 struct PreparedScalarAluRecordResult {
   std::optional<ScalarAluRecord> record;
   PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
+};
+
+enum class PreparedScalarFpUnaryIntrinsicRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedIntrinsicCarrier,
+  IncompletePreparedIntrinsicCarrier,
+  UnsupportedIntrinsicFamily,
+  UnsupportedIntrinsicOperation,
+  UnsupportedOperandType,
+  MissingPreparedCallPlan,
+  MissingOperandValueHome,
+  MissingOperandStorage,
+  UnsupportedOperandStorage,
+  MissingResultValueHome,
+  MissingResultStorage,
+  UnsupportedResultStorage,
+  RegisterConversionFailed,
+};
+
+struct PreparedScalarFpUnaryIntrinsicInstructionRecordResult {
+  std::optional<ScalarFpUnaryIntrinsicRecord> record;
+  PreparedScalarFpUnaryIntrinsicRecordError error =
+      PreparedScalarFpUnaryIntrinsicRecordError::None;
 };
 
 struct PreparedScalarCastRecordResult {
@@ -1424,6 +1469,7 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         I128RuntimeHelperBoundaryRecord,
                                         MemoryInstructionRecord,
                                         AtomicMemoryInstructionRecord,
+                                        ScalarFpUnaryIntrinsicRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
                                         FrameInstructionRecord,
@@ -1500,6 +1546,8 @@ struct InstructionRecord {
     PreparedMemoryOperandRecordError error);
 [[nodiscard]] std::string_view prepared_atomic_operation_record_error_name(
     PreparedAtomicOperationRecordError error);
+[[nodiscard]] std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
+    PreparedScalarFpUnaryIntrinsicRecordError error);
 [[nodiscard]] std::string_view atomic_memory_instruction_kind_name(
     AtomicMemoryInstructionKind kind);
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
@@ -1557,6 +1605,8 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_atomic_memory_instruction(
     AtomicMemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
+    ScalarFpUnaryIntrinsicRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
@@ -1668,6 +1718,12 @@ make_prepared_atomic_operation_instruction_record(
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAtomicOperationCarrier& operation);
+[[nodiscard]] PreparedScalarFpUnaryIntrinsicInstructionRecordResult
+make_prepared_scalar_fp_unary_intrinsic_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedIntrinsicCarrier& carrier);
 [[nodiscard]] PreparedMemoryInstructionRecordResult
 make_prepared_store_memory_instruction_record(
     const prepare::PreparedNameTables& names,

@@ -139,6 +139,8 @@ std::string_view instruction_family_name(InstructionFamily family) {
       return "call";
     case InstructionFamily::CallBoundary:
       return "call_boundary";
+    case InstructionFamily::Intrinsic:
+      return "intrinsic";
     case InstructionFamily::Return:
       return "return";
     case InstructionFamily::Assembler:
@@ -237,6 +239,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "variadic_va_arg_aggregate";
     case MachineOpcode::VariadicVaCopy:
       return "variadic_va_copy";
+    case MachineOpcode::ScalarFpUnaryIntrinsic:
+      return "scalar_fp_unary_intrinsic";
   }
   return "unknown";
 }
@@ -349,6 +353,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::SignExtend:
     case MachineOpcode::ZeroExtend:
     case MachineOpcode::Truncate:
+    case MachineOpcode::ScalarFpUnaryIntrinsic:
       return MachinePrinterMnemonicKind::None;
   }
   return MachinePrinterMnemonicKind::None;
@@ -759,6 +764,43 @@ std::string_view prepared_atomic_operation_record_error_name(
     case PreparedAtomicOperationRecordError::MissingDesiredStorage:
       return "missing_desired_storage";
     case PreparedAtomicOperationRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
+    PreparedScalarFpUnaryIntrinsicRecordError error) {
+  switch (error) {
+    case PreparedScalarFpUnaryIntrinsicRecordError::None:
+      return "none";
+    case PreparedScalarFpUnaryIntrinsicRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedIntrinsicCarrier:
+      return "missing_prepared_intrinsic_carrier";
+    case PreparedScalarFpUnaryIntrinsicRecordError::IncompletePreparedIntrinsicCarrier:
+      return "incomplete_prepared_intrinsic_carrier";
+    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicFamily:
+      return "unsupported_intrinsic_family";
+    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicOperation:
+      return "unsupported_intrinsic_operation";
+    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType:
+      return "unsupported_operand_type";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedCallPlan:
+      return "missing_prepared_call_plan";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandValueHome:
+      return "missing_operand_value_home";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandStorage:
+      return "missing_operand_storage";
+    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandStorage:
+      return "unsupported_operand_storage";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingResultValueHome:
+      return "missing_result_value_home";
+    case PreparedScalarFpUnaryIntrinsicRecordError::MissingResultStorage:
+      return "missing_result_storage";
+    case PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedResultStorage:
+      return "unsupported_result_storage";
+    case PreparedScalarFpUnaryIntrinsicRecordError::RegisterConversionFailed:
       return "register_conversion_failed";
   }
   return "unknown";
@@ -1398,6 +1440,15 @@ PreparedScalarCastInstructionRecordResult scalar_cast_instruction_record_error(
   return PreparedScalarCastInstructionRecordResult{.record = std::nullopt, .error = error};
 }
 
+PreparedScalarFpUnaryIntrinsicInstructionRecordResult
+scalar_fp_unary_intrinsic_instruction_record_error(
+    PreparedScalarFpUnaryIntrinsicRecordError error) {
+  return PreparedScalarFpUnaryIntrinsicInstructionRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
+}
+
 PreparedAddressMaterializationInstructionRecordResult
 address_materialization_instruction_record_error(
     PreparedAddressMaterializationRecordError error) {
@@ -1438,6 +1489,32 @@ PreparedScalarCastRecordError scalar_cast_operand_error_from_alu_error(
       return PreparedScalarCastRecordError::UnsupportedResultStorage;
   }
   return PreparedScalarCastRecordError::UnsupportedOperandType;
+}
+
+PreparedScalarFpUnaryIntrinsicRecordError intrinsic_operand_error_from_alu_error(
+    PreparedScalarAluRecordError error) {
+  switch (error) {
+    case PreparedScalarAluRecordError::None:
+      return PreparedScalarFpUnaryIntrinsicRecordError::None;
+    case PreparedScalarAluRecordError::MissingOperandValueHome:
+      return PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandValueHome;
+    case PreparedScalarAluRecordError::MissingOperandStorage:
+      return PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandStorage;
+    case PreparedScalarAluRecordError::UnsupportedOperandStorage:
+      return PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandStorage;
+    case PreparedScalarAluRecordError::RegisterConversionFailed:
+      return PreparedScalarFpUnaryIntrinsicRecordError::RegisterConversionFailed;
+    case PreparedScalarAluRecordError::UnsupportedOperandType:
+    case PreparedScalarAluRecordError::UnsupportedOperandValue:
+    case PreparedScalarAluRecordError::InvalidFunction:
+    case PreparedScalarAluRecordError::UnsupportedOpcode:
+    case PreparedScalarAluRecordError::UnsupportedResultValue:
+    case PreparedScalarAluRecordError::MissingResultValueHome:
+    case PreparedScalarAluRecordError::MissingResultStorage:
+    case PreparedScalarAluRecordError::UnsupportedResultStorage:
+      return PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType;
+  }
+  return PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType;
 }
 
 BranchTargetOperand make_prepared_branch_target(c4c::FunctionNameId function_name,
@@ -2969,6 +3046,51 @@ MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& i
                                  .diagnostic = "scalar node is missing scalar ALU or cast record"};
 }
 
+MachineNodeStatusRecord scalar_fp_unary_intrinsic_selection_status(
+    const ScalarFpUnaryIntrinsicRecord& instruction) {
+  if (instruction.source_carrier == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "scalar FP unary intrinsic node is missing prepared carrier provenance"};
+  }
+  if (instruction.source_carrier->carrier_kind !=
+      prepare::PreparedIntrinsicCarrierKind::Complete) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "scalar FP unary intrinsic node requires a complete prepared carrier"};
+  }
+  if (instruction.family != bir::IntrinsicFamilyKind::ScalarFpUnary ||
+      instruction.operation != bir::IntrinsicOperationKind::FAbs) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "intrinsic operation is outside the selected scalar FP unary subset"};
+  }
+  if ((instruction.operand_type != bir::TypeKind::F32 &&
+       instruction.operand_type != bir::TypeKind::F64) ||
+      instruction.operand_type != instruction.result_type) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "scalar FP unary intrinsic type is outside the selected subset"};
+  }
+  if (!instruction.has_prepared_call_plan) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "scalar FP unary intrinsic node requires prepared call-plan authority"};
+  }
+  if (!instruction.operand_value_id.has_value() ||
+      instruction.operand_value_name == c4c::kInvalidValueName ||
+      !instruction.result_value_id.has_value() ||
+      instruction.result_value_name == c4c::kInvalidValueName ||
+      !instruction.result_register.has_value() ||
+      instruction.operand.kind != OperandKind::Register) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic =
+            "scalar FP unary intrinsic node is missing operand or result register authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
 bool is_supported_memory_base(MemoryBaseKind base_kind) {
   switch (base_kind) {
     case MemoryBaseKind::FrameSlot:
@@ -3787,6 +3909,34 @@ InstructionRecord make_atomic_memory_instruction(
       .defs = defs,
       .uses = effects_from_operands(operands),
       .side_effects = atomic_memory_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
+    ScalarFpUnaryIntrinsicRecord instruction) {
+  std::vector<OperandRecord> operands = {instruction.operand};
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      instruction.result_value_name));
+  }
+  std::vector<MachineSideEffectKind> side_effects;
+  if (instruction.has_side_effects) {
+    side_effects.push_back(MachineSideEffectKind::Call);
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::Intrinsic,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::ScalarFpUnaryIntrinsic,
+      .selection = scalar_fp_unary_intrinsic_selection_status(instruction),
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
+      .side_effects = std::move(side_effects),
       .payload = instruction,
   };
 }
@@ -5316,6 +5466,116 @@ PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_
   return PreparedScalarCastInstructionRecordResult{
       .record = make_scalar_cast_instruction_record(*result.record),
       .error = PreparedScalarCastRecordError::None,
+  };
+}
+
+PreparedScalarFpUnaryIntrinsicInstructionRecordResult
+make_prepared_scalar_fp_unary_intrinsic_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedIntrinsicCarrier& carrier) {
+  if (value_locations.function_name == c4c::kInvalidFunctionName ||
+      storage_plan.function_name != value_locations.function_name ||
+      carrier.function_name != value_locations.function_name) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::InvalidFunction);
+  }
+  if (carrier.carrier_kind == prepare::PreparedIntrinsicCarrierKind::Missing) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        carrier.missing_required_facts.empty()
+            ? PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedIntrinsicCarrier
+            : PreparedScalarFpUnaryIntrinsicRecordError::IncompletePreparedIntrinsicCarrier);
+  }
+  if (carrier.family != bir::IntrinsicFamilyKind::ScalarFpUnary) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicFamily);
+  }
+  if (carrier.operation != bir::IntrinsicOperationKind::FAbs) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedIntrinsicOperation);
+  }
+  if ((carrier.operand_type != bir::TypeKind::F32 &&
+       carrier.operand_type != bir::TypeKind::F64) ||
+      carrier.operand_type != carrier.result_type) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandType);
+  }
+  if (!carrier.has_prepared_call_plan) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::MissingPreparedCallPlan);
+  }
+  if (!carrier.operand.has_value() || !carrier.operand_value_name.has_value()) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::MissingOperandValueHome);
+  }
+  if (!carrier.result.has_value() || !carrier.result_value_name.has_value()) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::MissingResultValueHome);
+  }
+
+  OperandRecord operand;
+  if (const auto error = make_prepared_scalar_operand(
+          names, value_locations, storage_plan, *carrier.operand, operand);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        intrinsic_operand_error_from_alu_error(error));
+  }
+  const auto* operand_register = std::get_if<RegisterOperand>(&operand.payload);
+  if (operand.kind != OperandKind::Register || operand_register == nullptr ||
+      operand_register->prepared_bank != prepare::PreparedRegisterBank::Fpr) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedOperandStorage);
+  }
+
+  const auto* result_home =
+      prepare::find_prepared_value_home(value_locations, *carrier.result_value_name);
+  if (result_home == nullptr) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::MissingResultValueHome);
+  }
+  const auto* result_storage = find_storage_plan_value(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::MissingResultStorage);
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      result_storage->bank != prepare::PreparedRegisterBank::Fpr) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::UnsupportedResultStorage);
+  }
+  const auto result_register =
+      make_prepared_register_operand(*result_home,
+                                     *result_storage,
+                                     carrier.result_type,
+                                     RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return scalar_fp_unary_intrinsic_instruction_record_error(
+        PreparedScalarFpUnaryIntrinsicRecordError::RegisterConversionFailed);
+  }
+
+  return PreparedScalarFpUnaryIntrinsicInstructionRecordResult{
+      .record =
+          ScalarFpUnaryIntrinsicRecord{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .source_carrier = &carrier,
+              .family = carrier.family,
+              .operation = carrier.operation,
+              .operand_type = carrier.operand_type,
+              .result_type = carrier.result_type,
+              .operand_value_id = operand_register->value_id,
+              .operand_value_name = *carrier.operand_value_name,
+              .result_value_id = result_home->value_id,
+              .result_value_name = result_home->value_name,
+              .operand = operand,
+              .result_register = result_register,
+              .has_side_effects = carrier.has_side_effects,
+              .requires_feature = carrier.requires_feature,
+              .source_callee_name = carrier.source_callee_name,
+              .has_prepared_call_plan = carrier.has_prepared_call_plan,
+          },
+      .error = PreparedScalarFpUnaryIntrinsicRecordError::None,
   };
 }
 
