@@ -1,68 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/248_prepared_i128_runtime_helper_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Helper Clobber, Resource, And ABI Authority
+Current Step ID: 6
+Current Step Title: Validate And Hand Back To I128 Pair Lowering
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 added explicit prepared i128 runtime helper boundary policy for the
-currently supported div/rem helper family.
+Step 6 validated the prepared i128 runtime helper authority prerequisite and
+recorded the handoff back to the parked i128 pair-lowering route.
 
-What changed:
+Accepted prepared authority for supported i128 div/rem helpers:
 
-- `PreparedI128RuntimeHelper` now carries structured resource policy facts for
-  call-boundary use, runtime-helper callee use, caller-saved clobbers, and
-  source-operation identity preservation.
-- Helper records now carry structured ABI/register-bank transition facts:
-  direct register-pair argument/result transition, GPR argument/result banks,
-  two source operands, two low/high lanes per operand, two result lanes, and
-  8-byte lane width.
-- Helper clobber authority reuses the existing prepared call clobber vocabulary
-  by publishing `PreparedClobberedRegister` records from the same caller-saved
-  clobber set builder used by retained `PreparedCallPlan` records.
-- Boundary enrichment remains producer-side in prepared state after canonical
-  i128 carriers exist; no AArch64 helper node, printer output, target-local
-  helper synthesis, fixed-register marshaling, or scalar-i64 substitute was
-  added.
-- Prepared printer output now dumps helper resources, ABI transition policy,
-  register banks, lane counts, lane width, and clobber summaries.
-- Focused tests prove div/rem helpers expose resource, ABI/register-bank, and
-  clobber facts while preserving direct-result ownership and existing
-  fail-closed carrier diagnostics.
+- Source-operation mapping exists for i128 `SDiv`, `UDiv`, `SRem`, and `URem`
+  with function/block/instruction identity, source opcode, result value
+  identity, operand value identities, and source/result type facts.
+- Helper family/kind and callee identity are structural:
+  `__divti3`, `__udivti3`, `__modti3`, and `__umodti3` are carried on
+  `PreparedI128RuntimeHelper` records rather than inferred in AArch64 target
+  lowering.
+- Low/high argument and direct-result lane ownership is populated from
+  canonical `PreparedI128Carrier` facts by prepared value identity, preserving
+  lane order, lane width, carrier kind, register-pair placement, and
+  fail-closed diagnostics for missing or non-register carrier authority.
+- Result ownership is explicit: current div/rem helpers are
+  `direct_low_high_lanes`; memory-return ownership remains represented as a
+  carrier shape but no currently supported helper family populates it.
+- Helper boundary policy is explicit: records carry call-boundary,
+  runtime-helper callee, caller-saved clobber, and source-operation identity
+  resource facts.
+- ABI/register-bank transition policy is explicit for current div/rem helpers:
+  direct register-pair arguments and result, GPR argument/result banks, two
+  source operands, two lanes per argument, two result lanes, and 8-byte lane
+  width.
+- Clobber facts reuse `PreparedClobberedRegister` and the same caller-saved
+  clobber-set builder used by retained prepared call plans.
+
+This completes the idea 248 prerequisite for supported div/rem helper
+authority. Idea 236 can resume its Step 6 selected AArch64 helper-boundary
+consumption packet using these prepared helper records, without synthesizing
+helper calls from opcodes, fixed registers, rendered names, register adjacency,
+or scalar-i64 substitutes.
 
 ## Suggested Next
 
-Execute Step 6 validation and handoff: prove the prepared i128 helper
-authority prerequisite, summarize supported div/rem helper mapping, low/high
-lane ownership, direct-result ownership, clobber/resource policy, and ABI
-transition facts, then state whether idea 236 can resume its selected AArch64
-i128 helper-boundary packet.
-
-Suggested focused proof:
-
-```sh
-(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1
-```
+Ask the plan owner to close or deactivate idea 248 as complete for its current
+runbook, then reactivate idea 236 so its selected AArch64 i128 helper-boundary
+step can consume the prepared helper authority.
 
 ## Watchouts
 
-- Supported div/rem helpers are still direct low/high result-lane helpers; the
-  memory-return carrier shape exists but no current supported family populates
-  memory-return ownership.
-- Helper lanes still consume canonical `PreparedI128Carrier` records; do not
-  infer lanes from raw regalloc assignment order, rendered register names,
-  register adjacency, or fixed ABI registers.
-- The boundary policy records helper ABI shape and register banks, not actual
-  target-local marshaling registers. Later AArch64 selected records must
-  consume these facts without synthesizing helper calls from opcodes alone.
-- Float/i128 conversion helper mapping remains explicitly deferred.
+- Float/i128 conversion helper mapping remains explicitly deferred; it should
+  not be treated as part of the div/rem handoff.
+- Memory-return ownership is represented but not populated by the currently
+  supported div/rem helpers. A future memory-return helper family must provide
+  explicit destination identity, storage extent, alignment, slot, and offset
+  ownership or fail closed.
+- The prepared ABI policy records helper argument/result shape and register
+  banks, not target-local marshaling registers. AArch64 selected helper records
+  still need to consume the structured facts and decide their own selected-node
+  representation.
+- `PreparedCallPlan` remains retained-call-only; do not create fake call plans
+  for helper-required i128 source operations.
 
 ## Proof
 
-Passed:
+No new proof command was run for this validation-only todo handoff packet.
+
+Accepted Step 5 focused proof:
 
 ```sh
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1
@@ -72,9 +78,7 @@ Result: build succeeded; `backend_prepare_liveness`,
 `backend_prepare_frame_stack_call_contract`, and `backend_prepared_printer`
 passed, 3/3 tests. Proof log: `test_after.log`.
 
-Additional hygiene: `git diff --check` passed.
-
-Supervisor full-suite acceptance also passed for this Step 5 slice:
+Accepted supervisor full-suite proof:
 
 ```sh
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1
