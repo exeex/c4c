@@ -2448,6 +2448,75 @@ prepare::PreparedF128RuntimeHelper::MarshalingMove make_f128_helper_marshaling_m
   };
 }
 
+prepare::PreparedF128RuntimeHelper::AbiRegisterBinding make_f128_cmp_result_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name) {
+  return prepare::PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = std::nullopt,
+      .abi_register_index = 0,
+      .width_bytes = 4,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .register_name = "w0",
+      .contiguous_width = 1,
+      .occupied_register_names = {"w0"},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+  };
+}
+
+void retarget_f128_helper_as_compare(
+    prepare::PreparedF128RuntimeHelper& helper,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedF128RuntimeHelperKind kind,
+    std::string callee) {
+  helper.source_binary_opcode = opcode;
+  helper.result_type = bir::TypeKind::I32;
+  helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Comparison;
+  helper.helper_kind = kind;
+  helper.callee_name = std::move(callee);
+  helper.result_ownership =
+      prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult;
+  helper.result_carrier.reset();
+  helper.result_unmarshal_move.reset();
+  helper.scalar_result =
+      prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+          .value_id = helper.result_value_id,
+          .value_name = helper.result_value_name,
+          .type = bir::TypeKind::I32,
+          .width_bytes = 4,
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .home_kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"w9"},
+      };
+  helper.result_abi_result =
+      make_f128_cmp_result_abi_binding(helper.result_value_id, helper.result_value_name);
+  helper.scalar_result_unmarshal_move =
+      prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+          .direction =
+              prepare::PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar,
+          .scalar_result = *helper.scalar_result,
+          .abi_register = *helper.result_abi_result,
+      };
+  helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
+      .transition =
+          prepare::PreparedF128RuntimeHelperAbiTransition::
+              DirectF128ArgumentsAndCmpResult,
+      .argument_bank = prepare::PreparedRegisterBank::Vreg,
+      .result_bank = prepare::PreparedRegisterBank::Gpr,
+      .argument_count = 2,
+      .result_count = 1,
+      .width_bytes = 4,
+  };
+}
+
 prepare::PreparedF128RuntimeHelper make_f128_runtime_helper(
     c4c::FunctionNameId function_name,
     std::size_t instruction_index,
@@ -3014,6 +3083,75 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       div_payload->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::Div ||
       div_payload->callee_name != "__divtf3") {
     return fail("expected selected f128 div helper boundary instruction effects");
+  }
+
+  auto eq_helper = make_f128_runtime_helper(function_name,
+                                            7,
+                                            bir::BinaryOpcode::Add,
+                                            prepare::PreparedF128RuntimeHelperKind::Add,
+                                            "__addtf3",
+                                            carriers.carriers[0],
+                                            carriers.carriers[1],
+                                            carriers.carriers[2]);
+  retarget_f128_helper_as_compare(eq_helper,
+                                  bir::BinaryOpcode::Eq,
+                                  prepare::PreparedF128RuntimeHelperKind::Eq,
+                                  "__eqtf2");
+  const auto prepared_eq =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, eq_helper);
+  if (!prepared_eq.record.has_value() ||
+      prepared_eq.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::None ||
+      prepared_eq.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::Eq ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared_eq.record->boundary_kind) != "eq" ||
+      prepared_eq.record->helper_family !=
+          prepare::PreparedF128RuntimeHelperFamily::Comparison ||
+      prepared_eq.record->helper_kind != prepare::PreparedF128RuntimeHelperKind::Eq ||
+      prepared_eq.record->callee_name != "__eqtf2" ||
+      prepared_eq.record->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult ||
+      prepared_eq.record->result_type != bir::TypeKind::I32 ||
+      prepared_eq.record->scalar_result.type != bir::TypeKind::I32 ||
+      prepared_eq.record->scalar_result.width_bytes != 4 ||
+      prepared_eq.record->scalar_result.register_bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      prepared_eq.record->scalar_result.abi_register->reg !=
+          aarch64_abi::w_register(0) ||
+      prepared_eq.record->lhs.carrier_register->reg != aarch64_abi::q_register(6) ||
+      prepared_eq.record->rhs.carrier_register->reg != aarch64_abi::q_register(8) ||
+      !prepared_eq.record->selected_call_ownership.owns_terminal_call) {
+    return fail("expected f128 comparison helper boundary to preserve scalar cmp result and sources");
+  }
+  const auto eq_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_eq.record);
+  const auto* eq_payload =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &eq_instruction.payload);
+  if (eq_payload == nullptr ||
+      eq_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      eq_instruction.defs.size() != 1 ||
+      eq_instruction.uses.size() != 4 ||
+      eq_payload->scalar_result.abi_register->reg != aarch64_abi::w_register(0) ||
+      eq_payload->lhs.source_carrier == nullptr ||
+      eq_payload->rhs.source_carrier == nullptr) {
+    return fail("expected selected f128 comparison helper effects to own scalar cmp result");
+  }
+
+  auto unsigned_helper = eq_helper;
+  unsigned_helper.source_binary_opcode = bir::BinaryOpcode::Ult;
+  const auto unsupported =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, unsigned_helper);
+  if (unsupported.record.has_value() ||
+      unsupported.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              UnsupportedSourceOperation) {
+    return fail("expected unmodeled f128 comparison predicate to fail closed");
   }
   return 0;
 }

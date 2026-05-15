@@ -308,6 +308,12 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Sub:
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
       return true;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
@@ -318,12 +324,6 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
     case bir::BinaryOpcode::Ult:
     case bir::BinaryOpcode::Ule:
     case bir::BinaryOpcode::Ugt:
@@ -344,6 +344,18 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
       return PreparedF128RuntimeHelperKind::Mul;
     case bir::BinaryOpcode::SDiv:
       return PreparedF128RuntimeHelperKind::Div;
+    case bir::BinaryOpcode::Eq:
+      return PreparedF128RuntimeHelperKind::Eq;
+    case bir::BinaryOpcode::Ne:
+      return PreparedF128RuntimeHelperKind::Ne;
+    case bir::BinaryOpcode::Slt:
+      return PreparedF128RuntimeHelperKind::Lt;
+    case bir::BinaryOpcode::Sle:
+      return PreparedF128RuntimeHelperKind::Le;
+    case bir::BinaryOpcode::Sgt:
+      return PreparedF128RuntimeHelperKind::Gt;
+    case bir::BinaryOpcode::Sge:
+      return PreparedF128RuntimeHelperKind::Ge;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
@@ -353,12 +365,6 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
     case bir::BinaryOpcode::Ult:
     case bir::BinaryOpcode::Ule:
     case bir::BinaryOpcode::Ugt:
@@ -378,6 +384,18 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
       return "__multf3";
     case bir::BinaryOpcode::SDiv:
       return "__divtf3";
+    case bir::BinaryOpcode::Eq:
+      return "__eqtf2";
+    case bir::BinaryOpcode::Ne:
+      return "__netf2";
+    case bir::BinaryOpcode::Slt:
+      return "__lttf2";
+    case bir::BinaryOpcode::Sle:
+      return "__letf2";
+    case bir::BinaryOpcode::Sgt:
+      return "__gttf2";
+    case bir::BinaryOpcode::Sge:
+      return "__getf2";
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
@@ -387,12 +405,6 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
     case bir::BinaryOpcode::Ult:
     case bir::BinaryOpcode::Ule:
     case bir::BinaryOpcode::Ugt:
@@ -2068,8 +2080,16 @@ void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
       const auto* binary = std::get_if<bir::BinaryInst>(&inst);
       if (binary == nullptr ||
           binary->operand_type != bir::TypeKind::F128 ||
-          binary->result.type != bir::TypeKind::F128 ||
           !is_f128_soft_float_helper_opcode(binary->opcode)) {
+        continue;
+      }
+      const bool is_comparison = bir::is_compare_opcode(binary->opcode);
+      const bir::TypeKind required_result_type =
+          is_comparison ? bir::TypeKind::I1 : bir::TypeKind::F128;
+      if (binary->result.type != required_result_type) {
+        append_f128_runtime_helper_fact(
+            function_helpers,
+            "f128_soft_float_helper_requires_matching_result_type");
         continue;
       }
 
@@ -2105,17 +2125,22 @@ void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
           .instruction_index = instruction_index,
           .source_binary_opcode = binary->opcode,
           .source_type = binary->operand_type,
-          .result_type = binary->result.type,
+          .result_type = is_comparison ? bir::TypeKind::I32 : binary->result.type,
           .result_value_id = result->value_id,
           .result_value_name = result->value_name,
           .lhs_value_id = lhs->value_id,
           .lhs_value_name = lhs->value_name,
           .rhs_value_id = rhs->value_id,
           .rhs_value_name = rhs->value_name,
-          .helper_family = PreparedF128RuntimeHelperFamily::Arithmetic,
+          .helper_family = is_comparison
+                               ? PreparedF128RuntimeHelperFamily::Comparison
+                               : PreparedF128RuntimeHelperFamily::Arithmetic,
           .helper_kind = f128_soft_float_helper_kind(binary->opcode),
           .callee_name = std::string(callee),
-          .result_ownership = PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+          .result_ownership =
+              is_comparison
+                  ? PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult
+                  : PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
       });
     }
   }

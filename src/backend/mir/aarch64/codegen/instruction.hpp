@@ -374,6 +374,12 @@ enum class F128RuntimeHelperBoundaryKind {
   Sub,
   Mul,
   Div,
+  Eq,
+  Ne,
+  Lt,
+  Le,
+  Gt,
+  Ge,
 };
 
 enum class PreparedI128TransportRecordError {
@@ -842,6 +848,18 @@ struct F128RuntimeHelperOperandRecord {
   const prepare::PreparedF128Carrier* source_carrier = nullptr;
 };
 
+struct F128RuntimeHelperScalarResultRecord {
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  bir::TypeKind type = bir::TypeKind::I32;
+  std::size_t width_bytes = 4;
+  prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
+  prepare::PreparedValueHomeKind home_kind = prepare::PreparedValueHomeKind::None;
+  std::optional<RegisterOperand> abi_register;
+  prepare::PreparedF128RuntimeHelper::ScalarResultOwnership scalar_ownership;
+  std::optional<prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove> marshaling_move;
+};
+
 struct I128PairOperandRecord {
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
@@ -977,6 +995,7 @@ struct F128RuntimeHelperBoundaryRecord {
   std::size_t width_bytes = 16;
   std::size_t align_bytes = 16;
   F128RuntimeHelperOperandRecord result;
+  F128RuntimeHelperScalarResultRecord scalar_result;
   F128RuntimeHelperOperandRecord lhs;
   F128RuntimeHelperOperandRecord rhs;
   prepare::PreparedF128RuntimeHelper::ResourcePolicy resource_policy;

@@ -1735,6 +1735,7 @@ struct PreparedF128Carriers {
 
 enum class PreparedF128RuntimeHelperFamily {
   Arithmetic,
+  Comparison,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_family_name(
@@ -1742,6 +1743,8 @@ enum class PreparedF128RuntimeHelperFamily {
   switch (family) {
     case PreparedF128RuntimeHelperFamily::Arithmetic:
       return "arithmetic";
+    case PreparedF128RuntimeHelperFamily::Comparison:
+      return "comparison";
   }
   return "unknown";
 }
@@ -1751,6 +1754,12 @@ enum class PreparedF128RuntimeHelperKind {
   Sub,
   Mul,
   Div,
+  Eq,
+  Ne,
+  Lt,
+  Le,
+  Gt,
+  Ge,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_kind_name(
@@ -1764,6 +1773,18 @@ enum class PreparedF128RuntimeHelperKind {
       return "mul";
     case PreparedF128RuntimeHelperKind::Div:
       return "div";
+    case PreparedF128RuntimeHelperKind::Eq:
+      return "eq";
+    case PreparedF128RuntimeHelperKind::Ne:
+      return "ne";
+    case PreparedF128RuntimeHelperKind::Lt:
+      return "lt";
+    case PreparedF128RuntimeHelperKind::Le:
+      return "le";
+    case PreparedF128RuntimeHelperKind::Gt:
+      return "gt";
+    case PreparedF128RuntimeHelperKind::Ge:
+      return "ge";
   }
   return "unknown";
 }
@@ -1771,6 +1792,7 @@ enum class PreparedF128RuntimeHelperKind {
 enum class PreparedF128RuntimeHelperResultOwnership {
   Missing,
   FullWidthCarrier,
+  ScalarCmpResult,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_result_ownership_name(
@@ -1780,6 +1802,8 @@ enum class PreparedF128RuntimeHelperResultOwnership {
       return "missing";
     case PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier:
       return "full_width_carrier";
+    case PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult:
+      return "scalar_cmp_result";
   }
   return "unknown";
 }
@@ -1787,6 +1811,7 @@ enum class PreparedF128RuntimeHelperResultOwnership {
 enum class PreparedF128RuntimeHelperAbiTransition {
   Missing,
   DirectF128ArgumentsAndResult,
+  DirectF128ArgumentsAndCmpResult,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_abi_transition_name(
@@ -1796,6 +1821,8 @@ enum class PreparedF128RuntimeHelperAbiTransition {
       return "missing";
     case PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult:
       return "direct_f128_arguments_and_result";
+    case PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult:
+      return "direct_f128_arguments_and_cmp_result";
   }
   return "unknown";
 }
@@ -1803,6 +1830,7 @@ enum class PreparedF128RuntimeHelperAbiTransition {
 enum class PreparedF128RuntimeHelperMarshalDirection {
   CarrierToAbiArgument,
   AbiResultToCarrier,
+  AbiCmpResultToScalar,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_marshal_direction_name(
@@ -1812,6 +1840,8 @@ enum class PreparedF128RuntimeHelperMarshalDirection {
       return "carrier_to_abi_argument";
     case PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier:
       return "abi_result_to_carrier";
+    case PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar:
+      return "abi_cmp_result_to_scalar";
   }
   return "unknown";
 }
@@ -1848,6 +1878,25 @@ struct PreparedF128RuntimeHelper {
     PreparedF128RuntimeHelperMarshalDirection direction =
         PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument;
     CarrierBinding carrier;
+    AbiRegisterBinding abi_register;
+  };
+
+  struct ScalarResultOwnership {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    bir::TypeKind type = bir::TypeKind::I32;
+    std::size_t width_bytes = 4;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
+    std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
+  struct ScalarMarshalingMove {
+    PreparedF128RuntimeHelperMarshalDirection direction =
+        PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar;
+    ScalarResultOwnership scalar_result;
     AbiRegisterBinding abi_register;
   };
 
@@ -1905,12 +1954,14 @@ struct PreparedF128RuntimeHelper {
   std::optional<CarrierBinding> lhs_carrier;
   std::optional<CarrierBinding> rhs_carrier;
   std::optional<CarrierBinding> result_carrier;
+  std::optional<ScalarResultOwnership> scalar_result;
   std::optional<AbiRegisterBinding> lhs_abi_argument;
   std::optional<AbiRegisterBinding> rhs_abi_argument;
   std::optional<AbiRegisterBinding> result_abi_result;
   std::optional<MarshalingMove> lhs_argument_move;
   std::optional<MarshalingMove> rhs_argument_move;
   std::optional<MarshalingMove> result_unmarshal_move;
+  std::optional<ScalarMarshalingMove> scalar_result_unmarshal_move;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;
   LivePreservationPolicy live_preservation_policy;

@@ -1634,6 +1634,30 @@ prepare::PreparedF128RuntimeHelper::AbiRegisterBinding dispatch_f128_helper_abi_
   };
 }
 
+prepare::PreparedF128RuntimeHelper::AbiRegisterBinding dispatch_f128_cmp_result_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name) {
+  return prepare::PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = std::nullopt,
+      .abi_register_index = 0,
+      .width_bytes = 4,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .register_name = "w0",
+      .contiguous_width = 1,
+      .occupied_register_names = {"w0"},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+  };
+}
+
 prepare::PreparedF128RuntimeHelper::MarshalingMove dispatch_f128_helper_marshaling_move(
     const prepare::PreparedF128RuntimeHelper::CarrierBinding& carrier,
     const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& binding,
@@ -1736,6 +1760,52 @@ prepare::PreparedF128RuntimeHelper dispatch_f128_runtime_helper(
       *helper.result_carrier, *helper.result_abi_result,
       prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier);
   return helper;
+}
+
+void dispatch_retarget_f128_helper_as_compare(
+    prepare::PreparedF128RuntimeHelper& helper,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedF128RuntimeHelperKind kind,
+    std::string callee_name) {
+  helper.source_binary_opcode = opcode;
+  helper.result_type = bir::TypeKind::I32;
+  helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Comparison;
+  helper.helper_kind = kind;
+  helper.callee_name = std::move(callee_name);
+  helper.result_ownership =
+      prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult;
+  helper.result_carrier.reset();
+  helper.result_unmarshal_move.reset();
+  helper.scalar_result =
+      prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+          .value_id = helper.result_value_id,
+          .value_name = helper.result_value_name,
+          .type = bir::TypeKind::I32,
+          .width_bytes = 4,
+          .register_bank = prepare::PreparedRegisterBank::Gpr,
+          .home_kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"w9"},
+      };
+  helper.result_abi_result =
+      dispatch_f128_cmp_result_abi_binding(helper.result_value_id,
+                                           helper.result_value_name);
+  helper.scalar_result_unmarshal_move =
+      prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+          .direction =
+              prepare::PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar,
+          .scalar_result = *helper.scalar_result,
+          .abi_register = *helper.result_abi_result,
+      };
+  helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
+      .transition =
+          prepare::PreparedF128RuntimeHelperAbiTransition::
+              DirectF128ArgumentsAndCmpResult,
+      .argument_bank = prepare::PreparedRegisterBank::Vreg,
+      .result_bank = prepare::PreparedRegisterBank::Gpr,
+      .argument_count = 2,
+      .result_count = 1,
+      .width_bytes = 4,
+  };
 }
 
 prepare::PreparedBirModule prepared_with_frame_slot_load(bool include_storage = true) {
@@ -2400,6 +2470,79 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
     if (!include_clobber_policy) {
       helper.clobbered_registers.clear();
     }
+    prepared.f128_runtime_helpers.functions.push_back(
+        prepare::PreparedF128RuntimeHelperFunction{
+            .function_name = function_name,
+            .helpers = {std::move(helper)},
+        });
+  }
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers = std::move(carriers),
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_f128_comparison_helper_operation(
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Eq,
+    bool include_helper = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.cmp");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.f128.cmp.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.cmp.entry");
+  const auto result_name = prepared.names.value_names.intern("%cmp.result");
+  const auto lhs_name = prepared.names.value_names.intern("%cmp.lhs.f128");
+  const auto rhs_name = prepared.names.value_names.intern("%cmp.rhs.f128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.cmp",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.cmp.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = opcode,
+                      .result = bir::Value::named(bir::TypeKind::I1, "%cmp.result"),
+                      .operand_type = bir::TypeKind::F128,
+                      .lhs = bir::Value::named(bir::TypeKind::F128, "%cmp.lhs.f128"),
+                      .rhs = bir::Value::named(bir::TypeKind::F128, "%cmp.rhs.f128"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  std::vector<prepare::PreparedF128Carrier> carriers = {
+      dispatch_f128_register_carrier(
+          function_name, prepare::PreparedValueId{351}, lhs_name, "q6"),
+      dispatch_f128_register_carrier(
+          function_name, prepare::PreparedValueId{352}, rhs_name, "q8"),
+  };
+  if (include_helper) {
+    auto helper = dispatch_f128_runtime_helper(function_name,
+                                               0,
+                                               bir::BinaryOpcode::Add,
+                                               prepare::PreparedF128RuntimeHelperKind::Add,
+                                               "__addtf3",
+                                               carriers[0],
+                                               carriers[0],
+                                               carriers[1]);
+    helper.result_value_id = prepare::PreparedValueId{350};
+    helper.result_value_name = result_name;
+    dispatch_retarget_f128_helper_as_compare(
+        helper, opcode, prepare::PreparedF128RuntimeHelperKind::Eq, "__eqtf2");
     prepared.f128_runtime_helpers.functions.push_back(
         prepare::PreparedF128RuntimeHelperFunction{
             .function_name = function_name,
@@ -4790,6 +4933,59 @@ int block_dispatch_reports_missing_f128_runtime_helper_authority() {
   return 0;
 }
 
+int block_dispatch_keeps_f128_compare_helper_boundary_fail_closed_until_bool_materialization() {
+  auto prepared = prepared_with_f128_comparison_helper_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 ||
+      result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 ||
+      diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().message.find(
+          "AArch64 block dispatch visited unsupported prepared BIR instruction family") ==
+          std::string::npos) {
+    return fail("expected f128 compare dispatch to fail closed until cmp-to-bool materialization");
+  }
+
+  auto unsupported = prepared_with_f128_comparison_helper_operation(bir::BinaryOpcode::Ult);
+  auto& unsupported_helper =
+      unsupported.f128_runtime_helpers.functions.front().helpers.front();
+  unsupported_helper.source_binary_opcode = bir::BinaryOpcode::Ult;
+  const auto& unsupported_function_cf = unsupported.control_flow.functions.front();
+  const auto& unsupported_block_cf = unsupported_function_cf.blocks.front();
+  const auto unsupported_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          unsupported, unsupported.target_profile, unsupported_function_cf);
+  const auto unsupported_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          unsupported_function_context, unsupported_block_cf, 0);
+  aarch64_module::MachineBlock unsupported_block;
+  aarch64_module::ModuleLoweringDiagnostics unsupported_diagnostics;
+  const auto unsupported_result =
+      aarch64_codegen::dispatch_prepared_block(
+          unsupported_block_context, unsupported_block, unsupported_diagnostics);
+  if (unsupported_result.visited_operations != 1 ||
+      unsupported_result.emitted_instructions != 1 ||
+      unsupported_block.instructions.size() != 1 ||
+      unsupported_diagnostics.entries.size() != 1 ||
+      unsupported_diagnostics.entries.front().message.find(
+          "AArch64 block dispatch visited unsupported prepared BIR instruction family") ==
+          std::string::npos) {
+    return fail("expected unmodeled f128 compare predicate to fail closed");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_i128_shift_from_prepared_carriers() {
   auto prepared = prepared_with_i128_shift_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -5360,6 +5556,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_f128_runtime_helper_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_f128_compare_helper_boundary_fail_closed_until_bool_materialization();
       status != 0) {
     return status;
   }

@@ -8,29 +8,24 @@ Current Step Title: Comparison Helper Boundary
 
 ## Just Finished
 
-Step 4.1 extended prepared F128 soft-float helper identity and record-only
-AArch64 helper-boundary selection from add/sub/mul to binary128 division.
-Prepared F128 `SDiv` now maps to `PreparedF128RuntimeHelperKind::Div` and
-`__divtf3`, dispatch admits division into the existing complete
-`PreparedF128RuntimeHelper` path, and target records preserve callee,
-full-width carrier, ABI, marshaling, clobber, live-preservation, and
-selected-call ownership facts. Unsupported adjacent helper families remain
-fail-closed. No final assembly printing was added.
-
-Plan-owner split Step 4 after review
-`review/237_step4_after_div_route_review.md`: Step 4.1 is the completed
-binary arithmetic helper boundary, and the active packet is now Step 4.2 for
-comparison helper semantics. Remaining cast, sign-bit negation, and unsupported
-helper-family work are separate Step 4 substeps in `plan.md`.
+Step 4.2 added the first F128 comparison helper-boundary packet. Prepared
+F128 runtime helpers now have a distinct `Comparison` family, predicate
+helper identities for `Eq/Ne/Slt/Sle/Sgt/Sge` mapped to
+`__eqtf2/__netf2/__lttf2/__letf2/__gttf2/__getf2`, and a non-F128
+`ScalarCmpResult` ownership shape with `DirectF128ArgumentsAndCmpResult`
+ABI policy. AArch64 record tests prove selected compare helper records preserve
+both full-width F128 source carriers and own the scalar CMPtype result in a GPR
+ABI result. Dispatch tests keep real BIR `I1` F128 comparison lowering
+fail-closed until a later packet defines CMPtype-to-`I1` materialization, so
+this slice does not claim complete source-level comparison lowering. No final
+assembly printing, cast, sign-bit, or broad helper-family work was added.
 
 ## Suggested Next
 
-Delegate Step 4.2 as the next focused packet: define predicate-to-helper
-identity, comparison result ownership, and later-user full-source reload or
-preservation requirements before admitting F128 comparison selection. Keep cast
-work in Step 4.3, sign-bit negation in Step 4.4, and unsupported helper-family
-diagnostics in Step 4.5 unless the supervisor deliberately chooses a different
-substep order.
+Delegate the next Step 4.2 follow-up only if the supervisor wants real
+BIR-to-prepared comparison materialization: define the intermediate CMPtype
+value contract and how the BIR `I1` compare result consumes it. Otherwise move
+to Step 4.3 cast helper boundaries.
 
 ## Watchouts
 
@@ -90,9 +85,17 @@ substep order.
   authority; do not start Step 5 until the remaining Step 4
   helper-family/helper-identity packets are deliberately handled or explicitly
   deferred by the supervisor.
+- This packet deliberately did not claim full BIR compare materialization:
+  source BIR comparisons produce `I1`, while the external helpers return
+  signed integer CMPtype. The implemented boundary models the scalar CMPtype
+  result and F128 source preservation at prepared/record/dispatch level; a
+  later packet must define the intermediate CMPtype-to-`I1` consumption
+  contract before claiming complete source-level comparison lowering.
+- Unsigned F128 predicates remain fail-closed until an ordered/unordered
+  predicate contract is explicitly modeled.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_branch_records|backend_aarch64_branch_compare_records)$'; } 2>&1 | tee test_after.log`
 
-Passed, 5/5 tests. Proof log: `test_after.log`.
+Passed, 7/7 tests. Proof log: `test_after.log`.

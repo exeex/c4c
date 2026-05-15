@@ -874,6 +874,18 @@ std::string_view f128_runtime_helper_boundary_kind_name(
       return "mul";
     case F128RuntimeHelperBoundaryKind::Div:
       return "div";
+    case F128RuntimeHelperBoundaryKind::Eq:
+      return "eq";
+    case F128RuntimeHelperBoundaryKind::Ne:
+      return "ne";
+    case F128RuntimeHelperBoundaryKind::Lt:
+      return "lt";
+    case F128RuntimeHelperBoundaryKind::Le:
+      return "le";
+    case F128RuntimeHelperBoundaryKind::Gt:
+      return "gt";
+    case F128RuntimeHelperBoundaryKind::Ge:
+      return "ge";
   }
   return "unknown";
 }
@@ -3638,29 +3650,60 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
        instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Mul) ||
       (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Div &&
        instruction.source_binary_opcode == bir::BinaryOpcode::SDiv &&
-       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Div);
-  if (instruction.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Div) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Eq &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Eq &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Eq) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Ne &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Ne &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Ne) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Lt &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Slt &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Lt) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Le &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Sle &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Le) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Gt &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Sgt &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Gt) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Ge &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Sge &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Ge);
+  const bool comparison_helper =
+      instruction.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison;
+  if ((instruction.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic &&
+       !comparison_helper) ||
       !supported_helper ||
       instruction.callee_name.empty()) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary is missing helper family or callee identity"};
   }
-  if (instruction.result_ownership !=
-      prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
+  if ((!comparison_helper &&
+       instruction.result_ownership !=
+           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) ||
+      (comparison_helper &&
+       instruction.result_ownership !=
+           prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
-        .diagnostic = "f128 helper boundary requires full-width result ownership"};
+        .diagnostic = "f128 helper boundary requires modeled result ownership"};
   }
   if (instruction.width_bytes != 16 ||
       instruction.align_bytes != 16 ||
       instruction.source_type != bir::TypeKind::F128 ||
-      instruction.result_type != bir::TypeKind::F128) {
+      (!comparison_helper ? instruction.result_type != bir::TypeKind::F128
+                          : instruction.result_type != bir::TypeKind::I32)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary has invalid operation, type, size, or alignment facts"};
   }
-  if (!has_full_width_register(instruction.result) ||
+  if ((!comparison_helper && !has_full_width_register(instruction.result)) ||
+      (comparison_helper &&
+       (instruction.scalar_result.type != bir::TypeKind::I32 ||
+        instruction.scalar_result.width_bytes != 4 ||
+        instruction.scalar_result.register_bank != prepare::PreparedRegisterBank::Gpr ||
+        !instruction.scalar_result.abi_register.has_value())) ||
       !has_full_width_register(instruction.lhs) ||
       !has_full_width_register(instruction.rhs)) {
     return MachineNodeStatusRecord{
@@ -3675,13 +3718,19 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary is missing resource policy facts"};
   }
-  if (instruction.abi_policy.transition !=
-          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult ||
+  if ((!comparison_helper &&
+       instruction.abi_policy.transition !=
+           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult) ||
+      (comparison_helper &&
+       instruction.abi_policy.transition !=
+           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult) ||
       instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
-      instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg ||
+      (!comparison_helper ? instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg
+                          : instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr) ||
       instruction.abi_policy.argument_count != 2 ||
       instruction.abi_policy.result_count != 1 ||
-      instruction.abi_policy.width_bytes != 16) {
+      (!comparison_helper ? instruction.abi_policy.width_bytes != 16
+                          : instruction.abi_policy.width_bytes != 4)) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary is missing ABI/register-bank policy facts"};
@@ -3733,6 +3782,7 @@ InstructionRecord make_f128_runtime_helper_boundary_instruction(
   };
   add_def(instruction.result.carrier_register);
   add_def(instruction.result.abi_register);
+  add_def(instruction.scalar_result.abi_register);
   add_use(instruction.lhs.carrier_register);
   add_use(instruction.lhs.abi_register);
   add_use(instruction.rhs.carrier_register);
@@ -5258,8 +5308,11 @@ std::optional<RegisterOperand> make_f128_register_operand(
 
 std::optional<RegisterOperand> make_f128_abi_register_operand(
     const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& binding) {
+  const abi::RegisterView view =
+      binding.register_bank == prepare::PreparedRegisterBank::Gpr ? abi::RegisterView::W
+                                                                  : abi::RegisterView::Q;
   const auto converted = abi::convert_prepared_register(
-      binding.register_name, binding.register_bank, binding.register_class, abi::RegisterView::Q);
+      binding.register_name, binding.register_bank, binding.register_class, view);
   if (!converted.has_value()) {
     return std::nullopt;
   }
@@ -5270,7 +5323,7 @@ std::optional<RegisterOperand> make_f128_abi_register_operand(
       .value_name = binding.value_name,
       .prepared_class = binding.register_class,
       .prepared_bank = binding.register_bank,
-      .expected_view = abi::RegisterView::Q,
+      .expected_view = view,
       .contiguous_width = binding.contiguous_width,
       .occupied_register_references = occupied_register_references(*converted.reg),
       .occupied_registers = occupied_register_views(*converted.reg),
@@ -6281,8 +6334,10 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
         PreparedF128RuntimeHelperRecordError::InvalidFunction);
   }
   if (helper.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic) {
-    return f128_runtime_helper_record_error(
-        PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily);
+    if (helper.helper_family != prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+      return f128_runtime_helper_record_error(
+          PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily);
+    }
   }
   auto boundary_kind = F128RuntimeHelperBoundaryKind::Add;
   if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Add &&
@@ -6297,12 +6352,32 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
   } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Div &&
              helper.source_binary_opcode == bir::BinaryOpcode::SDiv) {
     boundary_kind = F128RuntimeHelperBoundaryKind::Div;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Eq &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Eq) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Eq;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Ne &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Ne) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Ne;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Lt &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Slt) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Lt;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Le &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Sle) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Le;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Gt &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Sgt) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Gt;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Ge &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Sge) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Ge;
   } else {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation);
   }
   if (helper.source_type != bir::TypeKind::F128 ||
-      helper.result_type != bir::TypeKind::F128 ||
+      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison
+           ? helper.result_type != bir::TypeKind::I32
+           : helper.result_type != bir::TypeKind::F128) ||
       helper.callee_name.empty()) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation);
@@ -6311,8 +6386,12 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
   }
-  if (helper.result_ownership !=
-      prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
+  if ((helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic &&
+       helper.result_ownership !=
+           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) ||
+      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison &&
+       helper.result_ownership !=
+           prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedResultOwnership);
   }
@@ -6323,13 +6402,21 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
   }
-  if (helper.abi_policy.transition !=
-          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult ||
+  if ((helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic &&
+       helper.abi_policy.transition !=
+           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult) ||
+      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison &&
+       helper.abi_policy.transition !=
+           prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult) ||
       helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
-      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg ||
+      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic
+           ? helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg
+           : helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr) ||
       helper.abi_policy.argument_count != 2 ||
       helper.abi_policy.result_count != 1 ||
-      helper.abi_policy.width_bytes != 16) {
+      (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic
+           ? helper.abi_policy.width_bytes != 16
+           : helper.abi_policy.width_bytes != 4)) {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
   }
@@ -6370,7 +6457,7 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
       .rhs_value_id = helper.rhs_value_id,
       .rhs_value_name = helper.rhs_value_name,
       .result_ownership = helper.result_ownership,
-      .width_bytes = helper.abi_policy.width_bytes,
+      .width_bytes = 16,
       .align_bytes = 16,
       .resource_policy = helper.resource_policy,
       .abi_policy = helper.abi_policy,
@@ -6379,7 +6466,31 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
       .clobbered_registers = helper.clobbered_registers,
       .source_helper = &helper,
   };
-  if (const auto error =
+  if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+    if (!helper.scalar_result.has_value() || !helper.result_abi_result.has_value() ||
+        !helper.scalar_result_unmarshal_move.has_value() ||
+        helper.scalar_result->type != bir::TypeKind::I32 ||
+        helper.scalar_result->width_bytes != 4 ||
+        helper.result_abi_result->register_bank != prepare::PreparedRegisterBank::Gpr) {
+      return f128_runtime_helper_record_error(
+          PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
+    }
+    record.scalar_result = F128RuntimeHelperScalarResultRecord{
+        .value_id = helper.scalar_result->value_id,
+        .value_name = helper.scalar_result->value_name,
+        .type = helper.scalar_result->type,
+        .width_bytes = helper.scalar_result->width_bytes,
+        .register_bank = helper.scalar_result->register_bank,
+        .home_kind = helper.scalar_result->home_kind,
+        .abi_register = make_f128_abi_register_operand(*helper.result_abi_result),
+        .scalar_ownership = *helper.scalar_result,
+        .marshaling_move = helper.scalar_result_unmarshal_move,
+    };
+    if (!record.scalar_result.abi_register.has_value()) {
+      return f128_runtime_helper_record_error(
+          PreparedF128RuntimeHelperRecordError::RegisterConversionFailed);
+    }
+  } else if (const auto error =
           make_f128_helper_operand_record(
               f128_carriers,
               helper.result_value_id,
