@@ -1,47 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/243_inline_asm_tied_home_allocation_policy.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Harden Fail-Closed Tied-Home Boundaries
+Current Step ID: 4
+Current Step Title: Accept Proven Alias-Aware Tied Homes In AArch64 Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 hardened the fail-closed tied-home boundaries:
+Step 4 is complete without adding redundant selected-record fields:
 
-- AArch64 dispatch now validates target-normalized tied input/output identities,
-  register class compatibility, home agreement, authority output index, and
-  authority shared-register payload before it selects a tied inline-asm operand.
-- The selected inline-asm printer now rejects tied records whose selected input
-  or output register payload disagrees with the structured prepared home instead
-  of printing from the selected operand alone.
-- Coverage now includes dispatch fail-closed cases for target-invalid tied homes,
-  incompatible register classes, mismatched homes, mismatched authority payloads,
-  allocator-dependent homes, missing homes, and missing tied authority, while
-  existing concrete and alias-aware supported ties still pass.
+- The current selected `PreparedValueHome::target_register_identity` bridge
+  already carries proven alias-aware tied-home authority through AArch64
+  dispatch into `InlineAsmMachineOperandRecord::home`.
+- AArch64 dispatch accepts tied inputs only after
+  `PreparedInlineAsmTiedHomeAuthority` agrees with the tied output index and
+  the target-normalized shared register identity, then selects the tied register
+  from the prepared home rather than local allocation policy.
+- The selected inline-asm printer prints the accepted tied operand from the
+  selected structured operand while revalidating the selected input/output
+  register identities against the prepared homes, so selected records without
+  proven shared-home authority remain fail-closed.
 
 ## Suggested Next
 
-Proceed to Step 4 by carrying proven alias-aware tied-home authority through
-AArch64 selection and printing as the accepted path, while keeping the Step 3
-fail-closed cases intact.
+Proceed to Step 5 by hardening the regression scope around the existing
+alias-aware accepted representative and nearby fail-closed cases.
 
 ## Watchouts
 
-- `InlineAsmMachineOperandRecord` still does not carry
-  `PreparedInlineAsmTiedHomeAuthority` directly, so the printer boundary validates
-  selected operands against the structured prepared homes available on the
-  selected record.
-- Preparation remains allocator-policy-free: allocator-dependent tied homes still
-  fail closed instead of inserting moves or repairing allocation.
-- Keep dispatch/printer checks based on `target_register_identity` and prepared
-  authority payloads; do not fall back to rendered register text.
+- `InlineAsmMachineOperandRecord` still intentionally does not carry
+  `PreparedInlineAsmTiedHomeAuthority` directly; dispatch consumes that authority
+  before selection, and the printer validates the selected record through copied
+  prepared homes plus selected register identities.
+- Keep allocator-dependent, missing, target-invalid, class-invalid, mismatched,
+  and authority-mismatched tied homes on the explicit unsupported path.
+- Do not add printer-local allocation or rendered-text matching in Step 5.
 
 ## Proof
 
 Supervisor-selected proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' | tee test_after.log`
 
-Proof status: passed; build completed and `ctest` reported 139/139 `backend_`
-tests passed. Proof log: `test_after.log`.
+Proof status: passed; build completed with no work to do and `ctest` reported
+139/139 `backend_` tests passed. Proof log: `test_after.log`.
