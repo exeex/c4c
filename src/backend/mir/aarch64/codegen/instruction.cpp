@@ -1577,6 +1577,7 @@ std::optional<AddressMaterializationKind> selected_address_materialization_kind(
 }
 
 PreparedAddressMaterializationRecordError validate_address_materialization_identity(
+    const prepare::PreparedNameTables& names,
     const prepare::PreparedAddressMaterialization& materialization,
     AddressMaterializationRecord& record) {
   switch (materialization.kind) {
@@ -1585,6 +1586,10 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
         return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
       }
       record.symbol_name = materialization.symbol_name;
+      record.symbol_label = prepare::prepared_link_name(names, *materialization.symbol_name);
+      if (record.symbol_label.empty()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::TlsGlobal:
       if (!materialization.symbol_name.has_value()) {
@@ -1595,12 +1600,20 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
         return PreparedAddressMaterializationRecordError::TlsFactMismatch;
       }
       record.symbol_name = materialization.symbol_name;
+      record.symbol_label = prepare::prepared_link_name(names, *materialization.symbol_name);
+      if (record.symbol_label.empty()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::StringConstant:
       if (!materialization.text_name.has_value()) {
         return PreparedAddressMaterializationRecordError::MissingStringIdentity;
       }
       record.text_name = materialization.text_name;
+      record.text_label = names.texts.lookup(*materialization.text_name);
+      if (record.text_label.empty()) {
+        return PreparedAddressMaterializationRecordError::MissingStringIdentity;
+      }
       return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::Label:
     case prepare::PreparedAddressMaterializationKind::GotGlobal:
@@ -1652,7 +1665,7 @@ PreparedAddressMaterializationRecordResult make_address_record_from_prepared_mat
   };
 
   const auto identity_error =
-      validate_address_materialization_identity(*materialization, record);
+      validate_address_materialization_identity(names, *materialization, record);
   if (identity_error != PreparedAddressMaterializationRecordError::None) {
     return address_materialization_record_error(identity_error);
   }

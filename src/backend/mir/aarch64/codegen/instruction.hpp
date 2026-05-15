@@ -576,7 +576,9 @@ struct AddressMaterializationRecord {
       prepare::PreparedValueHomeKind::None;
   std::optional<RegisterOperand> result_register;
   std::optional<c4c::LinkNameId> symbol_name;
+  std::string_view symbol_label;
   std::optional<c4c::TextId> text_name;
+  std::string_view text_label;
   std::int64_t byte_offset = 0;
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;

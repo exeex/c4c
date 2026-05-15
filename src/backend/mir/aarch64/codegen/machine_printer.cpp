@@ -67,6 +67,17 @@ std::string memory_address(const MemoryOperand& address) {
   return out.str();
 }
 
+std::string relocation_operand(std::string_view label, std::int64_t byte_offset) {
+  std::string operand(label);
+  if (byte_offset > 0) {
+    operand += "+";
+    operand += std::to_string(byte_offset);
+  } else if (byte_offset < 0) {
+    operand += std::to_string(byte_offset);
+  }
+  return operand;
+}
+
 std::string bad_header(const InstructionRecord& instruction) {
   return std::string("cannot print AArch64 machine node family=") +
          std::string(instruction_family_name(instruction.family)) + " opcode=" +
@@ -100,6 +111,48 @@ std::optional<std::string> validate_selected_machine_node(const InstructionRecor
     return diagnostic;
   }
   return std::nullopt;
+}
+
+mir::TargetInstructionPrintResult print_address_materialization(
+    const InstructionRecord& instruction,
+    const AddressMaterializationRecord& address) {
+  if (!address.result_register.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "address materialization node is missing result register");
+  }
+
+  std::string_view label;
+  switch (address.kind) {
+    case AddressMaterializationKind::DirectPageLow12:
+      label = address.symbol_label;
+      if (label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "direct address materialization is missing symbol label");
+      }
+      break;
+    case AddressMaterializationKind::StringConstant:
+      label = address.text_label;
+      if (label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "string address materialization is missing text label");
+      }
+      break;
+    case AddressMaterializationKind::TlsRelative:
+      return target_unsupported(bad_header(instruction) +
+                                "TLS address materialization printer path is deferred");
+    case AddressMaterializationKind::DeferredUnsupported:
+      return target_unsupported(bad_header(instruction) +
+                                "address materialization printer path is deferred for " +
+                                std::string(prepare::prepared_address_materialization_kind_name(
+                                    address.prepared_kind)));
+  }
+
+  const std::string result = register_name(*address.result_register);
+  const std::string reloc = relocation_operand(label, address.byte_offset);
+  return target_printed({
+      "adrp " + result + ", " + reloc,
+      "add " + result + ", " + result + ", :lo12:" + reloc,
+  });
 }
 
 mir::TargetInstructionPrintResult print_spill_reload(
@@ -753,6 +806,9 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* call = std::get_if<CallInstructionRecord>(&instruction.payload)) {
     return print_call(instruction, *call);
+  }
+  if (const auto* address = std::get_if<AddressMaterializationRecord>(&instruction.payload)) {
+    return print_address_materialization(instruction, *address);
   }
   if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     return print_scalar(instruction, *scalar);

@@ -850,6 +850,124 @@ int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
                          "simple frame common-printer drift guard");
 }
 
+int selected_direct_address_materialization_prints_page_low12_sequence() {
+  prepare::PreparedAddressMaterialization source;
+  const auto address = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::DirectPageLow12,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::DirectGlobal,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 4,
+          .result_value_id = prepare::PreparedValueId{40},
+          .result_value_name = c4c::ValueNameId{41},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(9),
+          .symbol_name = c4c::LinkNameId{42},
+          .symbol_label = "g.direct",
+          .byte_offset = 16,
+          .source_materialization = &source,
+      });
+  const auto result = aarch64_codegen::print_machine_instruction_line_payloads(address);
+  if (!result.ok || !result.diagnostic.empty()) {
+    return fail("expected direct global address materialization to print ADRP/ADD");
+  }
+  if (result.instruction_lines.size() != 2) {
+    return fail("expected direct global address materialization to print two lines");
+  }
+  if (const int check = expect_equal(
+          result.instruction_lines[0], "adrp x9, g.direct+16", "direct address ADRP");
+      check != 0) {
+    return check;
+  }
+  return expect_equal(
+      result.instruction_lines[1], "add x9, x9, :lo12:g.direct+16", "direct address low12 ADD");
+}
+
+int selected_string_address_materialization_prints_page_low12_sequence() {
+  prepare::PreparedAddressMaterialization source;
+  const auto address = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::StringConstant,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 5,
+          .result_value_id = prepare::PreparedValueId{42},
+          .result_value_name = c4c::ValueNameId{43},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(10),
+          .text_name = c4c::TextId{44},
+          .text_label = ".L.str0",
+          .source_materialization = &source,
+      });
+  const auto result = aarch64_codegen::print_machine_instruction_line_payloads(address);
+  if (!result.ok || !result.diagnostic.empty()) {
+    return fail("expected string address materialization to print ADRP/ADD");
+  }
+  if (result.instruction_lines.size() != 2) {
+    return fail("expected string address materialization to print two lines");
+  }
+  if (const int check =
+          expect_equal(result.instruction_lines[0], "adrp x10, .L.str0", "string address ADRP");
+      check != 0) {
+    return check;
+  }
+  return expect_equal(
+      result.instruction_lines[1], "add x10, x10, :lo12:.L.str0", "string address low12 ADD");
+}
+
+int unsupported_address_materialization_printer_paths_fail_closed() {
+  prepare::PreparedAddressMaterialization source;
+  const auto tls = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::TlsRelative,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::TlsGlobal,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 6,
+          .result_value_id = prepare::PreparedValueId{44},
+          .result_value_name = c4c::ValueNameId{45},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(11),
+          .symbol_name = c4c::LinkNameId{46},
+          .symbol_label = "g.tls",
+          .address_space = bir::AddressSpace::Tls,
+          .is_thread_local = true,
+          .has_tls_address_space = true,
+          .source_materialization = &source,
+      });
+  const auto tls_result = aarch64_codegen::print_machine_instruction_line_payloads(tls);
+  if (tls_result.ok ||
+      tls_result.diagnostic.find("TLS address materialization printer path is deferred") ==
+          std::string::npos) {
+    return fail("expected TLS address materialization printer path to be explicitly deferred");
+  }
+
+  const auto got = aarch64_codegen::make_address_materialization_instruction(
+      aarch64_codegen::AddressMaterializationRecord{
+          .kind = aarch64_codegen::AddressMaterializationKind::DeferredUnsupported,
+          .prepared_kind = prepare::PreparedAddressMaterializationKind::GotGlobal,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 7,
+          .result_value_id = prepare::PreparedValueId{46},
+          .result_value_name = c4c::ValueNameId{47},
+          .result_home_kind = prepare::PreparedValueHomeKind::Register,
+          .result_register = xreg(12),
+          .symbol_name = c4c::LinkNameId{48},
+          .symbol_label = "g.got",
+          .source_materialization = &source,
+      });
+  const auto got_result = aarch64_codegen::print_machine_instruction_line_payloads(got);
+  if (got_result.ok ||
+      got_result.diagnostic.find("deferred_unsupported: address materialization kind is outside "
+                                 "the selected subset") == std::string::npos) {
+    return fail("expected GOT address materialization to remain non-selected before printing");
+  }
+  return 0;
+}
+
 int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto assembler = aarch64_codegen::make_assembler_instruction(
       aarch64_codegen::AssemblerInstructionRecord{});
@@ -1601,6 +1719,18 @@ int main() {
   }
   if (const int result =
           selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_direct_address_materialization_prints_page_low12_sequence();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_string_address_materialization_prints_page_low12_sequence();
+      result != 0) {
+    return result;
+  }
+  if (const int result = unsupported_address_materialization_printer_paths_fail_closed();
       result != 0) {
     return result;
   }

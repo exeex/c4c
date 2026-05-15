@@ -1,51 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/233_aarch64_global_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select AArch64 Address Materialization Nodes
+Current Step ID: 4
+Current Step Title: Print Relocation-Aware AArch64 Sequences
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added selected AArch64 machine-node records that consume the prepared
-address-materialization carriers from Step 2, without adding terminal printer
-output.
+Step 4 added terminal AArch64 printer support for selected direct page+low12
+address-materialization records while keeping GOT/label/TLS printer paths
+explicitly deferred.
 
 Completed work:
 
-- Added `AddressMaterializationRecord` as a structured AArch64 machine-node
-  payload with a non-printing `MachineOpcode::AddressMaterialization`.
-- Selected prepared `DirectGlobal`, `TlsGlobal`, and `StringConstant` carriers
-  into machine records carrying prepared kind, selected address kind, result
-  value id/name/home/register, symbol or text identity, byte offset, address
-  space, and TLS facts.
-- Wired block dispatch to select address materialization from prepared
-  addressing carriers before scalar fallback, and to record the emitted result
-  register for later same-block users such as returns.
-- Left `Label` and `GotGlobal` carriers as explicit deferred-unsupported
-  address materialization records; missing symbol/text/result/register facts
-  fail closed with typed record errors.
-- Added focused AArch64 MIR coverage in
-  `backend_aarch64_prepared_memory_operand_records_test.cpp` proving direct
-  global, TLS, string-constant, unsupported-kind, missing-identity, and dispatch
-  selection behavior.
+- Added printer-facing relocation labels to `AddressMaterializationRecord`,
+  populated from prepared name tables during selected record construction.
+- Printed selected `DirectPageLow12` direct-global records as structured `adrp`
+  plus low-12 `add` sequences using the record's result register, symbol label,
+  and byte offset.
+- Printed selected `StringConstant` address records through the same page+low12
+  sequence using the record's text label and result register.
+- Kept TLS materialization explicitly unsupported in the printer with a
+  deferred-path diagnostic, and preserved existing non-selected diagnostics for
+  GOT/label-style deferred records.
+- Added focused AArch64 MIR printer coverage for direct global output, string
+  constant output, TLS defer diagnostics, and GOT deferred-selection behavior.
 
 ## Suggested Next
 
-Step 4 first implementation packet target: add terminal printer support for
-the selected address-materialization records, starting with direct page+low12
-and preserving the existing deferred diagnostics for GOT/label/TLS paths until
-their relocation sequences are fully specified.
+Next packet should decide the next lifecycle action for the active idea:
+either review/close the current runbook if direct page+low12 materialization is
+the intended milestone, or define a follow-up packet for fully specified
+GOT/label/TLS relocation sequences before enabling those printer paths.
 
 ## Watchouts
 
-The selected address-materialization opcode intentionally has no printer
-mnemonic yet, so terminal printer paths remain untouched. The selected node
-uses the prepared value-location/storage-plan register as the result authority;
-non-register result homes are rejected for now. TLS carriers are selected into
-structured records with TLS facts, but terminal TLS emission still needs a
-policy-specific printer/lowering sequence.
+The address-materialization opcode still has no generic primary mnemonic; the
+printer emits the two-line sequence directly from structured record fields.
+TLS records are selected but intentionally fail closed at terminal printing
+until their relocation sequence is specified. GOT and label records remain
+deferred before printer dispatch and should not gain text templates without
+structured relocation policy.
 
 ## Proof
 
