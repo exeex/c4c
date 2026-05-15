@@ -1,5 +1,7 @@
 #include "instruction.hpp"
 
+#include <algorithm>
+
 namespace c4c::backend::aarch64::codegen {
 
 namespace prepare = c4c::backend::prepare;
@@ -241,6 +243,12 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "variadic_va_copy";
     case MachineOpcode::ScalarFpUnaryIntrinsic:
       return "scalar_fp_unary_intrinsic";
+    case MachineOpcode::Crc32WIntrinsic:
+      return "crc32w_intrinsic";
+    case MachineOpcode::VectorLoadIntrinsic:
+      return "vector_load_intrinsic";
+    case MachineOpcode::VectorAddIntrinsic:
+      return "vector_add_intrinsic";
   }
   return "unknown";
 }
@@ -354,6 +362,9 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::ZeroExtend:
     case MachineOpcode::Truncate:
     case MachineOpcode::ScalarFpUnaryIntrinsic:
+    case MachineOpcode::Crc32WIntrinsic:
+    case MachineOpcode::VectorLoadIntrinsic:
+    case MachineOpcode::VectorAddIntrinsic:
       return MachinePrinterMnemonicKind::None;
   }
   return MachinePrinterMnemonicKind::None;
@@ -3091,6 +3102,175 @@ MachineNodeStatusRecord scalar_fp_unary_intrinsic_selection_status(
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
+bool has_exact_roles(const std::vector<bir::IntrinsicOperandRole>& roles,
+                     std::initializer_list<bir::IntrinsicOperandRole> expected) {
+  return roles.size() == expected.size() &&
+         std::equal(roles.begin(), roles.end(), expected.begin());
+}
+
+bool is_complete_intrinsic_source(const prepare::PreparedIntrinsicCarrier* source) {
+  return source != nullptr &&
+         source->carrier_kind == prepare::PreparedIntrinsicCarrierKind::Complete;
+}
+
+MachineNodeStatusRecord crc32w_intrinsic_selection_status(
+    const Crc32WIntrinsicRecord& instruction) {
+  if (!is_complete_intrinsic_source(instruction.source_carrier)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "CRC32W intrinsic node requires a complete prepared carrier"};
+  }
+  if (instruction.family != bir::IntrinsicFamilyKind::Crc ||
+      instruction.operation != bir::IntrinsicOperationKind::Crc32W ||
+      instruction.required_feature != bir::IntrinsicFeatureKind::AArch64Crc ||
+      !instruction.requires_feature) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "intrinsic operation is outside the selected CRC32W subset"};
+  }
+  if (instruction.operand_type != bir::TypeKind::I32 ||
+      instruction.result_type != bir::TypeKind::I32 ||
+      instruction.signedness != bir::IntrinsicSignedness::Unsigned ||
+      !has_exact_roles(instruction.operand_roles,
+                       {bir::IntrinsicOperandRole::Accumulator,
+                        bir::IntrinsicOperandRole::Data})) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "CRC32W intrinsic node is missing typed operand-role facts"};
+  }
+  if (!instruction.has_prepared_call_plan ||
+      !instruction.accumulator_value_id.has_value() ||
+      instruction.accumulator_value_name == c4c::kInvalidValueName ||
+      !instruction.data_value_id.has_value() ||
+      instruction.data_value_name == c4c::kInvalidValueName ||
+      !instruction.result_value_id.has_value() ||
+      instruction.result_value_name == c4c::kInvalidValueName ||
+      instruction.accumulator.kind != OperandKind::Register ||
+      instruction.data.kind != OperandKind::Register ||
+      !instruction.result_register.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "CRC32W intrinsic node is missing operand or result register authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord vector_shape_status(std::size_t element_width_bytes,
+                                            std::size_t lane_count,
+                                            std::size_t total_width_bytes,
+                                            bir::TypeKind element_type,
+                                            bir::IntrinsicSignedness signedness) {
+  if (element_type != bir::TypeKind::I8 || element_width_bytes != 1 ||
+      lane_count != 16 || total_width_bytes != 16 ||
+      signedness != bir::IntrinsicSignedness::Unsigned) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "vector intrinsic node is missing v16i8 shape authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord vector_load_intrinsic_selection_status(
+    const VectorLoadIntrinsicRecord& instruction) {
+  if (!is_complete_intrinsic_source(instruction.source_carrier)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "vector-load intrinsic node requires a complete prepared carrier"};
+  }
+  if (instruction.family != bir::IntrinsicFamilyKind::VectorMemory ||
+      instruction.operation != bir::IntrinsicOperationKind::VectorLoad ||
+      instruction.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+      !instruction.requires_feature) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "intrinsic operation is outside the selected vector-load subset"};
+  }
+  const auto shape = vector_shape_status(instruction.vector_element_width_bytes,
+                                         instruction.vector_lane_count,
+                                         instruction.vector_total_width_bytes,
+                                         instruction.vector_element_type,
+                                         instruction.signedness);
+  if (shape.status != MachineNodeSelectionStatus::Selected) {
+    return shape;
+  }
+  if (instruction.operand_type != bir::TypeKind::Ptr ||
+      instruction.result_type != bir::TypeKind::I128 ||
+      instruction.memory_access != bir::IntrinsicMemoryAccessKind::Read ||
+      !has_exact_roles(instruction.operand_roles,
+                       {bir::IntrinsicOperandRole::Pointer})) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "vector-load intrinsic node is missing memory access facts"};
+  }
+  if (!instruction.has_prepared_call_plan ||
+      !instruction.pointer_value_id.has_value() ||
+      instruction.pointer_value_name == c4c::kInvalidValueName ||
+      !instruction.result_value_id.has_value() ||
+      instruction.result_value_name == c4c::kInvalidValueName ||
+      instruction.pointer.kind != OperandKind::Register ||
+      instruction.memory.base_kind != MemoryBaseKind::PointerValue ||
+      instruction.memory.size_bytes != instruction.vector_total_width_bytes ||
+      instruction.memory.address_space != bir::AddressSpace::Default ||
+      !instruction.result_register.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic =
+            "vector-load intrinsic node is missing pointer, memory, or result register authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord vector_add_intrinsic_selection_status(
+    const VectorAddIntrinsicRecord& instruction) {
+  if (!is_complete_intrinsic_source(instruction.source_carrier)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "vector-add intrinsic node requires a complete prepared carrier"};
+  }
+  if (instruction.family != bir::IntrinsicFamilyKind::VectorOperation ||
+      instruction.operation != bir::IntrinsicOperationKind::VectorAdd ||
+      instruction.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+      !instruction.requires_feature) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "intrinsic operation is outside the selected vector-add subset"};
+  }
+  const auto shape = vector_shape_status(instruction.vector_element_width_bytes,
+                                         instruction.vector_lane_count,
+                                         instruction.vector_total_width_bytes,
+                                         instruction.vector_element_type,
+                                         instruction.signedness);
+  if (shape.status != MachineNodeSelectionStatus::Selected) {
+    return shape;
+  }
+  if (instruction.operand_type != bir::TypeKind::I128 ||
+      instruction.result_type != bir::TypeKind::I128 ||
+      instruction.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      !has_exact_roles(instruction.operand_roles,
+                       {bir::IntrinsicOperandRole::VectorLhs,
+                        bir::IntrinsicOperandRole::VectorRhs})) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "vector-add intrinsic node is missing typed operand-role facts"};
+  }
+  if (!instruction.has_prepared_call_plan ||
+      !instruction.lhs_value_id.has_value() ||
+      instruction.lhs_value_name == c4c::kInvalidValueName ||
+      !instruction.rhs_value_id.has_value() ||
+      instruction.rhs_value_name == c4c::kInvalidValueName ||
+      !instruction.result_value_id.has_value() ||
+      instruction.result_value_name == c4c::kInvalidValueName ||
+      instruction.lhs.kind != OperandKind::Register ||
+      instruction.rhs.kind != OperandKind::Register ||
+      !instruction.result_register.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic =
+            "vector-add intrinsic node is missing operand or result register authority"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
 bool is_supported_memory_base(MemoryBaseKind base_kind) {
   switch (base_kind) {
     case MemoryBaseKind::FrameSlot:
@@ -3937,6 +4117,78 @@ InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
       .defs = defs,
       .uses = effects_from_operands(operands),
       .side_effects = std::move(side_effects),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_crc32w_intrinsic_instruction(Crc32WIntrinsicRecord instruction) {
+  std::vector<OperandRecord> operands = {instruction.accumulator, instruction.data};
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      instruction.result_value_name));
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::Intrinsic,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Crc32WIntrinsic,
+      .selection = crc32w_intrinsic_selection_status(instruction),
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_vector_load_intrinsic_instruction(
+    VectorLoadIntrinsicRecord instruction) {
+  std::vector<OperandRecord> operands = {instruction.pointer,
+                                         make_memory_operand(instruction.memory)};
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      instruction.result_value_name));
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::Intrinsic,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::VectorLoadIntrinsic,
+      .selection = vector_load_intrinsic_selection_status(instruction),
+      .function_name = instruction.memory.function_name,
+      .block_label = instruction.memory.block_label,
+      .instruction_index = instruction.memory.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
+      .side_effects = {MachineSideEffectKind::MemoryRead},
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_vector_add_intrinsic_instruction(VectorAddIntrinsicRecord instruction) {
+  std::vector<OperandRecord> operands = {instruction.lhs, instruction.rhs};
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      instruction.result_value_name));
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::Intrinsic,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::VectorAddIntrinsic,
+      .selection = vector_add_intrinsic_selection_status(instruction),
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
       .payload = instruction,
   };
 }

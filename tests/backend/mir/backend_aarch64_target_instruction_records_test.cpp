@@ -48,6 +48,36 @@ aarch64_codegen::OperandRecord make_value_register(prepare::PreparedValueId valu
   return aarch64_codegen::make_register_operand(value_register(value_id, value_name, index));
 }
 
+aarch64_codegen::RegisterOperand w_value_register(prepare::PreparedValueId value_id,
+                                                  c4c::ValueNameId value_name,
+                                                  unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::w_register(index),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = aarch64_abi::RegisterView::W,
+      .contiguous_width = 1,
+  };
+}
+
+aarch64_codegen::RegisterOperand q_value_register(prepare::PreparedValueId value_id,
+                                                  c4c::ValueNameId value_name,
+                                                  unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::q_register(index),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = prepare::PreparedRegisterClass::Vector,
+      .prepared_bank = prepare::PreparedRegisterBank::Vreg,
+      .expected_view = aarch64_abi::RegisterView::Q,
+      .contiguous_width = 1,
+  };
+}
+
 aarch64_codegen::MemoryOperand f128_frame_slot_memory_operand(
     c4c::FunctionNameId function_name,
     c4c::BlockLabelId block_label,
@@ -230,6 +260,246 @@ int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
       memory.side_effects.size() != 1 ||
       memory.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryRead) {
     return fail("expected memory instruction record to preserve prepared address facts");
+  }
+
+  return 0;
+}
+
+const prepare::PreparedIntrinsicCarrier* selected_crc32w_carrier() {
+  static const prepare::PreparedIntrinsicCarrier carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::Crc,
+      .operation = bir::IntrinsicOperationKind::Crc32W,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::I32,
+      .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                        bir::IntrinsicOperandRole::Data},
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.crc32w"},
+      .has_prepared_call_plan = true,
+  };
+  return &carrier;
+}
+
+const prepare::PreparedIntrinsicCarrier* selected_vector_carrier(
+    bir::IntrinsicOperationKind operation) {
+  static const prepare::PreparedIntrinsicCarrier load_carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::VectorMemory,
+      .operation = bir::IntrinsicOperationKind::VectorLoad,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+      .operand_type = bir::TypeKind::Ptr,
+      .result_type = bir::TypeKind::I128,
+      .operand_roles = {bir::IntrinsicOperandRole::Pointer},
+      .vector_element_type = bir::TypeKind::I8,
+      .vector_element_width_bytes = 1,
+      .vector_lane_count = 16,
+      .vector_total_width_bytes = 16,
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .memory_access = bir::IntrinsicMemoryAccessKind::Read,
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.neon.ld1.v16i8.p0i8"},
+      .has_prepared_call_plan = true,
+  };
+  static const prepare::PreparedIntrinsicCarrier add_carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::VectorOperation,
+      .operation = bir::IntrinsicOperationKind::VectorAdd,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+      .operand_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .operand_roles = {bir::IntrinsicOperandRole::VectorLhs,
+                        bir::IntrinsicOperandRole::VectorRhs},
+      .vector_element_type = bir::TypeKind::I8,
+      .vector_element_width_bytes = 1,
+      .vector_lane_count = 16,
+      .vector_total_width_bytes = 16,
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.neon.add.v16i8"},
+      .has_prepared_call_plan = true,
+  };
+  return operation == bir::IntrinsicOperationKind::VectorLoad ? &load_carrier : &add_carrier;
+}
+
+int selected_intrinsic_records_preserve_crc_and_vector_authority() {
+  const auto accumulator = w_value_register(prepare::PreparedValueId{61},
+                                           c4c::ValueNameId{31},
+                                           0);
+  const auto data = w_value_register(prepare::PreparedValueId{62},
+                                     c4c::ValueNameId{32},
+                                     1);
+  const auto crc_result = w_value_register(prepare::PreparedValueId{63},
+                                           c4c::ValueNameId{33},
+                                           2);
+  const auto crc = aarch64_codegen::make_crc32w_intrinsic_instruction(
+      aarch64_codegen::Crc32WIntrinsicRecord{
+          .source_carrier = selected_crc32w_carrier(),
+          .family = bir::IntrinsicFamilyKind::Crc,
+          .operation = bir::IntrinsicOperationKind::Crc32W,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+          .operand_type = bir::TypeKind::I32,
+          .result_type = bir::TypeKind::I32,
+          .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                            bir::IntrinsicOperandRole::Data},
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .accumulator_value_id = prepare::PreparedValueId{61},
+          .accumulator_value_name = c4c::ValueNameId{31},
+          .data_value_id = prepare::PreparedValueId{62},
+          .data_value_name = c4c::ValueNameId{32},
+          .result_value_id = prepare::PreparedValueId{63},
+          .result_value_name = c4c::ValueNameId{33},
+          .accumulator = aarch64_codegen::make_register_operand(accumulator),
+          .data = aarch64_codegen::make_register_operand(data),
+          .result_register = crc_result,
+          .requires_feature = true,
+          .source_callee_name = std::string{"llvm.aarch64.crc32w"},
+          .has_prepared_call_plan = true,
+      });
+  const auto* crc_payload =
+      std::get_if<aarch64_codegen::Crc32WIntrinsicRecord>(&crc.payload);
+  if (crc_payload == nullptr ||
+      crc.family != aarch64_codegen::InstructionFamily::Intrinsic ||
+      crc.opcode != aarch64_codegen::MachineOpcode::Crc32WIntrinsic ||
+      aarch64_codegen::machine_opcode_name(crc.opcode) != "crc32w_intrinsic" ||
+      crc.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      crc.operands.size() != 2 || crc.uses.size() != 2 || crc.defs.size() != 1 ||
+      crc.defs.front().reg != aarch64_abi::w_register(2) ||
+      crc_payload->required_feature != bir::IntrinsicFeatureKind::AArch64Crc ||
+      crc_payload->operand_roles.size() != 2 ||
+      crc_payload->operand_roles[0] != bir::IntrinsicOperandRole::Accumulator ||
+      crc_payload->operand_roles[1] != bir::IntrinsicOperandRole::Data ||
+      crc_payload->signedness != bir::IntrinsicSignedness::Unsigned ||
+      crc_payload->result_register->reg != aarch64_abi::w_register(2) ||
+      !crc.side_effects.empty()) {
+    return fail("expected selected CRC32W record to preserve carrier authority");
+  }
+
+  const auto pointer = value_register(prepare::PreparedValueId{71},
+                                      c4c::ValueNameId{41},
+                                      3);
+  const auto load_result = q_value_register(prepare::PreparedValueId{72},
+                                            c4c::ValueNameId{42},
+                                            0);
+  const auto load = aarch64_codegen::make_vector_load_intrinsic_instruction(
+      aarch64_codegen::VectorLoadIntrinsicRecord{
+          .source_carrier = selected_vector_carrier(bir::IntrinsicOperationKind::VectorLoad),
+          .family = bir::IntrinsicFamilyKind::VectorMemory,
+          .operation = bir::IntrinsicOperationKind::VectorLoad,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+          .operand_type = bir::TypeKind::Ptr,
+          .result_type = bir::TypeKind::I128,
+          .operand_roles = {bir::IntrinsicOperandRole::Pointer},
+          .vector_element_type = bir::TypeKind::I8,
+          .vector_element_width_bytes = 1,
+          .vector_lane_count = 16,
+          .vector_total_width_bytes = 16,
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .memory_access = bir::IntrinsicMemoryAccessKind::Read,
+          .pointer_value_id = prepare::PreparedValueId{71},
+          .pointer_value_name = c4c::ValueNameId{41},
+          .result_value_id = prepare::PreparedValueId{72},
+          .result_value_name = c4c::ValueNameId{42},
+          .pointer = aarch64_codegen::make_register_operand(pointer),
+          .memory =
+              aarch64_codegen::MemoryOperand{
+                  .function_name = c4c::FunctionNameId{2},
+                  .block_label = c4c::BlockLabelId{8},
+                  .instruction_index = 4,
+                  .result_value_id = prepare::PreparedValueId{72},
+                  .result_value_name = c4c::ValueNameId{42},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+                  .base_register = pointer,
+                  .pointer_value_name = c4c::ValueNameId{41},
+                  .pointer_value_id = prepare::PreparedValueId{71},
+                  .size_bytes = 16,
+                  .align_bytes = 16,
+                  .address_space = bir::AddressSpace::Default,
+              },
+          .result_register = load_result,
+          .requires_feature = true,
+          .source_callee_name = std::string{"llvm.aarch64.neon.ld1.v16i8.p0i8"},
+          .has_prepared_call_plan = true,
+      });
+  const auto* load_payload =
+      std::get_if<aarch64_codegen::VectorLoadIntrinsicRecord>(&load.payload);
+  if (load_payload == nullptr ||
+      load.opcode != aarch64_codegen::MachineOpcode::VectorLoadIntrinsic ||
+      load.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      load.operands.size() != 2 || load.uses.size() != 2 || load.defs.size() != 1 ||
+      load.side_effects.size() != 1 ||
+      load.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryRead ||
+      load_payload->required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
+      load_payload->vector_element_type != bir::TypeKind::I8 ||
+      load_payload->vector_lane_count != 16 ||
+      load_payload->vector_total_width_bytes != 16 ||
+      load_payload->memory_access != bir::IntrinsicMemoryAccessKind::Read ||
+      load_payload->memory.base_register->reg != aarch64_abi::x_register(3) ||
+      load_payload->result_register->reg != aarch64_abi::q_register(0)) {
+    return fail("expected selected vector-load record to preserve memory and shape authority");
+  }
+
+  const auto lhs = q_value_register(prepare::PreparedValueId{81},
+                                    c4c::ValueNameId{51},
+                                    1);
+  const auto rhs = q_value_register(prepare::PreparedValueId{82},
+                                    c4c::ValueNameId{52},
+                                    2);
+  const auto add_result = q_value_register(prepare::PreparedValueId{83},
+                                           c4c::ValueNameId{53},
+                                           0);
+  const auto add = aarch64_codegen::make_vector_add_intrinsic_instruction(
+      aarch64_codegen::VectorAddIntrinsicRecord{
+          .source_carrier = selected_vector_carrier(bir::IntrinsicOperationKind::VectorAdd),
+          .family = bir::IntrinsicFamilyKind::VectorOperation,
+          .operation = bir::IntrinsicOperationKind::VectorAdd,
+          .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+          .operand_type = bir::TypeKind::I128,
+          .result_type = bir::TypeKind::I128,
+          .operand_roles = {bir::IntrinsicOperandRole::VectorLhs,
+                            bir::IntrinsicOperandRole::VectorRhs},
+          .vector_element_type = bir::TypeKind::I8,
+          .vector_element_width_bytes = 1,
+          .vector_lane_count = 16,
+          .vector_total_width_bytes = 16,
+          .signedness = bir::IntrinsicSignedness::Unsigned,
+          .memory_access = bir::IntrinsicMemoryAccessKind::None,
+          .lhs_value_id = prepare::PreparedValueId{81},
+          .lhs_value_name = c4c::ValueNameId{51},
+          .rhs_value_id = prepare::PreparedValueId{82},
+          .rhs_value_name = c4c::ValueNameId{52},
+          .result_value_id = prepare::PreparedValueId{83},
+          .result_value_name = c4c::ValueNameId{53},
+          .lhs = aarch64_codegen::make_register_operand(lhs),
+          .rhs = aarch64_codegen::make_register_operand(rhs),
+          .result_register = add_result,
+          .requires_feature = true,
+          .source_callee_name = std::string{"llvm.aarch64.neon.add.v16i8"},
+          .has_prepared_call_plan = true,
+      });
+  const auto* add_payload =
+      std::get_if<aarch64_codegen::VectorAddIntrinsicRecord>(&add.payload);
+  if (add_payload == nullptr ||
+      add.opcode != aarch64_codegen::MachineOpcode::VectorAddIntrinsic ||
+      add.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      add.operands.size() != 2 || add.uses.size() != 2 || add.defs.size() != 1 ||
+      add.defs.front().reg != aarch64_abi::q_register(0) ||
+      add_payload->operand_roles.size() != 2 ||
+      add_payload->operand_roles[0] != bir::IntrinsicOperandRole::VectorLhs ||
+      add_payload->operand_roles[1] != bir::IntrinsicOperandRole::VectorRhs ||
+      add_payload->vector_lane_count != 16 ||
+      add_payload->memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      add_payload->lhs_value_id != prepare::PreparedValueId{81} ||
+      add_payload->rhs_value_id != prepare::PreparedValueId{82} ||
+      add_payload->result_register->reg != aarch64_abi::q_register(0) ||
+      !add.side_effects.empty()) {
+    return fail("expected selected vector-add record to preserve operand and shape authority");
   }
 
   return 0;
@@ -3687,6 +3957,10 @@ int i128_pair_records_preserve_sources_result_and_lane_semantics() {
 
 int main() {
   if (const int status = branch_scalar_and_memory_instruction_records_preserve_typed_operands();
+      status != 0) {
+    return status;
+  }
+  if (const int status = selected_intrinsic_records_preserve_crc_and_vector_authority();
       status != 0) {
     return status;
   }

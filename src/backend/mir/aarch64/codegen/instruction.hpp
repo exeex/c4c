@@ -148,6 +148,9 @@ enum class MachineOpcode {
   VariadicVaArgAggregate,
   VariadicVaCopy,
   ScalarFpUnaryIntrinsic,
+  Crc32WIntrinsic,
+  VectorLoadIntrinsic,
+  VectorAddIntrinsic,
 };
 
 enum class MachinePseudoKind {
@@ -776,6 +779,88 @@ struct ScalarFpUnaryIntrinsicRecord {
   OperandRecord operand;
   std::optional<RegisterOperand> result_register;
   bool has_side_effects = false;
+  bool requires_feature = false;
+  std::optional<std::string> source_callee_name;
+  bool has_prepared_call_plan = false;
+};
+
+struct Crc32WIntrinsicRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  const prepare::PreparedIntrinsicCarrier* source_carrier = nullptr;
+  bir::IntrinsicFamilyKind family = bir::IntrinsicFamilyKind::None;
+  bir::IntrinsicOperationKind operation = bir::IntrinsicOperationKind::None;
+  bir::IntrinsicFeatureKind required_feature = bir::IntrinsicFeatureKind::None;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::vector<bir::IntrinsicOperandRole> operand_roles;
+  bir::IntrinsicSignedness signedness = bir::IntrinsicSignedness::None;
+  std::optional<prepare::PreparedValueId> accumulator_value_id;
+  c4c::ValueNameId accumulator_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> data_value_id;
+  c4c::ValueNameId data_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  OperandRecord accumulator;
+  OperandRecord data;
+  std::optional<RegisterOperand> result_register;
+  bool requires_feature = false;
+  std::optional<std::string> source_callee_name;
+  bool has_prepared_call_plan = false;
+};
+
+struct VectorLoadIntrinsicRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  const prepare::PreparedIntrinsicCarrier* source_carrier = nullptr;
+  bir::IntrinsicFamilyKind family = bir::IntrinsicFamilyKind::None;
+  bir::IntrinsicOperationKind operation = bir::IntrinsicOperationKind::None;
+  bir::IntrinsicFeatureKind required_feature = bir::IntrinsicFeatureKind::None;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::vector<bir::IntrinsicOperandRole> operand_roles;
+  bir::TypeKind vector_element_type = bir::TypeKind::Void;
+  std::size_t vector_element_width_bytes = 0;
+  std::size_t vector_lane_count = 0;
+  std::size_t vector_total_width_bytes = 0;
+  bir::IntrinsicSignedness signedness = bir::IntrinsicSignedness::None;
+  bir::IntrinsicMemoryAccessKind memory_access =
+      bir::IntrinsicMemoryAccessKind::None;
+  std::optional<prepare::PreparedValueId> pointer_value_id;
+  c4c::ValueNameId pointer_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  OperandRecord pointer;
+  MemoryOperand memory;
+  std::optional<RegisterOperand> result_register;
+  bool requires_feature = false;
+  std::optional<std::string> source_callee_name;
+  bool has_prepared_call_plan = false;
+};
+
+struct VectorAddIntrinsicRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  const prepare::PreparedIntrinsicCarrier* source_carrier = nullptr;
+  bir::IntrinsicFamilyKind family = bir::IntrinsicFamilyKind::None;
+  bir::IntrinsicOperationKind operation = bir::IntrinsicOperationKind::None;
+  bir::IntrinsicFeatureKind required_feature = bir::IntrinsicFeatureKind::None;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::vector<bir::IntrinsicOperandRole> operand_roles;
+  bir::TypeKind vector_element_type = bir::TypeKind::Void;
+  std::size_t vector_element_width_bytes = 0;
+  std::size_t vector_lane_count = 0;
+  std::size_t vector_total_width_bytes = 0;
+  bir::IntrinsicSignedness signedness = bir::IntrinsicSignedness::None;
+  bir::IntrinsicMemoryAccessKind memory_access =
+      bir::IntrinsicMemoryAccessKind::None;
+  std::optional<prepare::PreparedValueId> lhs_value_id;
+  c4c::ValueNameId lhs_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> rhs_value_id;
+  c4c::ValueNameId rhs_value_name = c4c::kInvalidValueName;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  OperandRecord lhs;
+  OperandRecord rhs;
+  std::optional<RegisterOperand> result_register;
   bool requires_feature = false;
   std::optional<std::string> source_callee_name;
   bool has_prepared_call_plan = false;
@@ -1470,6 +1555,9 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         MemoryInstructionRecord,
                                         AtomicMemoryInstructionRecord,
                                         ScalarFpUnaryIntrinsicRecord,
+                                        Crc32WIntrinsicRecord,
+                                        VectorLoadIntrinsicRecord,
+                                        VectorAddIntrinsicRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
                                         FrameInstructionRecord,
@@ -1607,6 +1695,12 @@ struct InstructionRecord {
     AtomicMemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
     ScalarFpUnaryIntrinsicRecord instruction);
+[[nodiscard]] InstructionRecord make_crc32w_intrinsic_instruction(
+    Crc32WIntrinsicRecord instruction);
+[[nodiscard]] InstructionRecord make_vector_load_intrinsic_instruction(
+    VectorLoadIntrinsicRecord instruction);
+[[nodiscard]] InstructionRecord make_vector_add_intrinsic_instruction(
+    VectorAddIntrinsicRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
