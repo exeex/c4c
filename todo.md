@@ -1,39 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/236_aarch64_i128_pair_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Print Supported I128 Pair Nodes
+Current Step ID: 8
+Current Step Title: Validate And Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Step 7 added terminal AArch64 printer support for the supported structured i128
-selected-record subset.
+Step 8 validated the accepted AArch64 i128 pair-lowering coverage and recorded
+the remaining helper-boundary limits.
 
-What changed:
+Accepted coverage:
 
-- `machine_printer.cpp` now prints selected i128 transport records from
-  structured low/high lane registers and structured memory operands. Supported
-  memory transports emit `ldp`/`stp`; carrier snapshots print only a structured
-  diagnostic comment.
-- Selected i128 add/sub/and/or/xor pair records print from structured
-  result/lhs/rhs low/high register fields. Add/sub use carry/borrow-aware
-  `adds`/`adc` and `subs`/`sbc`; bitwise operations emit independent low/high
-  lane instructions.
-- Selected immediate-count i128 shifts in the 0..63 subset print from
-  structured result/source pair registers and count facts.
-- Selected equality and signed/unsigned relational i128 comparisons print from
-  structured result register and low/high pair operands.
-- Selected div/rem `I128RuntimeHelperBoundaryRecord` values now fail closed in
-  the terminal printer with an explicit diagnostic that structured helper
-  marshaling and ABI register-binding facts are missing. The record's lane and
-  ABI-shape facts are preserved for future consumption, but the printer no
-  longer emits `bl <callee>` from lane facts alone.
-- Machine-printer tests cover structured i128 transport, pair add, shift,
-  equality and unsigned compare output, helper-boundary fail-closed diagnostics
-  for missing marshaling/register-binding authority, and incomplete pair lane
-  facts.
+- Prepared/shared state exposes explicit i128 carrier authority for register
+  pairs and memory-backed values, with value identity, low/high lane ordering,
+  lane width, total size/alignment, placement provenance, and missing-fact
+  diagnostics.
+- AArch64 selection consumes complete `PreparedI128Carrier` facts into selected
+  transport records without inferring lanes from register names, numeric
+  adjacency, rendered names, or fixed `x0`/`x1` conventions.
+- Supported i128 add/sub/and/or/xor, immediate-count shifts, and equality plus
+  signed/unsigned comparisons select into structured pair records preserving
+  result/source carrier identity, lane order, operation semantics, shift-count
+  facts, and comparison signedness/high-word semantics.
+- Prepared i128 div/rem helper authority exists for `SDiv`, `UDiv`, `SRem`,
+  and `URem`: source-operation mapping, helper/callee identity, low/high
+  argument lanes from canonical carriers, direct low/high result ownership,
+  resource/clobber policy, and ABI/register-bank shape facts.
+- AArch64 selection consumes those prepared div/rem helper facts into
+  `I128RuntimeHelperBoundaryRecord` values and keeps missing helper authority,
+  incomplete policy, unsupported carrier kinds, non-direct result ownership,
+  conversion helpers, and memory-return helper families fail-closed.
+- Terminal AArch64 printing is supported for structured i128 memory transports,
+  add/sub/bitwise pair operations, immediate-count 0..63 shifts, and
+  equality/signed/unsigned comparison records.
+- Terminal div/rem helper-boundary call printing is intentionally not claimed:
+  `I128RuntimeHelperBoundaryRecord` currently fails closed in the printer with
+  an explicit missing structured helper marshaling/ABI register-binding
+  diagnostic.
 
 No operand recovery from rendered names, fixed `x0`/`x1` conventions,
 source-opcode-only helper synthesis, runtime-library changes, helper-call
@@ -42,30 +47,29 @@ was added.
 
 ## Suggested Next
 
-Execute Step 8 validation for idea 236. The validation packet should run the
-supervisor-selected full-suite proof, summarize semantic coverage for i128
-carrier authority, selected transport/arithmetic/shift/compare/helper records,
-terminal printer support, and remaining deferred helper families, then hand the
-route back for plan-owner close review if coverage is accepted.
-
-Suggested full-suite proof:
-
-```sh
-(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1
-```
+Hand idea 236 to plan-owner close review. If plan-owner requires executable
+div/rem helper-call terminal output before closing the source idea, the next
+implementation packet should first add structured helper marshaling and ABI
+register-binding authority, then consume those facts in the AArch64 printer.
 
 ## Watchouts
 
 - i128 shift printer support is the immediate-count 0..63 subset. Register
-  counts and 64+ count expansion remain fail-closed.
-- Div/rem helper-boundary selected records still require a future structured
-  marshaling/register-binding packet before terminal call output can be
-  claimed. Lane registers and ABI shape/banks are not sufficient proof of
+  counts and 64+ count expansion remain fail-closed and should not be papered
+  over with name-shaped cases.
+- Div/rem helper-boundary selected records still require structured marshaling
+  and ABI register-binding facts before terminal `bl <callee>` output can be
+  accepted. Lane registers and ABI shape/banks are not sufficient proof of
   executable helper-call printing.
+- Float/i128 conversion helpers and memory-return helper families remain
+  deferred until prepared/shared authority is specified for those shapes.
+- `PreparedCallPlan` remains retained-call-only; i128 helper-required source
+  operations are represented by prepared helper authority plus selected helper
+  boundary records, not fake call plans.
 
 ## Proof
 
-Passed:
+Focused Step 7 proof passed:
 
 ```sh
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_target_record_core_contract|backend_aarch64_mir_carrier|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer)$') > test_after.log 2>&1
@@ -86,3 +90,12 @@ Supervisor full-suite acceptance also passed for this Step 7 slice:
 
 Regression guard used `test_before.log` copied from accepted
 `test_baseline.log`; result was 3167/3167 before and 3167/3167 after.
+
+Step 8 full-suite validation passed:
+
+```sh
+(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1
+```
+
+Result: build succeeded; full suite passed, 3167/3167 tests. Proof log:
+`test_after.log`.
