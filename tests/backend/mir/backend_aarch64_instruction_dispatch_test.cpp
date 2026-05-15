@@ -1322,6 +1322,50 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_constant_argument(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_semantic_f128_constant_call_argument() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "consume_tf";
+  callee.return_type = bir::TypeKind::Void;
+  callee.is_declaration = true;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "arg",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function function;
+  function.name = "dispatch.semantic.f128.const.arg";
+  function.return_type = bir::TypeKind::Void;
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "consume_tf",
+      .args = {bir::Value::immediate_f128_bits(0x0123456789abcdefULL,
+                                               0x3fff800000000000ULL)},
+      .arg_types = {bir::TypeKind::F128},
+      .return_type = bir::TypeKind::Void,
+      .calling_convention = bir::CallingConv::C,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -4643,6 +4687,75 @@ int block_dispatch_exposes_f128_constant_argument_carrier_to_selection() {
   return 0;
 }
 
+int semantic_f128_constant_argument_reaches_call_boundary_selection() {
+  auto prepared = prepared_semantic_f128_constant_call_argument();
+  const auto function_id =
+      prepared.names.function_names.find("dispatch.semantic.f128.const.arg");
+  const prepare::PreparedControlFlowFunction* function_cf = nullptr;
+  for (const auto& candidate : prepared.control_flow.functions) {
+    if (candidate.function_name == function_id) {
+      function_cf = &candidate;
+      break;
+    }
+  }
+  if (function_cf == nullptr || function_cf->blocks.empty()) {
+    return fail("expected semantic f128 constant fixture to produce prepared control flow");
+  }
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, *function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, function_cf->blocks.front(), 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      !diagnostics.empty()) {
+    return fail("expected semantic f128 constant call to dispatch through normal call-boundary route");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[0].target.payload);
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &block.instructions[1].target.payload);
+  if (move == nullptr ||
+      block.instructions[0].target.family !=
+          aarch64_module::codegen::InstructionFamily::CallBoundary ||
+      block.instructions[0].target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_module::abi::q_register(0) ||
+      move->source_f128_carrier == nullptr ||
+      move->source_f128_carrier->kind != prepare::PreparedF128CarrierKind::Missing ||
+      move->source_f128_carrier->source_type != bir::TypeKind::F128 ||
+      move->source_f128_carrier->total_size_bytes != 16 ||
+      move->source_f128_carrier->total_align_bytes != 16 ||
+      !move->source_f128_carrier->constant_payload.has_value() ||
+      !move->source_f128_constant_payload.has_value() ||
+      move->source_f128_constant_payload->low_bits != 0x0123456789abcdefULL ||
+      move->source_f128_constant_payload->high_bits != 0x3fff800000000000ULL ||
+      move->source_f128_constant_payload->low_bits !=
+          move->source_f128_carrier->constant_payload->low_bits ||
+      move->source_f128_constant_payload->high_bits !=
+          move->source_f128_carrier->constant_payload->high_bits) {
+    return fail("expected semantic f128 constant to arrive as a full-width structured payload");
+  }
+  if (call == nullptr || !call->direct_callee.has_value() ||
+      call->direct_callee_label != "consume_tf") {
+    return fail("expected semantic f128 constant carrier to feed the existing direct call consumer");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions[2].target.payload)) {
+    return fail("expected return terminator after semantic f128 constant call");
+  }
+  return 0;
+}
+
 int block_dispatch_rejects_incomplete_f128_constant_argument_carriers() {
   struct Case {
     const char* label;
@@ -6659,6 +6772,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_exposes_f128_constant_argument_carrier_to_selection();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          semantic_f128_constant_argument_reaches_call_boundary_selection();
       status != 0) {
     return status;
   }

@@ -3785,7 +3785,7 @@ int main() {
   }
   if (!expect_contains(
           f128_constant_dump,
-          "arg index=0 value_bank=fpr source_encoding=immediate source_value_id=" +
+          "arg index=0 value_bank=vreg source_encoding=immediate source_value_id=" +
               std::to_string(f128_constant_carrier->value_id) + " "
           "source_literal=0x3FFF8000000000000123456789ABCDEF",
           "f128 prepared immediate literal preserves both halves")) {

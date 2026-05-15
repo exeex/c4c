@@ -36,9 +36,9 @@ namespace {
       return PreparedRegisterBank::Gpr;
     case bir::TypeKind::F32:
     case bir::TypeKind::F64:
-    case bir::TypeKind::F128:
       return PreparedRegisterBank::Fpr;
     case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
       return PreparedRegisterBank::Vreg;
     case bir::TypeKind::Void:
       return PreparedRegisterBank::None;
@@ -72,6 +72,9 @@ namespace {
 [[nodiscard]] PreparedRegisterBank register_bank_from_arg_abi(const bir::CallArgAbiInfo& abi) {
   switch (abi.primary_class) {
     case bir::AbiValueClass::Sse:
+      if (abi.type == bir::TypeKind::F128) {
+        return PreparedRegisterBank::Vreg;
+      }
       return PreparedRegisterBank::Fpr;
     case bir::AbiValueClass::Memory:
       return abi.type == bir::TypeKind::Ptr ? PreparedRegisterBank::AggregateAddress

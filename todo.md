@@ -1,41 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/241_f128_full_width_constant_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Expose Constant Carriers To AArch64 Selection
+Current Step ID: 5
+Current Step Title: Prove The Dependency And Guard Adjacent Routes
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 F128 constant-carrier selection exposure is complete. AArch64
-call-boundary selection now accepts F128 immediate argument moves only when the
-prepared argument source id resolves to a structured full-width carrier with a
-matching low/high `constant_payload`, and the selected record keeps that
-payload attached without using F64, rendered text, or a single 64-bit lane.
-Dispatch tests cover the valid carrier plus missing payload, missing source id,
-and scalar-only literal rejection paths.
+Step 5 F128 full-width constant-carrier dependency proof is complete. Semantic
+BIR F128 immediate call arguments now produce a prepared rematerialized
+constant move into the existing AArch64 call-boundary consumer, with the
+selected record carrying the structured low/high `constant_payload` through the
+prepared source value id. Prepared printer and dispatch tests guard the adjacent
+scalar, i128, helper, and printer routes without adding constant assembly
+printing support.
 
 ## Suggested Next
 
-Delegate Step 5 to prove the dependency end to end and guard adjacent scalar,
-i128, helper, and printer routes without claiming constant assembly printing
-beyond the selected structured record.
+Return to the supervisor for lifecycle review. If the source idea remains open,
+the next packet should be plan-owner scoped rather than more Step 5 execution.
 
 ## Watchouts
 
-- F128 immediate carriers remain `kind=missing`; selection treats that as valid
-  only for the constant-carrier case when `constant_payload` is complete and
-  tied to the prepared source value id.
-- The selected call-boundary record exposes payload authority but does not add
-  AArch64 constant materialization printing. Keep printer support gated on the
-  same complete structured facts.
-- V-register immediate call arguments without a complete F128 payload now
-  diagnose as missing value authority instead of falling through to scalar or
-  generic register-move routes.
+- F128 immediate carriers still remain `kind=missing`; that is valid only for
+  complete structured constant payloads tied to the prepared source value id.
+- No AArch64 constant materialization printing was added. The proof stops at
+  selected structured records and prepared/debug printer facts.
+- F32/F64 scalar routes remain on scalar FPR banks; only F128 prepared
+  call-boundary argument facts are promoted to the V-register/Q-register route.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
-Result: passed. Proof log: `test_after.log`.
+Result: passed, 139/139 backend tests. Proof log: `test_after.log`.
