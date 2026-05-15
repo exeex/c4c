@@ -1739,6 +1739,8 @@ void append_intrinsic_carriers(std::ostringstream& out, const PreparedBirModule&
       if (carrier.memory_operand.has_value()) {
         out << " memory_size=" << carrier.memory_operand->size_bytes
             << " memory_align=" << carrier.memory_operand->align_bytes
+            << " memory_address_space="
+            << address_space_name(carrier.memory_operand->address_space)
             << " memory_volatile=" << (carrier.memory_operand->is_volatile ? "yes" : "no");
       }
       if (carrier.barrier_domain != bir::IntrinsicBarrierDomainKind::None) {

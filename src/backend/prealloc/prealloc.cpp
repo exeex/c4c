@@ -1501,6 +1501,54 @@ void validate_barrier_intrinsic(PreparedIntrinsicCarrierFunction& function_carri
   require_intrinsic_call_plan_shape(function_carriers, carrier, call_plan, 1, false);
 }
 
+void validate_cache_maintenance_intrinsic(
+    PreparedIntrinsicCarrierFunction& function_carriers,
+    PreparedIntrinsicCarrier& carrier,
+    const bir::IntrinsicOperation& intrinsic,
+    const bir::CallInst& call,
+    const PreparedCallPlan* call_plan) {
+  if (carrier.operation != bir::IntrinsicOperationKind::CacheDcCvau) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "unsupported_cache_maintenance_operation");
+  }
+  if (intrinsic.required_feature != bir::IntrinsicFeatureKind::None) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_maintenance_requires_no_target_feature");
+  }
+  if (call.args.size() != 1 || call.arg_types.size() != 1 ||
+      !intrinsic_roles_are(intrinsic, {bir::IntrinsicOperandRole::CacheAddress})) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_dc_cvau_requires_address_operand");
+  }
+  if (carrier.result.has_value() || call.return_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_dc_cvau_requires_void_result");
+  }
+  if (carrier.operand_type != bir::TypeKind::Ptr ||
+      carrier.result_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_dc_cvau_requires_ptr_to_void_types");
+  }
+  if (!intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_operand->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+      intrinsic.memory_operand->address_space != bir::AddressSpace::Default ||
+      intrinsic.memory_operand->size_bytes != 0 ||
+      intrinsic.memory_operand->align_bytes != 1 ||
+      intrinsic.memory_operand->is_volatile ||
+      intrinsic.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      !carrier.has_side_effects) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_dc_cvau_requires_address_side_effect_facts");
+  }
+  if (intrinsic.has_immediate_operand || intrinsic.requires_immediate_operand ||
+      intrinsic.immediate_value.has_value()) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "cache_dc_cvau_requires_no_immediate");
+  }
+  require_intrinsic_call_plan_shape(function_carriers, carrier, call_plan, 1, false);
+  require_intrinsic_value_homes(function_carriers, carrier, 1, false);
+}
+
 [[nodiscard]] PreparedAtomicOperationCarrier build_atomic_operation_carrier(
     PreparedNameTables& names,
     const bir::NameTables& bir_names,
@@ -1696,6 +1744,10 @@ void validate_barrier_intrinsic(PreparedIntrinsicCarrierFunction& function_carri
       break;
     case bir::IntrinsicFamilyKind::Barrier:
       validate_barrier_intrinsic(function_carriers, carrier, intrinsic, call, call_plan);
+      break;
+    case bir::IntrinsicFamilyKind::CacheMaintenance:
+      validate_cache_maintenance_intrinsic(
+          function_carriers, carrier, intrinsic, call, call_plan);
       break;
     case bir::IntrinsicFamilyKind::None:
       append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_intrinsic_family");

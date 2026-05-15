@@ -614,7 +614,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       raw_callee.find("llvm.aarch64.crc32w") != std::string_view::npos ||
       raw_callee.find("llvm.aarch64.neon.ld1.v16i8.p0i8") != std::string_view::npos ||
       raw_callee.find("llvm.aarch64.neon.add.v16i8") != std::string_view::npos ||
-      raw_callee.find("llvm.aarch64.dmb") != std::string_view::npos) {
+      raw_callee.find("llvm.aarch64.dmb") != std::string_view::npos ||
+      raw_callee.find("llvm.aarch64.dc.cvau") != std::string_view::npos) {
     return fail_aarch64_semantic_intrinsic_family();
   }
   const bool is_direct_global_call =
@@ -1447,8 +1448,9 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const bool is_v16i8_load = intrinsic_name == "llvm.aarch64.neon.ld1.v16i8.p0i8";
     const bool is_v16i8_add = intrinsic_name == "llvm.aarch64.neon.add.v16i8";
     const bool is_dmb = intrinsic_name == "llvm.aarch64.dmb";
+    const bool is_dc_cvau = intrinsic_name == "llvm.aarch64.dc.cvau";
     const bool is_known_aarch64_candidate =
-        is_crc32w || is_v16i8_load || is_v16i8_add || is_dmb;
+        is_crc32w || is_v16i8_load || is_v16i8_add || is_dmb || is_dc_cvau;
     if (!is_known_aarch64_candidate) {
       if (intrinsic_name.rfind("llvm.x86.", 0) == 0) {
         return fail_aarch64_intrinsic();
@@ -1499,6 +1501,49 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
               .has_immediate_operand = true,
               .requires_immediate_operand = true,
               .immediate_value = 15,
+              .has_side_effects = true,
+          },
+      });
+      return true;
+    }
+    if (is_dc_cvau) {
+      if (parsed_call->args.size() != 1 || parsed_call->param_types.size() != 1 ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "ptr" ||
+          return_type != "void" ||
+          call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return fail_aarch64_intrinsic();
+      }
+      const auto lowered_address = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+          bir::TypeKind::Ptr,
+          value_aliases);
+      if (!lowered_address.has_value()) {
+        return fail_aarch64_intrinsic();
+      }
+      lowered_insts->push_back(bir::CallInst{
+          .callee = std::string(intrinsic_name),
+          .args = {*lowered_address},
+          .arg_types = {bir::TypeKind::Ptr},
+          .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
+          .return_type_name = "void",
+          .return_type = bir::TypeKind::Void,
+          .result_abi =
+              compute_function_return_abi(context_.target_profile, bir::TypeKind::Void, false),
+          .intrinsic = bir::IntrinsicOperation{
+              .family = bir::IntrinsicFamilyKind::CacheMaintenance,
+              .operation = bir::IntrinsicOperationKind::CacheDcCvau,
+              .operand_type = bir::TypeKind::Ptr,
+              .result_type = bir::TypeKind::Void,
+              .operand_roles = {bir::IntrinsicOperandRole::CacheAddress},
+              .memory_operand = bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value = *lowered_address,
+                  .size_bytes = 0,
+                  .align_bytes = 1,
+                  .address_space = bir::AddressSpace::Default,
+                  .is_volatile = false,
+              },
+              .memory_access = bir::IntrinsicMemoryAccessKind::None,
               .has_side_effects = true,
           },
       });

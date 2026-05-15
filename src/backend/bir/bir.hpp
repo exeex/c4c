@@ -211,6 +211,7 @@ enum class IntrinsicFamilyKind : unsigned char {
   VectorMemory,
   VectorOperation,
   Barrier,
+  CacheMaintenance,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_family_kind_name(
@@ -228,6 +229,8 @@ enum class IntrinsicFamilyKind : unsigned char {
       return "vector_operation";
     case IntrinsicFamilyKind::Barrier:
       return "barrier";
+    case IntrinsicFamilyKind::CacheMaintenance:
+      return "cache_maintenance";
   }
   return "unknown";
 }
@@ -239,6 +242,7 @@ enum class IntrinsicOperationKind : unsigned char {
   VectorLoad,
   VectorAdd,
   BarrierDmb,
+  CacheDcCvau,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_operation_kind_name(
@@ -256,6 +260,8 @@ enum class IntrinsicOperationKind : unsigned char {
       return "vector_add";
     case IntrinsicOperationKind::BarrierDmb:
       return "barrier_dmb";
+    case IntrinsicOperationKind::CacheDcCvau:
+      return "cache_dc_cvau";
   }
   return "unknown";
 }
@@ -287,6 +293,7 @@ enum class IntrinsicOperandRole : unsigned char {
   VectorLhs,
   VectorRhs,
   BarrierDomain,
+  CacheAddress,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_operand_role_name(
@@ -306,6 +313,8 @@ enum class IntrinsicOperandRole : unsigned char {
       return "vector_rhs";
     case IntrinsicOperandRole::BarrierDomain:
       return "barrier_domain";
+    case IntrinsicOperandRole::CacheAddress:
+      return "cache_address";
   }
   return "unknown";
 }

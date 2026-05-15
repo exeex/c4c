@@ -2060,6 +2060,44 @@ int complete_unsupported_intrinsic_carriers_do_not_print_as_machine_records() {
     return fail("expected complete barrier DMB carrier not to print as an AArch64 machine record");
   }
 
+  auto cache = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
+  static const prepare::PreparedIntrinsicCarrier cache_carrier{
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::CacheMaintenance,
+      .operation = bir::IntrinsicOperationKind::CacheDcCvau,
+      .operand_type = bir::TypeKind::Ptr,
+      .result_type = bir::TypeKind::Void,
+      .operand_roles = {bir::IntrinsicOperandRole::CacheAddress},
+      .memory_operand = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, "%p"),
+          .size_bytes = 0,
+          .align_bytes = 1,
+          .address_space = bir::AddressSpace::Default,
+      },
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .has_side_effects = true,
+      .source_callee_name = std::string{"llvm.aarch64.dc.cvau"},
+      .has_prepared_call_plan = true,
+  };
+  cache.source_carrier = &cache_carrier;
+  cache.family = bir::IntrinsicFamilyKind::CacheMaintenance;
+  cache.operation = bir::IntrinsicOperationKind::CacheDcCvau;
+  cache.operand_type = bir::TypeKind::Ptr;
+  cache.result_type = bir::TypeKind::Void;
+  cache.source_callee_name = std::string{"llvm.aarch64.dc.cvau"};
+  cache.has_side_effects = true;
+  const auto cache_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(cache);
+  const auto cache_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(cache_instruction);
+  if (cache_print.ok ||
+      cache_print.diagnostic.find("outside the selected scalar FP unary subset") ==
+          std::string::npos ||
+      !cache_print.instruction_lines.empty()) {
+    return fail("expected complete cache DC CVAU carrier not to print as an AArch64 machine record");
+  }
+
   return 0;
 }
 

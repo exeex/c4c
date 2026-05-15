@@ -114,6 +114,7 @@ int expect_aarch64_crc32w_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_load_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_add_intrinsic_carries_bir_semantics();
 int expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection();
+int expect_aarch64_dc_cvau_intrinsic_carries_cache_semantics_without_selection();
 int expect_aarch64_semantic_intrinsic_fail_closed_cases();
 int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
 int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
@@ -3145,7 +3146,9 @@ LirModule make_aarch64_dmb_intrinsic_module(
     std::string return_type = "void",
     LirOperand result = LirOperand()) {
   LirModule module;
-  module.target_profile = c4c::target_profile_from_triple(target_triple);
+  module.target_profile = target_triple == "x86_64-unknown-linux-gnu"
+                              ? c4c::default_target_profile(c4c::TargetArch::X86_64)
+                              : c4c::target_profile_from_triple(target_triple);
 
   LirFunction function;
   function.name = "aarch64_dmb_intrinsic";
@@ -3159,6 +3162,44 @@ LirModule make_aarch64_dmb_intrinsic_module(
       .callee = LirOperand("@llvm.aarch64.dmb"),
       .callee_type_suffix = "(" + domain_type + ")",
       .args_str = domain_type + " " + domain_value,
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+LirModule make_aarch64_dc_cvau_intrinsic_module(
+    std::string target_triple = "aarch64-unknown-linux-gnu",
+    std::string pointer_type = "ptr",
+    std::string return_type = "void",
+    LirOperand result = LirOperand()) {
+  LirModule module;
+  module.target_profile = target_triple == "x86_64-unknown-linux-gnu"
+                              ? c4c::default_target_profile(c4c::TargetArch::X86_64)
+                              : c4c::target_profile_from_triple(target_triple);
+
+  c4c::TypeSpec ptr_type{};
+  ptr_type.base = c4c::TB_VOID;
+  ptr_type.ptr_level = 1;
+
+  LirFunction function;
+  function.name = "aarch64_dc_cvau_intrinsic";
+  function.signature_text = "define void @aarch64_dc_cvau_intrinsic(ptr %p)";
+  function.params.push_back({"%p", ptr_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = std::move(result),
+      .return_type = return_type,
+      .callee = LirOperand("@llvm.aarch64.dc.cvau"),
+      .callee_type_suffix = "(" + pointer_type + ")",
+      .args_str = pointer_type + " %p",
   });
   entry.terminator = LirRet{
       .value_str = std::nullopt,
@@ -3334,9 +3375,43 @@ int expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection() {
   return 0;
 }
 
+int expect_aarch64_dc_cvau_intrinsic_carries_cache_semantics_without_selection() {
+  auto result = try_lower_to_bir_with_options(make_aarch64_dc_cvau_intrinsic_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("aarch64 dc cvau intrinsic should lower to BIR semantic intrinsic facts");
+  }
+  const auto* call = find_intrinsic_call(
+      *result.module, c4c::backend::bir::IntrinsicOperationKind::CacheDcCvau);
+  if (call == nullptr || !call->intrinsic.has_value()) {
+    return fail("aarch64 dc cvau intrinsic should carry a BIR intrinsic operation");
+  }
+  const auto& intrinsic = *call->intrinsic;
+  if (call->result.has_value() || call->return_type != TypeKind::Void ||
+      intrinsic.family != c4c::backend::bir::IntrinsicFamilyKind::CacheMaintenance ||
+      intrinsic.required_feature != c4c::backend::bir::IntrinsicFeatureKind::None ||
+      intrinsic.operand_type != TypeKind::Ptr || intrinsic.result_type != TypeKind::Void ||
+      intrinsic.operand_roles.size() != 1 ||
+      intrinsic.operand_roles[0] != c4c::backend::bir::IntrinsicOperandRole::CacheAddress ||
+      !intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_operand->base_kind !=
+          c4c::backend::bir::MemoryAddress::BaseKind::PointerValue ||
+      intrinsic.memory_operand->address_space != c4c::backend::bir::AddressSpace::Default ||
+      intrinsic.memory_operand->size_bytes != 0 ||
+      intrinsic.memory_operand->align_bytes != 1 ||
+      intrinsic.memory_operand->is_volatile ||
+      intrinsic.memory_access != c4c::backend::bir::IntrinsicMemoryAccessKind::None ||
+      intrinsic.has_immediate_operand || intrinsic.requires_immediate_operand ||
+      intrinsic.immediate_value.has_value() ||
+      !intrinsic.has_side_effects) {
+    return fail("aarch64 dc cvau intrinsic should carry complete cache address facts");
+  }
+  return 0;
+}
+
 int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
   constexpr std::string_view kFamily = "aarch64 semantic intrinsic family";
-  const std::array<std::pair<std::string_view, LirModule>, 7> modules = {
+  const std::array<std::pair<std::string_view, LirModule>, 10> modules = {
       std::pair<std::string_view, LirModule>{"x86-only intrinsic",
                                              make_x86_only_intrinsic_on_aarch64_module()},
       std::pair<std::string_view, LirModule>{"crc wrong data type",
@@ -3355,6 +3430,18 @@ int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
       std::pair<std::string_view, LirModule>{"dmb non-immediate domain",
                                              make_aarch64_dmb_intrinsic_module(
                                                  "aarch64-unknown-linux-gnu", "i32", "%domain")},
+      std::pair<std::string_view, LirModule>{"dc cvau target mismatch",
+                                             make_aarch64_dc_cvau_intrinsic_module(
+                                                 "x86_64-unknown-linux-gnu")},
+      std::pair<std::string_view, LirModule>{"dc cvau missing pointer",
+                                             make_aarch64_dc_cvau_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu", "i32")},
+      std::pair<std::string_view, LirModule>{"dc cvau unexpected result",
+                                             make_aarch64_dc_cvau_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu",
+                                                 "ptr",
+                                                 "ptr",
+                                                 LirOperand("%cache"))},
   };
   for (const auto& [case_name, module] : modules) {
     auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
@@ -5591,6 +5678,11 @@ int main() {
           expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection();
       aarch64_dmb_status != 0) {
     return aarch64_dmb_status;
+  }
+  if (const int aarch64_dc_cvau_status =
+          expect_aarch64_dc_cvau_intrinsic_carries_cache_semantics_without_selection();
+      aarch64_dc_cvau_status != 0) {
+    return aarch64_dc_cvau_status;
   }
   if (const int aarch64_intrinsic_fail_closed_status =
           expect_aarch64_semantic_intrinsic_fail_closed_cases();

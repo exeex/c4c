@@ -2908,6 +2908,52 @@ prepare::PreparedBirModule prepare_barrier_dmb_intrinsic_carrier_dump_module(
       module, aarch64_target_profile(), prepare::PrepareOptions{});
 }
 
+prepare::PreparedBirModule prepare_cache_dc_cvau_intrinsic_carrier_dump_module(
+    bool complete = true,
+    bool side_effects = true) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = complete ? "cache_dc_cvau_intrinsic_carrier_dump_contract"
+                           : "cache_dc_cvau_intrinsic_incomplete_carrier_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{.type = bir::TypeKind::Ptr, .name = "p"});
+
+  bir::CallInst call{
+      .callee = "llvm.aarch64.dc.cvau",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "p")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::Ptr)},
+      .return_type = bir::TypeKind::Void,
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::CacheMaintenance,
+          .operation = bir::IntrinsicOperationKind::CacheDcCvau,
+          .operand_type = complete ? bir::TypeKind::Ptr : bir::TypeKind::I32,
+          .result_type = bir::TypeKind::Void,
+          .operand_roles = {bir::IntrinsicOperandRole::CacheAddress},
+          .memory_operand = bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_name = "p",
+              .size_bytes = 0,
+              .align_bytes = 1,
+              .address_space = bir::AddressSpace::Default,
+          },
+          .memory_access = bir::IntrinsicMemoryAccessKind::None,
+          .has_side_effects = side_effects,
+      },
+  };
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
 int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
   const auto crc = prepare_crc_intrinsic_carrier_dump_module();
   const auto* crc_carriers =
@@ -2975,7 +3021,8 @@ int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
                        "operand_type=ptr result_type=i128 roles=pointer "
                        "vector_element_type=i8 vector_element_width=1 vector_lanes=16 "
                        "vector_width=16 signedness=unsigned memory_access=read "
-                       "memory_size=16 memory_align=16 memory_volatile=no "
+                       "memory_size=16 memory_align=16 memory_address_space=default "
+                       "memory_volatile=no "
                        "side_effects=no requires_feature=yes prepared_call_plan=yes "
                        "source_callee=llvm.aarch64.neon.ld1.v16i8.p0i8 operand=p "
                        "result=vec operand_homes=1 result_home=yes",
@@ -3067,6 +3114,55 @@ int barrier_dmb_intrinsic_carrier_preserves_semantic_facts() {
   return EXIT_SUCCESS;
 }
 
+int cache_dc_cvau_intrinsic_carrier_preserves_semantic_facts() {
+  const auto cache = prepare_cache_dc_cvau_intrinsic_carrier_dump_module();
+  const auto* cache_carriers =
+      find_intrinsic_carriers(cache, "cache_dc_cvau_intrinsic_carrier_dump_contract");
+  if (cache_carriers == nullptr || cache_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one cache DC CVAU prepared intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& carrier = cache_carriers->carriers.front();
+  if (carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      carrier.family != bir::IntrinsicFamilyKind::CacheMaintenance ||
+      carrier.operation != bir::IntrinsicOperationKind::CacheDcCvau ||
+      carrier.required_feature != bir::IntrinsicFeatureKind::None ||
+      carrier.operand_type != bir::TypeKind::Ptr ||
+      carrier.result_type != bir::TypeKind::Void ||
+      carrier.operand_roles.size() != 1 ||
+      carrier.operand_roles.front() != bir::IntrinsicOperandRole::CacheAddress ||
+      !carrier.memory_operand.has_value() ||
+      carrier.memory_operand->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+      carrier.memory_operand->address_space != bir::AddressSpace::Default ||
+      carrier.memory_operand->size_bytes != 0 ||
+      carrier.memory_operand->align_bytes != 1 ||
+      carrier.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      !carrier.has_side_effects ||
+      carrier.result.has_value() ||
+      carrier.result_home.has_value() ||
+      carrier.operand_homes.size() != 1 ||
+      !carrier.operand_homes.front().has_value() ||
+      !carrier.has_prepared_call_plan ||
+      carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] cache DC CVAU carrier lost required semantic facts\n";
+    return EXIT_FAILURE;
+  }
+  const std::string dump = prepare::print(cache);
+  if (!expect_contains(dump,
+                       "intrinsic_carrier family=cache_maintenance "
+                       "operation=cache_dc_cvau feature=none block_index=0 "
+                       "inst_index=0 operand_type=ptr result_type=void "
+                       "roles=cache_address signedness=none memory_access=none "
+                       "memory_size=0 memory_align=1 memory_address_space=default "
+                       "memory_volatile=no side_effects=yes requires_feature=no "
+                       "prepared_call_plan=yes source_callee=llvm.aarch64.dc.cvau "
+                       "operand=p operand_homes=1 result_home=no",
+                       "complete cache DC CVAU carrier")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
 int crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts() {
   const auto crc_without_homes = prepare_crc_intrinsic_carrier_dump_module(
       prepare::PrepareOptions{}, true);
@@ -3111,6 +3207,49 @@ int crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts() {
   if (!expect_not_contains(bad_load_dump,
                            "intrinsic_carrier family=vector_memory operation=vector_load",
                            "incomplete vector-load carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int cache_dc_cvau_intrinsic_carriers_fail_closed_without_required_facts() {
+  const auto wrong_type = prepare_cache_dc_cvau_intrinsic_carrier_dump_module(false, true);
+  const auto* wrong_type_carriers = find_intrinsic_carriers(
+      wrong_type, "cache_dc_cvau_intrinsic_incomplete_carrier_dump_contract");
+  if (wrong_type_carriers == nullptr ||
+      wrong_type_carriers->carriers.size() != 1 ||
+      wrong_type_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] malformed cache DC CVAU type should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string wrong_type_dump = prepare::print(wrong_type);
+  if (!expect_contains(wrong_type_dump,
+                       "missing fact=inst#0:cache_dc_cvau_requires_ptr_to_void_types",
+                       "cache DC CVAU malformed type diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(wrong_type_dump,
+                           "intrinsic_carrier family=cache_maintenance operation=cache_dc_cvau",
+                           "incomplete cache DC CVAU carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto no_side_effects =
+      prepare_cache_dc_cvau_intrinsic_carrier_dump_module(true, false);
+  const auto* no_side_effect_carriers = find_intrinsic_carriers(
+      no_side_effects, "cache_dc_cvau_intrinsic_carrier_dump_contract");
+  if (no_side_effect_carriers == nullptr ||
+      no_side_effect_carriers->carriers.size() != 1 ||
+      no_side_effect_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] cache DC CVAU without side effects should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string no_side_effect_dump = prepare::print(no_side_effects);
+  if (!expect_contains(no_side_effect_dump,
+                       "missing fact=inst#0:cache_dc_cvau_requires_address_side_effect_facts",
+                       "cache DC CVAU missing side effect diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -3624,8 +3763,17 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const int status = cache_dc_cvau_intrinsic_carrier_preserves_semantic_facts();
+      status != 0) {
+    return status;
+  }
   if (const int status =
           crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          cache_dc_cvau_intrinsic_carriers_fail_closed_without_required_facts();
       status != 0) {
     return status;
   }
