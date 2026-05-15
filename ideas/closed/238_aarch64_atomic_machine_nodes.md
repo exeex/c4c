@@ -1,6 +1,6 @@
 # AArch64 Atomic Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
@@ -42,3 +42,23 @@ and constants, but those facts do not become structured backend operations.
 - Compare exchange models boolean and old-value result modes and clears the
   exclusive monitor on compare failure when required.
 - Fence lowering emits the expected `dmb` barrier for non-relaxed orderings.
+
+## Completion Notes
+
+Closed: 2026-05-15
+
+The AArch64 atomic backend route now has structured BIR/prepared carrier facts
+for load, store, fence, RMW, and compare-exchange operations. AArch64 selection
+consumes those facts into selected atomic machine records, preserving ordering,
+width/type, address space, pointer/value/result identity, RMW opcode, result
+mode, compare-exchange expected/desired operands, and failure ordering.
+
+The selected printer emits atomic load/store/fence instructions and exclusive
+RMW/compare-exchange retry loops only from structured selected records. The
+prepared-to-selected route allocates explicit reserved-MIR scratch, status, and
+loaded-value facts for printable loops instead of relying on archived fixed
+scratch registers. Missing, partial, unsupported, volatile-only, or deferred
+atomic facts remain fail-closed with diagnostics.
+
+Closure proof used matching backend before/after logs. Both passed `139/139`
+backend tests, and the non-decreasing regression guard passed.
