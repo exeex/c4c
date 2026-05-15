@@ -143,6 +143,26 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
+void append_address_materialization_diagnostic(
+    module::ModuleLoweringDiagnostics& diagnostics,
+    module::ModuleLoweringDiagnosticKind kind,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Scalar,
+      .message = std::move(message),
+  });
+}
+
 [[nodiscard]] std::optional<prepare::PreparedVariadicEntryHelperKind>
 variadic_entry_helper_kind(std::string_view callee) {
   if (callee == "llvm.va_start.p0") {
@@ -369,6 +389,84 @@ require_prepared_variadic_entry_plan(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] std::string address_materialization_error_message(
+    PreparedAddressMaterializationRecordError error) {
+  std::string message =
+      "AArch64 address materialization lowering requires prepared address facts";
+  message += "; error=";
+  message += prepared_address_materialization_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_address_materialization(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto prepared =
+      make_prepared_address_materialization_instruction_record(
+          context.function.prepared->names,
+          *context.function.value_locations,
+          *context.function.storage_plan,
+          *addressing,
+          context.control_flow_block->block_label,
+          instruction_index);
+  if (!prepared.record.has_value()) {
+    if (prepared.error != PreparedAddressMaterializationRecordError::
+                              MissingPreparedAddressMaterialization) {
+      append_address_materialization_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          address_materialization_error_message(prepared.error));
+    }
+    return std::nullopt;
+  }
+
+  InstructionRecord target =
+      make_address_materialization_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_address_materialization_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        std::string{target.selection.diagnostic});
+    return std::nullopt;
+  }
+
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow->function_name,
+              .block_label = context.control_flow_block->block_label,
+              .instruction_index = instruction_index,
+          },
+  };
 }
 
 [[nodiscard]] const prepare::PreparedCallArgumentPlan* find_prepared_argument_plan(
@@ -1053,6 +1151,16 @@ InstructionDispatchResult dispatch_prepared_block(
             }
           }
         }
+      } else if (auto lowered = lower_address_materialization(
+                     context, instruction_index, diagnostics)) {
+        if (const auto* address_record =
+                std::get_if<AddressMaterializationRecord>(&lowered->target.payload);
+            address_record != nullptr && address_record->result_register.has_value()) {
+          record_emitted_scalar_register(scalar_state,
+                                         address_record->result_value_name,
+                                         *address_record->result_register);
+        }
+        block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));

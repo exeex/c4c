@@ -1,10 +1,14 @@
+#include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 
 #include <iostream>
+#include <utility>
+#include <variant>
 
 namespace {
 
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
+namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
@@ -41,6 +45,21 @@ struct PreparedMemoryFixture {
   c4c::LinkNameId string_symbol_name = c4c::kInvalidLinkName;
   c4c::TextId string_text_name = c4c::kInvalidText;
   prepare::PreparedValueLocationFunction locations;
+  prepare::PreparedAddressingFunction addressing;
+};
+
+struct PreparedAddressFixture {
+  prepare::PreparedNameTables names;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  c4c::ValueNameId direct_result_name = c4c::kInvalidValueName;
+  c4c::ValueNameId tls_result_name = c4c::kInvalidValueName;
+  c4c::ValueNameId string_result_name = c4c::kInvalidValueName;
+  c4c::LinkNameId global_name = c4c::kInvalidLinkName;
+  c4c::LinkNameId tls_name = c4c::kInvalidLinkName;
+  c4c::TextId string_text_name = c4c::kInvalidText;
+  prepare::PreparedValueLocationFunction locations;
+  prepare::PreparedStoragePlanFunction storage;
   prepare::PreparedAddressingFunction addressing;
 };
 
@@ -144,6 +163,96 @@ PreparedMemoryFixture make_fixture() {
                           .align_bytes = 8,
                           .can_use_base_plus_offset = true,
                       },
+              },
+          },
+  };
+  return fixture;
+}
+
+prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
+                                                   const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
+PreparedAddressFixture make_address_fixture() {
+  PreparedAddressFixture fixture;
+  fixture.function_name = fixture.names.function_names.intern("addr.f");
+  fixture.block_label = fixture.names.block_labels.intern("entry");
+  fixture.direct_result_name = fixture.names.value_names.intern("%direct.addr");
+  fixture.tls_result_name = fixture.names.value_names.intern("%tls.addr");
+  fixture.string_result_name = fixture.names.value_names.intern("%string.addr");
+  fixture.global_name = fixture.names.link_names.intern("g.direct");
+  fixture.tls_name = fixture.names.link_names.intern("g.tls");
+  fixture.string_text_name = fixture.names.texts.intern(".L.str0");
+  fixture.locations = prepare::PreparedValueLocationFunction{
+      .function_name = fixture.function_name,
+      .value_homes =
+          {
+              register_home(prepare::PreparedValueId{20},
+                            fixture.function_name,
+                            fixture.direct_result_name,
+                            "x3"),
+              register_home(prepare::PreparedValueId{21},
+                            fixture.function_name,
+                            fixture.tls_result_name,
+                            "x4"),
+              register_home(prepare::PreparedValueId{22},
+                            fixture.function_name,
+                            fixture.string_result_name,
+                            "x5"),
+          },
+  };
+  fixture.storage = prepare::PreparedStoragePlanFunction{
+      .function_name = fixture.function_name,
+      .values =
+          {
+              register_storage(prepare::PreparedValueId{20}, fixture.direct_result_name, "x3"),
+              register_storage(prepare::PreparedValueId{21}, fixture.tls_result_name, "x4"),
+              register_storage(prepare::PreparedValueId{22}, fixture.string_result_name, "x5"),
+          },
+  };
+  fixture.addressing = prepare::PreparedAddressingFunction{
+      .function_name = fixture.function_name,
+      .address_materializations =
+          {
+              prepare::PreparedAddressMaterialization{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 0,
+                  .kind = prepare::PreparedAddressMaterializationKind::DirectGlobal,
+                  .result_value_name = fixture.direct_result_name,
+                  .symbol_name = fixture.global_name,
+                  .byte_offset = 16,
+              },
+              prepare::PreparedAddressMaterialization{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 1,
+                  .kind = prepare::PreparedAddressMaterializationKind::TlsGlobal,
+                  .result_value_name = fixture.tls_result_name,
+                  .symbol_name = fixture.tls_name,
+                  .address_space = bir::AddressSpace::Tls,
+                  .is_thread_local = true,
+                  .has_tls_address_space = true,
+              },
+              prepare::PreparedAddressMaterialization{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 2,
+                  .kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+                  .result_value_name = fixture.string_result_name,
+                  .text_name = fixture.string_text_name,
+                  .byte_offset = 8,
+                  .address_space = bir::AddressSpace::Gs,
               },
           },
   };
@@ -642,6 +751,188 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   return 0;
 }
 
+int address_materialization_records_preserve_prepared_carrier_facts() {
+  auto fixture = make_address_fixture();
+  const auto direct =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          0);
+  if (!direct.record.has_value() ||
+      direct.error != aarch64_codegen::PreparedAddressMaterializationRecordError::None) {
+    return fail("expected direct global address materialization record to select");
+  }
+  const auto direct_instruction =
+      aarch64_codegen::make_address_materialization_instruction(*direct.record);
+  if (direct_instruction.opcode != aarch64_codegen::MachineOpcode::AddressMaterialization ||
+      direct_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !std::holds_alternative<aarch64_codegen::AddressMaterializationRecord>(
+          direct_instruction.payload)) {
+    return fail("expected direct global address materialization to become selected machine node");
+  }
+  const auto& direct_record =
+      std::get<aarch64_codegen::AddressMaterializationRecord>(direct_instruction.payload);
+  if (direct_record.kind != aarch64_codegen::AddressMaterializationKind::DirectPageLow12 ||
+      direct_record.prepared_kind != prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+      direct_record.result_value_id != prepare::PreparedValueId{20} ||
+      direct_record.result_value_name != fixture.direct_result_name ||
+      direct_record.result_home_kind != prepare::PreparedValueHomeKind::Register ||
+      !direct_record.result_register.has_value() ||
+      direct_record.result_register->value_id != prepare::PreparedValueId{20} ||
+      direct_record.result_register->value_name != fixture.direct_result_name ||
+      direct_record.symbol_name != fixture.global_name ||
+      direct_record.text_name.has_value() ||
+      direct_record.byte_offset != 16 ||
+      direct_record.source_materialization == nullptr) {
+    return fail("expected direct global record to preserve result register and relocation identity");
+  }
+
+  const auto tls = aarch64_codegen::make_prepared_address_materialization_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 1);
+  if (!tls.record.has_value() ||
+      tls.record->kind != aarch64_codegen::AddressMaterializationKind::TlsRelative ||
+      tls.record->symbol_name != fixture.tls_name ||
+      tls.record->address_space != bir::AddressSpace::Tls ||
+      !tls.record->is_thread_local ||
+      !tls.record->has_tls_address_space ||
+      tls.record->result_value_id != prepare::PreparedValueId{21}) {
+    return fail("expected TLS global address materialization to preserve TLS and result facts");
+  }
+
+  const auto string =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          2);
+  if (!string.record.has_value() ||
+      string.record->kind != aarch64_codegen::AddressMaterializationKind::StringConstant ||
+      string.record->text_name != fixture.string_text_name ||
+      string.record->symbol_name.has_value() ||
+      string.record->byte_offset != 8 ||
+      string.record->address_space != bir::AddressSpace::Gs ||
+      string.record->result_value_id != prepare::PreparedValueId{22}) {
+    return fail("expected string address materialization to preserve text and result facts");
+  }
+
+  return 0;
+}
+
+int unsupported_address_materialization_kinds_defer_explicitly() {
+  auto fixture = make_address_fixture();
+  fixture.addressing.address_materializations.push_back(
+      prepare::PreparedAddressMaterialization{
+          .function_name = fixture.function_name,
+          .block_label = fixture.block_label,
+          .inst_index = 3,
+          .kind = prepare::PreparedAddressMaterializationKind::GotGlobal,
+          .result_value_name = fixture.direct_result_name,
+          .symbol_name = fixture.global_name,
+      });
+  const auto got = aarch64_codegen::make_prepared_address_materialization_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 3);
+  if (!got.record.has_value() ||
+      got.record->kind != aarch64_codegen::AddressMaterializationKind::DeferredUnsupported) {
+    return fail("expected GOT address materialization carrier to produce deferred record");
+  }
+  const auto instruction =
+      aarch64_codegen::make_address_materialization_instruction(*got.record);
+  if (instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      instruction.selection.diagnostic !=
+          "address materialization kind is outside the selected subset") {
+    return fail("expected unsupported address materialization kind to defer explicitly");
+  }
+
+  fixture = make_address_fixture();
+  fixture.addressing.address_materializations.front().symbol_name = std::nullopt;
+  const auto missing_symbol =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          0);
+  if (missing_symbol.record.has_value() ||
+      missing_symbol.error !=
+          aarch64_codegen::PreparedAddressMaterializationRecordError::MissingSymbolIdentity ||
+      aarch64_codegen::prepared_address_materialization_record_error_name(
+          missing_symbol.error) != "missing_symbol_identity") {
+    return fail("expected missing global address symbol identity to fail closed");
+  }
+
+  return 0;
+}
+
+int dispatch_selects_address_materialization_from_prepared_carrier() {
+  auto fixture = make_address_fixture();
+  prepare::PreparedBirModule prepared;
+  prepared.names = fixture.names;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.addressing.functions.push_back(fixture.addressing);
+  prepared.value_locations.functions.push_back(fixture.locations);
+  prepared.storage_plans.functions.push_back(fixture.storage);
+
+  bir::Function function;
+  function.name = "addr.f";
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = named_value(bir::TypeKind::Ptr, "%direct.addr"),
+      .operand = named_value(bir::TypeKind::Ptr, "%not.a.symbol"),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = fixture.function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = fixture.block_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+  });
+
+  aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .target_profile = &prepared.target_profile,
+      .control_flow = &prepared.control_flow.functions.front(),
+      .bir_function = &prepared.module.functions.front(),
+      .value_locations = &prepared.value_locations.functions.front(),
+      .storage_plan = &prepared.storage_plans.functions.front(),
+  };
+  const auto block_context = aarch64_codegen::make_block_lowering_context(
+      function_context, prepared.control_flow.functions.front().blocks.front(), 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result = aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      block.instructions.size() != 2) {
+    return fail("expected dispatch to select one prepared address materialization node");
+  }
+  const auto* address =
+      std::get_if<aarch64_codegen::AddressMaterializationRecord>(
+          &block.instructions.front().target.payload);
+  if (address == nullptr ||
+      address->symbol_name != fixture.global_name ||
+      address->result_value_id != prepare::PreparedValueId{20} ||
+      address->result_value_name != fixture.direct_result_name ||
+      address->kind != aarch64_codegen::AddressMaterializationKind::DirectPageLow12) {
+    return fail("expected dispatch to consume prepared carrier rather than rendered BIR names");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -662,6 +953,18 @@ int main() {
     return status;
   }
   if (const int status = unsupported_or_mismatched_memory_facts_fail_closed(); status != 0) {
+    return status;
+  }
+  if (const int status = address_materialization_records_preserve_prepared_carrier_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unsupported_address_materialization_kinds_defer_explicitly();
+      status != 0) {
+    return status;
+  }
+  if (const int status = dispatch_selects_address_materialization_from_prepared_carrier();
+      status != 0) {
     return status;
   }
   return 0;

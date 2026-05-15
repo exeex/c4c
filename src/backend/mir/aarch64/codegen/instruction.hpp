@@ -104,6 +104,7 @@ enum class MachineOpcode {
   Branch,
   ConditionalBranch,
   CompareBranch,
+  AddressMaterialization,
   DirectCall,
   IndirectCall,
   FrameSetup,
@@ -275,6 +276,28 @@ enum class PreparedMemoryOperandRecordError {
   StringIdentityMismatch,
   ResultValueMismatch,
   StoredValueMismatch,
+};
+
+enum class AddressMaterializationKind {
+  DirectPageLow12,
+  TlsRelative,
+  StringConstant,
+  DeferredUnsupported,
+};
+
+enum class PreparedAddressMaterializationRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedAddressMaterialization,
+  UnsupportedAddressKind,
+  MissingResultValueName,
+  MissingResultValueHome,
+  MissingResultStorage,
+  UnsupportedResultStorage,
+  RegisterConversionFailed,
+  MissingSymbolIdentity,
+  MissingStringIdentity,
+  TlsFactMismatch,
 };
 
 struct RegisterOperand {
@@ -539,6 +562,40 @@ struct MemoryInstructionRecord {
   bir::TypeKind value_type = bir::TypeKind::Void;
 };
 
+struct AddressMaterializationRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  AddressMaterializationKind kind = AddressMaterializationKind::DeferredUnsupported;
+  prepare::PreparedAddressMaterializationKind prepared_kind =
+      prepare::PreparedAddressMaterializationKind::None;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueHomeKind result_home_kind =
+      prepare::PreparedValueHomeKind::None;
+  std::optional<RegisterOperand> result_register;
+  std::optional<c4c::LinkNameId> symbol_name;
+  std::optional<c4c::TextId> text_name;
+  std::int64_t byte_offset = 0;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
+  bool is_thread_local = false;
+  bool has_tls_address_space = false;
+  const prepare::PreparedAddressMaterialization* source_materialization = nullptr;
+};
+
+struct PreparedAddressMaterializationRecordResult {
+  std::optional<AddressMaterializationRecord> record;
+  PreparedAddressMaterializationRecordError error =
+      PreparedAddressMaterializationRecordError::None;
+};
+
+struct PreparedAddressMaterializationInstructionRecordResult {
+  std::optional<AddressMaterializationRecord> record;
+  PreparedAddressMaterializationRecordError error =
+      PreparedAddressMaterializationRecordError::None;
+};
+
 struct SpillReloadInstructionRecord {
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
@@ -773,6 +830,7 @@ struct ObjectInstructionRecord {
 using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         MemoryInstructionRecord,
+                                        AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
                                         FrameInstructionRecord,
                                         CallBoundaryMoveInstructionRecord,
@@ -846,6 +904,10 @@ struct InstructionRecord {
     PreparedScalarCastRecordError error);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
+[[nodiscard]] std::string_view address_materialization_kind_name(
+    AddressMaterializationKind kind);
+[[nodiscard]] std::string_view prepared_address_materialization_record_error_name(
+    PreparedAddressMaterializationRecordError error);
 [[nodiscard]] bool is_compare_predicate(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
@@ -865,6 +927,8 @@ struct InstructionRecord {
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_address_materialization_instruction(
+    AddressMaterializationRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
     SpillReloadInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_frame_instruction(FrameInstructionRecord instruction);
@@ -939,5 +1003,21 @@ make_prepared_scalar_cast_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreGlobalInst& store);
+[[nodiscard]] PreparedAddressMaterializationRecordResult
+make_prepared_address_materialization_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index);
+[[nodiscard]] PreparedAddressMaterializationInstructionRecordResult
+make_prepared_address_materialization_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index);
 
 }  // namespace c4c::backend::aarch64::codegen

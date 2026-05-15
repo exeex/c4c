@@ -1,48 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/233_aarch64_global_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Structured Address-Kind Carriers
+Current Step ID: 3
+Current Step Title: Select AArch64 Address Materialization Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added the first prepared-stage structured address-materialization
-carrier beside `PreparedMemoryAccess`.
+Step 3 added selected AArch64 machine-node records that consume the prepared
+address-materialization carriers from Step 2, without adding terminal printer
+output.
 
 Completed work:
 
-- Added `PreparedAddressMaterializationKind` and
-  `PreparedAddressMaterialization` under prepared addressing, with structured
-  kind, result value name/id/home fields, symbol/text identity, byte offset,
-  address space, and TLS facts.
-- Populated direct global/TLS-global carriers from
-  `bir::Value::pointer_symbol_link_name_id`, and populated string-constant
-  carriers from pointer-typed instruction results with
-  `MemoryAddress::BaseKind::StringConstant`.
-- Kept the new records separate from load/store `PreparedMemoryAccess`; no
-  selected AArch64 lowering or AArch64 printer path was added.
-- Added explicit prepared notes when an address-looking pointer result lacks
-  required structured symbol/text identity.
-- Extended prepared addressing debug output and focused prepared stack-layout
-  tests to prove direct global, TLS-global, and string-constant carriers.
+- Added `AddressMaterializationRecord` as a structured AArch64 machine-node
+  payload with a non-printing `MachineOpcode::AddressMaterialization`.
+- Selected prepared `DirectGlobal`, `TlsGlobal`, and `StringConstant` carriers
+  into machine records carrying prepared kind, selected address kind, result
+  value id/name/home/register, symbol or text identity, byte offset, address
+  space, and TLS facts.
+- Wired block dispatch to select address materialization from prepared
+  addressing carriers before scalar fallback, and to record the emitted result
+  register for later same-block users such as returns.
+- Left `Label` and `GotGlobal` carriers as explicit deferred-unsupported
+  address materialization records; missing symbol/text/result/register facts
+  fail closed with typed record errors.
+- Added focused AArch64 MIR coverage in
+  `backend_aarch64_prepared_memory_operand_records_test.cpp` proving direct
+  global, TLS, string-constant, unsupported-kind, missing-identity, and dispatch
+  selection behavior.
 
 ## Suggested Next
 
-Step 3 first implementation packet target: add selected AArch64 address
-materialization records for the prepared `DirectGlobal`/`TlsGlobal` and
-`StringConstant` carrier facts, but keep terminal printing deferred until the
-selected machine nodes carry every relocation operand the printer needs.
+Step 4 first implementation packet target: add terminal printer support for
+the selected address-materialization records, starting with direct page+low12
+and preserving the existing deferred diagnostics for GOT/label/TLS paths until
+their relocation sequences are fully specified.
 
 ## Watchouts
 
-Population currently records result value names at stack-layout time; later
-value-home/id fields are available on the carrier but not backfilled by this
-packet. Label and GOT kinds are represented in the enum for the planned route,
-but no label/GOT population or selected lowering has landed yet. The population
-hook lives in `src/backend/prealloc/stack_layout/coordinator.cpp`, because that
-is where prepared addressing is actually built.
+The selected address-materialization opcode intentionally has no printer
+mnemonic yet, so terminal printer paths remain untouched. The selected node
+uses the prepared value-location/storage-plan register as the result authority;
+non-register result homes are rejected for now. TLS carriers are selected into
+structured records with TLS facts, but terminal TLS emission still needs a
+policy-specific printer/lowering sequence.
 
 ## Proof
 

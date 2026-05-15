@@ -153,6 +153,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "conditional_branch";
     case MachineOpcode::CompareBranch:
       return "compare_branch";
+    case MachineOpcode::AddressMaterialization:
+      return "address_materialization";
     case MachineOpcode::DirectCall:
       return "direct_call";
     case MachineOpcode::IndirectCall:
@@ -289,6 +291,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::VariadicVaCopy;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
+    case MachineOpcode::AddressMaterialization:
     case MachineOpcode::CalleeSaveStore:
     case MachineOpcode::CalleeSaveLoad:
     case MachineOpcode::CallBoundaryAbiBinding:
@@ -618,6 +621,51 @@ std::string_view prepared_memory_operand_record_error_name(
   return "unknown";
 }
 
+std::string_view address_materialization_kind_name(AddressMaterializationKind kind) {
+  switch (kind) {
+    case AddressMaterializationKind::DirectPageLow12:
+      return "direct_page_low12";
+    case AddressMaterializationKind::TlsRelative:
+      return "tls_relative";
+    case AddressMaterializationKind::StringConstant:
+      return "string_constant";
+    case AddressMaterializationKind::DeferredUnsupported:
+      return "deferred_unsupported";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_address_materialization_record_error_name(
+    PreparedAddressMaterializationRecordError error) {
+  switch (error) {
+    case PreparedAddressMaterializationRecordError::None:
+      return "none";
+    case PreparedAddressMaterializationRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedAddressMaterializationRecordError::MissingPreparedAddressMaterialization:
+      return "missing_prepared_address_materialization";
+    case PreparedAddressMaterializationRecordError::UnsupportedAddressKind:
+      return "unsupported_address_kind";
+    case PreparedAddressMaterializationRecordError::MissingResultValueName:
+      return "missing_result_value_name";
+    case PreparedAddressMaterializationRecordError::MissingResultValueHome:
+      return "missing_result_value_home";
+    case PreparedAddressMaterializationRecordError::MissingResultStorage:
+      return "missing_result_storage";
+    case PreparedAddressMaterializationRecordError::UnsupportedResultStorage:
+      return "unsupported_result_storage";
+    case PreparedAddressMaterializationRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedAddressMaterializationRecordError::MissingSymbolIdentity:
+      return "missing_symbol_identity";
+    case PreparedAddressMaterializationRecordError::MissingStringIdentity:
+      return "missing_string_identity";
+    case PreparedAddressMaterializationRecordError::TlsFactMismatch:
+      return "tls_fact_mismatch";
+  }
+  return "unknown";
+}
+
 bool is_compare_predicate(bir::BinaryOpcode opcode) {
   switch (opcode) {
     case bir::BinaryOpcode::Eq:
@@ -778,6 +826,11 @@ PreparedMemoryOperandRecordResult memory_operand_record_error(
   return PreparedMemoryOperandRecordResult{.record = std::nullopt, .error = error};
 }
 
+PreparedAddressMaterializationRecordResult address_materialization_record_error(
+    PreparedAddressMaterializationRecordError error) {
+  return PreparedAddressMaterializationRecordResult{.record = std::nullopt, .error = error};
+}
+
 PreparedScalarInstructionRecordResult scalar_instruction_record_error(
     PreparedScalarAluRecordError error) {
   return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
@@ -786,6 +839,15 @@ PreparedScalarInstructionRecordResult scalar_instruction_record_error(
 PreparedScalarCastInstructionRecordResult scalar_cast_instruction_record_error(
     PreparedScalarCastRecordError error) {
   return PreparedScalarCastInstructionRecordResult{.record = std::nullopt, .error = error};
+}
+
+PreparedAddressMaterializationInstructionRecordResult
+address_materialization_instruction_record_error(
+    PreparedAddressMaterializationRecordError error) {
+  return PreparedAddressMaterializationInstructionRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
 }
 
 PreparedScalarCastRecordError scalar_cast_operand_error_from_alu_error(
@@ -1496,6 +1558,155 @@ std::optional<RegisterOperand> make_prepared_register_operand(
   };
 }
 
+std::optional<AddressMaterializationKind> selected_address_materialization_kind(
+    prepare::PreparedAddressMaterializationKind kind) {
+  switch (kind) {
+    case prepare::PreparedAddressMaterializationKind::DirectGlobal:
+      return AddressMaterializationKind::DirectPageLow12;
+    case prepare::PreparedAddressMaterializationKind::TlsGlobal:
+      return AddressMaterializationKind::TlsRelative;
+    case prepare::PreparedAddressMaterializationKind::StringConstant:
+      return AddressMaterializationKind::StringConstant;
+    case prepare::PreparedAddressMaterializationKind::Label:
+    case prepare::PreparedAddressMaterializationKind::GotGlobal:
+      return AddressMaterializationKind::DeferredUnsupported;
+    case prepare::PreparedAddressMaterializationKind::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+PreparedAddressMaterializationRecordError validate_address_materialization_identity(
+    const prepare::PreparedAddressMaterialization& materialization,
+    AddressMaterializationRecord& record) {
+  switch (materialization.kind) {
+    case prepare::PreparedAddressMaterializationKind::DirectGlobal:
+      if (!materialization.symbol_name.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
+      record.symbol_name = materialization.symbol_name;
+      return PreparedAddressMaterializationRecordError::None;
+    case prepare::PreparedAddressMaterializationKind::TlsGlobal:
+      if (!materialization.symbol_name.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingSymbolIdentity;
+      }
+      if (!materialization.is_thread_local || !materialization.has_tls_address_space ||
+          materialization.address_space != bir::AddressSpace::Tls) {
+        return PreparedAddressMaterializationRecordError::TlsFactMismatch;
+      }
+      record.symbol_name = materialization.symbol_name;
+      return PreparedAddressMaterializationRecordError::None;
+    case prepare::PreparedAddressMaterializationKind::StringConstant:
+      if (!materialization.text_name.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingStringIdentity;
+      }
+      record.text_name = materialization.text_name;
+      return PreparedAddressMaterializationRecordError::None;
+    case prepare::PreparedAddressMaterializationKind::Label:
+    case prepare::PreparedAddressMaterializationKind::GotGlobal:
+      return PreparedAddressMaterializationRecordError::None;
+    case prepare::PreparedAddressMaterializationKind::None:
+      return PreparedAddressMaterializationRecordError::UnsupportedAddressKind;
+  }
+  return PreparedAddressMaterializationRecordError::UnsupportedAddressKind;
+}
+
+PreparedAddressMaterializationRecordResult make_address_record_from_prepared_materialization(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  if (addressing.function_name == c4c::kInvalidFunctionName ||
+      value_locations.function_name != addressing.function_name ||
+      storage_plan.function_name != addressing.function_name) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::InvalidFunction);
+  }
+  const auto* materialization =
+      prepare::find_prepared_address_materialization(addressing, block_label, instruction_index);
+  if (materialization == nullptr || materialization->function_name != addressing.function_name) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::MissingPreparedAddressMaterialization);
+  }
+
+  const auto selected_kind = selected_address_materialization_kind(materialization->kind);
+  if (!selected_kind.has_value()) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::UnsupportedAddressKind);
+  }
+
+  AddressMaterializationRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .kind = *selected_kind,
+      .prepared_kind = materialization->kind,
+      .function_name = materialization->function_name,
+      .block_label = materialization->block_label,
+      .instruction_index = materialization->inst_index,
+      .byte_offset = materialization->byte_offset,
+      .address_space = materialization->address_space,
+      .is_thread_local = materialization->is_thread_local,
+      .has_tls_address_space = materialization->has_tls_address_space,
+      .source_materialization = materialization,
+  };
+
+  const auto identity_error =
+      validate_address_materialization_identity(*materialization, record);
+  if (identity_error != PreparedAddressMaterializationRecordError::None) {
+    return address_materialization_record_error(identity_error);
+  }
+  if (record.kind == AddressMaterializationKind::DeferredUnsupported) {
+    record.result_value_id = materialization->result_value_id;
+    record.result_value_name =
+        materialization->result_value_name.value_or(c4c::kInvalidValueName);
+    record.result_home_kind = materialization->result_home_kind.value_or(
+        prepare::PreparedValueHomeKind::None);
+    return PreparedAddressMaterializationRecordResult{
+        .record = record,
+        .error = PreparedAddressMaterializationRecordError::None,
+    };
+  }
+  if (!materialization->result_value_name.has_value()) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::MissingResultValueName);
+  }
+  const auto result_value_name = *materialization->result_value_name;
+  const auto* result_home = prepare::find_prepared_value_home(value_locations, result_value_name);
+  if (result_home == nullptr) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::MissingResultValueHome);
+  }
+  const auto* result_storage = find_storage_plan_value(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::MissingResultStorage);
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::UnsupportedResultStorage);
+  }
+  auto result_register =
+      make_prepared_register_operand(*result_home,
+                                     *result_storage,
+                                     bir::TypeKind::Ptr,
+                                     RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return address_materialization_record_error(
+        PreparedAddressMaterializationRecordError::RegisterConversionFailed);
+  }
+
+  record.result_value_id = result_home->value_id;
+  record.result_value_name = result_home->value_name;
+  record.result_home_kind = result_home->kind;
+  record.result_register = *result_register;
+  return PreparedAddressMaterializationRecordResult{
+      .record = record,
+      .error = PreparedAddressMaterializationRecordError::None,
+  };
+}
+
 std::optional<ImmediateOperand> make_scalar_immediate_operand(
     const bir::Value& value,
     std::optional<prepare::PreparedValueId> source_value_id = std::nullopt,
@@ -1666,6 +1877,19 @@ MachineOpcode machine_opcode_from_memory_instruction(const MemoryInstructionReco
       return MachineOpcode::Load;
     case MemoryInstructionKind::Store:
       return MachineOpcode::Store;
+  }
+  return MachineOpcode::Unspecified;
+}
+
+MachineOpcode machine_opcode_from_address_materialization(
+    const AddressMaterializationRecord& instruction) {
+  switch (instruction.kind) {
+    case AddressMaterializationKind::DirectPageLow12:
+    case AddressMaterializationKind::TlsRelative:
+    case AddressMaterializationKind::StringConstant:
+      return MachineOpcode::AddressMaterialization;
+    case AddressMaterializationKind::DeferredUnsupported:
+      return MachineOpcode::Unspecified;
   }
   return MachineOpcode::Unspecified;
 }
@@ -1994,6 +2218,51 @@ MachineNodeStatusRecord memory_selection_status(const MemoryInstructionRecord& i
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "store node is missing prepared stored value identity"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord address_materialization_selection_status(
+    const AddressMaterializationRecord& instruction) {
+  if (instruction.source_materialization == nullptr ||
+      instruction.function_name == c4c::kInvalidFunctionName ||
+      instruction.block_label == c4c::kInvalidBlockLabel) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "address materialization node is missing prepared provenance"};
+  }
+  if (instruction.kind == AddressMaterializationKind::DeferredUnsupported) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "address materialization kind is outside the selected subset"};
+  }
+  if (!instruction.result_value_id.has_value() ||
+      instruction.result_value_name == c4c::kInvalidValueName ||
+      !instruction.result_register.has_value() ||
+      instruction.result_home_kind != prepare::PreparedValueHomeKind::Register) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "address materialization node is missing prepared result register"};
+  }
+  if (instruction.kind == AddressMaterializationKind::StringConstant) {
+    if (!instruction.text_name.has_value()) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic = "string address materialization is missing text identity"};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (!instruction.symbol_name.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "global address materialization is missing symbol identity"};
+  }
+  if (instruction.kind == AddressMaterializationKind::TlsRelative &&
+      (!instruction.is_thread_local || !instruction.has_tls_address_space ||
+       instruction.address_space != bir::AddressSpace::Tls)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "TLS address materialization is missing TLS facts"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -2499,6 +2768,44 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
       .defs = defs,
       .uses = uses,
       .side_effects = memory_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_address_materialization_instruction(
+    AddressMaterializationRecord instruction) {
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.result_register.has_value()) {
+    const auto result = make_register_operand(*instruction.result_register);
+    operands.push_back(result);
+    defs.push_back(effect_from_operand(result));
+  } else if (instruction.result_value_id.has_value()) {
+    defs.push_back(
+        prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+  }
+  if (instruction.symbol_name.has_value()) {
+    const auto symbol = make_symbol_operand(SymbolOperand{
+        .link_name = *instruction.symbol_name,
+        .type = bir::TypeKind::Ptr,
+        .byte_offset = instruction.byte_offset,
+    });
+    operands.push_back(symbol);
+    uses.push_back(effect_from_operand(symbol));
+  }
+  const auto selection = address_materialization_selection_status(instruction);
+  return InstructionRecord{
+      .family = InstructionFamily::Scalar,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_address_materialization(instruction),
+      .selection = selection,
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .instruction_index = instruction.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = uses,
       .payload = instruction,
   };
 }
@@ -3304,6 +3611,36 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     return memory_operand_record_error(error);
   }
   return result;
+}
+
+PreparedAddressMaterializationRecordResult make_prepared_address_materialization_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  return make_address_record_from_prepared_materialization(
+      names, value_locations, storage_plan, addressing, block_label, instruction_index);
+}
+
+PreparedAddressMaterializationInstructionRecordResult
+make_prepared_address_materialization_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  const auto result = make_prepared_address_materialization_record(
+      names, value_locations, storage_plan, addressing, block_label, instruction_index);
+  if (!result.record.has_value()) {
+    return address_materialization_instruction_record_error(result.error);
+  }
+  return PreparedAddressMaterializationInstructionRecordResult{
+      .record = *result.record,
+      .error = PreparedAddressMaterializationRecordError::None,
+  };
 }
 
 }  // namespace c4c::backend::aarch64::codegen
