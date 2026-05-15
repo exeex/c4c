@@ -1736,6 +1736,7 @@ struct PreparedF128Carriers {
 enum class PreparedF128RuntimeHelperFamily {
   Arithmetic,
   Comparison,
+  Cast,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_family_name(
@@ -1745,6 +1746,8 @@ enum class PreparedF128RuntimeHelperFamily {
       return "arithmetic";
     case PreparedF128RuntimeHelperFamily::Comparison:
       return "comparison";
+    case PreparedF128RuntimeHelperFamily::Cast:
+      return "cast";
   }
   return "unknown";
 }
@@ -1760,6 +1763,10 @@ enum class PreparedF128RuntimeHelperKind {
   Le,
   Gt,
   Ge,
+  F32ToF128,
+  F64ToF128,
+  F128ToF32,
+  F128ToF64,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_kind_name(
@@ -1785,6 +1792,14 @@ enum class PreparedF128RuntimeHelperKind {
       return "gt";
     case PreparedF128RuntimeHelperKind::Ge:
       return "ge";
+    case PreparedF128RuntimeHelperKind::F32ToF128:
+      return "f32_to_f128";
+    case PreparedF128RuntimeHelperKind::F64ToF128:
+      return "f64_to_f128";
+    case PreparedF128RuntimeHelperKind::F128ToF32:
+      return "f128_to_f32";
+    case PreparedF128RuntimeHelperKind::F128ToF64:
+      return "f128_to_f64";
   }
   return "unknown";
 }
@@ -1793,6 +1808,7 @@ enum class PreparedF128RuntimeHelperResultOwnership {
   Missing,
   FullWidthCarrier,
   ScalarCmpResult,
+  ScalarValue,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_result_ownership_name(
@@ -1804,6 +1820,8 @@ enum class PreparedF128RuntimeHelperResultOwnership {
       return "full_width_carrier";
     case PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult:
       return "scalar_cmp_result";
+    case PreparedF128RuntimeHelperResultOwnership::ScalarValue:
+      return "scalar_value";
   }
   return "unknown";
 }
@@ -1812,6 +1830,8 @@ enum class PreparedF128RuntimeHelperAbiTransition {
   Missing,
   DirectF128ArgumentsAndResult,
   DirectF128ArgumentsAndCmpResult,
+  DirectScalarArgumentAndF128Result,
+  DirectF128ArgumentAndScalarResult,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_abi_transition_name(
@@ -1823,6 +1843,10 @@ enum class PreparedF128RuntimeHelperAbiTransition {
       return "direct_f128_arguments_and_result";
     case PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndCmpResult:
       return "direct_f128_arguments_and_cmp_result";
+    case PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result:
+      return "direct_scalar_argument_and_f128_result";
+    case PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult:
+      return "direct_f128_argument_and_scalar_result";
   }
   return "unknown";
 }
@@ -1831,6 +1855,8 @@ enum class PreparedF128RuntimeHelperMarshalDirection {
   CarrierToAbiArgument,
   AbiResultToCarrier,
   AbiCmpResultToScalar,
+  ScalarToAbiArgument,
+  AbiResultToScalar,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_marshal_direction_name(
@@ -1842,6 +1868,10 @@ enum class PreparedF128RuntimeHelperMarshalDirection {
       return "abi_result_to_carrier";
     case PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar:
       return "abi_cmp_result_to_scalar";
+    case PreparedF128RuntimeHelperMarshalDirection::ScalarToAbiArgument:
+      return "scalar_to_abi_argument";
+    case PreparedF128RuntimeHelperMarshalDirection::AbiResultToScalar:
+      return "abi_result_to_scalar";
   }
   return "unknown";
 }
@@ -1977,10 +2007,13 @@ struct PreparedF128RuntimeHelper {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  std::optional<bir::CastOpcode> source_cast_opcode;
   bir::TypeKind source_type = bir::TypeKind::F128;
   bir::TypeKind result_type = bir::TypeKind::F128;
   PreparedValueId result_value_id = 0;
   ValueNameId result_value_name = kInvalidValueName;
+  PreparedValueId operand_value_id = 0;
+  ValueNameId operand_value_name = kInvalidValueName;
   PreparedValueId lhs_value_id = 0;
   ValueNameId lhs_value_name = kInvalidValueName;
   PreparedValueId rhs_value_id = 0;
@@ -1993,10 +2026,13 @@ struct PreparedF128RuntimeHelper {
   std::optional<CarrierBinding> lhs_carrier;
   std::optional<CarrierBinding> rhs_carrier;
   std::optional<CarrierBinding> result_carrier;
+  std::optional<ScalarResultOwnership> scalar_operand;
   std::optional<ScalarResultOwnership> scalar_result;
+  std::optional<AbiRegisterBinding> scalar_operand_abi_argument;
   std::optional<AbiRegisterBinding> lhs_abi_argument;
   std::optional<AbiRegisterBinding> rhs_abi_argument;
   std::optional<AbiRegisterBinding> result_abi_result;
+  std::optional<ScalarMarshalingMove> scalar_operand_argument_move;
   std::optional<MarshalingMove> lhs_argument_move;
   std::optional<MarshalingMove> rhs_argument_move;
   std::optional<MarshalingMove> result_unmarshal_move;

@@ -1658,6 +1658,35 @@ prepare::PreparedF128RuntimeHelper::AbiRegisterBinding dispatch_f128_cmp_result_
   };
 }
 
+prepare::PreparedF128RuntimeHelper::AbiRegisterBinding dispatch_f128_scalar_fp_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    bir::TypeKind type,
+    std::optional<std::size_t> argument_index,
+    std::string register_name,
+    prepare::PreparedRegisterSlotPool pool) {
+  const std::size_t width = type == bir::TypeKind::F64 ? std::size_t{8} : std::size_t{4};
+  return prepare::PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = argument_index,
+      .abi_register_index = 0,
+      .width_bytes = width,
+      .register_bank = prepare::PreparedRegisterBank::Fpr,
+      .register_class = prepare::PreparedRegisterClass::Float,
+      .register_name = std::move(register_name),
+      .contiguous_width = 1,
+      .occupied_register_names = {type == bir::TypeKind::F64 ? "d0" : "s0"},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Fpr,
+              .pool = pool,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+  };
+}
+
 prepare::PreparedF128RuntimeHelper::MarshalingMove dispatch_f128_helper_marshaling_move(
     const prepare::PreparedF128RuntimeHelper::CarrierBinding& carrier,
     const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& binding,
@@ -2484,6 +2513,205 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
             .helpers = {std::move(helper)},
         });
   }
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers = std::move(carriers),
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_f128_cast_helper_operation(
+    bir::CastOpcode opcode = bir::CastOpcode::FPExt,
+    bir::TypeKind source_type = bir::TypeKind::F64,
+    bir::TypeKind result_type = bir::TypeKind::F128) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.cast");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.f128.cast.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.cast.entry");
+  const auto result_name = prepared.names.value_names.intern("%cast.result");
+  const auto operand_name = prepared.names.value_names.intern("%cast.operand");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.cast",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.cast.entry",
+              .insts =
+                  {bir::CastInst{
+                      .opcode = opcode,
+                      .result = bir::Value::named(result_type, "%cast.result"),
+                      .operand = bir::Value::named(source_type, "%cast.operand"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  std::vector<prepare::PreparedF128Carrier> carriers;
+  if (result_type == bir::TypeKind::F128) {
+    carriers.push_back(dispatch_f128_register_carrier(
+        function_name, prepare::PreparedValueId{260}, result_name, "q4"));
+  }
+  if (source_type == bir::TypeKind::F128) {
+    carriers.push_back(dispatch_f128_register_carrier(
+        function_name, prepare::PreparedValueId{261}, operand_name, "q6"));
+  }
+
+  prepare::PreparedF128RuntimeHelper helper{
+      .function_name = function_name,
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_cast_opcode = opcode,
+      .source_type = source_type,
+      .result_type = result_type,
+      .result_value_id = result_type == bir::TypeKind::F128 ? prepare::PreparedValueId{260}
+                                                            : prepare::PreparedValueId{262},
+      .result_value_name = result_name,
+      .operand_value_id = source_type == bir::TypeKind::F128 ? prepare::PreparedValueId{261}
+                                                             : prepare::PreparedValueId{263},
+      .operand_value_name = operand_name,
+      .helper_family = prepare::PreparedF128RuntimeHelperFamily::Cast,
+      .helper_kind = result_type == bir::TypeKind::F128
+                         ? prepare::PreparedF128RuntimeHelperKind::F64ToF128
+                         : prepare::PreparedF128RuntimeHelperKind::F128ToF32,
+      .callee_name = result_type == bir::TypeKind::F128 ? "__extenddftf2" : "__trunctfsf2",
+      .result_ownership =
+          result_type == bir::TypeKind::F128
+              ? prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier
+              : prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue,
+      .resource_policy =
+          prepare::PreparedF128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedF128RuntimeHelper::AbiPolicy{
+              .transition =
+                  result_type == bir::TypeKind::F128
+                      ? prepare::PreparedF128RuntimeHelperAbiTransition::
+                            DirectScalarArgumentAndF128Result
+                      : prepare::PreparedF128RuntimeHelperAbiTransition::
+                            DirectF128ArgumentAndScalarResult,
+              .argument_bank = result_type == bir::TypeKind::F128
+                                   ? prepare::PreparedRegisterBank::Fpr
+                                   : prepare::PreparedRegisterBank::Vreg,
+              .result_bank = result_type == bir::TypeKind::F128
+                                 ? prepare::PreparedRegisterBank::Vreg
+                                 : prepare::PreparedRegisterBank::Fpr,
+              .argument_count = 1,
+              .result_count = 1,
+              .width_bytes = result_type == bir::TypeKind::F128 ? std::size_t{16}
+                                                                : std::size_t{4},
+          },
+      .live_preservation_policy =
+          prepare::PreparedF128RuntimeHelper::LivePreservationPolicy{
+              .evaluated = true,
+              .caller_saved_clobbers_modeled = true,
+              .no_additional_live_preservation_required = true,
+          },
+      .selected_call_ownership =
+          prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy{
+              .owns_terminal_call = true,
+              .has_callee_identity = true,
+              .has_resource_policy = true,
+              .has_clobber_policy = true,
+              .has_abi_bindings = true,
+              .has_marshaling = true,
+              .has_live_preservation = true,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .register_name = "q16",
+              .contiguous_width = 1,
+              .occupied_register_names = {"q16"},
+          }},
+  };
+  if (result_type == bir::TypeKind::F128) {
+    helper.result_carrier = dispatch_f128_helper_carrier_binding(carriers.front());
+    helper.scalar_operand =
+        prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+            .value_id = helper.operand_value_id,
+            .value_name = helper.operand_value_name,
+            .type = source_type,
+            .width_bytes = 8,
+            .register_bank = prepare::PreparedRegisterBank::Fpr,
+            .home_kind = prepare::PreparedValueHomeKind::Register,
+            .register_name = std::string{"d9"},
+        };
+    helper.scalar_operand_abi_argument =
+        dispatch_f128_scalar_fp_abi_binding(
+            helper.operand_value_id,
+            helper.operand_value_name,
+            source_type,
+            std::size_t{0},
+            "d0",
+            prepare::PreparedRegisterSlotPool::CallArgument);
+    helper.result_abi_result = dispatch_f128_helper_abi_binding(
+        helper.result_value_id, helper.result_value_name, std::nullopt, 0, "q0",
+        prepare::PreparedRegisterSlotPool::CallResult);
+    helper.scalar_operand_argument_move =
+        prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+            .direction = prepare::PreparedF128RuntimeHelperMarshalDirection::ScalarToAbiArgument,
+            .scalar_result = *helper.scalar_operand,
+            .abi_register = *helper.scalar_operand_abi_argument,
+        };
+    helper.result_unmarshal_move = dispatch_f128_helper_marshaling_move(
+        *helper.result_carrier, *helper.result_abi_result,
+        prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier);
+  } else {
+    helper.lhs_value_id = helper.operand_value_id;
+    helper.lhs_value_name = helper.operand_value_name;
+    helper.lhs_carrier = dispatch_f128_helper_carrier_binding(carriers.front());
+    helper.lhs_abi_argument = dispatch_f128_helper_abi_binding(
+        helper.lhs_value_id, helper.lhs_value_name, std::size_t{0}, 0, "q0",
+        prepare::PreparedRegisterSlotPool::CallArgument);
+    helper.lhs_argument_move = dispatch_f128_helper_marshaling_move(
+        *helper.lhs_carrier, *helper.lhs_abi_argument,
+        prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument);
+    helper.scalar_result =
+        prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+            .value_id = helper.result_value_id,
+            .value_name = helper.result_value_name,
+            .type = result_type,
+            .width_bytes = 4,
+            .register_bank = prepare::PreparedRegisterBank::Fpr,
+            .home_kind = prepare::PreparedValueHomeKind::Register,
+            .register_name = std::string{"s9"},
+        };
+    helper.result_abi_result = dispatch_f128_scalar_fp_abi_binding(
+        helper.result_value_id,
+        helper.result_value_name,
+        result_type,
+        std::nullopt,
+        "s0",
+        prepare::PreparedRegisterSlotPool::CallResult);
+    helper.scalar_result_unmarshal_move =
+        prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+            .direction = prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToScalar,
+            .scalar_result = *helper.scalar_result,
+            .abi_register = *helper.result_abi_result,
+        };
+  }
+  prepared.f128_runtime_helpers.functions.push_back(
+      prepare::PreparedF128RuntimeHelperFunction{
+          .function_name = function_name,
+          .helpers = {std::move(helper)},
+      });
   prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
       .function_name = function_name,
       .carriers = std::move(carriers),
@@ -5013,6 +5241,110 @@ int block_dispatch_lowers_f128_compare_helper_boundary_into_i1_result() {
   return 0;
 }
 
+int block_dispatch_lowers_f128_cast_helper_from_prepared_authority() {
+  auto prepared = prepared_with_f128_cast_helper_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  const auto* helper =
+      block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+                &block.instructions.front().target.payload);
+  if (!diagnostics.empty() ||
+      result.visited_operations != 1 ||
+      result.emitted_instructions != 2 ||
+      block.instructions.size() != 2 ||
+      helper == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Cast ||
+      helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::F64ToF128 ||
+      helper->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::F64ToF128 ||
+      helper->source_cast_opcode != bir::CastOpcode::FPExt ||
+      helper->callee_name != "__extenddftf2" ||
+      helper->source_type != bir::TypeKind::F64 ||
+      helper->result_type != bir::TypeKind::F128 ||
+      helper->scalar_operand.type != bir::TypeKind::F64 ||
+      helper->scalar_operand.abi_register->reg != aarch64_abi::d_register(0) ||
+      helper->result.abi_register->reg != aarch64_abi::q_register(0) ||
+      helper->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result ||
+      !helper->selected_call_ownership.owns_terminal_call ||
+      block.instructions.front().target.defs.size() != 2 ||
+      block.instructions.front().target.uses.size() != 2) {
+    return fail("expected dispatch to select f64->f128 helper boundary from prepared authority");
+  }
+
+  auto trunc_prepared = prepared_with_f128_cast_helper_operation(
+      bir::CastOpcode::FPTrunc, bir::TypeKind::F128, bir::TypeKind::F32);
+  const auto& trunc_function_cf = trunc_prepared.control_flow.functions.front();
+  const auto& trunc_block_cf = trunc_function_cf.blocks.front();
+  const auto trunc_function_context = aarch64_codegen::make_function_lowering_context(
+      trunc_prepared, trunc_prepared.target_profile, trunc_function_cf);
+  const auto trunc_block_context =
+      aarch64_codegen::make_block_lowering_context(trunc_function_context, trunc_block_cf, 0);
+  aarch64_module::MachineBlock trunc_block;
+  aarch64_module::ModuleLoweringDiagnostics trunc_diagnostics;
+  const auto trunc_result =
+      aarch64_codegen::dispatch_prepared_block(
+          trunc_block_context, trunc_block, trunc_diagnostics);
+  const auto* trunc_helper =
+      trunc_block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+                &trunc_block.instructions.front().target.payload);
+  if (!trunc_diagnostics.empty() ||
+      trunc_result.visited_operations != 1 ||
+      trunc_result.emitted_instructions != 2 ||
+      trunc_block.instructions.size() != 2 ||
+      trunc_helper == nullptr ||
+      trunc_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::F128ToF32 ||
+      trunc_helper->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::F128ToF32 ||
+      trunc_helper->source_cast_opcode != bir::CastOpcode::FPTrunc ||
+      trunc_helper->callee_name != "__trunctfsf2" ||
+      trunc_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue ||
+      trunc_helper->lhs.abi_register->reg != aarch64_abi::q_register(0) ||
+      trunc_helper->scalar_result.abi_register->reg != aarch64_abi::s_register(0) ||
+      trunc_helper->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult) {
+    return fail("expected dispatch to select f128->f32 helper boundary from prepared authority");
+  }
+
+  auto missing = prepared_with_f128_cast_helper_operation();
+  missing.f128_runtime_helpers.functions.clear();
+  const auto& missing_function_cf = missing.control_flow.functions.front();
+  const auto& missing_block_cf = missing_function_cf.blocks.front();
+  const auto missing_function_context = aarch64_codegen::make_function_lowering_context(
+      missing, missing.target_profile, missing_function_cf);
+  const auto missing_block_context =
+      aarch64_codegen::make_block_lowering_context(missing_function_context, missing_block_cf, 0);
+  aarch64_module::MachineBlock missing_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  const auto missing_result =
+      aarch64_codegen::dispatch_prepared_block(
+          missing_block_context, missing_block, missing_diagnostics);
+  if (missing_result.visited_operations != 1 ||
+      missing_result.emitted_instructions != 1 ||
+      missing_block.instructions.size() != 1 ||
+      missing_diagnostics.entries.size() != 1 ||
+      missing_diagnostics.entries.front().message.find(
+          "missing_prepared_f128_runtime_helper") == std::string::npos) {
+    return fail("expected f128 cast dispatch to fail closed without prepared helper authority");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_i128_shift_from_prepared_carriers() {
   auto prepared = prepared_with_i128_shift_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -5588,6 +5920,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_f128_compare_helper_boundary_into_i1_result();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_cast_helper_from_prepared_authority();
       status != 0) {
     return status;
   }

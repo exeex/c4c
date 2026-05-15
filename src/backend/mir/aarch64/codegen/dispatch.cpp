@@ -778,6 +778,7 @@ struct LowerMemoryInstructionResult {
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
   const bool supported_f128_comparison =
       binary != nullptr &&
       (binary->opcode == bir::BinaryOpcode::Eq ||
@@ -788,14 +789,25 @@ struct LowerMemoryInstructionResult {
        binary->opcode == bir::BinaryOpcode::Sge) &&
       binary->operand_type == bir::TypeKind::F128 &&
       binary->result.type == bir::TypeKind::I1;
-  if (binary == nullptr ||
-      (!supported_f128_comparison &&
-       ((binary->opcode != bir::BinaryOpcode::Add &&
-         binary->opcode != bir::BinaryOpcode::Sub &&
-         binary->opcode != bir::BinaryOpcode::Mul &&
-         binary->opcode != bir::BinaryOpcode::SDiv) ||
-        binary->operand_type != bir::TypeKind::F128 ||
-        binary->result.type != bir::TypeKind::F128))) {
+  const bool supported_f128_cast =
+      cast != nullptr &&
+      ((cast->opcode == bir::CastOpcode::FPExt &&
+        (cast->operand.type == bir::TypeKind::F32 ||
+         cast->operand.type == bir::TypeKind::F64) &&
+        cast->result.type == bir::TypeKind::F128) ||
+       (cast->opcode == bir::CastOpcode::FPTrunc &&
+        cast->operand.type == bir::TypeKind::F128 &&
+        (cast->result.type == bir::TypeKind::F32 ||
+         cast->result.type == bir::TypeKind::F64)));
+  if ((binary == nullptr ||
+       (!supported_f128_comparison &&
+        ((binary->opcode != bir::BinaryOpcode::Add &&
+          binary->opcode != bir::BinaryOpcode::Sub &&
+          binary->opcode != bir::BinaryOpcode::Mul &&
+          binary->opcode != bir::BinaryOpcode::SDiv) ||
+         binary->operand_type != bir::TypeKind::F128 ||
+         binary->result.type != bir::TypeKind::F128))) &&
+      !supported_f128_cast) {
     return LowerMemoryInstructionResult{.handled = false};
   }
 

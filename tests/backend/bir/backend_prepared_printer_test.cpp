@@ -2490,6 +2490,55 @@ prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module(
       });
 }
 
+prepare::PreparedBirModule prepare_f128_cast_helper_dump_module(
+    bir::CastOpcode opcode,
+    bir::TypeKind source_type,
+    bir::TypeKind result_type,
+    std::string function_name_spelling,
+    std::string result_name_spelling) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = std::move(function_name_spelling);
+  function.return_type = result_type;
+  function.params.push_back(bir::Param{
+      .type = source_type,
+      .name = "input",
+      .size_bytes = source_type == bir::TypeKind::F128 ? std::size_t{16}
+                                                       : (source_type == bir::TypeKind::F64
+                                                              ? std::size_t{8}
+                                                              : std::size_t{4}),
+      .align_bytes = source_type == bir::TypeKind::F128 ? std::size_t{16}
+                                                        : (source_type == bir::TypeKind::F64
+                                                               ? std::size_t{8}
+                                                               : std::size_t{4}),
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CastInst{
+      .opcode = opcode,
+      .result = bir::Value::named(result_type, result_name_spelling),
+      .operand = bir::Value::named(source_type, "input"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(result_type, result_name_spelling),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 }  // namespace
 
 int main() {
@@ -3851,6 +3900,96 @@ int main() {
                        "selected_call_ownership=[owns_terminal_call=yes,callee=yes,resources=yes,"
                        "clobbers=yes,abi_bindings=yes,marshaling=yes,live_preservation=yes]",
                        "f128 helper complete selected ownership")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f32_to_f128_prepared =
+      prepare_f128_cast_helper_dump_module(bir::CastOpcode::FPExt,
+                                           bir::TypeKind::F32,
+                                           bir::TypeKind::F128,
+                                           "f128_cast_f32_to_f128_dump_contract",
+                                           "wide");
+  const auto* f32_to_f128_helper = find_first_f128_runtime_helper(
+      f32_to_f128_prepared, "f128_cast_f32_to_f128_dump_contract");
+  if (f32_to_f128_helper == nullptr ||
+      f32_to_f128_helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Cast ||
+      f32_to_f128_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::F32ToF128 ||
+      f32_to_f128_helper->source_cast_opcode != bir::CastOpcode::FPExt ||
+      f32_to_f128_helper->callee_name != "__extendsftf2" ||
+      f32_to_f128_helper->source_type != bir::TypeKind::F32 ||
+      f32_to_f128_helper->result_type != bir::TypeKind::F128 ||
+      !f32_to_f128_helper->scalar_operand.has_value() ||
+      !f32_to_f128_helper->result_carrier.has_value() ||
+      !f32_to_f128_helper->scalar_operand_argument_move.has_value() ||
+      !f32_to_f128_helper->result_unmarshal_move.has_value() ||
+      f32_to_f128_helper->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result ||
+      f32_to_f128_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !f32_to_f128_helper->selected_call_ownership.owns_terminal_call) {
+    std::cerr << "[FAIL] prepared f32->f128 cast helper lost structured authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f32_to_f128_dump = prepare::print(f32_to_f128_prepared);
+  if (!expect_contains(f32_to_f128_dump,
+                       "family=cast kind=f32_to_f128 opcode=fpext callee=__extendsftf2 "
+                       "source_type=f32 result_type=f128 operand=input#",
+                       "f32 to f128 cast helper identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f32_to_f128_dump,
+                       "abi_transition=direct_scalar_argument_and_f128_result arg_bank=fpr "
+                       "result_bank=vreg arg_count=1 result_count=1 width=16",
+                       "f32 to f128 cast ABI policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f32_to_f128_dump,
+                       "scalar_operand=scalar_to_abi_argument",
+                       "f32 to f128 scalar argument marshaling")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f128_to_f64_prepared =
+      prepare_f128_cast_helper_dump_module(bir::CastOpcode::FPTrunc,
+                                           bir::TypeKind::F128,
+                                           bir::TypeKind::F64,
+                                           "f128_cast_f128_to_f64_dump_contract",
+                                           "narrow");
+  const auto* f128_to_f64_helper = find_first_f128_runtime_helper(
+      f128_to_f64_prepared, "f128_cast_f128_to_f64_dump_contract");
+  if (f128_to_f64_helper == nullptr ||
+      f128_to_f64_helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Cast ||
+      f128_to_f64_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::F128ToF64 ||
+      f128_to_f64_helper->source_cast_opcode != bir::CastOpcode::FPTrunc ||
+      f128_to_f64_helper->callee_name != "__trunctfdf2" ||
+      !f128_to_f64_helper->lhs_carrier.has_value() ||
+      !f128_to_f64_helper->scalar_result.has_value() ||
+      !f128_to_f64_helper->lhs_argument_move.has_value() ||
+      !f128_to_f64_helper->scalar_result_unmarshal_move.has_value() ||
+      f128_to_f64_helper->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult ||
+      f128_to_f64_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue ||
+      !f128_to_f64_helper->selected_call_ownership.owns_terminal_call) {
+    std::cerr << "[FAIL] prepared f128->f64 cast helper lost structured authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_to_f64_dump = prepare::print(f128_to_f64_prepared);
+  if (!expect_contains(f128_to_f64_dump,
+                       "family=cast kind=f128_to_f64 opcode=fptrunc callee=__trunctfdf2 "
+                       "source_type=f128 result_type=f64 operand=input#",
+                       "f128 to f64 cast helper identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_to_f64_dump,
+                       "abi_transition=direct_f128_argument_and_scalar_result arg_bank=vreg "
+                       "result_bank=fpr arg_count=1 result_count=1 width=8",
+                       "f128 to f64 cast ABI policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_to_f64_dump,
+                       "scalar_result=abi_result_to_scalar",
+                       "f128 to f64 scalar result marshaling")) {
     return EXIT_FAILURE;
   }
 

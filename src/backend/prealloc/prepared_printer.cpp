@@ -1699,8 +1699,9 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
               << ",abi_reg=" << move->abi_register.register_name << "]";
         };
     auto append_scalar_result =
-        [&](const std::optional<PreparedF128RuntimeHelper::ScalarResultOwnership>& scalar) {
-          out << " scalar_result=";
+        [&](std::string_view label,
+            const std::optional<PreparedF128RuntimeHelper::ScalarResultOwnership>& scalar) {
+          out << " " << label << "=";
           if (!scalar.has_value()) {
             out << "<missing>";
             return;
@@ -1715,6 +1716,21 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
             out << ",reg=" << *scalar->register_name;
           }
           out << "]";
+        };
+    auto append_scalar_marshaling_move =
+        [&](std::string_view label,
+            const std::optional<PreparedF128RuntimeHelper::ScalarMarshalingMove>& move) {
+          out << " " << label << "=";
+          if (!move.has_value()) {
+            out << "<missing>";
+            return;
+          }
+          out << prepared_f128_runtime_helper_marshal_direction_name(move->direction)
+              << "[value=" << maybe_value_name(module.names, move->scalar_result.value_name)
+              << "#" << move->scalar_result.value_id
+              << ",scalar_width=" << move->scalar_result.width_bytes
+              << ",abi_index=" << move->abi_register.abi_register_index
+              << ",abi_reg=" << move->abi_register.register_name << "]";
         };
     auto append_scalar_cmp_result_consumption =
         [&](const std::optional<PreparedF128RuntimeHelper::ScalarCmpResultConsumption>&
@@ -1738,11 +1754,20 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
           << " inst=" << helper.instruction_index
           << " family=" << prepared_f128_runtime_helper_family_name(helper.helper_family)
           << " kind=" << prepared_f128_runtime_helper_kind_name(helper.helper_kind)
-          << " opcode=" << bir::render_binary_opcode(helper.source_binary_opcode)
-          << " callee=" << helper.callee_name
+          << " opcode=";
+      if (helper.source_cast_opcode.has_value()) {
+        out << bir::render_cast_opcode(*helper.source_cast_opcode);
+      } else {
+        out << bir::render_binary_opcode(helper.source_binary_opcode);
+      }
+      out << " callee=" << helper.callee_name
           << " source_type=" << type_kind_name(helper.source_type)
-          << " result_type=" << type_kind_name(helper.result_type)
-          << " result=" << maybe_value_name(module.names, helper.result_value_name)
+          << " result_type=" << type_kind_name(helper.result_type);
+      if (helper.source_cast_opcode.has_value()) {
+        out << " operand=" << maybe_value_name(module.names, helper.operand_value_name)
+            << "#" << helper.operand_value_id;
+      }
+      out << " result=" << maybe_value_name(module.names, helper.result_value_name)
           << "#" << helper.result_value_id
           << " lhs=" << maybe_value_name(module.names, helper.lhs_value_name)
           << "#" << helper.lhs_value_id
@@ -1797,13 +1822,27 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       out << " abi_bindings";
       append_abi_binding("lhs", helper.lhs_abi_argument);
       append_abi_binding("rhs", helper.rhs_abi_argument);
+      if (helper.scalar_operand_abi_argument.has_value()) {
+        append_abi_binding("scalar_operand", helper.scalar_operand_abi_argument);
+      }
       append_abi_binding("result", helper.result_abi_result);
       out << " marshaling";
       append_marshaling_move("lhs", helper.lhs_argument_move);
       append_marshaling_move("rhs", helper.rhs_argument_move);
+      if (helper.scalar_operand_argument_move.has_value()) {
+        append_scalar_marshaling_move("scalar_operand", helper.scalar_operand_argument_move);
+      }
       append_marshaling_move("result", helper.result_unmarshal_move);
+      if (helper.scalar_result_unmarshal_move.has_value()) {
+        append_scalar_marshaling_move("scalar_result", helper.scalar_result_unmarshal_move);
+      }
+      if (helper.scalar_operand.has_value()) {
+        append_scalar_result("scalar_operand", helper.scalar_operand);
+      }
+      if (helper.scalar_result.has_value()) {
+        append_scalar_result("scalar_result", helper.scalar_result);
+      }
       if (helper.helper_family == PreparedF128RuntimeHelperFamily::Comparison) {
-        append_scalar_result(helper.scalar_result);
         append_scalar_cmp_result_consumption(helper.scalar_cmp_result_consumption);
       }
       out << " live_preservation=[evaluated="

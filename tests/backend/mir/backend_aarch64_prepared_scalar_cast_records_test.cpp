@@ -384,6 +384,26 @@ int unsupported_and_incomplete_cast_facts_fail_closed() {
       f128.error != aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOperandType) {
     return fail("expected F128 conversion cast to fail closed");
   }
+  const auto f128_trunc = aarch64_codegen::make_prepared_scalar_cast_record(
+      f128_fixture.names,
+      f128_fixture.locations,
+      f128_fixture.storage,
+      cast_inst(bir::CastOpcode::FPTrunc, bir::TypeKind::F128, bir::TypeKind::F64));
+  if (f128_trunc.record.has_value() ||
+      f128_trunc.error !=
+          aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOperandType) {
+    return fail("expected F128 truncation cast to stay out of scalar cast records");
+  }
+  const auto f128_bitcast = aarch64_codegen::make_prepared_scalar_cast_record(
+      f128_fixture.names,
+      f128_fixture.locations,
+      f128_fixture.storage,
+      cast_inst(bir::CastOpcode::Bitcast, bir::TypeKind::F128, bir::TypeKind::I128));
+  if (f128_bitcast.record.has_value() ||
+      f128_bitcast.error !=
+          aarch64_codegen::PreparedScalarCastRecordError::UnsupportedOpcode) {
+    return fail("expected F128 bitcast to stay fail-closed");
+  }
 
   const auto unsupported_type = aarch64_codegen::make_prepared_scalar_cast_record(
       fixture.names,

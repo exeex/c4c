@@ -2472,6 +2472,35 @@ prepare::PreparedF128RuntimeHelper::AbiRegisterBinding make_f128_cmp_result_abi_
   };
 }
 
+prepare::PreparedF128RuntimeHelper::AbiRegisterBinding make_f128_scalar_fp_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    bir::TypeKind type,
+    std::optional<std::size_t> argument_index,
+    std::string register_name,
+    prepare::PreparedRegisterSlotPool pool) {
+  const std::size_t width = type == bir::TypeKind::F64 ? std::size_t{8} : std::size_t{4};
+  return prepare::PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = argument_index,
+      .abi_register_index = 0,
+      .width_bytes = width,
+      .register_bank = prepare::PreparedRegisterBank::Fpr,
+      .register_class = prepare::PreparedRegisterClass::Float,
+      .register_name = std::move(register_name),
+      .contiguous_width = 1,
+      .occupied_register_names = {type == bir::TypeKind::F64 ? "d0" : "s0"},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Fpr,
+              .pool = pool,
+              .slot_index = 0,
+              .contiguous_width = 1,
+          },
+  };
+}
+
 void retarget_f128_helper_as_compare(
     prepare::PreparedF128RuntimeHelper& helper,
     bir::BinaryOpcode opcode,
@@ -2520,6 +2549,133 @@ void retarget_f128_helper_as_compare(
       .argument_bank = prepare::PreparedRegisterBank::Vreg,
       .result_bank = prepare::PreparedRegisterBank::Gpr,
       .argument_count = 2,
+      .result_count = 1,
+      .width_bytes = 4,
+  };
+}
+
+void retarget_f128_helper_as_f64_to_f128_cast(
+    prepare::PreparedF128RuntimeHelper& helper,
+    const prepare::PreparedF128Carrier& result,
+    prepare::PreparedValueId scalar_value_id,
+    c4c::ValueNameId scalar_value_name) {
+  helper.source_cast_opcode = bir::CastOpcode::FPExt;
+  helper.source_type = bir::TypeKind::F64;
+  helper.result_type = bir::TypeKind::F128;
+  helper.operand_value_id = scalar_value_id;
+  helper.operand_value_name = scalar_value_name;
+  helper.lhs_value_id = result.value_id;
+  helper.lhs_value_name = result.value_name;
+  helper.rhs_value_id = 0;
+  helper.rhs_value_name = c4c::kInvalidValueName;
+  helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Cast;
+  helper.helper_kind = prepare::PreparedF128RuntimeHelperKind::F64ToF128;
+  helper.callee_name = "__extenddftf2";
+  helper.result_ownership =
+      prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier;
+  helper.lhs_carrier.reset();
+  helper.rhs_carrier.reset();
+  helper.rhs_abi_argument.reset();
+  helper.rhs_argument_move.reset();
+  helper.result_carrier = make_f128_helper_carrier_binding(result);
+  helper.scalar_operand =
+      prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+          .value_id = scalar_value_id,
+          .value_name = scalar_value_name,
+          .type = bir::TypeKind::F64,
+          .width_bytes = 8,
+          .register_bank = prepare::PreparedRegisterBank::Fpr,
+          .home_kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"d9"},
+      };
+  helper.scalar_operand_abi_argument =
+      make_f128_scalar_fp_abi_binding(
+          scalar_value_id, scalar_value_name, bir::TypeKind::F64, std::size_t{0}, "d0",
+          prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.scalar_operand_argument_move =
+      prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+          .direction = prepare::PreparedF128RuntimeHelperMarshalDirection::ScalarToAbiArgument,
+          .scalar_result = *helper.scalar_operand,
+          .abi_register = *helper.scalar_operand_abi_argument,
+      };
+  helper.result_abi_result = make_f128_helper_abi_binding(
+      helper.result_value_id, helper.result_value_name, std::nullopt, 0, "q0",
+      prepare::PreparedRegisterSlotPool::CallResult);
+  helper.result_unmarshal_move = make_f128_helper_marshaling_move(
+      *helper.result_carrier, *helper.result_abi_result,
+      prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier);
+  helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
+      .transition =
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result,
+      .argument_bank = prepare::PreparedRegisterBank::Fpr,
+      .result_bank = prepare::PreparedRegisterBank::Vreg,
+      .argument_count = 1,
+      .result_count = 1,
+      .width_bytes = 16,
+  };
+}
+
+void retarget_f128_helper_as_f128_to_f32_cast(
+    prepare::PreparedF128RuntimeHelper& helper,
+    const prepare::PreparedF128Carrier& source,
+    prepare::PreparedValueId scalar_value_id,
+    c4c::ValueNameId scalar_value_name) {
+  helper.source_cast_opcode = bir::CastOpcode::FPTrunc;
+  helper.source_type = bir::TypeKind::F128;
+  helper.result_type = bir::TypeKind::F32;
+  helper.result_value_id = scalar_value_id;
+  helper.result_value_name = scalar_value_name;
+  helper.operand_value_id = source.value_id;
+  helper.operand_value_name = source.value_name;
+  helper.lhs_value_id = source.value_id;
+  helper.lhs_value_name = source.value_name;
+  helper.rhs_value_id = 0;
+  helper.rhs_value_name = c4c::kInvalidValueName;
+  helper.helper_family = prepare::PreparedF128RuntimeHelperFamily::Cast;
+  helper.helper_kind = prepare::PreparedF128RuntimeHelperKind::F128ToF32;
+  helper.callee_name = "__trunctfsf2";
+  helper.result_ownership =
+      prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue;
+  helper.result_carrier.reset();
+  helper.rhs_carrier.reset();
+  helper.rhs_abi_argument.reset();
+  helper.rhs_argument_move.reset();
+  helper.scalar_operand.reset();
+  helper.scalar_operand_abi_argument.reset();
+  helper.scalar_operand_argument_move.reset();
+  helper.lhs_carrier = make_f128_helper_carrier_binding(source);
+  helper.lhs_abi_argument = make_f128_helper_abi_binding(
+      source.value_id, source.value_name, std::size_t{0}, 0, "q0",
+      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.lhs_argument_move = make_f128_helper_marshaling_move(
+      *helper.lhs_carrier, *helper.lhs_abi_argument,
+      prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument);
+  helper.scalar_result =
+      prepare::PreparedF128RuntimeHelper::ScalarResultOwnership{
+          .value_id = scalar_value_id,
+          .value_name = scalar_value_name,
+          .type = bir::TypeKind::F32,
+          .width_bytes = 4,
+          .register_bank = prepare::PreparedRegisterBank::Fpr,
+          .home_kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"s9"},
+      };
+  helper.result_abi_result =
+      make_f128_scalar_fp_abi_binding(
+          scalar_value_id, scalar_value_name, bir::TypeKind::F32, std::nullopt, "s0",
+          prepare::PreparedRegisterSlotPool::CallResult);
+  helper.scalar_result_unmarshal_move =
+      prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove{
+          .direction = prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToScalar,
+          .scalar_result = *helper.scalar_result,
+          .abi_register = *helper.result_abi_result,
+      };
+  helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
+      .transition =
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult,
+      .argument_bank = prepare::PreparedRegisterBank::Vreg,
+      .result_bank = prepare::PreparedRegisterBank::Fpr,
+      .argument_count = 1,
       .result_count = 1,
       .width_bytes = 4,
   };
@@ -3170,6 +3326,92 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           aarch64_codegen::PreparedF128RuntimeHelperRecordError::
               UnsupportedSourceOperation) {
     return fail("expected unmodeled f128 comparison predicate to fail closed");
+  }
+
+  const auto scalar_name = c4c::ValueNameId{103};
+  auto f64_to_f128 = make_f128_runtime_helper(function_name,
+                                              8,
+                                              bir::BinaryOpcode::Add,
+                                              prepare::PreparedF128RuntimeHelperKind::Add,
+                                              "__addtf3",
+                                              carriers.carriers[0],
+                                              carriers.carriers[1],
+                                              carriers.carriers[2]);
+  retarget_f128_helper_as_f64_to_f128_cast(
+      f64_to_f128, carriers.carriers[0], prepare::PreparedValueId{203}, scalar_name);
+  const auto prepared_f64_to_f128 =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, f64_to_f128);
+  if (!prepared_f64_to_f128.record.has_value() ||
+      prepared_f64_to_f128.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::F64ToF128 ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared_f64_to_f128.record->boundary_kind) != "f64_to_f128" ||
+      prepared_f64_to_f128.record->source_cast_opcode != bir::CastOpcode::FPExt ||
+      prepared_f64_to_f128.record->helper_family !=
+          prepare::PreparedF128RuntimeHelperFamily::Cast ||
+      prepared_f64_to_f128.record->helper_kind !=
+          prepare::PreparedF128RuntimeHelperKind::F64ToF128 ||
+      prepared_f64_to_f128.record->callee_name != "__extenddftf2" ||
+      prepared_f64_to_f128.record->scalar_operand.abi_register->reg !=
+          aarch64_abi::d_register(0) ||
+      prepared_f64_to_f128.record->scalar_operand.materialized_i1_register->reg !=
+          aarch64_abi::d_register(9) ||
+      prepared_f64_to_f128.record->result.abi_register->reg !=
+          aarch64_abi::q_register(0) ||
+      prepared_f64_to_f128.record->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectScalarArgumentAndF128Result) {
+    return fail("expected f64 to f128 cast helper boundary to consume unary prepared authority");
+  }
+  const auto f64_to_f128_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_f64_to_f128.record);
+  if (f64_to_f128_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      f64_to_f128_instruction.defs.size() != 2 ||
+      f64_to_f128_instruction.uses.size() != 2) {
+    return fail("expected selected f64 to f128 helper instruction effects");
+  }
+
+  auto f128_to_f32 = make_f128_runtime_helper(function_name,
+                                              9,
+                                              bir::BinaryOpcode::Add,
+                                              prepare::PreparedF128RuntimeHelperKind::Add,
+                                              "__addtf3",
+                                              carriers.carriers[0],
+                                              carriers.carriers[1],
+                                              carriers.carriers[2]);
+  retarget_f128_helper_as_f128_to_f32_cast(
+      f128_to_f32, carriers.carriers[1], prepare::PreparedValueId{204}, c4c::ValueNameId{104});
+  const auto prepared_f128_to_f32 =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, f128_to_f32);
+  if (!prepared_f128_to_f32.record.has_value() ||
+      prepared_f128_to_f32.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::F128ToF32 ||
+      prepared_f128_to_f32.record->source_cast_opcode != bir::CastOpcode::FPTrunc ||
+      prepared_f128_to_f32.record->helper_kind !=
+          prepare::PreparedF128RuntimeHelperKind::F128ToF32 ||
+      prepared_f128_to_f32.record->callee_name != "__trunctfsf2" ||
+      prepared_f128_to_f32.record->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue ||
+      prepared_f128_to_f32.record->lhs.abi_register->reg != aarch64_abi::q_register(0) ||
+      prepared_f128_to_f32.record->scalar_result.abi_register->reg !=
+          aarch64_abi::s_register(0) ||
+      prepared_f128_to_f32.record->scalar_result.materialized_i1_register->reg !=
+          aarch64_abi::s_register(9) ||
+      prepared_f128_to_f32.record->abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentAndScalarResult) {
+    return fail("expected f128 to f32 cast helper boundary to consume unary prepared authority");
+  }
+  const auto f128_to_f32_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_f128_to_f32.record);
+  if (f128_to_f32_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      f128_to_f32_instruction.defs.size() != 2 ||
+      f128_to_f32_instruction.uses.size() != 2) {
+    return fail("expected selected f128 to f32 helper instruction effects");
   }
   return 0;
 }

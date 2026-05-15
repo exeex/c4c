@@ -380,6 +380,10 @@ enum class F128RuntimeHelperBoundaryKind {
   Le,
   Gt,
   Ge,
+  F32ToF128,
+  F64ToF128,
+  F128ToF32,
+  F128ToF64,
 };
 
 enum class PreparedI128TransportRecordError {
@@ -981,6 +985,7 @@ struct F128RuntimeHelperBoundaryRecord {
       prepare::PreparedF128RuntimeHelperKind::Add;
   std::string callee_name;
   bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  std::optional<bir::CastOpcode> source_cast_opcode;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
   std::size_t block_index = 0;
@@ -989,6 +994,8 @@ struct F128RuntimeHelperBoundaryRecord {
   bir::TypeKind result_type = bir::TypeKind::F128;
   prepare::PreparedValueId result_value_id = 0;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueId operand_value_id = 0;
+  c4c::ValueNameId operand_value_name = c4c::kInvalidValueName;
   prepare::PreparedValueId lhs_value_id = 0;
   c4c::ValueNameId lhs_value_name = c4c::kInvalidValueName;
   prepare::PreparedValueId rhs_value_id = 0;
@@ -999,6 +1006,7 @@ struct F128RuntimeHelperBoundaryRecord {
   std::size_t align_bytes = 16;
   F128RuntimeHelperOperandRecord result;
   F128RuntimeHelperScalarResultRecord scalar_result;
+  F128RuntimeHelperScalarResultRecord scalar_operand;
   F128RuntimeHelperOperandRecord lhs;
   F128RuntimeHelperOperandRecord rhs;
   prepare::PreparedF128RuntimeHelper::ResourcePolicy resource_policy;

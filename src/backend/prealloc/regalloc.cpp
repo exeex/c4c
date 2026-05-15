@@ -414,6 +414,72 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return "";
 }
 
+[[nodiscard]] bool is_f128_float_width_conversion_cast(const bir::CastInst& cast) {
+  switch (cast.opcode) {
+    case bir::CastOpcode::FPExt:
+      return (cast.operand.type == bir::TypeKind::F32 ||
+              cast.operand.type == bir::TypeKind::F64) &&
+             cast.result.type == bir::TypeKind::F128;
+    case bir::CastOpcode::FPTrunc:
+      return cast.operand.type == bir::TypeKind::F128 &&
+             (cast.result.type == bir::TypeKind::F32 ||
+              cast.result.type == bir::TypeKind::F64);
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] PreparedF128RuntimeHelperKind f128_cast_helper_kind(
+    const bir::CastInst& cast) {
+  if (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
+      cast.result.type == bir::TypeKind::F128) {
+    return PreparedF128RuntimeHelperKind::F32ToF128;
+  }
+  if (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F64 &&
+      cast.result.type == bir::TypeKind::F128) {
+    return PreparedF128RuntimeHelperKind::F64ToF128;
+  }
+  if (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F128 &&
+      cast.result.type == bir::TypeKind::F32) {
+    return PreparedF128RuntimeHelperKind::F128ToF32;
+  }
+  if (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F128 &&
+      cast.result.type == bir::TypeKind::F64) {
+    return PreparedF128RuntimeHelperKind::F128ToF64;
+  }
+  return PreparedF128RuntimeHelperKind::F32ToF128;
+}
+
+[[nodiscard]] std::string_view f128_cast_helper_callee(const bir::CastInst& cast) {
+  if (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
+      cast.result.type == bir::TypeKind::F128) {
+    return "__extendsftf2";
+  }
+  if (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F64 &&
+      cast.result.type == bir::TypeKind::F128) {
+    return "__extenddftf2";
+  }
+  if (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F128 &&
+      cast.result.type == bir::TypeKind::F32) {
+    return "__trunctfsf2";
+  }
+  if (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F128 &&
+      cast.result.type == bir::TypeKind::F64) {
+    return "__trunctfdf2";
+  }
+  return "";
+}
+
 [[nodiscard]] PreparedF128CmpResultZeroTest f128_cmp_result_zero_test(
     bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -2115,80 +2181,130 @@ void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
          ++instruction_index) {
       const auto& inst = block.insts[instruction_index];
       const auto* binary = std::get_if<bir::BinaryInst>(&inst);
-      if (binary == nullptr ||
-          binary->operand_type != bir::TypeKind::F128 ||
-          !is_f128_soft_float_helper_opcode(binary->opcode)) {
-        continue;
-      }
-      const bool is_comparison = bir::is_compare_opcode(binary->opcode);
-      const bir::TypeKind required_result_type =
-          is_comparison ? bir::TypeKind::I1 : bir::TypeKind::F128;
-      if (binary->result.type != required_result_type) {
-        append_f128_runtime_helper_fact(
-            function_helpers,
-            "f128_soft_float_helper_requires_matching_result_type");
+      if (binary != nullptr && binary->operand_type == bir::TypeKind::F128 &&
+          is_f128_soft_float_helper_opcode(binary->opcode)) {
+        const bool is_comparison = bir::is_compare_opcode(binary->opcode);
+        const bir::TypeKind required_result_type =
+            is_comparison ? bir::TypeKind::I1 : bir::TypeKind::F128;
+        if (binary->result.type != required_result_type) {
+          append_f128_runtime_helper_fact(
+              function_helpers,
+              "f128_soft_float_helper_requires_matching_result_type");
+          continue;
+        }
+
+        if (binary->result.kind != bir::Value::Kind::Named ||
+            binary->lhs.kind != bir::Value::Kind::Named ||
+            binary->rhs.kind != bir::Value::Kind::Named) {
+          append_f128_runtime_helper_fact(
+              function_helpers,
+              "f128_soft_float_helper_requires_named_result_and_operands");
+          continue;
+        }
+        const auto* result =
+            find_regalloc_value(regalloc_function, names, binary->result.name);
+        const auto* lhs = find_regalloc_value(regalloc_function, names, binary->lhs.name);
+        const auto* rhs = find_regalloc_value(regalloc_function, names, binary->rhs.name);
+        if (result == nullptr || lhs == nullptr || rhs == nullptr) {
+          append_f128_runtime_helper_fact(
+              function_helpers,
+              "f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs");
+          continue;
+        }
+        const auto callee = f128_soft_float_helper_callee(binary->opcode);
+        if (callee.empty()) {
+          append_f128_runtime_helper_fact(
+              function_helpers,
+              "f128_soft_float_helper_requires_callee_identity");
+          continue;
+        }
+
+        function_helpers.helpers.push_back(PreparedF128RuntimeHelper{
+            .function_name = regalloc_function.function_name,
+            .block_index = block_index,
+            .instruction_index = instruction_index,
+            .source_binary_opcode = binary->opcode,
+            .source_type = binary->operand_type,
+            .result_type = is_comparison ? bir::TypeKind::I32 : binary->result.type,
+            .result_value_id = result->value_id,
+            .result_value_name = result->value_name,
+            .lhs_value_id = lhs->value_id,
+            .lhs_value_name = lhs->value_name,
+            .rhs_value_id = rhs->value_id,
+            .rhs_value_name = rhs->value_name,
+            .helper_family = is_comparison
+                                 ? PreparedF128RuntimeHelperFamily::Comparison
+                                 : PreparedF128RuntimeHelperFamily::Arithmetic,
+            .helper_kind = f128_soft_float_helper_kind(binary->opcode),
+            .callee_name = std::string(callee),
+            .result_ownership =
+                is_comparison
+                    ? PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult
+                    : PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+            .scalar_cmp_result_consumption =
+                is_comparison
+                    ? std::optional<PreparedF128RuntimeHelper::ScalarCmpResultConsumption>{
+                          PreparedF128RuntimeHelper::ScalarCmpResultConsumption{
+                              .cmp_type = bir::TypeKind::I32,
+                              .bir_result_type = bir::TypeKind::I1,
+                              .zero_test = f128_cmp_result_zero_test(binary->opcode),
+                              .consumes_helper_cmp_result = true,
+                              .owns_bir_i1_result = true,
+                          }}
+                    : std::nullopt,
+        });
         continue;
       }
 
-      if (binary->result.kind != bir::Value::Kind::Named ||
-          binary->lhs.kind != bir::Value::Kind::Named ||
-          binary->rhs.kind != bir::Value::Kind::Named) {
+      const auto* cast = std::get_if<bir::CastInst>(&inst);
+      if (cast == nullptr || !is_f128_float_width_conversion_cast(*cast)) {
+        continue;
+      }
+      if (cast->result.kind != bir::Value::Kind::Named ||
+          cast->operand.kind != bir::Value::Kind::Named) {
         append_f128_runtime_helper_fact(
             function_helpers,
-            "f128_soft_float_helper_requires_named_result_and_operands");
+            "f128_cast_helper_requires_named_result_and_operand");
         continue;
       }
       const auto* result =
-          find_regalloc_value(regalloc_function, names, binary->result.name);
-      const auto* lhs = find_regalloc_value(regalloc_function, names, binary->lhs.name);
-      const auto* rhs = find_regalloc_value(regalloc_function, names, binary->rhs.name);
-      if (result == nullptr || lhs == nullptr || rhs == nullptr) {
+          find_regalloc_value(regalloc_function, names, cast->result.name);
+      const auto* operand =
+          find_regalloc_value(regalloc_function, names, cast->operand.name);
+      if (result == nullptr || operand == nullptr) {
         append_f128_runtime_helper_fact(
             function_helpers,
-            "f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs");
+            "f128_cast_helper_requires_prepared_value_id_for_result_operand");
         continue;
       }
-      const auto callee = f128_soft_float_helper_callee(binary->opcode);
+      const auto callee = f128_cast_helper_callee(*cast);
       if (callee.empty()) {
         append_f128_runtime_helper_fact(
             function_helpers,
-            "f128_soft_float_helper_requires_callee_identity");
+            "f128_cast_helper_requires_callee_identity");
         continue;
       }
-
+      const bool scalar_to_f128 = cast->result.type == bir::TypeKind::F128;
       function_helpers.helpers.push_back(PreparedF128RuntimeHelper{
           .function_name = regalloc_function.function_name,
           .block_index = block_index,
           .instruction_index = instruction_index,
-          .source_binary_opcode = binary->opcode,
-          .source_type = binary->operand_type,
-          .result_type = is_comparison ? bir::TypeKind::I32 : binary->result.type,
+          .source_cast_opcode = cast->opcode,
+          .source_type = cast->operand.type,
+          .result_type = cast->result.type,
           .result_value_id = result->value_id,
           .result_value_name = result->value_name,
-          .lhs_value_id = lhs->value_id,
-          .lhs_value_name = lhs->value_name,
-          .rhs_value_id = rhs->value_id,
-          .rhs_value_name = rhs->value_name,
-          .helper_family = is_comparison
-                               ? PreparedF128RuntimeHelperFamily::Comparison
-                               : PreparedF128RuntimeHelperFamily::Arithmetic,
-          .helper_kind = f128_soft_float_helper_kind(binary->opcode),
+          .operand_value_id = operand->value_id,
+          .operand_value_name = operand->value_name,
+          .lhs_value_id = scalar_to_f128 ? result->value_id : operand->value_id,
+          .lhs_value_name = scalar_to_f128 ? result->value_name : operand->value_name,
+          .helper_family = PreparedF128RuntimeHelperFamily::Cast,
+          .helper_kind = f128_cast_helper_kind(*cast),
           .callee_name = std::string(callee),
           .result_ownership =
-              is_comparison
-                  ? PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult
-                  : PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
-          .scalar_cmp_result_consumption =
-              is_comparison
-                  ? std::optional<PreparedF128RuntimeHelper::ScalarCmpResultConsumption>{
-                        PreparedF128RuntimeHelper::ScalarCmpResultConsumption{
-                            .cmp_type = bir::TypeKind::I32,
-                            .bir_result_type = bir::TypeKind::I1,
-                            .zero_test = f128_cmp_result_zero_test(binary->opcode),
-                            .consumes_helper_cmp_result = true,
-                            .owns_bir_i1_result = true,
-                        }}
-                  : std::nullopt,
+              scalar_to_f128
+                  ? PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier
+                  : PreparedF128RuntimeHelperResultOwnership::ScalarValue,
       });
     }
   }

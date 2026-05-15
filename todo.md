@@ -1,30 +1,29 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4.2
-Current Step Title: Comparison Helper Boundary
+Current Step ID: 4.3
+Current Step Title: Cast Helper Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Step 4.2 completed the remaining F128 comparison helper materialization
-contract. Prepared F128 comparison helpers now publish an explicit
-`ScalarCmpResultConsumption` fact that maps the helper CMPtype result to the
-source BIR `I1` result through a structured zero-test (`eq_zero`, `ne_zero`,
-signed less/less-equal/greater/greater-equal zero). AArch64 helper records now
-require that consumption fact, preserve the scalar CMPtype ABI result, expose
-the materialized `I1` result register, and mark the BIR result value as defined.
-Dispatch now selects real BIR F128 `Eq/Ne/Slt/Sle/Sgt/Sge` comparison helpers
-from prepared authority instead of falling through to scalar lowering, while
-unmodeled unsigned predicates still fail closed. No scalar `F64` shortcut,
-assembly printer implementation, cast, sign-bit, or unrelated helper-family
-work was added.
+Step 4.3 started the F128 cast helper boundary. Prepared F128 runtime helpers
+now have an explicit `cast` family with `f32_to_f128`, `f64_to_f128`,
+`f128_to_f32`, and `f128_to_f64` helper identities, source cast opcode
+ownership, unary operand/result identities, scalar-side ownership, scalar/F128
+ABI transitions, marshaling moves, caller-saved clobber facts, live
+preservation, and selected-call ownership. AArch64 record construction and
+dispatch now consume those prepared facts for `FPExt`/`FPTrunc` between
+`F32`/`F64` and `F128` instead of routing through scalar cast records or
+dispatch-side callee guesses. Integer/I128/bitcast and other unsupported F128
+cast pairs remain fail-closed.
 
 ## Suggested Next
 
-Move to Step 4.3 cast helper boundaries, unless the supervisor wants an
-independent review of the completed Step 4.2 comparison-helper route first.
+Continue Step 4.3 with the next narrow cast-helper packet: inspect whether any
+additional fail-closed diagnostics or prepared-printer/record text should be
+tightened before Step 5 final assembly/printer authority starts.
 
 ## Watchouts
 
@@ -68,10 +67,10 @@ independent review of the completed Step 4.2 comparison-helper route first.
   its helper family, ABI transition, operand lanes, and selected record
   builder are i128-specific and require GPR low/high lanes, while binary128
   helper calls need F128 full-width carriers and a soft-float ABI contract.
-- Unsupported F128 comparison, cast, sign-bit, and other helper-family
-  operations should remain diagnosed until their prepared helper identities and
-  complete ownership facts exist; do not add scalar F64 approximations or
-  dispatch-only callee guesses.
+- Unsupported F128 comparison, unmodeled cast, sign-bit, and other
+  helper-family operations should remain diagnosed until their prepared helper
+  identities and complete ownership facts exist; do not add scalar F64
+  approximations or dispatch-only callee guesses.
 - Only F128 add, sub, mul, and signed binary128 division map to helper callees
   in this slice. Compare/cast/sign-bit and unsigned div/rem helpers remain
   unsupported until their semantic helper identities and ABI facts are added
@@ -90,9 +89,15 @@ independent review of the completed Step 4.2 comparison-helper route first.
   authority; final instruction printing/encoding is Step 5 work.
 - Stack-homed comparison results remain fail-closed at this boundary because
   this packet proves the register materialization path only.
+- F32/F64<->F128 cast helpers are record-level only. Final assembly printing
+  and encoded helper-call emission remain Step 5 work.
+- F128 cast helper dispatch was proved from prepared authority with manual
+  q/s/d-register fixtures because the current prepared F128 carrier printer can
+  still expose generic FP storage register names before carrier normalization.
+  Do not weaken that into scalar `F64` cast records.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_branch_records|backend_aarch64_branch_compare_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_cast_records)$'; } 2>&1 | tee test_after.log`
 
-Passed, 7/7 tests. Proof log: `test_after.log`.
+Passed, 8/8 tests. Proof log: `test_after.log`.
