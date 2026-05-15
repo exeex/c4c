@@ -30,6 +30,22 @@ std::string immediate_name(const ImmediateOperand& operand) {
   return "#" + std::to_string(operand.signed_value);
 }
 
+std::string prepared_value_home_name(const prepare::PreparedValueHome& home) {
+  std::ostringstream out;
+  out << "value#" << home.value_id << ":"
+      << prepare::prepared_value_home_kind_name(home.kind);
+  if (home.register_name.has_value()) {
+    out << ":" << *home.register_name;
+  }
+  if (home.slot_id.has_value()) {
+    out << ":slot#" << *home.slot_id;
+  }
+  if (home.offset_bytes.has_value()) {
+    out << ":offset+" << *home.offset_bytes;
+  }
+  return out.str();
+}
+
 bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
   return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
          operand.signed_value <= 4095;
@@ -214,6 +230,69 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
 
 mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
                                              const CallInstructionRecord& call) {
+  if (call.variadic_entry_helper ==
+      std::optional<prepare::PreparedVariadicEntryHelperKind>{
+          prepare::PreparedVariadicEntryHelperKind::VaStart}) {
+    if (!call.variadic_va_start.has_value() || call.source_variadic_entry == nullptr ||
+        call.source_variadic_helper_operand_homes == nullptr) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "va_start node is missing structured prepared va_start provenance");
+    }
+    const auto mnemonic = required_primary_mnemonic(instruction);
+    if (mnemonic.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "va_start mnemonic is not printable");
+    }
+
+    const auto& va_start = *call.variadic_va_start;
+    std::vector<std::string> lines;
+    {
+      std::ostringstream out;
+      out << mnemonic << " dest="
+          << prepared_value_home_name(va_start.destination_va_list)
+          << " named_gp=" << va_start.named_gp_register_count
+          << " named_fp=" << va_start.named_fp_register_count
+          << " va_list_size=" << va_start.va_list_size_bytes
+          << " va_list_align=" << va_start.va_list_align_bytes
+          << " scratch_registers=" << va_start.scratch_register_count
+          << " scratch_stack=" << va_start.scratch_stack_bytes;
+      lines.push_back(out.str());
+    }
+    {
+      std::ostringstream out;
+      out << "va.start.rsa slot#" << va_start.register_save_area_slot_id
+          << " stack+" << va_start.register_save_area_stack_offset_bytes
+          << " size=" << va_start.register_save_area_size_bytes
+          << " align=" << va_start.register_save_area_align_bytes
+          << " gp_offset=" << va_start.register_save_area_gp_offset_bytes
+          << " fp_offset=" << va_start.register_save_area_fp_offset_bytes
+          << " gp_slot=" << va_start.register_save_area_gp_slot_size_bytes
+          << " fp_slot=" << va_start.register_save_area_fp_slot_size_bytes
+          << " saved_gp=" << va_start.saved_gp_register_count
+          << " saved_fp=" << va_start.saved_fp_register_count;
+      lines.push_back(out.str());
+    }
+    {
+      std::ostringstream out;
+      out << "va.start.initial_offsets gp=" << va_start.initial_gp_offset_bytes
+          << " fp=" << va_start.initial_fp_offset_bytes
+          << " overflow_slot#" << va_start.overflow_area_base_slot_id
+          << " overflow_stack+" << va_start.overflow_area_base_stack_offset_bytes
+          << " overflow_align=" << va_start.overflow_area_align_bytes;
+      lines.push_back(out.str());
+    }
+    for (const auto& field : va_start.va_list_fields) {
+      std::ostringstream out;
+      out << "va.start.field kind="
+          << prepare::prepared_variadic_va_list_field_kind_name(field.kind)
+          << " offset=" << field.offset_bytes
+          << " size=" << field.size_bytes;
+      lines.push_back(out.str());
+    }
+    return target_printed(std::move(lines));
+  }
+
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");

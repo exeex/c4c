@@ -193,6 +193,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "spill_to_slot";
     case MachineOpcode::ReloadFromSlot:
       return "reload_from_slot";
+    case MachineOpcode::VariadicVaStart:
+      return "variadic_va_start";
   }
   return "unknown";
 }
@@ -233,6 +235,8 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "mov";
     case MachinePrinterMnemonicKind::Return:
       return "ret";
+    case MachinePrinterMnemonicKind::VariadicVaStart:
+      return "va.start";
   }
   return "";
 }
@@ -263,6 +267,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Store;
     case MachineOpcode::CallBoundaryMove:
       return MachinePrinterMnemonicKind::Move;
+    case MachineOpcode::VariadicVaStart:
+      return MachinePrinterMnemonicKind::VariadicVaStart;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
     case MachineOpcode::CalleeSaveStore:
@@ -2067,6 +2073,66 @@ MachineNodeStatusRecord call_boundary_abi_binding_selection_status(
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
+std::optional<VariadicVaStartRecord> make_variadic_va_start_record(
+    const prepare::PreparedVariadicEntryPlanFunction& entry,
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (!homes.destination_va_list.has_value() ||
+      !entry.named_register_counts.gp.has_value() ||
+      !entry.named_register_counts.fp.has_value() ||
+      !entry.va_list_layout.size_bytes.has_value() ||
+      !entry.va_list_layout.align_bytes.has_value() ||
+      entry.va_list_layout.fields.empty() ||
+      !entry.register_save_area.slot_id.has_value() ||
+      !entry.register_save_area.stack_offset_bytes.has_value() ||
+      !entry.register_save_area.size_bytes.has_value() ||
+      !entry.register_save_area.align_bytes.has_value() ||
+      !entry.register_save_area.gp_offset_bytes.has_value() ||
+      !entry.register_save_area.fp_offset_bytes.has_value() ||
+      !entry.register_save_area.gp_slot_size_bytes.has_value() ||
+      !entry.register_save_area.fp_slot_size_bytes.has_value() ||
+      !entry.register_save_area.saved_gp_register_count.has_value() ||
+      !entry.register_save_area.saved_fp_register_count.has_value() ||
+      !entry.register_save_area.initial_gp_offset_bytes.has_value() ||
+      !entry.register_save_area.initial_fp_offset_bytes.has_value() ||
+      !entry.overflow_area.base_slot_id.has_value() ||
+      !entry.overflow_area.base_stack_offset_bytes.has_value() ||
+      !entry.overflow_area.align_bytes.has_value() ||
+      !entry.helper_resources.scratch_register_count.has_value() ||
+      !entry.helper_resources.scratch_stack_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  return VariadicVaStartRecord{
+      .destination_va_list = *homes.destination_va_list,
+      .named_gp_register_count = *entry.named_register_counts.gp,
+      .named_fp_register_count = *entry.named_register_counts.fp,
+      .va_list_size_bytes = *entry.va_list_layout.size_bytes,
+      .va_list_align_bytes = *entry.va_list_layout.align_bytes,
+      .va_list_fields = entry.va_list_layout.fields,
+      .register_save_area_slot_id = *entry.register_save_area.slot_id,
+      .register_save_area_stack_offset_bytes =
+          *entry.register_save_area.stack_offset_bytes,
+      .register_save_area_size_bytes = *entry.register_save_area.size_bytes,
+      .register_save_area_align_bytes = *entry.register_save_area.align_bytes,
+      .register_save_area_gp_offset_bytes = *entry.register_save_area.gp_offset_bytes,
+      .register_save_area_fp_offset_bytes = *entry.register_save_area.fp_offset_bytes,
+      .register_save_area_gp_slot_size_bytes =
+          *entry.register_save_area.gp_slot_size_bytes,
+      .register_save_area_fp_slot_size_bytes =
+          *entry.register_save_area.fp_slot_size_bytes,
+      .saved_gp_register_count = *entry.register_save_area.saved_gp_register_count,
+      .saved_fp_register_count = *entry.register_save_area.saved_fp_register_count,
+      .initial_gp_offset_bytes = *entry.register_save_area.initial_gp_offset_bytes,
+      .initial_fp_offset_bytes = *entry.register_save_area.initial_fp_offset_bytes,
+      .overflow_area_base_slot_id = *entry.overflow_area.base_slot_id,
+      .overflow_area_base_stack_offset_bytes =
+          *entry.overflow_area.base_stack_offset_bytes,
+      .overflow_area_align_bytes = *entry.overflow_area.align_bytes,
+      .scratch_register_count = *entry.helper_resources.scratch_register_count,
+      .scratch_stack_bytes = *entry.helper_resources.scratch_stack_bytes,
+  };
+}
+
 MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instruction) {
   if (instruction.variadic_entry_helper.has_value()) {
     if (instruction.source_variadic_entry == nullptr) {
@@ -2081,10 +2147,20 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
           .diagnostic =
               "variadic entry helper node is missing prepared operand-home provenance"};
     }
+    if (*instruction.variadic_entry_helper ==
+        prepare::PreparedVariadicEntryHelperKind::VaStart) {
+      if (!instruction.variadic_va_start.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic =
+                "va_start helper node is missing structured prepared va_start record"};
+      }
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
-            "variadic entry helper machine-node lowering requires a delegated consumption slice"};
+            "variadic entry helper machine-node lowering is outside the selected va_start subset"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -2329,6 +2405,17 @@ InstructionRecord make_call_boundary_abi_binding_instruction(
 }
 
 InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
+  if (instruction.variadic_entry_helper ==
+          std::optional<prepare::PreparedVariadicEntryHelperKind>{
+              prepare::PreparedVariadicEntryHelperKind::VaStart} &&
+      !instruction.variadic_va_start.has_value() &&
+      instruction.source_variadic_entry != nullptr &&
+      instruction.source_variadic_helper_operand_homes != nullptr) {
+    instruction.variadic_va_start =
+        make_variadic_va_start_record(*instruction.source_variadic_entry,
+                                      *instruction.source_variadic_helper_operand_homes);
+  }
+
   std::vector<OperandRecord> operands = instruction.arguments;
   if (instruction.indirect_callee.has_value()) {
     operands.insert(operands.begin(), *instruction.indirect_callee);
@@ -2344,10 +2431,19 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
     defs.push_back(effect_from_operand(make_memory_operand(*instruction.memory_return_storage)));
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
+  if (instruction.variadic_va_start.has_value()) {
+    defs.push_back(prepared_value_def(
+        instruction.variadic_va_start->destination_va_list.value_id,
+        instruction.variadic_va_start->destination_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
-      .opcode = instruction.is_indirect ? MachineOpcode::IndirectCall : MachineOpcode::DirectCall,
+      .opcode = instruction.variadic_va_start.has_value()
+                    ? MachineOpcode::VariadicVaStart
+                    : (instruction.is_indirect ? MachineOpcode::IndirectCall
+                                               : MachineOpcode::DirectCall),
       .selection = call_selection_status(instruction),
       .operands = operands,
       .defs = defs,

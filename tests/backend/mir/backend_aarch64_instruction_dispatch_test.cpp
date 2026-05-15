@@ -1202,14 +1202,19 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       complete_result.emitted_instructions != 2 ||
       complete_block.instructions.size() != 2 ||
       !complete_diagnostics.entries.empty()) {
-    return fail("expected complete va_start prepared storage facts to reach deferred helper record");
+    return fail("expected complete va_start prepared storage facts to select helper record");
   }
   const auto* complete_call =
       std::get_if<aarch64_module::codegen::CallInstructionRecord>(
           &complete_block.instructions.front().target.payload);
   if (complete_call == nullptr ||
+      complete_block.instructions.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      complete_block.instructions.front().target.opcode !=
+          aarch64_module::codegen::MachineOpcode::VariadicVaStart ||
       complete_call->source_variadic_entry == nullptr ||
       complete_call->source_variadic_helper_operand_homes == nullptr ||
+      !complete_call->variadic_va_start.has_value() ||
       complete_call->source_variadic_entry->register_save_area.slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{5} ||
       complete_call->source_variadic_entry->register_save_area.stack_offset_bytes !=
@@ -1224,8 +1229,14 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
           std::optional<std::size_t>{0} ||
       !complete_call->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
       complete_call->source_variadic_helper_operand_homes->destination_va_list->register_name !=
+          std::optional<std::string>{"x3"} ||
+      complete_call->variadic_va_start->register_save_area_slot_id !=
+          prepare::PreparedFrameSlotId{5} ||
+      complete_call->variadic_va_start->overflow_area_base_slot_id !=
+          prepare::PreparedFrameSlotId{6} ||
+      complete_call->variadic_va_start->destination_va_list.register_name !=
           std::optional<std::string>{"x3"}) {
-    return fail("expected deferred va_start helper record to expose prepared storage, scratch, and operand-home authority");
+    return fail("expected selected va_start helper record to expose prepared storage, scratch, and operand-home authority");
   }
 
   return 0;

@@ -987,6 +987,49 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
               .gp = std::size_t{1},
               .fp = std::size_t{0},
           },
+      .register_save_area =
+          prepare::PreparedVariadicEntryRegisterSaveArea{
+              .required = true,
+              .size_bytes = std::size_t{192},
+              .align_bytes = std::size_t{16},
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .stack_offset_bytes = std::size_t{16},
+              .gp_offset_bytes = std::size_t{0},
+              .fp_offset_bytes = std::size_t{64},
+              .gp_slot_size_bytes = std::size_t{8},
+              .fp_slot_size_bytes = std::size_t{16},
+              .saved_gp_register_count = std::size_t{7},
+              .saved_fp_register_count = std::size_t{8},
+              .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+              .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+          },
+      .overflow_area =
+          prepare::PreparedVariadicEntryOverflowArea{
+              .required = true,
+              .base_slot_id = prepare::PreparedFrameSlotId{6},
+              .base_stack_offset_bytes = std::size_t{208},
+              .align_bytes = std::size_t{8},
+          },
+      .va_list_layout =
+          prepare::PreparedVariadicVaListLayout{
+              .required = true,
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+              .fields =
+                  {
+                      prepare::PreparedVariadicVaListField{
+                          .kind = prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                          .offset_bytes = 0,
+                          .size_bytes = 4,
+                      },
+                      prepare::PreparedVariadicVaListField{
+                          .kind =
+                              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                          .offset_bytes = 8,
+                          .size_bytes = 8,
+                      },
+                  },
+          },
       .helper_resources =
           prepare::PreparedVariadicEntryHelperResources{
               .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
@@ -1013,11 +1056,17 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       });
   const auto va_start_result =
       aarch64_codegen::print_machine_instruction_line_payloads(va_start_call);
-  if (va_start_result.ok ||
-      va_start_result.diagnostic.find(
-          "variadic entry helper machine-node lowering requires a delegated consumption slice") ==
-          std::string::npos) {
-    return fail("expected variadic entry helper call to fail closed in printer");
+  if (!va_start_result.ok || va_start_result.instruction_lines.size() != 5 ||
+      va_start_result.instruction_lines[0].find("va.start dest=value#14:register:x2") ==
+          std::string::npos ||
+      va_start_result.instruction_lines[1].find("slot#5 stack+16") == std::string::npos ||
+      va_start_result.instruction_lines[2].find("overflow_slot#6 overflow_stack+208") ==
+          std::string::npos ||
+      va_start_result.instruction_lines[3] !=
+          "va.start.field kind=gp_offset offset=0 size=4" ||
+      va_start_result.instruction_lines[4] !=
+          "va.start.field kind=overflow_arg_area offset=8 size=8") {
+    return fail("expected variadic entry helper call to print prepared va_start records");
   }
 
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(

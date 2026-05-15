@@ -124,6 +124,7 @@ enum class MachineOpcode {
   Store,
   SpillToSlot,
   ReloadFromSlot,
+  VariadicVaStart,
 };
 
 enum class MachinePseudoKind {
@@ -144,6 +145,7 @@ enum class MachinePrinterMnemonicKind {
   Store,
   Move,
   Return,
+  VariadicVaStart,
 };
 
 enum class MachineNodeSelectionStatus {
@@ -602,6 +604,32 @@ struct CallBoundaryAbiBindingInstructionRecord {
   const prepare::PreparedAbiBinding* source_binding = nullptr;
 };
 
+struct VariadicVaStartRecord {
+  prepare::PreparedValueHome destination_va_list;
+  std::size_t named_gp_register_count = 0;
+  std::size_t named_fp_register_count = 0;
+  std::size_t va_list_size_bytes = 0;
+  std::size_t va_list_align_bytes = 0;
+  std::vector<prepare::PreparedVariadicVaListField> va_list_fields;
+  prepare::PreparedFrameSlotId register_save_area_slot_id = 0;
+  std::size_t register_save_area_stack_offset_bytes = 0;
+  std::size_t register_save_area_size_bytes = 0;
+  std::size_t register_save_area_align_bytes = 0;
+  std::size_t register_save_area_gp_offset_bytes = 0;
+  std::size_t register_save_area_fp_offset_bytes = 0;
+  std::size_t register_save_area_gp_slot_size_bytes = 0;
+  std::size_t register_save_area_fp_slot_size_bytes = 0;
+  std::size_t saved_gp_register_count = 0;
+  std::size_t saved_fp_register_count = 0;
+  std::ptrdiff_t initial_gp_offset_bytes = 0;
+  std::ptrdiff_t initial_fp_offset_bytes = 0;
+  prepare::PreparedFrameSlotId overflow_area_base_slot_id = 0;
+  std::size_t overflow_area_base_stack_offset_bytes = 0;
+  std::size_t overflow_area_align_bytes = 0;
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::string_view direct_callee_label;
@@ -622,6 +650,7 @@ struct CallInstructionRecord {
   const prepare::PreparedVariadicEntryHelperOperandHomes*
       source_variadic_helper_operand_homes = nullptr;
   std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper;
+  std::optional<VariadicVaStartRecord> variadic_va_start;
   bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

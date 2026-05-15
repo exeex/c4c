@@ -549,7 +549,7 @@ int memory_return_call_record_exposes_prepared_frame_slot_storage() {
   return 0;
 }
 
-int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
+int variadic_entry_helper_call_records_select_prepared_va_start() {
   const prepare::PreparedCallPlan prepared_call{
       .block_index = 0,
       .instruction_index = 3,
@@ -576,6 +576,49 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
           prepare::PreparedVariadicEntryNamedRegisterCounts{
               .gp = std::size_t{1},
               .fp = std::size_t{0},
+          },
+      .register_save_area =
+          prepare::PreparedVariadicEntryRegisterSaveArea{
+              .required = true,
+              .size_bytes = std::size_t{192},
+              .align_bytes = std::size_t{16},
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .stack_offset_bytes = std::size_t{16},
+              .gp_offset_bytes = std::size_t{0},
+              .fp_offset_bytes = std::size_t{64},
+              .gp_slot_size_bytes = std::size_t{8},
+              .fp_slot_size_bytes = std::size_t{16},
+              .saved_gp_register_count = std::size_t{7},
+              .saved_fp_register_count = std::size_t{8},
+              .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+              .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+          },
+      .overflow_area =
+          prepare::PreparedVariadicEntryOverflowArea{
+              .required = true,
+              .base_slot_id = prepare::PreparedFrameSlotId{6},
+              .base_stack_offset_bytes = std::size_t{208},
+              .align_bytes = std::size_t{8},
+          },
+      .va_list_layout =
+          prepare::PreparedVariadicVaListLayout{
+              .required = true,
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+              .fields =
+                  {
+                      prepare::PreparedVariadicVaListField{
+                          .kind = prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                          .offset_bytes = 0,
+                          .size_bytes = 4,
+                      },
+                      prepare::PreparedVariadicVaListField{
+                          .kind =
+                              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                          .offset_bytes = 8,
+                          .size_bytes = 8,
+                      },
+                  },
           },
       .helper_resources =
           prepare::PreparedVariadicEntryHelperResources{
@@ -623,10 +666,9 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
       std::get_if<aarch64_codegen::CallInstructionRecord>(&missing_entry_call.payload);
   if (helper_payload == nullptr ||
       helper_call.family != aarch64_codegen::InstructionFamily::Call ||
+      helper_call.opcode != aarch64_codegen::MachineOpcode::VariadicVaStart ||
       helper_call.selection.status !=
-          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
-      helper_call.selection.diagnostic !=
-          "variadic entry helper machine-node lowering requires a delegated consumption slice" ||
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       helper_payload->source_call != &prepared_call ||
       helper_payload->source_variadic_entry != &variadic_entry ||
       helper_payload->source_variadic_helper_operand_homes !=
@@ -639,9 +681,16 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
       helper_payload->variadic_entry_helper !=
           std::optional<prepare::PreparedVariadicEntryHelperKind>{
               prepare::PreparedVariadicEntryHelperKind::VaStart} ||
+      !helper_payload->variadic_va_start.has_value() ||
+      helper_payload->variadic_va_start->register_save_area_slot_id !=
+          prepare::PreparedFrameSlotId{5} ||
+      helper_payload->variadic_va_start->overflow_area_base_slot_id !=
+          prepare::PreparedFrameSlotId{6} ||
+      helper_payload->variadic_va_start->va_list_fields.size() != 2 ||
+      helper_call.defs.empty() ||
       !helper_payload->direct_callee.has_value() ||
       helper_payload->direct_callee_label != "llvm.va_start.p0") {
-    return fail("expected va_start call record to observe prepared entry and defer lowering");
+    return fail("expected va_start call record to select prepared machine-node facts");
   }
   if (missing_payload == nullptr ||
       missing_entry_call.selection.status !=
@@ -1283,7 +1332,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = variadic_entry_helper_call_records_are_deferred_prepared_consumers();
+  if (const int status = variadic_entry_helper_call_records_select_prepared_va_start();
       status != 0) {
     return status;
   }

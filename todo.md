@@ -8,32 +8,35 @@ Current Step Title: Consume Prepared Facts For `va_start`
 
 ## Just Finished
 
-Lifecycle transition completed: prerequisite idea 244 closed after matching
-backend close-gate logs passed the monotonic regression guard, and idea 243 is
-reactivated for selected machine-node consumption.
+Step 2 completed: AArch64 `va_start` helper calls now consume prepared variadic
+entry facts and helper operand-home records into a structured selected
+`VariadicVaStartRecord`, expose prepared destination/register-save/overflow/
+layout/scratch facts on the machine node, and print pseudo `va.start` records
+from that structured payload. Existing incomplete prepared/shared fact paths
+still fail closed with explicit diagnostics.
 
 ## Suggested Next
 
-Delegate an executor packet for Step 2: consume prepared/shared facts for
-`va_start` lowering. The packet should emit structured selected machine-node
-records and printer output from prepared entry storage, helper-resource facts,
-and `va_start` operand-home records without reconstructing AAPCS64 layout or
-frame placement in AArch64 target lowering.
+Delegate an executor packet for Step 3: consume prepared/shared facts for
+scalar `va_arg` lowering, covering at least one register-save-area-backed and
+one overflow-backed scalar path if the prepared operand-home/result facts are
+complete.
 
 ## Watchouts
 
-- Step 1 is already complete; it split out prerequisite idea 244.
-- Idea 244 supplied register-save-area slot/offset facts, overflow-area
-  base-slot/base-offset facts, helper scratch register/stack facts, and helper
-  operand-home records.
-- Keep incomplete fact handling fail-closed with explicit diagnostics.
-- Treat fixture-specific matching, expectation-only changes, and target-local
-  ABI reconstruction as route drift.
+- `va_start` selection is intentionally limited to records derivable from
+  `PreparedVariadicEntryPlanFunction` plus the matching helper operand-home
+  record; other variadic helpers still defer outside the selected `va_start`
+  subset.
+- `VariadicVaStartRecord` stores prepared layout/storage/scratch snapshots; do
+  not infer field offsets, named register counts, stack offsets, or scratch
+  policy in AArch64 lowering.
+- Keep incomplete fact handling fail-closed with explicit diagnostics when
+  extending scalar `va_arg`.
 
 ## Proof
 
-Plan-owner close gate for idea 244 passed:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
 
-Result: before=139 passed, 0 failed, 139 total; after=139 passed, 0 failed,
-139 total; monotonic regression guard PASS.
+Result: passed. Build succeeded and CTest reported 139/139 backend tests passed.
+Proof log: `test_after.log`.
