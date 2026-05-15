@@ -1811,9 +1811,32 @@ std::vector<MachineEffectResource> effects_from_prepared_call_clobbers(
 std::optional<MachineEffectResource> effect_from_prepared_call_preserved_value(
     const prepare::PreparedCallPreservedValue& preserved) {
   if (preserved.route == prepare::PreparedCallPreservationRoute::StackSlot) {
-    // Stack-slot preserved values do not currently carry size/alignment here,
-    // so a structured MemoryOperand preserve effect would be incomplete.
-    return std::nullopt;
+    if (!preserved.slot_id.has_value() ||
+        !preserved.stack_offset_bytes.has_value() ||
+        !preserved.stack_size_bytes.has_value() ||
+        *preserved.stack_size_bytes == 0 ||
+        !preserved.stack_align_bytes.has_value() ||
+        *preserved.stack_align_bytes == 0) {
+      return std::nullopt;
+    }
+
+    const OperandRecord operand = make_memory_operand(MemoryOperand{
+        .support = MemoryOperandSupportKind::Prepared,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = preserved.slot_id,
+        .byte_offset = static_cast<std::int64_t>(*preserved.stack_offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = *preserved.stack_size_bytes,
+        .align_bytes = *preserved.stack_align_bytes,
+        .can_use_base_plus_offset = true,
+    });
+    return MachineEffectResource{
+        .kind = MachineEffectResourceKind::Memory,
+        .operand = operand,
+        .value_id = preserved.value_id,
+        .value_name = preserved.value_name,
+        .frame_slot_id = preserved.slot_id,
+    };
   }
   if (preserved.route != prepare::PreparedCallPreservationRoute::CalleeSavedRegister ||
       !preserved.register_name.has_value() || !preserved.register_bank.has_value() ||

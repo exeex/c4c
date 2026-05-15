@@ -418,7 +418,7 @@ int call_return_assembler_and_object_families_are_explicit_placeholders() {
   return 0;
 }
 
-int stack_slot_preserved_value_fails_closed_without_size_alignment_carrier() {
+int stack_slot_preserved_value_consumes_prepared_size_alignment_extent() {
   const prepare::PreparedCallPlan prepared_call{
       .block_index = 0,
       .instruction_index = 1,
@@ -431,6 +431,8 @@ int stack_slot_preserved_value_fails_closed_without_size_alignment_carrier() {
           .contiguous_width = 1,
           .slot_id = prepare::PreparedFrameSlotId{15},
           .stack_offset_bytes = std::size_t{88},
+          .stack_size_bytes = std::size_t{16},
+          .stack_align_bytes = std::size_t{8},
           .spill_slot_placement =
               prepare::PreparedSpillSlotPlacement{
                   .slot_id = prepare::PreparedFrameSlotId{15},
@@ -460,11 +462,112 @@ int stack_slot_preserved_value_fails_closed_without_size_alignment_carrier() {
       call_payload->preserved_values.front().slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{15} ||
       call_payload->preserved_values.front().stack_offset_bytes !=
-          std::optional<std::size_t>{88}) {
+          std::optional<std::size_t>{88} ||
+      call_payload->preserved_values.front().stack_size_bytes !=
+          std::optional<std::size_t>{16} ||
+      call_payload->preserved_values.front().stack_align_bytes !=
+          std::optional<std::size_t>{8}) {
     return fail("expected stack-slot preserved value to remain raw prepared provenance");
   }
-  if (!call.preserves.empty()) {
-    return fail("expected stack-slot preserved value to fail closed without size/alignment");
+  if (call.preserves.size() != 1 ||
+      call.preserves.front().kind != aarch64_codegen::MachineEffectResourceKind::Memory ||
+      call.preserves.front().value_id != prepare::PreparedValueId{70} ||
+      call.preserves.front().value_name != c4c::ValueNameId{31} ||
+      call.preserves.front().frame_slot_id != prepare::PreparedFrameSlotId{15} ||
+      !call.preserves.front().operand.has_value()) {
+    return fail("expected stack-slot preserved value to expose prepared memory-preserve effect");
+  }
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryOperand>(&call.preserves.front().operand->payload);
+  if (memory == nullptr ||
+      memory->support != aarch64_codegen::MemoryOperandSupportKind::Prepared ||
+      memory->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      memory->frame_slot_id != prepare::PreparedFrameSlotId{15} ||
+      memory->byte_offset != 88 ||
+      !memory->byte_offset_is_prepared_snapshot ||
+      memory->size_bytes != 16 ||
+      memory->align_bytes != 8 ||
+      !memory->can_use_base_plus_offset) {
+    return fail("expected stack-slot memory-preserve effect to use prepared slot extent facts");
+  }
+
+  return 0;
+}
+
+int stack_slot_preserved_value_fails_closed_without_prepared_extent() {
+  auto preserved = [](prepare::PreparedValueId value_id,
+                      c4c::ValueNameId value_name,
+                      std::optional<std::size_t> size,
+                      std::optional<std::size_t> align) {
+    return prepare::PreparedCallPreservedValue{
+        .value_id = value_id,
+        .value_name = value_name,
+        .route = prepare::PreparedCallPreservationRoute::StackSlot,
+        .contiguous_width = 1,
+        .slot_id = prepare::PreparedFrameSlotId{15},
+        .stack_offset_bytes = std::size_t{88},
+        .stack_size_bytes = size,
+        .stack_align_bytes = align,
+        .spill_slot_placement =
+            prepare::PreparedSpillSlotPlacement{
+                .slot_id = prepare::PreparedFrameSlotId{15},
+                .offset_bytes = 88,
+            },
+    };
+  };
+  const prepare::PreparedCallPlan missing_size_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"actual_function"},
+      .preserved_values =
+          {preserved(prepare::PreparedValueId{71}, c4c::ValueNameId{32}, std::nullopt, 8)},
+  };
+  const prepare::PreparedCallPlan missing_align_call{
+      .block_index = 0,
+      .instruction_index = 1,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"actual_function"},
+      .preserved_values =
+          {preserved(prepare::PreparedValueId{72}, c4c::ValueNameId{33}, 16, std::nullopt)},
+  };
+
+  const auto make_call = [](const prepare::PreparedCallPlan& prepared_call) {
+    return aarch64_codegen::make_call_instruction(
+        aarch64_codegen::CallInstructionRecord{
+            .direct_callee =
+                aarch64_codegen::SymbolOperand{
+                    .link_name = c4c::LinkNameId{4},
+                    .type = bir::TypeKind::Ptr,
+                    .is_extern = true,
+                },
+            .direct_callee_label = "actual_function",
+            .wrapper_kind = prepared_call.wrapper_kind,
+            .preserved_values = prepared_call.preserved_values,
+            .source_call = &prepared_call,
+            .calling_convention = bir::CallingConv::C,
+        });
+  };
+  const auto missing_size = make_call(missing_size_call);
+  const auto missing_align = make_call(missing_align_call);
+  if (!missing_size.preserves.empty()) {
+    return fail("expected stack-slot preserved value without prepared size to fail closed");
+  }
+  if (!missing_align.preserves.empty()) {
+    return fail("expected stack-slot preserved value without prepared alignment to fail closed");
+  }
+  const auto* missing_size_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&missing_size.payload);
+  const auto* missing_align_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&missing_align.payload);
+  if (missing_size_payload == nullptr || missing_align_payload == nullptr ||
+      missing_size_payload->preserved_values.size() != 1 ||
+      missing_align_payload->preserved_values.size() != 1 ||
+      missing_size_payload->preserved_values.front().stack_align_bytes !=
+          std::optional<std::size_t>{8} ||
+      missing_align_payload->preserved_values.front().stack_size_bytes !=
+          std::optional<std::size_t>{16}) {
+    return fail("expected incomplete stack-slot preserved values to retain raw provenance");
   }
 
   return 0;
@@ -2147,6 +2250,8 @@ prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
                   .route = prepare::PreparedCallPreservationRoute::StackSlot,
                   .slot_id = prepare::PreparedFrameSlotId{99},
                   .stack_offset_bytes = std::size_t{128},
+                  .stack_size_bytes = std::size_t{16},
+                  .stack_align_bytes = std::size_t{16},
                   .spill_slot_placement =
                       prepare::PreparedSpillSlotPlacement{
                           .slot_id = prepare::PreparedFrameSlotId{99},
@@ -2528,7 +2633,11 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = stack_slot_preserved_value_fails_closed_without_size_alignment_carrier();
+  if (const int status = stack_slot_preserved_value_consumes_prepared_size_alignment_extent();
+      status != 0) {
+    return status;
+  }
+  if (const int status = stack_slot_preserved_value_fails_closed_without_prepared_extent();
       status != 0) {
     return status;
   }

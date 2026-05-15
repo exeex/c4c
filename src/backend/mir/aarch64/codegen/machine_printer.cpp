@@ -157,6 +157,10 @@ bool complete_preserved_value_route(
     case prepare::PreparedCallPreservationRoute::StackSlot:
       return preserved.slot_id.has_value() &&
              preserved.stack_offset_bytes.has_value() &&
+             preserved.stack_size_bytes.has_value() &&
+             *preserved.stack_size_bytes > 0 &&
+             preserved.stack_align_bytes.has_value() &&
+             *preserved.stack_align_bytes > 0 &&
              preserved.spill_slot_placement.has_value();
   }
   return false;

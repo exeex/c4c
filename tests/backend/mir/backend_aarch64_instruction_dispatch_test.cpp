@@ -127,6 +127,8 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
                   .contiguous_width = 1,
                   .slot_id = prepare::PreparedFrameSlotId{11},
                   .stack_offset_bytes = std::size_t{96},
+                  .stack_size_bytes = std::size_t{16},
+                  .stack_align_bytes = std::size_t{8},
                   .spill_slot_placement =
                       prepare::PreparedSpillSlotPlacement{
                           .slot_id = prepare::PreparedFrameSlotId{11},
@@ -2483,20 +2485,22 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
   }
   if (call->preserved_values[1].route != prepare::PreparedCallPreservationRoute::StackSlot ||
       call->preserved_values[1].slot_id != std::optional<prepare::PreparedFrameSlotId>{11} ||
-      call->preserved_values[1].stack_offset_bytes != std::optional<std::size_t>{96}) {
+      call->preserved_values[1].stack_offset_bytes != std::optional<std::size_t>{96} ||
+      call->preserved_values[1].stack_size_bytes != std::optional<std::size_t>{16} ||
+      call->preserved_values[1].stack_align_bytes != std::optional<std::size_t>{8}) {
     return fail("expected direct call node to retain stack-slot preserved-value provenance");
   }
-  if (call_instruction.target.preserves.size() != 1 ||
-      call_instruction.target.preserves.front().kind !=
+  if (call_instruction.target.preserves.size() != 2 ||
+      call_instruction.target.preserves[0].kind !=
           aarch64_module::codegen::MachineEffectResourceKind::Register ||
-      call_instruction.target.preserves.front().reg != aarch64_module::abi::x_register(19) ||
-      call_instruction.target.preserves.front().value_id != prepare::PreparedValueId{42} ||
-      call_instruction.target.preserves.front().value_name != c4c::ValueNameId{17} ||
-      !call_instruction.target.preserves.front().operand.has_value()) {
+      call_instruction.target.preserves[0].reg != aarch64_module::abi::x_register(19) ||
+      call_instruction.target.preserves[0].value_id != prepare::PreparedValueId{42} ||
+      call_instruction.target.preserves[0].value_name != c4c::ValueNameId{17} ||
+      !call_instruction.target.preserves[0].operand.has_value()) {
     return fail("expected direct call node to expose prepared preserved-value register effect");
   }
   const auto* preserved = std::get_if<aarch64_module::codegen::RegisterOperand>(
-      &call_instruction.target.preserves.front().operand->payload);
+      &call_instruction.target.preserves[0].operand->payload);
   if (preserved == nullptr ||
       preserved->role != aarch64_module::codegen::RegisterOperandRole::CallAbi ||
       preserved->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
@@ -2506,6 +2510,24 @@ int block_dispatch_lowers_prepared_direct_call_without_reclassifying_abi() {
       preserved->occupied_register_references.front() !=
           aarch64_module::abi::x_register(19)) {
     return fail("expected preserved-value effect to retain prepared value and register facts");
+  }
+  if (call_instruction.target.preserves[1].kind !=
+          aarch64_module::codegen::MachineEffectResourceKind::Memory ||
+      call_instruction.target.preserves[1].value_id != prepare::PreparedValueId{43} ||
+      call_instruction.target.preserves[1].value_name != c4c::ValueNameId{18} ||
+      call_instruction.target.preserves[1].frame_slot_id != prepare::PreparedFrameSlotId{11} ||
+      !call_instruction.target.preserves[1].operand.has_value()) {
+    return fail("expected direct call node to expose prepared stack-slot preserve effect");
+  }
+  const auto* preserved_memory = std::get_if<aarch64_module::codegen::MemoryOperand>(
+      &call_instruction.target.preserves[1].operand->payload);
+  if (preserved_memory == nullptr ||
+      preserved_memory->base_kind != aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      preserved_memory->frame_slot_id != prepare::PreparedFrameSlotId{11} ||
+      preserved_memory->byte_offset != 96 ||
+      preserved_memory->size_bytes != 16 ||
+      preserved_memory->align_bytes != 8) {
+    return fail("expected stack-slot preserve effect to use prepared extent facts");
   }
   if (call_instruction.target.clobbers.size() != 1 ||
       call_instruction.target.clobbers.front().kind !=

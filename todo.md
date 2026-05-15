@@ -1,41 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/242_prepared_stack_slot_preserved_value_extent.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Expose Extents In Prepared Observations
+Current Step ID: 4
+Current Step Title: Prove AArch64 Can Consume Prepared Extents
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 by exposing optional stack-slot preserved-value
-extent fields in prepared observation output and focused prepared-printer
-coverage.
+Completed `plan.md` Step 4 by making the AArch64 preserved-value consumer
+convert complete prepared stack-slot records into structured memory-preserve
+effects.
 
-Concrete Step 3 results:
+Concrete Step 4 results:
 
-- Prepared callsite summaries now append `:size=N:align=N` for stack-slot
-  `PreparedCallPreservedValue` records when those optional fields are present.
-- Detailed prepared call-plan preserve lines now print `stack_size=N` and
-  `stack_align=N` when present.
-- `backend_prepared_printer` now requires the stack-crossing stack-slot
-  preservation fixture to publish and print both prepared extent fields.
+- AArch64 call preserve lowering now emits a `MachineEffectResourceKind::Memory`
+  preserve effect for stack-slot preserved values only when prepared slot id,
+  stack offset, size, and alignment are present and nonzero.
+- The memory preserve operand is built from the prepared slot id, prepared stack
+  offset, prepared size, and prepared alignment; it does not infer extents from
+  value type, slot ordering, object names, or frame-slot lookup.
+- AArch64 live-preservation completeness now requires stack-slot preserved-value
+  size and alignment before machine-printer helper boundaries accept the route.
+- Focused AArch64 target-record and dispatch tests now prove the prepared
+  stack-slot extent fields become a structured memory-preserve effect.
+- Focused AArch64 target-record tests now also prove stack-slot preserved
+  values with slot/offset but missing prepared size or missing prepared
+  alignment fail closed without producing a memory preserve effect.
 
 ## Suggested Next
 
-Supervisor should review Step 3 for acceptance and choose the next lifecycle
-packet.
+Supervisor should review Step 4 for acceptance and choose the next lifecycle
+packet, likely Step 5 validation/reviewer readiness if no broader AArch64
+integration is required.
 
 ## Watchouts
 
-- Prepared observation output now exposes the in-memory stack-slot preserved
-  extents without recomputing type sizes in the printer.
-- AArch64 lowering was intentionally untouched. Future consumers should use
-  the prepared fields rather than reconstructing extents locally.
-- Stack-slot completeness now rejects zero or absent size/alignment; if a
-  later route creates stack-slot preserved values without assignment or frame
-  extents, it should surface as an incomplete route instead of fabricated
-  target-local data.
+- Stack-slot preserved values without prepared size or alignment still fail
+  closed and produce no memory preserve effect.
+- The memory effect uses the prepared stack offset directly as the operand byte
+  offset. No target-local frame-slot lookup or size/alignment reconstruction was
+  added.
 
 ## Proof
 
