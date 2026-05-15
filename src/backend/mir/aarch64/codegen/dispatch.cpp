@@ -778,13 +778,24 @@ struct LowerMemoryInstructionResult {
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  const bool supported_f128_comparison =
+      binary != nullptr &&
+      (binary->opcode == bir::BinaryOpcode::Eq ||
+       binary->opcode == bir::BinaryOpcode::Ne ||
+       binary->opcode == bir::BinaryOpcode::Slt ||
+       binary->opcode == bir::BinaryOpcode::Sle ||
+       binary->opcode == bir::BinaryOpcode::Sgt ||
+       binary->opcode == bir::BinaryOpcode::Sge) &&
+      binary->operand_type == bir::TypeKind::F128 &&
+      binary->result.type == bir::TypeKind::I1;
   if (binary == nullptr ||
-      (binary->opcode != bir::BinaryOpcode::Add &&
-       binary->opcode != bir::BinaryOpcode::Sub &&
-       binary->opcode != bir::BinaryOpcode::Mul &&
-       binary->opcode != bir::BinaryOpcode::SDiv) ||
-      binary->operand_type != bir::TypeKind::F128 ||
-      binary->result.type != bir::TypeKind::F128) {
+      (!supported_f128_comparison &&
+       ((binary->opcode != bir::BinaryOpcode::Add &&
+         binary->opcode != bir::BinaryOpcode::Sub &&
+         binary->opcode != bir::BinaryOpcode::Mul &&
+         binary->opcode != bir::BinaryOpcode::SDiv) ||
+        binary->operand_type != bir::TypeKind::F128 ||
+        binary->result.type != bir::TypeKind::F128))) {
     return LowerMemoryInstructionResult{.handled = false};
   }
 

@@ -414,6 +414,43 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return "";
 }
 
+[[nodiscard]] PreparedF128CmpResultZeroTest f128_cmp_result_zero_test(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Eq:
+      return PreparedF128CmpResultZeroTest::EqualZero;
+    case bir::BinaryOpcode::Ne:
+      return PreparedF128CmpResultZeroTest::NotEqualZero;
+    case bir::BinaryOpcode::Slt:
+      return PreparedF128CmpResultZeroTest::LessThanZero;
+    case bir::BinaryOpcode::Sle:
+      return PreparedF128CmpResultZeroTest::LessOrEqualZero;
+    case bir::BinaryOpcode::Sgt:
+      return PreparedF128CmpResultZeroTest::GreaterThanZero;
+    case bir::BinaryOpcode::Sge:
+      return PreparedF128CmpResultZeroTest::GreaterOrEqualZero;
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return PreparedF128CmpResultZeroTest::Missing;
+}
+
 [[nodiscard]] std::size_t i128_helper_type_width_bytes(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -2141,6 +2178,17 @@ void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
               is_comparison
                   ? PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult
                   : PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+          .scalar_cmp_result_consumption =
+              is_comparison
+                  ? std::optional<PreparedF128RuntimeHelper::ScalarCmpResultConsumption>{
+                        PreparedF128RuntimeHelper::ScalarCmpResultConsumption{
+                            .cmp_type = bir::TypeKind::I32,
+                            .bir_result_type = bir::TypeKind::I1,
+                            .zero_test = f128_cmp_result_zero_test(binary->opcode),
+                            .consumes_helper_cmp_result = true,
+                            .owns_bir_i1_result = true,
+                        }}
+                  : std::nullopt,
       });
     }
   }

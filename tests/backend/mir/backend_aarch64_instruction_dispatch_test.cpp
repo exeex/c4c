@@ -1796,6 +1796,14 @@ void dispatch_retarget_f128_helper_as_compare(
           .scalar_result = *helper.scalar_result,
           .abi_register = *helper.result_abi_result,
       };
+  helper.scalar_cmp_result_consumption =
+      prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption{
+          .cmp_type = bir::TypeKind::I32,
+          .bir_result_type = bir::TypeKind::I1,
+          .zero_test = prepare::PreparedF128CmpResultZeroTest::EqualZero,
+          .consumes_helper_cmp_result = true,
+          .owns_bir_i1_result = true,
+      };
   helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
       .transition =
           prepare::PreparedF128RuntimeHelperAbiTransition::
@@ -4933,7 +4941,7 @@ int block_dispatch_reports_missing_f128_runtime_helper_authority() {
   return 0;
 }
 
-int block_dispatch_keeps_f128_compare_helper_boundary_fail_closed_until_bool_materialization() {
+int block_dispatch_lowers_f128_compare_helper_boundary_into_i1_result() {
   auto prepared = prepared_with_f128_comparison_helper_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
@@ -4947,14 +4955,33 @@ int block_dispatch_keeps_f128_compare_helper_boundary_fail_closed_until_bool_mat
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (result.visited_operations != 1 ||
-      result.emitted_instructions != 1 ||
-      block.instructions.size() != 1 ||
-      diagnostics.entries.size() != 1 ||
-      diagnostics.entries.front().message.find(
-          "AArch64 block dispatch visited unsupported prepared BIR instruction family") ==
-          std::string::npos) {
-    return fail("expected f128 compare dispatch to fail closed until cmp-to-bool materialization");
+  const auto* helper =
+      block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+                &block.instructions.front().target.payload);
+  if (!diagnostics.empty() ||
+      result.visited_operations != 1 ||
+      result.emitted_instructions != 2 ||
+      block.instructions.size() != 2 ||
+      helper == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Comparison ||
+      helper->result_type != bir::TypeKind::I32 ||
+      helper->result_value_name != prepared.names.value_names.find("%cmp.result") ||
+      helper->scalar_result.type != bir::TypeKind::I32 ||
+      helper->scalar_result.abi_register->reg != aarch64_abi::w_register(0) ||
+      helper->scalar_result.materialized_i1_register->reg != aarch64_abi::w_register(9) ||
+      !helper->scalar_result.cmp_result_consumption.has_value() ||
+      helper->scalar_result.cmp_result_consumption->bir_result_type != bir::TypeKind::I1 ||
+      helper->scalar_result.cmp_result_consumption->zero_test !=
+          prepare::PreparedF128CmpResultZeroTest::EqualZero ||
+      !helper->scalar_result.cmp_result_consumption->consumes_helper_cmp_result ||
+      !helper->scalar_result.cmp_result_consumption->owns_bir_i1_result ||
+      block.instructions.front().target.defs.size() != 3 ||
+      block.instructions.front().target.uses.size() != 5) {
+    return fail("expected f128 compare dispatch to consume CMPtype into BIR I1 result");
   }
 
   auto unsupported = prepared_with_f128_comparison_helper_operation(bir::BinaryOpcode::Ult);
@@ -5560,7 +5587,7 @@ int main() {
     return status;
   }
   if (const int status =
-          block_dispatch_keeps_f128_compare_helper_boundary_fail_closed_until_bool_materialization();
+          block_dispatch_lowers_f128_compare_helper_boundary_into_i1_result();
       status != 0) {
     return status;
   }

@@ -2505,6 +2505,14 @@ void retarget_f128_helper_as_compare(
           .scalar_result = *helper.scalar_result,
           .abi_register = *helper.result_abi_result,
       };
+  helper.scalar_cmp_result_consumption =
+      prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption{
+          .cmp_type = bir::TypeKind::I32,
+          .bir_result_type = bir::TypeKind::I1,
+          .zero_test = prepare::PreparedF128CmpResultZeroTest::EqualZero,
+          .consumes_helper_cmp_result = true,
+          .owns_bir_i1_result = true,
+      };
   helper.abi_policy = prepare::PreparedF128RuntimeHelper::AbiPolicy{
       .transition =
           prepare::PreparedF128RuntimeHelperAbiTransition::
@@ -3120,6 +3128,14 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           prepare::PreparedRegisterBank::Gpr ||
       prepared_eq.record->scalar_result.abi_register->reg !=
           aarch64_abi::w_register(0) ||
+      prepared_eq.record->scalar_result.materialized_i1_register->reg !=
+          aarch64_abi::w_register(9) ||
+      !prepared_eq.record->scalar_result.cmp_result_consumption.has_value() ||
+      prepared_eq.record->scalar_result.cmp_result_consumption->zero_test !=
+          prepare::PreparedF128CmpResultZeroTest::EqualZero ||
+      !prepared_eq.record->scalar_result.cmp_result_consumption
+           ->consumes_helper_cmp_result ||
+      !prepared_eq.record->scalar_result.cmp_result_consumption->owns_bir_i1_result ||
       prepared_eq.record->lhs.carrier_register->reg != aarch64_abi::q_register(6) ||
       prepared_eq.record->rhs.carrier_register->reg != aarch64_abi::q_register(8) ||
       !prepared_eq.record->selected_call_ownership.owns_terminal_call) {
@@ -3134,9 +3150,11 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
   if (eq_payload == nullptr ||
       eq_instruction.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      eq_instruction.defs.size() != 1 ||
-      eq_instruction.uses.size() != 4 ||
+      eq_instruction.defs.size() != 3 ||
+      eq_instruction.uses.size() != 5 ||
       eq_payload->scalar_result.abi_register->reg != aarch64_abi::w_register(0) ||
+      eq_payload->scalar_result.materialized_i1_register->reg !=
+          aarch64_abi::w_register(9) ||
       eq_payload->lhs.source_carrier == nullptr ||
       eq_payload->rhs.source_carrier == nullptr) {
     return fail("expected selected f128 comparison helper effects to own scalar cmp result");

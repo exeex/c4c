@@ -1698,6 +1698,41 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
               << ",abi_index=" << move->abi_register.abi_register_index
               << ",abi_reg=" << move->abi_register.register_name << "]";
         };
+    auto append_scalar_result =
+        [&](const std::optional<PreparedF128RuntimeHelper::ScalarResultOwnership>& scalar) {
+          out << " scalar_result=";
+          if (!scalar.has_value()) {
+            out << "<missing>";
+            return;
+          }
+          out << maybe_value_name(module.names, scalar->value_name)
+              << "#" << scalar->value_id
+              << "[type=" << type_kind_name(scalar->type)
+              << ",width=" << scalar->width_bytes
+              << ",bank=" << prepared_register_bank_name(scalar->register_bank)
+              << ",home=" << prepared_value_home_kind_name(scalar->home_kind);
+          if (scalar->register_name.has_value()) {
+            out << ",reg=" << *scalar->register_name;
+          }
+          out << "]";
+        };
+    auto append_scalar_cmp_result_consumption =
+        [&](const std::optional<PreparedF128RuntimeHelper::ScalarCmpResultConsumption>&
+                consumption) {
+          out << " cmp_result_consumption=";
+          if (!consumption.has_value()) {
+            out << "<missing>";
+            return;
+          }
+          out << "[cmp_type=" << type_kind_name(consumption->cmp_type)
+              << ",bir_result_type=" << type_kind_name(consumption->bir_result_type)
+              << ",zero_test="
+              << prepared_f128_cmp_result_zero_test_name(consumption->zero_test)
+              << ",consumes_cmp="
+              << (consumption->consumes_helper_cmp_result ? "yes" : "no")
+              << ",owns_i1=" << (consumption->owns_bir_i1_result ? "yes" : "no")
+              << "]";
+        };
     for (const auto& helper : function_helpers.helpers) {
       out << "  f128_helper block=" << helper.block_index
           << " inst=" << helper.instruction_index
@@ -1767,6 +1802,10 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_marshaling_move("lhs", helper.lhs_argument_move);
       append_marshaling_move("rhs", helper.rhs_argument_move);
       append_marshaling_move("result", helper.result_unmarshal_move);
+      if (helper.helper_family == PreparedF128RuntimeHelperFamily::Comparison) {
+        append_scalar_result(helper.scalar_result);
+        append_scalar_cmp_result_consumption(helper.scalar_cmp_result_consumption);
+      }
       out << " live_preservation=[evaluated="
           << (helper.live_preservation_policy.evaluated ? "yes" : "no")
           << ",caller_saved_clobbers="

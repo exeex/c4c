@@ -3703,7 +3703,16 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
        (instruction.scalar_result.type != bir::TypeKind::I32 ||
         instruction.scalar_result.width_bytes != 4 ||
         instruction.scalar_result.register_bank != prepare::PreparedRegisterBank::Gpr ||
-        !instruction.scalar_result.abi_register.has_value())) ||
+        !instruction.scalar_result.abi_register.has_value() ||
+        !instruction.scalar_result.materialized_i1_register.has_value() ||
+        !instruction.scalar_result.cmp_result_consumption.has_value() ||
+        instruction.scalar_result.cmp_result_consumption->cmp_type != bir::TypeKind::I32 ||
+        instruction.scalar_result.cmp_result_consumption->bir_result_type !=
+            bir::TypeKind::I1 ||
+        instruction.scalar_result.cmp_result_consumption->zero_test ==
+            prepare::PreparedF128CmpResultZeroTest::Missing ||
+        !instruction.scalar_result.cmp_result_consumption->consumes_helper_cmp_result ||
+        !instruction.scalar_result.cmp_result_consumption->owns_bir_i1_result)) ||
       !has_full_width_register(instruction.lhs) ||
       !has_full_width_register(instruction.rhs)) {
     return MachineNodeStatusRecord{
@@ -3783,6 +3792,15 @@ InstructionRecord make_f128_runtime_helper_boundary_instruction(
   add_def(instruction.result.carrier_register);
   add_def(instruction.result.abi_register);
   add_def(instruction.scalar_result.abi_register);
+  if (instruction.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
+    add_def(instruction.scalar_result.materialized_i1_register);
+    if (instruction.scalar_result.abi_register.has_value()) {
+      uses.push_back(effect_from_operand(
+          make_register_operand(*instruction.scalar_result.abi_register)));
+    }
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      instruction.result_value_name));
+  }
   add_use(instruction.lhs.carrier_register);
   add_use(instruction.lhs.abi_register);
   add_use(instruction.rhs.carrier_register);
@@ -5330,6 +5348,34 @@ std::optional<RegisterOperand> make_f128_abi_register_operand(
   };
 }
 
+std::optional<RegisterOperand> make_f128_cmp_materialized_i1_register_operand(
+    const prepare::PreparedF128RuntimeHelper::ScalarResultOwnership& scalar) {
+  if (!scalar.register_name.has_value() ||
+      scalar.register_bank != prepare::PreparedRegisterBank::Gpr) {
+    return std::nullopt;
+  }
+  const auto converted = abi::convert_prepared_register(
+      *scalar.register_name,
+      scalar.register_bank,
+      prepare::PreparedRegisterClass::General,
+      abi::RegisterView::W);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = scalar.value_id,
+      .value_name = scalar.value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = scalar.register_bank,
+      .expected_view = abi::RegisterView::W,
+      .contiguous_width = 1,
+      .occupied_register_references = occupied_register_references(*converted.reg),
+      .occupied_registers = occupied_register_views(*converted.reg),
+  };
+}
+
 PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     c4c::ValueNameId value_name,
@@ -6469,9 +6515,16 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
   if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
     if (!helper.scalar_result.has_value() || !helper.result_abi_result.has_value() ||
         !helper.scalar_result_unmarshal_move.has_value() ||
+        !helper.scalar_cmp_result_consumption.has_value() ||
         helper.scalar_result->type != bir::TypeKind::I32 ||
         helper.scalar_result->width_bytes != 4 ||
-        helper.result_abi_result->register_bank != prepare::PreparedRegisterBank::Gpr) {
+        helper.result_abi_result->register_bank != prepare::PreparedRegisterBank::Gpr ||
+        helper.scalar_cmp_result_consumption->cmp_type != bir::TypeKind::I32 ||
+        helper.scalar_cmp_result_consumption->bir_result_type != bir::TypeKind::I1 ||
+        helper.scalar_cmp_result_consumption->zero_test ==
+            prepare::PreparedF128CmpResultZeroTest::Missing ||
+        !helper.scalar_cmp_result_consumption->consumes_helper_cmp_result ||
+        !helper.scalar_cmp_result_consumption->owns_bir_i1_result) {
       return f128_runtime_helper_record_error(
           PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
     }
@@ -6482,11 +6535,15 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
         .width_bytes = helper.scalar_result->width_bytes,
         .register_bank = helper.scalar_result->register_bank,
         .home_kind = helper.scalar_result->home_kind,
+        .materialized_i1_register =
+            make_f128_cmp_materialized_i1_register_operand(*helper.scalar_result),
         .abi_register = make_f128_abi_register_operand(*helper.result_abi_result),
         .scalar_ownership = *helper.scalar_result,
         .marshaling_move = helper.scalar_result_unmarshal_move,
+        .cmp_result_consumption = helper.scalar_cmp_result_consumption,
     };
-    if (!record.scalar_result.abi_register.has_value()) {
+    if (!record.scalar_result.abi_register.has_value() ||
+        !record.scalar_result.materialized_i1_register.has_value()) {
       return f128_runtime_helper_record_error(
           PreparedF128RuntimeHelperRecordError::RegisterConversionFailed);
     }

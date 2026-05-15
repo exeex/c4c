@@ -1863,6 +1863,15 @@ void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
       (helper.result_unmarshal_move.has_value() ||
        (helper.helper_family == PreparedF128RuntimeHelperFamily::Comparison &&
         helper.scalar_result_unmarshal_move.has_value()));
+  const bool has_cmp_result_consumption =
+      helper.helper_family != PreparedF128RuntimeHelperFamily::Comparison ||
+      (helper.scalar_cmp_result_consumption.has_value() &&
+       helper.scalar_cmp_result_consumption->cmp_type == bir::TypeKind::I32 &&
+       helper.scalar_cmp_result_consumption->bir_result_type == bir::TypeKind::I1 &&
+       helper.scalar_cmp_result_consumption->zero_test !=
+           PreparedF128CmpResultZeroTest::Missing &&
+       helper.scalar_cmp_result_consumption->consumes_helper_cmp_result &&
+       helper.scalar_cmp_result_consumption->owns_bir_i1_result);
   const bool has_live_preservation =
       helper.live_preservation_policy.evaluated &&
       helper.live_preservation_policy.caller_saved_clobbers_modeled &&
@@ -1873,12 +1882,12 @@ void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
           .owns_terminal_call =
               !helper.callee_name.empty() && has_carriers && has_resource_policy &&
               has_clobber_policy && has_abi_bindings && has_marshaling &&
-              has_live_preservation,
+              has_cmp_result_consumption && has_live_preservation,
           .has_callee_identity = !helper.callee_name.empty(),
           .has_resource_policy = has_resource_policy,
           .has_clobber_policy = has_clobber_policy,
           .has_abi_bindings = has_abi_bindings,
-          .has_marshaling = has_marshaling,
+          .has_marshaling = has_marshaling && has_cmp_result_consumption,
           .has_live_preservation = has_live_preservation,
       };
 

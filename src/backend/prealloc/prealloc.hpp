@@ -1846,6 +1846,37 @@ enum class PreparedF128RuntimeHelperMarshalDirection {
   return "unknown";
 }
 
+enum class PreparedF128CmpResultZeroTest {
+  Missing,
+  EqualZero,
+  NotEqualZero,
+  LessThanZero,
+  LessOrEqualZero,
+  GreaterThanZero,
+  GreaterOrEqualZero,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_cmp_result_zero_test_name(
+    PreparedF128CmpResultZeroTest test) {
+  switch (test) {
+    case PreparedF128CmpResultZeroTest::Missing:
+      return "missing";
+    case PreparedF128CmpResultZeroTest::EqualZero:
+      return "eq_zero";
+    case PreparedF128CmpResultZeroTest::NotEqualZero:
+      return "ne_zero";
+    case PreparedF128CmpResultZeroTest::LessThanZero:
+      return "lt_zero";
+    case PreparedF128CmpResultZeroTest::LessOrEqualZero:
+      return "le_zero";
+    case PreparedF128CmpResultZeroTest::GreaterThanZero:
+      return "gt_zero";
+    case PreparedF128CmpResultZeroTest::GreaterOrEqualZero:
+      return "ge_zero";
+  }
+  return "unknown";
+}
+
 struct PreparedF128RuntimeHelper {
   struct CarrierBinding {
     PreparedValueId value_id = 0;
@@ -1898,6 +1929,14 @@ struct PreparedF128RuntimeHelper {
         PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar;
     ScalarResultOwnership scalar_result;
     AbiRegisterBinding abi_register;
+  };
+
+  struct ScalarCmpResultConsumption {
+    bir::TypeKind cmp_type = bir::TypeKind::I32;
+    bir::TypeKind bir_result_type = bir::TypeKind::I1;
+    PreparedF128CmpResultZeroTest zero_test = PreparedF128CmpResultZeroTest::Missing;
+    bool consumes_helper_cmp_result = false;
+    bool owns_bir_i1_result = false;
   };
 
   struct ResourcePolicy {
@@ -1962,6 +2001,7 @@ struct PreparedF128RuntimeHelper {
   std::optional<MarshalingMove> rhs_argument_move;
   std::optional<MarshalingMove> result_unmarshal_move;
   std::optional<ScalarMarshalingMove> scalar_result_unmarshal_move;
+  std::optional<ScalarCmpResultConsumption> scalar_cmp_result_consumption;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;
   LivePreservationPolicy live_preservation_policy;

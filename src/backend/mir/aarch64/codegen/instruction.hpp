@@ -855,9 +855,12 @@ struct F128RuntimeHelperScalarResultRecord {
   std::size_t width_bytes = 4;
   prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
   prepare::PreparedValueHomeKind home_kind = prepare::PreparedValueHomeKind::None;
+  std::optional<RegisterOperand> materialized_i1_register;
   std::optional<RegisterOperand> abi_register;
   prepare::PreparedF128RuntimeHelper::ScalarResultOwnership scalar_ownership;
   std::optional<prepare::PreparedF128RuntimeHelper::ScalarMarshalingMove> marshaling_move;
+  std::optional<prepare::PreparedF128RuntimeHelper::ScalarCmpResultConsumption>
+      cmp_result_consumption;
 };
 
 struct I128PairOperandRecord {

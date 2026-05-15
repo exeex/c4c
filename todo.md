@@ -8,24 +8,23 @@ Current Step Title: Comparison Helper Boundary
 
 ## Just Finished
 
-Step 4.2 added the first F128 comparison helper-boundary packet. Prepared
-F128 runtime helpers now have a distinct `Comparison` family, predicate
-helper identities for `Eq/Ne/Slt/Sle/Sgt/Sge` mapped to
-`__eqtf2/__netf2/__lttf2/__letf2/__gttf2/__getf2`, and a non-F128
-`ScalarCmpResult` ownership shape with `DirectF128ArgumentsAndCmpResult`
-ABI policy. AArch64 record tests prove selected compare helper records preserve
-both full-width F128 source carriers and own the scalar CMPtype result in a GPR
-ABI result. Dispatch tests keep real BIR `I1` F128 comparison lowering
-fail-closed until a later packet defines CMPtype-to-`I1` materialization, so
-this slice does not claim complete source-level comparison lowering. No final
-assembly printing, cast, sign-bit, or broad helper-family work was added.
+Step 4.2 completed the remaining F128 comparison helper materialization
+contract. Prepared F128 comparison helpers now publish an explicit
+`ScalarCmpResultConsumption` fact that maps the helper CMPtype result to the
+source BIR `I1` result through a structured zero-test (`eq_zero`, `ne_zero`,
+signed less/less-equal/greater/greater-equal zero). AArch64 helper records now
+require that consumption fact, preserve the scalar CMPtype ABI result, expose
+the materialized `I1` result register, and mark the BIR result value as defined.
+Dispatch now selects real BIR F128 `Eq/Ne/Slt/Sle/Sgt/Sge` comparison helpers
+from prepared authority instead of falling through to scalar lowering, while
+unmodeled unsigned predicates still fail closed. No scalar `F64` shortcut,
+assembly printer implementation, cast, sign-bit, or unrelated helper-family
+work was added.
 
 ## Suggested Next
 
-Delegate the next Step 4.2 follow-up only if the supervisor wants real
-BIR-to-prepared comparison materialization: define the intermediate CMPtype
-value contract and how the BIR `I1` compare result consumes it. Otherwise move
-to Step 4.3 cast helper boundaries.
+Move to Step 4.3 cast helper boundaries, unless the supervisor wants an
+independent review of the completed Step 4.2 comparison-helper route first.
 
 ## Watchouts
 
@@ -85,14 +84,12 @@ to Step 4.3 cast helper boundaries.
   authority; do not start Step 5 until the remaining Step 4
   helper-family/helper-identity packets are deliberately handled or explicitly
   deferred by the supervisor.
-- This packet deliberately did not claim full BIR compare materialization:
-  source BIR comparisons produce `I1`, while the external helpers return
-  signed integer CMPtype. The implemented boundary models the scalar CMPtype
-  result and F128 source preservation at prepared/record/dispatch level; a
-  later packet must define the intermediate CMPtype-to-`I1` consumption
-  contract before claiming complete source-level comparison lowering.
 - Unsigned F128 predicates remain fail-closed until an ordered/unordered
   predicate contract is explicitly modeled.
+- The CMPtype-to-`I1` consumption contract is still record-level target MIR
+  authority; final instruction printing/encoding is Step 5 work.
+- Stack-homed comparison results remain fail-closed at this boundary because
+  this packet proves the register materialization path only.
 
 ## Proof
 
