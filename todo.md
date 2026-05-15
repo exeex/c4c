@@ -1,26 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4.4
-Current Step Title: Sign-Bit Negation Boundary
+Current Step ID: 4.5
+Current Step Title: Unsupported Helper-Family Diagnostics
 
 # Current Packet
 
 ## Just Finished
 
-Step 4.4 completed the F128 sign-bit negation boundary decision as a
-deliberate fail-closed slice. F128 sign-bit-like `xor` candidates now stay out
-of scalar ALU records, dispatch routes them through the F128 helper boundary
-only far enough to report missing prepared authority, and record construction
-rejects arithmetic-helper guesses instead of accepting scalar `F64`
-approximations, fixed scratch snippets, or dispatch-side callee inference.
+Step 4.5 completed unsupported F128 helper-family diagnostics. Dispatch now
+claims remaining F128 binary helper-shaped operations at the prepared helper
+boundary and reports missing prepared helper authority or
+`unsupported_source_operation`; record construction rejects unsigned division,
+remainders, bitwise/logical operations, shifts, and unsigned predicates instead
+of selecting arithmetic helper records, scalar `F64` operations, or
+dispatch-side callee guesses.
 
 ## Suggested Next
 
-Start Step 4.5 with unsupported helper-family diagnostics for the remaining
-unmodeled F128 helper cases, keeping unsigned div/rem and bitwise/logical
-families outside selected helper records unless complete prepared authority is
-added deliberately.
+Proceed to the next supervisor-selected Step 4/Step 5 packet. If Step 5 starts,
+keep final assembly printing limited to already selected record-level F128
+authority and do not backfill unsupported helper families without complete
+prepared authority.
 
 ## Watchouts
 
@@ -102,6 +103,10 @@ added deliberately.
   helper identity, clobber/resource policy, live preservation, and a selected
   terminal operation. Until that lands, F128 sign-bit-like `xor` remains
   diagnostic-only.
+- Step 4.5 did not add positive support for unsigned F128 division/remainder,
+  signed remainder, bitwise/logical operations, shifts, or unsigned comparison
+  predicates. Those families now diagnose through the F128 helper boundary
+  instead of falling through to generic dispatch or scalar lowering.
 
 ## Proof
 

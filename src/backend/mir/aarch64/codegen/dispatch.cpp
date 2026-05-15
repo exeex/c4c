@@ -779,16 +779,11 @@ struct LowerMemoryInstructionResult {
     module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* binary = std::get_if<bir::BinaryInst>(&inst);
   const auto* cast = std::get_if<bir::CastInst>(&inst);
-  const bool supported_f128_comparison =
+  const bool f128_binary_helper_candidate =
       binary != nullptr &&
-      (binary->opcode == bir::BinaryOpcode::Eq ||
-       binary->opcode == bir::BinaryOpcode::Ne ||
-       binary->opcode == bir::BinaryOpcode::Slt ||
-       binary->opcode == bir::BinaryOpcode::Sle ||
-       binary->opcode == bir::BinaryOpcode::Sgt ||
-       binary->opcode == bir::BinaryOpcode::Sge) &&
       binary->operand_type == bir::TypeKind::F128 &&
-      binary->result.type == bir::TypeKind::I1;
+      (binary->result.type == bir::TypeKind::F128 ||
+       binary->result.type == bir::TypeKind::I1);
   const bool supported_f128_cast =
       cast != nullptr &&
       ((cast->opcode == bir::CastOpcode::FPExt &&
@@ -799,21 +794,7 @@ struct LowerMemoryInstructionResult {
         cast->operand.type == bir::TypeKind::F128 &&
         (cast->result.type == bir::TypeKind::F32 ||
          cast->result.type == bir::TypeKind::F64)));
-  const bool f128_sign_bit_candidate =
-      binary != nullptr &&
-      binary->opcode == bir::BinaryOpcode::Xor &&
-      binary->operand_type == bir::TypeKind::F128 &&
-      binary->result.type == bir::TypeKind::F128;
-  if ((binary == nullptr ||
-       (!supported_f128_comparison &&
-        ((binary->opcode != bir::BinaryOpcode::Add &&
-          binary->opcode != bir::BinaryOpcode::Sub &&
-          binary->opcode != bir::BinaryOpcode::Mul &&
-          binary->opcode != bir::BinaryOpcode::SDiv) ||
-         binary->operand_type != bir::TypeKind::F128 ||
-         binary->result.type != bir::TypeKind::F128) &&
-        !f128_sign_bit_candidate)) &&
-      !supported_f128_cast) {
+  if (!f128_binary_helper_candidate && !supported_f128_cast) {
     return LowerMemoryInstructionResult{.handled = false};
   }
 

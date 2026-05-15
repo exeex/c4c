@@ -1,5 +1,6 @@
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 
+#include <array>
 #include <iostream>
 #include <string>
 #include <string_view>
@@ -3455,6 +3456,35 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
           aarch64_codegen::PreparedF128RuntimeHelperRecordError::
               UnsupportedSourceOperation) {
     return fail("expected f128 sign-bit-like xor to fail closed without distinct prepared authority");
+  }
+
+  const std::array unsupported_helpers{
+      bir::BinaryOpcode::UDiv,
+      bir::BinaryOpcode::SRem,
+      bir::BinaryOpcode::URem,
+      bir::BinaryOpcode::And,
+      bir::BinaryOpcode::Or,
+      bir::BinaryOpcode::Shl,
+  };
+  for (const auto opcode : unsupported_helpers) {
+    auto unsupported_family =
+        make_f128_runtime_helper(function_name,
+                                 11,
+                                 opcode,
+                                 prepare::PreparedF128RuntimeHelperKind::Div,
+                                 "__divtf3",
+                                 carriers.carriers[0],
+                                 carriers.carriers[1],
+                                 carriers.carriers[2]);
+    const auto unsupported_record =
+        aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+            carriers, unsupported_family);
+    if (unsupported_record.record.has_value() ||
+        unsupported_record.error !=
+            aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+                UnsupportedSourceOperation) {
+      return fail("expected unmodeled f128 helper family to fail closed");
+    }
   }
   return 0;
 }
