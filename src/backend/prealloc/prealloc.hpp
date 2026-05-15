@@ -1836,8 +1836,11 @@ struct PreparedIntrinsicCarrier {
   std::optional<c4c::backend::bir::MemoryAddress> memory_operand;
   c4c::backend::bir::IntrinsicMemoryAccessKind memory_access =
       c4c::backend::bir::IntrinsicMemoryAccessKind::None;
+  c4c::backend::bir::IntrinsicBarrierDomainKind barrier_domain =
+      c4c::backend::bir::IntrinsicBarrierDomainKind::None;
   bool has_immediate_operand = false;
   bool requires_immediate_operand = false;
+  std::optional<std::int64_t> immediate_value;
   std::optional<c4c::backend::bir::Value> operand;
   std::vector<c4c::backend::bir::Value> operands;
   std::optional<c4c::backend::bir::Value> result;

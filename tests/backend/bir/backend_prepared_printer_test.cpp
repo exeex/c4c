@@ -2862,6 +2862,52 @@ prepare::PreparedBirModule prepare_vector_add_intrinsic_carrier_dump_module() {
       module, aarch64_target_profile(), prepare::PrepareOptions{});
 }
 
+prepare::PreparedBirModule prepare_barrier_dmb_intrinsic_carrier_dump_module(
+    bool complete = true,
+    bool immediate_domain = true,
+    bool side_effects = true) {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = complete ? "barrier_dmb_intrinsic_carrier_dump_contract"
+                           : "barrier_dmb_intrinsic_incomplete_carrier_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+
+  bir::CallInst call{
+      .callee = "llvm.aarch64.dmb",
+      .args = {immediate_domain ? bir::Value::immediate_i32(15)
+                                : bir::Value::named(bir::TypeKind::I32, "domain")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::Void,
+      .intrinsic = bir::IntrinsicOperation{
+          .family = bir::IntrinsicFamilyKind::Barrier,
+          .operation = bir::IntrinsicOperationKind::BarrierDmb,
+          .operand_type = bir::TypeKind::I32,
+          .result_type = bir::TypeKind::Void,
+          .operand_roles = {bir::IntrinsicOperandRole::BarrierDomain},
+          .memory_access = bir::IntrinsicMemoryAccessKind::None,
+          .barrier_domain = complete ? bir::IntrinsicBarrierDomainKind::Sy
+                                     : bir::IntrinsicBarrierDomainKind::None,
+          .has_immediate_operand = immediate_domain,
+          .requires_immediate_operand = true,
+          .immediate_value = immediate_domain ? std::optional<std::int64_t>{15}
+                                             : std::nullopt,
+          .has_side_effects = side_effects,
+      },
+  };
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
 int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
   const auto crc = prepare_crc_intrinsic_carrier_dump_module();
   const auto* crc_carriers =
@@ -2976,6 +3022,51 @@ int crc_and_vector_intrinsic_carriers_preserve_semantic_facts() {
   return EXIT_SUCCESS;
 }
 
+int barrier_dmb_intrinsic_carrier_preserves_semantic_facts() {
+  const auto barrier = prepare_barrier_dmb_intrinsic_carrier_dump_module();
+  const auto* barrier_carriers =
+      find_intrinsic_carriers(barrier, "barrier_dmb_intrinsic_carrier_dump_contract");
+  if (barrier_carriers == nullptr || barrier_carriers->carriers.size() != 1) {
+    std::cerr << "[FAIL] expected one barrier DMB prepared intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  const auto& carrier = barrier_carriers->carriers.front();
+  if (carrier.carrier_kind != prepare::PreparedIntrinsicCarrierKind::Complete ||
+      carrier.family != bir::IntrinsicFamilyKind::Barrier ||
+      carrier.operation != bir::IntrinsicOperationKind::BarrierDmb ||
+      carrier.required_feature != bir::IntrinsicFeatureKind::None ||
+      carrier.operand_type != bir::TypeKind::I32 ||
+      carrier.result_type != bir::TypeKind::Void ||
+      carrier.operand_roles.size() != 1 ||
+      carrier.operand_roles.front() != bir::IntrinsicOperandRole::BarrierDomain ||
+      carrier.barrier_domain != bir::IntrinsicBarrierDomainKind::Sy ||
+      !carrier.has_immediate_operand || !carrier.requires_immediate_operand ||
+      !carrier.immediate_value.has_value() || *carrier.immediate_value != 15 ||
+      carrier.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      !carrier.has_side_effects ||
+      carrier.result.has_value() ||
+      carrier.result_home.has_value() ||
+      carrier.operand_homes.size() != 1 ||
+      carrier.operand_homes.front().has_value() ||
+      !carrier.has_prepared_call_plan ||
+      carrier.missing_required_facts.empty() == false) {
+    std::cerr << "[FAIL] barrier DMB carrier lost required semantic facts\n";
+    return EXIT_FAILURE;
+  }
+  const std::string dump = prepare::print(barrier);
+  if (!expect_contains(dump,
+                       "intrinsic_carrier family=barrier operation=barrier_dmb "
+                       "feature=none block_index=0 inst_index=0 operand_type=i32 "
+                       "result_type=void roles=barrier_domain signedness=none "
+                       "memory_access=none barrier_domain=sy immediate=15 "
+                       "side_effects=yes requires_feature=no prepared_call_plan=yes "
+                       "source_callee=llvm.aarch64.dmb operand_homes=1 result_home=no",
+                       "complete barrier DMB carrier")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
 int crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts() {
   const auto crc_without_homes = prepare_crc_intrinsic_carrier_dump_module(
       prepare::PrepareOptions{}, true);
@@ -3020,6 +3111,68 @@ int crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts() {
   if (!expect_not_contains(bad_load_dump,
                            "intrinsic_carrier family=vector_memory operation=vector_load",
                            "incomplete vector-load carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int barrier_dmb_intrinsic_carriers_fail_closed_without_required_facts() {
+  const auto missing_domain =
+      prepare_barrier_dmb_intrinsic_carrier_dump_module(false, true, true);
+  const auto* missing_domain_carriers = find_intrinsic_carriers(
+      missing_domain, "barrier_dmb_intrinsic_incomplete_carrier_dump_contract");
+  if (missing_domain_carriers == nullptr ||
+      missing_domain_carriers->carriers.size() != 1 ||
+      missing_domain_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] malformed barrier domain should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string missing_domain_dump = prepare::print(missing_domain);
+  if (!expect_contains(missing_domain_dump,
+                       "missing fact=inst#0:barrier_dmb_requires_sy_domain",
+                       "barrier missing domain diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(missing_domain_dump,
+                           "intrinsic_carrier family=barrier operation=barrier_dmb",
+                           "incomplete barrier carrier printer record")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto missing_immediate =
+      prepare_barrier_dmb_intrinsic_carrier_dump_module(true, false, true);
+  const auto* missing_immediate_carriers = find_intrinsic_carriers(
+      missing_immediate, "barrier_dmb_intrinsic_carrier_dump_contract");
+  if (missing_immediate_carriers == nullptr ||
+      missing_immediate_carriers->carriers.size() != 1 ||
+      missing_immediate_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] non-immediate barrier domain should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string missing_immediate_dump = prepare::print(missing_immediate);
+  if (!expect_contains(missing_immediate_dump,
+                       "missing fact=inst#0:barrier_dmb_requires_immediate_15",
+                       "barrier missing immediate diagnostic")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto no_side_effects =
+      prepare_barrier_dmb_intrinsic_carrier_dump_module(true, true, false);
+  const auto* no_side_effect_carriers = find_intrinsic_carriers(
+      no_side_effects, "barrier_dmb_intrinsic_carrier_dump_contract");
+  if (no_side_effect_carriers == nullptr ||
+      no_side_effect_carriers->carriers.size() != 1 ||
+      no_side_effect_carriers->carriers.front().carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Missing) {
+    std::cerr << "[FAIL] barrier without side effects should remain missing\n";
+    return EXIT_FAILURE;
+  }
+  const std::string no_side_effect_dump = prepare::print(no_side_effects);
+  if (!expect_contains(no_side_effect_dump,
+                       "missing fact=inst#0:barrier_dmb_requires_side_effect_only_semantics",
+                       "barrier missing side effect diagnostic")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -3467,8 +3620,17 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const int status = barrier_dmb_intrinsic_carrier_preserves_semantic_facts();
+      status != 0) {
+    return status;
+  }
   if (const int status =
           crc_and_vector_intrinsic_carriers_fail_closed_without_required_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          barrier_dmb_intrinsic_carriers_fail_closed_without_required_facts();
       status != 0) {
     return status;
   }

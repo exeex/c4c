@@ -1741,6 +1741,13 @@ void append_intrinsic_carriers(std::ostringstream& out, const PreparedBirModule&
             << " memory_align=" << carrier.memory_operand->align_bytes
             << " memory_volatile=" << (carrier.memory_operand->is_volatile ? "yes" : "no");
       }
+      if (carrier.barrier_domain != bir::IntrinsicBarrierDomainKind::None) {
+        out << " barrier_domain="
+            << bir::intrinsic_barrier_domain_kind_name(carrier.barrier_domain);
+      }
+      if (carrier.immediate_value.has_value()) {
+        out << " immediate=" << *carrier.immediate_value;
+      }
       out
           << " side_effects=" << (carrier.has_side_effects ? "yes" : "no")
           << " requires_feature=" << (carrier.requires_feature ? "yes" : "no")

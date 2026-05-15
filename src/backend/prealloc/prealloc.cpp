@@ -1313,6 +1313,10 @@ void require_intrinsic_call_plan_shape(PreparedIntrinsicCarrierFunction& functio
     append_intrinsic_missing_fact(
         function_carriers, carrier, "prepared_call_plan_requires_result");
   }
+  if (!requires_result && call_plan->result.has_value()) {
+    append_intrinsic_missing_fact(
+        function_carriers, carrier, "prepared_call_plan_requires_void_result");
+  }
 }
 
 void validate_scalar_fp_unary_intrinsic(PreparedIntrinsicCarrierFunction& function_carriers,
@@ -1458,6 +1462,43 @@ void validate_vector_operation_intrinsic(PreparedIntrinsicCarrierFunction& funct
   }
   require_intrinsic_call_plan_shape(function_carriers, carrier, call_plan, 2, true);
   require_intrinsic_value_homes(function_carriers, carrier, 2, true);
+}
+
+void validate_barrier_intrinsic(PreparedIntrinsicCarrierFunction& function_carriers,
+                                PreparedIntrinsicCarrier& carrier,
+                                const bir::IntrinsicOperation& intrinsic,
+                                const bir::CallInst& call,
+                                const PreparedCallPlan* call_plan) {
+  if (carrier.operation != bir::IntrinsicOperationKind::BarrierDmb) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_barrier_operation");
+  }
+  if (intrinsic.required_feature != bir::IntrinsicFeatureKind::None) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_requires_no_target_feature");
+  }
+  if (call.args.size() != 1 || call.arg_types.size() != 1 ||
+      !intrinsic_roles_are(intrinsic, {bir::IntrinsicOperandRole::BarrierDomain})) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_domain_operand");
+  }
+  if (carrier.result.has_value() || call.return_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_void_result");
+  }
+  if (carrier.operand_type != bir::TypeKind::I32 ||
+      carrier.result_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_i32_to_void_types");
+  }
+  if (intrinsic.barrier_domain != bir::IntrinsicBarrierDomainKind::Sy) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_sy_domain");
+  }
+  if (!intrinsic.has_immediate_operand || !intrinsic.requires_immediate_operand ||
+      !intrinsic.immediate_value.has_value() || *intrinsic.immediate_value != 15) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_immediate_15");
+  }
+  if (intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      !carrier.has_side_effects) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "barrier_dmb_requires_side_effect_only_semantics");
+  }
+  require_intrinsic_call_plan_shape(function_carriers, carrier, call_plan, 1, false);
 }
 
 [[nodiscard]] PreparedAtomicOperationCarrier build_atomic_operation_carrier(
@@ -1610,8 +1651,10 @@ void validate_vector_operation_intrinsic(PreparedIntrinsicCarrierFunction& funct
       .signedness = intrinsic.signedness,
       .memory_operand = intrinsic.memory_operand,
       .memory_access = intrinsic.memory_access,
+      .barrier_domain = intrinsic.barrier_domain,
       .has_immediate_operand = intrinsic.has_immediate_operand,
       .requires_immediate_operand = intrinsic.requires_immediate_operand,
+      .immediate_value = intrinsic.immediate_value,
       .operand = call.args.empty() ? std::nullopt
                                    : std::optional<bir::Value>{call.args.front()},
       .operands = call.args,
@@ -1650,6 +1693,9 @@ void validate_vector_operation_intrinsic(PreparedIntrinsicCarrierFunction& funct
       break;
     case bir::IntrinsicFamilyKind::VectorOperation:
       validate_vector_operation_intrinsic(function_carriers, carrier, intrinsic, call, call_plan);
+      break;
+    case bir::IntrinsicFamilyKind::Barrier:
+      validate_barrier_intrinsic(function_carriers, carrier, intrinsic, call, call_plan);
       break;
     case bir::IntrinsicFamilyKind::None:
       append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_intrinsic_family");
