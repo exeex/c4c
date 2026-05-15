@@ -779,7 +779,8 @@ struct LowerMemoryInstructionResult {
     module::ModuleLoweringDiagnostics& diagnostics) {
   const auto* binary = std::get_if<bir::BinaryInst>(&inst);
   if (binary == nullptr ||
-      binary->opcode != bir::BinaryOpcode::Add ||
+      (binary->opcode != bir::BinaryOpcode::Add &&
+       binary->opcode != bir::BinaryOpcode::Sub) ||
       binary->operand_type != bir::TypeKind::F128 ||
       binary->result.type != bir::TypeKind::F128) {
     return LowerMemoryInstructionResult{.handled = false};

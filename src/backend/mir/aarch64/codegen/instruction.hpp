@@ -371,6 +371,7 @@ enum class I128RuntimeHelperBoundaryKind {
 
 enum class F128RuntimeHelperBoundaryKind {
   Add,
+  Sub,
 };
 
 enum class PreparedI128TransportRecordError {

@@ -2451,6 +2451,8 @@ prepare::PreparedF128RuntimeHelper::MarshalingMove make_f128_helper_marshaling_m
 prepare::PreparedF128RuntimeHelper make_f128_runtime_helper(
     c4c::FunctionNameId function_name,
     std::size_t instruction_index,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedF128RuntimeHelperKind kind,
     std::string callee,
     const prepare::PreparedF128Carrier& result,
     const prepare::PreparedF128Carrier& lhs,
@@ -2459,7 +2461,7 @@ prepare::PreparedF128RuntimeHelper make_f128_runtime_helper(
       .function_name = function_name,
       .block_index = 0,
       .instruction_index = instruction_index,
-      .source_binary_opcode = bir::BinaryOpcode::Add,
+      .source_binary_opcode = opcode,
       .source_type = bir::TypeKind::F128,
       .result_type = bir::TypeKind::F128,
       .result_value_id = result.value_id,
@@ -2469,7 +2471,7 @@ prepare::PreparedF128RuntimeHelper make_f128_runtime_helper(
       .rhs_value_id = rhs.value_id,
       .rhs_value_name = rhs.value_name,
       .helper_family = prepare::PreparedF128RuntimeHelperFamily::Arithmetic,
-      .helper_kind = prepare::PreparedF128RuntimeHelperKind::Add,
+      .helper_kind = kind,
       .callee_name = std::move(callee),
       .result_ownership =
           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
@@ -2806,9 +2808,14 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
            f128_full_width_register_carrier(
                function_name, prepare::PreparedValueId{202}, rhs_name, "q8")},
   };
-  auto helper = make_f128_runtime_helper(
-      function_name, 3, "__addtf3", carriers.carriers[0],
-      carriers.carriers[1], carriers.carriers[2]);
+  auto helper = make_f128_runtime_helper(function_name,
+                                         3,
+                                         bir::BinaryOpcode::Add,
+                                         prepare::PreparedF128RuntimeHelperKind::Add,
+                                         "__addtf3",
+                                         carriers.carriers[0],
+                                         carriers.carriers[1],
+                                         carriers.carriers[2]);
   auto prepared =
       aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
           carriers, helper);
@@ -2887,6 +2894,64 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       aarch64_codegen::prepared_f128_runtime_helper_record_error_name(missing.error) !=
           "missing_clobber_policy") {
     return fail("expected f128 helper boundary to fail closed without clobber policy");
+  }
+
+  auto sub_helper = make_f128_runtime_helper(function_name,
+                                             4,
+                                             bir::BinaryOpcode::Sub,
+                                             prepare::PreparedF128RuntimeHelperKind::Sub,
+                                             "__subtf3",
+                                             carriers.carriers[0],
+                                             carriers.carriers[1],
+                                             carriers.carriers[2]);
+  const auto prepared_sub =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, sub_helper);
+  if (!prepared_sub.record.has_value() ||
+      prepared_sub.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::None ||
+      prepared_sub.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::Sub ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared_sub.record->boundary_kind) != "sub" ||
+      prepared_sub.record->helper_kind != prepare::PreparedF128RuntimeHelperKind::Sub ||
+      prepared_sub.record->callee_name != "__subtf3" ||
+      prepared_sub.record->source_binary_opcode != bir::BinaryOpcode::Sub ||
+      prepared_sub.record->source_helper != &sub_helper ||
+      !prepared_sub.record->selected_call_ownership.owns_terminal_call) {
+    return fail("expected f128 sub helper boundary record to consume prepared authority");
+  }
+  const auto sub_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_sub.record);
+  const auto* sub_payload =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &sub_instruction.payload);
+  if (sub_payload == nullptr ||
+      sub_instruction.opcode != aarch64_codegen::MachineOpcode::F128RuntimeHelper ||
+      sub_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      sub_payload->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::Sub ||
+      sub_payload->callee_name != "__subtf3") {
+    return fail("expected selected f128 sub helper boundary instruction effects");
+  }
+
+  auto unsupported_mul = make_f128_runtime_helper(function_name,
+                                                  5,
+                                                  bir::BinaryOpcode::Mul,
+                                                  prepare::PreparedF128RuntimeHelperKind::Add,
+                                                  "__multf3",
+                                                  carriers.carriers[0],
+                                                  carriers.carriers[1],
+                                                  carriers.carriers[2]);
+  const auto unsupported =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, unsupported_mul);
+  if (unsupported.record.has_value() ||
+      unsupported.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              UnsupportedSourceOperation) {
+    return fail("expected f128 helper boundary to fail closed for unsupported arithmetic");
   }
   return 0;
 }

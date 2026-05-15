@@ -1648,6 +1648,8 @@ prepare::PreparedF128RuntimeHelper::MarshalingMove dispatch_f128_helper_marshali
 prepare::PreparedF128RuntimeHelper dispatch_f128_runtime_helper(
     c4c::FunctionNameId function_name,
     std::size_t instruction_index,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedF128RuntimeHelperKind kind,
     std::string callee_name,
     const prepare::PreparedF128Carrier& result,
     const prepare::PreparedF128Carrier& lhs,
@@ -1656,7 +1658,7 @@ prepare::PreparedF128RuntimeHelper dispatch_f128_runtime_helper(
       .function_name = function_name,
       .block_index = 0,
       .instruction_index = instruction_index,
-      .source_binary_opcode = bir::BinaryOpcode::Add,
+      .source_binary_opcode = opcode,
       .source_type = bir::TypeKind::F128,
       .result_type = bir::TypeKind::F128,
       .result_value_id = result.value_id,
@@ -1666,7 +1668,7 @@ prepare::PreparedF128RuntimeHelper dispatch_f128_runtime_helper(
       .rhs_value_id = rhs.value_id,
       .rhs_value_name = rhs.value_name,
       .helper_family = prepare::PreparedF128RuntimeHelperFamily::Arithmetic,
-      .helper_kind = prepare::PreparedF128RuntimeHelperKind::Add,
+      .helper_kind = kind,
       .callee_name = std::move(callee_name),
       .result_ownership =
           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
@@ -2324,6 +2326,7 @@ prepare::PreparedF128Carrier dispatch_f128_register_carrier(
 }
 
 prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
     bool include_helper = true,
     bool include_clobber_policy = true) {
   prepare::PreparedBirModule prepared;
@@ -2346,7 +2349,7 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
               .label = "dispatch.f128.helper.entry",
               .insts =
                   {bir::BinaryInst{
-                      .opcode = bir::BinaryOpcode::Add,
+                      .opcode = opcode,
                       .result =
                           bir::Value::named(bir::TypeKind::F128, "%helper.result.f128"),
                       .operand_type = bir::TypeKind::F128,
@@ -2374,8 +2377,18 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
           function_name, prepare::PreparedValueId{252}, rhs_name, "q8"),
   };
   if (include_helper) {
-    auto helper = dispatch_f128_runtime_helper(
-        function_name, 0, "__addtf3", carriers[0], carriers[1], carriers[2]);
+    const auto helper_kind = opcode == bir::BinaryOpcode::Sub
+                                 ? prepare::PreparedF128RuntimeHelperKind::Sub
+                                 : prepare::PreparedF128RuntimeHelperKind::Add;
+    const auto callee = opcode == bir::BinaryOpcode::Sub ? "__subtf3" : "__addtf3";
+    auto helper = dispatch_f128_runtime_helper(function_name,
+                                               0,
+                                               opcode,
+                                               helper_kind,
+                                               callee,
+                                               carriers[0],
+                                               carriers[1],
+                                               carriers[2]);
     if (!include_clobber_policy) {
       helper.clobbered_registers.clear();
     }
@@ -4638,8 +4651,12 @@ int block_dispatch_reports_missing_i128_runtime_helper_authority() {
   return 0;
 }
 
-int block_dispatch_lowers_f128_runtime_helper_from_prepared_authority() {
-  auto prepared = prepared_with_f128_runtime_helper_operation();
+int block_dispatch_lowers_f128_runtime_helper_from_prepared_authority(
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
+    prepare::PreparedF128RuntimeHelperKind expected_kind =
+        prepare::PreparedF128RuntimeHelperKind::Add,
+    std::string_view expected_callee = "__addtf3") {
+  auto prepared = prepared_with_f128_runtime_helper_operation(opcode);
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -4666,9 +4683,9 @@ int block_dispatch_lowers_f128_runtime_helper_from_prepared_authority() {
           aarch64_codegen::InstructionFamily::CallBoundary ||
       block.instructions.front().target.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
-      helper->callee_name != "__addtf3" ||
-      helper->source_binary_opcode != bir::BinaryOpcode::Add ||
+      helper->helper_kind != expected_kind ||
+      helper->callee_name != std::string(expected_callee) ||
+      helper->source_binary_opcode != opcode ||
       helper->result_ownership !=
           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
       helper->result.carrier_register->reg != aarch64_abi::q_register(4) ||
@@ -4689,7 +4706,8 @@ int block_dispatch_lowers_f128_runtime_helper_from_prepared_authority() {
 }
 
 int block_dispatch_reports_missing_f128_runtime_helper_authority() {
-  auto missing_helper_prepared = prepared_with_f128_runtime_helper_operation(false);
+  auto missing_helper_prepared =
+      prepared_with_f128_runtime_helper_operation(bir::BinaryOpcode::Add, false);
   const auto& function_cf = missing_helper_prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -4737,7 +4755,7 @@ int block_dispatch_reports_missing_f128_runtime_helper_authority() {
   }
 
   auto missing_clobber_prepared =
-      prepared_with_f128_runtime_helper_operation(true, false);
+      prepared_with_f128_runtime_helper_operation(bir::BinaryOpcode::Add, true, false);
   const auto& clobber_function_cf = missing_clobber_prepared.control_flow.functions.front();
   const auto& clobber_block_cf = clobber_function_cf.blocks.front();
   const auto clobber_function_context = aarch64_codegen::make_function_lowering_context(
@@ -5305,6 +5323,14 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_f128_runtime_helper_from_prepared_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_runtime_helper_from_prepared_authority(
+              bir::BinaryOpcode::Sub,
+              prepare::PreparedF128RuntimeHelperKind::Sub,
+              "__subtf3");
       status != 0) {
     return status;
   }

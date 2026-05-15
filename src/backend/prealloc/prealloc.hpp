@@ -1748,6 +1748,7 @@ enum class PreparedF128RuntimeHelperFamily {
 
 enum class PreparedF128RuntimeHelperKind {
   Add,
+  Sub,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_kind_name(
@@ -1755,6 +1756,8 @@ enum class PreparedF128RuntimeHelperKind {
   switch (kind) {
     case PreparedF128RuntimeHelperKind::Add:
       return "add";
+    case PreparedF128RuntimeHelperKind::Sub:
+      return "sub";
   }
   return "unknown";
 }

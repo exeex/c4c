@@ -305,8 +305,8 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
 [[nodiscard]] bool is_f128_soft_float_helper_opcode(bir::BinaryOpcode opcode) {
   switch (opcode) {
     case bir::BinaryOpcode::Add:
-      return true;
     case bir::BinaryOpcode::Sub:
+      return true;
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
@@ -339,6 +339,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Add:
       return PreparedF128RuntimeHelperKind::Add;
     case bir::BinaryOpcode::Sub:
+      return PreparedF128RuntimeHelperKind::Sub;
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
@@ -370,6 +371,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Add:
       return "__addtf3";
     case bir::BinaryOpcode::Sub:
+      return "__subtf3";
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:

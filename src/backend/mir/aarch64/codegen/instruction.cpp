@@ -868,6 +868,8 @@ std::string_view f128_runtime_helper_boundary_kind_name(
   switch (kind) {
     case F128RuntimeHelperBoundaryKind::Add:
       return "add";
+    case F128RuntimeHelperBoundaryKind::Sub:
+      return "sub";
   }
   return "unknown";
 }
@@ -3620,8 +3622,15 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary is missing prepared helper provenance"};
   }
+  const bool supported_helper =
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Add &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Add &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Add) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Sub &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Sub &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Sub);
   if (instruction.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
-      instruction.helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      !supported_helper ||
       instruction.callee_name.empty()) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
@@ -3636,8 +3645,7 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
   if (instruction.width_bytes != 16 ||
       instruction.align_bytes != 16 ||
       instruction.source_type != bir::TypeKind::F128 ||
-      instruction.result_type != bir::TypeKind::F128 ||
-      instruction.source_binary_opcode != bir::BinaryOpcode::Add) {
+      instruction.result_type != bir::TypeKind::F128) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 helper boundary has invalid operation, type, size, or alignment facts"};
@@ -6266,9 +6274,18 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily);
   }
-  if (helper.helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
-      helper.source_binary_opcode != bir::BinaryOpcode::Add ||
-      helper.source_type != bir::TypeKind::F128 ||
+  auto boundary_kind = F128RuntimeHelperBoundaryKind::Add;
+  if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Add &&
+      helper.source_binary_opcode == bir::BinaryOpcode::Add) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Add;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Sub &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Sub) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Sub;
+  } else {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation);
+  }
+  if (helper.source_type != bir::TypeKind::F128 ||
       helper.result_type != bir::TypeKind::F128 ||
       helper.callee_name.empty()) {
     return f128_runtime_helper_record_error(
@@ -6320,7 +6337,7 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
 
   F128RuntimeHelperBoundaryRecord record{
       .surface = RecordSurfaceKind::RecordOnly,
-      .boundary_kind = F128RuntimeHelperBoundaryKind::Add,
+      .boundary_kind = boundary_kind,
       .helper_family = helper.helper_family,
       .helper_kind = helper.helper_kind,
       .callee_name = helper.callee_name,

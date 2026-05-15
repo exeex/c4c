@@ -2441,12 +2441,15 @@ prepare::PreparedBirModule prepare_f128_register_carrier_dump_module() {
       });
 }
 
-prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module() {
+prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module(
+    bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
+    std::string function_name_spelling = "f128_soft_float_helper_dump_contract",
+    std::string result_name_spelling = "sum") {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
 
   bir::Function function;
-  function.name = "f128_soft_float_helper_dump_contract";
+  function.name = std::move(function_name_spelling);
   function.return_type = bir::TypeKind::F128;
   function.params.push_back(bir::Param{
       .type = bir::TypeKind::F128,
@@ -2464,14 +2467,14 @@ prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module() {
   bir::Block entry;
   entry.label = "entry";
   entry.insts.push_back(bir::BinaryInst{
-      .opcode = bir::BinaryOpcode::Add,
-      .result = bir::Value::named(bir::TypeKind::F128, "sum"),
+      .opcode = opcode,
+      .result = bir::Value::named(bir::TypeKind::F128, result_name_spelling),
       .operand_type = bir::TypeKind::F128,
       .lhs = bir::Value::named(bir::TypeKind::F128, "lhs"),
       .rhs = bir::Value::named(bir::TypeKind::F128, "rhs"),
   });
   entry.terminator = bir::ReturnTerminator{
-      .value = bir::Value::named(bir::TypeKind::F128, "sum"),
+      .value = bir::Value::named(bir::TypeKind::F128, result_name_spelling),
   };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
@@ -3674,6 +3677,36 @@ int main() {
                        "f128_helper block=0 inst=0 family=arithmetic kind=add opcode=add "
                        "callee=__addtf3 source_type=f128 result_type=f128 result=sum#",
                        "f128 add helper identity and callee")) {
+    return EXIT_FAILURE;
+  }
+  const auto f128_sub_helper_prepared =
+      prepare_f128_soft_float_helper_dump_module(
+          bir::BinaryOpcode::Sub,
+          "f128_soft_float_sub_helper_dump_contract",
+          "diff");
+  const auto* f128_sub_helper = find_first_f128_runtime_helper(
+      f128_sub_helper_prepared, "f128_soft_float_sub_helper_dump_contract");
+  if (f128_sub_helper == nullptr ||
+      f128_sub_helper->helper_family !=
+          prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      f128_sub_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Sub ||
+      f128_sub_helper->callee_name != "__subtf3" ||
+      f128_sub_helper->source_binary_opcode != bir::BinaryOpcode::Sub ||
+      f128_sub_helper->source_type != bir::TypeKind::F128 ||
+      f128_sub_helper->result_type != bir::TypeKind::F128 ||
+      f128_sub_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !f128_sub_helper->selected_call_ownership.owns_terminal_call ||
+      !f128_sub_helper->selected_call_ownership.has_marshaling ||
+      !f128_sub_helper->selected_call_ownership.has_live_preservation) {
+    std::cerr << "[FAIL] prepared f128 sub soft-float helper lost structured record authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_sub_helper_dump = prepare::print(f128_sub_helper_prepared);
+  if (!expect_contains(f128_sub_helper_dump,
+                       "f128_helper block=0 inst=0 family=arithmetic kind=sub opcode=sub "
+                       "callee=__subtf3 source_type=f128 result_type=f128 result=diff#",
+                       "f128 sub helper identity and callee")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,

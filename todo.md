@@ -8,20 +8,22 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 4 added record-only AArch64 F128 soft-float helper boundary selection for
-prepared F128 add. Dispatch now consumes the matching complete
-`PreparedF128RuntimeHelper` fact, preserves helper callee, full-width carrier,
-ABI, marshaling, clobber, live-preservation, and selected-call ownership facts
-on the selected machine record, and fails closed when the prepared helper is
-missing or incomplete. No final assembly printing was added.
+Step 4 extended prepared F128 soft-float helper identity and record-only
+AArch64 helper-boundary selection from add to the adjacent F128 sub helper.
+Prepared F128 sub now maps to `PreparedF128RuntimeHelperKind::Sub` and
+`__subtf3`, dispatch consumes the complete `PreparedF128RuntimeHelper` fact,
+and target records preserve callee, full-width carrier, ABI, marshaling,
+clobber, live-preservation, and selected-call ownership facts. Unsupported
+F128 arithmetic still fails closed. No final assembly printing was added.
 
 ## Suggested Next
 
-Stay on Step 4 and add the next focused F128 helper-family/helper-identity
-packet. Extend prepared helper identity and record-only selection beyond F128
-add only when the semantic helper contract, ownership facts, ABI/marshaling,
-clobber policy, and live-preservation facts are complete; comparison, cast,
-sign-bit, and other helper-family work remain Step 4 work.
+Stay on Step 4 and choose the next focused helper-family/helper-identity
+packet, or hand the completed add/sub helper-boundary slice back for supervisor
+review. Extend prepared helper identity and record-only selection beyond F128
+add/sub only when the semantic helper contract, ownership facts,
+ABI/marshaling, clobber policy, and live-preservation facts are complete;
+comparison, cast, sign-bit, and other helper-family work remain Step 4 work.
 
 ## Watchouts
 
@@ -33,8 +35,8 @@ sign-bit, and other helper-family work remain Step 4 work.
   does not reopen scalar `F64` lowering.
 - The selected `F128TransportRecord` is record-level only; final assembly
   printing remains unsupported until Step 5 adds printer authority.
-- Helper-call, arithmetic, casts, constants, and broader F128 preservation
-  facts remain outside this packet.
+- Further helper-call operations, casts, constants, and broader F128
+  preservation facts remain outside this packet.
 - The new real-path F128 coverage uses a byval parameter to force a prepared
   frame-slot home; it does not claim helper-boundary or arithmetic support.
 - The new register-carrier coverage uses a normal ABI-passed `f128` parameter
@@ -69,13 +71,13 @@ sign-bit, and other helper-family work remain Step 4 work.
   operations should remain diagnosed until their prepared helper identities and
   complete ownership facts exist; do not add scalar F64 approximations or
   dispatch-only callee guesses.
-- Only F128 add maps to a helper callee in this slice. Sub/mul/div/compare/cast
+- Only F128 add and sub map to helper callees in this slice. Mul/div/compare/cast
   helpers remain unsupported until their semantic helper identities and ABI
   facts are added deliberately.
 - The AArch64 F128 helper boundary is now selected only from a complete
   `PreparedF128RuntimeHelper` with selected-call ownership. Do not reintroduce
   raw BIR-shape, rendered-text, or scalar F64 inference.
-- The selected F128 add helper boundary is record-level only. Final assembly
+- The selected F128 add/sub helper boundary is record-level only. Final assembly
   printing remains unsupported until Step 5 adds printer authority; do not
   start Step 5 until the remaining Step 4 helper-family/helper-identity packets
   are deliberately handled or explicitly deferred by the supervisor.
