@@ -118,6 +118,7 @@ enum class MachineOpcode {
   CallBoundaryAbiBinding,
   I128Transport,
   F128Transport,
+  F128RuntimeHelper,
   I128Pair,
   I128Shift,
   I128Compare,
@@ -368,6 +369,10 @@ enum class I128RuntimeHelperBoundaryKind {
   UnsignedRem,
 };
 
+enum class F128RuntimeHelperBoundaryKind {
+  Add,
+};
+
 enum class PreparedI128TransportRecordError {
   None,
   InvalidFunction,
@@ -418,6 +423,23 @@ enum class PreparedI128RuntimeHelperRecordError {
   UnsupportedResultOwnership,
   MissingPreparedI128Carrier,
   IncompletePreparedI128Carrier,
+  UnsupportedCarrierKind,
+  RegisterConversionFailed,
+  MissingBoundaryResourcePolicy,
+  MissingBoundaryAbiPolicy,
+  MissingClobberPolicy,
+};
+
+enum class PreparedF128RuntimeHelperRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedF128RuntimeHelper,
+  IncompletePreparedF128RuntimeHelper,
+  UnsupportedHelperFamily,
+  UnsupportedSourceOperation,
+  UnsupportedResultOwnership,
+  MissingPreparedF128Carrier,
+  IncompletePreparedF128Carrier,
   UnsupportedCarrierKind,
   RegisterConversionFailed,
   MissingBoundaryResourcePolicy,
@@ -800,6 +822,23 @@ struct PreparedF128TransportRecordResult {
   PreparedF128TransportRecordError error = PreparedF128TransportRecordError::None;
 };
 
+struct F128RuntimeHelperOperandRecord {
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  prepare::PreparedF128CarrierKind carrier_kind =
+      prepare::PreparedF128CarrierKind::Missing;
+  std::size_t width_bytes = 16;
+  std::size_t align_bytes = 16;
+  prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterClass register_class = prepare::PreparedRegisterClass::None;
+  std::optional<RegisterOperand> carrier_register;
+  std::optional<RegisterOperand> abi_register;
+  prepare::PreparedF128RuntimeHelper::CarrierBinding carrier_binding;
+  prepare::PreparedF128RuntimeHelper::AbiRegisterBinding abi_binding;
+  prepare::PreparedF128RuntimeHelper::MarshalingMove marshaling_move;
+  const prepare::PreparedF128Carrier* source_carrier = nullptr;
+};
+
 struct I128PairOperandRecord {
   prepare::PreparedValueId value_id = 0;
   c4c::ValueNameId value_name = c4c::kInvalidValueName;
@@ -909,6 +948,42 @@ struct I128RuntimeHelperBoundaryRecord {
   const prepare::PreparedI128RuntimeHelper* source_helper = nullptr;
 };
 
+struct F128RuntimeHelperBoundaryRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  F128RuntimeHelperBoundaryKind boundary_kind = F128RuntimeHelperBoundaryKind::Add;
+  prepare::PreparedF128RuntimeHelperFamily helper_family =
+      prepare::PreparedF128RuntimeHelperFamily::Arithmetic;
+  prepare::PreparedF128RuntimeHelperKind helper_kind =
+      prepare::PreparedF128RuntimeHelperKind::Add;
+  std::string callee_name;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  bir::TypeKind source_type = bir::TypeKind::F128;
+  bir::TypeKind result_type = bir::TypeKind::F128;
+  prepare::PreparedValueId result_value_id = 0;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueId lhs_value_id = 0;
+  c4c::ValueNameId lhs_value_name = c4c::kInvalidValueName;
+  prepare::PreparedValueId rhs_value_id = 0;
+  c4c::ValueNameId rhs_value_name = c4c::kInvalidValueName;
+  prepare::PreparedF128RuntimeHelperResultOwnership result_ownership =
+      prepare::PreparedF128RuntimeHelperResultOwnership::Missing;
+  std::size_t width_bytes = 16;
+  std::size_t align_bytes = 16;
+  F128RuntimeHelperOperandRecord result;
+  F128RuntimeHelperOperandRecord lhs;
+  F128RuntimeHelperOperandRecord rhs;
+  prepare::PreparedF128RuntimeHelper::ResourcePolicy resource_policy;
+  prepare::PreparedF128RuntimeHelper::AbiPolicy abi_policy;
+  prepare::PreparedF128RuntimeHelper::LivePreservationPolicy live_preservation_policy;
+  prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy selected_call_ownership;
+  std::vector<prepare::PreparedClobberedRegister> clobbered_registers;
+  const prepare::PreparedF128RuntimeHelper* source_helper = nullptr;
+};
+
 struct PreparedI128ShiftRecordResult {
   std::optional<I128ShiftRecord> record;
   PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
@@ -923,6 +998,12 @@ struct PreparedI128RuntimeHelperRecordResult {
   std::optional<I128RuntimeHelperBoundaryRecord> record;
   PreparedI128RuntimeHelperRecordError error =
       PreparedI128RuntimeHelperRecordError::None;
+};
+
+struct PreparedF128RuntimeHelperRecordResult {
+  std::optional<F128RuntimeHelperBoundaryRecord> record;
+  PreparedF128RuntimeHelperRecordError error =
+      PreparedF128RuntimeHelperRecordError::None;
 };
 
 struct AddressMaterializationRecord {
@@ -1210,6 +1291,7 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         I128TransportRecord,
                                         F128TransportRecord,
+                                        F128RuntimeHelperBoundaryRecord,
                                         I128PairOperationRecord,
                                         I128ShiftRecord,
                                         I128CompareRecord,
@@ -1308,10 +1390,14 @@ struct InstructionRecord {
     I128CompareHighWordSemantics semantics);
 [[nodiscard]] std::string_view i128_runtime_helper_boundary_kind_name(
     I128RuntimeHelperBoundaryKind kind);
+[[nodiscard]] std::string_view f128_runtime_helper_boundary_kind_name(
+    F128RuntimeHelperBoundaryKind kind);
 [[nodiscard]] std::string_view prepared_i128_pair_record_error_name(
     PreparedI128PairRecordError error);
 [[nodiscard]] std::string_view prepared_i128_runtime_helper_record_error_name(
     PreparedI128RuntimeHelperRecordError error);
+[[nodiscard]] std::string_view prepared_f128_runtime_helper_record_error_name(
+    PreparedF128RuntimeHelperRecordError error);
 [[nodiscard]] std::string_view address_materialization_kind_name(
     AddressMaterializationKind kind);
 [[nodiscard]] std::string_view prepared_address_materialization_record_error_name(
@@ -1348,6 +1434,8 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_i128_compare_instruction(I128CompareRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_runtime_helper_boundary_instruction(
     I128RuntimeHelperBoundaryRecord instruction);
+[[nodiscard]] InstructionRecord make_f128_runtime_helper_boundary_instruction(
+    F128RuntimeHelperBoundaryRecord instruction);
 [[nodiscard]] InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
@@ -1481,6 +1569,10 @@ make_prepared_store_memory_instruction_record(
 make_prepared_i128_runtime_helper_boundary_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     const prepare::PreparedI128RuntimeHelper& helper);
+[[nodiscard]] PreparedF128RuntimeHelperRecordResult
+make_prepared_f128_runtime_helper_boundary_record(
+    const prepare::PreparedF128CarrierFunction& f128_carriers,
+    const prepare::PreparedF128RuntimeHelper& helper);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,

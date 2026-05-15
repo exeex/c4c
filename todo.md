@@ -8,20 +8,20 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 4 added live-preservation authority to the prepared binary128 soft-float
-helper record for F128 add. `PreparedF128RuntimeHelper` now evaluates
-helper-point liveness through the structured preserved-value route builder,
-models caller-saved clobbers plus complete preservation facts, and reports
-`owns_terminal_call=yes` when F128 carriers, ABI bindings, marshaling,
-clobbers, and live-preservation authority are all present. No AArch64 dispatch
-selection was added.
+Step 4 added record-only AArch64 F128 soft-float helper boundary selection for
+prepared F128 add. Dispatch now consumes the matching complete
+`PreparedF128RuntimeHelper` fact, preserves helper callee, full-width carrier,
+ABI, marshaling, clobber, live-preservation, and selected-call ownership facts
+on the selected machine record, and fails closed when the prepared helper is
+missing or incomplete. No final assembly printing was added.
 
 ## Suggested Next
 
-Stay on Step 4 and add a record-only AArch64 F128 soft-float helper boundary
-record plus dispatch consumption that finds the prepared `PreparedF128RuntimeHelper`
-for the source F128 add instruction and fails closed from that prepared helper
-fact, not from BIR shape or scalar F64 inference.
+Stay on Step 4 and add the next focused F128 helper-family/helper-identity
+packet. Extend prepared helper identity and record-only selection beyond F128
+add only when the semantic helper contract, ownership facts, ABI/marshaling,
+clobber policy, and live-preservation facts are complete; comparison, cast,
+sign-bit, and other helper-family work remain Step 4 work.
 
 ## Watchouts
 
@@ -65,25 +65,20 @@ fact, not from BIR shape or scalar F64 inference.
   its helper family, ABI transition, operand lanes, and selected record
   builder are i128-specific and require GPR low/high lanes, while binary128
   helper calls need F128 full-width carriers and a soft-float ABI contract.
-- Unsupported F128 arithmetic/cast/comparison operations should remain
-  diagnosed until the prepared helper fact family exists; do not add scalar F64
-  approximations or dispatch-only callee guesses.
-- The new F128 add helper record intentionally keeps
-  `owns_terminal_call=no`; the prepared fact is not complete enough for AArch64
-  dispatch until live preservation becomes structured authority.
+- Unsupported F128 comparison, cast, sign-bit, and other helper-family
+  operations should remain diagnosed until their prepared helper identities and
+  complete ownership facts exist; do not add scalar F64 approximations or
+  dispatch-only callee guesses.
 - Only F128 add maps to a helper callee in this slice. Sub/mul/div/compare/cast
   helpers remain unsupported until their semantic helper identities and ABI
   facts are added deliberately.
-- This packet models ABI marshaling plus caller-saved clobbers only for the
-  existing record-only F128 add helper on AAPCS64: lhs uses `q0`, rhs uses
-  `q1`, and the result uses `q0`. Selected dispatch and final assembly printing
-  remain out of scope.
-- The exact next dispatch gap is the missing AArch64 `PreparedF128RuntimeHelper`
-  consumption surface: there is no F128 counterpart to
-  `make_prepared_i128_runtime_helper_boundary_record`/
-  `I128RuntimeHelperBoundaryRecord` and no `dispatch.cpp` lookup that selects
-  an F128 helper from the prepared helper table. Add that record-only boundary
-  before emitting any final assembly.
+- The AArch64 F128 helper boundary is now selected only from a complete
+  `PreparedF128RuntimeHelper` with selected-call ownership. Do not reintroduce
+  raw BIR-shape, rendered-text, or scalar F64 inference.
+- The selected F128 add helper boundary is record-level only. Final assembly
+  printing remains unsupported until Step 5 adds printer authority; do not
+  start Step 5 until the remaining Step 4 helper-family/helper-identity packets
+  are deliberately handled or explicitly deferred by the supervisor.
 
 ## Proof
 

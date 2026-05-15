@@ -486,6 +486,15 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
+[[nodiscard]] std::string f128_runtime_helper_error_message(
+    PreparedF128RuntimeHelperRecordError error) {
+  std::string message =
+      "AArch64 binary128 runtime helper-boundary lowering requires prepared f128 helper facts";
+  message += "; error=";
+  message += prepared_f128_runtime_helper_record_error_name(error);
+  return message;
+}
+
 [[nodiscard]] std::string i128_pair_error_message(
     PreparedI128PairRecordError error) {
   std::string message =
@@ -511,6 +520,19 @@ require_prepared_variadic_entry_plan(
 
 [[nodiscard]] const prepare::PreparedI128RuntimeHelper* find_i128_runtime_helper_for_instruction(
     const prepare::PreparedI128RuntimeHelperFunction& helpers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& helper : helpers.helpers) {
+    if (helper.block_index == block_index &&
+        helper.instruction_index == instruction_index) {
+      return &helper;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedF128RuntimeHelper* find_f128_runtime_helper_for_instruction(
+    const prepare::PreparedF128RuntimeHelperFunction& helpers,
     std::size_t block_index,
     std::size_t instruction_index) {
   for (const auto& helper : helpers.helpers) {
@@ -741,6 +763,109 @@ struct LowerMemoryInstructionResult {
                              context,
                              instruction_index,
                              std::string{target.selection.diagnostic});
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  return LowerMemoryInstructionResult{
+      .handled = true,
+      .instruction = make_bir_machine_instruction(context, instruction_index, std::move(target)),
+  };
+}
+
+[[nodiscard]] LowerMemoryInstructionResult lower_f128_runtime_helper_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      binary->opcode != bir::BinaryOpcode::Add ||
+      binary->operand_type != bir::TypeKind::F128 ||
+      binary->result.type != bir::TypeKind::F128) {
+    return LowerMemoryInstructionResult{.handled = false};
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  const auto* f128_carriers =
+      prepare::find_prepared_f128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (f128_carriers == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  const auto* helper_function =
+      prepare::find_prepared_f128_runtime_helpers(*context.function.prepared,
+                                                  context.function.control_flow->function_name);
+  if (helper_function == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  const auto* helper =
+      find_f128_runtime_helper_for_instruction(
+          *helper_function, context.block_index, instruction_index);
+  if (helper == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  auto prepared =
+      make_prepared_f128_runtime_helper_boundary_record(*f128_carriers, *helper);
+  if (!prepared.record.has_value()) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(prepared.error));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  InstructionRecord target =
+      make_f128_runtime_helper_boundary_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<F128RuntimeHelperBoundaryRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->block_index = context.block_index;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_i128_pair_diagnostic(diagnostics,
+                                module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                                context,
+                                instruction_index,
+                                std::string{target.selection.diagnostic});
     return LowerMemoryInstructionResult{.handled = true};
   }
 
@@ -1965,6 +2090,15 @@ InstructionDispatchResult dispatch_prepared_block(
                  lowered_i128_pair.handled) {
         if (lowered_i128_pair.instruction.has_value()) {
           block.instructions.push_back(std::move(*lowered_i128_pair.instruction));
+        }
+        ++result.visited_operations;
+        continue;
+      } else if (auto lowered_f128_helper =
+                     lower_f128_runtime_helper_instruction(
+                         context, inst, instruction_index, diagnostics);
+                 lowered_f128_helper.handled) {
+        if (lowered_f128_helper.instruction.has_value()) {
+          block.instructions.push_back(std::move(*lowered_f128_helper.instruction));
         }
         ++result.visited_operations;
         continue;

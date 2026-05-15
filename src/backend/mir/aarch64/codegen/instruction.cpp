@@ -181,6 +181,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "i128_transport";
     case MachineOpcode::F128Transport:
       return "f128_transport";
+    case MachineOpcode::F128RuntimeHelper:
+      return "f128_runtime_helper";
     case MachineOpcode::I128Pair:
       return "i128_pair";
     case MachineOpcode::I128Shift:
@@ -319,6 +321,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::CallBoundaryAbiBinding:
     case MachineOpcode::I128Transport:
     case MachineOpcode::F128Transport:
+    case MachineOpcode::F128RuntimeHelper:
     case MachineOpcode::I128Pair:
     case MachineOpcode::I128Shift:
     case MachineOpcode::I128Compare:
@@ -860,6 +863,15 @@ std::string_view i128_runtime_helper_boundary_kind_name(
   return "unknown";
 }
 
+std::string_view f128_runtime_helper_boundary_kind_name(
+    F128RuntimeHelperBoundaryKind kind) {
+  switch (kind) {
+    case F128RuntimeHelperBoundaryKind::Add:
+      return "add";
+  }
+  return "unknown";
+}
+
 std::string_view prepared_i128_pair_record_error_name(
     PreparedI128PairRecordError error) {
   switch (error) {
@@ -927,6 +939,41 @@ std::string_view prepared_i128_runtime_helper_record_error_name(
     case PreparedI128RuntimeHelperRecordError::MissingBoundaryAbiPolicy:
       return "missing_boundary_abi_policy";
     case PreparedI128RuntimeHelperRecordError::MissingClobberPolicy:
+      return "missing_clobber_policy";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_f128_runtime_helper_record_error_name(
+    PreparedF128RuntimeHelperRecordError error) {
+  switch (error) {
+    case PreparedF128RuntimeHelperRecordError::None:
+      return "none";
+    case PreparedF128RuntimeHelperRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper:
+      return "missing_prepared_f128_runtime_helper";
+    case PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper:
+      return "incomplete_prepared_f128_runtime_helper";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily:
+      return "unsupported_helper_family";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation:
+      return "unsupported_source_operation";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedResultOwnership:
+      return "unsupported_result_ownership";
+    case PreparedF128RuntimeHelperRecordError::MissingPreparedF128Carrier:
+      return "missing_prepared_f128_carrier";
+    case PreparedF128RuntimeHelperRecordError::IncompletePreparedF128Carrier:
+      return "incomplete_prepared_f128_carrier";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedF128RuntimeHelperRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy:
+      return "missing_boundary_resource_policy";
+    case PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy:
+      return "missing_boundary_abi_policy";
+    case PreparedF128RuntimeHelperRecordError::MissingClobberPolicy:
       return "missing_clobber_policy";
   }
   return "unknown";
@@ -3558,6 +3605,139 @@ InstructionRecord make_f128_transport_instruction(F128TransportRecord instructio
   };
 }
 
+MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
+    const F128RuntimeHelperBoundaryRecord& instruction) {
+  const auto has_full_width_register = [](const F128RuntimeHelperOperandRecord& operand) {
+    return operand.source_carrier != nullptr &&
+           operand.carrier_kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+           operand.carrier_register.has_value() &&
+           operand.abi_register.has_value() &&
+           operand.width_bytes == 16 &&
+           operand.align_bytes == 16;
+  };
+  if (instruction.source_helper == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing prepared helper provenance"};
+  }
+  if (instruction.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      instruction.helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      instruction.callee_name.empty()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing helper family or callee identity"};
+  }
+  if (instruction.result_ownership !=
+      prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "f128 helper boundary requires full-width result ownership"};
+  }
+  if (instruction.width_bytes != 16 ||
+      instruction.align_bytes != 16 ||
+      instruction.source_type != bir::TypeKind::F128 ||
+      instruction.result_type != bir::TypeKind::F128 ||
+      instruction.source_binary_opcode != bir::BinaryOpcode::Add) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary has invalid operation, type, size, or alignment facts"};
+  }
+  if (!has_full_width_register(instruction.result) ||
+      !has_full_width_register(instruction.lhs) ||
+      !has_full_width_register(instruction.rhs)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing full-width q-register carrier or ABI facts"};
+  }
+  if (!instruction.resource_policy.call_boundary ||
+      !instruction.resource_policy.runtime_helper_callee ||
+      !instruction.resource_policy.caller_saved_clobbers ||
+      !instruction.resource_policy.preserves_source_operation_identity) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing resource policy facts"};
+  }
+  if (instruction.abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult ||
+      instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
+      instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg ||
+      instruction.abi_policy.argument_count != 2 ||
+      instruction.abi_policy.result_count != 1 ||
+      instruction.abi_policy.width_bytes != 16) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing ABI/register-bank policy facts"};
+  }
+  if (instruction.clobbered_registers.empty()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing caller-saved clobber policy"};
+  }
+  if (!instruction.live_preservation_policy.evaluated ||
+      !instruction.live_preservation_policy.caller_saved_clobbers_modeled ||
+      !instruction.live_preservation_policy.no_additional_live_preservation_required) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing live-preservation policy"};
+  }
+  if (!instruction.selected_call_ownership.owns_terminal_call ||
+      !instruction.selected_call_ownership.has_callee_identity ||
+      !instruction.selected_call_ownership.has_resource_policy ||
+      !instruction.selected_call_ownership.has_clobber_policy ||
+      !instruction.selected_call_ownership.has_abi_bindings ||
+      !instruction.selected_call_ownership.has_marshaling ||
+      !instruction.selected_call_ownership.has_live_preservation) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 helper boundary is missing selected-call ownership policy"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+InstructionRecord make_f128_runtime_helper_boundary_instruction(
+    F128RuntimeHelperBoundaryRecord instruction) {
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  const auto add_def = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      defs.push_back(effect_from_operand(operand));
+    }
+  };
+  const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      uses.push_back(effect_from_operand(operand));
+    }
+  };
+  add_def(instruction.result.carrier_register);
+  add_def(instruction.result.abi_register);
+  add_use(instruction.lhs.carrier_register);
+  add_use(instruction.lhs.abi_register);
+  add_use(instruction.rhs.carrier_register);
+  add_use(instruction.rhs.abi_register);
+
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::F128RuntimeHelper,
+      .selection = f128_runtime_helper_boundary_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
+      .side_effects = {MachineSideEffectKind::Call},
+      .payload = instruction,
+  };
+}
+
 MachineNodeStatusRecord i128_pair_selection_status(
     const I128PairOperationRecord& instruction) {
   const auto has_pair_registers = [](const I128PairOperandRecord& operand) {
@@ -5001,6 +5181,14 @@ PreparedF128TransportRecordResult f128_transport_record_error(
   };
 }
 
+PreparedF128RuntimeHelperRecordResult f128_runtime_helper_record_error(
+    PreparedF128RuntimeHelperRecordError error) {
+  return PreparedF128RuntimeHelperRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
+}
+
 std::optional<RegisterOperand> make_i128_lane_register_operand(
     const prepare::PreparedI128Carrier& carrier,
     const prepare::PreparedI128LaneCarrier& lane) {
@@ -5045,6 +5233,27 @@ std::optional<RegisterOperand> make_f128_register_operand(
       .prepared_bank = carrier.register_bank,
       .expected_view = abi::RegisterView::Q,
       .contiguous_width = carrier.contiguous_width,
+      .occupied_register_references = occupied_register_references(*converted.reg),
+      .occupied_registers = occupied_register_views(*converted.reg),
+  };
+}
+
+std::optional<RegisterOperand> make_f128_abi_register_operand(
+    const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& binding) {
+  const auto converted = abi::convert_prepared_register(
+      binding.register_name, binding.register_bank, binding.register_class, abi::RegisterView::Q);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .value_id = binding.value_id,
+      .value_name = binding.value_name,
+      .prepared_class = binding.register_class,
+      .prepared_bank = binding.register_bank,
+      .expected_view = abi::RegisterView::Q,
+      .contiguous_width = binding.contiguous_width,
       .occupied_register_references = occupied_register_references(*converted.reg),
       .occupied_registers = occupied_register_views(*converted.reg),
   };
@@ -5958,6 +6167,227 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
   return PreparedI128RuntimeHelperRecordResult{
       .record = std::move(record),
       .error = PreparedI128RuntimeHelperRecordError::None,
+  };
+}
+
+PreparedF128RuntimeHelperRecordError make_f128_helper_operand_record(
+    const prepare::PreparedF128CarrierFunction& f128_carriers,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const std::optional<prepare::PreparedF128RuntimeHelper::CarrierBinding>& carrier_binding,
+    const std::optional<prepare::PreparedF128RuntimeHelper::AbiRegisterBinding>& abi_binding,
+    const std::optional<prepare::PreparedF128RuntimeHelper::MarshalingMove>& marshaling_move,
+    prepare::PreparedF128RuntimeHelperMarshalDirection direction,
+    F128RuntimeHelperOperandRecord& operand) {
+  if (!carrier_binding.has_value() ||
+      !abi_binding.has_value() ||
+      !marshaling_move.has_value()) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper;
+  }
+  if (carrier_binding->value_id != value_id ||
+      carrier_binding->value_name != value_name ||
+      abi_binding->value_id != value_id ||
+      abi_binding->value_name != value_name ||
+      marshaling_move->carrier.value_id != value_id ||
+      marshaling_move->carrier.value_name != value_name ||
+      marshaling_move->abi_register.value_id != value_id ||
+      marshaling_move->abi_register.value_name != value_name ||
+      marshaling_move->direction != direction) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper;
+  }
+  if (carrier_binding->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      carrier_binding->width_bytes != 16 ||
+      carrier_binding->align_bytes != 16 ||
+      carrier_binding->register_bank != prepare::PreparedRegisterBank::Vreg ||
+      carrier_binding->register_class != prepare::PreparedRegisterClass::Vector ||
+      !carrier_binding->register_name.has_value()) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper;
+  }
+  if (abi_binding->width_bytes != 16 ||
+      abi_binding->register_bank != prepare::PreparedRegisterBank::Vreg ||
+      abi_binding->register_class != prepare::PreparedRegisterClass::Vector ||
+      abi_binding->register_name.empty() ||
+      abi_binding->contiguous_width != 1 ||
+      abi_binding->occupied_register_names.empty() ||
+      !abi_binding->register_placement.has_value()) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper;
+  }
+
+  const auto* carrier = prepare::find_prepared_f128_carrier(f128_carriers, value_id);
+  if (carrier == nullptr || carrier->value_name != value_name) {
+    return PreparedF128RuntimeHelperRecordError::MissingPreparedF128Carrier;
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedF128CarrierKind::Missing ||
+      carrier->total_size_bytes != 16 ||
+      carrier->total_align_bytes != 16) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128Carrier;
+  }
+  if (carrier->kind != prepare::PreparedF128CarrierKind::FullWidthRegister) {
+    return PreparedF128RuntimeHelperRecordError::UnsupportedCarrierKind;
+  }
+  if (!carrier->register_name.has_value() ||
+      carrier->register_name != carrier_binding->register_name ||
+      carrier->register_bank != carrier_binding->register_bank ||
+      carrier->register_class != carrier_binding->register_class) {
+    return PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper;
+  }
+
+  operand = F128RuntimeHelperOperandRecord{
+      .value_id = value_id,
+      .value_name = value_name,
+      .carrier_kind = carrier->kind,
+      .width_bytes = carrier->total_size_bytes,
+      .align_bytes = carrier->total_align_bytes,
+      .register_bank = carrier->register_bank,
+      .register_class = carrier->register_class,
+      .carrier_binding = *carrier_binding,
+      .abi_binding = *abi_binding,
+      .marshaling_move = *marshaling_move,
+      .source_carrier = carrier,
+  };
+  operand.carrier_register = make_f128_register_operand(*carrier);
+  operand.abi_register = make_f128_abi_register_operand(*abi_binding);
+  if (!operand.carrier_register.has_value() || !operand.abi_register.has_value()) {
+    return PreparedF128RuntimeHelperRecordError::RegisterConversionFailed;
+  }
+  return PreparedF128RuntimeHelperRecordError::None;
+}
+
+PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary_record(
+    const prepare::PreparedF128CarrierFunction& f128_carriers,
+    const prepare::PreparedF128RuntimeHelper& helper) {
+  if (f128_carriers.function_name == c4c::kInvalidFunctionName ||
+      helper.function_name != f128_carriers.function_name) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::InvalidFunction);
+  }
+  if (helper.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily);
+  }
+  if (helper.helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      helper.source_binary_opcode != bir::BinaryOpcode::Add ||
+      helper.source_type != bir::TypeKind::F128 ||
+      helper.result_type != bir::TypeKind::F128 ||
+      helper.callee_name.empty()) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation);
+  }
+  if (!helper.missing_required_facts.empty()) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
+  }
+  if (helper.result_ownership !=
+      prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::UnsupportedResultOwnership);
+  }
+  if (!helper.resource_policy.call_boundary ||
+      !helper.resource_policy.runtime_helper_callee ||
+      !helper.resource_policy.caller_saved_clobbers ||
+      !helper.resource_policy.preserves_source_operation_identity) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
+  }
+  if (helper.abi_policy.transition !=
+          prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult ||
+      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
+      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg ||
+      helper.abi_policy.argument_count != 2 ||
+      helper.abi_policy.result_count != 1 ||
+      helper.abi_policy.width_bytes != 16) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
+  }
+  if (helper.clobbered_registers.empty()) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::MissingClobberPolicy);
+  }
+  if (!helper.live_preservation_policy.evaluated ||
+      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
+      !helper.live_preservation_policy.no_additional_live_preservation_required ||
+      !helper.selected_call_ownership.owns_terminal_call ||
+      !helper.selected_call_ownership.has_callee_identity ||
+      !helper.selected_call_ownership.has_resource_policy ||
+      !helper.selected_call_ownership.has_clobber_policy ||
+      !helper.selected_call_ownership.has_abi_bindings ||
+      !helper.selected_call_ownership.has_marshaling ||
+      !helper.selected_call_ownership.has_live_preservation) {
+    return f128_runtime_helper_record_error(
+        PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper);
+  }
+
+  F128RuntimeHelperBoundaryRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .boundary_kind = F128RuntimeHelperBoundaryKind::Add,
+      .helper_family = helper.helper_family,
+      .helper_kind = helper.helper_kind,
+      .callee_name = helper.callee_name,
+      .source_binary_opcode = helper.source_binary_opcode,
+      .function_name = helper.function_name,
+      .block_index = helper.block_index,
+      .instruction_index = helper.instruction_index,
+      .source_type = helper.source_type,
+      .result_type = helper.result_type,
+      .result_value_id = helper.result_value_id,
+      .result_value_name = helper.result_value_name,
+      .lhs_value_id = helper.lhs_value_id,
+      .lhs_value_name = helper.lhs_value_name,
+      .rhs_value_id = helper.rhs_value_id,
+      .rhs_value_name = helper.rhs_value_name,
+      .result_ownership = helper.result_ownership,
+      .width_bytes = helper.abi_policy.width_bytes,
+      .align_bytes = 16,
+      .resource_policy = helper.resource_policy,
+      .abi_policy = helper.abi_policy,
+      .live_preservation_policy = helper.live_preservation_policy,
+      .selected_call_ownership = helper.selected_call_ownership,
+      .clobbered_registers = helper.clobbered_registers,
+      .source_helper = &helper,
+  };
+  if (const auto error =
+          make_f128_helper_operand_record(
+              f128_carriers,
+              helper.result_value_id,
+              helper.result_value_name,
+              helper.result_carrier,
+              helper.result_abi_result,
+              helper.result_unmarshal_move,
+              prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier,
+              record.result);
+      error != PreparedF128RuntimeHelperRecordError::None) {
+    return f128_runtime_helper_record_error(error);
+  }
+  if (const auto error =
+          make_f128_helper_operand_record(
+              f128_carriers,
+              helper.lhs_value_id,
+              helper.lhs_value_name,
+              helper.lhs_carrier,
+              helper.lhs_abi_argument,
+              helper.lhs_argument_move,
+              prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument,
+              record.lhs);
+      error != PreparedF128RuntimeHelperRecordError::None) {
+    return f128_runtime_helper_record_error(error);
+  }
+  if (const auto error =
+          make_f128_helper_operand_record(
+              f128_carriers,
+              helper.rhs_value_id,
+              helper.rhs_value_name,
+              helper.rhs_carrier,
+              helper.rhs_abi_argument,
+              helper.rhs_argument_move,
+              prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument,
+              record.rhs);
+      error != PreparedF128RuntimeHelperRecordError::None) {
+    return f128_runtime_helper_record_error(error);
+  }
+  return PreparedF128RuntimeHelperRecordResult{
+      .record = std::move(record),
+      .error = PreparedF128RuntimeHelperRecordError::None,
   };
 }
 

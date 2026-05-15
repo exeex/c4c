@@ -2388,7 +2388,169 @@ prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
           .has_abi_bindings = true,
           .has_marshaling = true,
           .has_live_preservation = true,
-      };
+  };
+  return helper;
+}
+
+prepare::PreparedF128RuntimeHelper::AbiRegisterBinding make_f128_helper_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    std::optional<std::size_t> argument_index,
+    std::size_t abi_index,
+    std::string register_name,
+    prepare::PreparedRegisterSlotPool pool) {
+  const std::vector<std::string> occupied_register_names{register_name};
+  return prepare::PreparedF128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = argument_index,
+      .abi_register_index = abi_index,
+      .width_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .register_name = std::move(register_name),
+      .contiguous_width = 1,
+      .occupied_register_names = occupied_register_names,
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .pool = pool,
+              .slot_index = abi_index,
+              .contiguous_width = 1,
+          },
+  };
+}
+
+prepare::PreparedF128RuntimeHelper::CarrierBinding make_f128_helper_carrier_binding(
+    const prepare::PreparedF128Carrier& carrier) {
+  return prepare::PreparedF128RuntimeHelper::CarrierBinding{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
+      .width_bytes = carrier.total_size_bytes,
+      .align_bytes = carrier.total_align_bytes,
+      .register_bank = carrier.register_bank,
+      .register_class = carrier.register_class,
+      .register_name = carrier.register_name,
+      .slot_id = carrier.slot_id,
+      .stack_offset_bytes = carrier.stack_offset_bytes,
+  };
+}
+
+prepare::PreparedF128RuntimeHelper::MarshalingMove make_f128_helper_marshaling_move(
+    const prepare::PreparedF128RuntimeHelper::CarrierBinding& carrier,
+    const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding& binding,
+    prepare::PreparedF128RuntimeHelperMarshalDirection direction) {
+  return prepare::PreparedF128RuntimeHelper::MarshalingMove{
+      .direction = direction,
+      .carrier = carrier,
+      .abi_register = binding,
+  };
+}
+
+prepare::PreparedF128RuntimeHelper make_f128_runtime_helper(
+    c4c::FunctionNameId function_name,
+    std::size_t instruction_index,
+    std::string callee,
+    const prepare::PreparedF128Carrier& result,
+    const prepare::PreparedF128Carrier& lhs,
+    const prepare::PreparedF128Carrier& rhs) {
+  auto helper = prepare::PreparedF128RuntimeHelper{
+      .function_name = function_name,
+      .block_index = 0,
+      .instruction_index = instruction_index,
+      .source_binary_opcode = bir::BinaryOpcode::Add,
+      .source_type = bir::TypeKind::F128,
+      .result_type = bir::TypeKind::F128,
+      .result_value_id = result.value_id,
+      .result_value_name = result.value_name,
+      .lhs_value_id = lhs.value_id,
+      .lhs_value_name = lhs.value_name,
+      .rhs_value_id = rhs.value_id,
+      .rhs_value_name = rhs.value_name,
+      .helper_family = prepare::PreparedF128RuntimeHelperFamily::Arithmetic,
+      .helper_kind = prepare::PreparedF128RuntimeHelperKind::Add,
+      .callee_name = std::move(callee),
+      .result_ownership =
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+      .lhs_carrier = make_f128_helper_carrier_binding(lhs),
+      .rhs_carrier = make_f128_helper_carrier_binding(rhs),
+      .result_carrier = make_f128_helper_carrier_binding(result),
+      .resource_policy =
+          prepare::PreparedF128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedF128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedF128RuntimeHelperAbiTransition::
+                      DirectF128ArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Vreg,
+              .result_bank = prepare::PreparedRegisterBank::Vreg,
+              .argument_count = 2,
+              .result_count = 1,
+              .width_bytes = 16,
+          },
+      .live_preservation_policy =
+          prepare::PreparedF128RuntimeHelper::LivePreservationPolicy{
+              .evaluated = true,
+              .caller_saved_clobbers_modeled = true,
+              .no_additional_live_preservation_required = true,
+              .preserved_values =
+                  {prepare::PreparedCallPreservedValue{
+                      .value_id = lhs.value_id,
+                      .value_name = lhs.value_name,
+                      .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                      .slot_id = prepare::PreparedFrameSlotId{101},
+                      .stack_offset_bytes = std::size_t{144},
+                      .stack_size_bytes = std::size_t{16},
+                      .stack_align_bytes = std::size_t{16},
+                      .spill_slot_placement =
+                          prepare::PreparedSpillSlotPlacement{
+                              .slot_id = prepare::PreparedFrameSlotId{101},
+                              .offset_bytes = 144,
+                          },
+                  }},
+          },
+      .selected_call_ownership =
+          prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy{
+              .owns_terminal_call = true,
+              .has_callee_identity = true,
+              .has_resource_policy = true,
+              .has_clobber_policy = true,
+              .has_abi_bindings = true,
+              .has_marshaling = true,
+              .has_live_preservation = true,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .register_name = "q16",
+              .contiguous_width = 1,
+              .occupied_register_names = {"q16"},
+          }},
+  };
+  helper.lhs_abi_argument = make_f128_helper_abi_binding(
+      helper.lhs_value_id, helper.lhs_value_name, std::size_t{0}, 0, "q0",
+      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.rhs_abi_argument = make_f128_helper_abi_binding(
+      helper.rhs_value_id, helper.rhs_value_name, std::size_t{1}, 1, "q1",
+      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.result_abi_result = make_f128_helper_abi_binding(
+      helper.result_value_id, helper.result_value_name, std::nullopt, 0, "q0",
+      prepare::PreparedRegisterSlotPool::CallResult);
+  helper.lhs_argument_move = make_f128_helper_marshaling_move(
+      *helper.lhs_carrier, *helper.lhs_abi_argument,
+      prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument);
+  helper.rhs_argument_move = make_f128_helper_marshaling_move(
+      *helper.rhs_carrier, *helper.rhs_abi_argument,
+      prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument);
+  helper.result_unmarshal_move = make_f128_helper_marshaling_move(
+      *helper.result_carrier, *helper.result_abi_result,
+      prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier);
   return helper;
 }
 
@@ -2625,6 +2787,106 @@ int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
       aarch64_codegen::prepared_i128_runtime_helper_record_error_name(missing.error) !=
           "missing_clobber_policy") {
     return fail("expected i128 helper boundary to fail closed without clobber policy");
+  }
+  return 0;
+}
+
+int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
+  const auto function_name = c4c::FunctionNameId{10};
+  const auto result_name = c4c::ValueNameId{100};
+  const auto lhs_name = c4c::ValueNameId{101};
+  const auto rhs_name = c4c::ValueNameId{102};
+  prepare::PreparedF128CarrierFunction carriers{
+      .function_name = function_name,
+      .carriers =
+          {f128_full_width_register_carrier(
+               function_name, prepare::PreparedValueId{200}, result_name, "q4"),
+           f128_full_width_register_carrier(
+               function_name, prepare::PreparedValueId{201}, lhs_name, "q6"),
+           f128_full_width_register_carrier(
+               function_name, prepare::PreparedValueId{202}, rhs_name, "q8")},
+  };
+  auto helper = make_f128_runtime_helper(
+      function_name, 3, "__addtf3", carriers.carriers[0],
+      carriers.carriers[1], carriers.carriers[2]);
+  auto prepared =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (!prepared.record.has_value() ||
+      prepared.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::None ||
+      prepared.record->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::Add ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared.record->boundary_kind) != "add" ||
+      prepared.record->helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      prepared.record->callee_name != "__addtf3" ||
+      prepared.record->source_binary_opcode != bir::BinaryOpcode::Add ||
+      prepared.record->source_helper != &helper ||
+      prepared.record->result.value_id != prepare::PreparedValueId{200} ||
+      prepared.record->result.carrier_register->reg != aarch64_abi::q_register(4) ||
+      prepared.record->result.abi_register->reg != aarch64_abi::q_register(0) ||
+      prepared.record->lhs.carrier_register->reg != aarch64_abi::q_register(6) ||
+      prepared.record->rhs.abi_register->reg != aarch64_abi::q_register(1) ||
+      !prepared.record->resource_policy.call_boundary ||
+      prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Vreg ||
+      prepared.record->abi_policy.result_count != 1 ||
+      !prepared.record->live_preservation_policy.evaluated ||
+      !prepared.record->live_preservation_policy
+           .no_additional_live_preservation_required ||
+      prepared.record->live_preservation_policy.preserved_values.size() != 1 ||
+      prepared.record->live_preservation_policy.preserved_values.front().route !=
+          prepare::PreparedCallPreservationRoute::StackSlot ||
+      !prepared.record->selected_call_ownership.owns_terminal_call ||
+      !prepared.record->selected_call_ownership.has_marshaling ||
+      !prepared.record->selected_call_ownership.has_live_preservation ||
+      prepared.record->clobbered_registers.empty()) {
+    return fail("expected f128 helper boundary record to consume prepared helper authority");
+  }
+  const auto instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::CallBoundary ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::F128RuntimeHelper ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) !=
+          "f128_runtime_helper" ||
+      instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.operands.size() != 6 ||
+      instruction.defs.size() != 2 ||
+      instruction.uses.size() != 4 ||
+      instruction.clobbers.empty() ||
+      instruction.side_effects.size() != 1 ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
+      !payload->selected_call_ownership.owns_terminal_call ||
+      payload->result.abi_register->reg != aarch64_abi::q_register(0)) {
+    return fail("expected selected f128 helper boundary instruction effects");
+  }
+
+  helper.selected_call_ownership.owns_terminal_call = false;
+  const auto missing_ownership =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (missing_ownership.record.has_value() ||
+      missing_ownership.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
+              IncompletePreparedF128RuntimeHelper) {
+    return fail("expected f128 helper boundary to fail closed without selected ownership");
+  }
+  helper.selected_call_ownership.owns_terminal_call = true;
+
+  helper.clobbered_registers.clear();
+  const auto missing =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (missing.record.has_value() ||
+      missing.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::MissingClobberPolicy ||
+      aarch64_codegen::prepared_f128_runtime_helper_record_error_name(missing.error) !=
+          "missing_clobber_policy") {
+    return fail("expected f128 helper boundary to fail closed without clobber policy");
   }
   return 0;
 }
@@ -2879,6 +3141,11 @@ int main() {
   }
   if (const int status =
           i128_runtime_helper_boundary_records_consume_prepared_helper_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          f128_runtime_helper_boundary_records_consume_prepared_helper_authority();
       status != 0) {
     return status;
   }
