@@ -1,41 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/239_aarch64_intrinsic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Select CRC And Vector Intrinsic Records
+Current Step ID: 4
+Current Step Title: Print Structured CRC And Vector Intrinsic Records
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 3 selected dispatch for the ready AArch64 intrinsic
-families only.
+Completed `plan.md` Step 4 structured printer spelling for the ready AArch64
+intrinsic machine-node families only.
 
-- Complete `Crc/Crc32W`, `VectorMemory/VectorLoad`, and
-  `VectorOperation/VectorAdd` prepared carriers now lower through dispatch into
-  the selected machine-node records created by Step 2.
-- Dispatch preserves prepared operand/result register authority for CRC W
-  registers, vector-load pointer/result registers, and vector-add vector
-  lhs/rhs/result registers.
-- Vector-load selection synthesizes the structured pointer memory operand from
-  carrier authority without adding final printer assembly spelling.
+- Selected `Crc/Crc32W` records now print `crc32w` from explicit W-register
+  fields.
+- Selected `VectorMemory/VectorLoad` records now print `ld1 {vN.16b}, [xN]`
+  from the result vector register and pointer memory base register.
+- Selected `VectorOperation/VectorAdd` records now print NEON vector `add`
+  from explicit `vN.16b` result/lhs/rhs register fields.
+- Incomplete, non-selected, wrong-shape, wrong-register-bank, or
+  scalar-FP-carrier-shaped CRC/vector records still fail closed without
+  instruction lines.
 - Existing scalar `FAbs` selected dispatch remains green.
-- Unsupported or incomplete intrinsic carriers still fail closed through
-  diagnostics instead of becoming ordinary calls.
 
 ## Suggested Next
 
-Execute `plan.md` Step 4: print CRC32W, vector-load, and vector-add selected
-records from structured selected-record fields. Reject incomplete or
-non-selected records, and do not use intrinsic spelling or generic call plans
-as printer authority.
+Execute `plan.md` Step 5 for the remaining barrier/cache/pause-hint/
+builtin-address intrinsic families. The next packet should either prove
+complete carrier authority and implement those families with the same
+record-first pattern, or record the missing authority as blockers and request a
+dependency split.
 
 ## Watchouts
 
-- New CRC/vector machine opcodes deliberately have no printer mnemonic; final
-  assembly spelling belongs to a later packet.
-- Do not print from intrinsic spelling alone, generic call plans, archived
-  scratch registers, or final assembly text.
+- CRC/vector printer support is intentionally limited to selected structured
+  records; do not widen it to intrinsic spelling alone, generic call plans,
+  archived scratch registers, or unselected payloads.
+- Vector load currently accepts the selected zero-offset pointer form used by
+  the carrier path; offset/post-index forms need their own authority before
+  being printed.
 - Barrier/cache/pause-hint/builtin-address work is blocked on upstream semantic
   and prepared intrinsic carriers; adding name-only records for these families
   would be route drift.
@@ -45,6 +47,6 @@ as printer authority.
 
 Passed delegated proof; output preserved at `test_after.log`.
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_instruction_dispatch|aarch64_target_instruction_records|aarch64_machine_printer|prepared_printer|lir_to_bir_notes)'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_machine_printer|aarch64_instruction_dispatch|aarch64_target_instruction_records)'; } 2>&1 | tee test_after.log`
 
 `git diff --check` passed.
