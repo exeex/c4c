@@ -74,6 +74,7 @@ enum class InstructionFamily {
   Branch,
   Scalar,
   I128Transport,
+  F128Transport,
   I128Pair,
   Memory,
   Frame,
@@ -116,6 +117,7 @@ enum class MachineOpcode {
   CallBoundaryMove,
   CallBoundaryAbiBinding,
   I128Transport,
+  F128Transport,
   I128Pair,
   I128Shift,
   I128Compare,
@@ -310,6 +312,12 @@ enum class I128TransportKind {
   StoreToMemory,
 };
 
+enum class F128TransportKind {
+  CarrierSnapshot,
+  LoadFromMemory,
+  StoreToMemory,
+};
+
 enum class I128PairOperationKind {
   Add,
   Sub,
@@ -365,6 +373,17 @@ enum class PreparedI128TransportRecordError {
   InvalidFunction,
   MissingPreparedI128Carrier,
   IncompletePreparedI128Carrier,
+  UnsupportedCarrierKind,
+  RegisterConversionFailed,
+  MissingMemoryOperand,
+  MemoryAccessSizeMismatch,
+};
+
+enum class PreparedF128TransportRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedF128Carrier,
+  IncompletePreparedF128Carrier,
   UnsupportedCarrierKind,
   RegisterConversionFailed,
   MissingMemoryOperand,
@@ -749,6 +768,36 @@ struct I128TransportRecord {
 struct PreparedI128TransportRecordResult {
   std::optional<I128TransportRecord> record;
   PreparedI128TransportRecordError error = PreparedI128TransportRecordError::None;
+};
+
+struct F128TransportRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  F128TransportKind transport_kind = F128TransportKind::CarrierSnapshot;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  bir::TypeKind value_type = bir::TypeKind::F128;
+  prepare::PreparedF128CarrierKind carrier_kind =
+      prepare::PreparedF128CarrierKind::Missing;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterClass register_class = prepare::PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+  std::optional<RegisterOperand> reg;
+  std::vector<std::string> occupied_register_names;
+  std::optional<prepare::PreparedRegisterPlacement> register_placement;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<MemoryOperand> memory;
+  const prepare::PreparedF128Carrier* source_carrier = nullptr;
+};
+
+struct PreparedF128TransportRecordResult {
+  std::optional<F128TransportRecord> record;
+  PreparedF128TransportRecordError error = PreparedF128TransportRecordError::None;
 };
 
 struct I128PairOperandRecord {
@@ -1158,6 +1207,7 @@ struct ObjectInstructionRecord {
 using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         I128TransportRecord,
+                                        F128TransportRecord,
                                         I128PairOperationRecord,
                                         I128ShiftRecord,
                                         I128CompareRecord,
@@ -1238,8 +1288,11 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
+[[nodiscard]] std::string_view f128_transport_kind_name(F128TransportKind kind);
 [[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
     PreparedI128TransportRecordError error);
+[[nodiscard]] std::string_view prepared_f128_transport_record_error_name(
+    PreparedF128TransportRecordError error);
 [[nodiscard]] std::string_view i128_pair_operation_kind_name(I128PairOperationKind kind);
 [[nodiscard]] std::string_view i128_pair_lane_semantics_name(
     I128PairLaneSemantics semantics);
@@ -1285,6 +1338,8 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
+[[nodiscard]] InstructionRecord make_f128_transport_instruction(
+    F128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_pair_operation_instruction(
     I128PairOperationRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_shift_instruction(I128ShiftRecord instruction);
@@ -1398,6 +1453,11 @@ make_prepared_store_memory_instruction_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     c4c::ValueNameId value_name,
     I128TransportKind transport_kind,
+    std::optional<MemoryOperand> memory = std::nullopt);
+[[nodiscard]] PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
+    const prepare::PreparedF128CarrierFunction& f128_carriers,
+    c4c::ValueNameId value_name,
+    F128TransportKind transport_kind,
     std::optional<MemoryOperand> memory = std::nullopt);
 [[nodiscard]] PreparedI128PairRecordResult make_prepared_i128_pair_operation_record(
     const prepare::PreparedNameTables& names,

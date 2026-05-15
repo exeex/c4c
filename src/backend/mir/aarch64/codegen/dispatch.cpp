@@ -477,8 +477,13 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
-[[nodiscard]] std::string f128_transport_error_message() {
-  return "AArch64 binary128 memory transport lowering requires prepared f128 carrier facts; error=missing_prepared_f128_carrier";
+[[nodiscard]] std::string f128_transport_error_message(
+    PreparedF128TransportRecordError error) {
+  std::string message =
+      "AArch64 binary128 memory transport lowering requires prepared f128 carrier facts";
+  message += "; error=";
+  message += prepared_f128_transport_record_error_name(error);
+  return message;
 }
 
 [[nodiscard]] std::string i128_pair_error_message(
@@ -625,12 +630,124 @@ struct LowerMemoryInstructionResult {
     return LowerMemoryInstructionResult{.handled = false};
   }
 
-  append_memory_diagnostic(diagnostics,
-                           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-                           context,
-                           instruction_index,
-                           f128_transport_error_message());
-  return LowerMemoryInstructionResult{.handled = true};
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_transport_error_message(
+            PreparedF128TransportRecordError::MissingPreparedF128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  const auto* f128_carriers =
+      prepare::find_prepared_f128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (f128_carriers == nullptr) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_transport_error_message(
+            PreparedF128TransportRecordError::MissingPreparedF128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        memory_error_message(PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  PreparedMemoryOperandRecordResult memory;
+  c4c::ValueNameId carrier_value_name = c4c::kInvalidValueName;
+  F128TransportKind transport_kind = F128TransportKind::CarrierSnapshot;
+  if (load != nullptr) {
+    memory = make_prepared_memory_operand_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *load);
+    carrier_value_name =
+        context.function.prepared->names.value_names.find(load->result.name);
+    transport_kind = F128TransportKind::LoadFromMemory;
+  } else {
+    memory = make_prepared_memory_operand_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *addressing,
+        context.control_flow_block->block_label,
+        instruction_index,
+        *store);
+    carrier_value_name =
+        store->value.kind == bir::Value::Kind::Named
+            ? context.function.prepared->names.value_names.find(store->value.name)
+            : c4c::kInvalidValueName;
+    transport_kind = F128TransportKind::StoreToMemory;
+  }
+  if (!memory.record.has_value()) {
+    append_memory_diagnostic(diagnostics,
+                             module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+                             context,
+                             instruction_index,
+                             memory_error_message(memory.error));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+  if (carrier_value_name == c4c::kInvalidValueName) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_transport_error_message(
+            PreparedF128TransportRecordError::MissingPreparedF128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  auto prepared = make_prepared_f128_carrier_transport_record(
+      *f128_carriers,
+      carrier_value_name,
+      transport_kind,
+      std::move(memory.record));
+  if (!prepared.record.has_value()) {
+    append_memory_diagnostic(diagnostics,
+                             module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                             context,
+                             instruction_index,
+                             f128_transport_error_message(prepared.error));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  InstructionRecord target = make_f128_transport_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_memory_diagnostic(diagnostics,
+                             module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                             context,
+                             instruction_index,
+                             std::string{target.selection.diagnostic});
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  return LowerMemoryInstructionResult{
+      .handled = true,
+      .instruction = make_bir_machine_instruction(context, instruction_index, std::move(target)),
+  };
 }
 
 [[nodiscard]] LowerMemoryInstructionResult lower_i128_transport_instruction(

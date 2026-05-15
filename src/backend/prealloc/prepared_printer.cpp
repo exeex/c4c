@@ -1583,6 +1583,49 @@ void append_i128_carriers(std::ostringstream& out, const PreparedBirModule& modu
   }
 }
 
+void append_f128_carriers(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-f128-carriers ---\n";
+  for (const auto& function_carriers : module.f128_carriers.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_carriers.function_name)
+        << "\n";
+    for (const auto& carrier : function_carriers.carriers) {
+      out << "  f128_carrier " << maybe_value_name(module.names, carrier.value_name)
+          << " value_id=" << carrier.value_id
+          << " kind=" << prepared_f128_carrier_kind_name(carrier.kind)
+          << " size=" << carrier.total_size_bytes
+          << " align=" << carrier.total_align_bytes
+          << " bank=" << prepared_register_bank_name(carrier.register_bank)
+          << " class=" << prepared_register_class_name(carrier.register_class);
+      append_register_placement(out, "placement", carrier.register_placement);
+      append_register_occupancy(out,
+                                carrier.contiguous_width,
+                                carrier.occupied_register_names);
+      if (carrier.register_name.has_value()) {
+        out << " reg=" << *carrier.register_name;
+      }
+      if (carrier.slot_id.has_value()) {
+        out << " slot_id=#" << *carrier.slot_id;
+      }
+      if (carrier.stack_offset_bytes.has_value()) {
+        out << " stack_offset=" << *carrier.stack_offset_bytes;
+      }
+      if (!carrier.missing_required_facts.empty()) {
+        out << " missing_facts=";
+        for (std::size_t index = 0; index < carrier.missing_required_facts.size(); ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          out << carrier.missing_required_facts[index];
+        }
+      }
+      out << "\n";
+    }
+    for (const auto& fact : function_carriers.missing_required_facts) {
+      out << "    missing fact=" << fact << "\n";
+    }
+  }
+}
+
 void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-i128-runtime-helpers ---\n";
   auto append_lane = [&](std::string_view label,
@@ -2071,6 +2114,7 @@ std::string print(const PreparedBirModule& module) {
   append_regalloc(out, module);
   append_storage_plans(out, module);
   append_i128_carriers(out, module);
+  append_f128_carriers(out, module);
   append_i128_runtime_helpers(out, module);
   append_addressing(out, module);
   return out.str();

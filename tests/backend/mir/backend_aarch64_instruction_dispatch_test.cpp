@@ -1656,7 +1656,7 @@ prepare::PreparedBirModule prepared_with_i128_frame_slot_load(bool include_carri
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_f128_frame_slot_load() {
+prepare::PreparedBirModule prepared_with_f128_frame_slot_load(bool include_carrier = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -1737,6 +1737,26 @@ prepare::PreparedBirModule prepared_with_f128_frame_slot_load() {
                   },
           }},
   });
+  if (include_carrier) {
+    prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+        .function_name = function_name,
+        .carriers =
+            {prepare::PreparedF128Carrier{
+                .function_name = function_name,
+                .value_id = prepare::PreparedValueId{111},
+                .value_name = result_name,
+                .source_type = bir::TypeKind::F128,
+                .kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+                .total_size_bytes = 16,
+                .total_align_bytes = 16,
+                .register_bank = prepare::PreparedRegisterBank::Vreg,
+                .register_class = prepare::PreparedRegisterClass::Vector,
+                .contiguous_width = 1,
+                .register_name = std::string{"q4"},
+                .occupied_register_names = {"q4"},
+            }},
+    });
+  }
   return prepared;
 }
 
@@ -3704,6 +3724,56 @@ int block_dispatch_reports_missing_i128_carrier_authority() {
   return 0;
 }
 
+int block_dispatch_lowers_f128_frame_slot_load_from_prepared_carrier() {
+  auto prepared = prepared_with_f128_frame_slot_load(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected dispatch to select f128 frame-slot transport plus return");
+  }
+
+  const auto* transport =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions.front().target.payload);
+  if (transport == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      transport->transport_kind != aarch64_codegen::F128TransportKind::LoadFromMemory ||
+      transport->value_id != prepare::PreparedValueId{111} ||
+      transport->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      !transport->reg.has_value() ||
+      transport->reg->reg != aarch64_abi::q_register(4) ||
+      transport->total_size_bytes != 16 ||
+      transport->total_align_bytes != 16 ||
+      !transport->memory.has_value() ||
+      transport->memory->frame_slot_id != prepare::PreparedFrameSlotId{20} ||
+      transport->memory->byte_offset != 16 ||
+      transport->memory->size_bytes != 16 ||
+      transport->memory->align_bytes != 16 ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::F128Transport ||
+      block.instructions.front().target.side_effects.size() != 1 ||
+      block.instructions.front().target.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryRead) {
+    return fail("expected f128 transport dispatch to preserve carrier and memory facts");
+  }
+  return 0;
+}
+
 int block_dispatch_reports_missing_f128_carrier_authority() {
   auto prepared = prepared_with_f128_frame_slot_load();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -4449,6 +4519,11 @@ int main() {
     return status;
   }
   if (const int status = block_dispatch_reports_missing_i128_carrier_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_frame_slot_load_from_prepared_carrier();
       status != 0) {
     return status;
   }

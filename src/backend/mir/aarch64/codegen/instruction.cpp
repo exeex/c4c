@@ -127,6 +127,8 @@ std::string_view instruction_family_name(InstructionFamily family) {
       return "scalar";
     case InstructionFamily::I128Transport:
       return "i128_transport";
+    case InstructionFamily::F128Transport:
+      return "f128_transport";
     case InstructionFamily::I128Pair:
       return "i128_pair";
     case InstructionFamily::Memory:
@@ -177,6 +179,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "call_boundary_abi_binding";
     case MachineOpcode::I128Transport:
       return "i128_transport";
+    case MachineOpcode::F128Transport:
+      return "f128_transport";
     case MachineOpcode::I128Pair:
       return "i128_pair";
     case MachineOpcode::I128Shift:
@@ -314,6 +318,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::CalleeSaveLoad:
     case MachineOpcode::CallBoundaryAbiBinding:
     case MachineOpcode::I128Transport:
+    case MachineOpcode::F128Transport:
     case MachineOpcode::I128Pair:
     case MachineOpcode::I128Shift:
     case MachineOpcode::I128Compare:
@@ -692,6 +697,18 @@ std::string_view i128_transport_kind_name(I128TransportKind kind) {
   return "unknown";
 }
 
+std::string_view f128_transport_kind_name(F128TransportKind kind) {
+  switch (kind) {
+    case F128TransportKind::CarrierSnapshot:
+      return "carrier_snapshot";
+    case F128TransportKind::LoadFromMemory:
+      return "load_from_memory";
+    case F128TransportKind::StoreToMemory:
+      return "store_to_memory";
+  }
+  return "unknown";
+}
+
 std::string_view prepared_i128_transport_record_error_name(
     PreparedI128TransportRecordError error) {
   switch (error) {
@@ -710,6 +727,29 @@ std::string_view prepared_i128_transport_record_error_name(
     case PreparedI128TransportRecordError::MissingMemoryOperand:
       return "missing_memory_operand";
     case PreparedI128TransportRecordError::MemoryAccessSizeMismatch:
+      return "memory_access_size_mismatch";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_f128_transport_record_error_name(
+    PreparedF128TransportRecordError error) {
+  switch (error) {
+    case PreparedF128TransportRecordError::None:
+      return "none";
+    case PreparedF128TransportRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedF128TransportRecordError::MissingPreparedF128Carrier:
+      return "missing_prepared_f128_carrier";
+    case PreparedF128TransportRecordError::IncompletePreparedF128Carrier:
+      return "incomplete_prepared_f128_carrier";
+    case PreparedF128TransportRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedF128TransportRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedF128TransportRecordError::MissingMemoryOperand:
+      return "missing_memory_operand";
+    case PreparedF128TransportRecordError::MemoryAccessSizeMismatch:
       return "memory_access_size_mismatch";
   }
   return "unknown";
@@ -3407,6 +3447,101 @@ InstructionRecord make_i128_transport_instruction(I128TransportRecord instructio
   };
 }
 
+MachineNodeStatusRecord f128_transport_selection_status(
+    const F128TransportRecord& instruction) {
+  if (instruction.source_carrier == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport is missing prepared f128 carrier provenance"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::Missing) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport carrier is missing complete full-width authority"};
+  }
+  if (instruction.total_size_bytes != 16 || instruction.total_align_bytes == 0) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport carrier has invalid size or alignment"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+      !instruction.reg.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 full-width register transport is missing q-register authority"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::MemoryBacked &&
+      (!instruction.slot_id.has_value() || !instruction.stack_offset_bytes.has_value())) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 memory-backed transport is missing frame-slot authority"};
+  }
+  if ((instruction.transport_kind == F128TransportKind::LoadFromMemory ||
+       instruction.transport_kind == F128TransportKind::StoreToMemory) &&
+      !instruction.memory.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 memory transport is missing structured memory operand"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+InstructionRecord make_f128_transport_instruction(F128TransportRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.memory.has_value()) {
+    operands.push_back(make_memory_operand(*instruction.memory));
+  }
+  if (instruction.reg.has_value()) {
+    operands.push_back(make_register_operand(*instruction.reg));
+  }
+
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.transport_kind == F128TransportKind::LoadFromMemory ||
+      instruction.transport_kind == F128TransportKind::CarrierSnapshot) {
+    if (instruction.reg.has_value()) {
+      defs.push_back(effect_from_operand(make_register_operand(*instruction.reg)));
+    } else if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::MemoryBacked) {
+      defs.push_back(prepared_value_def(instruction.value_id, instruction.value_name));
+    }
+  }
+  if ((instruction.transport_kind == F128TransportKind::StoreToMemory ||
+       instruction.transport_kind == F128TransportKind::CarrierSnapshot) &&
+      instruction.reg.has_value()) {
+    uses.push_back(effect_from_operand(make_register_operand(*instruction.reg)));
+  }
+  if (instruction.memory.has_value()) {
+    auto memory_effect = effect_from_operand(make_memory_operand(*instruction.memory));
+    if (instruction.transport_kind == F128TransportKind::LoadFromMemory) {
+      uses.push_back(std::move(memory_effect));
+    } else if (instruction.transport_kind == F128TransportKind::StoreToMemory) {
+      defs.push_back(std::move(memory_effect));
+    }
+  }
+
+  std::vector<MachineSideEffectKind> side_effects;
+  if (instruction.transport_kind == F128TransportKind::LoadFromMemory) {
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+  } else if (instruction.transport_kind == F128TransportKind::StoreToMemory) {
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::F128Transport,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::F128Transport,
+      .selection = f128_transport_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .instruction_index = instruction.instruction_index,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .side_effects = std::move(side_effects),
+      .payload = instruction,
+  };
+}
+
 MachineNodeStatusRecord i128_pair_selection_status(
     const I128PairOperationRecord& instruction) {
   const auto has_pair_registers = [](const I128PairOperandRecord& operand) {
@@ -4842,6 +4977,14 @@ PreparedI128TransportRecordResult i128_transport_record_error(
   };
 }
 
+PreparedF128TransportRecordResult f128_transport_record_error(
+    PreparedF128TransportRecordError error) {
+  return PreparedF128TransportRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
+}
+
 std::optional<RegisterOperand> make_i128_lane_register_operand(
     const prepare::PreparedI128Carrier& carrier,
     const prepare::PreparedI128LaneCarrier& lane) {
@@ -4861,6 +5004,30 @@ std::optional<RegisterOperand> make_i128_lane_register_operand(
       .prepared_class = carrier.register_class,
       .prepared_bank = carrier.register_bank,
       .expected_view = abi::RegisterView::X,
+      .contiguous_width = carrier.contiguous_width,
+      .occupied_register_references = occupied_register_references(*converted.reg),
+      .occupied_registers = occupied_register_views(*converted.reg),
+  };
+}
+
+std::optional<RegisterOperand> make_f128_register_operand(
+    const prepare::PreparedF128Carrier& carrier) {
+  if (!carrier.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto converted = abi::convert_prepared_register(
+      *carrier.register_name, carrier.register_bank, carrier.register_class, abi::RegisterView::Q);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .prepared_class = carrier.register_class,
+      .prepared_bank = carrier.register_bank,
+      .expected_view = abi::RegisterView::Q,
       .contiguous_width = carrier.contiguous_width,
       .occupied_register_references = occupied_register_references(*converted.reg),
       .occupied_registers = occupied_register_views(*converted.reg),
@@ -4966,6 +5133,86 @@ PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
   return PreparedI128TransportRecordResult{
       .record = std::move(record),
       .error = PreparedI128TransportRecordError::None,
+  };
+}
+
+PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
+    const prepare::PreparedF128CarrierFunction& f128_carriers,
+    c4c::ValueNameId value_name,
+    F128TransportKind transport_kind,
+    std::optional<MemoryOperand> memory) {
+  if (f128_carriers.function_name == c4c::kInvalidFunctionName) {
+    return f128_transport_record_error(PreparedF128TransportRecordError::InvalidFunction);
+  }
+  const auto* carrier = prepare::find_prepared_f128_carrier(f128_carriers, value_name);
+  if (carrier == nullptr) {
+    return f128_transport_record_error(
+        PreparedF128TransportRecordError::MissingPreparedF128Carrier);
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedF128CarrierKind::Missing) {
+    return f128_transport_record_error(
+        PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
+  }
+  if (carrier->total_size_bytes != 16 || carrier->total_align_bytes == 0) {
+    return f128_transport_record_error(
+        PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
+  }
+  if (transport_kind != F128TransportKind::CarrierSnapshot) {
+    if (!memory.has_value()) {
+      return f128_transport_record_error(PreparedF128TransportRecordError::MissingMemoryOperand);
+    }
+    if (memory->size_bytes != carrier->total_size_bytes) {
+      return f128_transport_record_error(
+          PreparedF128TransportRecordError::MemoryAccessSizeMismatch);
+    }
+  }
+
+  F128TransportRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .transport_kind = transport_kind,
+      .function_name = f128_carriers.function_name,
+      .block_label = memory.has_value() ? memory->block_label : c4c::kInvalidBlockLabel,
+      .instruction_index = memory.has_value() ? memory->instruction_index : 0,
+      .value_id = carrier->value_id,
+      .value_name = carrier->value_name,
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = carrier->kind,
+      .total_size_bytes = carrier->total_size_bytes,
+      .total_align_bytes = carrier->total_align_bytes,
+      .register_bank = carrier->register_bank,
+      .register_class = carrier->register_class,
+      .contiguous_width = carrier->contiguous_width,
+      .occupied_register_names = carrier->occupied_register_names,
+      .register_placement = carrier->register_placement,
+      .slot_id = carrier->slot_id,
+      .stack_offset_bytes = carrier->stack_offset_bytes,
+      .memory = std::move(memory),
+      .source_carrier = carrier,
+  };
+
+  switch (carrier->kind) {
+    case prepare::PreparedF128CarrierKind::FullWidthRegister:
+      record.reg = make_f128_register_operand(*carrier);
+      if (!record.reg.has_value()) {
+        return f128_transport_record_error(
+            PreparedF128TransportRecordError::RegisterConversionFailed);
+      }
+      break;
+    case prepare::PreparedF128CarrierKind::MemoryBacked:
+      if (!record.slot_id.has_value() || !record.stack_offset_bytes.has_value()) {
+        return f128_transport_record_error(
+            PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
+      }
+      break;
+    case prepare::PreparedF128CarrierKind::Missing:
+      return f128_transport_record_error(
+          PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
+  }
+
+  return PreparedF128TransportRecordResult{
+      .record = std::move(record),
+      .error = PreparedF128TransportRecordError::None,
   };
 }
 

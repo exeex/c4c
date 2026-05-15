@@ -1685,6 +1685,54 @@ struct PreparedI128Carriers {
   std::vector<PreparedI128CarrierFunction> functions;
 };
 
+enum class PreparedF128CarrierKind {
+  Missing,
+  FullWidthRegister,
+  MemoryBacked,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_carrier_kind_name(
+    PreparedF128CarrierKind kind) {
+  switch (kind) {
+    case PreparedF128CarrierKind::Missing:
+      return "missing";
+    case PreparedF128CarrierKind::FullWidthRegister:
+      return "full_width_register";
+    case PreparedF128CarrierKind::MemoryBacked:
+      return "memory_backed";
+  }
+  return "unknown";
+}
+
+struct PreparedF128Carrier {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::F128;
+  PreparedF128CarrierKind kind = PreparedF128CarrierKind::Missing;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+  std::optional<std::string> register_name;
+  std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedF128CarrierFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedF128Carrier> carriers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedF128Carriers {
+  std::vector<PreparedF128CarrierFunction> functions;
+};
+
 enum class PreparedI128RuntimeHelperFamily {
   DivRem,
   FloatIntegerConversion,
@@ -4952,6 +5000,7 @@ struct PreparedBirModule {
   PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
   PreparedI128Carriers i128_carriers;
+  PreparedF128Carriers f128_carriers;
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
@@ -5134,6 +5183,23 @@ find_prepared_variadic_entry_helper_operand_homes(
   return find_prepared_i128_carriers(module.i128_carriers, function_name);
 }
 
+[[nodiscard]] inline const PreparedF128CarrierFunction* find_prepared_f128_carriers(
+    const PreparedF128Carriers& carriers,
+    FunctionNameId function_name) {
+  for (const auto& function_carriers : carriers.functions) {
+    if (function_carriers.function_name == function_name) {
+      return &function_carriers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedF128CarrierFunction* find_prepared_f128_carriers(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_f128_carriers(module.f128_carriers, function_name);
+}
+
 [[nodiscard]] inline const PreparedI128RuntimeHelperFunction*
 find_prepared_i128_runtime_helpers(const PreparedI128RuntimeHelpers& helpers,
                                    FunctionNameId function_name) {
@@ -5164,6 +5230,28 @@ find_prepared_i128_runtime_helpers(const PreparedBirModule& module,
 
 [[nodiscard]] inline const PreparedI128Carrier* find_prepared_i128_carrier(
     const PreparedI128CarrierFunction& function_carriers,
+    ValueNameId value_name) {
+  for (const auto& carrier : function_carriers.carriers) {
+    if (carrier.value_name == value_name) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedF128Carrier* find_prepared_f128_carrier(
+    const PreparedF128CarrierFunction& function_carriers,
+    PreparedValueId value_id) {
+  for (const auto& carrier : function_carriers.carriers) {
+    if (carrier.value_id == value_id) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedF128Carrier* find_prepared_f128_carrier(
+    const PreparedF128CarrierFunction& function_carriers,
     ValueNameId value_name) {
   for (const auto& carrier : function_carriers.carriers) {
     if (carrier.value_name == value_name) {
