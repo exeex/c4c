@@ -1559,6 +1559,9 @@ void append_addressing(std::ostringstream& out, const PreparedBirModule& module)
         out << " target_label="
             << maybe_block_label(module.names, *materialization.target_label);
       }
+      out << " policy="
+          << bir::global_address_materialization_policy_name(
+                 materialization.address_materialization_policy);
       out << " offset=" << materialization.byte_offset
           << " address_space=" << address_space_name(materialization.address_space)
           << " tls_global=" << (materialization.is_thread_local ? "yes" : "no")

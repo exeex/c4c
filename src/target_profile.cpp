@@ -233,4 +233,16 @@ const char* backend_abi_name(BackendAbiKind abi) {
   return "unknown";
 }
 
+const char* target_relocation_model_name(TargetRelocationModel model) {
+  switch (model) {
+    case TargetRelocationModel::Static:
+      return "static";
+    case TargetRelocationModel::Pic:
+      return "pic";
+    case TargetRelocationModel::Pie:
+      return "pie";
+  }
+  return "unknown";
+}
+
 }  // namespace c4c

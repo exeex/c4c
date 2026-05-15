@@ -30,11 +30,18 @@ enum class BackendAbiKind {
   RiscvLp64D,
 };
 
+enum class TargetRelocationModel {
+  Static,
+  Pic,
+  Pie,
+};
+
 struct TargetProfile {
   std::string triple;
   TargetArch arch = TargetArch::Unknown;
   TargetOs os = TargetOs::Unknown;
   BackendAbiKind backend_abi = BackendAbiKind::Unknown;
+  TargetRelocationModel relocation_model = TargetRelocationModel::Static;
   bool has_float_arg_registers = false;
   bool has_float_return_registers = false;
 };
@@ -46,5 +53,6 @@ std::string llvm_target_triple(const TargetProfile& target_profile);
 const char* target_arch_name(TargetArch arch);
 const char* target_os_name(TargetOs os);
 const char* backend_abi_name(BackendAbiKind abi);
+const char* target_relocation_model_name(TargetRelocationModel model);
 
 }  // namespace c4c

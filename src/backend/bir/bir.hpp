@@ -216,6 +216,25 @@ struct LocalSlot {
   std::optional<PhiObservation> phi_observation;
 };
 
+enum class GlobalAddressMaterializationPolicy {
+  Unspecified,
+  Direct,
+  GotRequired,
+};
+
+[[nodiscard]] constexpr std::string_view global_address_materialization_policy_name(
+    GlobalAddressMaterializationPolicy policy) {
+  switch (policy) {
+    case GlobalAddressMaterializationPolicy::Unspecified:
+      return "unspecified";
+    case GlobalAddressMaterializationPolicy::Direct:
+      return "direct";
+    case GlobalAddressMaterializationPolicy::GotRequired:
+      return "got_required";
+  }
+  return "unknown";
+}
+
 struct Global {
   std::string name;
   LinkNameId link_name_id = kInvalidLinkName;
@@ -234,6 +253,8 @@ struct Global {
   // keep the id invalid.
   LinkNameId initializer_symbol_name_id = kInvalidLinkName;
   std::vector<Value> initializer_elements;
+  GlobalAddressMaterializationPolicy address_materialization_policy =
+      GlobalAddressMaterializationPolicy::Unspecified;
 };
 
 struct StringConstant {
@@ -535,6 +556,8 @@ struct Function {
   std::vector<LocalSlot> local_slots;
   std::vector<Block> blocks;
   bool is_declaration = false;
+  GlobalAddressMaterializationPolicy address_materialization_policy =
+      GlobalAddressMaterializationPolicy::Unspecified;
 };
 
 struct Module {

@@ -4,6 +4,18 @@ namespace c4c::backend::lir_to_bir_detail {
 
 namespace {
 
+bir::GlobalAddressMaterializationPolicy lower_global_address_materialization_policy(
+    const c4c::codegen::lir::LirGlobal& global,
+    const c4c::TargetProfile& target_profile) {
+  if (target_profile.relocation_model == c4c::TargetRelocationModel::Static) {
+    return bir::GlobalAddressMaterializationPolicy::Direct;
+  }
+  if (global.is_internal) {
+    return bir::GlobalAddressMaterializationPolicy::Direct;
+  }
+  return bir::GlobalAddressMaterializationPolicy::Unspecified;
+}
+
 std::optional<bir::TypeKind> lower_scalar_global_type(std::string_view text) {
   if (const auto lowered = lower_integer_type(text); lowered.has_value()) {
     return lowered;
@@ -54,6 +66,7 @@ namespace {
 
 std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGlobal& global,
                                                const TypeDeclMap& type_decls,
+                                               const c4c::TargetProfile& target_profile,
                                                const BackendStructuredLayoutTable*
                                                    structured_layouts) {
   const auto lowered_type = lower_scalar_global_type(global.llvm_type);
@@ -67,6 +80,8 @@ std::optional<bir::Global> lower_scalar_global(const c4c::codegen::lir::LirGloba
   lowered.type = *lowered_type;
   lowered.is_extern = global.is_extern_decl;
   lowered.is_constant = global.is_const;
+  lowered.address_materialization_policy =
+      lower_global_address_materialization_policy(global, target_profile);
   lowered.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
   if (!global.is_extern_decl) {
     if (*lowered_type == bir::TypeKind::Ptr) {
@@ -327,29 +342,34 @@ bool resolve_pointer_initializer_offsets(GlobalTypes& global_types,
 std::optional<bir::Global> lower_minimal_global_impl(
     const c4c::codegen::lir::LirGlobal& global,
     const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile,
     const BackendStructuredLayoutTable* structured_layouts,
     GlobalInfo* info);
 
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,
+                                                const c4c::TargetProfile& target_profile,
                                                 GlobalInfo* info) {
-  return lower_minimal_global_impl(global, type_decls, nullptr, info);
+  return lower_minimal_global_impl(global, type_decls, target_profile, nullptr, info);
 }
 
 std::optional<bir::Global> lower_minimal_global(
     const c4c::codegen::lir::LirGlobal& global,
     const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile,
     const BackendStructuredLayoutTable& structured_layouts,
     GlobalInfo* info) {
-  return lower_minimal_global_impl(global, type_decls, &structured_layouts, info);
+  return lower_minimal_global_impl(
+      global, type_decls, target_profile, &structured_layouts, info);
 }
 
 std::optional<bir::Global> lower_minimal_global_impl(
     const c4c::codegen::lir::LirGlobal& global,
     const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile,
     const BackendStructuredLayoutTable* structured_layouts,
     GlobalInfo* info) {
-  if (auto lowered = lower_scalar_global(global, type_decls, structured_layouts);
+  if (auto lowered = lower_scalar_global(global, type_decls, target_profile, structured_layouts);
       lowered.has_value()) {
     info->value_type = lowered->type;
     info->element_size_bytes = type_size_bytes(lowered->type);
@@ -402,6 +422,8 @@ std::optional<bir::Global> lower_minimal_global_impl(
     lowered.type = integer_array->element_type;
     lowered.is_extern = global.is_extern_decl;
     lowered.is_constant = global.is_const;
+    lowered.address_materialization_policy =
+        lower_global_address_materialization_policy(global, target_profile);
     lowered.size_bytes = total_elements * element_size_bytes;
     lowered.align_bytes =
         global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes) : 0;
@@ -443,6 +465,8 @@ std::optional<bir::Global> lower_minimal_global_impl(
   aggregate.type = bir::TypeKind::I8;
   aggregate.is_extern = global.is_extern_decl;
   aggregate.is_constant = global.is_const;
+  aggregate.address_materialization_policy =
+      lower_global_address_materialization_policy(global, target_profile);
   aggregate.size_bytes = layout.size_bytes;
   aggregate.align_bytes = global.align_bytes > 0 ? static_cast<std::size_t>(global.align_bytes)
                                                  : layout.align_bytes;

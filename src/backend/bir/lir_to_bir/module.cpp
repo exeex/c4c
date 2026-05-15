@@ -963,7 +963,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
   report_backend_structured_layout_parity_notes(context, structured_layouts);
   for (const auto& global : context.lir_module.globals) {
     GlobalInfo info;
-    auto lowered_global = lower_minimal_global(global, type_decls, structured_layouts, &info);
+    auto lowered_global =
+        lower_minimal_global(global, type_decls, context.target_profile, structured_layouts, &info);
     if (!lowered_global.has_value()) {
       context.note(
           "module",

@@ -55,6 +55,19 @@ struct ResolvedFrameSlot {
   return false;
 }
 
+[[nodiscard]] const bir::Function* find_function_by_link_name_id(const bir::Module& module,
+                                                                 LinkNameId link_name_id) {
+  if (link_name_id == kInvalidLinkName) {
+    return nullptr;
+  }
+  for (const auto& function : module.functions) {
+    if (function.link_name_id == link_name_id) {
+      return &function;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::optional<LinkNameId> resolve_prepared_link_name_id(
     PreparedNameTables& names,
     const bir::NameTables& bir_names,
@@ -817,6 +830,7 @@ void append_direct_global_address_materialization(PreparedNameTables& names,
                                                   PreparedAddressingFunction& function_addressing,
                                                   std::vector<PrepareNote>& notes,
                                                   const bir::Module& module,
+                                                  const c4c::TargetProfile& target_profile,
                                                   FunctionNameId function_name_id,
                                                   BlockLabelId block_label_id,
                                                   std::size_t inst_index,
@@ -844,12 +858,32 @@ void append_direct_global_address_materialization(PreparedNameTables& names,
   }
   const bir::Global* global =
       find_global_by_link_name_id(module, result.pointer_symbol_link_name_id);
-  if (global == nullptr &&
-      !module_has_function_link_name_id(module, result.pointer_symbol_link_name_id)) {
+  const bir::Function* target_function =
+      find_function_by_link_name_id(module, result.pointer_symbol_link_name_id);
+  if (global == nullptr && target_function == nullptr) {
     append_missing_address_materialization_fact(
         notes,
         "prepared address materialization for '" + result.name +
             "' references an unknown global/function symbol");
+    return;
+  }
+  const auto policy = global != nullptr ? global->address_materialization_policy
+                                        : target_function->address_materialization_policy;
+  if (policy == bir::GlobalAddressMaterializationPolicy::Unspecified &&
+      target_profile.relocation_model != c4c::TargetRelocationModel::Static) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared address materialization for '" + result.name +
+            "' needs explicit GOT/direct policy for relocation model " +
+            c4c::target_relocation_model_name(target_profile.relocation_model));
+    return;
+  }
+  if (policy == bir::GlobalAddressMaterializationPolicy::GotRequired && global != nullptr &&
+      global->is_thread_local) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared GOT address materialization for '" + result.name +
+            "' targets TLS global before TLS/GOT policy is specified");
     return;
   }
 
@@ -857,11 +891,17 @@ void append_direct_global_address_materialization(PreparedNameTables& names,
       .function_name = function_name_id,
       .block_label = block_label_id,
       .inst_index = inst_index,
-      .kind = global != nullptr && global->is_thread_local
-                  ? PreparedAddressMaterializationKind::TlsGlobal
-                  : PreparedAddressMaterializationKind::DirectGlobal,
+      .kind = policy == bir::GlobalAddressMaterializationPolicy::GotRequired
+                  ? PreparedAddressMaterializationKind::GotGlobal
+                  : (global != nullptr && global->is_thread_local
+                         ? PreparedAddressMaterializationKind::TlsGlobal
+                         : PreparedAddressMaterializationKind::DirectGlobal),
       .result_value_name = prepared_named_value_id(names, result),
       .symbol_name = *prepared_symbol_name,
+      .address_materialization_policy =
+          policy == bir::GlobalAddressMaterializationPolicy::Unspecified
+              ? bir::GlobalAddressMaterializationPolicy::Direct
+              : policy,
       .address_space = global != nullptr && global->is_thread_local ? bir::AddressSpace::Tls
                                                                     : bir::AddressSpace::Default,
       .is_thread_local = global != nullptr && global->is_thread_local,
@@ -975,6 +1015,7 @@ void append_address_materializations(PreparedNameTables& names,
                                      PreparedAddressingFunction& function_addressing,
                                      std::vector<PrepareNote>& notes,
                                      const bir::Module& module,
+                                     const c4c::TargetProfile& target_profile,
                                      FunctionNameId function_name_id,
                                      const bir::Function& function) {
   for (const auto& block : function.blocks) {
@@ -984,24 +1025,24 @@ void append_address_materializations(PreparedNameTables& names,
       const auto& inst = block.insts[inst_index];
       if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, binary->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, binary->result);
       } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, select->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, select->result);
       } else if (const auto* cast = std::get_if<bir::CastInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, cast->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, cast->result);
       } else if (const auto* phi = std::get_if<bir::PhiInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, phi->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, phi->result);
       } else if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
         if (call->result.has_value()) {
           append_direct_global_address_materialization(
-              names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, *call->result);
+              names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, *call->result);
         }
       } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, load_local->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, load_local->result);
         append_string_constant_address_materialization(
             names,
             function_addressing,
@@ -1027,7 +1068,7 @@ void append_address_materializations(PreparedNameTables& names,
             static_cast<std::int64_t>(load_local->byte_offset));
       } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst)) {
         append_direct_global_address_materialization(
-            names, function_addressing, notes, module, function_name_id, block_label_id, inst_index, load_global->result);
+            names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, load_global->result);
         append_string_constant_address_materialization(
             names,
             function_addressing,
@@ -1107,6 +1148,7 @@ void BirPreAlloc::run_stack_layout() {
                                     function_addressing,
                                     prepared_.notes,
                                     prepared_.module,
+                                    prepared_.target_profile,
                                     function_name_id,
                                     function);
 

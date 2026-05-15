@@ -17,6 +17,12 @@ c4c::TargetProfile riscv_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::Riscv64);
 }
 
+c4c::TargetProfile aarch64_pic_target_profile() {
+  auto profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  profile.relocation_model = c4c::TargetRelocationModel::Pic;
+  return profile;
+}
+
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
@@ -2105,6 +2111,16 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .size_bytes = 4,
       .align_bytes = 4,
   });
+  const c4c::LinkNameId got_global_id = module.names.link_names.intern("g.got");
+  module.globals.push_back(bir::Global{
+      .name = "g.got",
+      .link_name_id = got_global_id,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .address_materialization_policy =
+          bir::GlobalAddressMaterializationPolicy::GotRequired,
+  });
   const c4c::LinkNameId tls_global_id = module.names.link_names.intern("g.tls");
   module.globals.push_back(bir::Global{
       .name = "g.tls",
@@ -2148,6 +2164,11 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .result = bir::Value::named_symbol_pointer("@g.tls", tls_global_id),
       .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.tls.source"),
   });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named_symbol_pointer("@g.got", got_global_id),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.got.source"),
+  });
   entry.insts.push_back(bir::LoadGlobalInst{
       .result = bir::Value::named(bir::TypeKind::Ptr, "label.ptr"),
       .byte_offset = 12,
@@ -2175,6 +2196,53 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
   prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_pic_unspecified_global_policy_module() {
+  bir::Module module;
+
+  const c4c::LinkNameId external_global_id = module.names.link_names.intern("g.external");
+  module.globals.push_back(bir::Global{
+      .name = "g.external",
+      .link_name_id = external_global_id,
+      .type = bir::TypeKind::I32,
+      .is_extern = true,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Function function;
+  function.name = "stack_layout_pic_unspecified_global_policy_activation";
+  function.return_type = bir::TypeKind::Ptr;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named_symbol_pointer("@g.external", external_global_id),
+      .operand = bir::Value::named(bir::TypeKind::Ptr, "unused.external.source"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::Ptr, "@g.external"),
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = aarch64_pic_target_profile();
 
   prepare::PrepareOptions options;
   options.run_legalize = false;
@@ -3639,8 +3707,9 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected raw-only compatibility global store to resolve by spelling");
   }
 
-  if (function_addressing->address_materializations.size() != 3) {
-    return fail("expected link-name fixture to publish global and label address materializations");
+  if (function_addressing->address_materializations.size() != 4) {
+    return fail(
+        "expected link-name fixture to publish global, GOT, and label address materializations");
   }
   const auto* direct_global =
       prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 3);
@@ -3656,6 +3725,8 @@ int check_link_name_authoritative_global_access_activation(
           "g.authoritative" ||
       direct_global->text_name.has_value() ||
       direct_global->byte_offset != 0 ||
+      direct_global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
       direct_global->address_space != bir::AddressSpace::Default ||
       direct_global->is_thread_local ||
       direct_global->has_tls_address_space) {
@@ -3671,13 +3742,32 @@ int check_link_name_authoritative_global_access_activation(
       prepare::prepared_value_name(prepared.names, *tls_global->result_value_name) != "@g.tls" ||
       !tls_global->symbol_name.has_value() ||
       prepare::prepared_link_name(prepared.names, *tls_global->symbol_name) != "g.tls" ||
+      tls_global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
       tls_global->address_space != bir::AddressSpace::Tls ||
       !tls_global->is_thread_local ||
       !tls_global->has_tls_address_space) {
     return fail("expected TLS global materialization to preserve structured TLS facts");
   }
-  const auto* label_address =
+  const auto* got_global =
       prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 5);
+  if (got_global == nullptr) {
+    return fail("expected prepared addressing to record explicit GOT global address materialization");
+  }
+  if (got_global->kind != prepare::PreparedAddressMaterializationKind::GotGlobal ||
+      !got_global->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *got_global->result_value_name) != "@g.got" ||
+      !got_global->symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *got_global->symbol_name) != "g.got" ||
+      got_global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired ||
+      got_global->address_space != bir::AddressSpace::Default ||
+      got_global->is_thread_local ||
+      got_global->has_tls_address_space) {
+    return fail("expected GOT materialization to preserve explicit policy and symbol facts");
+  }
+  const auto* label_address =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 6);
   if (label_address == nullptr) {
     return fail("expected prepared addressing to record label address materialization");
   }
@@ -3697,6 +3787,31 @@ int check_link_name_authoritative_global_access_activation(
   }
 
   return 0;
+}
+
+int check_pic_unspecified_global_policy_activation(const prepare::PreparedBirModule& prepared) {
+  if (prepared.target_profile.relocation_model != c4c::TargetRelocationModel::Pic) {
+    return fail("expected PIC fixture to preserve target relocation mode");
+  }
+  const auto* function_addressing = prepare::find_prepared_addressing(
+      prepared,
+      find_function_name_id(
+          prepared, "stack_layout_pic_unspecified_global_policy_activation"));
+  if (function_addressing == nullptr) {
+    return fail("expected PIC unspecified-policy fixture to publish addressing function");
+  }
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (prepare::find_prepared_address_materialization(
+          *function_addressing, entry_block_label_id, 0) != nullptr) {
+    return fail("expected PIC unresolved global policy to stay out of prepared materializations");
+  }
+  for (const auto& note : prepared.notes) {
+    if (note.message.find("needs explicit GOT/direct policy for relocation model pic") !=
+        std::string::npos) {
+      return 0;
+    }
+  }
+  return fail("expected PIC unresolved global policy to diagnose instead of defaulting");
 }
 
 int check_phi_single_block_local_slot_activation(const prepare::PreparedBirModule& prepared) {
@@ -4145,6 +4260,13 @@ int main() {
       prepare_link_name_authoritative_global_access_module();
   if (const int rc = check_link_name_authoritative_global_access_activation(
           link_name_authoritative_global_access_prepared);
+      rc != 0) {
+    return rc;
+  }
+
+  const auto pic_unspecified_policy_prepared = prepare_pic_unspecified_global_policy_module();
+  if (const int rc =
+          check_pic_unspecified_global_policy_activation(pic_unspecified_policy_prepared);
       rc != 0) {
     return rc;
   }

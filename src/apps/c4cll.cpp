@@ -584,6 +584,21 @@ int main(int argc, char **argv) {
       std::cerr << "--mir-focus-value requires --mir-focus-function\n";
       return 2;
     }
+    if (pic_level > 0 && pie_level > 0) {
+      std::cerr << "cannot combine -fPIC/-fpic with -fPIE/-fpie\n";
+      return 2;
+    }
+    if (pic_level > 0) {
+      target_profile.relocation_model = c4c::TargetRelocationModel::Pic;
+      if (device_target_profile.has_value()) {
+        device_target_profile->relocation_model = c4c::TargetRelocationModel::Pic;
+      }
+    } else if (pie_level > 0) {
+      target_profile.relocation_model = c4c::TargetRelocationModel::Pie;
+      if (device_target_profile.has_value()) {
+        device_target_profile->relocation_model = c4c::TargetRelocationModel::Pie;
+      }
+    }
 
 #if !C4C_ENABLE_BACKEND
     if (dump_bir || dump_prepared_bir || dump_mir || trace_mir ||

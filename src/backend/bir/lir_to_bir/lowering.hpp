@@ -261,10 +261,12 @@ std::optional<std::vector<bir::Value>> lower_aggregate_initializer_for_type_ref(
 
 std::optional<bir::Global> lower_minimal_global(const c4c::codegen::lir::LirGlobal& global,
                                                 const TypeDeclMap& type_decls,
+                                                const c4c::TargetProfile& target_profile,
                                                 GlobalInfo* info);
 std::optional<bir::Global> lower_minimal_global(
     const c4c::codegen::lir::LirGlobal& global,
     const TypeDeclMap& type_decls,
+    const c4c::TargetProfile& target_profile,
     const BackendStructuredLayoutTable& structured_layouts,
     GlobalInfo* info);
 std::optional<bir::Global> lower_string_constant_global(
