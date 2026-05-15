@@ -2916,6 +2916,24 @@ struct LowerMemoryInstructionResult {
         });
         break;
       }
+      case bir::InlineAsmOperandKind::MemoryInput:
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+            context,
+            instruction_index,
+            inline_asm_carrier_error_message(
+                "unsupported_inline_asm_memory_address_selection"));
+        return std::nullopt;
+      case bir::InlineAsmOperandKind::AddressInput:
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+            context,
+            instruction_index,
+            inline_asm_carrier_error_message(
+                "unsupported_inline_asm_address_selection"));
+        return std::nullopt;
       case bir::InlineAsmOperandKind::Clobber:
         append_call_diagnostic(
             diagnostics,

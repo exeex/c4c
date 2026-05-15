@@ -3773,6 +3773,32 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
     return fail("expected inline-asm unsupported constraint to fail closed");
   }
 
+  auto memory_input = selected_inline_asm_record("ldr %w0, %1");
+  memory_input.inline_asm_operands[2].kind = bir::InlineAsmOperandKind::MemoryInput;
+  memory_input.inline_asm_operands[2].constraint = "m";
+  memory_input.inline_asm_operands[2].selected_operand = std::nullopt;
+  const auto memory_input_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(memory_input)));
+  if (memory_input_result.ok ||
+      memory_input_result.diagnostic.find("structured memory address authority") ==
+          std::string::npos) {
+    return fail("expected inline-asm memory input to fail closed without selected authority");
+  }
+
+  auto address_input = selected_inline_asm_record("adr %x0, %1");
+  address_input.inline_asm_operands[2].kind = bir::InlineAsmOperandKind::AddressInput;
+  address_input.inline_asm_operands[2].constraint = "p";
+  address_input.inline_asm_operands[2].selected_operand = std::nullopt;
+  const auto address_input_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(address_input)));
+  if (address_input_result.ok ||
+      address_input_result.diagnostic.find("structured address authority") ==
+          std::string::npos) {
+    return fail("expected inline-asm address input to fail closed without selected authority");
+  }
+
   auto unknown_named = selected_inline_asm_record("add %w0, %w1, %[missing]");
   unknown_named.inline_asm_has_named_operand_references = true;
   const auto unknown_named_result =

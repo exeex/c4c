@@ -179,6 +179,8 @@ enum class InlineAsmCarrierFixtureKind {
   AllocatorDependentTiedInputHome,
   MismatchedTiedInputHome,
   UnsupportedOperand,
+  UnsupportedMemoryInputSelection,
+  UnsupportedAddressInputSelection,
   UnsupportedClobber,
   UnsupportedTemplateModifier,
   SupportedClobbers,
@@ -236,6 +238,21 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
   const auto input_value = bir::Value::named(bir::TypeKind::I32, "%input");
   const auto imm_value = bir::Value::immediate_i32(7);
 
+  auto selected_input_kind = bir::InlineAsmOperandKind::RegisterInput;
+  std::string selected_input_constraint = "r";
+  if (kind == InlineAsmCarrierFixtureKind::UnsupportedOperand) {
+    selected_input_kind = bir::InlineAsmOperandKind::Unsupported;
+  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedMemoryInputSelection) {
+    selected_input_kind = bir::InlineAsmOperandKind::MemoryInput;
+    selected_input_constraint = "m";
+  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedAddressInputSelection) {
+    selected_input_kind = bir::InlineAsmOperandKind::AddressInput;
+    selected_input_constraint = "p";
+  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedClobber) {
+    selected_input_kind = bir::InlineAsmOperandKind::Clobber;
+    selected_input_constraint = "~{x1}";
+  }
+
   bir::InlineAsmMetadata inline_asm{
       .asm_text = kind == InlineAsmCarrierFixtureKind::NamedReferences
                       ? "add %w0, %w1, %[rhs]\nmov %x0, #%[imm]"
@@ -263,9 +280,9 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .name = std::string{"seed"},
            },
            bir::InlineAsmOperandMetadata{
-               .kind = bir::InlineAsmOperandKind::RegisterInput,
+               .kind = selected_input_kind,
                .constraint_index = 2,
-               .constraint = "r",
+               .constraint = selected_input_constraint,
                .arg_index = std::size_t{1},
                .name = std::string{"rhs"},
            },
@@ -335,12 +352,6 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
       prepare::PreparedValueId{52}, function_name, input_name, "w5");
   const auto imm_home = inline_asm_immediate_home(
       prepare::PreparedValueId{53}, function_name, imm_name, 7);
-  auto selected_input_kind = bir::InlineAsmOperandKind::RegisterInput;
-  if (kind == InlineAsmCarrierFixtureKind::UnsupportedOperand) {
-    selected_input_kind = bir::InlineAsmOperandKind::Unsupported;
-  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedClobber) {
-    selected_input_kind = bir::InlineAsmOperandKind::Clobber;
-  }
   auto carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete;
   std::vector<std::string> missing_facts;
   if (kind == InlineAsmCarrierFixtureKind::Incomplete) {
@@ -381,7 +392,7 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
            prepare::PreparedInlineAsmOperand{
                .kind = selected_input_kind,
                .constraint_index = 2,
-               .constraint = "r",
+               .constraint = selected_input_constraint,
                .arg_index = std::size_t{1},
                .value = input_value,
                .value_name = input_name,
@@ -4542,6 +4553,10 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{"tied_input_output_home_mismatch"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
+      std::pair{InlineAsmCarrierFixtureKind::UnsupportedMemoryInputSelection,
+                std::string_view{"unsupported_inline_asm_memory_address_selection"}},
+      std::pair{InlineAsmCarrierFixtureKind::UnsupportedAddressInputSelection,
+                std::string_view{"unsupported_inline_asm_address_selection"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedClobber,
                 std::string_view{"unsupported_inline_asm_clobber_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
