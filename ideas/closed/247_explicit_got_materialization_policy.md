@@ -1,6 +1,6 @@
 # Explicit GOT Materialization Policy
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
 
 Parent Context: ideas/open/233_aarch64_global_address_materialization.md
@@ -67,3 +67,14 @@ are not semantic policy and must not drive prepared/MIR selection.
   address materialization distinguish direct from GOT-backed globals.
 - Reject any route that weakens direct global, string constant, or label
   address materialization contracts to make GOT cases pass.
+
+## Completion Notes
+
+- Completed by commit `8915656eb` and its preceding implementation commits.
+- Explicit GOT policy now reaches target options, BIR symbol metadata, prepared
+  address-materialization facts, and AArch64 selected `GotPageLow12` records.
+- The prerequisite is complete because idea 233 can resume without inferring
+  GOT from symbol spelling, `is_extern`, fixture names, or downstream
+  relocation enum availability.
+- Terminal GOT assembly printing remains out of scope for this prerequisite
+  and belongs to the resumed address-materialization runbook.

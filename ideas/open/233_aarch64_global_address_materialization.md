@@ -49,10 +49,10 @@ gap.
 
 ## Lifecycle Notes
 
-- 2026-05-15: Direct page+low12 global/string-constant materialization and
-  label address selection have landed. GOT-backed global materialization is
-  parked on prerequisite idea
-  `ideas/open/247_explicit_got_materialization_policy.md` because no explicit
-  GOT-required policy source exists yet. Do not resume GOT selection from this
-  idea until that prerequisite provides structured policy; TLS and final
-  printer/validation work remain in this idea's source scope.
+- 2026-05-15: Direct page+low12 global/string-constant materialization, label
+  address selection, and explicit GOT policy through selected AArch64
+  `GotPageLow12` records have landed. The former GOT-policy prerequisite is
+  closed at `ideas/closed/247_explicit_got_materialization_policy.md`.
+  Remaining work in this idea is TLS materialization facts, terminal printing
+  for label/GOT/TLS where records are complete, and final semantic coverage
+  validation.
