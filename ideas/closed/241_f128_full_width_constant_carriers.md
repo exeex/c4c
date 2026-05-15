@@ -1,7 +1,8 @@
 # F128 Full-Width Constant Carriers
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 
@@ -61,6 +62,28 @@ constant transport support.
   distinguish a valid full-width F128 constant carrier from unsupported
   constant transport.
 - Existing scalar FP and i128 immediate behavior remains unchanged.
+
+## Completion Notes
+
+The active runbook completed all five steps. Binary128 constants now have a
+target-neutral structured payload carrier, prepared state transports that
+low/high payload through rematerializable F128 constant identities, and AArch64
+call-boundary selection consumes only complete structured carrier facts.
+Missing source ids, missing payloads, and scalar-only literal facts remain
+fail-closed with explicit diagnostics.
+
+The final dependency proof routed semantic BIR F128 immediate call arguments
+through prepared rematerialized constant moves into the existing AArch64
+call-boundary consumer. No AArch64 constant assembly-printing support was
+added; that remains outside this idea's scope.
+
+Close-time regression guard used the executor's matching backend before/after
+logs:
+
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
+
+Result: 139/139 backend tests passed before and after; the non-decreasing
+guard mode passed for this lifecycle-only close.
 
 ## Reviewer Reject Signals
 
