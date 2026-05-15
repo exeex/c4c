@@ -1686,6 +1686,25 @@ enum class PreparedI128RuntimeHelperKind {
   return "unknown";
 }
 
+enum class PreparedI128RuntimeHelperResultOwnership {
+  Missing,
+  DirectLowHighLanes,
+  MemoryReturn,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_result_ownership_name(
+    PreparedI128RuntimeHelperResultOwnership ownership) {
+  switch (ownership) {
+    case PreparedI128RuntimeHelperResultOwnership::Missing:
+      return "missing";
+    case PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes:
+      return "direct_low_high_lanes";
+    case PreparedI128RuntimeHelperResultOwnership::MemoryReturn:
+      return "memory_return";
+  }
+  return "unknown";
+}
+
 struct PreparedI128RuntimeHelper {
   struct LaneBinding {
     PreparedValueId value_id = 0;
@@ -1695,6 +1714,15 @@ struct PreparedI128RuntimeHelper {
     std::size_t lane_index = 0;
     std::size_t width_bytes = 8;
     std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
+  struct MemoryReturnOwnership {
+    PreparedValueId destination_value_id = 0;
+    ValueNameId destination_value_name = kInvalidValueName;
+    std::size_t size_bytes = 16;
+    std::size_t align_bytes = 16;
     std::optional<PreparedFrameSlotId> slot_id;
     std::optional<std::size_t> stack_offset_bytes;
   };
@@ -1714,12 +1742,15 @@ struct PreparedI128RuntimeHelper {
   PreparedI128RuntimeHelperFamily helper_family = PreparedI128RuntimeHelperFamily::DivRem;
   PreparedI128RuntimeHelperKind helper_kind = PreparedI128RuntimeHelperKind::SignedDiv;
   std::string callee_name;
+  PreparedI128RuntimeHelperResultOwnership result_ownership =
+      PreparedI128RuntimeHelperResultOwnership::Missing;
   std::optional<LaneBinding> lhs_low_lane;
   std::optional<LaneBinding> lhs_high_lane;
   std::optional<LaneBinding> rhs_low_lane;
   std::optional<LaneBinding> rhs_high_lane;
   std::optional<LaneBinding> result_low_lane;
   std::optional<LaneBinding> result_high_lane;
+  std::optional<MemoryReturnOwnership> memory_return;
   std::vector<std::string> missing_required_facts;
 };
 

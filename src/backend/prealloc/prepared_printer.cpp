@@ -1573,6 +1573,25 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
           << "#" << helper.lhs_value_id
           << " rhs=" << maybe_value_name(module.names, helper.rhs_value_name)
           << "#" << helper.rhs_value_id
+          << " result_ownership="
+          << prepared_i128_runtime_helper_result_ownership_name(helper.result_ownership)
+          << " memory_return=";
+      if (helper.memory_return.has_value()) {
+        out << maybe_value_name(module.names, helper.memory_return->destination_value_name)
+            << "#" << helper.memory_return->destination_value_id
+            << "[size=" << helper.memory_return->size_bytes
+            << ",align=" << helper.memory_return->align_bytes;
+        if (helper.memory_return->slot_id.has_value()) {
+          out << ",slot=#" << *helper.memory_return->slot_id;
+        }
+        if (helper.memory_return->stack_offset_bytes.has_value()) {
+          out << ",stack_offset=" << *helper.memory_return->stack_offset_bytes;
+        }
+        out << "]";
+      } else {
+        out << "<none>";
+      }
+      out
           << " lanes";
       append_lane("lhs.low", helper.lhs_low_lane);
       append_lane("lhs.high", helper.lhs_high_lane);

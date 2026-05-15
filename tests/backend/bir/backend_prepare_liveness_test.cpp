@@ -2619,6 +2619,9 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem ||
         helper.helper_kind != want.kind ||
         helper.callee_name != want.callee ||
+        helper.result_ownership !=
+            prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
+        helper.memory_return.has_value() ||
         prepare::prepared_value_name(prepared.names, helper.result_value_name) != want.result ||
         helper.result_value_id == 0 ||
         helper.lhs_value_name == c4c::kInvalidValueName ||
@@ -2664,6 +2667,8 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("kind=unsigned_div opcode=udiv callee=__udivti3") == std::string::npos ||
       dump.find("kind=signed_rem opcode=srem callee=__modti3") == std::string::npos ||
       dump.find("kind=unsigned_rem opcode=urem callee=__umodti3") == std::string::npos ||
+      dump.find("result_ownership=direct_low_high_lanes memory_return=<none>") ==
+          std::string::npos ||
       dump.find("lhs.low=p.lhs#") == std::string::npos ||
       dump.find("result.high=r.u#") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||

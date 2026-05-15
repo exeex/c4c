@@ -1860,6 +1860,8 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
             .helper_family = PreparedI128RuntimeHelperFamily::DivRem,
             .helper_kind = i128_div_rem_helper_kind(binary->opcode),
             .callee_name = std::string(i128_div_rem_helper_callee(binary->opcode)),
+            .result_ownership =
+                PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
         };
         function_helpers.helpers.push_back(std::move(helper));
         continue;

@@ -1272,6 +1272,7 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.rhs_high_lane.reset();
       helper.result_low_lane.reset();
       helper.result_high_lane.reset();
+      helper.memory_return.reset();
       helper.missing_required_facts.clear();
 
       populate_i128_helper_lanes_from_carrier(function_carriers,
@@ -1292,6 +1293,22 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
                                              helper.result_low_lane,
                                              helper.result_high_lane,
                                              "result");
+      switch (helper.result_ownership) {
+        case PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes:
+          if (!helper.result_low_lane.has_value() || !helper.result_high_lane.has_value()) {
+            append_i128_runtime_helper_fact(
+                helper, "direct_result_requires_low_high_result_lanes");
+          }
+          break;
+        case PreparedI128RuntimeHelperResultOwnership::MemoryReturn:
+          append_i128_runtime_helper_fact(
+              helper, "memory_return_ownership_requires_explicit_destination");
+          break;
+        case PreparedI128RuntimeHelperResultOwnership::Missing:
+          append_i128_runtime_helper_fact(
+              helper, "missing_i128_helper_result_ownership_policy");
+          break;
+      }
     }
   }
 }

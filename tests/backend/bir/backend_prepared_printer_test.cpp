@@ -2937,6 +2937,11 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
+                       "result_ownership=direct_low_high_lanes memory_return=<none>",
+                       "i128 helper direct-result ownership policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
                        "i128_helper block=0 inst=1 family=div_rem kind=unsigned_rem opcode=urem callee=__umodti3 source_type=i128 result_type=i128 result=wide.rem#",
                        "i128 unsigned rem helper mapping detail")) {
     return EXIT_FAILURE;
