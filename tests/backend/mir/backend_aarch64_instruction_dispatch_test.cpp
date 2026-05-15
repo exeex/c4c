@@ -1179,6 +1179,149 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_argument_register_move
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_direct_call_f128_constant_argument(
+    bool include_payload = true,
+    bool include_source_value = true,
+    bir::TypeKind literal_type = bir::TypeKind::F128) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.f128.const.arg");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.f128.const.arg.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.f128.const.arg.entry");
+  const auto actual_link = prepared.names.link_names.intern("actual_f128_function");
+  const auto constant_name = prepared.names.value_names.intern("__f128.const.dispatch");
+  const auto literal = literal_type == bir::TypeKind::F128
+                           ? bir::Value::immediate_f128_bits(
+                                 0x0123456789abcdefULL, 0x3fff800000000000ULL)
+                           : bir::Value::immediate_f64_bits(0x3ff0000000000000ULL);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.f128.const.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.call.f128.const.arg.entry",
+          .insts = {bir::CallInst{
+              .callee = "actual_f128_function",
+              .callee_link_name_id = actual_link,
+              .args = {literal},
+              .arg_types = {bir::TypeKind::F128},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeCall,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{241},
+                              .to_value_id = prepare::PreparedValueId{241},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"q0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"q0"},
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "f128_call_arg_constant_to_q_register",
+                          },
+                      },
+                  .abi_bindings =
+                      {
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"q0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"q0"},
+                          },
+                      },
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"actual_f128_function"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Vreg,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                      .source_value_id = include_source_value
+                                             ? std::optional<prepare::PreparedValueId>{
+                                                   prepare::PreparedValueId{241}}
+                                             : std::nullopt,
+                      .source_literal = literal,
+                      .destination_register_name = std::string{"q0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"q0"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Vreg,
+                  },
+              },
+      }},
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {
+              prepare::PreparedF128Carrier{
+                  .function_name = function_name,
+                  .value_id = prepare::PreparedValueId{241},
+                  .value_name = constant_name,
+                  .source_type = bir::TypeKind::F128,
+                  .kind = prepare::PreparedF128CarrierKind::Missing,
+                  .total_size_bytes = 16,
+                  .total_align_bytes = 16,
+                  .constant_payload =
+                      include_payload
+                          ? std::optional<bir::Value::F128Payload>{
+                                bir::Value::F128Payload{
+                                    .low_bits = 0x0123456789abcdefULL,
+                                    .high_bits = 0x3fff800000000000ULL,
+                                }}
+                          : std::nullopt,
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -4460,6 +4603,93 @@ int block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_c
   return 0;
 }
 
+int block_dispatch_exposes_f128_constant_argument_carrier_to_selection() {
+  auto prepared = prepared_with_direct_call_f128_constant_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      !diagnostics.empty()) {
+    return fail("expected f128 constant call dispatch to emit selected carrier, call, and return");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[0].target.payload);
+  if (move == nullptr ||
+      block.instructions[0].target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_module::abi::q_register(0) ||
+      move->source_f128_carrier != &prepared.f128_carriers.functions.front().carriers.front() ||
+      !move->source_f128_constant_payload.has_value() ||
+      move->source_f128_constant_payload->low_bits != 0x0123456789abcdefULL ||
+      move->source_f128_constant_payload->high_bits != 0x3fff800000000000ULL ||
+      move->source_f128_carrier->kind != prepare::PreparedF128CarrierKind::Missing ||
+      !move->source_f128_carrier->constant_payload.has_value()) {
+    return fail("expected selected f128 constant carrier to preserve full-width payload facts");
+  }
+  return 0;
+}
+
+int block_dispatch_rejects_incomplete_f128_constant_argument_carriers() {
+  struct Case {
+    const char* label;
+    prepare::PreparedBirModule prepared;
+  };
+  std::vector<Case> cases;
+  cases.push_back(Case{
+      .label = "missing_payload",
+      .prepared = prepared_with_direct_call_f128_constant_argument(false),
+  });
+  cases.push_back(Case{
+      .label = "missing_source_value",
+      .prepared = prepared_with_direct_call_f128_constant_argument(true, false),
+  });
+  cases.push_back(Case{
+      .label = "scalar_literal",
+      .prepared =
+          prepared_with_direct_call_f128_constant_argument(true, true, bir::TypeKind::F64),
+  });
+  for (auto& item : cases) {
+    auto& prepared = item.prepared;
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (result.visited_operations != 1 || !result.visited_terminator ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+        diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().message.find(
+            "complete structured full-width constant carrier") == std::string::npos ||
+        !std::holds_alternative<aarch64_module::codegen::CallInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail(std::string{"expected f128 constant argument dispatch to reject "} +
+                  item.label);
+    }
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_indirect_call_only_with_register_authority() {
   auto prepared = prepared_with_indirect_call_plan(true);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -6424,6 +6654,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_exposes_f128_constant_argument_carrier_to_selection();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_rejects_incomplete_f128_constant_argument_carriers();
       status != 0) {
     return status;
   }

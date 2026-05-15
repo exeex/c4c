@@ -1,36 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/241_f128_full_width_constant_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Transport F128 Constants Through Prepared State
+Current Step ID: 4
+Current Step Title: Expose Constant Carriers To AArch64 Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 F128 constant transport is complete. Regalloc now gives real BIR F128
-immediate literals synthetic prepared value identity, value homes and storage
-plans carry the full low/high payload as `immediate_f128`, call plans attach
-the prepared source value id to immediate F128 arguments, and F128 carriers
-publish the same full-width payload from prepared storage identity. The tests
-cover the real prepared route, existing scalar immediate/i128 behavior, and the
-AArch64 missing-carrier diagnostic without adding AArch64 constant selection.
+Step 4 F128 constant-carrier selection exposure is complete. AArch64
+call-boundary selection now accepts F128 immediate argument moves only when the
+prepared argument source id resolves to a structured full-width carrier with a
+matching low/high `constant_payload`, and the selected record keeps that
+payload attached without using F64, rendered text, or a single 64-bit lane.
+Dispatch tests cover the valid carrier plus missing payload, missing source id,
+and scalar-only literal rejection paths.
 
 ## Suggested Next
 
-Delegate Step 4 to add the next bounded backend-facing behavior for F128
-constant carriers, keeping AArch64 constant selection separate from unrelated
-scalar immediate and helper routes.
+Delegate Step 5 to prove the dependency end to end and guard adjacent scalar,
+i128, helper, and printer routes without claiming constant assembly printing
+beyond the selected structured record.
 
 ## Watchouts
 
-- F128 immediate carriers are intentionally still `kind=missing` with a
-  complete `constant_payload`; this exposes payload authority by prepared value
-  id without teaching AArch64 to select or print the constant yet.
-- Existing scalar immediates still use `immediate_i32`; do not route F128
-  constants through that field, F64, rendered text, or a single 64-bit lane.
-- The synthetic prepared constant name is stable payload-derived spelling; the
-  authority remains the prepared value id plus `constant_payload`.
+- F128 immediate carriers remain `kind=missing`; selection treats that as valid
+  only for the constant-carrier case when `constant_payload` is complete and
+  tied to the prepared source value id.
+- The selected call-boundary record exposes payload authority but does not add
+  AArch64 constant materialization printing. Keep printer support gated on the
+  same complete structured facts.
+- V-register immediate call arguments without a complete F128 payload now
+  diagnose as missing value authority instead of falling through to scalar or
+  generic register-move routes.
 
 ## Proof
 

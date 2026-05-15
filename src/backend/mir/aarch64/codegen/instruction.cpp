@@ -2966,6 +2966,29 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
   }
   if (!instruction.source_register.has_value() ||
       !instruction.destination_register.has_value()) {
+    const bool selected_f128_constant_argument_move =
+        selected_register_argument_move &&
+        !instruction.source_register.has_value() &&
+        instruction.destination_register.has_value() &&
+        instruction.destination_register->prepared_bank ==
+            prepare::PreparedRegisterBank::Vreg &&
+        instruction.destination_register->expected_view == abi::RegisterView::Q &&
+        instruction.source_f128_carrier != nullptr &&
+        instruction.source_f128_carrier->source_type == bir::TypeKind::F128 &&
+        instruction.source_f128_carrier->kind ==
+            prepare::PreparedF128CarrierKind::Missing &&
+        instruction.source_f128_carrier->missing_required_facts.empty() &&
+        instruction.source_f128_carrier->total_size_bytes == 16 &&
+        instruction.source_f128_carrier->total_align_bytes == 16 &&
+        instruction.source_f128_carrier->constant_payload.has_value() &&
+        instruction.source_f128_constant_payload.has_value() &&
+        instruction.source_f128_constant_payload->low_bits ==
+            instruction.source_f128_carrier->constant_payload->low_bits &&
+        instruction.source_f128_constant_payload->high_bits ==
+            instruction.source_f128_carrier->constant_payload->high_bits;
+    if (selected_f128_constant_argument_move) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
