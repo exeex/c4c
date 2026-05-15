@@ -1,54 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/234_aarch64_memory_load_store_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Print Structured Load/Store Subset
+Current Step ID: 5
+Current Step Title: Validate Semantic Coverage
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 printed the selected structured AArch64 memory subset from complete
-`MemoryInstructionRecord` fields.
+Step 5 validated semantic coverage for the active AArch64 memory load/store
+machine-node route without adding implementation scope.
 
 Completed work:
 
-- `print_memory` now emits selected `ldr` records from
-  `MemoryInstructionRecord::result_register` plus prepared memory address facts.
-- Existing selected store printing remains field-driven through
-  `MemoryInstructionRecord::value` and prepared memory address facts; the common
-  printer now handles frame-slot stores and pointer-value stores with structured
-  base registers.
-- Pointer-value store selection now carries the pointer base register from
-  prepared pointer value-home/storage authority, so printer output does not
-  infer the base from rendered names.
-- Missing load destination register, missing store source register, missing
-  pointer base register, unprepared memory operands, and unprintable memory
-  addresses still fail closed with explicit diagnostics.
-- Symbol/string/global memory bases still do not print through fallback
-  templates. Unsupported global memory remains diagnostic-only.
-- Focused printer tests cover frame-slot load output, frame-slot store output,
-  pointer-value store output, missing destination/source/address diagnostics,
-  and unprepared memory rejection.
+- Full-suite proof passed after the selected-memory route reached
+  close-quality validation.
+- Frame-slot loads are covered end to end through prepared memory facts,
+  selected `MemoryInstructionRecord` result-register authority, and terminal
+  `ldr` output from structured fields.
+- Frame-slot stores are covered end to end through prepared memory facts,
+  selected structured source-register operands, and terminal `str` output from
+  structured fields.
+- Pointer-value stores are covered through prepared pointer base identity,
+  selected structured pointer base/source registers, and terminal `str` output
+  from structured fields.
+- Unsupported and unprepared memory bases remain fail-closed through explicit
+  diagnostics instead of fallback templates.
+- Global address materialization remains separate from global memory access:
+  address materialization records print relocation-aware sequences, while
+  global/symbol/string memory access is not selected or printed by name-shaped
+  inference.
 
 ## Suggested Next
 
-Step 5 validation packet: validate semantic coverage for the active plan's
-supported memory subset: frame-slot load, frame-slot store, pointer-value store,
-and unsupported/unprepared base diagnostics. Confirm global address
-materialization remains separate from global memory access, and run the
-supervisor-selected broader proof for close-quality confidence.
-
-Pointer-value loads are outside the current active plan/source proof direction.
-If they are needed next, frame them as a possible separate lifecycle initiative
-for plan-owner review rather than as Step 5 follow-on work.
+Plan-owner close review can decide whether the active plan is complete or
+whether pointer-value loads/global memory access should become separate
+lifecycle initiatives. They were intentionally not added to this validation
+packet.
 
 ## Watchouts
 
 - Terminal output currently covers selected frame-slot loads, frame-slot stores,
   and pointer-value stores only.
-- Pointer-value loads, global/symbol memory, and string memory remain later
-  packets unless the plan-owner narrows them differently.
+- Pointer-value loads, global/symbol memory, and string memory remain outside
+  this active plan's validated proof direction unless a plan-owner creates or
+  activates a separate follow-up.
 - Global address materialization remains separate from global load/store
   lowering. Do not infer memory access policy from rendered names.
 - `StoreGlobalInst` can now reach explicit memory diagnostics for unsupported
@@ -56,8 +52,8 @@ for plan-owner review rather than as Step 5 follow-on work.
 
 ## Proof
 
-Fresh backend subset proof passed and wrote `test_after.log`:
+Fresh full-suite proof passed and wrote `test_after.log`:
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_aarch64_machine_printer)$') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
 
-Result: 4/4 focused backend MIR tests passed.
+Result: 3167/3167 tests passed.
