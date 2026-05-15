@@ -1,7 +1,8 @@
 # AArch64 CRC And Vector Intrinsic Carriers
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/open/239_aarch64_intrinsic_machine_nodes.md
 
@@ -63,6 +64,15 @@ the AArch64 selector can responsibly add CRC/vector records.
 - The active AArch64 machine-node route can consume these carriers without
   falling back to intrinsic-name matching, ordinary call plans, or scratch
   register conventions.
+
+## Closure Note
+
+Completed by the active runbook after commit `a9624dd92`. The implementation
+adds structured BIR and prepared carrier facts for accepted CRC32W, vector-load,
+and vector-add representatives, exposes those facts through prepared printer
+proof surfaces and diagnostics, and preserves fail-closed AArch64 MIR/printer
+boundaries so selected CRC/vector machine records remain deferred to
+`ideas/open/239_aarch64_intrinsic_machine_nodes.md`.
 
 ## Reviewer Reject Signals
 
