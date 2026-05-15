@@ -152,6 +152,48 @@ const prepare::PreparedIntrinsicCarrier* complete_scalar_fp_unary_fabs_carrier(
   return type == bir::TypeKind::F32 ? &f32_carrier : &f64_carrier;
 }
 
+const prepare::PreparedIntrinsicCarrier* complete_crc32w_carrier() {
+  static const prepare::PreparedIntrinsicCarrier carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::Crc,
+      .operation = bir::IntrinsicOperationKind::Crc32W,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::I32,
+      .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                        bir::IntrinsicOperandRole::Data},
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.crc32w"},
+      .has_prepared_call_plan = true,
+  };
+  return &carrier;
+}
+
+const prepare::PreparedIntrinsicCarrier* complete_vector_add_carrier() {
+  static const prepare::PreparedIntrinsicCarrier carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::VectorOperation,
+      .operation = bir::IntrinsicOperationKind::VectorAdd,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+      .operand_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .operand_roles = {bir::IntrinsicOperandRole::VectorLhs,
+                        bir::IntrinsicOperandRole::VectorRhs},
+      .vector_element_type = bir::TypeKind::I8,
+      .vector_element_width_bytes = 1,
+      .vector_lane_count = 16,
+      .vector_total_width_bytes = 16,
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.neon.add.v16i8"},
+      .has_prepared_call_plan = true,
+  };
+  return &carrier;
+}
+
 aarch64_codegen::ScalarFpUnaryIntrinsicRecord scalar_fp_unary_fabs_record(
     bir::TypeKind type,
     aarch64_codegen::RegisterOperand result_register,
@@ -1665,6 +1707,48 @@ int selected_scalar_fp_unary_fabs_intrinsics_reject_incomplete_printer_facts() {
       non_selected_print.diagnostic.find("requires prepared call-plan authority") ==
           std::string::npos) {
     return fail("expected non-selected fabs intrinsic record to fail closed");
+  }
+
+  return 0;
+}
+
+int complete_crc_vector_intrinsic_carriers_do_not_print_as_machine_records() {
+  auto crc = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
+  crc.source_carrier = complete_crc32w_carrier();
+  crc.family = bir::IntrinsicFamilyKind::Crc;
+  crc.operation = bir::IntrinsicOperationKind::Crc32W;
+  crc.operand_type = bir::TypeKind::I32;
+  crc.result_type = bir::TypeKind::I32;
+  crc.requires_feature = true;
+  crc.source_callee_name = std::string{"llvm.aarch64.crc32w"};
+  const auto crc_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(crc);
+  const auto crc_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(crc_instruction);
+  if (crc_print.ok ||
+      crc_print.diagnostic.find("outside the selected scalar FP unary subset") ==
+          std::string::npos ||
+      !crc_print.instruction_lines.empty()) {
+    return fail("expected complete CRC carrier not to print as an AArch64 machine record");
+  }
+
+  auto vector = scalar_fp_unary_fabs_record(bir::TypeKind::F32, qreg(0), qreg(1));
+  vector.source_carrier = complete_vector_add_carrier();
+  vector.family = bir::IntrinsicFamilyKind::VectorOperation;
+  vector.operation = bir::IntrinsicOperationKind::VectorAdd;
+  vector.operand_type = bir::TypeKind::I128;
+  vector.result_type = bir::TypeKind::I128;
+  vector.requires_feature = true;
+  vector.source_callee_name = std::string{"llvm.aarch64.neon.add.v16i8"};
+  const auto vector_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(vector);
+  const auto vector_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(vector_instruction);
+  if (vector_print.ok ||
+      vector_print.diagnostic.find("outside the selected scalar FP unary subset") ==
+          std::string::npos ||
+      !vector_print.instruction_lines.empty()) {
+    return fail("expected complete vector carrier not to print as an AArch64 machine record");
   }
 
   return 0;
@@ -3867,6 +3951,11 @@ int main() {
   }
   if (const int result =
           selected_scalar_fp_unary_fabs_intrinsics_reject_incomplete_printer_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          complete_crc_vector_intrinsic_carriers_do_not_print_as_machine_records();
       result != 0) {
     return result;
   }

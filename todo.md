@@ -1,44 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Expose proof through prepared printer and diagnostics
+Current Step ID: 5
+Current Step Title: Guard future AArch64 selection boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 4, "Expose proof through prepared printer and diagnostics", completed for
-CRC/vector prepared carrier proof visibility.
+Step 5, "Guard future AArch64 selection boundaries", completed for CRC/vector
+prepared carrier selection and printer boundaries.
 
-- Verified the prepared printer already exposes structured intrinsic carrier
-  facts rather than selected machine instruction output.
-- Added explicit printer assertions for complete `Crc/Crc32W`,
-  `VectorMemory/VectorLoad`, and `VectorOperation/VectorAdd` carriers.
-- Kept diagnostic proof for incomplete carriers: CRC stays missing without
-  prepared operand homes, and malformed vector-load shape reports the structured
-  missing fact instead of printing a complete carrier.
+- Added AArch64 dispatch fixtures with complete `Crc/Crc32W`,
+  `VectorMemory/VectorLoad`, and `VectorOperation/VectorAdd` prepared intrinsic
+  carrier authority.
+- Asserted those complete CRC/vector carriers stay fail-closed at the MIR
+  boundary: diagnostics report an unsupported intrinsic family, only the return
+  terminator is emitted, and no intrinsic or call machine node is selected.
+- Added printer-boundary assertions that fabricated complete CRC/vector
+  intrinsic-shaped records do not print AArch64 machine instruction lines.
+- Preserved the existing scalar `FAbs` selected-machine behavior and existing
+  incomplete/unsupported path coverage in the delegated subset.
 
 ## Suggested Next
 
-Start Step 5 by adding or adjusting AArch64 boundary tests proving CRC/vector
-prepared carriers do not yet select or print AArch64 machine records under this
-idea.
+Run Step 6 from `plan.md`: acceptance validation for the carrier dependency
+route, including a fresh build, the narrow BIR/prepared/AArch64 boundary tests,
+and broader backend validation as appropriate before the commit boundary.
 
 ## Watchouts
 
-- The prepared-printer proof intentionally stops at carrier facts and missing
-  fact diagnostics; it does not assert AArch64 machine instruction spelling,
-  MIR selection, or final assembly as authority.
-- The CRC fail-closed path still uses an immediate accumulator to prove a
-  populated call plan cannot complete without prepared operand-home authority.
-- Vector values still use the existing `I128` storage lane, with vector
-  semantic authority carried by explicit vector fields.
+- CRC/vector prepared carriers now have positive proof through BIR/prepared
+  carrier layers and explicit negative proof at the AArch64 machine boundary.
+- The Step 5 tests intentionally do not add CRC/NEON selected-machine support or
+  final assembly spelling.
 
 ## Proof
 
 Proof command:
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_prepared_printer'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_instruction_dispatch|aarch64_machine_printer|prepared_printer|lir_to_bir_notes)'; } 2>&1 | tee test_after.log`
 
 Result: passed. Proof log: `test_after.log`.

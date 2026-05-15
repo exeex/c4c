@@ -4683,6 +4683,238 @@ prepare::PreparedBirModule prepared_with_scalar_fp_unary_fabs_intrinsic(
   return prepared;
 }
 
+prepare::PreparedStoragePlanValue vector_storage(prepare::PreparedValueId value_id,
+                                                 c4c::ValueNameId value_name,
+                                                 const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Vreg,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
+prepare::PreparedBirModule prepared_with_complete_aarch64_crc32w_intrinsic_carrier() {
+  auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(bir::TypeKind::F64);
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions.front().blocks.front().insts.front());
+  call.result = bir::Value::named(bir::TypeKind::I32, "%crc");
+  call.callee = "llvm.aarch64.crc32w";
+  call.callee_link_name_id = prepared.names.link_names.intern("llvm.aarch64.crc32w");
+  call.args = {bir::Value::named(bir::TypeKind::I32, "%acc"),
+               bir::Value::named(bir::TypeKind::I32, "%data")};
+  call.arg_types = {bir::TypeKind::I32, bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::I32;
+  call.intrinsic = bir::IntrinsicOperation{
+      .family = bir::IntrinsicFamilyKind::Crc,
+      .operation = bir::IntrinsicOperationKind::Crc32W,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::I32,
+      .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                        bir::IntrinsicOperandRole::Data},
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+  };
+
+  const auto acc_name = prepared.names.value_names.intern("%acc");
+  const auto data_name = prepared.names.value_names.intern("%data");
+  const auto result_name = prepared.names.value_names.intern("%crc");
+  auto& homes = prepared.value_locations.functions.front().value_homes;
+  homes = {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{60},
+               .function_name = function_name,
+               .value_name = acc_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w0",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{61},
+               .function_name = function_name,
+               .value_name = data_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w1",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{62},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w0",
+           }};
+  prepared.storage_plans.functions.front().values = {
+      register_storage(prepare::PreparedValueId{60}, acc_name, "w0"),
+      register_storage(prepare::PreparedValueId{61}, data_name, "w1"),
+      register_storage(prepare::PreparedValueId{62}, result_name, "w0")};
+  auto& plan = prepared.call_plans.functions.front().calls.front();
+  plan.direct_callee_name = std::string{"llvm.aarch64.crc32w"};
+  plan.arguments.clear();
+  plan.result = prepare::PreparedCallResultPlan{};
+
+  auto& carrier = prepared.intrinsic_carriers.functions.front().carriers.front();
+  carrier = prepare::PreparedIntrinsicCarrier{
+      .function_name = function_name,
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::Crc,
+      .operation = bir::IntrinsicOperationKind::Crc32W,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+      .block_index = 0,
+      .inst_index = 0,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::I32,
+      .operand_roles = {bir::IntrinsicOperandRole::Accumulator,
+                        bir::IntrinsicOperandRole::Data},
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .operands = {bir::Value::named(bir::TypeKind::I32, "%acc"),
+                   bir::Value::named(bir::TypeKind::I32, "%data")},
+      .result = bir::Value::named(bir::TypeKind::I32, "%crc"),
+      .operand_value_names = {acc_name, data_name},
+      .result_value_name = result_name,
+      .operand_homes = {homes[0], homes[1]},
+      .result_home = homes[2],
+      .requires_feature = true,
+      .source_callee_name = std::string{"llvm.aarch64.crc32w"},
+      .has_prepared_call_plan = true,
+  };
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_complete_aarch64_vector_intrinsic_carrier(
+    bir::IntrinsicOperationKind operation) {
+  auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(bir::TypeKind::F64);
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions.front().blocks.front().insts.front());
+  const bool is_load = operation == bir::IntrinsicOperationKind::VectorLoad;
+  const auto ptr_name = prepared.names.value_names.intern("%p");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto result_name =
+      prepared.names.value_names.intern(is_load ? "%vector" : "%sum");
+  const auto operand_roles =
+      is_load ? std::vector<bir::IntrinsicOperandRole>{bir::IntrinsicOperandRole::Pointer}
+              : std::vector<bir::IntrinsicOperandRole>{
+                    bir::IntrinsicOperandRole::VectorLhs,
+                    bir::IntrinsicOperandRole::VectorRhs};
+
+  call.result = bir::Value::named(bir::TypeKind::I128, is_load ? "%vector" : "%sum");
+  call.callee = is_load ? "llvm.aarch64.neon.ld1.v16i8.p0i8"
+                        : "llvm.aarch64.neon.add.v16i8";
+  call.callee_link_name_id = prepared.names.link_names.intern(call.callee);
+  call.args = is_load ? std::vector<bir::Value>{bir::Value::named(bir::TypeKind::Ptr, "%p")}
+                      : std::vector<bir::Value>{bir::Value::named(bir::TypeKind::I128, "%lhs"),
+                                                bir::Value::named(bir::TypeKind::I128, "%rhs")};
+  call.arg_types = is_load ? std::vector<bir::TypeKind>{bir::TypeKind::Ptr}
+                           : std::vector<bir::TypeKind>{bir::TypeKind::I128,
+                                                        bir::TypeKind::I128};
+  call.return_type = bir::TypeKind::I128;
+  call.intrinsic = bir::IntrinsicOperation{
+      .family = is_load ? bir::IntrinsicFamilyKind::VectorMemory
+                        : bir::IntrinsicFamilyKind::VectorOperation,
+      .operation = operation,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+      .operand_type = is_load ? bir::TypeKind::Ptr : bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .operand_roles = operand_roles,
+      .vector_element_type = bir::TypeKind::I8,
+      .vector_element_width_bytes = 1,
+      .vector_lane_count = 16,
+      .vector_total_width_bytes = 16,
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .memory_access = is_load ? bir::IntrinsicMemoryAccessKind::Read
+                               : bir::IntrinsicMemoryAccessKind::None,
+  };
+
+  auto& homes = prepared.value_locations.functions.front().value_homes;
+  homes = is_load ? std::vector<prepare::PreparedValueHome>{
+                        prepare::PreparedValueHome{
+                            .value_id = prepare::PreparedValueId{70},
+                            .function_name = function_name,
+                            .value_name = ptr_name,
+                            .kind = prepare::PreparedValueHomeKind::Register,
+                            .register_name = "x0",
+                        },
+                        prepare::PreparedValueHome{
+                            .value_id = prepare::PreparedValueId{71},
+                            .function_name = function_name,
+                            .value_name = result_name,
+                            .kind = prepare::PreparedValueHomeKind::Register,
+                            .register_name = "q0",
+                        }}
+                  : std::vector<prepare::PreparedValueHome>{
+                        prepare::PreparedValueHome{
+                            .value_id = prepare::PreparedValueId{72},
+                            .function_name = function_name,
+                            .value_name = lhs_name,
+                            .kind = prepare::PreparedValueHomeKind::Register,
+                            .register_name = "q1",
+                        },
+                        prepare::PreparedValueHome{
+                            .value_id = prepare::PreparedValueId{73},
+                            .function_name = function_name,
+                            .value_name = rhs_name,
+                            .kind = prepare::PreparedValueHomeKind::Register,
+                            .register_name = "q2",
+                        },
+                        prepare::PreparedValueHome{
+                            .value_id = prepare::PreparedValueId{74},
+                            .function_name = function_name,
+                            .value_name = result_name,
+                            .kind = prepare::PreparedValueHomeKind::Register,
+                            .register_name = "q0",
+                        }};
+  prepared.storage_plans.functions.front().values =
+      is_load ? std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{70}, ptr_name, "x0"),
+                    vector_storage(prepare::PreparedValueId{71}, result_name, "q0")}
+              : std::vector<prepare::PreparedStoragePlanValue>{
+                    vector_storage(prepare::PreparedValueId{72}, lhs_name, "q1"),
+                    vector_storage(prepare::PreparedValueId{73}, rhs_name, "q2"),
+                    vector_storage(prepare::PreparedValueId{74}, result_name, "q0")};
+  auto& plan = prepared.call_plans.functions.front().calls.front();
+  plan.direct_callee_name = call.callee;
+  plan.arguments.clear();
+  plan.result = prepare::PreparedCallResultPlan{};
+
+  auto& carrier = prepared.intrinsic_carriers.functions.front().carriers.front();
+  carrier = prepare::PreparedIntrinsicCarrier{
+      .function_name = function_name,
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = is_load ? bir::IntrinsicFamilyKind::VectorMemory
+                        : bir::IntrinsicFamilyKind::VectorOperation,
+      .operation = operation,
+      .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+      .block_index = 0,
+      .inst_index = 0,
+      .operand_type = is_load ? bir::TypeKind::Ptr : bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .operand_roles = operand_roles,
+      .vector_element_type = bir::TypeKind::I8,
+      .vector_element_width_bytes = 1,
+      .vector_lane_count = 16,
+      .vector_total_width_bytes = 16,
+      .signedness = bir::IntrinsicSignedness::Unsigned,
+      .memory_access = is_load ? bir::IntrinsicMemoryAccessKind::Read
+                               : bir::IntrinsicMemoryAccessKind::None,
+      .operands = call.args,
+      .result = call.result,
+      .operand_value_names = is_load ? std::vector<c4c::ValueNameId>{ptr_name}
+                                     : std::vector<c4c::ValueNameId>{lhs_name, rhs_name},
+      .result_value_name = result_name,
+      .operand_homes = is_load ? std::vector<std::optional<prepare::PreparedValueHome>>{homes[0]}
+                               : std::vector<std::optional<prepare::PreparedValueHome>>{
+                                     homes[0], homes[1]},
+      .result_home = is_load ? homes[1] : homes[2],
+      .requires_feature = true,
+      .source_callee_name = call.callee,
+      .has_prepared_call_plan = true,
+  };
+  return prepared;
+}
+
 int block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier() {
   for (const auto type : {bir::TypeKind::F32, bir::TypeKind::F64}) {
     auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(type);
@@ -4742,6 +4974,45 @@ int block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier() {
         instruction.target.uses.front().reg != expected_operand ||
         !instruction.target.side_effects.empty()) {
       return fail("expected fabs intrinsic node to preserve operand/result FPR authority");
+    }
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_complete_crc_vector_intrinsic_carriers_fail_closed() {
+  const auto cases = std::array{
+      prepared_with_complete_aarch64_crc32w_intrinsic_carrier(),
+      prepared_with_complete_aarch64_vector_intrinsic_carrier(
+          bir::IntrinsicOperationKind::VectorLoad),
+      prepared_with_complete_aarch64_vector_intrinsic_carrier(
+          bir::IntrinsicOperationKind::VectorAdd),
+  };
+
+  for (const auto& prepared : cases) {
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().message.find("unsupported_intrinsic_family") ==
+            std::string::npos ||
+        !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail("expected complete CRC/vector intrinsic carriers to remain MIR boundary-only");
+    }
+    if (std::holds_alternative<aarch64_codegen::ScalarFpUnaryIntrinsicRecord>(
+            block.instructions.front().target.payload) ||
+        std::holds_alternative<aarch64_codegen::CallInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail("expected complete CRC/vector carriers not to select intrinsic or call nodes");
     }
   }
   return 0;
@@ -7798,6 +8069,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_complete_crc_vector_intrinsic_carriers_fail_closed();
       status != 0) {
     return status;
   }
