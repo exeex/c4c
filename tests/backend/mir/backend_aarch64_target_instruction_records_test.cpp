@@ -2936,17 +2936,57 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
     return fail("expected selected f128 sub helper boundary instruction effects");
   }
 
-  auto unsupported_mul = make_f128_runtime_helper(function_name,
-                                                  5,
-                                                  bir::BinaryOpcode::Mul,
-                                                  prepare::PreparedF128RuntimeHelperKind::Add,
-                                                  "__multf3",
+  auto mul_helper = make_f128_runtime_helper(function_name,
+                                             5,
+                                             bir::BinaryOpcode::Mul,
+                                             prepare::PreparedF128RuntimeHelperKind::Mul,
+                                             "__multf3",
+                                             carriers.carriers[0],
+                                             carriers.carriers[1],
+                                             carriers.carriers[2]);
+  const auto prepared_mul =
+      aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
+          carriers, mul_helper);
+  if (!prepared_mul.record.has_value() ||
+      prepared_mul.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::None ||
+      prepared_mul.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::Mul ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared_mul.record->boundary_kind) != "mul" ||
+      prepared_mul.record->helper_kind != prepare::PreparedF128RuntimeHelperKind::Mul ||
+      prepared_mul.record->callee_name != "__multf3" ||
+      prepared_mul.record->source_binary_opcode != bir::BinaryOpcode::Mul ||
+      prepared_mul.record->source_helper != &mul_helper ||
+      !prepared_mul.record->selected_call_ownership.owns_terminal_call) {
+    return fail("expected f128 mul helper boundary record to consume prepared authority");
+  }
+  const auto mul_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_mul.record);
+  const auto* mul_payload =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &mul_instruction.payload);
+  if (mul_payload == nullptr ||
+      mul_instruction.opcode != aarch64_codegen::MachineOpcode::F128RuntimeHelper ||
+      mul_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      mul_payload->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::Mul ||
+      mul_payload->callee_name != "__multf3") {
+    return fail("expected selected f128 mul helper boundary instruction effects");
+  }
+
+  auto unsupported_div = make_f128_runtime_helper(function_name,
+                                                  6,
+                                                  bir::BinaryOpcode::SDiv,
+                                                  prepare::PreparedF128RuntimeHelperKind::Mul,
+                                                  "__divtf3",
                                                   carriers.carriers[0],
                                                   carriers.carriers[1],
                                                   carriers.carriers[2]);
   const auto unsupported =
       aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
-          carriers, unsupported_mul);
+          carriers, unsupported_div);
   if (unsupported.record.has_value() ||
       unsupported.error !=
           aarch64_codegen::PreparedF128RuntimeHelperRecordError::

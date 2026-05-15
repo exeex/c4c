@@ -2377,10 +2377,15 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
           function_name, prepare::PreparedValueId{252}, rhs_name, "q8"),
   };
   if (include_helper) {
-    const auto helper_kind = opcode == bir::BinaryOpcode::Sub
-                                 ? prepare::PreparedF128RuntimeHelperKind::Sub
-                                 : prepare::PreparedF128RuntimeHelperKind::Add;
-    const auto callee = opcode == bir::BinaryOpcode::Sub ? "__subtf3" : "__addtf3";
+    auto helper_kind = prepare::PreparedF128RuntimeHelperKind::Add;
+    std::string callee = "__addtf3";
+    if (opcode == bir::BinaryOpcode::Sub) {
+      helper_kind = prepare::PreparedF128RuntimeHelperKind::Sub;
+      callee = "__subtf3";
+    } else if (opcode == bir::BinaryOpcode::Mul) {
+      helper_kind = prepare::PreparedF128RuntimeHelperKind::Mul;
+      callee = "__multf3";
+    }
     auto helper = dispatch_f128_runtime_helper(function_name,
                                                0,
                                                opcode,
@@ -5331,6 +5336,14 @@ int main() {
               bir::BinaryOpcode::Sub,
               prepare::PreparedF128RuntimeHelperKind::Sub,
               "__subtf3");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_runtime_helper_from_prepared_authority(
+              bir::BinaryOpcode::Mul,
+              prepare::PreparedF128RuntimeHelperKind::Mul,
+              "__multf3");
       status != 0) {
     return status;
   }

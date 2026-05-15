@@ -870,6 +870,8 @@ std::string_view f128_runtime_helper_boundary_kind_name(
       return "add";
     case F128RuntimeHelperBoundaryKind::Sub:
       return "sub";
+    case F128RuntimeHelperBoundaryKind::Mul:
+      return "mul";
   }
   return "unknown";
 }
@@ -3628,7 +3630,10 @@ MachineNodeStatusRecord f128_runtime_helper_boundary_selection_status(
        instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Add) ||
       (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Sub &&
        instruction.source_binary_opcode == bir::BinaryOpcode::Sub &&
-       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Sub);
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Sub) ||
+      (instruction.helper_kind == prepare::PreparedF128RuntimeHelperKind::Mul &&
+       instruction.source_binary_opcode == bir::BinaryOpcode::Mul &&
+       instruction.boundary_kind == F128RuntimeHelperBoundaryKind::Mul);
   if (instruction.helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
       !supported_helper ||
       instruction.callee_name.empty()) {
@@ -6281,6 +6286,9 @@ PreparedF128RuntimeHelperRecordResult make_prepared_f128_runtime_helper_boundary
   } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Sub &&
              helper.source_binary_opcode == bir::BinaryOpcode::Sub) {
     boundary_kind = F128RuntimeHelperBoundaryKind::Sub;
+  } else if (helper.helper_kind == prepare::PreparedF128RuntimeHelperKind::Mul &&
+             helper.source_binary_opcode == bir::BinaryOpcode::Mul) {
+    boundary_kind = F128RuntimeHelperBoundaryKind::Mul;
   } else {
     return f128_runtime_helper_record_error(
         PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation);

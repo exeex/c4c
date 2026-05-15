@@ -3709,6 +3709,36 @@ int main() {
                        "f128 sub helper identity and callee")) {
     return EXIT_FAILURE;
   }
+  const auto f128_mul_helper_prepared =
+      prepare_f128_soft_float_helper_dump_module(
+          bir::BinaryOpcode::Mul,
+          "f128_soft_float_mul_helper_dump_contract",
+          "product");
+  const auto* f128_mul_helper = find_first_f128_runtime_helper(
+      f128_mul_helper_prepared, "f128_soft_float_mul_helper_dump_contract");
+  if (f128_mul_helper == nullptr ||
+      f128_mul_helper->helper_family !=
+          prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      f128_mul_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Mul ||
+      f128_mul_helper->callee_name != "__multf3" ||
+      f128_mul_helper->source_binary_opcode != bir::BinaryOpcode::Mul ||
+      f128_mul_helper->source_type != bir::TypeKind::F128 ||
+      f128_mul_helper->result_type != bir::TypeKind::F128 ||
+      f128_mul_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !f128_mul_helper->selected_call_ownership.owns_terminal_call ||
+      !f128_mul_helper->selected_call_ownership.has_marshaling ||
+      !f128_mul_helper->selected_call_ownership.has_live_preservation) {
+    std::cerr << "[FAIL] prepared f128 mul soft-float helper lost structured record authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_mul_helper_dump = prepare::print(f128_mul_helper_prepared);
+  if (!expect_contains(f128_mul_helper_dump,
+                       "f128_helper block=0 inst=0 family=arithmetic kind=mul opcode=mul "
+                       "callee=__multf3 source_type=f128 result_type=f128 result=product#",
+                       "f128 mul helper identity and callee")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(f128_helper_dump,
                        "result_ownership=full_width_carrier "
                        "resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"

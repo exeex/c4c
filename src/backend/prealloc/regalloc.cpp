@@ -306,8 +306,8 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   switch (opcode) {
     case bir::BinaryOpcode::Add:
     case bir::BinaryOpcode::Sub:
-      return true;
     case bir::BinaryOpcode::Mul:
+      return true;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
@@ -341,6 +341,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Sub:
       return PreparedF128RuntimeHelperKind::Sub;
     case bir::BinaryOpcode::Mul:
+      return PreparedF128RuntimeHelperKind::Mul;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
@@ -373,6 +374,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Sub:
       return "__subtf3";
     case bir::BinaryOpcode::Mul:
+      return "__multf3";
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
