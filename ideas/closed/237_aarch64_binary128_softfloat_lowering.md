@@ -1,7 +1,8 @@
 # AArch64 Binary128 Softfloat Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 
@@ -54,10 +55,35 @@ representative backend path through load, helper call, store-back, and return.
 The supervisor committed that route proof after the backend subset passed
 139/139 tests.
 
-The source idea remains open. Full-width F128 constant payload authority is
-tracked separately in
-`ideas/open/241_f128_full_width_constant_carriers.md` and must land before this
-parent route can claim structured F128 constant transport. Remaining unmodeled
-F128 helper or sign-bit-like operations should continue to fail closed until a
-future runbook gives them complete prepared helper, carrier, and printer
-authority.
+At that checkpoint, the source idea remained open because full-width F128
+constant payload authority was tracked separately in
+`ideas/open/241_f128_full_width_constant_carriers.md`. Remaining unmodeled F128
+helper or sign-bit-like operations continued to fail closed until a future
+runbook gave them complete prepared helper, carrier, and printer authority.
+
+## Completion Notes
+
+The follow-on runbook consumed the closed full-width constant-carrier
+dependency from `ideas/closed/241_f128_full_width_constant_carriers.md` and
+completed the remaining parent-route proof. Semantic F128 constants now reach
+the existing binary128 backend consumer through structured prepared carrier
+facts, while missing, partial, or scalar-only payloads remain fail-closed.
+
+The representative AArch64 backend route proof covers full-width F128 input,
+soft-float helper boundary behavior through `__addtf3`, Q-register/Vreg ABI
+marshaling, 16-byte memory store-back, and selected return records. Prior route
+proof covered prepared full-width transport, helper boundaries, selected
+machine records, printer output, comparisons or casts, sign-bit handling, and
+load/store preservation.
+
+Atomic, intrinsic, inline-assembly, scalar FP, i128, hardware quad-FP, and
+final AArch64 constant assembly-printing behavior remain outside this source
+idea's accepted scope.
+
+Close-time regression guard used the executor's matching backend before/after
+logs:
+
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
+
+Result: 139/139 backend tests passed before and after; the non-decreasing
+guard mode passed for this lifecycle-only close.
