@@ -3029,7 +3029,7 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
       function_carriers->carriers[0].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing ||
       function_carriers->carriers[1].carrier_kind !=
-          prepare::PreparedInlineAsmCarrierKind::Missing ||
+          prepare::PreparedInlineAsmCarrierKind::Complete ||
       function_carriers->carriers[2].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing) {
     std::cerr << "[FAIL] expected fail-closed inline asm carrier diagnostics\n";
@@ -3051,8 +3051,9 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
   const auto& populated_authority_carrier = function_carriers->carriers[1];
   if (populated_authority_carrier.operands.size() != 2 ||
       !populated_authority_carrier.operands[0].memory_address.has_value() ||
-      !populated_authority_carrier.operands[1].address.has_value()) {
-    std::cerr << "[FAIL] expected populated memory/address authority to be retained\n";
+      !populated_authority_carrier.operands[1].address.has_value() ||
+      !populated_authority_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] expected selectable populated memory/address authority to be retained\n";
     return EXIT_FAILURE;
   }
   const std::string dump = prepare::print(prepared);
@@ -3087,13 +3088,27 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#1:unsupported_operand0_memory_address_selection",
-                       "unsupported inline asm memory selection diagnostic")) {
+                       "inline_asm_carrier asm=\"\" constraints=\"m,p\" "
+                       "block_index=0 inst_index=1 side_effects=yes operands=2 "
+                       "result_home=no clobbers=0",
+                       "complete inline asm memory/address carrier")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#1:unsupported_operand1_address_selection",
-                       "unsupported inline asm address selection diagnostic")) {
+                       "operand0[kind=memory_input,constraint=\"m\",arg=0,"
+                       "value=x,memory_address=yes,home=yes]",
+                       "selectable inline asm memory operand")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "operand1[kind=address_input,constraint=\"p\",arg=1,"
+                       "value=x,address=yes,home=yes]",
+                       "selectable inline asm address operand")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "missing fact=inst#1:unsupported_operand",
+                           "unsupported inline asm memory/address selection diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,

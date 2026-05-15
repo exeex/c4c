@@ -3670,6 +3670,49 @@ int selected_inline_asm_template_prints_from_structured_operands() {
     return fail("expected selected inline-asm named substitution");
   }
 
+  auto memory_record = selected_inline_asm_record("ldr %w0, %2");
+  const aarch64_abi::RegisterReference x5{
+      .bank = aarch64_abi::RegisterBank::GeneralPurpose,
+      .view = aarch64_abi::RegisterView::X,
+      .index = 5,
+  };
+  const aarch64_codegen::RegisterOperand memory_base{
+      .reg = x5,
+      .role = aarch64_codegen::RegisterOperandRole::ValueHome,
+      .value_id = prepare::PreparedValueId{52},
+      .value_name = c4c::ValueNameId{52},
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .occupied_register_references = {x5},
+      .occupied_registers = {"x5"},
+  };
+  const auto memory_operand = aarch64_codegen::make_memory_operand(
+      aarch64_codegen::MemoryOperand{
+          .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+          .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+          .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+          .base_register = memory_base,
+          .pointer_value_name = c4c::ValueNameId{52},
+          .pointer_value_id = prepare::PreparedValueId{52},
+          .byte_offset = 8,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .can_use_base_plus_offset = true,
+      });
+  memory_record.operands[2] = memory_operand;
+  memory_record.inline_asm_operands[2].kind = bir::InlineAsmOperandKind::MemoryInput;
+  memory_record.inline_asm_operands[2].constraint = "m";
+  memory_record.inline_asm_operands[2].home->register_name = std::string{"x5"};
+  memory_record.inline_asm_operands[2].selected_operand = memory_operand;
+  const auto memory_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(memory_record)));
+  if (!memory_result.ok || memory_result.instruction_lines.size() != 1 ||
+      memory_result.instruction_lines.front() != "ldr w3, [x5, #8]") {
+    return fail("expected selected inline-asm memory operand to print from structured address");
+  }
+
   auto clobber_list = selected_inline_asm_record("add %w0, %w1, %w2");
   clobber_list.inline_asm_clobbers = {"x7", "memory", "cc"};
   const auto clobber_list_result =

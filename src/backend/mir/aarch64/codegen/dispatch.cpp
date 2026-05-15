@@ -673,7 +673,61 @@ inline_asm_clobber_effects(
 
 [[nodiscard]] std::string inline_asm_carrier_error_message(
     std::string_view fact,
-    const prepare::PreparedInlineAsmCarrier* carrier = nullptr) {
+    const prepare::PreparedInlineAsmCarrier* carrier = nullptr);
+
+[[nodiscard]] std::optional<OperandRecord> make_inline_asm_memory_address_operand(
+    const prepare::PreparedInlineAsmOperand& operand,
+    const bir::MemoryAddress& address,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string_view unsupported_fact) {
+  if (!operand.value.has_value() ||
+      address.base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
+      address.base_value != *operand.value || !operand.home.has_value() ||
+      operand.home->kind != prepare::PreparedValueHomeKind::Register ||
+      !operand.home->register_name.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message(unsupported_fact));
+    return std::nullopt;
+  }
+
+  const auto reg = make_inline_asm_register_operand(
+      *operand.home, diagnostics, context, instruction_index);
+  if (!reg.has_value()) {
+    return std::nullopt;
+  }
+
+  return make_memory_operand(MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .base_kind = MemoryBaseKind::PointerValue,
+      .base_register = *reg,
+      .pointer_value_name = operand.value_name,
+      .pointer_value_id = operand.home->value_id,
+      .byte_offset = address.byte_offset,
+      .size_bytes = address.size_bytes,
+      .align_bytes = address.align_bytes,
+      .address_space = address.address_space,
+      .is_volatile = address.is_volatile,
+      .can_use_base_plus_offset = true,
+  });
+}
+
+[[nodiscard]] std::string inline_asm_carrier_error_message(
+    std::string_view fact,
+    const prepare::PreparedInlineAsmCarrier* carrier) {
   std::string message =
       "AArch64 inline-asm lowering requires a complete prepared inline-asm carrier";
   if (!fact.empty()) {
@@ -2917,23 +2971,49 @@ struct LowerMemoryInstructionResult {
         break;
       }
       case bir::InlineAsmOperandKind::MemoryInput:
-        append_call_diagnostic(
+        if (!operand.memory_address.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message(
+                  "unsupported_inline_asm_memory_address_selection"));
+          return std::nullopt;
+        }
+        selected.selected_operand = make_inline_asm_memory_address_operand(
+            operand,
+            *operand.memory_address,
             diagnostics,
-            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
             context,
             instruction_index,
-            inline_asm_carrier_error_message(
-                "unsupported_inline_asm_memory_address_selection"));
-        return std::nullopt;
+            "unsupported_inline_asm_memory_address_selection");
+        if (!selected.selected_operand.has_value()) {
+          return std::nullopt;
+        }
+        break;
       case bir::InlineAsmOperandKind::AddressInput:
-        append_call_diagnostic(
+        if (!operand.address.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message(
+                  "unsupported_inline_asm_address_selection"));
+          return std::nullopt;
+        }
+        selected.selected_operand = make_inline_asm_memory_address_operand(
+            operand,
+            *operand.address,
             diagnostics,
-            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
             context,
             instruction_index,
-            inline_asm_carrier_error_message(
-                "unsupported_inline_asm_address_selection"));
-        return std::nullopt;
+            "unsupported_inline_asm_address_selection");
+        if (!selected.selected_operand.has_value()) {
+          return std::nullopt;
+        }
+        break;
       case bir::InlineAsmOperandKind::Clobber:
         append_call_diagnostic(
             diagnostics,

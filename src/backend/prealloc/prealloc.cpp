@@ -1303,6 +1303,15 @@ prepared_intrinsic_operand_homes(
   return std::nullopt;
 }
 
+[[nodiscard]] bool inline_asm_pointer_address_is_prepared_selectable(
+    const PreparedInlineAsmOperand& operand,
+    const bir::MemoryAddress& address) {
+  return operand.value.has_value() && address.base_kind == bir::MemoryAddress::BaseKind::PointerValue &&
+         address.base_value == *operand.value && operand.home.has_value() &&
+         operand.home->kind == PreparedValueHomeKind::Register &&
+         operand.home->register_name.has_value();
+}
+
 [[nodiscard]] PreparedInlineAsmOperand make_prepared_inline_asm_operand(
     PreparedNameTables& names,
     const PreparedValueLocationFunction* value_locations,
@@ -1479,7 +1488,8 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
                                          "missing_operand" +
                                              std::to_string(*operand.arg_index) +
                                              "_memory_address_authority");
-        } else {
+        } else if (!inline_asm_pointer_address_is_prepared_selectable(
+                       operand, *operand.memory_address)) {
           append_inline_asm_missing_fact(function_carriers,
                                          carrier,
                                          "unsupported_operand" +
@@ -1502,7 +1512,8 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
                                          "missing_operand" +
                                              std::to_string(*operand.arg_index) +
                                              "_address_authority");
-        } else {
+        } else if (!inline_asm_pointer_address_is_prepared_selectable(
+                       operand, *operand.address)) {
           append_inline_asm_missing_fact(function_carriers,
                                          carrier,
                                          "unsupported_operand" +

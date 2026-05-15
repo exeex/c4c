@@ -769,6 +769,10 @@ bool inline_asm_constraint_matches_kind(const InlineAsmMachineOperandRecord& ope
       return decimal_digits_only(operand.constraint);
     case bir::InlineAsmOperandKind::IntegerImmediateInput:
       return operand.constraint == "i" || operand.constraint == "I";
+    case bir::InlineAsmOperandKind::MemoryInput:
+      return operand.constraint == "m";
+    case bir::InlineAsmOperandKind::AddressInput:
+      return operand.constraint == "p";
     case bir::InlineAsmOperandKind::Clobber:
     case bir::InlineAsmOperandKind::Unsupported:
       return false;
@@ -803,16 +807,6 @@ std::optional<std::string> inline_asm_operand_text(
   }
   if (operand.kind == bir::InlineAsmOperandKind::Unsupported) {
     *diagnostic = "inline-asm operand kind is unsupported for selected printer";
-    return std::nullopt;
-  }
-  if (operand.kind == bir::InlineAsmOperandKind::MemoryInput) {
-    *diagnostic =
-        "inline-asm memory operand requires selected structured memory address authority";
-    return std::nullopt;
-  }
-  if (operand.kind == bir::InlineAsmOperandKind::AddressInput) {
-    *diagnostic =
-        "inline-asm address operand requires selected structured address authority";
     return std::nullopt;
   }
   if (!inline_asm_constraint_matches_kind(operand)) {
@@ -878,6 +872,24 @@ std::optional<std::string> inline_asm_operand_text(
     }
     return std::to_string(immediate->signed_value);
   }
+  if (const auto* memory = std::get_if<MemoryOperand>(&selected.payload);
+      selected.kind == OperandKind::Memory && memory != nullptr) {
+    if (modifier.has_value()) {
+      *diagnostic = "inline-asm memory operand has unsupported template modifier";
+      return std::nullopt;
+    }
+    if (memory->support != MemoryOperandSupportKind::Prepared ||
+        !memory->can_use_base_plus_offset) {
+      *diagnostic = "inline-asm memory operand is not a prepared base+offset address";
+      return std::nullopt;
+    }
+    const auto text = memory_address(*memory);
+    if (text.empty()) {
+      *diagnostic = "inline-asm memory operand is not printable";
+      return std::nullopt;
+    }
+    return text;
+  }
 
   *diagnostic = "inline-asm operand kind is outside the selected printer subset";
   return std::nullopt;
@@ -916,12 +928,14 @@ InlineAsmSubstitutionResult substitute_inline_asm_template(
     if (operand.kind == bir::InlineAsmOperandKind::Unsupported) {
       return {.diagnostic = "inline-asm operand kind is unsupported for selected printer"};
     }
-    if (operand.kind == bir::InlineAsmOperandKind::MemoryInput) {
+    if (operand.kind == bir::InlineAsmOperandKind::MemoryInput &&
+        !operand.selected_operand.has_value()) {
       return {
           .diagnostic =
               "inline-asm memory operand requires selected structured memory address authority"};
     }
-    if (operand.kind == bir::InlineAsmOperandKind::AddressInput) {
+    if (operand.kind == bir::InlineAsmOperandKind::AddressInput &&
+        !operand.selected_operand.has_value()) {
       return {
           .diagnostic =
               "inline-asm address operand requires selected structured address authority"};
