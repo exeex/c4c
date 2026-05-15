@@ -112,6 +112,46 @@ aarch64_codegen::RegisterOperand qreg(unsigned index) {
   };
 }
 
+const prepare::PreparedAtomicOperationCarrier* complete_atomic_carrier() {
+  static const prepare::PreparedAtomicOperationCarrier carrier{
+      .carrier_kind = prepare::PreparedAtomicOperationCarrierKind::Complete,
+  };
+  return &carrier;
+}
+
+aarch64_codegen::AtomicMemoryInstructionRecord base_atomic_record(
+    aarch64_codegen::AtomicMemoryInstructionKind kind,
+    std::size_t instruction_index,
+    bir::AtomicOrdering ordering) {
+  auto pointer = xreg(0);
+  pointer.value_id = prepare::PreparedValueId{500};
+  pointer.value_name = c4c::ValueNameId{501};
+  return aarch64_codegen::AtomicMemoryInstructionRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .atomic_kind = kind,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .block_index = 0,
+      .instruction_index = instruction_index,
+      .value_type = bir::TypeKind::I32,
+      .width_bytes = 4,
+      .ordering = ordering,
+      .address_space = bir::AddressSpace::Default,
+      .pointer_value_id = prepare::PreparedValueId{500},
+      .pointer_value_name = c4c::ValueNameId{501},
+      .pointer_register = pointer,
+      .acquire_semantics = ordering == bir::AtomicOrdering::Acquire ||
+                           ordering == bir::AtomicOrdering::AcqRel ||
+                           ordering == bir::AtomicOrdering::SeqCst,
+      .release_semantics = ordering == bir::AtomicOrdering::Release ||
+                           ordering == bir::AtomicOrdering::AcqRel ||
+                           ordering == bir::AtomicOrdering::SeqCst,
+      .sequentially_consistent = ordering == bir::AtomicOrdering::SeqCst,
+      .memory_barrier_required = ordering != bir::AtomicOrdering::Relaxed,
+      .source_carrier = complete_atomic_carrier(),
+  };
+}
+
 aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
   return aarch64_codegen::MemoryOperand{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -1073,6 +1113,212 @@ int selected_structured_memory_subset_prints_loads_and_stores() {
                          expected,
                          expected,
                          "structured memory load/store printer drift guard");
+}
+
+int selected_atomic_load_store_and_fence_print_from_structured_records() {
+  auto load_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Load,
+                                        0,
+                                        bir::AtomicOrdering::Acquire);
+  load_record.result_mode = bir::AtomicResultMode::LoadedValue;
+  load_record.result_value_id = prepare::PreparedValueId{510};
+  load_record.result_value_name = c4c::ValueNameId{511};
+  load_record.result_register = wreg(1);
+
+  auto store_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Store,
+                                         1,
+                                         bir::AtomicOrdering::Release);
+  store_record.stored_value_id = prepare::PreparedValueId{520};
+  store_record.stored_value_name = c4c::ValueNameId{521};
+  store_record.stored_register = wreg(2);
+
+  auto fence_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Fence,
+                                         2,
+                                         bir::AtomicOrdering::SeqCst);
+  fence_record.value_type = bir::TypeKind::Void;
+  fence_record.width_bytes = 0;
+  fence_record.pointer_value_id.reset();
+  fence_record.pointer_value_name.reset();
+  fence_record.pointer_register.reset();
+
+  const auto load = aarch64_codegen::make_atomic_memory_instruction(load_record);
+  const auto store = aarch64_codegen::make_atomic_memory_instruction(store_record);
+  const auto fence = aarch64_codegen::make_atomic_memory_instruction(fence_record);
+  const auto result = print_common_instruction_nodes({load, store, fence});
+  if (!result.ok) {
+    return fail("expected atomic load/store/fence records to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    ldar w1, [x0]\n"
+      "    stlr w2, [x0]\n"
+      "    dmb ish\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "atomic load/store/fence structured printer");
+}
+
+int selected_atomic_rmw_loop_prints_from_structured_records() {
+  auto rmw_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::RmwLoop,
+                                       3,
+                                       bir::AtomicOrdering::AcqRel);
+  rmw_record.result_mode = bir::AtomicResultMode::OldValue;
+  rmw_record.result_value_id = prepare::PreparedValueId{530};
+  rmw_record.result_value_name = c4c::ValueNameId{531};
+  rmw_record.result_register = wreg(4);
+  rmw_record.stored_value_id = prepare::PreparedValueId{532};
+  rmw_record.stored_value_name = c4c::ValueNameId{533};
+  rmw_record.stored_register = wreg(2);
+  rmw_record.rmw_opcode = bir::AtomicRmwOpcode::Add;
+  rmw_record.exclusive_retry_loop = true;
+  rmw_record.rmw_new_value_register = wreg(5);
+  rmw_record.exclusive_status_register = wreg(6);
+
+  const auto rmw = aarch64_codegen::make_atomic_memory_instruction(rmw_record);
+  const auto result = print_common_instruction_nodes({rmw});
+  if (!result.ok) {
+    return fail("expected atomic rmw loop record to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    .Latomic_2_3_3_retry:\n"
+      "    ldaxr w4, [x0]\n"
+      "    add w5, w4, w2\n"
+      "    stlxr w6, w5, [x0]\n"
+      "    cbnz w6, .Latomic_2_3_3_retry\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "atomic rmw loop structured printer");
+}
+
+int selected_atomic_compare_exchange_loops_print_from_structured_records() {
+  auto boolean_record =
+      base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop,
+                         4,
+                         bir::AtomicOrdering::SeqCst);
+  boolean_record.result_mode = bir::AtomicResultMode::BooleanSuccess;
+  boolean_record.result_value_id = prepare::PreparedValueId{540};
+  boolean_record.result_value_name = c4c::ValueNameId{541};
+  boolean_record.result_register = wreg(3);
+  boolean_record.expected_value_id = prepare::PreparedValueId{542};
+  boolean_record.expected_value_name = c4c::ValueNameId{543};
+  boolean_record.expected_register = wreg(1);
+  boolean_record.desired_value_id = prepare::PreparedValueId{544};
+  boolean_record.desired_value_name = c4c::ValueNameId{545};
+  boolean_record.desired_register = wreg(2);
+  boolean_record.failure_ordering = bir::AtomicOrdering::Acquire;
+  boolean_record.exclusive_retry_loop = true;
+  boolean_record.compare_exchange_failure_clears_monitor = true;
+  boolean_record.compare_exchange_result_is_boolean = true;
+  boolean_record.compare_loaded_register = wreg(5);
+  boolean_record.exclusive_status_register = wreg(6);
+
+  auto old_value_record =
+      base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop,
+                         5,
+                         bir::AtomicOrdering::Acquire);
+  old_value_record.result_mode = bir::AtomicResultMode::OldValue;
+  old_value_record.result_value_id = prepare::PreparedValueId{550};
+  old_value_record.result_value_name = c4c::ValueNameId{551};
+  old_value_record.result_register = wreg(4);
+  old_value_record.expected_value_id = prepare::PreparedValueId{552};
+  old_value_record.expected_value_name = c4c::ValueNameId{553};
+  old_value_record.expected_register = wreg(1);
+  old_value_record.desired_value_id = prepare::PreparedValueId{554};
+  old_value_record.desired_value_name = c4c::ValueNameId{555};
+  old_value_record.desired_register = wreg(2);
+  old_value_record.failure_ordering = bir::AtomicOrdering::Relaxed;
+  old_value_record.exclusive_retry_loop = true;
+  old_value_record.compare_exchange_failure_clears_monitor = true;
+  old_value_record.compare_exchange_result_is_old_value = true;
+  old_value_record.exclusive_status_register = wreg(6);
+
+  const auto boolean_exchange =
+      aarch64_codegen::make_atomic_memory_instruction(boolean_record);
+  const auto old_value_exchange =
+      aarch64_codegen::make_atomic_memory_instruction(old_value_record);
+  const auto result =
+      print_common_instruction_nodes({boolean_exchange, old_value_exchange});
+  if (!result.ok) {
+    return fail("expected atomic compare-exchange loop records to print: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    .Latomic_2_3_4_retry:\n"
+      "    ldaxr w5, [x0]\n"
+      "    cmp w5, w1\n"
+      "    b.ne .Latomic_2_3_4_failure\n"
+      "    stlxr w6, w2, [x0]\n"
+      "    cbnz w6, .Latomic_2_3_4_retry\n"
+      "    mov w3, #1\n"
+      "    b .Latomic_2_3_4_done\n"
+      "    .Latomic_2_3_4_failure:\n"
+      "    clrex\n"
+      "    mov w3, #0\n"
+      "    .Latomic_2_3_4_done:\n"
+      "    .Latomic_2_3_5_retry:\n"
+      "    ldxr w4, [x0]\n"
+      "    cmp w4, w1\n"
+      "    b.ne .Latomic_2_3_5_failure\n"
+      "    stxr w6, w2, [x0]\n"
+      "    cbnz w6, .Latomic_2_3_5_retry\n"
+      "    dmb ishld\n"
+      "    .Latomic_2_3_5_failure:\n"
+      "    clrex\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "atomic compare-exchange structured printer");
+}
+
+int selected_atomic_records_reject_missing_printer_facts() {
+  auto rmw_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::RmwLoop,
+                                       6,
+                                       bir::AtomicOrdering::AcqRel);
+  rmw_record.result_mode = bir::AtomicResultMode::OldValue;
+  rmw_record.result_value_id = prepare::PreparedValueId{560};
+  rmw_record.result_value_name = c4c::ValueNameId{561};
+  rmw_record.result_register = wreg(4);
+  rmw_record.stored_value_id = prepare::PreparedValueId{562};
+  rmw_record.stored_value_name = c4c::ValueNameId{563};
+  rmw_record.stored_register = wreg(2);
+  rmw_record.rmw_opcode = bir::AtomicRmwOpcode::Add;
+  rmw_record.exclusive_retry_loop = true;
+
+  const auto rmw = aarch64_codegen::make_atomic_memory_instruction(rmw_record);
+  const auto rmw_result = aarch64_codegen::print_machine_instruction_line_payloads(rmw);
+  if (rmw_result.ok ||
+      rmw_result.diagnostic.find("scratch, or status registers") == std::string::npos) {
+    return fail("expected atomic rmw without loop scratch facts to fail closed");
+  }
+
+  auto compare_record =
+      base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop,
+                         7,
+                         bir::AtomicOrdering::SeqCst);
+  compare_record.result_mode = bir::AtomicResultMode::BooleanSuccess;
+  compare_record.result_value_id = prepare::PreparedValueId{570};
+  compare_record.result_value_name = c4c::ValueNameId{571};
+  compare_record.result_register = wreg(3);
+  compare_record.expected_value_id = prepare::PreparedValueId{572};
+  compare_record.expected_value_name = c4c::ValueNameId{573};
+  compare_record.expected_register = wreg(1);
+  compare_record.desired_value_id = prepare::PreparedValueId{574};
+  compare_record.desired_value_name = c4c::ValueNameId{575};
+  compare_record.desired_register = wreg(2);
+  compare_record.failure_ordering = bir::AtomicOrdering::Acquire;
+  compare_record.exclusive_retry_loop = true;
+  compare_record.compare_exchange_failure_clears_monitor = true;
+  compare_record.compare_exchange_result_is_boolean = true;
+  compare_record.exclusive_status_register = wreg(6);
+
+  const auto compare = aarch64_codegen::make_atomic_memory_instruction(compare_record);
+  const auto compare_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(compare);
+  if (compare_result.ok ||
+      compare_result.diagnostic.find("loaded-value register") == std::string::npos) {
+    return fail("expected atomic compare-exchange without loaded register to fail closed");
+  }
+  return 0;
 }
 
 int selected_scalar_add_sub_and_register_return_print_from_structured_operands() {
@@ -3430,6 +3676,23 @@ int main() {
     return result;
   }
   if (const int result = selected_structured_memory_subset_prints_loads_and_stores();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_atomic_load_store_and_fence_print_from_structured_records();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_atomic_rmw_loop_prints_from_structured_records();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_atomic_compare_exchange_loops_print_from_structured_records();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_atomic_records_reject_missing_printer_facts();
       result != 0) {
     return result;
   }

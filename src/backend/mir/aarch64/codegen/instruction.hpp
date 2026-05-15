@@ -835,6 +835,9 @@ struct AtomicMemoryInstructionRecord {
   std::optional<prepare::PreparedValueId> desired_value_id;
   std::optional<c4c::ValueNameId> desired_value_name;
   std::optional<RegisterOperand> desired_register;
+  std::optional<RegisterOperand> exclusive_status_register;
+  std::optional<RegisterOperand> rmw_new_value_register;
+  std::optional<RegisterOperand> compare_loaded_register;
   bir::AtomicRmwOpcode rmw_opcode = bir::AtomicRmwOpcode::None;
   bir::AtomicOrdering failure_ordering = bir::AtomicOrdering::None;
   bool exclusive_retry_loop = false;

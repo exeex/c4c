@@ -466,6 +466,137 @@ std::optional<std::string> lane_register_name(const I128LaneTransportRecord& lan
   return register_name(*lane.reg);
 }
 
+std::string atomic_loop_label(const AtomicMemoryInstructionRecord& atomic,
+                              std::string_view suffix) {
+  std::ostringstream out;
+  out << ".Latomic_" << atomic.function_name << "_" << atomic.block_label << "_"
+      << atomic.instruction_index << "_" << suffix;
+  return out.str();
+}
+
+std::optional<std::string> atomic_pointer_register_name(
+    const AtomicMemoryInstructionRecord& atomic) {
+  if (!atomic.pointer_register.has_value()) {
+    return std::nullopt;
+  }
+  return register_name_with_view(*atomic.pointer_register, abi::RegisterView::X);
+}
+
+std::optional<std::string> atomic_value_register_name(
+    const RegisterOperand& operand,
+    std::size_t width_bytes) {
+  if (width_bytes == 0 || width_bytes > 8) {
+    return std::nullopt;
+  }
+  return register_name_with_view(operand,
+                                 width_bytes == 8 ? abi::RegisterView::X
+                                                  : abi::RegisterView::W);
+}
+
+std::string_view atomic_plain_load_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 2:
+      return "ldrh";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+std::string_view atomic_acquire_load_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldarb";
+    case 2:
+      return "ldarh";
+    case 4:
+    case 8:
+      return "ldar";
+  }
+  return {};
+}
+
+std::string_view atomic_plain_store_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 2:
+      return "strh";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
+std::string_view atomic_release_store_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "stlrb";
+    case 2:
+      return "stlrh";
+    case 4:
+    case 8:
+      return "stlr";
+  }
+  return {};
+}
+
+std::string_view atomic_exclusive_load_mnemonic(std::size_t width_bytes, bool acquire) {
+  switch (width_bytes) {
+    case 1:
+      return acquire ? "ldaxrb" : "ldxrb";
+    case 2:
+      return acquire ? "ldaxrh" : "ldxrh";
+    case 4:
+    case 8:
+      return acquire ? "ldaxr" : "ldxr";
+  }
+  return {};
+}
+
+std::string_view atomic_exclusive_store_mnemonic(std::size_t width_bytes, bool release) {
+  switch (width_bytes) {
+    case 1:
+      return release ? "stlxrb" : "stxrb";
+    case 2:
+      return release ? "stlxrh" : "stxrh";
+    case 4:
+    case 8:
+      return release ? "stlxr" : "stxr";
+  }
+  return {};
+}
+
+std::string_view atomic_rmw_operation_mnemonic(bir::AtomicRmwOpcode opcode) {
+  switch (opcode) {
+    case bir::AtomicRmwOpcode::Exchange:
+      return "mov";
+    case bir::AtomicRmwOpcode::Add:
+      return "add";
+    case bir::AtomicRmwOpcode::Sub:
+      return "sub";
+    case bir::AtomicRmwOpcode::And:
+      return "and";
+    case bir::AtomicRmwOpcode::Or:
+      return "orr";
+    case bir::AtomicRmwOpcode::Xor:
+      return "eor";
+    case bir::AtomicRmwOpcode::None:
+      return {};
+  }
+  return {};
+}
+
+bool atomic_ordering_has_acquire(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::AcqRel ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
 std::optional<std::string> pair_low_register_name(const I128PairOperandRecord& operand) {
   return lane_register_name(operand.low_lane);
 }
@@ -771,6 +902,168 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   std::ostringstream out;
   out << mnemonic << " " << register_name(*value) << ", " << address;
   return target_printed({out.str()});
+}
+
+mir::TargetInstructionPrintResult print_atomic_memory(
+    const InstructionRecord& instruction,
+    const AtomicMemoryInstructionRecord& atomic) {
+  const auto pointer = atomic_pointer_register_name(atomic);
+  if (atomic.atomic_kind != AtomicMemoryInstructionKind::Fence && !pointer.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "atomic memory node is missing printable pointer register");
+  }
+  const auto address = pointer.has_value() ? "[" + *pointer + "]" : std::string{};
+
+  switch (atomic.atomic_kind) {
+    case AtomicMemoryInstructionKind::Load: {
+      if (!atomic.result_register.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic load is missing result register");
+      }
+      const auto result = atomic_value_register_name(*atomic.result_register, atomic.width_bytes);
+      const auto mnemonic = atomic.acquire_semantics
+                                ? atomic_acquire_load_mnemonic(atomic.width_bytes)
+                                : atomic_plain_load_mnemonic(atomic.width_bytes);
+      if (!result.has_value() || mnemonic.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic load has unsupported width or register view");
+      }
+      std::ostringstream out;
+      out << mnemonic << " " << *result << ", " << address;
+      return target_printed({out.str()});
+    }
+    case AtomicMemoryInstructionKind::Store: {
+      if (!atomic.stored_register.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic store is missing stored register");
+      }
+      const auto stored = atomic_value_register_name(*atomic.stored_register, atomic.width_bytes);
+      const auto mnemonic = atomic.release_semantics
+                                ? atomic_release_store_mnemonic(atomic.width_bytes)
+                                : atomic_plain_store_mnemonic(atomic.width_bytes);
+      if (!stored.has_value() || mnemonic.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic store has unsupported width or register view");
+      }
+      std::ostringstream out;
+      out << mnemonic << " " << *stored << ", " << address;
+      return target_printed({out.str()});
+    }
+    case AtomicMemoryInstructionKind::Fence:
+      if (!atomic.memory_barrier_required) {
+        return target_unsupported(bad_header(instruction) +
+                                  "relaxed atomic fence is outside the printable subset");
+      }
+      return target_printed({"dmb ish"});
+    case AtomicMemoryInstructionKind::RmwLoop: {
+      if (!atomic.result_register.has_value() || !atomic.stored_register.has_value() ||
+          !atomic.rmw_new_value_register.has_value() ||
+          !atomic.exclusive_status_register.has_value() || !atomic.exclusive_retry_loop) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "atomic rmw loop is missing structured result, value, scratch, or status registers");
+      }
+      const auto old_value = atomic_value_register_name(*atomic.result_register,
+                                                        atomic.width_bytes);
+      const auto operand = atomic_value_register_name(*atomic.stored_register,
+                                                      atomic.width_bytes);
+      const auto new_value = atomic_value_register_name(*atomic.rmw_new_value_register,
+                                                        atomic.width_bytes);
+      const auto status = atomic_value_register_name(*atomic.exclusive_status_register, 4);
+      const auto load = atomic_exclusive_load_mnemonic(atomic.width_bytes,
+                                                       atomic.acquire_semantics);
+      const auto store = atomic_exclusive_store_mnemonic(atomic.width_bytes,
+                                                         atomic.release_semantics);
+      const auto op = atomic_rmw_operation_mnemonic(atomic.rmw_opcode);
+      if (!old_value.has_value() || !operand.has_value() || !new_value.has_value() ||
+          !status.has_value() || load.empty() || store.empty() || op.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic rmw loop has unsupported width, opcode, or register view");
+      }
+      const auto retry = atomic_loop_label(atomic, "retry");
+      std::vector<std::string> lines;
+      lines.push_back(retry + ":");
+      lines.push_back(std::string(load) + " " + *old_value + ", " + address);
+      if (atomic.rmw_opcode == bir::AtomicRmwOpcode::Exchange) {
+        lines.push_back(std::string(op) + " " + *new_value + ", " + *operand);
+      } else {
+        lines.push_back(std::string(op) + " " + *new_value + ", " + *old_value + ", " +
+                        *operand);
+      }
+      lines.push_back(std::string(store) + " " + *status + ", " + *new_value + ", " +
+                      address);
+      lines.push_back("cbnz " + *status + ", " + retry);
+      return target_printed(std::move(lines));
+    }
+    case AtomicMemoryInstructionKind::CompareExchangeLoop: {
+      if (!atomic.expected_register.has_value() || !atomic.desired_register.has_value() ||
+          !atomic.result_register.has_value() || !atomic.exclusive_status_register.has_value() ||
+          !atomic.exclusive_retry_loop || !atomic.compare_exchange_failure_clears_monitor) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "atomic compare-exchange loop is missing structured operands, status, or monitor-clear facts");
+      }
+      const RegisterOperand* loaded_operand = nullptr;
+      if (atomic.compare_exchange_result_is_old_value) {
+        loaded_operand = &*atomic.result_register;
+      } else if (atomic.compare_loaded_register.has_value()) {
+        loaded_operand = &*atomic.compare_loaded_register;
+      }
+      if (loaded_operand == nullptr) {
+        return target_unsupported(bad_header(instruction) +
+                                  "atomic compare-exchange loop is missing loaded-value register");
+      }
+      const bool failure_acquire = atomic_ordering_has_acquire(atomic.failure_ordering);
+      const bool success_needs_post_acquire =
+          atomic.acquire_semantics && !failure_acquire;
+      const auto loaded = atomic_value_register_name(*loaded_operand, atomic.width_bytes);
+      const auto expected = atomic_value_register_name(*atomic.expected_register,
+                                                       atomic.width_bytes);
+      const auto desired = atomic_value_register_name(*atomic.desired_register,
+                                                      atomic.width_bytes);
+      const auto result = atomic_value_register_name(*atomic.result_register,
+                                                     atomic.compare_exchange_result_is_boolean
+                                                         ? 4
+                                                         : atomic.width_bytes);
+      const auto status = atomic_value_register_name(*atomic.exclusive_status_register, 4);
+      const auto load = atomic_exclusive_load_mnemonic(atomic.width_bytes, failure_acquire);
+      const auto store = atomic_exclusive_store_mnemonic(atomic.width_bytes,
+                                                         atomic.release_semantics);
+      if (!loaded.has_value() || !expected.has_value() || !desired.has_value() ||
+          !result.has_value() || !status.has_value() || load.empty() || store.empty()) {
+        return target_unsupported(
+            bad_header(instruction) +
+            "atomic compare-exchange loop has unsupported width or register view");
+      }
+      const auto retry = atomic_loop_label(atomic, "retry");
+      const auto failure = atomic_loop_label(atomic, "failure");
+      const auto done = atomic_loop_label(atomic, "done");
+      std::vector<std::string> lines;
+      lines.push_back(retry + ":");
+      lines.push_back(std::string(load) + " " + *loaded + ", " + address);
+      lines.push_back("cmp " + *loaded + ", " + *expected);
+      lines.push_back("b.ne " + failure);
+      lines.push_back(std::string(store) + " " + *status + ", " + *desired + ", " +
+                      address);
+      lines.push_back("cbnz " + *status + ", " + retry);
+      if (success_needs_post_acquire) {
+        lines.push_back("dmb ishld");
+      }
+      if (atomic.compare_exchange_result_is_boolean) {
+        lines.push_back("mov " + *result + ", #1");
+        lines.push_back("b " + done);
+      }
+      lines.push_back(failure + ":");
+      lines.push_back("clrex");
+      if (atomic.compare_exchange_result_is_boolean) {
+        lines.push_back("mov " + *result + ", #0");
+        lines.push_back(done + ":");
+      }
+      return target_printed(std::move(lines));
+    }
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "atomic memory kind is outside the printable subset");
 }
 
 mir::TargetInstructionPrintResult print_i128_transport(
@@ -2153,6 +2446,10 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* memory = std::get_if<MemoryInstructionRecord>(&instruction.payload)) {
     return print_memory(instruction, *memory);
+  }
+  if (const auto* atomic =
+          std::get_if<AtomicMemoryInstructionRecord>(&instruction.payload)) {
+    return print_atomic_memory(instruction, *atomic);
   }
   if (const auto* frame = std::get_if<FrameInstructionRecord>(&instruction.payload)) {
     return print_frame(instruction, *frame);

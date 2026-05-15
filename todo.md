@@ -1,59 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/238_aarch64_atomic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Select Atomic RMW And Compare-Exchange Loops
+Current Step ID: 5
+Current Step Title: Print AArch64 Atomic Machine Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 `Select Atomic RMW And Compare-Exchange Loops` added structured AArch64
-selection for atomic RMW and compare-exchange operations from complete prepared
-carriers.
+Step 5 `Print AArch64 Atomic Machine Nodes` added final AArch64 machine-printer
+emission for selected atomic machine nodes from structured record facts.
 
 Changed behavior:
-- AArch64 dispatch now consumes complete `PreparedAtomicOperationCarrier`
-  records for RMW and compare-exchange selection in the same structured atomic
-  record family as load/store/fence.
-- RMW selected records preserve exclusive retry-loop authority, old-value
-  result semantics, RMW opcode, ordering, width/type, pointer/value/result
-  identities, register authority, and atomic read/write side effects.
-- Compare-exchange selected records preserve expected and desired operands,
-  success ordering, failure ordering, boolean and old-value result modes,
-  pointer/result identities, register authority, exclusive retry-loop facts, and
-  monitor-clear-on-compare-failure facts.
-- Incomplete carriers, unsupported widths/orderings, unsupported RMW opcodes,
-  unsupported failure orderings, and unsupported result modes remain
-  fail-closed with explicit diagnostics.
-- Final assembly printing remains out of scope for this packet.
+- Atomic loads and stores now print width-aware plain/acquire/release AArch64
+  forms from selected `AtomicMemoryInstructionRecord` fields.
+- Non-relaxed fences print `dmb ish` from selected fence records.
+- Atomic RMW records print exclusive-access retry loops using structured
+  pointer, old-value, input, new-value scratch, status, opcode, and ordering
+  facts.
+- Compare-exchange records print success/failure paths from structured
+  expected, desired, loaded-value, result, status, success ordering, failure
+  ordering, result-mode, retry-loop, and monitor-clear facts.
+- Printer-only scratch/status fields were added to selected atomic records so
+  loops do not fall back to archived fixed scratch-register contracts.
+- Incomplete selected records remain fail-closed when printer-required loop
+  scratch, status, or loaded-value facts are absent.
 
 Added test coverage:
-- `backend_aarch64_instruction_dispatch_test` now proves selected RMW records
-  carry old-value result semantics and retry-loop facts.
-- The same test proves compare-exchange records carry expected/desired
-  operands, success/failure orderings, monitor-clear facts, and both boolean and
-  old-value result modes.
-- The fail-closed coverage now rejects unsupported RMW opcode and unsupported
-  compare-exchange failure ordering rather than accepting partial loops.
+- `backend_aarch64_machine_printer_test` now proves selected atomic
+  load/store/fence records print concrete AArch64 assembly.
+- The same printer test proves RMW retry-loop output and compare-exchange
+  boolean/old-value success/failure output are emitted from structured records.
+- Fail-closed printer coverage rejects atomic RMW and compare-exchange records
+  that lack required printer facts.
 
 ## Suggested Next
 
-Begin Step 5 `Print AArch64 Atomic Machine Nodes` by emitting final AArch64
-assembly only from structured selected atomic load/store/fence/RMW and
-compare-exchange records.
+Begin Step 6 `Prove Atomic Route And Decide Lifecycle` by validating the
+representative atomic backend route and asking the plan owner whether the source
+idea is complete or needs a follow-on gap recorded.
 
 ## Watchouts
 
 - Do not infer atomic semantics from volatile flags, rendered text, fixed
   scratch-register snippets, or named testcase shortcuts.
-- Step 4 intentionally did not add final assembly printing; Step 5 owns printer
-  emission now that all selected atomic node families exist.
+- Step 5 prints from selected atomic records, but the prepared-to-selected route
+  still does not allocate loop scratch/status registers for all end-to-end
+  atomic programs; Step 6 should decide whether that is a lifecycle-closing gap
+  or a follow-on packet.
 - Preserve ordinary volatile memory behavior separately from atomic behavior;
   atomic selection must continue to require carrier provenance.
-- RMW and compare-exchange records currently model retry-loop and monitor-clear
-  facts structurally; Step 5 should consume those fields directly rather than
-  reconstructing from rendered text.
+- RMW and compare-exchange printer records now require explicit scratch/status
+  register facts; do not replace that with fixed scratch-register assumptions.
 - Do not fold intrinsic, inline-assembly, binary128, scalar FP, or i128 behavior
   into this route.
 
