@@ -5638,6 +5638,133 @@ int check_general_grouped_cross_call(const prepare::PreparedBirModule& prepared)
   return 0;
 }
 
+prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_liveness_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "aapcs64_variadic_entry_helper_family_liveness_contract";
+  function.is_variadic = true;
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "scale",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "next.i32"),
+      .callee = "llvm.va_arg.i32",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::F64, "next.f64"),
+      .callee = "llvm.va_arg.f64",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "double",
+      .return_type = bir::TypeKind::F64,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+      .callee = "llvm.va_arg.aggregate",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_copy.p0.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "dst.ap"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      options);
+}
+
+int check_aapcs64_variadic_entry_helper_family_liveness() {
+  const auto prepared = prepare_aapcs64_variadic_entry_helper_family_liveness_module();
+  const auto* liveness =
+      find_liveness_function(prepared, "aapcs64_variadic_entry_helper_family_liveness_contract");
+  if (liveness == nullptr || liveness->call_points.size() != 5) {
+    return fail("AAPCS64 variadic helper-family liveness: expected all helper calls to stay observable");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("aapcs64_variadic_entry_helper_family_liveness_contract");
+  const auto* entry_plan = prepare::find_prepared_variadic_entry_plan(prepared, function_id);
+  if (entry_plan == nullptr || entry_plan->named_parameter_count != 3 ||
+      entry_plan->named_register_counts.gp != std::optional<std::size_t>{1} ||
+      entry_plan->named_register_counts.fp != std::optional<std::size_t>{1} ||
+      entry_plan->helper_resources.required_helpers.size() != 4 ||
+      !entry_plan->register_save_area.required || !entry_plan->va_list_layout.required) {
+    return fail("AAPCS64 variadic helper-family liveness: carrier lost named counts, helpers, or ABI facts");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -5877,6 +6004,9 @@ int main() {
   }
   const auto general_grouped_cross_call_prepared = prepare_general_grouped_cross_call_module_with_regalloc();
   if (const int rc = check_general_grouped_cross_call(general_grouped_cross_call_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aapcs64_variadic_entry_helper_family_liveness(); rc != 0) {
     return rc;
   }
   return 0;

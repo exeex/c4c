@@ -757,6 +757,17 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
         << optional_size_text(function_plan.helper_resources.scratch_register_count)
         << " scratch_stack="
         << optional_size_text(function_plan.helper_resources.scratch_stack_bytes)
+        << " helpers=[";
+    for (std::size_t index = 0;
+         index < function_plan.helper_resources.required_helpers.size();
+         ++index) {
+      if (index != 0) {
+        out << ",";
+      }
+      out << prepared_variadic_entry_helper_kind_name(
+          function_plan.helper_resources.required_helpers[index]);
+    }
+    out << "]"
         << "\n";
     for (const auto helper : function_plan.helper_resources.required_helpers) {
       out << "    helper kind="

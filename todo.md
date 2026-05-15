@@ -1,46 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/232_aarch64_variadic_function_entry_carriers.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Populate Variadic Entry Facts In Prepared State
+Current Step ID: 4
+Current Step Title: Expose Prepared Dumps And Focused Tests
 
 # Current Packet
 
 ## Just Finished
 
-Step 3, Populate Variadic Entry Facts In Prepared State, completed the prepared
-population slice for AAPCS64 variadic function-entry carriers.
+Step 4, Expose Prepared Dumps And Focused Tests, completed the prepared dump
+and focused-test slice for the AAPCS64 variadic function-entry carrier family.
 
 Implementation notes:
-- `populate_variadic_entry_plans` now populates AAPCS64 register-save-area,
-  overflow-area, `va_list` layout, signed initial offset, saved-register-count,
-  slot-size, and helper-use facts from prepared target profile plus existing BIR
-  parameter ABI metadata and `llvm.va_*` calls.
-- Functions without observed variadic helper use keep the Step 2 structural
-  carrier but do not receive fabricated save-area or `va_list` requirements.
-- Missing frame/storage facts that prepared state does not yet allocate are
-  recorded on the carrier as `missing_required_facts` instead of being invented
-  in AArch64 lowering.
-- `PreparedCallPlan::variadic_fpr_arg_register_count` remains call-boundary
-  metadata only; no AArch64 target lowering or printer consumption was added.
+- The prepared printer now emits a compact helper list on
+  `helper_resources`, so `va_start`, generic `va_arg`, aggregate `va_arg`, and
+  `va_copy` observations are visible in one dump line as well as in the
+  existing per-helper detail lines.
+- `backend_prepared_printer_test` now covers an AAPCS64 variadic entry fixture
+  with named integer, FP, and aggregate parameters plus `llvm.va_start.p0`,
+  `llvm.va_arg.i32`, `llvm.va_arg.f64`, `llvm.va_arg.aggregate`, and
+  `llvm.va_copy.p0.p0` helper calls.
+- `backend_prepare_liveness_test` keeps the helper calls observable through
+  prepared liveness while asserting the entry carrier publishes the same
+  named GP/FP counts, helper family, register-save, and `va_list` facts.
+- `backend_prepare_frame_stack_call_contract_test` asserts those helper calls
+  do not leak into call-boundary variadic metadata while the entry carrier
+  retains the AAPCS64 save-area and overflow-area facts.
 
 ## Suggested Next
 
-Start Step 4 by extending prepared dump and focused test coverage for the
-variadic entry carrier family beyond the current AAPCS64 `va_start` proof,
-including integer, FP, aggregate, and `va_copy` observations where the current
-IR exposes them.
+Start Step 5 by adding fail-closed AArch64 consumption guards for the prepared
+variadic entry carrier, without reconstructing save-area, overflow-area,
+`va_list`, or helper scratch facts in target-local lowering.
 
 ## Watchouts
 
-- The carrier records required-but-missing prepared storage facts such as
+- The current prepared carrier records generic `va_arg` and aggregate
+  `va_arg` helper kinds, but does not retain a typed per-helper observation
+  that distinguishes `llvm.va_arg.i32` from `llvm.va_arg.f64`; tests cover the
+  generic helper fact and named GP/FP entry counts where current IR exposes
+  them.
+- The carrier still records required-but-missing prepared storage facts such as
   `register_save_area.slot_id`, `register_save_area.stack_offset_bytes`, and
   `overflow_area.base_stack_offset_bytes`; later packets should either allocate
   these in prepared/frame state or keep downstream AArch64 paths fail-closed.
 - Helper scratch-resource counts remain unknown because this packet did not add
   a prepared scratch-policy authority.
-- No AArch64 target lowering/printer files were touched; target consumption
-  still belongs to the later fail-closed packet.
+- No AArch64 target lowering/printer files were touched; target consumption and
+  diagnostics still belong to Step 5.
 
 ## Proof
 

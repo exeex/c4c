@@ -5065,6 +5065,139 @@ int check_variadic_nested_dynamic_stack_call_contract() {
   return 0;
 }
 
+bir::Module make_aapcs64_variadic_entry_helper_family_frame_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "aapcs64_variadic_entry_helper_family_frame_contract";
+  function.is_variadic = true;
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "scale",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "next.i32"),
+      .callee = "llvm.va_arg.i32",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::F64, "next.f64"),
+      .callee = "llvm.va_arg.f64",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "double",
+      .return_type = bir::TypeKind::F64,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+      .callee = "llvm.va_arg.aggregate",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_copy.p0.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "dst.ap"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_aapcs64_variadic_entry_helper_family_frame_contract() {
+  const auto prepared = prepare::prepare_semantic_bir_module_with_options(
+      make_aapcs64_variadic_entry_helper_family_frame_module(),
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+  const auto function_id =
+      prepared.names.function_names.find("aapcs64_variadic_entry_helper_family_frame_contract");
+  const auto* entry_plan = prepare::find_prepared_variadic_entry_plan(prepared, function_id);
+  const auto* call_plans =
+      find_call_plans_function(prepared, "aapcs64_variadic_entry_helper_family_frame_contract");
+  if (entry_plan == nullptr || call_plans == nullptr || call_plans->calls.size() != 5) {
+    return fail("AAPCS64 variadic helper-family frame contract: missing carrier or helper calls");
+  }
+  if (entry_plan->helper_resources.required_helpers.size() != 4 ||
+      entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
+      entry_plan->register_save_area.saved_gp_register_count !=
+          std::optional<std::size_t>{7} ||
+      entry_plan->register_save_area.saved_fp_register_count !=
+          std::optional<std::size_t>{7} ||
+      entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8}) {
+    return fail("AAPCS64 variadic helper-family frame contract: lost prepared entry facts");
+  }
+  for (const auto& call_plan : call_plans->calls) {
+    if (call_plan.variadic_fpr_arg_register_count != 0 ||
+        call_plan.wrapper_kind == prepare::PreparedCallWrapperKind::DirectExternVariadic) {
+      return fail("AAPCS64 variadic helper-family frame contract: helper calls leaked call-boundary variadic metadata");
+    }
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -5162,6 +5295,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_variadic_nested_dynamic_stack_call_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_aapcs64_variadic_entry_helper_family_frame_contract(); rc != 0) {
     return rc;
   }
   return EXIT_SUCCESS;

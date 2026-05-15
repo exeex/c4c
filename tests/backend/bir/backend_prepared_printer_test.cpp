@@ -718,6 +718,112 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_dump_module() {
       options);
 }
 
+prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "aapcs64_variadic_entry_helper_family_dump_contract";
+  function.is_variadic = true;
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "head",
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::I32,
+          .size_bytes = 4,
+          .align_bytes = 4,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "scale",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::F64,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Sse,
+          .passed_in_register = true,
+      },
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "aggregate.byval",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_in_register = false,
+          .byval_copy = true,
+      },
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_start.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "next.i32"),
+      .callee = "llvm.va_arg.i32",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::F64, "next.f64"),
+      .callee = "llvm.va_arg.f64",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "double",
+      .return_type = bir::TypeKind::F64,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+      .callee = "llvm.va_arg.aggregate",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .return_type_name = "ptr",
+      .return_type = bir::TypeKind::Ptr,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.va_copy.p0.p0",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "dst.ap"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "head")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
+      options);
+}
+
 prepare::PreparedBirModule prepare_memory_return_call_dump_module() {
   bir::Module module;
   module.target_triple = "x86_64-unknown-linux-gnu";
@@ -2414,6 +2520,53 @@ int main() {
   if (!expect_contains(aapcs64_variadic_dump,
                        "missing fact=register_save_area.slot_id",
                        "AAPCS64 variadic unsupported save-area storage fact")) {
+    return EXIT_FAILURE;
+  }
+  const auto aapcs64_helper_family_prepared =
+      prepare_aapcs64_variadic_entry_helper_family_dump_module();
+  const std::string aapcs64_helper_family_dump = prepare::print(aapcs64_helper_family_prepared);
+  const auto aapcs64_helper_family_function_id =
+      aapcs64_helper_family_prepared.names.function_names.find(
+          "aapcs64_variadic_entry_helper_family_dump_contract");
+  const auto* aapcs64_helper_family_entry_plan =
+      prepare::find_prepared_variadic_entry_plan(aapcs64_helper_family_prepared,
+                                                 aapcs64_helper_family_function_id);
+  if (aapcs64_helper_family_entry_plan == nullptr ||
+      aapcs64_helper_family_entry_plan->named_parameter_count != 3 ||
+      aapcs64_helper_family_entry_plan->named_register_counts.gp !=
+          std::optional<std::size_t>{1} ||
+      aapcs64_helper_family_entry_plan->named_register_counts.fp !=
+          std::optional<std::size_t>{1} ||
+      aapcs64_helper_family_entry_plan->helper_resources.required_helpers.size() != 4) {
+    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts or helpers\n";
+    return EXIT_FAILURE;
+  }
+  const auto& helper_family = aapcs64_helper_family_entry_plan->helper_resources.required_helpers;
+  for (const auto helper : {
+           prepare::PreparedVariadicEntryHelperKind::VaStart,
+           prepare::PreparedVariadicEntryHelperKind::VaArg,
+           prepare::PreparedVariadicEntryHelperKind::VaArgAggregate,
+           prepare::PreparedVariadicEntryHelperKind::VaCopy,
+       }) {
+    if (std::find(helper_family.begin(), helper_family.end(), helper) == helper_family.end()) {
+      std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier missed a helper kind\n";
+      return EXIT_FAILURE;
+    }
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "prepared.func @aapcs64_variadic_entry_helper_family_dump_contract named_params=3 named_gp=1 named_fp=1 helpers=4",
+          "AAPCS64 variadic helper-family plan header")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_resources scratch_registers=<unknown> scratch_stack=<unknown> helpers=[va_start,va_arg,va_arg_aggregate,va_copy]",
+                       "AAPCS64 variadic helper-family summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper kind=va_copy",
+                       "AAPCS64 variadic va_copy helper need")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,
