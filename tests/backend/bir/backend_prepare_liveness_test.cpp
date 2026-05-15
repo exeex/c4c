@@ -166,6 +166,16 @@ const prepare::PreparedI128Carrier* find_i128_carrier(
   return prepare::find_prepared_i128_carrier(*function_carriers, value_id);
 }
 
+const prepare::PreparedI128RuntimeHelperFunction* find_i128_runtime_helpers(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_i128_runtime_helpers(prepared, function_id);
+}
+
 void set_register_group_override(prepare::PreparedBirModule& prepared,
                                  std::string_view function_name,
                                  std::string_view value_name,
@@ -2363,6 +2373,79 @@ prepare::PreparedBirModule prepare_i128_incomplete_register_carrier_contract_mod
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_contract_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  bir::Function function;
+  function.name = "i128_runtime_helper_mapping_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.rhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "p.f64",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::SDiv,
+      .result = bir::Value::named(bir::TypeKind::I128, "q.s"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::UDiv,
+      .result = bir::Value::named(bir::TypeKind::I128, "q.u"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "q.s"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::SRem,
+      .result = bir::Value::named(bir::TypeKind::I128, "r.s"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "q.u"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::URem,
+      .result = bir::Value::named(bir::TypeKind::I128, "r.u"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "r.s"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPToSI,
+      .result = bir::Value::named(bir::TypeKind::I128, "from.f64"),
+      .operand = bir::Value::named(bir::TypeKind::F64, "p.f64"),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      riscv_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 int check_i128_memory_backed_carrier_authority() {
   const auto prepared = prepare_i128_memory_carrier_contract_module();
   const auto* carrier =
@@ -2460,6 +2543,82 @@ int check_i128_incomplete_register_carrier_diagnostics() {
       dump.find("register_pair_requires_width_2_and_two_structured_occupied_registers") ==
           std::string::npos) {
     return fail("prepared printer did not expose i128 missing pair diagnostics");
+  }
+  return 0;
+}
+
+int check_i128_runtime_helper_mapping_authority() {
+  const auto prepared = prepare_i128_runtime_helper_mapping_contract_module();
+  const auto* helpers =
+      find_i128_runtime_helpers(prepared, "i128_runtime_helper_mapping_contract");
+  if (helpers == nullptr || helpers->helpers.size() != 4) {
+    return fail("expected prepared i128 runtime helper mappings for four div/rem operations");
+  }
+
+  const struct ExpectedHelper {
+    bir::BinaryOpcode opcode;
+    prepare::PreparedI128RuntimeHelperKind kind;
+    std::string_view result;
+    std::string_view callee;
+    std::size_t instruction_index;
+  } expected[] = {
+      {bir::BinaryOpcode::SDiv,
+       prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+       "q.s",
+       "__divti3",
+       0},
+      {bir::BinaryOpcode::UDiv,
+       prepare::PreparedI128RuntimeHelperKind::UnsignedDiv,
+       "q.u",
+       "__udivti3",
+       1},
+      {bir::BinaryOpcode::SRem,
+       prepare::PreparedI128RuntimeHelperKind::SignedRem,
+       "r.s",
+       "__modti3",
+       2},
+      {bir::BinaryOpcode::URem,
+       prepare::PreparedI128RuntimeHelperKind::UnsignedRem,
+       "r.u",
+       "__umodti3",
+       3},
+  };
+
+  for (std::size_t index = 0; index < sizeof(expected) / sizeof(expected[0]); ++index) {
+    const auto& helper = helpers->helpers[index];
+    const auto& want = expected[index];
+    if (helper.function_name != helpers->function_name ||
+        helper.block_index != 0 ||
+        helper.instruction_index != want.instruction_index ||
+        helper.source_binary_opcode != want.opcode ||
+        helper.source_type != bir::TypeKind::I128 ||
+        helper.result_type != bir::TypeKind::I128 ||
+        helper.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem ||
+        helper.helper_kind != want.kind ||
+        helper.callee_name != want.callee ||
+        prepare::prepared_value_name(prepared.names, helper.result_value_name) != want.result ||
+        helper.result_value_id == 0 ||
+        helper.lhs_value_name == c4c::kInvalidValueName ||
+        helper.rhs_value_name == c4c::kInvalidValueName) {
+      return fail("prepared i128 runtime helper mapping lost source opcode, callee, or value authority");
+    }
+  }
+
+  if (helpers->missing_required_facts.size() != 1 ||
+      helpers->missing_required_facts.front() !=
+          "i128_float_integer_conversion_helper_mapping_deferred") {
+    return fail("expected i128 float/integer conversion helper mapping to remain explicitly deferred");
+  }
+
+  const auto dump = prepare::print(prepared);
+  if (dump.find("--- prepared-i128-runtime-helpers ---") == std::string::npos ||
+      dump.find("kind=signed_div opcode=sdiv callee=__divti3") == std::string::npos ||
+      dump.find("kind=unsigned_div opcode=udiv callee=__udivti3") == std::string::npos ||
+      dump.find("kind=signed_rem opcode=srem callee=__modti3") == std::string::npos ||
+      dump.find("kind=unsigned_rem opcode=urem callee=__umodti3") == std::string::npos ||
+      dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
+          std::string::npos) {
+    return fail("prepared printer did not expose i128 runtime helper mapping facts");
   }
   return 0;
 }
@@ -6272,6 +6431,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_i128_incomplete_register_carrier_diagnostics(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i128_runtime_helper_mapping_authority(); rc != 0) {
     return rc;
   }
   const auto general_grouped_evicted_spill_prepared =

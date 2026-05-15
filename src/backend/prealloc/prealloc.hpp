@@ -1648,6 +1648,72 @@ struct PreparedI128Carriers {
   std::vector<PreparedI128CarrierFunction> functions;
 };
 
+enum class PreparedI128RuntimeHelperFamily {
+  DivRem,
+  FloatIntegerConversion,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_family_name(
+    PreparedI128RuntimeHelperFamily family) {
+  switch (family) {
+    case PreparedI128RuntimeHelperFamily::DivRem:
+      return "div_rem";
+    case PreparedI128RuntimeHelperFamily::FloatIntegerConversion:
+      return "float_integer_conversion";
+  }
+  return "unknown";
+}
+
+enum class PreparedI128RuntimeHelperKind {
+  SignedDiv,
+  UnsignedDiv,
+  SignedRem,
+  UnsignedRem,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_kind_name(
+    PreparedI128RuntimeHelperKind kind) {
+  switch (kind) {
+    case PreparedI128RuntimeHelperKind::SignedDiv:
+      return "signed_div";
+    case PreparedI128RuntimeHelperKind::UnsignedDiv:
+      return "unsigned_div";
+    case PreparedI128RuntimeHelperKind::SignedRem:
+      return "signed_rem";
+    case PreparedI128RuntimeHelperKind::UnsignedRem:
+      return "unsigned_rem";
+  }
+  return "unknown";
+}
+
+struct PreparedI128RuntimeHelper {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  bir::TypeKind source_type = bir::TypeKind::I128;
+  bir::TypeKind result_type = bir::TypeKind::I128;
+  PreparedValueId result_value_id = 0;
+  ValueNameId result_value_name = kInvalidValueName;
+  PreparedValueId lhs_value_id = 0;
+  ValueNameId lhs_value_name = kInvalidValueName;
+  PreparedValueId rhs_value_id = 0;
+  ValueNameId rhs_value_name = kInvalidValueName;
+  PreparedI128RuntimeHelperFamily helper_family = PreparedI128RuntimeHelperFamily::DivRem;
+  PreparedI128RuntimeHelperKind helper_kind = PreparedI128RuntimeHelperKind::SignedDiv;
+  std::string callee_name;
+};
+
+struct PreparedI128RuntimeHelperFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedI128RuntimeHelper> helpers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedI128RuntimeHelpers {
+  std::vector<PreparedI128RuntimeHelperFunction> functions;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
 };
@@ -4626,6 +4692,7 @@ struct PreparedBirModule {
   PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
   PreparedI128Carriers i128_carriers;
+  PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
@@ -4805,6 +4872,23 @@ find_prepared_variadic_entry_helper_operand_homes(
     const PreparedBirModule& module,
     FunctionNameId function_name) {
   return find_prepared_i128_carriers(module.i128_carriers, function_name);
+}
+
+[[nodiscard]] inline const PreparedI128RuntimeHelperFunction*
+find_prepared_i128_runtime_helpers(const PreparedI128RuntimeHelpers& helpers,
+                                   FunctionNameId function_name) {
+  for (const auto& function_helpers : helpers.functions) {
+    if (function_helpers.function_name == function_name) {
+      return &function_helpers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedI128RuntimeHelperFunction*
+find_prepared_i128_runtime_helpers(const PreparedBirModule& module,
+                                   FunctionNameId function_name) {
+  return find_prepared_i128_runtime_helpers(module.i128_runtime_helpers, function_name);
 }
 
 [[nodiscard]] inline const PreparedI128Carrier* find_prepared_i128_carrier(

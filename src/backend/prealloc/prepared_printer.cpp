@@ -1529,6 +1529,34 @@ void append_i128_carriers(std::ostringstream& out, const PreparedBirModule& modu
   }
 }
 
+void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-i128-runtime-helpers ---\n";
+  for (const auto& function_helpers : module.i128_runtime_helpers.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
+        << "\n";
+    for (const auto& helper : function_helpers.helpers) {
+      out << "  i128_helper block=" << helper.block_index
+          << " inst=" << helper.instruction_index
+          << " family=" << prepared_i128_runtime_helper_family_name(helper.helper_family)
+          << " kind=" << prepared_i128_runtime_helper_kind_name(helper.helper_kind)
+          << " opcode=" << bir::render_binary_opcode(helper.source_binary_opcode)
+          << " callee=" << helper.callee_name
+          << " source_type=" << type_kind_name(helper.source_type)
+          << " result_type=" << type_kind_name(helper.result_type)
+          << " result=" << maybe_value_name(module.names, helper.result_value_name)
+          << "#" << helper.result_value_id
+          << " lhs=" << maybe_value_name(module.names, helper.lhs_value_name)
+          << "#" << helper.lhs_value_id
+          << " rhs=" << maybe_value_name(module.names, helper.rhs_value_name)
+          << "#" << helper.rhs_value_id
+          << "\n";
+    }
+    for (const auto& fact : function_helpers.missing_required_facts) {
+      out << "    missing fact=" << fact << "\n";
+    }
+  }
+}
+
 void append_regalloc(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-regalloc ---\n";
   for (const auto& function : module.regalloc.functions) {
@@ -1694,6 +1722,7 @@ std::string print(const PreparedBirModule& module) {
   append_regalloc(out, module);
   append_storage_plans(out, module);
   append_i128_carriers(out, module);
+  append_i128_runtime_helpers(out, module);
   append_addressing(out, module);
   return out.str();
 }

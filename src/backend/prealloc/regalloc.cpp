@@ -202,6 +202,127 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return value.assigned_register->placement;
 }
 
+[[nodiscard]] bool is_i128_div_rem_helper_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+      return true;
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] PreparedI128RuntimeHelperKind i128_div_rem_helper_kind(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::SDiv:
+      return PreparedI128RuntimeHelperKind::SignedDiv;
+    case bir::BinaryOpcode::UDiv:
+      return PreparedI128RuntimeHelperKind::UnsignedDiv;
+    case bir::BinaryOpcode::SRem:
+      return PreparedI128RuntimeHelperKind::SignedRem;
+    case bir::BinaryOpcode::URem:
+      return PreparedI128RuntimeHelperKind::UnsignedRem;
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return PreparedI128RuntimeHelperKind::SignedDiv;
+}
+
+[[nodiscard]] std::string_view i128_div_rem_helper_callee(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::SDiv:
+      return "__divti3";
+    case bir::BinaryOpcode::UDiv:
+      return "__udivti3";
+    case bir::BinaryOpcode::SRem:
+      return "__modti3";
+    case bir::BinaryOpcode::URem:
+      return "__umodti3";
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return "";
+}
+
+[[nodiscard]] bool is_i128_float_integer_conversion_cast(const bir::CastInst& cast) {
+  switch (cast.opcode) {
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+      return cast.result.type == bir::TypeKind::I128 ||
+             cast.operand.type == bir::TypeKind::I128;
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      return false;
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<std::pair<std::string, std::size_t>> split_trailing_register_index(
     std::string_view register_name) {
   if (register_name.empty()) {
@@ -1677,6 +1798,87 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   return &*it;
 }
 
+void append_i128_runtime_helper_fact(PreparedI128RuntimeHelperFunction& function_helpers,
+                                     std::string fact) {
+  if (std::find(function_helpers.missing_required_facts.begin(),
+                function_helpers.missing_required_facts.end(),
+                fact) == function_helpers.missing_required_facts.end()) {
+    function_helpers.missing_required_facts.push_back(std::move(fact));
+  }
+}
+
+void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
+                                         const bir::Function& function,
+                                         const PreparedRegallocFunction& regalloc_function,
+                                         PreparedI128RuntimeHelpers& helper_mappings) {
+  PreparedI128RuntimeHelperFunction function_helpers{
+      .function_name = regalloc_function.function_name,
+      .helpers = {},
+      .missing_required_facts = {},
+  };
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto& inst = block.insts[instruction_index];
+      if (const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+          binary != nullptr && binary->operand_type == bir::TypeKind::I128 &&
+          binary->result.type == bir::TypeKind::I128 &&
+          is_i128_div_rem_helper_opcode(binary->opcode)) {
+        if (binary->result.kind != bir::Value::Kind::Named ||
+            binary->lhs.kind != bir::Value::Kind::Named ||
+            binary->rhs.kind != bir::Value::Kind::Named) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_div_rem_helper_requires_named_result_and_operands");
+          continue;
+        }
+        const auto* result =
+            find_regalloc_value(regalloc_function, names, binary->result.name);
+        const auto* lhs = find_regalloc_value(regalloc_function, names, binary->lhs.name);
+        const auto* rhs = find_regalloc_value(regalloc_function, names, binary->rhs.name);
+        if (result == nullptr || lhs == nullptr || rhs == nullptr) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_div_rem_helper_requires_prepared_value_id_for_result_lhs_rhs");
+          continue;
+        }
+        function_helpers.helpers.push_back(PreparedI128RuntimeHelper{
+            .function_name = regalloc_function.function_name,
+            .block_index = block_index,
+            .instruction_index = instruction_index,
+            .source_binary_opcode = binary->opcode,
+            .source_type = binary->operand_type,
+            .result_type = binary->result.type,
+            .result_value_id = result->value_id,
+            .result_value_name = result->value_name,
+            .lhs_value_id = lhs->value_id,
+            .lhs_value_name = lhs->value_name,
+            .rhs_value_id = rhs->value_id,
+            .rhs_value_name = rhs->value_name,
+            .helper_family = PreparedI128RuntimeHelperFamily::DivRem,
+            .helper_kind = i128_div_rem_helper_kind(binary->opcode),
+            .callee_name = std::string(i128_div_rem_helper_callee(binary->opcode)),
+        });
+        continue;
+      }
+
+      if (const auto* cast = std::get_if<bir::CastInst>(&inst);
+          cast != nullptr && is_i128_float_integer_conversion_cast(*cast)) {
+        append_i128_runtime_helper_fact(
+            function_helpers,
+            "i128_float_integer_conversion_helper_mapping_deferred");
+      }
+    }
+  }
+
+  if (!function_helpers.helpers.empty() ||
+      !function_helpers.missing_required_facts.empty()) {
+    helper_mappings.functions.push_back(std::move(function_helpers));
+  }
+}
+
 [[nodiscard]] std::optional<std::size_t> find_instruction_index_for_named_result(
     const bir::Block& block,
     std::string_view value_name) {
@@ -2427,6 +2629,7 @@ void BirPreAlloc::run_regalloc() {
   prepared_.regalloc.functions.reserve(prepared_.liveness.functions.size());
   prepared_.value_locations.functions.clear();
   prepared_.value_locations.functions.reserve(prepared_.liveness.functions.size());
+  prepared_.i128_runtime_helpers.functions.clear();
 
   for (const auto& liveness_function : prepared_.liveness.functions) {
     PreparedRegallocFunction regalloc_function{
@@ -2725,6 +2928,10 @@ void BirPreAlloc::run_regalloc() {
           prepared_.names, prepared_.target_profile, *function, regalloc_function);
       append_return_move_resolution(
           prepared_.names, prepared_.target_profile, *function, regalloc_function);
+      append_i128_runtime_helper_mappings(prepared_.names,
+                                          *function,
+                                          regalloc_function,
+                                          prepared_.i128_runtime_helpers);
     }
 
     prepared_.stack_layout.frame_size_bytes =

@@ -2219,6 +2219,57 @@ bir::Block* find_block(bir::Function& function, const char* block_label) {
   return nullptr;
 }
 
+prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "i128_runtime_helper_mapping_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "rhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::SDiv,
+      .result = bir::Value::named(bir::TypeKind::I128, "wide.div"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "rhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::URem,
+      .result = bir::Value::named(bir::TypeKind::I128, "wide.rem"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "wide.div"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "rhs"),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      riscv_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 }  // namespace
 
 int main() {
@@ -2848,6 +2899,24 @@ int main() {
   if (!expect_contains(memory_return_dump,
                        "arg index=1 value_bank=gpr source_encoding=immediate source_literal=13",
                        "memory-return immediate argument detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto i128_helper_prepared = prepare_i128_runtime_helper_mapping_dump_module();
+  const std::string i128_helper_dump = prepare::print(i128_helper_prepared);
+  if (!expect_contains(i128_helper_dump,
+                       "--- prepared-i128-runtime-helpers ---",
+                       "i128 runtime helper section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "i128_helper block=0 inst=0 family=div_rem kind=signed_div opcode=sdiv callee=__divti3 source_type=i128 result_type=i128 result=wide.div#",
+                       "i128 signed div helper mapping detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "i128_helper block=0 inst=1 family=div_rem kind=unsigned_rem opcode=urem callee=__umodti3 source_type=i128 result_type=i128 result=wide.rem#",
+                       "i128 unsigned rem helper mapping detail")) {
     return EXIT_FAILURE;
   }
 
