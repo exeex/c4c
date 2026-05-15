@@ -6,6 +6,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -149,32 +150,264 @@ aarch64_codegen::I128PairOperandRecord i128_pair_operand(
   };
 }
 
-aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record() {
+prepare::PreparedI128RuntimeHelper::LaneBinding i128_helper_lane(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedI128LaneRole role,
+    std::size_t lane_index,
+    std::string register_name) {
+  return prepare::PreparedI128RuntimeHelper::LaneBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .carrier_kind = prepare::PreparedI128CarrierKind::RegisterPair,
+      .role = role,
+      .lane_index = lane_index,
+      .width_bytes = 8,
+      .register_name = std::move(register_name),
+  };
+}
+
+prepare::PreparedI128RuntimeHelper::AbiRegisterBinding i128_helper_abi(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedI128LaneRole role,
+    std::size_t lane_index,
+    std::optional<std::size_t> argument_index,
+    std::size_t abi_index,
+    std::string register_name,
+    prepare::PreparedRegisterSlotPool pool) {
+  const std::vector<std::string> occupied_register_names{register_name};
+  return prepare::PreparedI128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .role = role,
+      .lane_index = lane_index,
+      .width_bytes = 8,
+      .helper_argument_index = argument_index,
+      .abi_register_index = abi_index,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .register_name = std::move(register_name),
+      .contiguous_width = 1,
+      .occupied_register_names = occupied_register_names,
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = pool,
+              .slot_index = abi_index,
+              .contiguous_width = 1,
+          },
+  };
+}
+
+prepare::PreparedI128RuntimeHelper::MarshalingMove i128_helper_move(
+    const prepare::PreparedI128RuntimeHelper::LaneBinding& lane,
+    const prepare::PreparedI128RuntimeHelper::AbiRegisterBinding& binding,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction) {
+  return prepare::PreparedI128RuntimeHelper::MarshalingMove{
+      .direction = direction,
+      .phase =
+          direction ==
+                  prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument
+              ? prepare::PreparedMovePhase::BeforeCall
+              : prepare::PreparedMovePhase::AfterCall,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .carrier_lane = lane,
+      .abi_register = binding,
+  };
+}
+
+aarch64_codegen::I128RuntimeHelperBoundaryKind boundary_kind_for_helper(
+    prepare::PreparedI128RuntimeHelperKind kind) {
+  switch (kind) {
+    case prepare::PreparedI128RuntimeHelperKind::SignedDiv:
+      return aarch64_codegen::I128RuntimeHelperBoundaryKind::SignedDiv;
+    case prepare::PreparedI128RuntimeHelperKind::UnsignedDiv:
+      return aarch64_codegen::I128RuntimeHelperBoundaryKind::UnsignedDiv;
+    case prepare::PreparedI128RuntimeHelperKind::SignedRem:
+      return aarch64_codegen::I128RuntimeHelperBoundaryKind::SignedRem;
+    case prepare::PreparedI128RuntimeHelperKind::UnsignedRem:
+      return aarch64_codegen::I128RuntimeHelperBoundaryKind::UnsignedRem;
+  }
+  return aarch64_codegen::I128RuntimeHelperBoundaryKind::SignedDiv;
+}
+
+prepare::PreparedI128RuntimeHelper printable_i128_helper(
+    bir::BinaryOpcode opcode,
+    prepare::PreparedI128RuntimeHelperKind kind,
+    std::string callee,
+    prepare::PreparedValueId result_id,
+    c4c::ValueNameId result_name,
+    unsigned result_low,
+    prepare::PreparedValueId lhs_id,
+    c4c::ValueNameId lhs_name,
+    unsigned lhs_low,
+    prepare::PreparedValueId rhs_id,
+    c4c::ValueNameId rhs_name,
+    unsigned rhs_low) {
+  auto helper = prepare::PreparedI128RuntimeHelper{
+      .function_name = c4c::FunctionNameId{2},
+      .block_index = 0,
+      .instruction_index = 0,
+      .source_binary_opcode = opcode,
+      .source_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .result_value_id = result_id,
+      .result_value_name = result_name,
+      .lhs_value_id = lhs_id,
+      .lhs_value_name = lhs_name,
+      .rhs_value_id = rhs_id,
+      .rhs_value_name = rhs_name,
+      .helper_family = prepare::PreparedI128RuntimeHelperFamily::DivRem,
+      .helper_kind = kind,
+      .callee_name = std::move(callee),
+      .result_ownership =
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
+      .lhs_low_lane =
+          i128_helper_lane(lhs_id, lhs_name, prepare::PreparedI128LaneRole::Low, 0,
+                           "x" + std::to_string(lhs_low)),
+      .lhs_high_lane =
+          i128_helper_lane(lhs_id, lhs_name, prepare::PreparedI128LaneRole::High, 1,
+                           "x" + std::to_string(lhs_low + 1)),
+      .rhs_low_lane =
+          i128_helper_lane(rhs_id, rhs_name, prepare::PreparedI128LaneRole::Low, 0,
+                           "x" + std::to_string(rhs_low)),
+      .rhs_high_lane =
+          i128_helper_lane(rhs_id, rhs_name, prepare::PreparedI128LaneRole::High, 1,
+                           "x" + std::to_string(rhs_low + 1)),
+      .result_low_lane =
+          i128_helper_lane(result_id, result_name, prepare::PreparedI128LaneRole::Low, 0,
+                           "x" + std::to_string(result_low)),
+      .result_high_lane =
+          i128_helper_lane(result_id, result_name, prepare::PreparedI128LaneRole::High, 1,
+                           "x" + std::to_string(result_low + 1)),
+      .live_preservation_policy =
+          prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
+              .evaluated = true,
+              .caller_saved_clobbers_modeled = true,
+              .no_additional_live_preservation_required = true,
+          },
+      .selected_call_ownership =
+          prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
+              .owns_terminal_call = true,
+              .has_callee_identity = true,
+              .has_resource_policy = true,
+              .has_clobber_policy = true,
+              .has_abi_bindings = true,
+              .has_marshaling = true,
+              .has_live_preservation = true,
+          },
+      .resource_policy =
+          prepare::PreparedI128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedI128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedI128RuntimeHelperAbiTransition::
+                      DirectRegisterPairArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Gpr,
+              .result_bank = prepare::PreparedRegisterBank::Gpr,
+              .argument_count = 2,
+              .lanes_per_argument = 2,
+              .result_lane_count = 2,
+              .lane_width_bytes = 8,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x13",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x13"},
+          }},
+  };
+  helper.lhs_low_abi_argument =
+      i128_helper_abi(lhs_id, lhs_name, prepare::PreparedI128LaneRole::Low, 0,
+                      std::size_t{0}, 0, "x0",
+                      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.lhs_high_abi_argument =
+      i128_helper_abi(lhs_id, lhs_name, prepare::PreparedI128LaneRole::High, 1,
+                      std::size_t{0}, 1, "x1",
+                      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.rhs_low_abi_argument =
+      i128_helper_abi(rhs_id, rhs_name, prepare::PreparedI128LaneRole::Low, 0,
+                      std::size_t{1}, 2, "x2",
+                      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.rhs_high_abi_argument =
+      i128_helper_abi(rhs_id, rhs_name, prepare::PreparedI128LaneRole::High, 1,
+                      std::size_t{1}, 3, "x3",
+                      prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.result_low_abi_result =
+      i128_helper_abi(result_id, result_name, prepare::PreparedI128LaneRole::Low, 0,
+                      std::nullopt, 0, "x0",
+                      prepare::PreparedRegisterSlotPool::CallResult);
+  helper.result_high_abi_result =
+      i128_helper_abi(result_id, result_name, prepare::PreparedI128LaneRole::High, 1,
+                      std::nullopt, 1, "x1",
+                      prepare::PreparedRegisterSlotPool::CallResult);
+  helper.lhs_low_argument_move = i128_helper_move(
+      *helper.lhs_low_lane, *helper.lhs_low_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.lhs_high_argument_move = i128_helper_move(
+      *helper.lhs_high_lane, *helper.lhs_high_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.rhs_low_argument_move = i128_helper_move(
+      *helper.rhs_low_lane, *helper.rhs_low_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.rhs_high_argument_move = i128_helper_move(
+      *helper.rhs_high_lane, *helper.rhs_high_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.result_low_unmarshal_move = i128_helper_move(
+      *helper.result_low_lane, *helper.result_low_abi_result,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane);
+  helper.result_high_unmarshal_move = i128_helper_move(
+      *helper.result_high_lane, *helper.result_high_abi_result,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane);
+  return helper;
+}
+
+aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record(
+    const prepare::PreparedI128RuntimeHelper* source_helper,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedI128RuntimeHelperKind kind,
+    std::string callee,
+    prepare::PreparedValueId result_id,
+    c4c::ValueNameId result_name,
+    unsigned result_low,
+    prepare::PreparedValueId lhs_id,
+    c4c::ValueNameId lhs_name,
+    unsigned lhs_low,
+    prepare::PreparedValueId rhs_id,
+    c4c::ValueNameId rhs_name,
+    unsigned rhs_low) {
   return aarch64_codegen::I128RuntimeHelperBoundaryRecord{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
-      .boundary_kind = aarch64_codegen::I128RuntimeHelperBoundaryKind::SignedDiv,
+      .boundary_kind = boundary_kind_for_helper(kind),
       .helper_family = prepare::PreparedI128RuntimeHelperFamily::DivRem,
-      .helper_kind = prepare::PreparedI128RuntimeHelperKind::SignedDiv,
-      .callee_name = "__divti3",
-      .source_binary_opcode = bir::BinaryOpcode::SDiv,
+      .helper_kind = kind,
+      .callee_name = std::move(callee),
+      .source_binary_opcode = opcode,
       .function_name = c4c::FunctionNameId{2},
       .block_label = c4c::BlockLabelId{3},
       .source_type = bir::TypeKind::I128,
       .result_type = bir::TypeKind::I128,
-      .result_value_id = prepare::PreparedValueId{70},
-      .result_value_name = c4c::ValueNameId{70},
-      .lhs_value_id = prepare::PreparedValueId{71},
-      .lhs_value_name = c4c::ValueNameId{71},
-      .rhs_value_id = prepare::PreparedValueId{72},
-      .rhs_value_name = c4c::ValueNameId{72},
+      .result_value_id = result_id,
+      .result_value_name = result_name,
+      .lhs_value_id = lhs_id,
+      .lhs_value_name = lhs_name,
+      .rhs_value_id = rhs_id,
+      .rhs_value_name = rhs_name,
       .result_ownership =
           prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
       .lane_width_bytes = 8,
       .total_size_bytes = 16,
       .total_align_bytes = 16,
-      .result = i128_pair_operand(prepare::PreparedValueId{70}, c4c::ValueNameId{70}, 0),
-      .lhs = i128_pair_operand(prepare::PreparedValueId{71}, c4c::ValueNameId{71}, 2),
-      .rhs = i128_pair_operand(prepare::PreparedValueId{72}, c4c::ValueNameId{72}, 4),
+      .result = i128_pair_operand(result_id, result_name, result_low),
+      .lhs = i128_pair_operand(lhs_id, lhs_name, lhs_low),
+      .rhs = i128_pair_operand(rhs_id, rhs_name, rhs_low),
       .resource_policy =
           prepare::PreparedI128RuntimeHelper::ResourcePolicy{
               .call_boundary = true,
@@ -198,17 +431,17 @@ aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record() {
           prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
               .evaluated = true,
               .caller_saved_clobbers_modeled = true,
-              .no_additional_live_preservation_required = false,
+              .no_additional_live_preservation_required = true,
           },
       .selected_call_ownership =
           prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
-              .owns_terminal_call = false,
+              .owns_terminal_call = true,
               .has_callee_identity = true,
               .has_resource_policy = true,
               .has_clobber_policy = true,
               .has_abi_bindings = true,
               .has_marshaling = true,
-              .has_live_preservation = false,
+              .has_live_preservation = true,
           },
       .clobbered_registers =
           {prepare::PreparedClobberedRegister{
@@ -217,8 +450,29 @@ aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record() {
               .contiguous_width = 1,
               .occupied_register_names = {"x13"},
           }},
-      .source_helper = reinterpret_cast<const prepare::PreparedI128RuntimeHelper*>(0x1),
+      .source_helper = source_helper,
   };
+}
+
+aarch64_codegen::I128RuntimeHelperBoundaryRecord incomplete_i128_helper_record() {
+  auto record = i128_helper_record(nullptr,
+                                   bir::BinaryOpcode::SDiv,
+                                   prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                                   "__divti3",
+                                   prepare::PreparedValueId{70},
+                                   c4c::ValueNameId{70},
+                                   0,
+                                   prepare::PreparedValueId{71},
+                                   c4c::ValueNameId{71},
+                                   2,
+                                   prepare::PreparedValueId{72},
+                                   c4c::ValueNameId{72},
+                                   4);
+  record.source_helper = reinterpret_cast<const prepare::PreparedI128RuntimeHelper*>(0x1);
+  record.live_preservation_policy.no_additional_live_preservation_required = false;
+  record.selected_call_ownership.owns_terminal_call = false;
+  record.selected_call_ownership.has_live_preservation = false;
+  return record;
 }
 
 int selected_spill_reload_nodes_print_gnu_aarch64_text() {
@@ -880,14 +1134,169 @@ int selected_i128_records_print_from_structured_fields() {
                          "i128 structured common-printer drift guard");
 }
 
+int selected_i128_helper_boundaries_print_from_structured_fields() {
+  auto signed_helper = printable_i128_helper(bir::BinaryOpcode::SDiv,
+                                             prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                                             "__divti3",
+                                             prepare::PreparedValueId{70},
+                                             c4c::ValueNameId{70},
+                                             6,
+                                             prepare::PreparedValueId{71},
+                                             c4c::ValueNameId{71},
+                                             8,
+                                             prepare::PreparedValueId{72},
+                                             c4c::ValueNameId{72},
+                                             10);
+  auto unsigned_helper = printable_i128_helper(
+      bir::BinaryOpcode::URem,
+      prepare::PreparedI128RuntimeHelperKind::UnsignedRem,
+      "__umodti3",
+      prepare::PreparedValueId{80},
+      c4c::ValueNameId{80},
+      12,
+      prepare::PreparedValueId{81},
+      c4c::ValueNameId{81},
+      14,
+      prepare::PreparedValueId{82},
+      c4c::ValueNameId{82},
+      16);
+  const auto signed_record =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(
+          i128_helper_record(&signed_helper,
+                             bir::BinaryOpcode::SDiv,
+                             prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                             "__divti3",
+                             prepare::PreparedValueId{70},
+                             c4c::ValueNameId{70},
+                             6,
+                             prepare::PreparedValueId{71},
+                             c4c::ValueNameId{71},
+                             8,
+                             prepare::PreparedValueId{72},
+                             c4c::ValueNameId{72},
+                             10));
+  const auto unsigned_record =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(
+          i128_helper_record(&unsigned_helper,
+                             bir::BinaryOpcode::URem,
+                             prepare::PreparedI128RuntimeHelperKind::UnsignedRem,
+                             "__umodti3",
+                             prepare::PreparedValueId{80},
+                             c4c::ValueNameId{80},
+                             12,
+                             prepare::PreparedValueId{81},
+                             c4c::ValueNameId{81},
+                             14,
+                             prepare::PreparedValueId{82},
+                             c4c::ValueNameId{82},
+                             16));
+  const auto result = print_common_instruction_nodes({signed_record, unsigned_record});
+  if (!result.ok) {
+    return fail("expected i128 helper boundary records to print");
+  }
+  const std::string expected =
+      "    mov x0, x8\n"
+      "    mov x1, x9\n"
+      "    mov x2, x10\n"
+      "    mov x3, x11\n"
+      "    bl __divti3\n"
+      "    mov x6, x0\n"
+      "    mov x7, x1\n"
+      "    mov x0, x14\n"
+      "    mov x1, x15\n"
+      "    mov x2, x16\n"
+      "    mov x3, x17\n"
+      "    bl __umodti3\n"
+      "    mov x12, x0\n"
+      "    mov x13, x1\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "i128 helper boundary structured printer");
+}
+
 int selected_i128_records_reject_incomplete_structured_fields() {
-  const auto helper_record = i128_helper_record();
+  const auto helper_record = incomplete_i128_helper_record();
   const auto helper =
       aarch64_codegen::make_i128_runtime_helper_boundary_instruction(helper_record);
   const auto helper_result = aarch64_codegen::print_machine_instruction_line_payloads(helper);
   if (helper_result.ok ||
       helper_result.diagnostic.find("live-preservation policy") == std::string::npos) {
     return fail("expected i128 helper boundary without live preservation to fail closed");
+  }
+  auto missing_move_source =
+      printable_i128_helper(bir::BinaryOpcode::SDiv,
+                            prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                            "__divti3",
+                            prepare::PreparedValueId{70},
+                            c4c::ValueNameId{70},
+                            6,
+                            prepare::PreparedValueId{71},
+                            c4c::ValueNameId{71},
+                            8,
+                            prepare::PreparedValueId{72},
+                            c4c::ValueNameId{72},
+                            10);
+  missing_move_source.lhs_low_argument_move.reset();
+  const auto missing_move_helper =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(
+          i128_helper_record(&missing_move_source,
+                             bir::BinaryOpcode::SDiv,
+                             prepare::PreparedI128RuntimeHelperKind::SignedDiv,
+                             "__divti3",
+                             prepare::PreparedValueId{70},
+                             c4c::ValueNameId{70},
+                             6,
+                             prepare::PreparedValueId{71},
+                             c4c::ValueNameId{71},
+                             8,
+                             prepare::PreparedValueId{72},
+                             c4c::ValueNameId{72},
+                             10));
+  const auto missing_move_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_move_helper);
+  if (missing_move_result.ok ||
+      missing_move_result.diagnostic.find("marshal/unmarshal moves") ==
+          std::string::npos) {
+    return fail("expected i128 helper boundary without marshal move facts to fail closed");
+  }
+
+  auto missing_abi_source = printable_i128_helper(
+      bir::BinaryOpcode::URem,
+      prepare::PreparedI128RuntimeHelperKind::UnsignedRem,
+      "__umodti3",
+      prepare::PreparedValueId{80},
+      c4c::ValueNameId{80},
+      12,
+      prepare::PreparedValueId{81},
+      c4c::ValueNameId{81},
+      14,
+      prepare::PreparedValueId{82},
+      c4c::ValueNameId{82},
+      16);
+  missing_abi_source.rhs_high_argument_move->abi_register.register_bank =
+      prepare::PreparedRegisterBank::None;
+  const auto missing_abi_helper =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(
+          i128_helper_record(&missing_abi_source,
+                             bir::BinaryOpcode::URem,
+                             prepare::PreparedI128RuntimeHelperKind::UnsignedRem,
+                             "__umodti3",
+                             prepare::PreparedValueId{80},
+                             c4c::ValueNameId{80},
+                             12,
+                             prepare::PreparedValueId{81},
+                             c4c::ValueNameId{81},
+                             14,
+                             prepare::PreparedValueId{82},
+                             c4c::ValueNameId{82},
+                             16));
+  const auto missing_abi_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_abi_helper);
+  if (missing_abi_result.ok ||
+      missing_abi_result.diagnostic.find("GPR ABI register bindings") ==
+          std::string::npos) {
+    return fail("expected i128 helper boundary without ABI move facts to fail closed");
   }
 
   auto pair_record = aarch64_codegen::I128PairOperationRecord{
@@ -2513,6 +2922,10 @@ int main() {
     return result;
   }
   if (const int result = selected_i128_records_print_from_structured_fields(); result != 0) {
+    return result;
+  }
+  if (const int result = selected_i128_helper_boundaries_print_from_structured_fields();
+      result != 0) {
     return result;
   }
   if (const int result = selected_i128_records_reject_incomplete_structured_fields();

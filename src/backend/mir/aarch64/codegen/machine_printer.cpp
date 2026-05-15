@@ -143,6 +143,123 @@ std::string prepared_value_home_name(const prepare::PreparedValueHome& home) {
   return out.str();
 }
 
+bool complete_preserved_value_route(
+    const prepare::PreparedCallPreservedValue& preserved) {
+  switch (preserved.route) {
+    case prepare::PreparedCallPreservationRoute::Unknown:
+      return false;
+    case prepare::PreparedCallPreservationRoute::CalleeSavedRegister:
+      return preserved.register_name.has_value() &&
+             preserved.register_bank.has_value() &&
+             !preserved.occupied_register_names.empty() &&
+             preserved.register_placement.has_value() &&
+             preserved.callee_saved_save_index.has_value();
+    case prepare::PreparedCallPreservationRoute::StackSlot:
+      return preserved.slot_id.has_value() &&
+             preserved.stack_offset_bytes.has_value() &&
+             preserved.spill_slot_placement.has_value();
+  }
+  return false;
+}
+
+bool has_complete_live_preservation(
+    const prepare::PreparedI128RuntimeHelper::LivePreservationPolicy& policy) {
+  if (!policy.evaluated || !policy.caller_saved_clobbers_modeled ||
+      !policy.no_additional_live_preservation_required) {
+    return false;
+  }
+  for (const auto& preserved : policy.preserved_values) {
+    if (!complete_preserved_value_route(preserved)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool has_complete_selected_call_ownership(
+    const prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy& ownership) {
+  return ownership.owns_terminal_call &&
+         ownership.has_callee_identity &&
+         ownership.has_resource_policy &&
+         ownership.has_clobber_policy &&
+         ownership.has_abi_bindings &&
+         ownership.has_marshaling &&
+         ownership.has_live_preservation;
+}
+
+bool is_decimal_digit(char ch) {
+  return ch >= '0' && ch <= '9';
+}
+
+bool is_printable_x_register_name(std::string_view name) {
+  if (name.size() < 2 || name.front() != 'x') {
+    return false;
+  }
+  unsigned index = 0;
+  for (std::size_t pos = 1; pos < name.size(); ++pos) {
+    if (!is_decimal_digit(name[pos])) {
+      return false;
+    }
+    index = index * 10U + static_cast<unsigned>(name[pos] - '0');
+  }
+  return index <= 30U;
+}
+
+std::optional<std::string> validate_i128_helper_move(
+    const prepare::PreparedI128RuntimeHelper::MarshalingMove& move,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+    prepare::PreparedMovePhase phase) {
+  if (move.direction != direction || move.phase != phase ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return std::string{"i128 helper boundary has unsupported marshal/unmarshal move shape"};
+  }
+  if (move.carrier_lane.width_bytes != 8 ||
+      !move.carrier_lane.register_name.has_value() ||
+      !is_printable_x_register_name(*move.carrier_lane.register_name)) {
+    return std::string{"i128 helper boundary requires register-backed carrier lane moves"};
+  }
+  if (move.abi_register.width_bytes != 8 ||
+      move.abi_register.register_bank != prepare::PreparedRegisterBank::Gpr ||
+      move.abi_register.register_class != prepare::PreparedRegisterClass::General ||
+      !is_printable_x_register_name(move.abi_register.register_name)) {
+    return std::string{"i128 helper boundary requires GPR ABI register bindings"};
+  }
+  if (move.carrier_lane.value_id != move.abi_register.value_id ||
+      move.carrier_lane.value_name != move.abi_register.value_name ||
+      move.carrier_lane.role != move.abi_register.role ||
+      move.carrier_lane.lane_index != move.abi_register.lane_index ||
+      move.carrier_lane.width_bytes != move.abi_register.width_bytes) {
+    return std::string{"i128 helper boundary marshal/unmarshal lane facts mismatch"};
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> append_i128_helper_move_line(
+    std::vector<std::string>& lines,
+    const std::optional<prepare::PreparedI128RuntimeHelper::MarshalingMove>& move,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+    prepare::PreparedMovePhase phase) {
+  if (!move.has_value()) {
+    return std::string{"i128 helper boundary is missing structured marshal/unmarshal moves"};
+  }
+  if (const auto invalid = validate_i128_helper_move(*move, direction, phase);
+      invalid.has_value()) {
+    return invalid;
+  }
+
+  std::ostringstream line;
+  if (direction ==
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument) {
+    line << "mov " << move->abi_register.register_name << ", "
+         << *move->carrier_lane.register_name;
+  } else {
+    line << "mov " << *move->carrier_lane.register_name << ", "
+         << move->abi_register.register_name;
+  }
+  lines.push_back(line.str());
+  return std::nullopt;
+}
+
 bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
   return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
          operand.signed_value <= 4095;
@@ -821,10 +938,83 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
     return target_unsupported(bad_header(instruction) +
                               "i128 helper boundary is missing ABI/register-bank policy");
   }
-  return target_unsupported(
-      bad_header(instruction) +
-      "i128 helper boundary printing requires structured helper marshaling "
-      "ABI register-binding, selected-call ownership, and live-preservation facts");
+  if (!has_complete_live_preservation(helper.live_preservation_policy) ||
+      !has_complete_live_preservation(helper.source_helper->live_preservation_policy)) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary printing requires complete live-preservation facts");
+  }
+  if (!has_complete_selected_call_ownership(helper.selected_call_ownership) ||
+      !has_complete_selected_call_ownership(helper.source_helper->selected_call_ownership)) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary printing requires selected-call ownership facts");
+  }
+  if (helper.source_helper->callee_name != helper.callee_name ||
+      helper.source_helper->helper_family != helper.helper_family ||
+      helper.source_helper->helper_kind != helper.helper_kind ||
+      helper.source_helper->source_binary_opcode != helper.source_binary_opcode ||
+      helper.source_helper->result_ownership != helper.result_ownership) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary source helper facts do not match selected record");
+  }
+
+  std::vector<std::string> lines;
+  const auto append_move =
+      [&](const std::optional<prepare::PreparedI128RuntimeHelper::MarshalingMove>& move,
+          prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+          prepare::PreparedMovePhase phase) -> std::optional<std::string> {
+    return append_i128_helper_move_line(lines, move, direction, phase);
+  };
+
+  const auto before_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument;
+  const auto after_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane;
+  if (const auto error = append_move(helper.source_helper->lhs_low_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->lhs_high_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->rhs_low_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->rhs_high_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  {
+    std::ostringstream call;
+    call << "bl " << helper.callee_name;
+    lines.push_back(call.str());
+  }
+  if (const auto error = append_move(helper.source_helper->result_low_unmarshal_move,
+                                     after_call,
+                                     prepare::PreparedMovePhase::AfterCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->result_high_unmarshal_move,
+                                     after_call,
+                                     prepare::PreparedMovePhase::AfterCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+
+  return target_printed(std::move(lines));
 }
 
 mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,
