@@ -1229,6 +1229,107 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected scalar fp va_arg helper call to print prepared access-plan records");
   }
 
+  const prepare::PreparedCallPlan prepared_aggregate_va_arg_call{
+      .block_index = 0,
+      .instruction_index = 4,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_arg.aggregate"},
+  };
+  const prepare::PreparedVariadicEntryHelperOperandHomes aggregate_va_arg_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArgAggregate,
+      .block_index = 0,
+      .instruction_index = 4,
+      .source_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{18},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{8},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x4"},
+          },
+      .aggregate_destination_payload =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{19},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{9},
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{9},
+              .offset_bytes = std::size_t{32},
+          },
+      .aggregate_access_plan =
+          prepare::PreparedVariadicAggregateVaArgAccessPlan{
+              .source_class =
+                  prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea,
+              .payload_size_bytes = 24,
+              .payload_align_bytes = 8,
+              .destination_payload_home =
+                  prepare::PreparedValueHome{
+                      .value_id = prepare::PreparedValueId{19},
+                      .function_name = c4c::FunctionNameId{2},
+                      .value_name = c4c::ValueNameId{9},
+                      .kind = prepare::PreparedValueHomeKind::StackSlot,
+                      .slot_id = prepare::PreparedFrameSlotId{9},
+                      .offset_bytes = std::size_t{32},
+                  },
+              .source_field =
+                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+              .source_field_offset_bytes = std::size_t{8},
+              .source_payload_offset_bytes = std::size_t{0},
+              .source_slot_size_bytes = std::size_t{24},
+              .copy_size_bytes = std::size_t{24},
+              .copy_align_bytes = std::size_t{8},
+              .progression_field =
+                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+              .progression_field_offset_bytes = std::size_t{8},
+              .progression_stride_bytes = std::size_t{24},
+          },
+  };
+  auto aggregate_va_arg_entry = variadic_entry;
+  aggregate_va_arg_entry.helper_resources.required_helpers =
+      {prepare::PreparedVariadicEntryHelperKind::VaArgAggregate};
+  aggregate_va_arg_entry.helper_resources.scratch_register_count = std::size_t{2};
+  aggregate_va_arg_entry.helper_operand_homes = {aggregate_va_arg_homes};
+  const auto aggregate_va_arg_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{14},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_arg.aggregate",
+          .wrapper_kind = prepared_aggregate_va_arg_call.wrapper_kind,
+          .source_call = &prepared_aggregate_va_arg_call,
+          .source_variadic_entry = &aggregate_va_arg_entry,
+          .source_variadic_helper_operand_homes =
+              &aggregate_va_arg_entry.helper_operand_homes.front(),
+          .variadic_entry_helper =
+              prepare::PreparedVariadicEntryHelperKind::VaArgAggregate,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto aggregate_va_arg_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          aggregate_va_arg_call);
+  if (!aggregate_va_arg_result.ok ||
+      aggregate_va_arg_result.instruction_lines.size() != 3 ||
+      aggregate_va_arg_result.instruction_lines[0].find(
+          "va.arg.aggregate source=overflow_arg_area va_list=value#18:register:x4 destination_payload=value#19:stack_slot:slot#9:offset+32") ==
+          std::string::npos ||
+      aggregate_va_arg_result.instruction_lines[0].find(
+          "payload_size=24 payload_align=8 copy_size=24 copy_align=8") ==
+          std::string::npos ||
+      aggregate_va_arg_result.instruction_lines[1].find(
+          "field=overflow_arg_area field_offset=8 payload_offset=0 slot_size=24") ==
+          std::string::npos ||
+      aggregate_va_arg_result.instruction_lines[2].find(
+          "progress field=overflow_arg_area field_offset=8 stride=24") ==
+          std::string::npos ||
+      aggregate_va_arg_result.instruction_lines[2].find(
+          "overflow_slot#6 overflow_stack+208") == std::string::npos) {
+    return fail(
+        "expected aggregate va_arg helper call to print prepared access-plan records");
+  }
+
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
       aarch64_codegen::FrameInstructionRecord{
           .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,

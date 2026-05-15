@@ -1695,6 +1695,55 @@ int aggregate_va_arg_dispatch_reports_missing_prepared_access_plan() {
         "expected aggregate va_arg dispatch to report missing prepared access plan");
   }
 
+  auto& homes = prepared.variadic_entry_plans.functions.front().helper_operand_homes.front();
+  homes.aggregate_access_plan =
+      prepare::PreparedVariadicAggregateVaArgAccessPlan{
+          .source_class =
+              prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea,
+          .payload_size_bytes = 24,
+          .payload_align_bytes = 8,
+          .destination_payload_home = homes.aggregate_destination_payload,
+          .source_field =
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .source_field_offset_bytes = std::size_t{8},
+          .source_payload_offset_bytes = std::size_t{0},
+          .source_slot_size_bytes = std::size_t{24},
+          .copy_size_bytes = std::size_t{24},
+          .copy_align_bytes = std::size_t{8},
+          .progression_field =
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .progression_field_offset_bytes = std::size_t{8},
+          .progression_stride_bytes = std::size_t{24},
+      };
+  aarch64_module::MachineBlock selected_block;
+  aarch64_module::ModuleLoweringDiagnostics selected_diagnostics;
+  const auto selected_result =
+      aarch64_codegen::dispatch_prepared_block(
+          block_context, selected_block, selected_diagnostics);
+  const auto* selected_call =
+      selected_block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::CallInstructionRecord>(
+                &selected_block.instructions.front().target.payload);
+  if (selected_result.visited_operations != 1 ||
+      !selected_result.visited_terminator ||
+      selected_result.emitted_instructions != 2 ||
+      selected_block.instructions.size() != 2 ||
+      !selected_diagnostics.entries.empty() ||
+      selected_call == nullptr ||
+      selected_block.instructions.front().target.opcode !=
+          aarch64_codegen::MachineOpcode::VariadicVaArgAggregate ||
+      selected_block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !selected_call->variadic_aggregate_va_arg.has_value() ||
+      selected_call->variadic_aggregate_va_arg->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      selected_call->variadic_aggregate_va_arg->copy_size_bytes != 24 ||
+      selected_call->variadic_aggregate_va_arg->destination_payload_home.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{9}}) {
+    return fail("expected aggregate va_arg dispatch to select prepared access plan");
+  }
+
   return 0;
 }
 

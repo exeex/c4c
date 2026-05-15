@@ -284,7 +284,8 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
       return homes.scalar_result.has_value() && homes.source_va_list.has_value() &&
              scalar_access_plan_complete();
     case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
-      return false;
+      return prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          homes);
     case prepare::PreparedVariadicEntryHelperKind::VaCopy:
       return homes.destination_va_list.has_value() && homes.source_va_list.has_value();
   }

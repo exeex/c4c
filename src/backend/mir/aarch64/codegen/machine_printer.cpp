@@ -360,6 +360,72 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
     return target_printed(std::move(lines));
   }
 
+  if (call.variadic_entry_helper ==
+      std::optional<prepare::PreparedVariadicEntryHelperKind>{
+          prepare::PreparedVariadicEntryHelperKind::VaArgAggregate}) {
+    if (!call.variadic_aggregate_va_arg.has_value() ||
+        call.source_variadic_entry == nullptr ||
+        call.source_variadic_helper_operand_homes == nullptr) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "aggregate va_arg node is missing structured prepared access-plan provenance");
+    }
+    const auto mnemonic = required_primary_mnemonic(instruction);
+    if (mnemonic.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "aggregate va_arg mnemonic is not printable");
+    }
+
+    const auto& va_arg = *call.variadic_aggregate_va_arg;
+    std::vector<std::string> lines;
+    {
+      std::ostringstream out;
+      out << mnemonic << " source="
+          << prepare::prepared_variadic_aggregate_va_arg_source_class_name(
+                 va_arg.source_class)
+          << " va_list=" << prepared_value_home_name(va_arg.source_va_list)
+          << " destination_payload="
+          << prepared_value_home_name(va_arg.destination_payload_home)
+          << " payload_size=" << va_arg.payload_size_bytes
+          << " payload_align=" << va_arg.payload_align_bytes
+          << " copy_size=" << va_arg.copy_size_bytes
+          << " copy_align=" << va_arg.copy_align_bytes
+          << " scratch_registers=" << va_arg.scratch_register_count
+          << " scratch_stack=" << va_arg.scratch_stack_bytes;
+      lines.push_back(out.str());
+    }
+    {
+      std::ostringstream out;
+      out << "va.arg.aggregate.source field="
+          << prepare::prepared_variadic_va_list_field_kind_name(va_arg.source_field)
+          << " field_offset=" << va_arg.source_field_offset_bytes
+          << " payload_offset=" << va_arg.source_payload_offset_bytes
+          << " slot_size=" << va_arg.source_slot_size_bytes
+          << " rsa_slot#" << va_arg.register_save_area_slot_id
+          << " rsa_stack+" << va_arg.register_save_area_stack_offset_bytes
+          << " rsa_size=" << va_arg.register_save_area_size_bytes
+          << " rsa_align=" << va_arg.register_save_area_align_bytes
+          << " gp_base=" << va_arg.register_save_area_gp_offset_bytes
+          << " fp_base=" << va_arg.register_save_area_fp_offset_bytes
+          << " gp_slot=" << va_arg.register_save_area_gp_slot_size_bytes
+          << " fp_slot=" << va_arg.register_save_area_fp_slot_size_bytes;
+      lines.push_back(out.str());
+    }
+    {
+      std::ostringstream out;
+      out << "va.arg.aggregate.progress field="
+          << prepare::prepared_variadic_va_list_field_kind_name(
+                 va_arg.progression_field)
+          << " field_offset=" << va_arg.progression_field_offset_bytes
+          << " stride=" << va_arg.progression_stride_bytes
+          << " overflow_slot#" << va_arg.overflow_area_base_slot_id
+          << " overflow_stack+" << va_arg.overflow_area_base_stack_offset_bytes
+          << " overflow_align=" << va_arg.overflow_area_align_bytes;
+      lines.push_back(out.str());
+    }
+    return target_printed(std::move(lines));
+  }
+
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");

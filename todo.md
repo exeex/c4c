@@ -8,32 +8,27 @@ Current Step Title: Consume Prepared Facts For Aggregate `va_arg`
 
 ## Just Finished
 
-Lifecycle handoff completed: prerequisite idea 246 closed after supplying
-`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`, and idea 243 is
-reactivated at aggregate `va_arg` selected machine-node consumption.
+Step 4 completed aggregate `va_arg` selected machine-node consumption from
+prepared/shared `helper_operand_homes.va_arg_aggregate.aggregate_access_plan`
+facts. AArch64 now records aggregate source class, destination payload home,
+source `va_list` home, source field/slot coordinates, copy extent, storage
+coordinates, helper resources, and progression directly from prepared facts,
+with missing/incomplete aggregate access-plan authority still fail-closed.
 
 ## Suggested Next
 
-Execute Step 4 by consuming the prepared/shared aggregate access-plan fact in
-AArch64 selected lowering. Start with a narrow aggregate `va_arg` path and
-preserve fail-closed diagnostics for missing or incomplete prepared authority.
+Execute Step 5 by adding `va_copy` selected machine-node consumption from
+prepared source/destination `va_list` homes, layout/storage facts, and helper
+resources.
 
 ## Watchouts
 
-- Do not reconstruct aggregate source selection, register-save coordinates,
-  overflow coordinates, aggregate size/alignment, copy extent, destination
-  payload relationships, or `va_list` progression in AArch64 target lowering.
-- Do not claim aggregate `va_arg` support through prepared-printer coverage
-  alone; selected machine-node records and printer output are required.
-- Treat fixture-name matching, expectation-only changes, and unsupported
-  downgrades as route drift.
-- The fail-closed selected AArch64 diagnostic remains
-  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` until Step 4
-  consumes the prepared fact.
+- `va_copy` should not reuse aggregate/scalar `va_arg` progression or payload
+  copy assumptions; it needs its own prepared source/destination layout facts.
+- Aggregate `va_arg` still depends on complete prepared entry storage and
+  helper resource facts when building the selected record.
 
 ## Proof
 
-Lifecycle-only transition. Prerequisite proof was supplied by commits
-`2fbc9f171`, `c28ae98bc`, and `f1591bb2b`: focused backend proof passed
-139/139 in `test_before.log`, and the supervisor reported accepted full-suite
-baseline 3167/3167 for commit `c28ae98bc`.
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+passed: 139/139 backend tests green. `test_after.log` is the proof log.
