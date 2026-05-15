@@ -1915,45 +1915,58 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   return 0;
 }
 
+prepare::PreparedI128Carrier make_i128_register_pair_carrier(
+    c4c::FunctionNameId function_name,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    int low_register) {
+  const std::string low = "x" + std::to_string(low_register);
+  const std::string high = "x" + std::to_string(low_register + 1);
+  return prepare::PreparedI128Carrier{
+      .function_name = function_name,
+      .value_id = value_id,
+      .value_name = value_name,
+      .source_type = bir::TypeKind::I128,
+      .kind = prepare::PreparedI128CarrierKind::RegisterPair,
+      .lane_width_bytes = 8,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .contiguous_width = 2,
+      .occupied_register_names = {low, high},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+              .slot_index = static_cast<std::size_t>(low_register),
+              .contiguous_width = 2,
+          },
+      .low_lane =
+          prepare::PreparedI128LaneCarrier{
+              .role = prepare::PreparedI128LaneRole::Low,
+              .lane_index = 0,
+              .width_bytes = 8,
+              .register_name = low,
+          },
+      .high_lane =
+          prepare::PreparedI128LaneCarrier{
+              .role = prepare::PreparedI128LaneRole::High,
+              .lane_index = 1,
+              .width_bytes = 8,
+              .register_name = high,
+          },
+  };
+}
+
 int i128_transport_records_preserve_prepared_carrier_lanes() {
   prepare::PreparedI128CarrierFunction carriers{
       .function_name = c4c::FunctionNameId{2},
       .carriers =
-          {prepare::PreparedI128Carrier{
-              .function_name = c4c::FunctionNameId{2},
-              .value_id = prepare::PreparedValueId{60},
-              .value_name = c4c::ValueNameId{30},
-              .source_type = bir::TypeKind::I128,
-              .kind = prepare::PreparedI128CarrierKind::RegisterPair,
-              .lane_width_bytes = 8,
-              .total_size_bytes = 16,
-              .total_align_bytes = 16,
-              .register_bank = prepare::PreparedRegisterBank::Gpr,
-              .register_class = prepare::PreparedRegisterClass::General,
-              .contiguous_width = 2,
-              .occupied_register_names = {"x10", "x11"},
-              .register_placement =
-                  prepare::PreparedRegisterPlacement{
-                      .bank = prepare::PreparedRegisterBank::Gpr,
-                      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
-                      .slot_index = 10,
-                      .contiguous_width = 2,
-                  },
-              .low_lane =
-                  prepare::PreparedI128LaneCarrier{
-                      .role = prepare::PreparedI128LaneRole::Low,
-                      .lane_index = 0,
-                      .width_bytes = 8,
-                      .register_name = std::string{"x10"},
-                  },
-              .high_lane =
-                  prepare::PreparedI128LaneCarrier{
-                      .role = prepare::PreparedI128LaneRole::High,
-                      .lane_index = 1,
-                      .width_bytes = 8,
-                      .register_name = std::string{"x11"},
-                  },
-          }},
+          {make_i128_register_pair_carrier(c4c::FunctionNameId{2},
+                                           prepare::PreparedValueId{60},
+                                           c4c::ValueNameId{30},
+                                           10)},
   };
   auto prepared = aarch64_codegen::make_prepared_i128_carrier_transport_record(
       carriers,
@@ -2001,6 +2014,114 @@ int i128_transport_records_preserve_prepared_carrier_lanes() {
       aarch64_codegen::prepared_i128_transport_record_error_name(incomplete.error) !=
           "incomplete_prepared_i128_carrier") {
     return fail("expected incomplete i128 carrier to fail closed");
+  }
+  return 0;
+}
+
+int i128_pair_records_preserve_sources_result_and_lane_semantics() {
+  prepare::PreparedNameTables names;
+  const auto result_name = names.value_names.intern("%wide.sum");
+  const auto lhs_name = names.value_names.intern("%lhs");
+  const auto rhs_name = names.value_names.intern("%rhs");
+  prepare::PreparedI128CarrierFunction carriers{
+      .function_name = c4c::FunctionNameId{7},
+      .carriers =
+          {make_i128_register_pair_carrier(c4c::FunctionNameId{7},
+                                           prepare::PreparedValueId{70},
+                                           result_name,
+                                           8),
+           make_i128_register_pair_carrier(c4c::FunctionNameId{7},
+                                           prepare::PreparedValueId{71},
+                                           lhs_name,
+                                           10),
+           make_i128_register_pair_carrier(c4c::FunctionNameId{7},
+                                           prepare::PreparedValueId{72},
+                                           rhs_name,
+                                           12)},
+  };
+  const bir::BinaryInst add{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "%rhs"),
+  };
+  auto prepared =
+      aarch64_codegen::make_prepared_i128_pair_operation_record(names, carriers, add);
+  if (!prepared.record.has_value() ||
+      prepared.error != aarch64_codegen::PreparedI128PairRecordError::None ||
+      prepared.record->operation != aarch64_codegen::I128PairOperationKind::Add ||
+      prepared.record->lane_semantics !=
+          aarch64_codegen::I128PairLaneSemantics::CarryPropagating) {
+    return fail("expected complete i128 add carriers to select pair operation record");
+  }
+  const bir::BinaryInst sub{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "%rhs"),
+  };
+  const auto sub_record =
+      aarch64_codegen::make_prepared_i128_pair_operation_record(names, carriers, sub);
+  if (!sub_record.record.has_value() ||
+      sub_record.record->operation != aarch64_codegen::I128PairOperationKind::Sub ||
+      sub_record.record->lane_semantics !=
+          aarch64_codegen::I128PairLaneSemantics::BorrowPropagating) {
+    return fail("expected complete i128 sub carriers to select pair operation record");
+  }
+  const auto instruction =
+      aarch64_codegen::make_i128_pair_operation_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::I128PairOperationRecord>(&instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::I128Pair ||
+      aarch64_codegen::instruction_family_name(instruction.family) != "i128_pair" ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::I128Pair ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) != "i128_pair" ||
+      instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      payload->result.value_id != prepare::PreparedValueId{70} ||
+      payload->lhs.value_id != prepare::PreparedValueId{71} ||
+      payload->rhs.value_id != prepare::PreparedValueId{72} ||
+      !payload->result.low_lane.reg.has_value() ||
+      !payload->lhs.high_lane.reg.has_value() ||
+      !payload->rhs.low_lane.reg.has_value() ||
+      payload->result.low_lane.reg->reg != aarch64_abi::x_register(8) ||
+      payload->lhs.high_lane.reg->reg != aarch64_abi::x_register(11) ||
+      payload->rhs.low_lane.reg->reg != aarch64_abi::x_register(12) ||
+      instruction.operands.size() != 6 ||
+      instruction.defs.size() != 2 ||
+      instruction.uses.size() != 4) {
+    return fail("expected i128 pair operation to preserve result/source lane registers");
+  }
+
+  const bir::BinaryInst bitwise{
+      .opcode = bir::BinaryOpcode::Xor,
+      .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "%rhs"),
+  };
+  const auto bitwise_record =
+      aarch64_codegen::make_prepared_i128_pair_operation_record(names, carriers, bitwise);
+  if (!bitwise_record.record.has_value() ||
+      bitwise_record.record->operation != aarch64_codegen::I128PairOperationKind::Xor ||
+      bitwise_record.record->lane_semantics !=
+          aarch64_codegen::I128PairLaneSemantics::IndependentBitwise ||
+      aarch64_codegen::i128_pair_lane_semantics_name(
+          bitwise_record.record->lane_semantics) != "independent_bitwise") {
+    return fail("expected i128 bitwise operation to preserve independent lane semantics");
+  }
+
+  carriers.carriers.pop_back();
+  const auto missing =
+      aarch64_codegen::make_prepared_i128_pair_operation_record(names, carriers, add);
+  if (missing.record.has_value() ||
+      missing.error !=
+          aarch64_codegen::PreparedI128PairRecordError::MissingPreparedI128Carrier ||
+      aarch64_codegen::prepared_i128_pair_record_error_name(missing.error) !=
+          "missing_prepared_i128_carrier") {
+    return fail("expected i128 pair operation to fail closed without source carrier");
   }
   return 0;
 }
@@ -2057,6 +2178,11 @@ int main() {
     return status;
   }
   if (const int status = i128_transport_records_preserve_prepared_carrier_lanes();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          i128_pair_records_preserve_sources_result_and_lane_semantics();
       status != 0) {
     return status;
   }

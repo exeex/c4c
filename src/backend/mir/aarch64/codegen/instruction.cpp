@@ -127,6 +127,8 @@ std::string_view instruction_family_name(InstructionFamily family) {
       return "scalar";
     case InstructionFamily::I128Transport:
       return "i128_transport";
+    case InstructionFamily::I128Pair:
+      return "i128_pair";
     case InstructionFamily::Memory:
       return "memory";
     case InstructionFamily::Frame:
@@ -175,6 +177,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "call_boundary_abi_binding";
     case MachineOpcode::I128Transport:
       return "i128_transport";
+    case MachineOpcode::I128Pair:
+      return "i128_pair";
     case MachineOpcode::Add:
       return "add";
     case MachineOpcode::Sub:
@@ -696,6 +700,62 @@ std::string_view prepared_i128_transport_record_error_name(
       return "missing_memory_operand";
     case PreparedI128TransportRecordError::MemoryAccessSizeMismatch:
       return "memory_access_size_mismatch";
+  }
+  return "unknown";
+}
+
+std::string_view i128_pair_operation_kind_name(I128PairOperationKind kind) {
+  switch (kind) {
+    case I128PairOperationKind::Add:
+      return "add";
+    case I128PairOperationKind::Sub:
+      return "sub";
+    case I128PairOperationKind::And:
+      return "and";
+    case I128PairOperationKind::Or:
+      return "or";
+    case I128PairOperationKind::Xor:
+      return "xor";
+  }
+  return "unknown";
+}
+
+std::string_view i128_pair_lane_semantics_name(
+    I128PairLaneSemantics semantics) {
+  switch (semantics) {
+    case I128PairLaneSemantics::CarryPropagating:
+      return "carry_propagating";
+    case I128PairLaneSemantics::BorrowPropagating:
+      return "borrow_propagating";
+    case I128PairLaneSemantics::IndependentBitwise:
+      return "independent_bitwise";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_i128_pair_record_error_name(
+    PreparedI128PairRecordError error) {
+  switch (error) {
+    case PreparedI128PairRecordError::None:
+      return "none";
+    case PreparedI128PairRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedI128PairRecordError::UnsupportedOpcode:
+      return "unsupported_opcode";
+    case PreparedI128PairRecordError::UnsupportedOperandType:
+      return "unsupported_operand_type";
+    case PreparedI128PairRecordError::UnsupportedResultValue:
+      return "unsupported_result_value";
+    case PreparedI128PairRecordError::UnsupportedOperandValue:
+      return "unsupported_operand_value";
+    case PreparedI128PairRecordError::MissingPreparedI128Carrier:
+      return "missing_prepared_i128_carrier";
+    case PreparedI128PairRecordError::IncompletePreparedI128Carrier:
+      return "incomplete_prepared_i128_carrier";
+    case PreparedI128PairRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedI128PairRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
   }
   return "unknown";
 }
@@ -3192,6 +3252,76 @@ InstructionRecord make_i128_transport_instruction(I128TransportRecord instructio
   };
 }
 
+MachineNodeStatusRecord i128_pair_selection_status(
+    const I128PairOperationRecord& instruction) {
+  const auto has_pair_registers = [](const I128PairOperandRecord& operand) {
+    return operand.source_carrier != nullptr &&
+           operand.carrier_kind == prepare::PreparedI128CarrierKind::RegisterPair &&
+           operand.low_lane.reg.has_value() &&
+           operand.high_lane.reg.has_value();
+  };
+  if (instruction.total_size_bytes != 16 || instruction.lane_width_bytes != 8 ||
+      instruction.total_align_bytes == 0 ||
+      instruction.operand_type != bir::TypeKind::I128 ||
+      instruction.result_type != bir::TypeKind::I128) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 pair operation has invalid type, size, or alignment facts"};
+  }
+  if (!has_pair_registers(instruction.result)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 pair operation is missing result register-pair carrier"};
+  }
+  if (!has_pair_registers(instruction.lhs) || !has_pair_registers(instruction.rhs)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 pair operation is missing source register-pair carriers"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+InstructionRecord make_i128_pair_operation_instruction(
+    I128PairOperationRecord instruction) {
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  const auto add_def = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      defs.push_back(effect_from_operand(operand));
+    }
+  };
+  const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      uses.push_back(effect_from_operand(operand));
+    }
+  };
+  add_def(instruction.result.low_lane.reg);
+  add_def(instruction.result.high_lane.reg);
+  add_use(instruction.lhs.low_lane.reg);
+  add_use(instruction.lhs.high_lane.reg);
+  add_use(instruction.rhs.low_lane.reg);
+  add_use(instruction.rhs.high_lane.reg);
+
+  return InstructionRecord{
+      .family = InstructionFamily::I128Pair,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::I128Pair,
+      .selection = i128_pair_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .instruction_index = instruction.instruction_index,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .payload = instruction,
+  };
+}
+
 InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction) {
   std::vector<OperandRecord> operands;
@@ -4420,6 +4550,223 @@ PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
   return PreparedI128TransportRecordResult{
       .record = std::move(record),
       .error = PreparedI128TransportRecordError::None,
+  };
+}
+
+PreparedI128PairRecordResult i128_pair_record_error(
+    PreparedI128PairRecordError error) {
+  return PreparedI128PairRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
+}
+
+bool is_supported_i128_pair_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return true;
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+I128PairOperationKind i128_pair_operation_from_binary_opcode(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return I128PairOperationKind::Add;
+    case bir::BinaryOpcode::Sub:
+      return I128PairOperationKind::Sub;
+    case bir::BinaryOpcode::And:
+      return I128PairOperationKind::And;
+    case bir::BinaryOpcode::Or:
+      return I128PairOperationKind::Or;
+    case bir::BinaryOpcode::Xor:
+      return I128PairOperationKind::Xor;
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return I128PairOperationKind::Add;
+}
+
+I128PairLaneSemantics i128_pair_lane_semantics_from_binary_opcode(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return I128PairLaneSemantics::CarryPropagating;
+    case bir::BinaryOpcode::Sub:
+      return I128PairLaneSemantics::BorrowPropagating;
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return I128PairLaneSemantics::IndependentBitwise;
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return I128PairLaneSemantics::IndependentBitwise;
+}
+
+PreparedI128PairRecordError make_i128_pair_operand_record(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    c4c::ValueNameId value_name,
+    I128PairOperandRecord& operand) {
+  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_name);
+  if (carrier == nullptr) {
+    return PreparedI128PairRecordError::MissingPreparedI128Carrier;
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
+      carrier->total_size_bytes != 16 || carrier->lane_width_bytes != 8) {
+    return PreparedI128PairRecordError::IncompletePreparedI128Carrier;
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
+    return PreparedI128PairRecordError::UnsupportedCarrierKind;
+  }
+
+  operand = I128PairOperandRecord{
+      .value_id = carrier->value_id,
+      .value_name = carrier->value_name,
+      .carrier_kind = carrier->kind,
+      .low_lane =
+          I128LaneTransportRecord{
+              .role = carrier->low_lane.role,
+              .lane_index = carrier->low_lane.lane_index,
+              .width_bytes = carrier->low_lane.width_bytes,
+          },
+      .high_lane =
+          I128LaneTransportRecord{
+              .role = carrier->high_lane.role,
+              .lane_index = carrier->high_lane.lane_index,
+              .width_bytes = carrier->high_lane.width_bytes,
+          },
+      .source_carrier = carrier,
+  };
+  operand.low_lane.reg = make_i128_lane_register_operand(*carrier, carrier->low_lane);
+  operand.high_lane.reg = make_i128_lane_register_operand(*carrier, carrier->high_lane);
+  if (!operand.low_lane.reg.has_value() || !operand.high_lane.reg.has_value()) {
+    return PreparedI128PairRecordError::RegisterConversionFailed;
+  }
+  return PreparedI128PairRecordError::None;
+}
+
+PreparedI128PairRecordResult make_prepared_i128_pair_operation_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::BinaryInst& binary) {
+  if (i128_carriers.function_name == c4c::kInvalidFunctionName) {
+    return i128_pair_record_error(PreparedI128PairRecordError::InvalidFunction);
+  }
+  if (binary.operand_type != bir::TypeKind::I128 ||
+      binary.result.type != bir::TypeKind::I128) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedOperandType);
+  }
+  if (!is_supported_i128_pair_opcode(binary.opcode)) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedOpcode);
+  }
+  if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedResultValue);
+  }
+  if (binary.lhs.kind != bir::Value::Kind::Named || binary.rhs.kind != bir::Value::Kind::Named ||
+      binary.lhs.name.empty() || binary.rhs.name.empty()) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedOperandValue);
+  }
+
+  I128PairOperationRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .operation = i128_pair_operation_from_binary_opcode(binary.opcode),
+      .lane_semantics = i128_pair_lane_semantics_from_binary_opcode(binary.opcode),
+      .source_binary_opcode = binary.opcode,
+      .function_name = i128_carriers.function_name,
+      .operand_type = binary.operand_type,
+      .result_type = binary.result.type,
+      .lane_width_bytes = 8,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+  };
+
+  const auto result_name = names.value_names.find(binary.result.name);
+  const auto lhs_name = names.value_names.find(binary.lhs.name);
+  const auto rhs_name = names.value_names.find(binary.rhs.name);
+  if (result_name == c4c::kInvalidValueName) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedResultValue);
+  }
+  if (lhs_name == c4c::kInvalidValueName || rhs_name == c4c::kInvalidValueName) {
+    return i128_pair_record_error(PreparedI128PairRecordError::UnsupportedOperandValue);
+  }
+
+  if (const auto error =
+          make_i128_pair_operand_record(i128_carriers, result_name, record.result);
+      error != PreparedI128PairRecordError::None) {
+    return i128_pair_record_error(error);
+  }
+  if (const auto error = make_i128_pair_operand_record(i128_carriers, lhs_name, record.lhs);
+      error != PreparedI128PairRecordError::None) {
+    return i128_pair_record_error(error);
+  }
+  if (const auto error = make_i128_pair_operand_record(i128_carriers, rhs_name, record.rhs);
+      error != PreparedI128PairRecordError::None) {
+    return i128_pair_record_error(error);
+  }
+
+  return PreparedI128PairRecordResult{
+      .record = std::move(record),
+      .error = PreparedI128PairRecordError::None,
   };
 }
 

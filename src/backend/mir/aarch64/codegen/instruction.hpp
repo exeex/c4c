@@ -74,6 +74,7 @@ enum class InstructionFamily {
   Branch,
   Scalar,
   I128Transport,
+  I128Pair,
   Memory,
   Frame,
   Call,
@@ -115,6 +116,7 @@ enum class MachineOpcode {
   CallBoundaryMove,
   CallBoundaryAbiBinding,
   I128Transport,
+  I128Pair,
   Add,
   Sub,
   Mul,
@@ -305,6 +307,20 @@ enum class I128TransportKind {
   StoreToMemory,
 };
 
+enum class I128PairOperationKind {
+  Add,
+  Sub,
+  And,
+  Or,
+  Xor,
+};
+
+enum class I128PairLaneSemantics {
+  CarryPropagating,
+  BorrowPropagating,
+  IndependentBitwise,
+};
+
 enum class PreparedI128TransportRecordError {
   None,
   InvalidFunction,
@@ -314,6 +330,19 @@ enum class PreparedI128TransportRecordError {
   RegisterConversionFailed,
   MissingMemoryOperand,
   MemoryAccessSizeMismatch,
+};
+
+enum class PreparedI128PairRecordError {
+  None,
+  InvalidFunction,
+  UnsupportedOpcode,
+  UnsupportedOperandType,
+  UnsupportedResultValue,
+  UnsupportedOperandValue,
+  MissingPreparedI128Carrier,
+  IncompletePreparedI128Carrier,
+  UnsupportedCarrierKind,
+  RegisterConversionFailed,
 };
 
 enum class AddressMaterializationKind {
@@ -661,6 +690,38 @@ struct PreparedI128TransportRecordResult {
   PreparedI128TransportRecordError error = PreparedI128TransportRecordError::None;
 };
 
+struct I128PairOperandRecord {
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  prepare::PreparedI128CarrierKind carrier_kind = prepare::PreparedI128CarrierKind::Missing;
+  I128LaneTransportRecord low_lane;
+  I128LaneTransportRecord high_lane{.role = prepare::PreparedI128LaneRole::High, .lane_index = 1};
+  const prepare::PreparedI128Carrier* source_carrier = nullptr;
+};
+
+struct I128PairOperationRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  I128PairOperationKind operation = I128PairOperationKind::Add;
+  I128PairLaneSemantics lane_semantics = I128PairLaneSemantics::CarryPropagating;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  bir::TypeKind operand_type = bir::TypeKind::I128;
+  bir::TypeKind result_type = bir::TypeKind::I128;
+  std::size_t lane_width_bytes = 8;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  I128PairOperandRecord result;
+  I128PairOperandRecord lhs;
+  I128PairOperandRecord rhs;
+};
+
+struct PreparedI128PairRecordResult {
+  std::optional<I128PairOperationRecord> record;
+  PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
+};
+
 struct AddressMaterializationRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   AddressMaterializationKind kind = AddressMaterializationKind::DeferredUnsupported;
@@ -943,6 +1004,7 @@ struct ObjectInstructionRecord {
 using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         I128TransportRecord,
+                                        I128PairOperationRecord,
                                         MemoryInstructionRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
@@ -1021,6 +1083,11 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
 [[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
     PreparedI128TransportRecordError error);
+[[nodiscard]] std::string_view i128_pair_operation_kind_name(I128PairOperationKind kind);
+[[nodiscard]] std::string_view i128_pair_lane_semantics_name(
+    I128PairLaneSemantics semantics);
+[[nodiscard]] std::string_view prepared_i128_pair_record_error_name(
+    PreparedI128PairRecordError error);
 [[nodiscard]] std::string_view address_materialization_kind_name(
     AddressMaterializationKind kind);
 [[nodiscard]] std::string_view prepared_address_materialization_record_error_name(
@@ -1049,6 +1116,8 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
+[[nodiscard]] InstructionRecord make_i128_pair_operation_instruction(
+    I128PairOperationRecord instruction);
 [[nodiscard]] InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
@@ -1157,6 +1226,10 @@ make_prepared_store_memory_instruction_record(
     c4c::ValueNameId value_name,
     I128TransportKind transport_kind,
     std::optional<MemoryOperand> memory = std::nullopt);
+[[nodiscard]] PreparedI128PairRecordResult make_prepared_i128_pair_operation_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::BinaryInst& binary);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,
