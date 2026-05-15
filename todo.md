@@ -1,47 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/235_aarch64_scalar_cast_and_float_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Typed Float/Integer Conversion Nodes
+Current Step ID: 6
+Current Step Title: Print FP Arithmetic And Conversion Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 selected typed float/integer and F32/F64 width conversion cast nodes
-from prepared GPR/FPR register authority without adding terminal printer
-output.
+Step 6 printed selected F32/F64 arithmetic and supported conversion nodes from
+structured register/type/bank-transition fields.
 
 Completed work:
 
-- `ScalarCastRecord` now has explicit conversion operation kinds for
-  `FPExt`, `FPTrunc`, `SIToFP`, `UIToFP`, `FPToSI`, and `FPToUI`.
-- Prepared conversion casts preserve source/result type widths, structured
-  source/destination register operands, and explicit source/result prepared
-  register-bank facts.
-- GPR-to-FPR and FPR-to-GPR conversions record a bank transition through
-  `crosses_register_bank`; F32/F64 width conversions remain within FPR/SIMD.
-- F32/F64 conversion selection uses the existing prepared register conversion
-  authority and the adjacent FP/SIMD view path, not W/X float shortcuts.
-- `Bitcast`, pointer casts, F128/binary128, wrong-bank storage, missing
-  register/storage facts, and unsupported conversion shapes remain fail-closed.
-- Focused tests cover raw conversion vocabulary, prepared int/float and
-  F32/F64 width conversion records, dispatch-selected bank transitions, and
-  missing bank authority diagnostics.
+- `print_scalar` now prints selected F32/F64 scalar arithmetic records from
+  structured FP/SIMD destination/source operands.
+- F32/F64 `Add`, `Sub`, `Mul`, and `Div` print as `fadd`, `fsub`, `fmul`, and
+  `fdiv` using S/D register views derived from record type facts.
+- Supported `SIToFP`, `UIToFP`, `FPToSI`, `FPToUI`, `FPExt`, and `FPTrunc`
+  print as `scvtf`, `ucvtf`, `fcvtzs`, `fcvtzu`, and `fcvt` from structured
+  GPR/FPR source/result register facts.
+- Printer validation uses record type widths and bank-specific register
+  conversion helpers; it does not infer FP behavior from rendered names or
+  route F32/F64 through W/X raw-bit shortcuts.
+- Unsupported F128/binary128, pointer/bitcast, incomplete source/register
+  facts, and non-FP operands still fail closed with printer diagnostics.
+- Focused printer tests cover F32/F64 arithmetic output and all supported
+  conversion output forms.
 
 ## Suggested Next
 
-Step 6 implementation packet: print selected F32/F64 arithmetic and conversion
-nodes from structured register/type/bank-transition facts, without adding
-F128/binary128 or unsupported pointer/bitcast output.
+Step 7 validation packet: run the active focused or broader backend proof and
+record semantic coverage for integer casts, F32/F64 arithmetic, typed
+conversions, fail-closed F128/pointer/bitcast behavior, and no raw-name
+inference.
 
 ## Watchouts
 
-- Terminal printer output for F32/F64 arithmetic and conversion nodes is
-  intentionally still absent.
-- Conversion machine records that have no dedicated terminal opcode currently
-  carry selected scalar records with structured conversion payloads; printer
-  work must use the `ScalarCastRecord` fields, not infer from rendered names.
 - Simple integer cast printing exists, but pointer and bitcast casts remain
   intentionally unsupported.
 - Do not route F32/F64 through GPR raw-bit conventions or revive the archived
@@ -55,6 +50,6 @@ F128/binary128 or unsupported pointer/bitcast output.
 
 Fresh focused backend proof passed and wrote `test_after.log`:
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_instruction_dispatch|backend_aarch64_scalar_record_contract)$') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_instruction_dispatch|backend_aarch64_scalar_record_contract|backend_aarch64_machine_printer)$') > test_after.log 2>&1`
 
-Result: 4/4 focused backend MIR tests passed.
+Result: 7/7 focused backend MIR tests passed.

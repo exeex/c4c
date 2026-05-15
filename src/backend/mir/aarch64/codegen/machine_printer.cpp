@@ -62,6 +62,18 @@ std::optional<std::string> register_name_with_view(const RegisterOperand& operan
   return abi::register_name(*viewed);
 }
 
+std::optional<std::string> fp_register_name_with_view(const RegisterOperand& operand,
+                                                      abi::RegisterView view) {
+  if (!abi::is_fp_simd_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(operand.reg.index, view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(*viewed);
+}
+
 std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
   if (bit_width <= 32U) {
     return abi::RegisterView::W;
@@ -70,6 +82,45 @@ std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
     return abi::RegisterView::X;
   }
   return std::nullopt;
+}
+
+std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::string_view floating_alu_mnemonic(ScalarAluOperationKind operation) {
+  switch (operation) {
+    case ScalarAluOperationKind::Add:
+      return "fadd";
+    case ScalarAluOperationKind::Sub:
+      return "fsub";
+    case ScalarAluOperationKind::Mul:
+      return "fmul";
+    case ScalarAluOperationKind::Div:
+      return "fdiv";
+    case ScalarAluOperationKind::And:
+    case ScalarAluOperationKind::Or:
+    case ScalarAluOperationKind::Xor:
+    case ScalarAluOperationKind::Deferred:
+      return {};
+  }
+  return {};
 }
 
 std::string immediate_name(const ImmediateOperand& operand) {
@@ -764,6 +815,91 @@ mir::TargetInstructionPrintResult print_call_boundary_abi_binding(
       "call-boundary ABI binding node requires later AArch64 move lowering");
 }
 
+mir::TargetInstructionPrintResult print_scalar_conversion(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar,
+    const ScalarCastRecord& cast) {
+  if ((!cast.supported_float_integer_conversion &&
+       !cast.supported_float_width_conversion) ||
+      cast.operation == ScalarCastOperationKind::Deferred) {
+    return target_unsupported(bad_header(instruction) +
+                              "scalar conversion node is outside the printable subset");
+  }
+  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
+  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar conversion node requires a structured register source operand");
+  }
+
+  std::string_view mnemonic;
+  std::optional<std::string> result;
+  std::optional<std::string> source;
+  switch (cast.operation) {
+    case ScalarCastOperationKind::FloatExtend:
+      mnemonic = "fcvt";
+      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::D);
+      source = fp_register_name_with_view(*source_register, abi::RegisterView::S);
+      break;
+    case ScalarCastOperationKind::FloatTruncate:
+      mnemonic = "fcvt";
+      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::S);
+      source = fp_register_name_with_view(*source_register, abi::RegisterView::D);
+      break;
+    case ScalarCastOperationKind::SignedIntToFloat:
+    case ScalarCastOperationKind::UnsignedIntToFloat: {
+      const auto result_view = floating_register_view(cast.result_type);
+      const auto source_bits = integer_type_bit_width(cast.source_type);
+      if (!result_view.has_value() || !source_bits.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "scalar int-to-float conversion has unsupported type width");
+      }
+      const auto source_view = integer_register_view(*source_bits);
+      if (!source_view.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "scalar int-to-float conversion has unsupported integer width");
+      }
+      mnemonic = cast.operation == ScalarCastOperationKind::SignedIntToFloat ? "scvtf" : "ucvtf";
+      result = fp_register_name_with_view(*scalar.result_register, *result_view);
+      source = register_name_with_view(*source_register, *source_view);
+      break;
+    }
+    case ScalarCastOperationKind::FloatToSignedInt:
+    case ScalarCastOperationKind::FloatToUnsignedInt: {
+      const auto result_bits = integer_type_bit_width(cast.result_type);
+      const auto source_view = floating_register_view(cast.source_type);
+      if (!result_bits.has_value() || !source_view.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "scalar float-to-int conversion has unsupported type width");
+      }
+      const auto result_view = integer_register_view(*result_bits);
+      if (!result_view.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "scalar float-to-int conversion has unsupported integer width");
+      }
+      mnemonic = cast.operation == ScalarCastOperationKind::FloatToSignedInt ? "fcvtzs"
+                                                                             : "fcvtzu";
+      result = register_name_with_view(*scalar.result_register, *result_view);
+      source = fp_register_name_with_view(*source_register, *source_view);
+      break;
+    }
+    case ScalarCastOperationKind::SignExtend:
+    case ScalarCastOperationKind::ZeroExtend:
+    case ScalarCastOperationKind::Truncate:
+    case ScalarCastOperationKind::Deferred:
+      return target_unsupported(bad_header(instruction) +
+                                "scalar conversion node is outside the printable subset");
+  }
+  if (mnemonic.empty() || !result.has_value() || !source.has_value()) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar conversion node has incomplete printable register facts");
+  }
+  std::ostringstream out;
+  out << mnemonic << " " << *result << ", " << *source;
+  return target_printed({out.str()});
+}
+
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
                                                const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
@@ -773,6 +909,9 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
   }
   if (scalar.scalar_cast.has_value()) {
     const auto& cast = *scalar.scalar_cast;
+    if (cast.supported_float_integer_conversion || cast.supported_float_width_conversion) {
+      return print_scalar_conversion(instruction, scalar, cast);
+    }
     if (!cast.supported_simple_integer_cast ||
         cast.operation == ScalarCastOperationKind::Deferred) {
       return target_unsupported(bad_header(instruction) +
@@ -873,6 +1012,41 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
     }
     return target_unsupported(bad_header(instruction) +
                               "scalar cast node is outside the printable simple integer subset");
+  }
+  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
+    const auto& alu = *scalar.scalar_alu;
+    if (scalar.inputs.size() != 2) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "scalar FP node requires exactly two structured register operands");
+    }
+    const auto result_view = floating_register_view(alu.result_type);
+    const auto operand_view = floating_register_view(alu.operand_type);
+    if (!result_view.has_value() || !operand_view.has_value() ||
+        result_view != operand_view) {
+      return target_unsupported(bad_header(instruction) +
+                                "scalar FP node requires matching F32/F64 operand and result widths");
+    }
+    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+    if (scalar.inputs[0].kind != OperandKind::Register ||
+        scalar.inputs[1].kind != OperandKind::Register ||
+        lhs_register == nullptr || rhs_register == nullptr) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "scalar FP node requires structured FP/SIMD register operands");
+    }
+    const auto mnemonic = floating_alu_mnemonic(alu.operation);
+    const auto result = fp_register_name_with_view(*scalar.result_register, *result_view);
+    const auto lhs = fp_register_name_with_view(*lhs_register, *operand_view);
+    const auto rhs = fp_register_name_with_view(*rhs_register, *operand_view);
+    if (mnemonic.empty() || !result.has_value() || !lhs.has_value() || !rhs.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "scalar FP node has incomplete printable register facts");
+    }
+    std::ostringstream out;
+    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
+    return target_printed({out.str()});
   }
   if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
     return target_unsupported(bad_header(instruction) +

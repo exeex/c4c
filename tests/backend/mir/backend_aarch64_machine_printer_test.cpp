@@ -76,6 +76,28 @@ aarch64_codegen::RegisterOperand wreg(unsigned index) {
   };
 }
 
+aarch64_codegen::RegisterOperand sreg(unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::s_register(static_cast<std::uint8_t>(index)),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .prepared_class = prepare::PreparedRegisterClass::Float,
+      .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+      .expected_view = aarch64_abi::RegisterView::S,
+      .contiguous_width = 1,
+  };
+}
+
+aarch64_codegen::RegisterOperand dreg(unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::d_register(static_cast<std::uint8_t>(index)),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .prepared_class = prepare::PreparedRegisterClass::Float,
+      .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+      .expected_view = aarch64_abi::RegisterView::D,
+      .contiguous_width = 1,
+  };
+}
+
 aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
   return aarch64_codegen::MemoryOperand{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -448,6 +470,191 @@ int selected_simple_integer_casts_print_from_structured_operands() {
                          expected,
                          expected,
                          "simple integer cast common-printer drift guard");
+}
+
+int selected_fp_arithmetic_prints_from_structured_operands() {
+  const auto fadd = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::F32,
+          .result_value_id = prepare::PreparedValueId{58},
+          .result_value_name = c4c::ValueNameId{59},
+          .result_type = bir::TypeKind::F32,
+          .result_register = sreg(0),
+          .lhs = aarch64_codegen::make_register_operand(sreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(sreg(2)),
+          .supported_floating_operation = true,
+      }));
+  const auto fsub = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::F64,
+          .result_value_id = prepare::PreparedValueId{60},
+          .result_value_name = c4c::ValueNameId{61},
+          .result_type = bir::TypeKind::F64,
+          .result_register = dreg(3),
+          .lhs = aarch64_codegen::make_register_operand(dreg(4)),
+          .rhs = aarch64_codegen::make_register_operand(dreg(5)),
+          .supported_floating_operation = true,
+      }));
+  const auto fmul = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Mul,
+          .source_binary_opcode = bir::BinaryOpcode::Mul,
+          .operand_type = bir::TypeKind::F32,
+          .result_value_id = prepare::PreparedValueId{62},
+          .result_value_name = c4c::ValueNameId{63},
+          .result_type = bir::TypeKind::F32,
+          .result_register = sreg(6),
+          .lhs = aarch64_codegen::make_register_operand(sreg(7)),
+          .rhs = aarch64_codegen::make_register_operand(sreg(8)),
+          .supported_floating_operation = true,
+      }));
+  const auto fdiv = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::SDiv,
+          .operand_type = bir::TypeKind::F64,
+          .result_value_id = prepare::PreparedValueId{64},
+          .result_value_name = c4c::ValueNameId{65},
+          .result_type = bir::TypeKind::F64,
+          .result_register = dreg(9),
+          .lhs = aarch64_codegen::make_register_operand(dreg(10)),
+          .rhs = aarch64_codegen::make_register_operand(dreg(11)),
+          .supported_floating_operation = true,
+      }));
+  const auto result = print_common_instruction_nodes({fadd, fsub, fmul, fdiv});
+  if (!result.ok) {
+    return fail("expected selected FP arithmetic to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    fadd s0, s1, s2\n"
+      "    fsub d3, d4, d5\n"
+      "    fmul s6, s7, s8\n"
+      "    fdiv d9, d10, d11\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "FP arithmetic common-printer drift guard");
+}
+
+int selected_fp_conversions_print_from_structured_operands() {
+  const auto sitofp = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::SignedIntToFloat,
+          .source_cast_opcode = bir::CastOpcode::SIToFP,
+          .source_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{66},
+          .result_value_name = c4c::ValueNameId{67},
+          .result_type = bir::TypeKind::F64,
+          .result_register = dreg(0),
+          .source = aarch64_codegen::make_register_operand(wreg(1)),
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .crosses_register_bank = true,
+          .supported_float_integer_conversion = true,
+      }));
+  const auto uitofp = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::UnsignedIntToFloat,
+          .source_cast_opcode = bir::CastOpcode::UIToFP,
+          .source_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{68},
+          .result_value_name = c4c::ValueNameId{69},
+          .result_type = bir::TypeKind::F32,
+          .result_register = sreg(2),
+          .source = aarch64_codegen::make_register_operand(xreg(3)),
+          .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .crosses_register_bank = true,
+          .supported_float_integer_conversion = true,
+      }));
+  const auto fptosi = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::FloatToSignedInt,
+          .source_cast_opcode = bir::CastOpcode::FPToSI,
+          .source_type = bir::TypeKind::F32,
+          .result_value_id = prepare::PreparedValueId{70},
+          .result_value_name = c4c::ValueNameId{71},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(4),
+          .source = aarch64_codegen::make_register_operand(sreg(5)),
+          .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .crosses_register_bank = true,
+          .supported_float_integer_conversion = true,
+      }));
+  const auto fptoui = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::FloatToUnsignedInt,
+          .source_cast_opcode = bir::CastOpcode::FPToUI,
+          .source_type = bir::TypeKind::F64,
+          .result_value_id = prepare::PreparedValueId{72},
+          .result_value_name = c4c::ValueNameId{73},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(6),
+          .source = aarch64_codegen::make_register_operand(dreg(7)),
+          .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Gpr,
+          .crosses_register_bank = true,
+          .supported_float_integer_conversion = true,
+      }));
+  const auto fpext = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::FloatExtend,
+          .source_cast_opcode = bir::CastOpcode::FPExt,
+          .source_type = bir::TypeKind::F32,
+          .result_value_id = prepare::PreparedValueId{74},
+          .result_value_name = c4c::ValueNameId{75},
+          .result_type = bir::TypeKind::F64,
+          .result_register = dreg(8),
+          .source = aarch64_codegen::make_register_operand(sreg(9)),
+          .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .supported_float_width_conversion = true,
+      }));
+  const auto fptrunc = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::FloatTruncate,
+          .source_cast_opcode = bir::CastOpcode::FPTrunc,
+          .source_type = bir::TypeKind::F64,
+          .result_value_id = prepare::PreparedValueId{76},
+          .result_value_name = c4c::ValueNameId{77},
+          .result_type = bir::TypeKind::F32,
+          .result_register = sreg(10),
+          .source = aarch64_codegen::make_register_operand(dreg(11)),
+          .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .result_register_bank = prepare::PreparedRegisterBank::Fpr,
+          .supported_float_width_conversion = true,
+      }));
+  const auto result = print_common_instruction_nodes(
+      {sitofp, uitofp, fptosi, fptoui, fpext, fptrunc});
+  if (!result.ok) {
+    return fail("expected selected FP conversions to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    scvtf d0, w1\n"
+      "    ucvtf s2, x3\n"
+      "    fcvtzs x4, s5\n"
+      "    fcvtzu w6, d7\n"
+      "    fcvt d8, s9\n"
+      "    fcvt s10, d11\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "FP conversion common-printer drift guard");
 }
 
 int selected_immediate_return_node_prints_callable_epilogue() {
@@ -2041,6 +2248,14 @@ int main() {
     return result;
   }
   if (const int result = selected_simple_integer_casts_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_fp_arithmetic_prints_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_fp_conversions_print_from_structured_operands();
       result != 0) {
     return result;
   }
