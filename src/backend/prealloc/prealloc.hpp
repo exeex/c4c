@@ -1750,6 +1750,7 @@ enum class PreparedF128RuntimeHelperKind {
   Add,
   Sub,
   Mul,
+  Div,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_kind_name(
@@ -1761,6 +1762,8 @@ enum class PreparedF128RuntimeHelperKind {
       return "sub";
     case PreparedF128RuntimeHelperKind::Mul:
       return "mul";
+    case PreparedF128RuntimeHelperKind::Div:
+      return "div";
   }
   return "unknown";
 }

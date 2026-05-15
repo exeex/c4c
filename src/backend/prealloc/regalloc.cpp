@@ -307,6 +307,7 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Add:
     case bir::BinaryOpcode::Sub:
     case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
       return true;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
@@ -314,7 +315,6 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
     case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
     case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
@@ -342,13 +342,14 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
       return PreparedF128RuntimeHelperKind::Sub;
     case bir::BinaryOpcode::Mul:
       return PreparedF128RuntimeHelperKind::Mul;
+    case bir::BinaryOpcode::SDiv:
+      return PreparedF128RuntimeHelperKind::Div;
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
     case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
     case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
@@ -375,13 +376,14 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
       return "__subtf3";
     case bir::BinaryOpcode::Mul:
       return "__multf3";
+    case bir::BinaryOpcode::SDiv:
+      return "__divtf3";
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
     case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
     case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:

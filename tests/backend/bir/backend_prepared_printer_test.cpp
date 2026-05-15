@@ -3739,6 +3739,36 @@ int main() {
                        "f128 mul helper identity and callee")) {
     return EXIT_FAILURE;
   }
+  const auto f128_div_helper_prepared =
+      prepare_f128_soft_float_helper_dump_module(
+          bir::BinaryOpcode::SDiv,
+          "f128_soft_float_div_helper_dump_contract",
+          "quotient");
+  const auto* f128_div_helper = find_first_f128_runtime_helper(
+      f128_div_helper_prepared, "f128_soft_float_div_helper_dump_contract");
+  if (f128_div_helper == nullptr ||
+      f128_div_helper->helper_family !=
+          prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      f128_div_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Div ||
+      f128_div_helper->callee_name != "__divtf3" ||
+      f128_div_helper->source_binary_opcode != bir::BinaryOpcode::SDiv ||
+      f128_div_helper->source_type != bir::TypeKind::F128 ||
+      f128_div_helper->result_type != bir::TypeKind::F128 ||
+      f128_div_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !f128_div_helper->selected_call_ownership.owns_terminal_call ||
+      !f128_div_helper->selected_call_ownership.has_marshaling ||
+      !f128_div_helper->selected_call_ownership.has_live_preservation) {
+    std::cerr << "[FAIL] prepared f128 div soft-float helper lost structured record authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_div_helper_dump = prepare::print(f128_div_helper_prepared);
+  if (!expect_contains(f128_div_helper_dump,
+                       "f128_helper block=0 inst=0 family=arithmetic kind=div opcode=sdiv "
+                       "callee=__divtf3 source_type=f128 result_type=f128 result=quotient#",
+                       "f128 div helper identity and callee")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(f128_helper_dump,
                        "result_ownership=full_width_carrier "
                        "resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"

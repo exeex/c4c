@@ -9,24 +9,23 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 ## Just Finished
 
 Step 4 extended prepared F128 soft-float helper identity and record-only
-AArch64 helper-boundary selection from add/sub to exactly one adjacent
-arithmetic helper: F128 mul. Prepared F128 mul now maps to
-`PreparedF128RuntimeHelperKind::Mul` and `__multf3`, dispatch admits mul into
-the existing complete `PreparedF128RuntimeHelper` path, and target records
-preserve callee, full-width carrier, ABI, marshaling, clobber,
-live-preservation, and selected-call ownership facts. Unsupported F128 helper
-operations still fail closed through an unsupported division probe. No final
-assembly printing was added.
+AArch64 helper-boundary selection from add/sub/mul to binary128 division.
+Prepared F128 `SDiv` now maps to `PreparedF128RuntimeHelperKind::Div` and
+`__divtf3`, dispatch admits division into the existing complete
+`PreparedF128RuntimeHelper` path, and target records preserve callee,
+full-width carrier, ABI, marshaling, clobber, live-preservation, and
+selected-call ownership facts. Unsupported adjacent helper families remain
+fail-closed. No final assembly printing was added.
 
 ## Suggested Next
 
 Stay on Step 4 and choose the next focused helper-family/helper-identity
-packet, or hand the completed add/sub/mul helper-boundary slice back for
+packet, or hand the completed add/sub/mul/div helper-boundary slice back for
 supervisor review. Extend prepared helper identity and record-only selection
-beyond F128 add/sub/mul only when the semantic helper contract, ownership
+beyond F128 add/sub/mul/div only when the semantic helper contract, ownership
 facts, ABI/marshaling, clobber policy, and live-preservation facts are
-complete; comparison, cast, sign-bit, division, and other helper-family work
-remain Step 4 work.
+complete; comparison, cast, sign-bit, unsigned division/remainder, and other
+helper-family work remain Step 4 work.
 
 ## Watchouts
 
@@ -74,16 +73,18 @@ remain Step 4 work.
   operations should remain diagnosed until their prepared helper identities and
   complete ownership facts exist; do not add scalar F64 approximations or
   dispatch-only callee guesses.
-- Only F128 add, sub, and mul map to helper callees in this slice.
-  Div/compare/cast helpers remain unsupported until their semantic helper
-  identities and ABI facts are added deliberately.
+- Only F128 add, sub, mul, and signed binary128 division map to helper callees
+  in this slice. Compare/cast/sign-bit and unsigned div/rem helpers remain
+  unsupported until their semantic helper identities and ABI facts are added
+  deliberately.
 - The AArch64 F128 helper boundary is now selected only from a complete
   `PreparedF128RuntimeHelper` with selected-call ownership. Do not reintroduce
   raw BIR-shape, rendered-text, or scalar F64 inference.
-- The selected F128 add/sub/mul helper boundary is record-level only. Final
-  assembly printing remains unsupported until Step 5 adds printer authority; do
-  not start Step 5 until the remaining Step 4 helper-family/helper-identity
-  packets are deliberately handled or explicitly deferred by the supervisor.
+- The selected F128 add/sub/mul/div helper boundary is record-level only.
+  Final assembly printing remains unsupported until Step 5 adds printer
+  authority; do not start Step 5 until the remaining Step 4
+  helper-family/helper-identity packets are deliberately handled or explicitly
+  deferred by the supervisor.
 
 ## Proof
 

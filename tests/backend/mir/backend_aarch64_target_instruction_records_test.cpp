@@ -2976,22 +2976,44 @@ int f128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
     return fail("expected selected f128 mul helper boundary instruction effects");
   }
 
-  auto unsupported_div = make_f128_runtime_helper(function_name,
-                                                  6,
-                                                  bir::BinaryOpcode::SDiv,
-                                                  prepare::PreparedF128RuntimeHelperKind::Mul,
-                                                  "__divtf3",
-                                                  carriers.carriers[0],
-                                                  carriers.carriers[1],
-                                                  carriers.carriers[2]);
-  const auto unsupported =
+  auto div_helper = make_f128_runtime_helper(function_name,
+                                             6,
+                                             bir::BinaryOpcode::SDiv,
+                                             prepare::PreparedF128RuntimeHelperKind::Div,
+                                             "__divtf3",
+                                             carriers.carriers[0],
+                                             carriers.carriers[1],
+                                             carriers.carriers[2]);
+  const auto prepared_div =
       aarch64_codegen::make_prepared_f128_runtime_helper_boundary_record(
-          carriers, unsupported_div);
-  if (unsupported.record.has_value() ||
-      unsupported.error !=
-          aarch64_codegen::PreparedF128RuntimeHelperRecordError::
-              UnsupportedSourceOperation) {
-    return fail("expected f128 helper boundary to fail closed for unsupported arithmetic");
+          carriers, div_helper);
+  if (!prepared_div.record.has_value() ||
+      prepared_div.error !=
+          aarch64_codegen::PreparedF128RuntimeHelperRecordError::None ||
+      prepared_div.record->boundary_kind !=
+          aarch64_codegen::F128RuntimeHelperBoundaryKind::Div ||
+      aarch64_codegen::f128_runtime_helper_boundary_kind_name(
+          prepared_div.record->boundary_kind) != "div" ||
+      prepared_div.record->helper_kind != prepare::PreparedF128RuntimeHelperKind::Div ||
+      prepared_div.record->callee_name != "__divtf3" ||
+      prepared_div.record->source_binary_opcode != bir::BinaryOpcode::SDiv ||
+      prepared_div.record->source_helper != &div_helper ||
+      !prepared_div.record->selected_call_ownership.owns_terminal_call) {
+    return fail("expected f128 div helper boundary record to consume prepared authority");
+  }
+  const auto div_instruction =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+          *prepared_div.record);
+  const auto* div_payload =
+      std::get_if<aarch64_codegen::F128RuntimeHelperBoundaryRecord>(
+          &div_instruction.payload);
+  if (div_payload == nullptr ||
+      div_instruction.opcode != aarch64_codegen::MachineOpcode::F128RuntimeHelper ||
+      div_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      div_payload->boundary_kind != aarch64_codegen::F128RuntimeHelperBoundaryKind::Div ||
+      div_payload->callee_name != "__divtf3") {
+    return fail("expected selected f128 div helper boundary instruction effects");
   }
   return 0;
 }

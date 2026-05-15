@@ -2385,6 +2385,9 @@ prepare::PreparedBirModule prepared_with_f128_runtime_helper_operation(
     } else if (opcode == bir::BinaryOpcode::Mul) {
       helper_kind = prepare::PreparedF128RuntimeHelperKind::Mul;
       callee = "__multf3";
+    } else if (opcode == bir::BinaryOpcode::SDiv) {
+      helper_kind = prepare::PreparedF128RuntimeHelperKind::Div;
+      callee = "__divtf3";
     }
     auto helper = dispatch_f128_runtime_helper(function_name,
                                                0,
@@ -5344,6 +5347,14 @@ int main() {
               bir::BinaryOpcode::Mul,
               prepare::PreparedF128RuntimeHelperKind::Mul,
               "__multf3");
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_runtime_helper_from_prepared_authority(
+              bir::BinaryOpcode::SDiv,
+              prepare::PreparedF128RuntimeHelperKind::Div,
+              "__divtf3");
       status != 0) {
     return status;
   }
