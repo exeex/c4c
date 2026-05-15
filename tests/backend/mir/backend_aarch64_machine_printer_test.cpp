@@ -1330,6 +1330,73 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
         "expected aggregate va_arg helper call to print prepared access-plan records");
   }
 
+  const prepare::PreparedCallPlan prepared_va_copy_call{
+      .block_index = 0,
+      .instruction_index = 5,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_copy.p0.p0"},
+  };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_copy_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+      .block_index = 0,
+      .instruction_index = 5,
+      .destination_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{20},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{10},
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{10},
+              .offset_bytes = std::size_t{64},
+          },
+      .source_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{21},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{11},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x5"},
+          },
+  };
+  auto va_copy_entry = variadic_entry;
+  va_copy_entry.helper_resources.required_helpers =
+      {prepare::PreparedVariadicEntryHelperKind::VaCopy};
+  va_copy_entry.helper_resources.scratch_register_count = std::size_t{1};
+  va_copy_entry.helper_operand_homes = {va_copy_homes};
+  const auto va_copy_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{15},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_copy.p0.p0",
+          .wrapper_kind = prepared_va_copy_call.wrapper_kind,
+          .source_call = &prepared_va_copy_call,
+          .source_variadic_entry = &va_copy_entry,
+          .source_variadic_helper_operand_homes =
+              &va_copy_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto va_copy_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(va_copy_call);
+  if (!va_copy_result.ok ||
+      va_copy_result.instruction_lines.size() != 3 ||
+      va_copy_result.instruction_lines[0].find(
+          "va.copy dest=value#20:stack_slot:slot#10:offset+64 source=value#21:register:x5") ==
+          std::string::npos ||
+      va_copy_result.instruction_lines[0].find(
+          "va_list_size=32 va_list_align=8 scratch_registers=1") ==
+          std::string::npos ||
+      va_copy_result.instruction_lines[1] !=
+          "va.copy.field kind=gp_offset source_offset=0 destination_offset=0 size=4" ||
+      va_copy_result.instruction_lines[2] !=
+          "va.copy.field kind=overflow_arg_area source_offset=8 destination_offset=8 size=8") {
+    return fail("expected va_copy helper call to print prepared layout field copies");
+  }
+
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
       aarch64_codegen::FrameInstructionRecord{
           .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,

@@ -199,6 +199,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "variadic_va_arg_scalar";
     case MachineOpcode::VariadicVaArgAggregate:
       return "variadic_va_arg_aggregate";
+    case MachineOpcode::VariadicVaCopy:
+      return "variadic_va_copy";
   }
   return "unknown";
 }
@@ -245,6 +247,8 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "va.arg.scalar";
     case MachinePrinterMnemonicKind::VariadicVaArgAggregate:
       return "va.arg.aggregate";
+    case MachinePrinterMnemonicKind::VariadicVaCopy:
+      return "va.copy";
   }
   return "";
 }
@@ -281,6 +285,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::VariadicVaArgScalar;
     case MachineOpcode::VariadicVaArgAggregate:
       return MachinePrinterMnemonicKind::VariadicVaArgAggregate;
+    case MachineOpcode::VariadicVaCopy:
+      return MachinePrinterMnemonicKind::VariadicVaCopy;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
     case MachineOpcode::CalleeSaveStore:
@@ -2277,6 +2283,44 @@ std::optional<VariadicAggregateVaArgRecord> make_variadic_aggregate_va_arg_recor
   };
 }
 
+std::optional<VariadicVaCopyRecord> make_variadic_va_copy_record(
+    const prepare::PreparedVariadicEntryPlanFunction& entry,
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (!homes.destination_va_list.has_value() ||
+      !homes.source_va_list.has_value() ||
+      !entry.va_list_layout.size_bytes.has_value() ||
+      !entry.va_list_layout.align_bytes.has_value() ||
+      entry.va_list_layout.fields.empty() ||
+      !entry.helper_resources.scratch_register_count.has_value() ||
+      !entry.helper_resources.scratch_stack_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<VariadicVaCopyFieldRecord> field_copies;
+  field_copies.reserve(entry.va_list_layout.fields.size());
+  for (const auto& field : entry.va_list_layout.fields) {
+    if (field.size_bytes == 0) {
+      return std::nullopt;
+    }
+    field_copies.push_back(VariadicVaCopyFieldRecord{
+        .kind = field.kind,
+        .source_offset_bytes = field.offset_bytes,
+        .destination_offset_bytes = field.offset_bytes,
+        .size_bytes = field.size_bytes,
+    });
+  }
+
+  return VariadicVaCopyRecord{
+      .destination_va_list = *homes.destination_va_list,
+      .source_va_list = *homes.source_va_list,
+      .va_list_size_bytes = *entry.va_list_layout.size_bytes,
+      .va_list_align_bytes = *entry.va_list_layout.align_bytes,
+      .field_copies = std::move(field_copies),
+      .scratch_register_count = *entry.helper_resources.scratch_register_count,
+      .scratch_stack_bytes = *entry.helper_resources.scratch_stack_bytes,
+  };
+}
+
 MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instruction) {
   if (instruction.variadic_entry_helper.has_value()) {
     if (instruction.source_variadic_entry == nullptr) {
@@ -2320,6 +2364,17 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
             .diagnostic =
                 "aggregate va_arg machine-node lowering requires complete prepared fact "
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan"};
+      }
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    if (*instruction.variadic_entry_helper ==
+        prepare::PreparedVariadicEntryHelperKind::VaCopy) {
+      if (!instruction.variadic_va_copy.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic =
+                "va_copy machine-node lowering requires complete prepared source and "
+                "destination va_list homes plus va_list_layout field facts"};
       }
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
@@ -2603,6 +2658,16 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
             *instruction.source_variadic_entry,
             *instruction.source_variadic_helper_operand_homes);
   }
+  if (instruction.variadic_entry_helper ==
+          std::optional<prepare::PreparedVariadicEntryHelperKind>{
+              prepare::PreparedVariadicEntryHelperKind::VaCopy} &&
+      !instruction.variadic_va_copy.has_value() &&
+      instruction.source_variadic_entry != nullptr &&
+      instruction.source_variadic_helper_operand_homes != nullptr) {
+    instruction.variadic_va_copy =
+        make_variadic_va_copy_record(*instruction.source_variadic_entry,
+                                     *instruction.source_variadic_helper_operand_homes);
+  }
 
   std::vector<OperandRecord> operands = instruction.arguments;
   if (instruction.indirect_callee.has_value()) {
@@ -2646,6 +2711,16 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
     side_effects.push_back(MachineSideEffectKind::MemoryRead);
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
+  if (instruction.variadic_va_copy.has_value()) {
+    defs.push_back(prepared_value_def(
+        instruction.variadic_va_copy->destination_va_list.value_id,
+        instruction.variadic_va_copy->destination_va_list.value_name));
+    uses.push_back(prepared_value_def(
+        instruction.variadic_va_copy->source_va_list.value_id,
+        instruction.variadic_va_copy->source_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
@@ -2655,8 +2730,11 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
                            ? MachineOpcode::VariadicVaArgScalar
                            : (instruction.variadic_aggregate_va_arg.has_value()
                                   ? MachineOpcode::VariadicVaArgAggregate
-                                  : (instruction.is_indirect ? MachineOpcode::IndirectCall
-                                                             : MachineOpcode::DirectCall))),
+                                  : (instruction.variadic_va_copy.has_value()
+                                         ? MachineOpcode::VariadicVaCopy
+                                         : (instruction.is_indirect
+                                                ? MachineOpcode::IndirectCall
+                                                : MachineOpcode::DirectCall)))),
       .selection = call_selection_status(instruction),
       .operands = operands,
       .defs = defs,

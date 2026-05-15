@@ -127,6 +127,7 @@ enum class MachineOpcode {
   VariadicVaStart,
   VariadicVaArgScalar,
   VariadicVaArgAggregate,
+  VariadicVaCopy,
 };
 
 enum class MachinePseudoKind {
@@ -150,6 +151,7 @@ enum class MachinePrinterMnemonicKind {
   VariadicVaStart,
   VariadicVaArgScalar,
   VariadicVaArgAggregate,
+  VariadicVaCopy,
 };
 
 enum class MachineNodeSelectionStatus {
@@ -702,6 +704,24 @@ struct VariadicAggregateVaArgRecord {
   std::size_t scratch_stack_bytes = 0;
 };
 
+struct VariadicVaCopyFieldRecord {
+  prepare::PreparedVariadicVaListFieldKind kind =
+      prepare::PreparedVariadicVaListFieldKind::GpOffset;
+  std::size_t source_offset_bytes = 0;
+  std::size_t destination_offset_bytes = 0;
+  std::size_t size_bytes = 0;
+};
+
+struct VariadicVaCopyRecord {
+  prepare::PreparedValueHome destination_va_list;
+  prepare::PreparedValueHome source_va_list;
+  std::size_t va_list_size_bytes = 0;
+  std::size_t va_list_align_bytes = 0;
+  std::vector<VariadicVaCopyFieldRecord> field_copies;
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::string_view direct_callee_label;
@@ -725,6 +745,7 @@ struct CallInstructionRecord {
   std::optional<VariadicVaStartRecord> variadic_va_start;
   std::optional<VariadicScalarVaArgRecord> variadic_scalar_va_arg;
   std::optional<VariadicAggregateVaArgRecord> variadic_aggregate_va_arg;
+  std::optional<VariadicVaCopyRecord> variadic_va_copy;
   bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

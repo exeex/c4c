@@ -1153,6 +1153,159 @@ int aggregate_va_arg_call_record_requires_prepared_access_plan() {
   return 0;
 }
 
+int va_copy_call_record_selects_prepared_layout_field_copies() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 6,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_copy.p0.p0"},
+  };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_copy_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+      .block_index = 0,
+      .instruction_index = 6,
+      .destination_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{55},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{15},
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{10},
+              .offset_bytes = std::size_t{64},
+          },
+      .source_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{56},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{16},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x4"},
+          },
+  };
+  prepare::PreparedVariadicEntryPlanFunction variadic_entry{
+      .function_name = c4c::FunctionNameId{9},
+      .named_parameter_count = 1,
+      .named_register_counts =
+          prepare::PreparedVariadicEntryNamedRegisterCounts{
+              .gp = std::size_t{1},
+              .fp = std::size_t{0},
+          },
+      .register_save_area =
+          prepare::PreparedVariadicEntryRegisterSaveArea{
+              .required = true,
+              .size_bytes = std::size_t{192},
+              .align_bytes = std::size_t{16},
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .stack_offset_bytes = std::size_t{16},
+              .gp_offset_bytes = std::size_t{0},
+              .fp_offset_bytes = std::size_t{64},
+              .gp_slot_size_bytes = std::size_t{8},
+              .fp_slot_size_bytes = std::size_t{16},
+              .saved_gp_register_count = std::size_t{7},
+              .saved_fp_register_count = std::size_t{8},
+              .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+              .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+          },
+      .overflow_area =
+          prepare::PreparedVariadicEntryOverflowArea{
+              .required = true,
+              .base_slot_id = prepare::PreparedFrameSlotId{6},
+              .base_stack_offset_bytes = std::size_t{208},
+              .align_bytes = std::size_t{8},
+          },
+      .va_list_layout =
+          prepare::PreparedVariadicVaListLayout{
+              .required = true,
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+              .fields =
+                  {
+                      prepare::PreparedVariadicVaListField{
+                          .kind = prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                          .offset_bytes = 0,
+                          .size_bytes = 4,
+                      },
+                      prepare::PreparedVariadicVaListField{
+                          .kind =
+                              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                          .offset_bytes = 8,
+                          .size_bytes = 8,
+                      },
+                  },
+          },
+      .helper_resources =
+          prepare::PreparedVariadicEntryHelperResources{
+              .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaCopy},
+              .scratch_register_count = std::size_t{1},
+              .scratch_stack_bytes = std::size_t{0},
+          },
+      .helper_operand_homes = {va_copy_homes},
+  };
+
+  const auto selected_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{28},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_copy.p0.p0",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .source_variadic_entry = &variadic_entry,
+          .source_variadic_helper_operand_homes = &variadic_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto* selected_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&selected_call.payload);
+  if (selected_payload == nullptr ||
+      selected_call.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      selected_call.opcode != aarch64_codegen::MachineOpcode::VariadicVaCopy ||
+      !selected_payload->variadic_va_copy.has_value() ||
+      selected_payload->variadic_va_copy->destination_va_list.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{10}} ||
+      selected_payload->variadic_va_copy->source_va_list.register_name !=
+          std::optional<std::string>{"x4"} ||
+      selected_payload->variadic_va_copy->va_list_size_bytes != 32 ||
+      selected_payload->variadic_va_copy->field_copies.size() != 2 ||
+      selected_payload->variadic_va_copy->field_copies[1].kind !=
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      selected_payload->variadic_va_copy->field_copies[1].source_offset_bytes != 8 ||
+      selected_payload->variadic_va_copy->field_copies[1].destination_offset_bytes != 8 ||
+      selected_payload->variadic_va_copy->scratch_register_count != 1) {
+    return fail("expected va_copy call record to select prepared layout field copies");
+  }
+
+  variadic_entry.va_list_layout.fields.front().size_bytes = 0;
+  const auto missing_layout_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{28},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_copy.p0.p0",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .source_variadic_entry = &variadic_entry,
+          .source_variadic_helper_operand_homes = &variadic_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+          .calling_convention = bir::CallingConv::C,
+      });
+  if (missing_layout_call.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
+      missing_layout_call.selection.diagnostic.find("va_list_layout field facts") ==
+          std::string::npos) {
+    return fail("expected va_copy call record to fail closed on incomplete layout facts");
+  }
+
+  return 0;
+}
+
 int frame_instruction_records_preserve_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{6},
@@ -1790,6 +1943,10 @@ int main() {
     return status;
   }
   if (const int status = aggregate_va_arg_call_record_requires_prepared_access_plan();
+      status != 0) {
+    return status;
+  }
+  if (const int status = va_copy_call_record_selects_prepared_layout_field_copies();
       status != 0) {
     return status;
   }

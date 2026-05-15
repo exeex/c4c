@@ -426,6 +426,47 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
     return target_printed(std::move(lines));
   }
 
+  if (call.variadic_entry_helper ==
+      std::optional<prepare::PreparedVariadicEntryHelperKind>{
+          prepare::PreparedVariadicEntryHelperKind::VaCopy}) {
+    if (!call.variadic_va_copy.has_value() ||
+        call.source_variadic_entry == nullptr ||
+        call.source_variadic_helper_operand_homes == nullptr) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "va_copy node is missing structured prepared va_copy provenance");
+    }
+    const auto mnemonic = required_primary_mnemonic(instruction);
+    if (mnemonic.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "va_copy mnemonic is not printable");
+    }
+
+    const auto& va_copy = *call.variadic_va_copy;
+    std::vector<std::string> lines;
+    {
+      std::ostringstream out;
+      out << mnemonic << " dest="
+          << prepared_value_home_name(va_copy.destination_va_list)
+          << " source=" << prepared_value_home_name(va_copy.source_va_list)
+          << " va_list_size=" << va_copy.va_list_size_bytes
+          << " va_list_align=" << va_copy.va_list_align_bytes
+          << " scratch_registers=" << va_copy.scratch_register_count
+          << " scratch_stack=" << va_copy.scratch_stack_bytes;
+      lines.push_back(out.str());
+    }
+    for (const auto& field : va_copy.field_copies) {
+      std::ostringstream out;
+      out << "va.copy.field kind="
+          << prepare::prepared_variadic_va_list_field_kind_name(field.kind)
+          << " source_offset=" << field.source_offset_bytes
+          << " destination_offset=" << field.destination_offset_bytes
+          << " size=" << field.size_bytes;
+      lines.push_back(out.str());
+    }
+    return target_printed(std::move(lines));
+  }
+
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "call mnemonic is not printable");

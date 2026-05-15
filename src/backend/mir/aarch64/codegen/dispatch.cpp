@@ -304,7 +304,8 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
       return "AArch64 aggregate va_arg lowering requires prepared fact "
              "helper_operand_homes.va_arg_aggregate.aggregate_access_plan";
     case prepare::PreparedVariadicEntryHelperKind::VaCopy:
-      return {};
+      return "AArch64 va_copy lowering requires prepared source and destination "
+             "va_list homes";
   }
   return {};
 }

@@ -637,6 +637,151 @@ prepare::PreparedBirModule prepared_with_aggregate_va_arg_helper_call() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_va_copy_helper_call() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.va_copy");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.va_copy.block");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.va_copy.block");
+  const auto va_copy_link =
+      prepared.names.link_names.intern("llvm.va_copy.p0.p0");
+  const auto dst_value = prepared.names.value_names.intern("%dst_ap");
+  const auto src_value = prepared.names.value_names.intern("%src_ap");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.va_copy",
+      .return_type = bir::TypeKind::Void,
+      .is_variadic = true,
+      .params = {bir::Param{.type = bir::TypeKind::I32, .name = "fixed"}},
+      .blocks = {bir::Block{
+          .label = "dispatch.va_copy.block",
+          .insts = {bir::CallInst{
+              .callee = "llvm.va_copy.p0.p0",
+              .callee_link_name_id = va_copy_link,
+              .args = {bir::Value::named(bir::TypeKind::Ptr, "%dst_ap"),
+                       bir::Value::named(bir::TypeKind::Ptr, "%src_ap")},
+              .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"llvm.va_copy.p0.p0"},
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{33},
+                  .function_name = function_name,
+                  .value_name = dst_value,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{10},
+                  .offset_bytes = std::size_t{64},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{34},
+                  .function_name = function_name,
+                  .value_name = src_value,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x4"},
+              },
+          },
+  });
+  prepared.variadic_entry_plans.functions.push_back(
+      prepare::PreparedVariadicEntryPlanFunction{
+          .function_name = function_name,
+          .named_parameter_count = 1,
+          .named_register_counts =
+              prepare::PreparedVariadicEntryNamedRegisterCounts{
+                  .gp = std::size_t{1},
+                  .fp = std::size_t{0},
+              },
+          .register_save_area =
+              prepare::PreparedVariadicEntryRegisterSaveArea{
+                  .required = true,
+                  .size_bytes = std::size_t{192},
+                  .align_bytes = std::size_t{16},
+                  .slot_id = prepare::PreparedFrameSlotId{5},
+                  .stack_offset_bytes = std::size_t{16},
+                  .gp_offset_bytes = std::size_t{0},
+                  .fp_offset_bytes = std::size_t{64},
+                  .gp_slot_size_bytes = std::size_t{8},
+                  .fp_slot_size_bytes = std::size_t{16},
+                  .saved_gp_register_count = std::size_t{7},
+                  .saved_fp_register_count = std::size_t{8},
+                  .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+                  .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+              },
+          .overflow_area =
+              prepare::PreparedVariadicEntryOverflowArea{
+                  .required = true,
+                  .base_slot_id = prepare::PreparedFrameSlotId{6},
+                  .base_stack_offset_bytes = std::size_t{208},
+                  .align_bytes = std::size_t{8},
+              },
+          .va_list_layout =
+              prepare::PreparedVariadicVaListLayout{
+                  .required = true,
+                  .size_bytes = std::size_t{32},
+                  .align_bytes = std::size_t{8},
+                  .fields =
+                      {
+                          prepare::PreparedVariadicVaListField{
+                              .kind =
+                                  prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                              .offset_bytes = 0,
+                              .size_bytes = 4,
+                          },
+                          prepare::PreparedVariadicVaListField{
+                              .kind =
+                                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+                              .offset_bytes = 8,
+                              .size_bytes = 8,
+                          },
+                      },
+              },
+          .helper_resources =
+              prepare::PreparedVariadicEntryHelperResources{
+                  .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaCopy},
+                  .scratch_register_count = std::size_t{1},
+                  .scratch_stack_bytes = std::size_t{0},
+              },
+          .helper_operand_homes =
+              {prepare::PreparedVariadicEntryHelperOperandHomes{
+                  .helper = prepare::PreparedVariadicEntryHelperKind::VaCopy,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .destination_va_list =
+                      prepared.value_locations.functions.front().value_homes.front(),
+                  .source_va_list =
+                      prepared.value_locations.functions.front().value_homes.back(),
+              }},
+      });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_argument_register_move() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1747,6 +1892,70 @@ int aggregate_va_arg_dispatch_reports_missing_prepared_access_plan() {
   return 0;
 }
 
+int va_copy_dispatch_selects_prepared_layout_field_copies() {
+  auto prepared = prepared_with_va_copy_helper_call();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock selected_block;
+  aarch64_module::ModuleLoweringDiagnostics selected_diagnostics;
+  const auto selected_result =
+      aarch64_codegen::dispatch_prepared_block(
+          block_context, selected_block, selected_diagnostics);
+  const auto* selected_call =
+      selected_block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::CallInstructionRecord>(
+                &selected_block.instructions.front().target.payload);
+  if (selected_result.visited_operations != 1 ||
+      !selected_result.visited_terminator ||
+      selected_result.emitted_instructions != 2 ||
+      selected_block.instructions.size() != 2 ||
+      !selected_diagnostics.entries.empty() ||
+      selected_call == nullptr ||
+      selected_block.instructions.front().target.opcode !=
+          aarch64_codegen::MachineOpcode::VariadicVaCopy ||
+      selected_block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !selected_call->variadic_va_copy.has_value() ||
+      selected_call->variadic_va_copy->destination_va_list.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{10}} ||
+      selected_call->variadic_va_copy->source_va_list.register_name !=
+          std::optional<std::string>{"x4"} ||
+      selected_call->variadic_va_copy->field_copies.size() != 2 ||
+      selected_call->variadic_va_copy->field_copies[1].kind !=
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea ||
+      selected_call->variadic_va_copy->field_copies[1].size_bytes != 8) {
+    return fail("expected va_copy dispatch to select prepared layout field copies");
+  }
+
+  prepared.variadic_entry_plans.functions.front()
+      .helper_operand_homes.front()
+      .source_va_list.reset();
+  aarch64_module::MachineBlock missing_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  const auto missing_result =
+      aarch64_codegen::dispatch_prepared_block(
+          block_context, missing_block, missing_diagnostics);
+  if (missing_result.visited_operations != 1 ||
+      !missing_result.visited_terminator ||
+      missing_result.emitted_instructions != 1 ||
+      missing_diagnostics.entries.size() != 1 ||
+      missing_diagnostics.entries.front().message.find(
+          "prepared source and destination va_list homes") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_block.instructions.front().target.payload)) {
+    return fail("expected va_copy dispatch to report missing prepared source home");
+  }
+
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -2145,6 +2354,10 @@ int main() {
   }
   if (const int status =
           aggregate_va_arg_dispatch_reports_missing_prepared_access_plan();
+      status != 0) {
+    return status;
+  }
+  if (const int status = va_copy_dispatch_selects_prepared_layout_field_copies();
       status != 0) {
     return status;
   }
