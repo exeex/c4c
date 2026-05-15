@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <array>
+#include <charconv>
 #include <string>
 #include <unordered_set>
 
@@ -1210,6 +1211,102 @@ void append_inline_asm_missing_fact(PreparedInlineAsmCarrierFunction& function_c
       "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
 }
 
+[[nodiscard]] std::optional<std::size_t> parse_inline_asm_register_index(
+    std::string_view digits,
+    std::size_t max_index) {
+  if (digits.empty()) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  const char* const begin = digits.data();
+  const char* const end = digits.data() + digits.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, value);
+  if (ec != std::errc{} || ptr != end || value > max_index) {
+    return std::nullopt;
+  }
+  return value;
+}
+
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
+aarch64_inline_asm_register_identity(std::string_view register_name) {
+  if (register_name.size() < 2) {
+    return std::nullopt;
+  }
+  const char prefix = register_name.front();
+  const std::string_view digits = register_name.substr(1);
+  switch (prefix) {
+    case 'x':
+    case 'w':
+      if (const auto index = parse_inline_asm_register_index(digits, 30);
+          index.has_value()) {
+        return PreparedTargetRegisterIdentity{
+            .target_arch = c4c::TargetArch::Aarch64,
+            .bank = PreparedRegisterBank::Gpr,
+            .register_class = PreparedRegisterClass::General,
+            .physical_index = *index,
+        };
+      }
+      return std::nullopt;
+    case 's':
+    case 'd':
+      if (const auto index = parse_inline_asm_register_index(digits, 31);
+          index.has_value()) {
+        return PreparedTargetRegisterIdentity{
+            .target_arch = c4c::TargetArch::Aarch64,
+            .bank = PreparedRegisterBank::Fpr,
+            .register_class = PreparedRegisterClass::Float,
+            .physical_index = *index,
+        };
+      }
+      return std::nullopt;
+    case 'q':
+    case 'v':
+      if (const auto index = parse_inline_asm_register_index(digits, 31);
+          index.has_value()) {
+        return PreparedTargetRegisterIdentity{
+            .target_arch = c4c::TargetArch::Aarch64,
+            .bank = PreparedRegisterBank::Vreg,
+            .register_class = PreparedRegisterClass::Vector,
+            .physical_index = *index,
+        };
+      }
+      return std::nullopt;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<PreparedTargetRegisterIdentity>
+inline_asm_register_identity(const c4c::TargetProfile& target_profile,
+                             std::string_view register_name) {
+  switch (target_profile.arch) {
+    case c4c::TargetArch::Aarch64:
+      return aarch64_inline_asm_register_identity(register_name);
+    case c4c::TargetArch::Unknown:
+    case c4c::TargetArch::X86_64:
+    case c4c::TargetArch::I686:
+    case c4c::TargetArch::Riscv64:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool inline_asm_identity_matches_register_constraint(
+    const PreparedTargetRegisterIdentity& identity) {
+  return identity.bank == PreparedRegisterBank::Gpr &&
+         identity.register_class == PreparedRegisterClass::General;
+}
+
+void populate_inline_asm_home_identity(const c4c::TargetProfile& target_profile,
+                                       std::optional<PreparedValueHome>& home) {
+  if (!home.has_value() || home->kind != PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return;
+  }
+  home->target_register_identity =
+      inline_asm_register_identity(target_profile, *home->register_name);
+}
+
 [[nodiscard]] std::optional<ValueNameId> prepared_atomic_named_value_id(
     PreparedNameTables& names,
     const std::optional<bir::Value>& value) {
@@ -1388,7 +1485,7 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
     append_inline_asm_missing_fact(function_carriers, carrier, "constraint_operand_count_mismatch");
   }
 
-  for (const auto& operand : carrier.operands) {
+  for (auto& operand : carrier.operands) {
     switch (operand.kind) {
       case bir::InlineAsmOperandKind::RegisterOutput:
         if (!call.result.has_value()) {
@@ -1455,6 +1552,54 @@ void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carr
           append_inline_asm_missing_fact(function_carriers, carrier, "missing_result_home");
         } else if (carrier.result_home->kind != PreparedValueHomeKind::Register) {
           append_inline_asm_missing_fact(function_carriers, carrier, "result_requires_register_home");
+        } else if (!carrier.result_home->register_name.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "result_requires_concrete_register_home");
+        }
+        if (operand.home.has_value() &&
+            operand.home->kind == PreparedValueHomeKind::Register &&
+            !operand.home->register_name.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "operand" + std::to_string(*operand.arg_index) +
+                                             "_requires_concrete_register_home");
+        }
+        if (operand.home.has_value() && carrier.result_home.has_value() &&
+            operand.home->kind == PreparedValueHomeKind::Register &&
+            carrier.result_home->kind == PreparedValueHomeKind::Register &&
+            operand.home->register_name.has_value() &&
+            carrier.result_home->register_name.has_value()) {
+          const auto tied_identity = operand.home->target_register_identity;
+          if (!tied_identity.has_value()) {
+            append_inline_asm_missing_fact(function_carriers,
+                                           carrier,
+                                           "target_invalid_tied_input_register_home");
+          }
+          const auto output_identity = carrier.result_home->target_register_identity;
+          if (!output_identity.has_value()) {
+            append_inline_asm_missing_fact(function_carriers,
+                                           carrier,
+                                           "target_invalid_tied_output_register_home");
+          }
+          if (tied_identity.has_value() && output_identity.has_value()) {
+            if (!inline_asm_identity_matches_register_constraint(*tied_identity) ||
+                !inline_asm_identity_matches_register_constraint(*output_identity)) {
+              append_inline_asm_missing_fact(
+                  function_carriers,
+                  carrier,
+                  "tied_input_output_home_incompatible_register_class");
+            } else if (*tied_identity != *output_identity) {
+              append_inline_asm_missing_fact(function_carriers,
+                                             carrier,
+                                             "tied_input_output_home_mismatch");
+            } else if (operand.tied_output_index.has_value()) {
+              operand.tied_home_authority = PreparedInlineAsmTiedHomeAuthority{
+                  .tied_output_index = *operand.tied_output_index,
+                  .shared_register = *tied_identity,
+              };
+            }
+          }
         }
         break;
       case bir::InlineAsmOperandKind::IntegerImmediateInput:
@@ -2082,6 +2227,7 @@ void validate_pause_hint_intrinsic(
     const bir::CallInst& call,
     std::size_t block_index,
     std::size_t instruction_index,
+    const c4c::TargetProfile& target_profile,
     const PreparedValueLocationFunction* value_locations) {
   const bir::InlineAsmMetadata inline_asm =
       call.inline_asm.value_or(bir::InlineAsmMetadata{});
@@ -2108,6 +2254,10 @@ void validate_pause_hint_intrinsic(
   for (const auto& operand : inline_asm.operands) {
     carrier.operands.push_back(
         make_prepared_inline_asm_operand(names, value_locations, call, operand));
+  }
+  populate_inline_asm_home_identity(target_profile, carrier.result_home);
+  for (auto& operand : carrier.operands) {
+    populate_inline_asm_home_identity(target_profile, operand.home);
   }
 
   if (!call.inline_asm.has_value()) {
@@ -2474,6 +2624,7 @@ void populate_inline_asm_carriers(PreparedBirModule& prepared) {
                                      *call,
                                      block_index,
                                      instruction_index,
+                                     prepared.target_profile,
                                      value_locations));
       }
     }

@@ -759,14 +759,6 @@ find_inline_asm_prepared_output_operand(
          home.register_name.has_value();
 }
 
-[[nodiscard]] bool inline_asm_tied_prepared_homes_agree(
-    const prepare::PreparedValueHome& tied_home,
-    const prepare::PreparedValueHome& output_home) {
-  return inline_asm_prepared_home_is_concrete_register(tied_home) &&
-         inline_asm_prepared_home_is_concrete_register(output_home) &&
-         *tied_home.register_name == *output_home.register_name;
-}
-
 [[nodiscard]] bool require_inline_asm_tied_home_agreement(
     const prepare::PreparedInlineAsmCarrier& carrier,
     const prepare::PreparedInlineAsmOperand& operand,
@@ -804,8 +796,12 @@ find_inline_asm_prepared_output_operand(
     append_tied_diagnostic("tied_input_output_home_requires_concrete_registers");
     return false;
   }
-  if (!inline_asm_tied_prepared_homes_agree(*operand.home, *carrier.result_home)) {
-    append_tied_diagnostic("tied_input_output_home_mismatch");
+  if (!operand.tied_home_authority.has_value()) {
+    append_tied_diagnostic("missing_tied_home_coallocation_authority");
+    return false;
+  }
+  if (operand.tied_home_authority->tied_output_index != *operand.tied_output_index) {
+    append_tied_diagnostic("tied_home_coallocation_authority_output_mismatch");
     return false;
   }
   return true;

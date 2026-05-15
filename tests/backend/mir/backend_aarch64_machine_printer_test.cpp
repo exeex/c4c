@@ -122,6 +122,15 @@ aarch64_codegen::InstructionRecord selected_inline_asm_instruction(
   return instruction;
 }
 
+prepare::PreparedTargetRegisterIdentity gpr_identity(std::size_t physical_index) {
+  return prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Aarch64,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = physical_index,
+  };
+}
+
 aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
     std::string templ = "add %w0, %w1, %w2\nmov %x0, #%3") {
   auto output = wreg(3);
@@ -142,18 +151,21 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
       .value_name = c4c::ValueNameId{50},
       .kind = prepare::PreparedValueHomeKind::Register,
       .register_name = std::string{"w3"},
+      .target_register_identity = gpr_identity(3),
   };
   const prepare::PreparedValueHome tied_home{
       .value_id = prepare::PreparedValueId{51},
       .value_name = c4c::ValueNameId{51},
       .kind = prepare::PreparedValueHomeKind::Register,
       .register_name = std::string{"w3"},
+      .target_register_identity = gpr_identity(3),
   };
   const prepare::PreparedValueHome input_home{
       .value_id = prepare::PreparedValueId{52},
       .value_name = c4c::ValueNameId{52},
       .kind = prepare::PreparedValueHomeKind::Register,
       .register_name = std::string{"w5"},
+      .target_register_identity = gpr_identity(5),
   };
 
   const auto immediate = aarch64_codegen::make_immediate_operand(
@@ -3638,6 +3650,18 @@ int selected_inline_asm_template_prints_from_structured_operands() {
     return check;
   }
 
+  auto alias_record = selected_inline_asm_record("add %w0, %x1, %w2");
+  alias_record.inline_asm_operands[1].home->register_name = std::string{"x3"};
+  alias_record.inline_asm_operands[1].selected_operand =
+      aarch64_codegen::make_register_operand(xreg(3));
+  const auto alias_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(alias_record)));
+  if (!alias_result.ok || alias_result.instruction_lines.size() != 1 ||
+      alias_result.instruction_lines.front() != "add w3, x3, w5") {
+    return fail("expected selected inline-asm tied home authority to allow w3/x3 aliases");
+  }
+
   const auto literal_percent = selected_inline_asm_instruction(
       selected_inline_asm_record("mov %0, %2 // %%literal"));
   const auto literal_result =
@@ -3823,6 +3847,8 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
       selected_inline_asm_record("add %w0, %w1, %w2");
   mismatched_tie_home.inline_asm_operands[1].home->register_name =
       std::string{"w4"};
+  mismatched_tie_home.inline_asm_operands[1].home->target_register_identity =
+      gpr_identity(4);
   const auto mismatched_tie_home_result =
       aarch64_codegen::print_machine_instruction_line_payloads(
           selected_inline_asm_instruction(std::move(mismatched_tie_home)));

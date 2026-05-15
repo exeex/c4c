@@ -718,14 +718,6 @@ bool inline_asm_home_is_concrete_register(
          home.register_name.has_value();
 }
 
-bool inline_asm_tied_homes_agree(
-    const prepare::PreparedValueHome& tied_home,
-    const prepare::PreparedValueHome& output_home) {
-  return inline_asm_home_is_concrete_register(tied_home) &&
-         inline_asm_home_is_concrete_register(output_home) &&
-         *tied_home.register_name == *output_home.register_name;
-}
-
 struct InlineAsmNamedOperandLookup {
   const InlineAsmMachineOperandRecord* operand = nullptr;
   std::string diagnostic;
@@ -838,7 +830,14 @@ std::optional<std::string> inline_asm_operand_text(
       *diagnostic = "inline-asm tied input requires concrete prepared register homes";
       return std::nullopt;
     }
-    if (!inline_asm_tied_homes_agree(*operand.home, *printable_operand->home)) {
+    if (!operand.home->target_register_identity.has_value() ||
+        !printable_operand->home->target_register_identity.has_value()) {
+      *diagnostic =
+          "inline-asm tied input is missing prepared coallocation authority";
+      return std::nullopt;
+    }
+    if (*operand.home->target_register_identity !=
+        *printable_operand->home->target_register_identity) {
       *diagnostic = "inline-asm tied input prepared home disagrees with output";
       return std::nullopt;
     }

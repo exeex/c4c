@@ -3000,7 +3000,7 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
     std::cerr << "[FAIL] positional register input inline asm carrier incomplete\n";
     return EXIT_FAILURE;
   }
-  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Missing ||
       tied_carrier.operands.size() != 3 ||
       tied_carrier.operands[0].kind !=
           bir::InlineAsmOperandKind::RegisterOutput ||
@@ -3011,8 +3011,11 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
       tied_carrier.operands[2].immediate_value.value_or(0) != 7 ||
       !tied_carrier.has_template_modifiers ||
       !tied_carrier.result_home.has_value() ||
-      !tied_carrier.missing_required_facts.empty()) {
-    std::cerr << "[FAIL] output/tie/immediate inline asm carrier incomplete\n";
+      tied_carrier.missing_required_facts.size() != 1 ||
+      tied_carrier.missing_required_facts.front() !=
+          "tied_input_output_home_mismatch" ||
+      tied_carrier.operands[1].tied_home_authority.has_value()) {
+    std::cerr << "[FAIL] output/tie/immediate inline asm carrier should fail closed without proven coallocation\n";
     return EXIT_FAILURE;
   }
   if (clobber_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
@@ -3033,16 +3036,8 @@ int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "inline_asm_carrier asm=\"add %w0, %x0, #7\" "
-                       "constraints=\"=r,0,I\" block_index=0 inst_index=1 "
-                       "side_effects=yes operands=3 result=out result_home=yes",
-                       "complete inline asm carrier")) {
-    return EXIT_FAILURE;
-  }
-  if (!expect_contains(dump,
-                       "operand2[kind=integer_immediate_input,constraint=\"I\","
-                       "arg=1,immediate=7,home=no]",
-                       "integer immediate inline asm operand")) {
+                       "missing fact=inst#1:tied_input_output_home_mismatch",
+                       "unproven tied inline asm carrier missing fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,

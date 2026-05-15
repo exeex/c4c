@@ -178,6 +178,7 @@ enum class InlineAsmCarrierFixtureKind {
   MissingTiedOutputIndex,
   AllocatorDependentTiedInputHome,
   MismatchedTiedInputHome,
+  AliasAwareTiedInputHome,
   UnsupportedOperand,
   SupportedMemoryInputSelection,
   SupportedAddressInputSelection,
@@ -196,12 +197,39 @@ prepare::PreparedValueHome inline_asm_register_home(
     c4c::FunctionNameId function_name,
     c4c::ValueNameId value_name,
     std::string register_name) {
+  std::optional<prepare::PreparedTargetRegisterIdentity> identity;
+  if (register_name.size() >= 2 &&
+      (register_name.front() == 'w' || register_name.front() == 'x')) {
+    identity = prepare::PreparedTargetRegisterIdentity{
+        .target_arch = c4c::TargetArch::Aarch64,
+        .bank = prepare::PreparedRegisterBank::Gpr,
+        .register_class = prepare::PreparedRegisterClass::General,
+        .physical_index =
+            static_cast<std::size_t>(std::stoul(register_name.substr(1))),
+    };
+  }
   return prepare::PreparedValueHome{
       .value_id = value_id,
       .function_name = function_name,
       .value_name = value_name,
       .kind = prepare::PreparedValueHomeKind::Register,
       .register_name = std::move(register_name),
+      .target_register_identity = identity,
+  };
+}
+
+prepare::PreparedInlineAsmTiedHomeAuthority inline_asm_tied_home_authority(
+    std::size_t tied_output_index,
+    std::size_t physical_index) {
+  return prepare::PreparedInlineAsmTiedHomeAuthority{
+      .tied_output_index = tied_output_index,
+      .shared_register =
+          prepare::PreparedTargetRegisterIdentity{
+              .target_arch = c4c::TargetArch::Aarch64,
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_class = prepare::PreparedRegisterClass::General,
+              .physical_index = physical_index,
+          },
   };
 }
 
@@ -272,6 +300,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                       ? "ldr %w0, %2"
                   : kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection
                       ? "adr %x0, %2"
+                  : kind == InlineAsmCarrierFixtureKind::AliasAwareTiedInputHome
+                      ? "add %w0, %x1, %w2"
                   : kind == InlineAsmCarrierFixtureKind::SupportedTemplateModifier
                       ? "add %w0, %w1, %w2\nmov %x0, %x1"
                       : kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
@@ -317,6 +347,7 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
           kind == InlineAsmCarrierFixtureKind::NamedReferences,
       .has_template_modifiers =
           kind == InlineAsmCarrierFixtureKind::NamedReferences ||
+          kind == InlineAsmCarrierFixtureKind::AliasAwareTiedInputHome ||
           kind == InlineAsmCarrierFixtureKind::SupportedTemplateModifier ||
           kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
   };
@@ -355,6 +386,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
     seed_home.register_name = std::nullopt;
   } else if (kind == InlineAsmCarrierFixtureKind::MismatchedTiedInputHome) {
     seed_home.register_name = std::string{"w4"};
+  } else if (kind == InlineAsmCarrierFixtureKind::AliasAwareTiedInputHome) {
+    seed_home.register_name = std::string{"x3"};
   }
   std::optional<prepare::PreparedValueHome> seed_operand_home{seed_home};
   if (kind == InlineAsmCarrierFixtureKind::MissingTiedInputHome) {
@@ -410,6 +443,14 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .value = seed_value,
                .value_name = seed_name,
                .home = seed_operand_home,
+               .tied_home_authority =
+                   kind == InlineAsmCarrierFixtureKind::MismatchedTiedInputHome ||
+                           kind == InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome ||
+                           kind == InlineAsmCarrierFixtureKind::MissingTiedInputHome ||
+                           kind == InlineAsmCarrierFixtureKind::MissingTiedOutputIndex
+                       ? std::nullopt
+                       : std::optional<prepare::PreparedInlineAsmTiedHomeAuthority>{
+                             inline_asm_tied_home_authority(0, 3)},
            },
            prepare::PreparedInlineAsmOperand{
                .kind = selected_input_kind,
@@ -4530,6 +4571,47 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
   return 0;
 }
 
+int block_dispatch_selects_alias_aware_inline_asm_tied_home() {
+  auto prepared =
+      prepared_with_inline_asm_carrier(
+          InlineAsmCarrierFixtureKind::AliasAwareTiedInputHome);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected alias-aware inline-asm tied home to select");
+  }
+  const auto* assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (assembler == nullptr || assembler->inline_asm_operands.size() < 2 ||
+      assembler->inline_asm_operands[1].home->register_name.value_or("") !=
+          "x3" ||
+      !assembler->inline_asm_operands[1]
+           .home->target_register_identity.has_value() ||
+      assembler->inline_asm_operands[1]
+              .home->target_register_identity->physical_index != 3) {
+    return fail("expected selected tied input to preserve alias-aware authority");
+  }
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      block.instructions.front().target);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "add w3, x3, w5") {
+    return fail("expected alias-aware tied inline-asm operands to print");
+  }
+  return 0;
+}
+
 int block_dispatch_selects_inline_asm_structured_clobbers() {
   auto prepared =
       prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::SupportedClobbers);
@@ -4689,7 +4771,7 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{
                     "tied_input_output_home_requires_concrete_registers"}},
       std::pair{InlineAsmCarrierFixtureKind::MismatchedTiedInputHome,
-                std::string_view{"tied_input_output_home_mismatch"}},
+                std::string_view{"missing_tied_home_coallocation_authority"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedMemoryInputSelection,
@@ -8961,6 +9043,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_selects_complete_inline_asm_machine_record();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_selects_alias_aware_inline_asm_tied_home();
       status != 0) {
     return status;
   }

@@ -870,6 +870,25 @@ struct PreparedRegisterGroupOverrides {
   std::vector<PreparedRegisterGroupOverride> values;
 };
 
+struct PreparedTargetRegisterIdentity {
+  c4c::TargetArch target_arch = c4c::TargetArch::Unknown;
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t physical_index = 0;
+
+  friend bool operator==(const PreparedTargetRegisterIdentity& lhs,
+                         const PreparedTargetRegisterIdentity& rhs) {
+    return lhs.target_arch == rhs.target_arch && lhs.bank == rhs.bank &&
+           lhs.register_class == rhs.register_class &&
+           lhs.physical_index == rhs.physical_index;
+  }
+
+  friend bool operator!=(const PreparedTargetRegisterIdentity& lhs,
+                         const PreparedTargetRegisterIdentity& rhs) {
+    return !(lhs == rhs);
+  }
+};
+
 enum class PreparedAllocationStatus {
   Unallocated,
   AssignedRegister,
@@ -1132,6 +1151,7 @@ struct PreparedValueHome {
   ValueNameId value_name = kInvalidValueName;
   PreparedValueHomeKind kind = PreparedValueHomeKind::None;
   std::optional<std::string> register_name;
+  std::optional<PreparedTargetRegisterIdentity> target_register_identity;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> offset_bytes;
   std::optional<std::size_t> size_bytes;
@@ -1882,6 +1902,11 @@ enum class PreparedInlineAsmCarrierKind {
   return "unknown";
 }
 
+struct PreparedInlineAsmTiedHomeAuthority {
+  std::size_t tied_output_index = 0;
+  PreparedTargetRegisterIdentity shared_register;
+};
+
 struct PreparedInlineAsmOperand {
   c4c::backend::bir::InlineAsmOperandKind kind =
       c4c::backend::bir::InlineAsmOperandKind::Unsupported;
@@ -1893,6 +1918,7 @@ struct PreparedInlineAsmOperand {
   std::optional<c4c::backend::bir::Value> value;
   std::optional<ValueNameId> value_name;
   std::optional<PreparedValueHome> home;
+  std::optional<PreparedInlineAsmTiedHomeAuthority> tied_home_authority;
   std::optional<std::int64_t> immediate_value;
   std::optional<std::string> name;
   std::optional<c4c::backend::bir::MemoryAddress> memory_address;
