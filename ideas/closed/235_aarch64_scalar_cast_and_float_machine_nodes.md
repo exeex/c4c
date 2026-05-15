@@ -1,6 +1,6 @@
 # AArch64 Scalar Cast And Float Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
@@ -44,3 +44,30 @@ but their old `x0`/`s0`/`d0` accumulator bridge is not current ownership.
   rather than integer ALU nodes.
 - Float/integer conversions use typed conversion nodes and structured
   register-file transition facts.
+
+## Closure Notes
+
+Closed: 2026-05-15
+
+The active runbook completed the intended supported scalar cast and F32/F64
+route:
+
+- simple integer `SExt`, `ZExt`, and `Trunc` select from prepared value homes
+  and storage facts into structured scalar cast records
+- selected integer casts print typed terminal AArch64 forms from structured
+  operands
+- F32/F64 `Add`, `Sub`, `Mul`, and `Div` select from prepared FPR/SIMD
+  register authority into structured scalar ALU records and print typed FP
+  instruction forms
+- supported `SIToFP`, `UIToFP`, `FPToSI`, `FPToUI`, `FPExt`, and `FPTrunc`
+  select and print from explicit GPR/FPR source/result register and
+  bank-transition facts
+- F128/binary128, i128, pointer casts, bitcasts, missing register/storage
+  authority, and wrong-bank facts remain fail-closed through prepared,
+  selected-record, dispatch, or printer diagnostics
+
+F128/binary128 and i128 behavior remain outside this closed route and should
+stay delegated to their separate source ideas.
+
+Close proof used the accepted full-suite regression artifact in
+`test_before.log`: 3167/3167 tests passed.
