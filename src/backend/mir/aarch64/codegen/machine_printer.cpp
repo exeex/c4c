@@ -2368,6 +2368,71 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
   return target_printed(std::move(lines));
 }
 
+mir::TargetInstructionPrintResult print_scalar_fp_unary_intrinsic(
+    const InstructionRecord& instruction,
+    const ScalarFpUnaryIntrinsicRecord& intrinsic) {
+  if (instruction.family != InstructionFamily::Intrinsic ||
+      instruction.opcode != MachineOpcode::ScalarFpUnaryIntrinsic) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer requires an intrinsic machine opcode");
+  }
+  if (intrinsic.source_carrier == nullptr ||
+      intrinsic.source_carrier->carrier_kind !=
+          prepare::PreparedIntrinsicCarrierKind::Complete) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer requires complete prepared carrier provenance");
+  }
+  if (intrinsic.family != bir::IntrinsicFamilyKind::ScalarFpUnary ||
+      intrinsic.operation != bir::IntrinsicOperationKind::FAbs) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "intrinsic operation is outside the printable scalar FP unary subset");
+  }
+  if ((intrinsic.operand_type != bir::TypeKind::F32 &&
+       intrinsic.operand_type != bir::TypeKind::F64) ||
+      intrinsic.operand_type != intrinsic.result_type) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer requires matching F32/F64 operand and result types");
+  }
+  if (!intrinsic.has_prepared_call_plan) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer requires prepared call-plan authority");
+  }
+  if (intrinsic.has_side_effects || intrinsic.requires_feature) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer only supports side-effect-free feature-free fabs");
+  }
+  const auto* operand_register = std::get_if<RegisterOperand>(&intrinsic.operand.payload);
+  if (!intrinsic.result_register.has_value() ||
+      intrinsic.operand.kind != OperandKind::Register ||
+      operand_register == nullptr) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer requires explicit operand and result registers");
+  }
+  const auto view = floating_register_view(intrinsic.operand_type);
+  if (!view.has_value()) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer has no register view for operand type");
+  }
+  const auto result = fp_register_name_with_view(*intrinsic.result_register, *view);
+  const auto operand = fp_register_name_with_view(*operand_register, *view);
+  if (!result.has_value() || !operand.has_value()) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "scalar FP unary intrinsic printer has incomplete printable FPR register facts");
+  }
+  std::ostringstream out;
+  out << "fabs " << *result << ", " << *operand;
+  return target_printed({out.str()});
+}
+
 mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruction,
                                                const ReturnInstructionRecord& ret) {
   std::vector<std::string> lines;
@@ -2493,6 +2558,10 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   }
   if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     return print_scalar(instruction, *scalar);
+  }
+  if (const auto* intrinsic =
+          std::get_if<ScalarFpUnaryIntrinsicRecord>(&instruction.payload)) {
+    return print_scalar_fp_unary_intrinsic(instruction, *intrinsic);
   }
   if (const auto* ret = std::get_if<ReturnInstructionRecord>(&instruction.payload)) {
     return print_return(instruction, *ret);

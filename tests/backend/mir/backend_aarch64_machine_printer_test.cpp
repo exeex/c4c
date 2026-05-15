@@ -119,6 +119,67 @@ const prepare::PreparedAtomicOperationCarrier* complete_atomic_carrier() {
   return &carrier;
 }
 
+const prepare::PreparedIntrinsicCarrier* complete_scalar_fp_unary_fabs_carrier(
+    bir::TypeKind type) {
+  static const prepare::PreparedIntrinsicCarrier f32_carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+      .operation = bir::IntrinsicOperationKind::FAbs,
+      .operand_type = bir::TypeKind::F32,
+      .result_type = bir::TypeKind::F32,
+      .operand = bir::Value::named(bir::TypeKind::F32, "%arg"),
+      .result = bir::Value::named(bir::TypeKind::F32, "%fabs"),
+      .operand_value_name = c4c::ValueNameId{82},
+      .result_value_name = c4c::ValueNameId{83},
+      .source_callee_name = std::string{"llvm.fabs.float"},
+      .has_prepared_call_plan = true,
+  };
+  static const prepare::PreparedIntrinsicCarrier f64_carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+      .operation = bir::IntrinsicOperationKind::FAbs,
+      .operand_type = bir::TypeKind::F64,
+      .result_type = bir::TypeKind::F64,
+      .operand = bir::Value::named(bir::TypeKind::F64, "%arg"),
+      .result = bir::Value::named(bir::TypeKind::F64, "%fabs"),
+      .operand_value_name = c4c::ValueNameId{84},
+      .result_value_name = c4c::ValueNameId{85},
+      .source_callee_name = std::string{"llvm.fabs.double"},
+      .has_prepared_call_plan = true,
+  };
+  return type == bir::TypeKind::F32 ? &f32_carrier : &f64_carrier;
+}
+
+aarch64_codegen::ScalarFpUnaryIntrinsicRecord scalar_fp_unary_fabs_record(
+    bir::TypeKind type,
+    aarch64_codegen::RegisterOperand result_register,
+    aarch64_codegen::RegisterOperand operand_register) {
+  operand_register.value_id = prepare::PreparedValueId{82};
+  operand_register.value_name = c4c::ValueNameId{82};
+  result_register.value_id = prepare::PreparedValueId{83};
+  result_register.value_name = c4c::ValueNameId{83};
+  return aarch64_codegen::ScalarFpUnaryIntrinsicRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .source_carrier = complete_scalar_fp_unary_fabs_carrier(type),
+      .family = bir::IntrinsicFamilyKind::ScalarFpUnary,
+      .operation = bir::IntrinsicOperationKind::FAbs,
+      .operand_type = type,
+      .result_type = type,
+      .operand_value_id = prepare::PreparedValueId{82},
+      .operand_value_name = c4c::ValueNameId{82},
+      .result_value_id = prepare::PreparedValueId{83},
+      .result_value_name = c4c::ValueNameId{83},
+      .operand = aarch64_codegen::make_register_operand(operand_register),
+      .result_register = result_register,
+      .source_callee_name = type == bir::TypeKind::F32
+                                ? std::optional<std::string>{"llvm.fabs.float"}
+                                : std::optional<std::string>{"llvm.fabs.double"},
+      .has_prepared_call_plan = true,
+  };
+}
+
 aarch64_codegen::AtomicMemoryInstructionRecord base_atomic_record(
     aarch64_codegen::AtomicMemoryInstructionKind kind,
     std::size_t instruction_index,
@@ -1517,6 +1578,96 @@ int selected_fp_arithmetic_prints_from_structured_operands() {
                          expected,
                          expected,
                          "FP arithmetic common-printer drift guard");
+}
+
+int selected_scalar_fp_unary_fabs_intrinsics_print_from_structured_records() {
+  const auto f32 = aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(
+      scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(6), sreg(7)));
+  const auto f64 = aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(
+      scalar_fp_unary_fabs_record(bir::TypeKind::F64, dreg(8), dreg(9)));
+  const auto result = print_common_instruction_nodes({f32, f64});
+  if (!result.ok) {
+    return fail("expected selected scalar fabs intrinsic records to print: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    fabs s6, s7\n"
+      "    fabs d8, d9\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "scalar fabs intrinsic structured printer");
+}
+
+int selected_scalar_fp_unary_fabs_intrinsics_reject_incomplete_printer_facts() {
+  auto missing_result = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
+  missing_result.result_register = std::nullopt;
+  const auto missing_result_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(missing_result);
+  const auto missing_result_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_result_instruction);
+  if (missing_result_print.ok ||
+      missing_result_print.diagnostic.find("missing operand or result register authority") ==
+          std::string::npos) {
+    return fail("expected fabs intrinsic without result register authority to fail closed");
+  }
+
+  auto wrong_bank = scalar_fp_unary_fabs_record(bir::TypeKind::F64, dreg(2), dreg(3));
+  wrong_bank.result_register = xreg(2);
+  wrong_bank.result_register->value_id = prepare::PreparedValueId{83};
+  wrong_bank.result_register->value_name = c4c::ValueNameId{83};
+  const auto wrong_bank_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(wrong_bank);
+  const auto wrong_bank_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(wrong_bank_instruction);
+  if (wrong_bank_print.ok ||
+      wrong_bank_print.diagnostic.find("incomplete printable FPR register facts") ==
+          std::string::npos) {
+    return fail("expected fabs intrinsic with non-FPR result register to fail closed");
+  }
+
+  auto side_effecting = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(4), sreg(5));
+  side_effecting.has_side_effects = true;
+  side_effecting.requires_feature = true;
+  auto side_effecting_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(side_effecting);
+  side_effecting_instruction.selection.status =
+      aarch64_codegen::MachineNodeSelectionStatus::Selected;
+  side_effecting_instruction.selection.diagnostic = {};
+  const auto side_effecting_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(side_effecting_instruction);
+  if (side_effecting_print.ok ||
+      side_effecting_print.diagnostic.find("side-effect-free feature-free fabs") ==
+          std::string::npos) {
+    return fail("expected feature or side-effect fabs record to fail closed in printer");
+  }
+
+  auto f128 = scalar_fp_unary_fabs_record(bir::TypeKind::F64, dreg(6), dreg(7));
+  f128.operand_type = bir::TypeKind::F128;
+  f128.result_type = bir::TypeKind::F128;
+  const auto f128_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(f128);
+  const auto f128_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(f128_instruction);
+  if (f128_print.ok ||
+      f128_print.diagnostic.find("type is outside the selected subset") ==
+          std::string::npos) {
+    return fail("expected F128 fabs-shaped intrinsic record to fail closed");
+  }
+
+  auto non_selected = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(8), sreg(9));
+  non_selected.has_prepared_call_plan = false;
+  const auto non_selected_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(non_selected);
+  const auto non_selected_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(non_selected_instruction);
+  if (non_selected_print.ok ||
+      non_selected_print.diagnostic.find("requires prepared call-plan authority") ==
+          std::string::npos) {
+    return fail("expected non-selected fabs intrinsic record to fail closed");
+  }
+
+  return 0;
 }
 
 int selected_fp_conversions_print_from_structured_operands() {
@@ -3706,6 +3857,16 @@ int main() {
     return result;
   }
   if (const int result = selected_fp_arithmetic_prints_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_scalar_fp_unary_fabs_intrinsics_print_from_structured_records();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_scalar_fp_unary_fabs_intrinsics_reject_incomplete_printer_facts();
       result != 0) {
     return result;
   }
