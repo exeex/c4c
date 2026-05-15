@@ -1573,6 +1573,81 @@ struct PreparedStoragePlans {
   std::vector<PreparedStoragePlanFunction> functions;
 };
 
+enum class PreparedI128CarrierKind {
+  Missing,
+  RegisterPair,
+  MemoryBacked,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_carrier_kind_name(
+    PreparedI128CarrierKind kind) {
+  switch (kind) {
+    case PreparedI128CarrierKind::Missing:
+      return "missing";
+    case PreparedI128CarrierKind::RegisterPair:
+      return "register_pair";
+    case PreparedI128CarrierKind::MemoryBacked:
+      return "memory_backed";
+  }
+  return "unknown";
+}
+
+enum class PreparedI128LaneRole {
+  Low,
+  High,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_lane_role_name(
+    PreparedI128LaneRole role) {
+  switch (role) {
+    case PreparedI128LaneRole::Low:
+      return "low";
+    case PreparedI128LaneRole::High:
+      return "high";
+  }
+  return "unknown";
+}
+
+struct PreparedI128LaneCarrier {
+  PreparedI128LaneRole role = PreparedI128LaneRole::Low;
+  std::size_t lane_index = 0;
+  std::size_t width_bytes = 8;
+  std::optional<std::string> register_name;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+};
+
+struct PreparedI128Carrier {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedValueId value_id = 0;
+  ValueNameId value_name = kInvalidValueName;
+  c4c::backend::bir::TypeKind source_type = c4c::backend::bir::TypeKind::I128;
+  PreparedI128CarrierKind kind = PreparedI128CarrierKind::Missing;
+  std::size_t lane_width_bytes = 8;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+  PreparedRegisterClass register_class = PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  PreparedI128LaneCarrier low_lane{.role = PreparedI128LaneRole::Low, .lane_index = 0};
+  PreparedI128LaneCarrier high_lane{.role = PreparedI128LaneRole::High, .lane_index = 1};
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedI128CarrierFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedI128Carrier> carriers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedI128Carriers {
+  std::vector<PreparedI128CarrierFunction> functions;
+};
+
 enum class PrepareRoute {
   SemanticBirShared,
 };
@@ -4550,6 +4625,7 @@ struct PreparedBirModule {
   PreparedCallPlans call_plans;
   PreparedVariadicEntryPlans variadic_entry_plans;
   PreparedStoragePlans storage_plans;
+  PreparedI128Carriers i128_carriers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
 };
@@ -4712,6 +4788,45 @@ find_prepared_variadic_entry_helper_operand_homes(
     const PreparedBirModule& module,
     FunctionNameId function_name) {
   return find_prepared_storage_plan(module.storage_plans, function_name);
+}
+
+[[nodiscard]] inline const PreparedI128CarrierFunction* find_prepared_i128_carriers(
+    const PreparedI128Carriers& carriers,
+    FunctionNameId function_name) {
+  for (const auto& function_carriers : carriers.functions) {
+    if (function_carriers.function_name == function_name) {
+      return &function_carriers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedI128CarrierFunction* find_prepared_i128_carriers(
+    const PreparedBirModule& module,
+    FunctionNameId function_name) {
+  return find_prepared_i128_carriers(module.i128_carriers, function_name);
+}
+
+[[nodiscard]] inline const PreparedI128Carrier* find_prepared_i128_carrier(
+    const PreparedI128CarrierFunction& function_carriers,
+    PreparedValueId value_id) {
+  for (const auto& carrier : function_carriers.carriers) {
+    if (carrier.value_id == value_id) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedI128Carrier* find_prepared_i128_carrier(
+    const PreparedI128CarrierFunction& function_carriers,
+    ValueNameId value_name) {
+  for (const auto& carrier : function_carriers.carriers) {
+    if (carrier.value_name == value_name) {
+      return &carrier;
+    }
+  }
+  return nullptr;
 }
 
 [[nodiscard]] inline const PreparedValueHome* find_prepared_value_home(

@@ -150,6 +150,22 @@ const prepare::PreparedStoragePlanValue* find_storage_value(
   return nullptr;
 }
 
+const prepare::PreparedI128Carrier* find_i128_carrier(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::string_view value_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (function_id == c4c::kInvalidFunctionName || value_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* function_carriers = prepare::find_prepared_i128_carriers(prepared, function_id);
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  return prepare::find_prepared_i128_carrier(*function_carriers, value_id);
+}
+
 void set_register_group_override(prepare::PreparedBirModule& prepared,
                                  std::string_view function_name,
                                  std::string_view value_name,
@@ -2176,6 +2192,276 @@ prepare::PreparedBirModule prepare_grouped_evicted_spill_module_with_regalloc() 
   regalloc_planner.run_regalloc();
   regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
+}
+
+bir::Module make_i128_carrier_contract_module(std::string_view function_name) {
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = std::string(function_name);
+  function.return_type = bir::TypeKind::I128;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.value",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  auto entry = make_block(module, "entry");
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I128, "p.value")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+prepare::PreparedBirModule prepare_i128_memory_carrier_contract_module() {
+  return prepare::prepare_semantic_bir_module_with_options(
+      make_i128_carrier_contract_module("i128_memory_carrier_contract"),
+      riscv_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
+prepare::PreparedBirModule prepare_i128_register_pair_carrier_contract_module() {
+  prepare::PreparedBirModule seeded;
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  bir::Function function;
+  function.name = "i128_register_pair_carrier_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.rhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I128, "sum0"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I128, "sum1"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "sum0"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  seeded.module = std::move(module);
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "i128_register_pair_carrier_contract",
+                              "sum0",
+                              prepare::PreparedRegisterClass::General,
+                              2);
+
+  options.run_legalize = false;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), options);
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_i128_incomplete_register_carrier_contract_module() {
+  prepare::PreparedBirModule seeded;
+  bir::Module module;
+  module.target_triple = "riscv64-unknown-linux-gnu";
+  bir::Function function;
+  function.name = "i128_incomplete_register_carrier_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I128,
+      .name = "p.rhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I128, "sum0"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I128, "sum1"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "sum0"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  seeded.module = std::move(module);
+  seeded.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "i128_incomplete_register_carrier_contract",
+                              "sum0",
+                              prepare::PreparedRegisterClass::General,
+                              1);
+
+  options.run_legalize = false;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), options);
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
+int check_i128_memory_backed_carrier_authority() {
+  const auto prepared = prepare_i128_memory_carrier_contract_module();
+  const auto* carrier =
+      find_i128_carrier(prepared, "i128_memory_carrier_contract", "p.value");
+  if (carrier == nullptr) {
+    return fail("expected prepared i128 memory-backed carrier for stack-assigned i128 value");
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::MemoryBacked ||
+      carrier->source_type != bir::TypeKind::I128 ||
+      carrier->lane_width_bytes != 8 ||
+      carrier->total_size_bytes != 16 ||
+      carrier->total_align_bytes != 16 ||
+      !carrier->slot_id.has_value() ||
+      !carrier->stack_offset_bytes.has_value() ||
+      carrier->low_lane.slot_id != carrier->slot_id ||
+      carrier->high_lane.slot_id != carrier->slot_id ||
+      carrier->low_lane.stack_offset_bytes != carrier->stack_offset_bytes ||
+      carrier->high_lane.stack_offset_bytes !=
+          std::optional<std::size_t>{*carrier->stack_offset_bytes + 8} ||
+      !carrier->missing_required_facts.empty()) {
+    return fail("prepared i128 memory-backed carrier lost lane offsets or storage authority");
+  }
+
+  const auto dump = prepare::print(prepared);
+  if (dump.find("--- prepared-i128-carriers ---") == std::string::npos ||
+      dump.find("kind=memory_backed") == std::string::npos ||
+      dump.find("low[index=0,width=8") == std::string::npos ||
+      dump.find("high[index=1,width=8") == std::string::npos) {
+    return fail("prepared printer did not expose structured i128 memory-backed carrier facts");
+  }
+  return 0;
+}
+
+int check_i128_register_pair_carrier_authority() {
+  const auto prepared = prepare_i128_register_pair_carrier_contract_module();
+  const auto* carrier =
+      find_i128_carrier(prepared, "i128_register_pair_carrier_contract", "sum0");
+  if (carrier == nullptr) {
+    return fail("expected prepared i128 register-pair carrier for grouped i128 value");
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+      carrier->register_class != prepare::PreparedRegisterClass::General ||
+      carrier->register_bank != prepare::PreparedRegisterBank::Gpr ||
+      carrier->contiguous_width != 2 ||
+      carrier->occupied_register_names.size() != 2 ||
+      carrier->low_lane.register_name !=
+          std::optional<std::string>{carrier->occupied_register_names[0]} ||
+      carrier->high_lane.register_name !=
+          std::optional<std::string>{carrier->occupied_register_names[1]} ||
+      carrier->low_lane.width_bytes != 8 ||
+      carrier->high_lane.width_bytes != 8 ||
+      !carrier->register_placement.has_value() ||
+      carrier->register_placement->contiguous_width != 2 ||
+      !carrier->missing_required_facts.empty()) {
+    return fail("prepared i128 register-pair carrier lost low/high lane register authority");
+  }
+
+  const auto dump = prepare::print(prepared);
+  if (dump.find("kind=register_pair") == std::string::npos ||
+      dump.find("class=general") == std::string::npos ||
+      dump.find("low[index=0,width=8,reg=") == std::string::npos ||
+      dump.find("high[index=1,width=8,reg=") == std::string::npos) {
+    return fail("prepared printer did not expose structured i128 register-pair carrier facts");
+  }
+  return 0;
+}
+
+int check_i128_incomplete_register_carrier_diagnostics() {
+  const auto prepared = prepare_i128_incomplete_register_carrier_contract_module();
+  const auto* carrier =
+      find_i128_carrier(prepared, "i128_incomplete_register_carrier_contract", "sum0");
+  if (carrier == nullptr) {
+    return fail("expected prepared i128 carrier record for incomplete register-pair candidate");
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::Missing ||
+      carrier->missing_required_facts.size() != 1 ||
+      carrier->missing_required_facts.front() !=
+          "register_pair_requires_width_2_and_two_structured_occupied_registers") {
+    return fail("expected incomplete i128 register carrier to diagnose missing pair authority");
+  }
+
+  const auto function_id =
+      prepared.names.function_names.find("i128_incomplete_register_carrier_contract");
+  const auto* function_carriers =
+      function_id == c4c::kInvalidFunctionName
+          ? nullptr
+          : prepare::find_prepared_i128_carriers(prepared, function_id);
+  if (function_carriers == nullptr ||
+      function_carriers->missing_required_facts.empty()) {
+    return fail("expected function-level i128 carrier missing-fact diagnostics");
+  }
+
+  const auto dump = prepare::print(prepared);
+  if (dump.find("kind=missing") == std::string::npos ||
+      dump.find("register_pair_requires_width_2_and_two_structured_occupied_registers") ==
+          std::string::npos) {
+    return fail("prepared printer did not expose i128 missing pair diagnostics");
+  }
+  return 0;
 }
 
 prepare::PreparedBirModule prepare_general_grouped_evicted_spill_module_with_regalloc() {
@@ -5977,6 +6263,15 @@ int main() {
 
   const auto grouped_evicted_spill_prepared = prepare_grouped_evicted_spill_module_with_regalloc();
   if (const int rc = check_grouped_evicted_value_spill_ops(grouped_evicted_spill_prepared); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i128_memory_backed_carrier_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i128_register_pair_carrier_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i128_incomplete_register_carrier_diagnostics(); rc != 0) {
     return rc;
   }
   const auto general_grouped_evicted_spill_prepared =
