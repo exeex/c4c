@@ -617,6 +617,14 @@ std::string_view prepared_memory_operand_record_error_name(
       return "result_value_mismatch";
     case PreparedMemoryOperandRecordError::StoredValueMismatch:
       return "stored_value_mismatch";
+    case PreparedMemoryOperandRecordError::MissingResultValueHome:
+      return "missing_result_value_home";
+    case PreparedMemoryOperandRecordError::MissingResultStorage:
+      return "missing_result_storage";
+    case PreparedMemoryOperandRecordError::UnsupportedResultStorage:
+      return "unsupported_result_storage";
+    case PreparedMemoryOperandRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
   }
   return "unknown";
 }
@@ -836,6 +844,11 @@ PreparedScalarCastRecordResult scalar_cast_record_error(PreparedScalarCastRecord
 PreparedMemoryOperandRecordResult memory_operand_record_error(
     PreparedMemoryOperandRecordError error) {
   return PreparedMemoryOperandRecordResult{.record = std::nullopt, .error = error};
+}
+
+PreparedMemoryInstructionRecordResult memory_instruction_record_error(
+    PreparedMemoryOperandRecordError error) {
+  return PreparedMemoryInstructionRecordResult{.record = std::nullopt, .error = error};
 }
 
 PreparedAddressMaterializationRecordResult address_materialization_record_error(
@@ -2869,7 +2882,12 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
   std::vector<MachineEffectResource> defs;
   std::vector<MachineEffectResource> uses = effects_from_operands(operands);
   if (instruction.memory_kind == MemoryInstructionKind::Load) {
-    defs.push_back(prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+    if (instruction.result_register.has_value()) {
+      defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+    } else {
+      defs.push_back(
+          prepared_value_def(instruction.result_value_id, instruction.result_value_name));
+    }
   }
   const auto selection = memory_selection_status(instruction);
   return InstructionRecord{
@@ -3609,6 +3627,76 @@ PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     return memory_operand_record_error(error);
   }
   return result;
+}
+
+PreparedMemoryInstructionRecordResult
+make_prepared_frame_slot_load_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::LoadLocalInst& load) {
+  if (storage_plan.function_name != value_locations.function_name ||
+      storage_plan.function_name != addressing.function_name) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
+  }
+
+  const auto operand = make_prepared_memory_operand_record(
+      names, value_locations, addressing, block_label, instruction_index, load);
+  if (!operand.record.has_value()) {
+    return memory_instruction_record_error(operand.error);
+  }
+  if (operand.record->base_kind != MemoryBaseKind::FrameSlot) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
+  }
+  if (!operand.record->result_value_id.has_value() ||
+      !operand.record->result_value_name.has_value()) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingResultValueHome);
+  }
+
+  const auto* result_home =
+      prepare::find_prepared_value_home(value_locations, *operand.record->result_value_id);
+  if (result_home == nullptr ||
+      result_home->value_name != *operand.record->result_value_name ||
+      result_home->kind != prepare::PreparedValueHomeKind::Register) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingResultValueHome);
+  }
+
+  const auto* result_storage =
+      find_storage_plan_value(storage_plan, *operand.record->result_value_id);
+  if (result_storage == nullptr ||
+      result_storage->value_name != *operand.record->result_value_name) {
+    return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingResultStorage);
+  }
+  if (result_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::UnsupportedResultStorage);
+  }
+
+  auto result_register =
+      make_prepared_register_operand(
+          *result_home, *result_storage, load.result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::RegisterConversionFailed);
+  }
+
+  return PreparedMemoryInstructionRecordResult{
+      .record =
+          MemoryInstructionRecord{
+              .memory_kind = MemoryInstructionKind::Load,
+              .address = *operand.record,
+              .result_value_id = operand.record->result_value_id,
+              .result_value_name = *operand.record->result_value_name,
+              .value_type = load.result.type,
+              .result_register = *result_register,
+          },
+      .error = PreparedMemoryOperandRecordError::None,
+  };
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(

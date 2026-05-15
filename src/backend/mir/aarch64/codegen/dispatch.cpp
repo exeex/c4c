@@ -163,6 +163,25 @@ void append_address_materialization_diagnostic(
   });
 }
 
+void append_memory_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
+                              module::ModuleLoweringDiagnosticKind kind,
+                              const module::BlockLoweringContext& context,
+                              std::size_t instruction_index,
+                              std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Memory,
+      .message = std::move(message),
+  });
+}
+
 [[nodiscard]] std::optional<prepare::PreparedVariadicEntryHelperKind>
 variadic_entry_helper_kind(std::string_view callee) {
   if (callee == "llvm.va_start.p0") {
@@ -400,6 +419,20 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
+[[nodiscard]] std::string memory_error_message(
+    PreparedMemoryOperandRecordError error) {
+  std::string message =
+      "AArch64 memory lowering requires prepared memory and destination facts";
+  message += "; error=";
+  message += prepared_memory_operand_record_error_name(error);
+  return message;
+}
+
+struct LowerMemoryInstructionResult {
+  bool handled = false;
+  std::optional<module::MachineInstruction> instruction;
+};
+
 [[nodiscard]] std::optional<module::MachineInstruction> lower_address_materialization(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -465,6 +498,95 @@ require_prepared_variadic_entry_plan(
               .function_name = context.function.control_flow->function_name,
               .block_label = context.control_flow_block->block_label,
               .instruction_index = instruction_index,
+          },
+  };
+}
+
+[[nodiscard]] LowerMemoryInstructionResult lower_memory_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+  module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+  if (load == nullptr) {
+    return LowerMemoryInstructionResult{.handled = false};
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        memory_error_message(PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  const auto* addressing =
+      prepare::find_prepared_addressing(*context.function.prepared,
+                                        context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        memory_error_message(PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  const auto prepared = make_prepared_frame_slot_load_memory_instruction_record(
+      context.function.prepared->names,
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      *addressing,
+      context.control_flow_block->block_label,
+      instruction_index,
+      *load);
+  if (!prepared.record.has_value()) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        memory_error_message(prepared.error));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  InstructionRecord target = make_memory_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        std::string{target.selection.diagnostic});
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  return LowerMemoryInstructionResult{
+      .handled = true,
+      .instruction =
+          module::MachineInstruction{
+              .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+              .operands = {},
+              .target = std::move(target),
+              .origin =
+                  c4c::backend::mir::MachineOrigin{
+                      .reason =
+                          c4c::backend::mir::MachineOriginReason::BirInstruction,
+                      .function_name = context.function.control_flow->function_name,
+                      .block_label = context.control_flow_block->block_label,
+                      .instruction_index = instruction_index,
+                  },
           },
   };
 }
@@ -1165,8 +1287,24 @@ InstructionDispatchResult dispatch_prepared_block(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));
       } else {
-        append_unsupported_instruction_diagnostic(
-            diagnostics, context, inst, instruction_index);
+        auto lowered_memory =
+            lower_memory_instruction(context, inst, instruction_index, diagnostics);
+        if (lowered_memory.handled) {
+          if (lowered_memory.instruction.has_value()) {
+            if (const auto* memory_record =
+                    std::get_if<MemoryInstructionRecord>(
+                        &lowered_memory.instruction->target.payload);
+                memory_record != nullptr && memory_record->result_register.has_value()) {
+              record_emitted_scalar_register(scalar_state,
+                                             memory_record->result_value_name,
+                                             *memory_record->result_register);
+            }
+            block.instructions.push_back(std::move(*lowered_memory.instruction));
+          }
+        } else {
+          append_unsupported_instruction_diagnostic(
+              diagnostics, context, inst, instruction_index);
+        }
       }
       ++result.visited_operations;
     }

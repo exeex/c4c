@@ -34,6 +34,21 @@ prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,
   };
 }
 
+prepare::PreparedStoragePlanValue memory_register_storage(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
 struct PreparedMemoryFixture {
   prepare::PreparedNameTables names;
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
@@ -45,6 +60,7 @@ struct PreparedMemoryFixture {
   c4c::LinkNameId string_symbol_name = c4c::kInvalidLinkName;
   c4c::TextId string_text_name = c4c::kInvalidText;
   prepare::PreparedValueLocationFunction locations;
+  prepare::PreparedStoragePlanFunction storage;
   prepare::PreparedAddressingFunction addressing;
 };
 
@@ -93,6 +109,18 @@ PreparedMemoryFixture make_fixture() {
                             fixture.function_name,
                             fixture.pointer_name,
                             "x2"),
+          },
+  };
+  fixture.storage = prepare::PreparedStoragePlanFunction{
+      .function_name = fixture.function_name,
+      .values =
+          {
+              memory_register_storage(
+                  prepare::PreparedValueId{10}, fixture.load_name, "w0"),
+              memory_register_storage(
+                  prepare::PreparedValueId{11}, fixture.stored_name, "w1"),
+              memory_register_storage(
+                  prepare::PreparedValueId{12}, fixture.pointer_name, "x2"),
           },
   };
   fixture.addressing = prepare::PreparedAddressingFunction{
@@ -349,6 +377,61 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
       memory.address_space != bir::AddressSpace::Fs || !memory.is_volatile ||
       !memory.can_use_base_plus_offset) {
     return fail("expected frame-slot record to preserve address facts");
+  }
+
+  const auto selected =
+      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          2,
+          load);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected frame-slot load machine record to select");
+  }
+  const auto& load_record = *selected.record;
+  if (load_record.memory_kind != aarch64_codegen::MemoryInstructionKind::Load ||
+      load_record.address.frame_slot_id != prepare::PreparedFrameSlotId{20} ||
+      load_record.result_value_id != prepare::PreparedValueId{10} ||
+      load_record.result_value_name != fixture.load_name ||
+      !load_record.result_register.has_value() ||
+      load_record.result_register->value_id != prepare::PreparedValueId{10} ||
+      load_record.result_register->value_name != fixture.load_name ||
+      load_record.result_register->occupied_registers.empty() ||
+      load_record.result_register->occupied_registers.front() != "w0") {
+    return fail("expected frame-slot load machine record to preserve result register");
+  }
+
+  const auto instruction = aarch64_codegen::make_memory_instruction(load_record);
+  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::Load ||
+      instruction.side_effects.empty() ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryRead ||
+      instruction.defs.empty() ||
+      instruction.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      !instruction.defs.front().reg.has_value()) {
+    return fail("expected selected frame-slot load instruction to define result register");
+  }
+
+  fixture.storage.values.clear();
+  const auto missing_storage =
+      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          2,
+          load);
+  if (missing_storage.record.has_value() ||
+      missing_storage.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::MissingResultStorage ||
+      aarch64_codegen::prepared_memory_operand_record_error_name(missing_storage.error) !=
+          "missing_result_storage") {
+    return fail("expected missing load destination storage to fail closed");
   }
   return 0;
 }

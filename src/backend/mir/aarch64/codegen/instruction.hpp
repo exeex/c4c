@@ -276,6 +276,10 @@ enum class PreparedMemoryOperandRecordError {
   StringIdentityMismatch,
   ResultValueMismatch,
   StoredValueMismatch,
+  MissingResultValueHome,
+  MissingResultStorage,
+  UnsupportedResultStorage,
+  RegisterConversionFailed,
 };
 
 enum class AddressMaterializationKind {
@@ -566,6 +570,12 @@ struct MemoryInstructionRecord {
   std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   bir::TypeKind value_type = bir::TypeKind::Void;
+  std::optional<RegisterOperand> result_register;
+};
+
+struct PreparedMemoryInstructionRecordResult {
+  std::optional<MemoryInstructionRecord> record;
+  PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
 };
 
 struct AddressMaterializationRecord {
@@ -998,6 +1008,15 @@ make_prepared_scalar_cast_instruction_record(
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index,
+    const bir::LoadLocalInst& load);
+[[nodiscard]] PreparedMemoryInstructionRecordResult
+make_prepared_frame_slot_load_memory_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedAddressingFunction& addressing,
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
