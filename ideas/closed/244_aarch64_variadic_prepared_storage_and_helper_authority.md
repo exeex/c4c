@@ -1,7 +1,8 @@
 # AArch64 Variadic Prepared Storage And Helper Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 
@@ -71,6 +72,21 @@ placement, scratch policy, or concrete homes for helper pointer operands.
   and that incomplete authority still fails closed.
 - Idea 243 can be reactivated with AArch64 target lowering consuming these
   facts instead of deriving them locally.
+
+## Closure Notes
+
+- Prepared variadic entry facts now expose register-save-area slot id and
+  stack offset plus overflow-area base slot id and stack offset.
+- Helper scratch register count and scratch stack bytes are explicit prepared
+  or shared facts for recognized variadic helper families.
+- Helper operand-home facts preserve concrete `va_list`, scalar result,
+  aggregate payload, and `va_copy` source/destination homes for selected-node
+  consumers.
+- Matching backend close-gate logs passed the monotonic regression guard:
+  `test_before.log` and `test_after.log` both report 139 passed, 0 failed,
+  139 total for the `^backend_` scope.
+- Idea 243 is unblocked for selected machine-node consumption from these
+  prepared/shared facts.
 
 ## Reviewer Reject Signals
 

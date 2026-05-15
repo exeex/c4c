@@ -1,173 +1,210 @@
-# AArch64 Variadic Prepared Storage And Helper Authority Runbook
+# AArch64 Variadic Machine Node Consumption Runbook
 
 Status: Active
-Source Idea: ideas/open/244_aarch64_variadic_prepared_storage_and_helper_authority.md
-Activated from: ideas/open/244_aarch64_variadic_prepared_storage_and_helper_authority.md
-Supersedes active runbook: ideas/open/243_aarch64_variadic_machine_node_consumption.md is parked on a prepared-authority blocker.
+Source Idea: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Activated from: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Reactivated after closing prerequisite: ideas/closed/244_aarch64_variadic_prepared_storage_and_helper_authority.md
 
 ## Purpose
 
-Provide the prepared/shared storage, scratch-resource, and helper operand-home
-facts required before AArch64 variadic helper machine-node lowering can consume
-`va_start`, scalar `va_arg`, aggregate `va_arg`, or `va_copy`.
+Consume prepared AArch64 variadic-entry facts in selected machine-node lowering
+for `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy` without
+rebuilding AAPCS64 ABI or frame-layout decisions in target codegen.
 
 ## Goal
 
-Make the missing variadic authority explicit and structurally available, while
-keeping AArch64 helper lowering fail-closed until idea 243 can consume those
-facts without local ABI reconstruction.
+Produce structured AArch64 machine-node records and printer output for
+representative variadic helper paths from complete prepared/shared facts, or
+stop with an exact lifecycle blocker naming any remaining missing prepared
+storage, scratch, or operand-home fact.
 
 ## Core Rule
 
-This runbook prepares authority only. It must not implement selected
-machine-node lowering for variadic helpers or move AAPCS64 frame/layout/scratch
-decisions into AArch64 target lowering.
+AArch64 lowering may consume prepared variadic facts, but must not reconstruct
+AAPCS64 `va_list` layout, register-save areas, overflow-area offsets, named
+argument counts, operand homes, or scratch-resource policy locally.
 
 ## Read First
 
-- `ideas/open/244_aarch64_variadic_prepared_storage_and_helper_authority.md`
 - `ideas/open/243_aarch64_variadic_machine_node_consumption.md`
 - `ideas/closed/232_aarch64_variadic_function_entry_carriers.md`
+- `ideas/closed/244_aarch64_variadic_prepared_storage_and_helper_authority.md`
 - `src/backend/prealloc/prealloc.hpp`
 - `src/backend/prealloc/prealloc.cpp`
 - `src/backend/prealloc/prepared_printer.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
 - `src/backend/mir/aarch64/codegen/instruction.hpp`
 - `src/backend/mir/aarch64/codegen/instruction.cpp`
-- focused tests under `tests/backend/mir/`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `src/backend/mir/aarch64/codegen/variadic.md`
+- focused tests under `tests/backend/mir/` and variadic C cases under
+  `tests/c/internal/abi/`
 
 ## Current Targets
 
-- `PreparedVariadicEntryPlanFunction` storage facts.
-- Register-save-area slot id and stack offset.
-- Overflow-area base slot id and base stack offset.
-- Helper scratch register and scratch stack byte facts.
-- Helper operand-home facts for `va_list` pointers and helper destinations.
-- Missing-fact diagnostics that prevent target-local reconstruction.
+- `PreparedVariadicEntryPlanFunction` storage and helper-resource facts.
+- Helper operand-home records from the prepared/shared carriers closed in idea
+  244.
+- AArch64 helper-call dispatch that currently recognizes variadic helpers and
+  then defers lowering.
+- Selected machine-node records for `va_start`, scalar `va_arg`, aggregate
+  `va_arg`, and `va_copy`.
+- Printer support that emits only from structured operands and prepared/shared
+  facts.
+- Focused tests that distinguish prepared-carrier presence from real machine
+  node consumption.
 
 ## Non-Goals
 
-- Do not emit selected machine nodes for `va_start`, scalar `va_arg`,
-  aggregate `va_arg`, or `va_copy`.
-- Do not infer register-save slots, overflow bases, stack offsets, named
-  register counts, `va_list` layout, or scratch allocation in AArch64 target
-  lowering.
-- Do not weaken existing fail-closed diagnostics or unsupported expectations.
-- Do not broaden into unrelated callee-save, preserved-value, memory,
-  aggregate-copy, scalar-cast, printer, or frame-allocation rewrites.
+- Do not infer register-save slots, stack offsets, overflow bases, `va_list`
+  layout, named GP/FP counts, operand homes, or scratch allocation inside
+  AArch64 codegen.
+- Do not weaken fail-closed diagnostics or mark unsupported helper cases as
+  supported without selected machine-node evidence.
+- Do not claim support through prepared dump coverage alone.
+- Do not broaden into global address, memory load/store, scalar cast, i128,
+  binary128, atomic, intrinsic, inline-asm, callee-save slot-placement, or
+  preserved-value extent work.
+- Do not rewrite closed prepared-authority idea 244 except for historical
+  correction explicitly requested by the supervisor.
 
 ## Working Model
 
-Idea 243 remains the consumer. This runbook supplies the missing authority that
-Step 1 identified: storage placement for register-save and overflow areas,
-explicit helper scratch resources, and concrete homes for helper pointer/result
-operands. Once these facts are present and validated, idea 243 can be
-reactivated for machine-node consumption.
+Idea 232 made variadic callee-entry metadata visible and guarded. Step 1 of
+this idea found missing storage, scratch, and operand-home authority, so idea
+244 supplied those prerequisites as prepared/shared facts. This reactivated
+runbook resumes at `va_start` consumption and should consume those facts
+directly. If any helper still lacks a necessary structured fact, keep AArch64
+fail-closed behavior and record the smallest missing prepared/shared fact as a
+new lifecycle blocker.
 
 ## Execution Rules
 
 - Keep routine packet progress and proof in `todo.md`.
-- Add carriers or shared facts at the producer layer that already owns prepared
-  frame and variadic entry metadata.
-- Preserve fail-closed behavior whenever a required field cannot be populated.
-- Treat expectation-only changes, helper renames, diagnostic-only rewrites, and
-  selected-node consumption in this prerequisite as route drift.
-- For code-changing packets, prove with a build plus the supervisor-chosen
-  focused prepared/AArch64 variadic subset. Escalate to broader backend
-  validation after shared prepared carrier changes.
+- Start with `va_start`, then scalar `va_arg`, aggregate `va_arg`, `va_copy`,
+  and final validation.
+- Add or strengthen focused tests before relying on broader backend
+  validation.
+- Treat expectation-only changes, fixture-name matching, unsupported
+  downgrades, diagnostic-only rewrites, or local ABI reconstruction as route
+  drift.
+- For every code-changing packet, prove with a build plus the
+  supervisor-chosen focused AArch64 variadic subset. Escalate to broader
+  backend validation after shared selected-node, printer, or prepared-consumer
+  behavior changes.
+- If complete storage, scratch, or operand-home authority is still missing,
+  stop at an explicit blocker rather than filling the gap in AArch64 target
+  codegen.
 
 ## Ordered Steps
 
-### Step 1: Attach Register-Save And Overflow Storage Authority
+### Step 1: Inspect Prepared Variadic Consumption Boundary
 
-Goal: Populate the prepared frame-storage facts that AArch64 variadic helper
-consumption needs for register-save-area and overflow-area addressing.
+Status: Completed before prerequisite split.
 
-Primary targets:
-
-- `PreparedVariadicEntryPlanFunction`
-- prepared frame slot and stack-offset population
-- missing-fact completeness checks and prepared dumps
-
-Actions:
-
-- Trace where variadic entry register-save and overflow areas are allocated or
-  should be allocated in prepared/prealloc state.
-- Populate `register_save_area.slot_id` and
-  `register_save_area.stack_offset_bytes`.
-- Populate `overflow_area.base_slot_id` and
-  `overflow_area.base_stack_offset_bytes`.
-- Ensure `overflow_area.base_slot_id` participates in missing-required-fact
-  diagnostics when absent.
-- Add focused coverage for present and incomplete storage facts.
+Goal: Determine which prepared variadic facts are already complete enough for
+machine-node consumption and which helper paths still need new prepared/shared
+authority.
 
 Completion check:
 
-- Prepared variadic entry dumps and dispatch completeness checks expose both
-  slot id and stack offset for register-save and overflow base storage, with
-  explicit missing-fact diagnostics when any required field is absent.
+- Completed by splitting and closing prerequisite idea 244. Do not redo this
+  step unless a later packet finds that the closed prepared/shared facts are
+  insufficient or stale.
 
-### Step 2: Add Helper Scratch Resource Authority
+### Step 2: Consume Prepared Facts For `va_start`
 
-Goal: Make helper scratch requirements explicit prepared/shared facts instead
-of target-local policy.
-
-Actions:
-
-- Define the producer-owned meaning of
-  `helper_resources.scratch_register_count` and
-  `helper_resources.scratch_stack_bytes` for recognized variadic helpers.
-- Populate the scratch facts for `va_start`, scalar `va_arg`, aggregate
-  `va_arg`, and `va_copy` classification paths.
-- Preserve fail-closed diagnostics for missing scratch facts.
-- Add focused tests that distinguish populated scratch facts from unsupported
-  helper lowering.
-
-Completion check:
-
-- Every recognized variadic helper has explicit scratch register and stack-byte
-  facts available to consumers, and missing scratch facts diagnose without
-  selected-node lowering.
-
-### Step 3: Add Helper Operand-Home Authority
-
-Goal: Preserve concrete homes for helper pointer and destination operands so
-selected machine-node consumers do not re-derive them from raw BIR operands.
+Goal: Lower a representative `va_start` path into selected machine nodes from
+prepared entry, helper-resource, and operand-home facts.
 
 Actions:
 
-- Define structured helper operand-home records for `va_start` destination
-  `va_list` pointers.
-- Define scalar `va_arg` result homes and source `va_list` homes.
-- Define aggregate `va_arg` destination payload homes and source `va_list`
-  homes.
-- Define `va_copy` destination and source `va_list` homes.
-- Connect records to existing helper classification without claiming selected
-  machine-node support.
-- Add focused record/dump coverage for each helper family.
+- Add or extend machine-node records for `va_list` field initialization and
+  register-save/overflow base materialization.
+- Consume prepared field layout, register-save-area storage, overflow-area
+  storage, named register counts, helper-resource facts, and `va_start`
+  destination operand homes directly.
+- Preserve fail-closed diagnostics for incomplete prepared/shared facts.
+- Add focused record and printer coverage for the supported `va_start` path.
 
 Completion check:
 
-- Helper call records or prepared/shared carriers expose concrete operand-home
-  facts for all four helper families, while AArch64 lowering still fails
-  closed until idea 243 consumes them.
+- A supported `va_start` fixture produces structured selected machine records
+  and printer output; missing prepared/shared facts still diagnose explicitly.
 
-### Step 4: Validate And Hand Back To Machine-Node Consumption
+### Step 3: Consume Prepared Facts For Scalar `va_arg`
 
-Goal: Prove the prerequisite authority and make the lifecycle handoff back to
-idea 243 explicit.
+Goal: Lower selected scalar `va_arg` paths without target-local ABI
+reconstruction.
 
 Actions:
 
-- Run the supervisor-chosen build and focused variadic prepared/backend subset.
-- Escalate to broader backend validation if shared prepared or printer-visible
-  facts changed beyond one narrow carrier.
-- Summarize which fields are now available and any remaining blockers in
-  `todo.md`.
-- Ask the supervisor to route plan-owner to reactivate idea 243 only if the
-  prerequisite authority is complete.
+- Add typed machine-node records for GP and FP scalar argument fetches.
+- Consume prepared register-save-area storage, overflow-area progression,
+  helper resources, source `va_list` homes, and scalar result homes.
+- Preserve value-width, alignment, and destination-home facts as structured
+  operands.
+- Add tests that cover at least one register-backed and one overflow-backed
+  scalar access, or record the exact missing prepared/shared fact.
 
 Completion check:
 
-- The prerequisite facts are structurally present, incomplete facts still fail
-  closed, and `todo.md` names whether idea 243 is ready to resume.
+- Scalar `va_arg` lowering either emits structured machine records and printer
+  output from prepared/shared facts or stops with a narrow blocker.
+
+### Step 4: Consume Prepared Facts For Aggregate `va_arg`
+
+Goal: Lower aggregate `va_arg` helper effects while preserving aggregate
+storage and copy semantics.
+
+Actions:
+
+- Add records for aggregate payload source selection and destination copy.
+- Consume prepared aggregate size, alignment, destination payload homes,
+  source `va_list` homes, register-save access, overflow progression, and
+  helper resources.
+- Keep full-width aggregate transport separate from scalar shortcuts.
+- Add focused tests for an aggregate variadic argument path.
+
+Completion check:
+
+- Aggregate `va_arg` either produces structured machine-node effects from
+  prepared/shared facts or records an exact prepared extent/storage blocker.
+
+### Step 5: Consume Prepared Facts For `va_copy`
+
+Goal: Lower `va_copy` as a structured copy of the prepared `va_list` layout.
+
+Actions:
+
+- Add machine-node records for copying each supported `va_list` field.
+- Consume prepared source/destination homes, field layout facts, storage facts,
+  and helper resources directly.
+- Preserve explicit diagnostics for incomplete storage or layout facts.
+- Add focused tests for `va_copy` record and printer output.
+
+Completion check:
+
+- `va_copy` emits structured copy effects from prepared/shared facts, or the
+  route records the exact missing prepared source/destination storage
+  authority.
+
+### Step 6: Validate And Summarize
+
+Goal: Prove the accepted consumption route and preserve any remaining blockers
+at the correct lifecycle layer.
+
+Actions:
+
+- Run the supervisor-chosen build and focused variadic backend subset.
+- Escalate to broader `backend_` validation if selected machine records,
+  printer behavior, or prepared facts changed beyond one helper family.
+- Summarize supported helper paths, remaining unsupported cases, and any split
+  prepared/shared initiatives in `todo.md`.
+- Ask the supervisor to decide whether the source idea is complete, blocked, or
+  should remain active for another runbook rewrite.
+
+Completion check:
+
+- Supported variadic helper paths have structured selected machine-node and
+  printer proof, and remaining gaps are explicit non-overfit lifecycle notes.

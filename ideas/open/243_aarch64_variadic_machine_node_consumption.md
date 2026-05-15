@@ -62,14 +62,12 @@ materializing helper side effects.
 - Backend validation covers the focused variadic helper routes plus a broader
   backend subset chosen by the supervisor.
 
-## Lifecycle Blocker
+## Lifecycle Status
 
-Step 1 inspection found that this idea cannot proceed directly to selected
-machine-node consumption without overfitting missing authority into AArch64
-target lowering. The active prerequisite is now
-`ideas/open/244_aarch64_variadic_prepared_storage_and_helper_authority.md`.
-
-That prerequisite must supply the prepared/shared facts needed by this idea:
+Step 1 inspection previously split out prerequisite idea
+`ideas/closed/244_aarch64_variadic_prepared_storage_and_helper_authority.md`.
+That prerequisite is now closed and supplied the prepared/shared facts needed
+by this idea:
 
 - `register_save_area.slot_id`
 - `register_save_area.stack_offset_bytes`
@@ -79,9 +77,9 @@ That prerequisite must supply the prepared/shared facts needed by this idea:
 - helper operand-home facts for `va_list` pointers, scalar destinations,
   aggregate destinations, and `va_copy` source/destination operands
 
-This idea should be reactivated only after those facts exist as prepared/shared
-authority and can be consumed without reconstructing AAPCS64 frame, layout, or
-scratch policy in AArch64 machine-node lowering.
+This idea is reactivated for selected machine-node consumption. AArch64 target
+lowering must consume those facts without reconstructing AAPCS64 frame,
+layout, or scratch policy locally.
 
 ## Reviewer Reject Signals
 
