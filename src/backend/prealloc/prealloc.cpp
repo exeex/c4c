@@ -58,6 +58,22 @@ namespace {
   return PreparedRegisterBank::None;
 }
 
+[[nodiscard]] PreparedRegisterClass register_class_from_bank(PreparedRegisterBank bank) {
+  switch (bank) {
+    case PreparedRegisterBank::Gpr:
+      return PreparedRegisterClass::General;
+    case PreparedRegisterBank::Fpr:
+      return PreparedRegisterClass::Float;
+    case PreparedRegisterBank::Vreg:
+      return PreparedRegisterClass::Vector;
+    case PreparedRegisterBank::AggregateAddress:
+      return PreparedRegisterClass::AggregateAddress;
+    case PreparedRegisterBank::None:
+      return PreparedRegisterClass::None;
+  }
+  return PreparedRegisterClass::None;
+}
+
 [[nodiscard]] PreparedRegisterBank register_bank_from_result_abi(
     const bir::CallResultAbiInfo& abi) {
   switch (abi.primary_class) {
@@ -1324,6 +1340,61 @@ make_i128_helper_abi_register_binding(
   };
 }
 
+[[nodiscard]] std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>
+make_i128_helper_scalar_abi_register_binding(
+    const c4c::TargetProfile& target_profile,
+    const PreparedI128RuntimeHelper::ScalarValueOwnership& scalar,
+    std::optional<std::size_t> helper_argument_index,
+    std::size_t abi_register_index) {
+  std::optional<std::string> register_name;
+  std::optional<PreparedRegisterPlacement> placement;
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+
+  if (helper_argument_index.has_value()) {
+    const auto arg_abi = infer_call_arg_abi(target_profile, scalar.type);
+    if (!arg_abi.has_value() || !arg_abi->passed_in_register) {
+      return std::nullopt;
+    }
+    register_name =
+        call_arg_destination_register_name(target_profile, *arg_abi, abi_register_index);
+    placement =
+        call_arg_destination_register_placement(target_profile, *arg_abi, abi_register_index);
+    bank = register_bank_from_arg_abi(*arg_abi);
+  } else {
+    const bir::CallResultAbiInfo result_abi{
+        .type = scalar.type,
+        .primary_class = scalar.register_bank == PreparedRegisterBank::Fpr
+                             ? bir::AbiValueClass::Sse
+                             : bir::AbiValueClass::Integer,
+    };
+    register_name = call_result_destination_register_name(target_profile, result_abi);
+    placement = call_result_destination_register_placement(target_profile, result_abi);
+    bank = register_bank_from_result_abi(result_abi);
+  }
+
+  if (!register_name.has_value() || register_name->empty() ||
+      !placement.has_value() || bank == PreparedRegisterBank::None ||
+      bank != scalar.register_bank) {
+    return std::nullopt;
+  }
+
+  return PreparedI128RuntimeHelper::AbiRegisterBinding{
+      .value_id = scalar.value_id,
+      .value_name = scalar.value_name,
+      .role = PreparedI128LaneRole::Low,
+      .lane_index = 0,
+      .width_bytes = scalar.width_bytes,
+      .helper_argument_index = helper_argument_index,
+      .abi_register_index = abi_register_index,
+      .register_bank = bank,
+      .register_class = register_class_from_bank(bank),
+      .register_name = *register_name,
+      .contiguous_width = 1,
+      .occupied_register_names = {*register_name},
+      .register_placement = placement,
+  };
+}
+
 void populate_i128_helper_lanes_from_carrier(
     const PreparedI128CarrierFunction* function_carriers,
     PreparedI128RuntimeHelper& helper,
@@ -1423,6 +1494,109 @@ void populate_i128_runtime_helper_abi_bindings(
   helper.rhs_high_abi_argument.reset();
   helper.result_low_abi_result.reset();
   helper.result_high_abi_result.reset();
+  helper.scalar_operand_abi_argument.reset();
+  helper.scalar_result_abi_result.reset();
+
+  if (helper.callee_name.empty()) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_abi_bindings_require_callee_identity");
+    return;
+  }
+
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::FloatIntegerConversion) {
+    const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
+    const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
+    if (operand_is_i128 == result_is_i128) {
+      append_i128_runtime_helper_fact(
+          helper, "i128_conversion_abi_bindings_require_one_i128_side");
+      return;
+    }
+
+    if (operand_is_i128) {
+      helper.lhs_low_abi_argument =
+          make_i128_helper_abi_register_binding(target_profile,
+                                                helper.operand_value_id,
+                                                helper.operand_value_name,
+                                                PreparedI128LaneRole::Low,
+                                                0,
+                                                std::size_t{0},
+                                                0);
+      helper.lhs_high_abi_argument =
+          make_i128_helper_abi_register_binding(target_profile,
+                                                helper.operand_value_id,
+                                                helper.operand_value_name,
+                                                PreparedI128LaneRole::High,
+                                                1,
+                                                std::size_t{0},
+                                                1);
+      if (!helper.scalar_result.has_value()) {
+        append_i128_runtime_helper_fact(
+            helper, "i128_conversion_abi_bindings_require_scalar_result_ownership");
+      } else {
+        helper.scalar_result_abi_result =
+            make_i128_helper_scalar_abi_register_binding(
+                target_profile, *helper.scalar_result, std::nullopt, 0);
+      }
+      helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{
+          .transition =
+              PreparedI128RuntimeHelperAbiTransition::RegisterPairArgumentAndScalarResult,
+          .argument_bank = PreparedRegisterBank::Gpr,
+          .result_bank = PreparedRegisterBank::Fpr,
+          .argument_count = 1,
+          .lanes_per_argument = 2,
+          .result_lane_count = 1,
+          .lane_width_bytes = 8,
+      };
+      if (!helper.lhs_low_abi_argument.has_value() ||
+          !helper.lhs_high_abi_argument.has_value() ||
+          !helper.scalar_result_abi_result.has_value()) {
+        append_i128_runtime_helper_fact(
+            helper, "i128_conversion_abi_bindings_require_supported_target_registers");
+      }
+      return;
+    }
+
+    if (!helper.scalar_operand.has_value()) {
+      append_i128_runtime_helper_fact(
+          helper, "i128_conversion_abi_bindings_require_scalar_operand_ownership");
+    } else {
+      helper.scalar_operand_abi_argument =
+          make_i128_helper_scalar_abi_register_binding(
+              target_profile, *helper.scalar_operand, std::size_t{0}, 0);
+    }
+    helper.result_low_abi_result =
+        make_i128_helper_abi_register_binding(target_profile,
+                                              helper.result_value_id,
+                                              helper.result_value_name,
+                                              PreparedI128LaneRole::Low,
+                                              0,
+                                              std::nullopt,
+                                              0);
+    helper.result_high_abi_result =
+        make_i128_helper_abi_register_binding(target_profile,
+                                              helper.result_value_id,
+                                              helper.result_value_name,
+                                              PreparedI128LaneRole::High,
+                                              1,
+                                              std::nullopt,
+                                              1);
+    helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{
+        .transition =
+            PreparedI128RuntimeHelperAbiTransition::ScalarArgumentAndRegisterPairResult,
+        .argument_bank = PreparedRegisterBank::Fpr,
+        .result_bank = PreparedRegisterBank::Gpr,
+        .argument_count = 1,
+        .lanes_per_argument = 1,
+        .result_lane_count = 2,
+        .lane_width_bytes = 8,
+    };
+    if (!helper.scalar_operand_abi_argument.has_value() ||
+        !helper.result_low_abi_result.has_value() ||
+        !helper.result_high_abi_result.has_value()) {
+      append_i128_runtime_helper_fact(
+          helper, "i128_conversion_abi_bindings_require_supported_target_registers");
+    }
+    return;
+  }
 
   if (helper.helper_family != PreparedI128RuntimeHelperFamily::DivRem) {
     append_i128_runtime_helper_fact(helper, "i128_helper_abi_bindings_deferred_for_family");
@@ -1432,10 +1606,6 @@ void populate_i128_runtime_helper_abi_bindings(
       PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
     append_i128_runtime_helper_fact(
         helper, "i128_helper_abi_bindings_require_direct_low_high_result");
-    return;
-  }
-  if (helper.callee_name.empty()) {
-    append_i128_runtime_helper_fact(helper, "i128_helper_abi_bindings_require_callee_identity");
     return;
   }
 
@@ -1514,6 +1684,23 @@ make_i128_helper_marshaling_move(
   };
 }
 
+[[nodiscard]] std::optional<PreparedI128RuntimeHelper::ScalarMarshalingMove>
+make_i128_helper_scalar_marshaling_move(
+    const PreparedI128RuntimeHelper::ScalarValueOwnership& scalar_value,
+    const PreparedI128RuntimeHelper::AbiRegisterBinding& abi_register,
+    PreparedI128RuntimeHelperMarshalDirection direction) {
+  return PreparedI128RuntimeHelper::ScalarMarshalingMove{
+      .direction = direction,
+      .phase = direction ==
+                       PreparedI128RuntimeHelperMarshalDirection::ScalarValueToAbiArgument
+                   ? PreparedMovePhase::BeforeCall
+                   : PreparedMovePhase::AfterCall,
+      .op_kind = PreparedMoveResolutionOpKind::Move,
+      .scalar_value = scalar_value,
+      .abi_register = abi_register,
+  };
+}
+
 [[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
     const PreparedBirModule& prepared,
     const PreparedFramePlanFunction* frame_plan,
@@ -1534,6 +1721,8 @@ void populate_i128_runtime_helper_marshaling(
   helper.rhs_high_argument_move.reset();
   helper.result_low_unmarshal_move.reset();
   helper.result_high_unmarshal_move.reset();
+  helper.scalar_operand_argument_move.reset();
+  helper.scalar_result_unmarshal_move.reset();
 
   auto bind_move =
       [&](std::string_view fact_prefix,
@@ -1583,6 +1772,96 @@ void populate_i128_runtime_helper_marshaling(
         }
         output = make_i128_helper_marshaling_move(*carrier_lane, *abi_register, direction);
       };
+
+  auto bind_scalar_move =
+      [&](std::string_view fact_prefix,
+          const std::optional<PreparedI128RuntimeHelper::ScalarValueOwnership>& scalar_value,
+          const std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>& abi_register,
+          PreparedI128RuntimeHelperMarshalDirection direction,
+          std::optional<PreparedI128RuntimeHelper::ScalarMarshalingMove>& output) {
+        output.reset();
+        if (!scalar_value.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_scalar_ownership");
+          return;
+        }
+        if (!abi_register.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_abi_binding");
+          return;
+        }
+        const bool has_register_home = scalar_value->register_name.has_value();
+        const bool has_memory_home =
+            scalar_value->slot_id.has_value() &&
+            scalar_value->stack_offset_bytes.has_value();
+        if (scalar_value->home_kind == PreparedValueHomeKind::None ||
+            (!has_register_home && !has_memory_home)) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_complete_scalar_home");
+          return;
+        }
+        if (abi_register->register_bank != scalar_value->register_bank ||
+            abi_register->register_class == PreparedRegisterClass::None ||
+            abi_register->register_name.empty() ||
+            abi_register->occupied_register_names.empty() ||
+            abi_register->contiguous_width == 0 ||
+            !abi_register->register_placement.has_value()) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_register_binding");
+          return;
+        }
+        if (scalar_value->value_id != abi_register->value_id ||
+            scalar_value->value_name != abi_register->value_name ||
+            scalar_value->width_bytes != abi_register->width_bytes) {
+          append_i128_runtime_helper_fact(
+              helper, std::string(fact_prefix) + "_marshaling_requires_matching_scalar_identity");
+          return;
+        }
+        output =
+            make_i128_helper_scalar_marshaling_move(*scalar_value, *abi_register, direction);
+      };
+
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::FloatIntegerConversion) {
+    const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
+    const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
+    if (operand_is_i128) {
+      bind_move("operand_low",
+                helper.lhs_low_lane,
+                helper.lhs_low_abi_argument,
+                PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+                helper.lhs_low_argument_move);
+      bind_move("operand_high",
+                helper.lhs_high_lane,
+                helper.lhs_high_abi_argument,
+                PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument,
+                helper.lhs_high_argument_move);
+    } else {
+      bind_scalar_move("operand",
+                       helper.scalar_operand,
+                       helper.scalar_operand_abi_argument,
+                       PreparedI128RuntimeHelperMarshalDirection::ScalarValueToAbiArgument,
+                       helper.scalar_operand_argument_move);
+    }
+    if (result_is_i128) {
+      bind_move("result_low",
+                helper.result_low_lane,
+                helper.result_low_abi_result,
+                PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane,
+                helper.result_low_unmarshal_move);
+      bind_move("result_high",
+                helper.result_high_lane,
+                helper.result_high_abi_result,
+                PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane,
+                helper.result_high_unmarshal_move);
+    } else {
+      bind_scalar_move("result",
+                       helper.scalar_result,
+                       helper.scalar_result_abi_result,
+                       PreparedI128RuntimeHelperMarshalDirection::AbiResultToScalarValue,
+                       helper.scalar_result_unmarshal_move);
+    }
+    return;
+  }
 
   bind_move("lhs_low",
             helper.lhs_low_lane,
@@ -1799,13 +2078,14 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.rhs_high_argument_move.reset();
       helper.result_low_unmarshal_move.reset();
       helper.result_high_unmarshal_move.reset();
+      helper.scalar_operand_argument_move.reset();
+      helper.scalar_result_unmarshal_move.reset();
       helper.memory_return.reset();
       helper.scalar_operand.reset();
       helper.scalar_result.reset();
       helper.missing_required_facts.clear();
       populate_i128_runtime_helper_boundary_policy(
           prepared.target_profile, regalloc_function, helper);
-      populate_i128_runtime_helper_abi_bindings(prepared.target_profile, helper);
 
       if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem) {
         populate_i128_helper_lanes_from_carrier(function_carriers,
@@ -1869,6 +2149,7 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
                                                 "result");
         }
       }
+      populate_i128_runtime_helper_abi_bindings(prepared.target_profile, helper);
       switch (helper.result_ownership) {
         case PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes:
           if (!helper.result_low_lane.has_value() || !helper.result_high_lane.has_value()) {

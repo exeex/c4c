@@ -1649,6 +1649,40 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
             << ",abi_reg=" << move->abi_register.register_name << "]";
         append_register_placement(out, "abi_placement", move->abi_register.register_placement);
       };
+  auto append_scalar_marshaling_move =
+      [&](std::string_view label,
+          const std::optional<PreparedI128RuntimeHelper::ScalarMarshalingMove>& move) {
+        out << " " << label << "=";
+        if (!move.has_value()) {
+          out << "<missing>";
+          return;
+        }
+        out << prepared_i128_runtime_helper_marshal_direction_name(move->direction)
+            << "[phase=" << prepared_move_phase_name(move->phase)
+            << ",op=" << move_resolution_op_kind_name(move->op_kind)
+            << ",value=" << maybe_value_name(module.names, move->scalar_value.value_name)
+            << "#" << move->scalar_value.value_id
+            << ",type=" << type_kind_name(move->scalar_value.type)
+            << ",width=" << move->scalar_value.width_bytes
+            << ",bank=" << prepared_register_bank_name(move->scalar_value.register_bank);
+        if (move->scalar_value.register_name.has_value()) {
+          out << ",scalar_reg=" << *move->scalar_value.register_name;
+        }
+        if (move->scalar_value.slot_id.has_value()) {
+          out << ",scalar_slot=#" << *move->scalar_value.slot_id;
+        }
+        if (move->scalar_value.stack_offset_bytes.has_value()) {
+          out << ",scalar_stack_offset=" << *move->scalar_value.stack_offset_bytes;
+        }
+        if (move->abi_register.helper_argument_index.has_value()) {
+          out << ",arg=" << *move->abi_register.helper_argument_index;
+        } else {
+          out << ",result";
+        }
+        out << ",abi_index=" << move->abi_register.abi_register_index
+            << ",abi_reg=" << move->abi_register.register_name << "]";
+        append_register_placement(out, "abi_placement", move->abi_register.register_placement);
+      };
   for (const auto& function_helpers : module.i128_runtime_helpers.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
         << "\n";
@@ -1757,6 +1791,8 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_abi_binding("rhs.high", helper.rhs_high_abi_argument);
       append_abi_binding("result.low", helper.result_low_abi_result);
       append_abi_binding("result.high", helper.result_high_abi_result);
+      append_abi_binding("scalar.operand", helper.scalar_operand_abi_argument);
+      append_abi_binding("scalar.result", helper.scalar_result_abi_result);
       out << " marshaling";
       append_marshaling_move("lhs.low", helper.lhs_low_argument_move);
       append_marshaling_move("lhs.high", helper.lhs_high_argument_move);
@@ -1764,6 +1800,8 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_marshaling_move("rhs.high", helper.rhs_high_argument_move);
       append_marshaling_move("result.low", helper.result_low_unmarshal_move);
       append_marshaling_move("result.high", helper.result_high_unmarshal_move);
+      append_scalar_marshaling_move("scalar.operand", helper.scalar_operand_argument_move);
+      append_scalar_marshaling_move("scalar.result", helper.scalar_result_unmarshal_move);
       out << " live_preservation=[evaluated="
           << (helper.live_preservation_policy.evaluated ? "yes" : "no")
           << ",caller_saved_clobbers="

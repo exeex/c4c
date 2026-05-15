@@ -2862,8 +2862,6 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.rhs_value_id != 0 ||
         helper.rhs_value_name != c4c::kInvalidValueName ||
         helper.resource_policy.call_boundary ||
-        helper.abi_policy.transition !=
-            prepare::PreparedI128RuntimeHelperAbiTransition::Missing ||
         helper.selected_call_ownership.owns_terminal_call ||
         helper.memory_return.has_value() ||
         std::find(helper.missing_required_facts.begin(),
@@ -2875,12 +2873,46 @@ int check_i128_runtime_helper_mapping_authority() {
     if (want.result_type == bir::TypeKind::I128) {
       if (helper.result_ownership !=
               prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
+          helper.abi_policy.transition !=
+              prepare::PreparedI128RuntimeHelperAbiTransition::
+                  ScalarArgumentAndRegisterPairResult ||
+          helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Fpr ||
+          helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+          helper.abi_policy.argument_count != 1 ||
+          helper.abi_policy.lanes_per_argument != 1 ||
+          helper.abi_policy.result_lane_count != 2 ||
           !helper.scalar_operand.has_value() ||
           helper.scalar_operand->value_name != helper.operand_value_name ||
           helper.scalar_operand->type != want.source_type ||
           helper.scalar_operand->width_bytes != want.source_width ||
           helper.scalar_operand->register_bank != prepare::PreparedRegisterBank::Fpr ||
           helper.scalar_result.has_value() ||
+          !helper.scalar_operand_abi_argument.has_value() ||
+          helper.scalar_operand_abi_argument->value_name != helper.operand_value_name ||
+          helper.scalar_operand_abi_argument->helper_argument_index !=
+              std::optional<std::size_t>{0} ||
+          helper.scalar_operand_abi_argument->abi_register_index != 0 ||
+          helper.scalar_operand_abi_argument->register_bank !=
+              prepare::PreparedRegisterBank::Fpr ||
+          helper.scalar_operand_abi_argument->register_class !=
+              prepare::PreparedRegisterClass::Float ||
+          helper.scalar_operand_abi_argument->register_name != "xmm0" ||
+          !helper.scalar_operand_abi_argument->register_placement.has_value() ||
+          helper.scalar_operand_abi_argument->register_placement->pool !=
+              prepare::PreparedRegisterSlotPool::CallArgument ||
+          !helper.result_low_abi_result.has_value() ||
+          !helper.result_high_abi_result.has_value() ||
+          helper.result_low_abi_result->register_name != "rax" ||
+          helper.result_high_abi_result->register_name != "rdx" ||
+          !helper.scalar_operand_argument_move.has_value() ||
+          helper.scalar_operand_argument_move->direction !=
+              prepare::PreparedI128RuntimeHelperMarshalDirection::
+                  ScalarValueToAbiArgument ||
+          helper.scalar_operand_argument_move->phase !=
+              prepare::PreparedMovePhase::BeforeCall ||
+          helper.scalar_operand_argument_move->abi_register.register_name != "xmm0" ||
+          !helper.result_low_unmarshal_move.has_value() ||
+          !helper.result_high_unmarshal_move.has_value() ||
           !helper.result_low_lane.has_value() ||
           !helper.result_high_lane.has_value() ||
           std::find(helper.missing_required_facts.begin(),
@@ -2892,12 +2924,44 @@ int check_i128_runtime_helper_mapping_authority() {
     } else {
       if (helper.result_ownership !=
               prepare::PreparedI128RuntimeHelperResultOwnership::ScalarValue ||
+          helper.abi_policy.transition !=
+              prepare::PreparedI128RuntimeHelperAbiTransition::
+                  RegisterPairArgumentAndScalarResult ||
+          helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+          helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Fpr ||
+          helper.abi_policy.argument_count != 1 ||
+          helper.abi_policy.lanes_per_argument != 2 ||
+          helper.abi_policy.result_lane_count != 1 ||
           helper.scalar_operand.has_value() ||
           !helper.scalar_result.has_value() ||
           helper.scalar_result->value_name != helper.result_value_name ||
           helper.scalar_result->type != want.result_type ||
           helper.scalar_result->width_bytes != want.result_width ||
           helper.scalar_result->register_bank != prepare::PreparedRegisterBank::Fpr ||
+          !helper.lhs_low_abi_argument.has_value() ||
+          !helper.lhs_high_abi_argument.has_value() ||
+          helper.lhs_low_abi_argument->helper_argument_index !=
+              std::optional<std::size_t>{0} ||
+          helper.lhs_low_abi_argument->register_name != "rdi" ||
+          helper.lhs_high_abi_argument->register_name != "rsi" ||
+          !helper.scalar_result_abi_result.has_value() ||
+          helper.scalar_result_abi_result->register_bank !=
+              prepare::PreparedRegisterBank::Fpr ||
+          helper.scalar_result_abi_result->register_class !=
+              prepare::PreparedRegisterClass::Float ||
+          helper.scalar_result_abi_result->register_name != "xmm0" ||
+          !helper.scalar_result_abi_result->register_placement.has_value() ||
+          helper.scalar_result_abi_result->register_placement->pool !=
+              prepare::PreparedRegisterSlotPool::CallResult ||
+          !helper.lhs_low_argument_move.has_value() ||
+          !helper.lhs_high_argument_move.has_value() ||
+          !helper.scalar_result_unmarshal_move.has_value() ||
+          helper.scalar_result_unmarshal_move->direction !=
+              prepare::PreparedI128RuntimeHelperMarshalDirection::
+                  AbiResultToScalarValue ||
+          helper.scalar_result_unmarshal_move->phase !=
+              prepare::PreparedMovePhase::AfterCall ||
+          helper.scalar_result_unmarshal_move->abi_register.register_name != "xmm0" ||
           !helper.lhs_low_lane.has_value() ||
           !helper.lhs_high_lane.has_value() ||
           std::find(helper.missing_required_facts.begin(),
@@ -2944,6 +3008,16 @@ int check_i128_runtime_helper_mapping_authority() {
           std::string::npos ||
       dump.find("scalar_ownership operand=p.f64#") == std::string::npos ||
       dump.find("[type=f64,width=8,bank=fpr,home=") == std::string::npos ||
+      dump.find("abi_transition=scalar_argument_and_register_pair_result arg_bank=fpr "
+                "result_bank=gpr arg_count=1 lanes_per_arg=1 result_lanes=2 lane_width=8") ==
+          std::string::npos ||
+      dump.find("scalar.operand=p.f64#") == std::string::npos ||
+      dump.find("arg=0,abi_index=0,bank=fpr,class=float,reg=xmm0") ==
+          std::string::npos ||
+      dump.find("scalar.operand=scalar_value_to_abi_argument") ==
+          std::string::npos ||
+      dump.find("phase=before_call,op=move,value=p.f64#") == std::string::npos ||
+      dump.find("abi_index=0,abi_reg=xmm0") == std::string::npos ||
       dump.find("family=float_integer_conversion kind=signed_int_to_float opcode=sitofp "
                 "callee=__floattidf source_type=i128 result_type=f64 result=to.f64.s#") ==
           std::string::npos ||
@@ -2953,6 +3027,14 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("result_ownership=scalar_value memory_return=<none>") == std::string::npos ||
       dump.find("scalar_ownership operand=<none> result=to.f64.s#") == std::string::npos ||
       dump.find("[type=f64,width=8,bank=fpr,home=") == std::string::npos ||
+      dump.find("abi_transition=register_pair_argument_and_scalar_result arg_bank=gpr "
+                "result_bank=fpr arg_count=1 lanes_per_arg=2 result_lanes=1 lane_width=8") ==
+          std::string::npos ||
+      dump.find("scalar.result=to.f64.s#") == std::string::npos ||
+      dump.find("result,abi_index=0,bank=fpr,class=float,reg=xmm0") ==
+          std::string::npos ||
+      dump.find("scalar.result=abi_result_to_scalar_value") == std::string::npos ||
+      dump.find("phase=after_call,op=move,value=to.f64.s#") == std::string::npos ||
       dump.find("result_ownership=direct_low_high_lanes memory_return=<none>") ==
           std::string::npos ||
       dump.find("resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"

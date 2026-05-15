@@ -1723,6 +1723,8 @@ enum class PreparedI128RuntimeHelperResultOwnership {
 enum class PreparedI128RuntimeHelperAbiTransition {
   Missing,
   DirectRegisterPairArgumentsAndResult,
+  ScalarArgumentAndRegisterPairResult,
+  RegisterPairArgumentAndScalarResult,
   MemoryReturn,
 };
 
@@ -1733,6 +1735,10 @@ enum class PreparedI128RuntimeHelperAbiTransition {
       return "missing";
     case PreparedI128RuntimeHelperAbiTransition::DirectRegisterPairArgumentsAndResult:
       return "direct_register_pair_arguments_and_result";
+    case PreparedI128RuntimeHelperAbiTransition::ScalarArgumentAndRegisterPairResult:
+      return "scalar_argument_and_register_pair_result";
+    case PreparedI128RuntimeHelperAbiTransition::RegisterPairArgumentAndScalarResult:
+      return "register_pair_argument_and_scalar_result";
     case PreparedI128RuntimeHelperAbiTransition::MemoryReturn:
       return "memory_return";
   }
@@ -1742,6 +1748,8 @@ enum class PreparedI128RuntimeHelperAbiTransition {
 enum class PreparedI128RuntimeHelperMarshalDirection {
   CarrierLaneToAbiArgument,
   AbiResultToCarrierLane,
+  ScalarValueToAbiArgument,
+  AbiResultToScalarValue,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_marshal_direction_name(
@@ -1751,6 +1759,10 @@ enum class PreparedI128RuntimeHelperMarshalDirection {
       return "carrier_lane_to_abi_argument";
     case PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane:
       return "abi_result_to_carrier_lane";
+    case PreparedI128RuntimeHelperMarshalDirection::ScalarValueToAbiArgument:
+      return "scalar_value_to_abi_argument";
+    case PreparedI128RuntimeHelperMarshalDirection::AbiResultToScalarValue:
+      return "abi_result_to_scalar_value";
   }
   return "unknown";
 }
@@ -1784,12 +1796,33 @@ struct PreparedI128RuntimeHelper {
     std::optional<PreparedRegisterPlacement> register_placement;
   };
 
+  struct ScalarValueOwnership {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    bir::TypeKind type = bir::TypeKind::Void;
+    std::size_t width_bytes = 0;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
+    std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
   struct MarshalingMove {
     PreparedI128RuntimeHelperMarshalDirection direction =
         PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument;
     PreparedMovePhase phase = PreparedMovePhase::BeforeCall;
     PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
     LaneBinding carrier_lane;
+    AbiRegisterBinding abi_register;
+  };
+
+  struct ScalarMarshalingMove {
+    PreparedI128RuntimeHelperMarshalDirection direction =
+        PreparedI128RuntimeHelperMarshalDirection::ScalarValueToAbiArgument;
+    PreparedMovePhase phase = PreparedMovePhase::BeforeCall;
+    PreparedMoveResolutionOpKind op_kind = PreparedMoveResolutionOpKind::Move;
+    ScalarValueOwnership scalar_value;
     AbiRegisterBinding abi_register;
   };
 
@@ -1837,18 +1870,6 @@ struct PreparedI128RuntimeHelper {
     std::optional<std::size_t> stack_offset_bytes;
   };
 
-  struct ScalarValueOwnership {
-    PreparedValueId value_id = 0;
-    ValueNameId value_name = kInvalidValueName;
-    bir::TypeKind type = bir::TypeKind::Void;
-    std::size_t width_bytes = 0;
-    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
-    PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
-    std::optional<std::string> register_name;
-    std::optional<PreparedFrameSlotId> slot_id;
-    std::optional<std::size_t> stack_offset_bytes;
-  };
-
   FunctionNameId function_name = kInvalidFunctionName;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -1885,12 +1906,16 @@ struct PreparedI128RuntimeHelper {
   std::optional<AbiRegisterBinding> rhs_high_abi_argument;
   std::optional<AbiRegisterBinding> result_low_abi_result;
   std::optional<AbiRegisterBinding> result_high_abi_result;
+  std::optional<AbiRegisterBinding> scalar_operand_abi_argument;
+  std::optional<AbiRegisterBinding> scalar_result_abi_result;
   std::optional<MarshalingMove> lhs_low_argument_move;
   std::optional<MarshalingMove> lhs_high_argument_move;
   std::optional<MarshalingMove> rhs_low_argument_move;
   std::optional<MarshalingMove> rhs_high_argument_move;
   std::optional<MarshalingMove> result_low_unmarshal_move;
   std::optional<MarshalingMove> result_high_unmarshal_move;
+  std::optional<ScalarMarshalingMove> scalar_operand_argument_move;
+  std::optional<ScalarMarshalingMove> scalar_result_unmarshal_move;
   LivePreservationPolicy live_preservation_policy;
   SelectedCallOwnershipPolicy selected_call_ownership;
   std::optional<MemoryReturnOwnership> memory_return;
