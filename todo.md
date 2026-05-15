@@ -1,35 +1,31 @@
 Status: Active
-Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Source Idea Path: ideas/open/246_prepared_aggregate_va_arg_access_plan.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Consume Prepared Facts For Aggregate `va_arg`
+Current Step ID: 1
+Current Step Title: Define Prepared Aggregate Access Plan Carrier
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 was tested against aggregate `va_arg` helper lowering and stopped at the
-missing prepared/shared fact required for semantic consumption:
-`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`. AArch64 dispatch
-now fails closed with that exact diagnostic instead of selecting a generic
-deferred helper node when only destination/source homes are present.
+Lifecycle switch activated prerequisite idea 246 after idea 243 Step 4 stopped
+on missing prepared/shared aggregate access-plan authority.
 
 ## Suggested Next
 
-Ask the plan owner to split or activate the prerequisite prepared/shared carrier
-for aggregate `va_arg` access planning before retrying Step 4 machine-node
-consumption.
+Execute Step 1 by defining the prepared aggregate `va_arg` access-plan carrier
+and completeness checks without adding selected AArch64 aggregate
+machine-node consumption.
 
 ## Watchouts
 
-- The current prepared aggregate operand homes expose destination payload and
-  source `va_list` homes, but not aggregate size/alignment, payload source
-  selection, register-save access, overflow progression, or copy extent.
-- Do not reconstruct those AAPCS64 aggregate facts in AArch64 target lowering;
-  Step 4 should resume only after a prepared aggregate access-plan fact exists.
+- Do not reconstruct aggregate source selection, size/alignment, copy extent,
+  or `va_list` progression in AArch64 target lowering.
+- Keep selected aggregate `va_arg` machine-node consumption parked in idea 243
+  until this prerequisite closes.
+- Preserve fail-closed diagnostics for missing or incomplete aggregate
+  access-plan facts.
 
 ## Proof
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-Passed: backend subset 139/139. Proof log: `test_after.log`.
+Lifecycle-only switch. No code validation was run.
