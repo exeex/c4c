@@ -164,6 +164,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .constraint_index = 0,
                .constraint = "=r",
                .output_index = std::size_t{0},
+               .name = std::string{"dst"},
                .selected_operand = aarch64_codegen::make_register_operand(output),
            },
            aarch64_codegen::InlineAsmMachineOperandRecord{
@@ -172,6 +173,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .constraint = "0",
                .arg_index = std::size_t{0},
                .tied_output_index = std::size_t{0},
+               .name = std::string{"seed"},
                .selected_operand = aarch64_codegen::make_register_operand(tied),
            },
            aarch64_codegen::InlineAsmMachineOperandRecord{
@@ -187,6 +189,7 @@ aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
                .constraint_index = 3,
                .constraint = "i",
                .arg_index = std::size_t{2},
+               .name = std::string{"imm"},
                .immediate_value = std::int64_t{7},
                .selected_operand = immediate,
            }},
@@ -3626,6 +3629,23 @@ int selected_inline_asm_template_prints_from_structured_operands() {
       check != 0) {
     return check;
   }
+
+  auto named_record =
+      selected_inline_asm_record("add %w[dst], %w[seed], %w[rhs]\n"
+                                 "mov %x[dst], #%[imm]");
+  named_record.inline_asm_has_named_operand_references = true;
+  const auto named_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(named_record)));
+  if (!named_result.ok) {
+    return fail("expected selected inline-asm named operands to print: " +
+                named_result.diagnostic);
+  }
+  if (named_result.instruction_lines.size() != 2 ||
+      named_result.instruction_lines[0] != "add w3, w3, w5" ||
+      named_result.instruction_lines[1] != "mov x3, #7") {
+    return fail("expected selected inline-asm named substitution");
+  }
   return 0;
 }
 
@@ -3682,15 +3702,61 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
     return fail("expected inline-asm unsupported constraint to fail closed");
   }
 
-  auto named_operand = selected_inline_asm_record("add %w0, %w1, %[rhs]");
-  named_operand.inline_asm_has_named_operand_references = true;
-  const auto named_operand_result =
+  auto unknown_named = selected_inline_asm_record("add %w0, %w1, %[missing]");
+  unknown_named.inline_asm_has_named_operand_references = true;
+  const auto unknown_named_result =
       aarch64_codegen::print_machine_instruction_line_payloads(
-          selected_inline_asm_instruction(std::move(named_operand)));
-  if (named_operand_result.ok ||
-      named_operand_result.diagnostic.find("named operand references") ==
+          selected_inline_asm_instruction(std::move(unknown_named)));
+  if (unknown_named_result.ok ||
+      unknown_named_result.diagnostic.find("unknown named operand") ==
           std::string::npos) {
-    return fail("expected inline-asm named operand reference to fail closed");
+    return fail("expected inline-asm unknown named operand to fail closed");
+  }
+
+  auto duplicate_named = selected_inline_asm_record("add %w0, %w1, %[rhs]");
+  duplicate_named.inline_asm_has_named_operand_references = true;
+  duplicate_named.inline_asm_operands[3].name = std::string{"rhs"};
+  const auto duplicate_named_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(duplicate_named)));
+  if (duplicate_named_result.ok ||
+      duplicate_named_result.diagnostic.find("duplicate named operand") ==
+          std::string::npos) {
+    return fail("expected inline-asm duplicate named operand to fail closed");
+  }
+
+  auto malformed_named = selected_inline_asm_record("add %w0, %w1, %[rhs");
+  malformed_named.inline_asm_has_named_operand_references = true;
+  const auto malformed_named_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(malformed_named)));
+  if (malformed_named_result.ok ||
+      malformed_named_result.diagnostic.find("malformed named operand") ==
+          std::string::npos) {
+    return fail("expected inline-asm malformed named operand to fail closed");
+  }
+
+  auto missing_name = selected_inline_asm_record("add %w0, %w1, %[]");
+  missing_name.inline_asm_has_named_operand_references = true;
+  const auto missing_name_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(missing_name)));
+  if (missing_name_result.ok ||
+      missing_name_result.diagnostic.find("missing named operand name") ==
+          std::string::npos) {
+    return fail("expected inline-asm missing named operand name to fail closed");
+  }
+
+  auto unsupported_named = selected_inline_asm_record("add %w0, %w1, %[rhs]");
+  unsupported_named.inline_asm_has_named_operand_references = true;
+  unsupported_named.inline_asm_operands[2].constraint = "m";
+  const auto unsupported_named_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(unsupported_named)));
+  if (unsupported_named_result.ok ||
+      unsupported_named_result.diagnostic.find("unsupported constraint") ==
+          std::string::npos) {
+    return fail("expected inline-asm unsupported named operand to fail closed");
   }
 
   auto clobber = selected_inline_asm_record("add %w0, %w1, %w2");

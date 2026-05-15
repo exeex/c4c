@@ -712,6 +712,39 @@ const InlineAsmMachineOperandRecord* find_inline_asm_output_operand(
   return nullptr;
 }
 
+struct InlineAsmNamedOperandLookup {
+  const InlineAsmMachineOperandRecord* operand = nullptr;
+  std::string diagnostic;
+};
+
+InlineAsmNamedOperandLookup find_inline_asm_named_operand(
+    const AssemblerInstructionRecord& assembler,
+    std::string_view name) {
+  if (name.empty()) {
+    return {.diagnostic = "inline-asm template has missing named operand name"};
+  }
+
+  const InlineAsmMachineOperandRecord* found = nullptr;
+  std::size_t matching_names = 0;
+  for (const auto& operand : assembler.inline_asm_operands) {
+    if (!operand.name.has_value() || operand.name->empty()) {
+      continue;
+    }
+    if (std::string_view{*operand.name} == name) {
+      found = &operand;
+      ++matching_names;
+    }
+  }
+
+  if (matching_names > 1) {
+    return {.diagnostic = "inline-asm template references duplicate named operand"};
+  }
+  if (found == nullptr) {
+    return {.diagnostic = "inline-asm template references unknown named operand"};
+  }
+  return {.operand = found};
+}
+
 bool inline_asm_constraint_matches_kind(const InlineAsmMachineOperandRecord& operand) {
   switch (operand.kind) {
     case bir::InlineAsmOperandKind::RegisterInput:
@@ -836,9 +869,6 @@ InlineAsmSubstitutionResult substitute_inline_asm_template(
   if (!assembler.has_inline_asm_payload) {
     return {.diagnostic = "assembler node is missing inline-asm payload"};
   }
-  if (assembler.inline_asm_has_named_operand_references) {
-    return {.diagnostic = "inline-asm named operand references are not printable"};
-  }
   if (!assembler.inline_asm_clobbers.empty()) {
     return {.diagnostic = "inline-asm clobber list requires structured clobber authority"};
   }
@@ -874,16 +904,38 @@ InlineAsmSubstitutionResult substitute_inline_asm_template(
       ++index;
       continue;
     }
-    if (templ[index + 1] == '[') {
-      return {.diagnostic = "inline-asm named operand references are not printable"};
-    }
-
     std::optional<char> modifier;
     std::size_t operand_start = index + 1;
     if ((templ[operand_start] >= 'A' && templ[operand_start] <= 'Z') ||
         (templ[operand_start] >= 'a' && templ[operand_start] <= 'z')) {
       modifier = templ[operand_start];
       ++operand_start;
+    }
+    if (operand_start < templ.size() && templ[operand_start] == '[') {
+      const std::size_t name_start = operand_start + 1;
+      std::size_t name_end = name_start;
+      while (name_end < templ.size() && templ[name_end] != ']') {
+        ++name_end;
+      }
+      if (name_end >= templ.size()) {
+        return {.diagnostic = "inline-asm template has malformed named operand reference"};
+      }
+
+      const std::string_view name{templ.data() + name_start, name_end - name_start};
+      const auto lookup = find_inline_asm_named_operand(assembler, name);
+      if (!lookup.diagnostic.empty()) {
+        return {.diagnostic = lookup.diagnostic};
+      }
+
+      std::string diagnostic;
+      const auto replacement =
+          inline_asm_operand_text(assembler, *lookup.operand, modifier, &diagnostic);
+      if (!replacement.has_value()) {
+        return {.diagnostic = std::move(diagnostic)};
+      }
+      append_inline_asm_output_text(&lines, *replacement);
+      index = name_end;
+      continue;
     }
     if (operand_start >= templ.size() || templ[operand_start] < '0' ||
         templ[operand_start] > '9') {
