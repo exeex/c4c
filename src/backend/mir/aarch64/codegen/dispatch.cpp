@@ -486,6 +486,33 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
+[[nodiscard]] std::string i128_runtime_helper_error_message(
+    PreparedI128RuntimeHelperRecordError error) {
+  std::string message =
+      "AArch64 i128 runtime helper-boundary lowering requires prepared i128 helper facts";
+  message += "; error=";
+  message += prepared_i128_runtime_helper_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] bool is_i128_div_rem_opcode(bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::UDiv ||
+         opcode == bir::BinaryOpcode::SRem || opcode == bir::BinaryOpcode::URem;
+}
+
+[[nodiscard]] const prepare::PreparedI128RuntimeHelper* find_i128_runtime_helper_for_instruction(
+    const prepare::PreparedI128RuntimeHelperFunction& helpers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& helper : helpers.helpers) {
+    if (helper.block_index == block_index &&
+        helper.instruction_index == instruction_index) {
+      return &helper;
+    }
+  }
+  return nullptr;
+}
+
 struct LowerMemoryInstructionResult {
   bool handled = false;
   std::optional<module::MachineInstruction> instruction;
@@ -809,6 +836,45 @@ struct LowerMemoryInstructionResult {
       return LowerMemoryInstructionResult{.handled = true};
     }
     target = make_i128_compare_instruction(*prepared.record);
+  } else if (is_i128_div_rem_opcode(binary->opcode)) {
+    const auto* helper_function =
+        prepare::find_prepared_i128_runtime_helpers(*context.function.prepared,
+                                                    context.function.control_flow->function_name);
+    if (helper_function == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(
+              PreparedI128RuntimeHelperRecordError::MissingPreparedI128RuntimeHelper));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    const auto* helper =
+        find_i128_runtime_helper_for_instruction(
+            *helper_function, context.block_index, instruction_index);
+    if (helper == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(
+              PreparedI128RuntimeHelperRecordError::MissingPreparedI128RuntimeHelper));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    auto prepared =
+        make_prepared_i128_runtime_helper_boundary_record(*i128_carriers, *helper);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(prepared.error));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    target = make_i128_runtime_helper_boundary_instruction(*prepared.record);
   } else {
     auto prepared = make_prepared_i128_pair_operation_record(
         context.function.prepared->names,
@@ -837,6 +903,10 @@ struct LowerMemoryInstructionResult {
     record->instruction_index = instruction_index;
   } else if (auto* record = std::get_if<I128CompareRecord>(&target.payload)) {
     record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  } else if (auto* record = std::get_if<I128RuntimeHelperBoundaryRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->block_index = context.block_index;
     record->instruction_index = instruction_index;
   }
   if (target.selection.status != MachineNodeSelectionStatus::Selected) {

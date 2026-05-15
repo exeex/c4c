@@ -1973,6 +1973,84 @@ prepare::PreparedStoragePlanValue make_gpr_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedI128RuntimeHelper::LaneBinding make_i128_helper_lane(
+    const prepare::PreparedI128Carrier& carrier,
+    const prepare::PreparedI128LaneCarrier& lane) {
+  return prepare::PreparedI128RuntimeHelper::LaneBinding{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
+      .role = lane.role,
+      .lane_index = lane.lane_index,
+      .width_bytes = lane.width_bytes,
+      .register_name = lane.register_name,
+      .slot_id = lane.slot_id,
+      .stack_offset_bytes = lane.stack_offset_bytes,
+  };
+}
+
+prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
+    c4c::FunctionNameId function_name,
+    std::size_t instruction_index,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedI128RuntimeHelperKind kind,
+    std::string callee,
+    const prepare::PreparedI128Carrier& result,
+    const prepare::PreparedI128Carrier& lhs,
+    const prepare::PreparedI128Carrier& rhs) {
+  return prepare::PreparedI128RuntimeHelper{
+      .function_name = function_name,
+      .block_index = 0,
+      .instruction_index = instruction_index,
+      .source_binary_opcode = opcode,
+      .source_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .result_value_id = result.value_id,
+      .result_value_name = result.value_name,
+      .lhs_value_id = lhs.value_id,
+      .lhs_value_name = lhs.value_name,
+      .rhs_value_id = rhs.value_id,
+      .rhs_value_name = rhs.value_name,
+      .helper_family = prepare::PreparedI128RuntimeHelperFamily::DivRem,
+      .helper_kind = kind,
+      .callee_name = std::move(callee),
+      .result_ownership =
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
+      .lhs_low_lane = make_i128_helper_lane(lhs, lhs.low_lane),
+      .lhs_high_lane = make_i128_helper_lane(lhs, lhs.high_lane),
+      .rhs_low_lane = make_i128_helper_lane(rhs, rhs.low_lane),
+      .rhs_high_lane = make_i128_helper_lane(rhs, rhs.high_lane),
+      .result_low_lane = make_i128_helper_lane(result, result.low_lane),
+      .result_high_lane = make_i128_helper_lane(result, result.high_lane),
+      .resource_policy =
+          prepare::PreparedI128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedI128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedI128RuntimeHelperAbiTransition::
+                      DirectRegisterPairArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Gpr,
+              .result_bank = prepare::PreparedRegisterBank::Gpr,
+              .argument_count = 2,
+              .lanes_per_argument = 2,
+              .result_lane_count = 2,
+              .lane_width_bytes = 8,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x13",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x13"},
+          }},
+  };
+}
+
 int i128_transport_records_preserve_prepared_carrier_lanes() {
   prepare::PreparedI128CarrierFunction carriers{
       .function_name = c4c::FunctionNameId{2},
@@ -2028,6 +2106,91 @@ int i128_transport_records_preserve_prepared_carrier_lanes() {
       aarch64_codegen::prepared_i128_transport_record_error_name(incomplete.error) !=
           "incomplete_prepared_i128_carrier") {
     return fail("expected incomplete i128 carrier to fail closed");
+  }
+  return 0;
+}
+
+int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
+  const auto function_name = c4c::FunctionNameId{9};
+  const auto result_name = c4c::ValueNameId{90};
+  const auto lhs_name = c4c::ValueNameId{91};
+  const auto rhs_name = c4c::ValueNameId{92};
+  prepare::PreparedI128CarrierFunction carriers{
+      .function_name = function_name,
+      .carriers =
+          {make_i128_register_pair_carrier(function_name,
+                                           prepare::PreparedValueId{190},
+                                           result_name,
+                                           6),
+           make_i128_register_pair_carrier(function_name,
+                                           prepare::PreparedValueId{191},
+                                           lhs_name,
+                                           8),
+           make_i128_register_pair_carrier(function_name,
+                                           prepare::PreparedValueId{192},
+                                           rhs_name,
+                                           10)},
+  };
+  auto helper = make_i128_runtime_helper(function_name,
+                                         2,
+                                         bir::BinaryOpcode::UDiv,
+                                         prepare::PreparedI128RuntimeHelperKind::UnsignedDiv,
+                                         "__udivti3",
+                                         carriers.carriers[0],
+                                         carriers.carriers[1],
+                                         carriers.carriers[2]);
+  auto prepared =
+      aarch64_codegen::make_prepared_i128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (!prepared.record.has_value() ||
+      prepared.error !=
+          aarch64_codegen::PreparedI128RuntimeHelperRecordError::None ||
+      prepared.record->boundary_kind !=
+          aarch64_codegen::I128RuntimeHelperBoundaryKind::UnsignedDiv ||
+      prepared.record->helper_kind !=
+          prepare::PreparedI128RuntimeHelperKind::UnsignedDiv ||
+      prepared.record->callee_name != "__udivti3" ||
+      prepared.record->source_binary_opcode != bir::BinaryOpcode::UDiv ||
+      prepared.record->source_helper != &helper ||
+      prepared.record->result.value_id != prepare::PreparedValueId{190} ||
+      prepared.record->lhs.low_lane.reg->reg != aarch64_abi::x_register(8) ||
+      prepared.record->rhs.high_lane.reg->reg != aarch64_abi::x_register(11) ||
+      !prepared.record->resource_policy.call_boundary ||
+      prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      prepared.record->clobbered_registers.empty()) {
+    return fail("expected i128 helper boundary record to consume prepared helper authority");
+  }
+  const auto instruction =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::I128RuntimeHelperBoundaryRecord>(&instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::CallBoundary ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::I128RuntimeHelper ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) !=
+          "i128_runtime_helper" ||
+      instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.operands.size() != 6 ||
+      instruction.defs.size() != 2 ||
+      instruction.uses.size() != 4 ||
+      instruction.clobbers.empty() ||
+      instruction.side_effects.size() != 1 ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
+      payload->result.high_lane.reg->reg != aarch64_abi::x_register(7)) {
+    return fail("expected selected i128 helper boundary instruction effects");
+  }
+
+  helper.clobbered_registers.clear();
+  const auto missing =
+      aarch64_codegen::make_prepared_i128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (missing.record.has_value() ||
+      missing.error !=
+          aarch64_codegen::PreparedI128RuntimeHelperRecordError::MissingClobberPolicy ||
+      aarch64_codegen::prepared_i128_runtime_helper_record_error_name(missing.error) !=
+          "missing_clobber_policy") {
+    return fail("expected i128 helper boundary to fail closed without clobber policy");
   }
   return 0;
 }
@@ -2264,6 +2427,11 @@ int main() {
     return status;
   }
   if (const int status = i128_transport_records_preserve_prepared_carrier_lanes();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          i128_runtime_helper_boundary_records_consume_prepared_helper_authority();
       status != 0) {
     return status;
   }

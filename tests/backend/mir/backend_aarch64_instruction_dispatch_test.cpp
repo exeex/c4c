@@ -1267,6 +1267,84 @@ prepare::PreparedI128Carrier dispatch_i128_register_pair_carrier(
   };
 }
 
+prepare::PreparedI128RuntimeHelper::LaneBinding dispatch_i128_helper_lane(
+    const prepare::PreparedI128Carrier& carrier,
+    const prepare::PreparedI128LaneCarrier& lane) {
+  return prepare::PreparedI128RuntimeHelper::LaneBinding{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
+      .role = lane.role,
+      .lane_index = lane.lane_index,
+      .width_bytes = lane.width_bytes,
+      .register_name = lane.register_name,
+      .slot_id = lane.slot_id,
+      .stack_offset_bytes = lane.stack_offset_bytes,
+  };
+}
+
+prepare::PreparedI128RuntimeHelper dispatch_i128_runtime_helper(
+    c4c::FunctionNameId function_name,
+    std::size_t instruction_index,
+    bir::BinaryOpcode opcode,
+    prepare::PreparedI128RuntimeHelperKind helper_kind,
+    std::string callee_name,
+    const prepare::PreparedI128Carrier& result,
+    const prepare::PreparedI128Carrier& lhs,
+    const prepare::PreparedI128Carrier& rhs) {
+  return prepare::PreparedI128RuntimeHelper{
+      .function_name = function_name,
+      .block_index = 0,
+      .instruction_index = instruction_index,
+      .source_binary_opcode = opcode,
+      .source_type = bir::TypeKind::I128,
+      .result_type = bir::TypeKind::I128,
+      .result_value_id = result.value_id,
+      .result_value_name = result.value_name,
+      .lhs_value_id = lhs.value_id,
+      .lhs_value_name = lhs.value_name,
+      .rhs_value_id = rhs.value_id,
+      .rhs_value_name = rhs.value_name,
+      .helper_family = prepare::PreparedI128RuntimeHelperFamily::DivRem,
+      .helper_kind = helper_kind,
+      .callee_name = std::move(callee_name),
+      .result_ownership =
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes,
+      .lhs_low_lane = dispatch_i128_helper_lane(lhs, lhs.low_lane),
+      .lhs_high_lane = dispatch_i128_helper_lane(lhs, lhs.high_lane),
+      .rhs_low_lane = dispatch_i128_helper_lane(rhs, rhs.low_lane),
+      .rhs_high_lane = dispatch_i128_helper_lane(rhs, rhs.high_lane),
+      .result_low_lane = dispatch_i128_helper_lane(result, result.low_lane),
+      .result_high_lane = dispatch_i128_helper_lane(result, result.high_lane),
+      .resource_policy =
+          prepare::PreparedI128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedI128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedI128RuntimeHelperAbiTransition::
+                      DirectRegisterPairArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Gpr,
+              .result_bank = prepare::PreparedRegisterBank::Gpr,
+              .argument_count = 2,
+              .lanes_per_argument = 2,
+              .result_lane_count = 2,
+              .lane_width_bytes = 8,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x13",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x13"},
+          }},
+  };
+}
+
 prepare::PreparedBirModule prepared_with_frame_slot_load(bool include_storage = true) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -1529,6 +1607,88 @@ prepare::PreparedBirModule prepared_with_i128_pair_operation(
                                                           prepare::PreparedValueId{122},
                                                           rhs_name,
                                                           10));
+  }
+  prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
+      .function_name = function_name,
+      .carriers = std::move(carriers),
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_i128_runtime_helper_operation(
+    bool include_helper = true,
+    bool include_clobber_policy = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.i128.helper");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.i128.helper.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.i128.helper.entry");
+  const auto result_name = prepared.names.value_names.intern("%helper.result.i128");
+  const auto lhs_name = prepared.names.value_names.intern("%helper.lhs.i128");
+  const auto rhs_name = prepared.names.value_names.intern("%helper.rhs.i128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.i128.helper",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.i128.helper.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::SRem,
+                      .result =
+                          bir::Value::named(bir::TypeKind::I128, "%helper.result.i128"),
+                      .operand_type = bir::TypeKind::I128,
+                      .lhs = bir::Value::named(bir::TypeKind::I128, "%helper.lhs.i128"),
+                      .rhs = bir::Value::named(bir::TypeKind::I128, "%helper.rhs.i128"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  std::vector<prepare::PreparedI128Carrier> carriers = {
+      dispatch_i128_register_pair_carrier(function_name,
+                                          prepare::PreparedValueId{150},
+                                          result_name,
+                                          6),
+      dispatch_i128_register_pair_carrier(function_name,
+                                          prepare::PreparedValueId{151},
+                                          lhs_name,
+                                          8),
+      dispatch_i128_register_pair_carrier(function_name,
+                                          prepare::PreparedValueId{152},
+                                          rhs_name,
+                                          10),
+  };
+  if (include_helper) {
+    auto helper = dispatch_i128_runtime_helper(
+        function_name,
+        0,
+        bir::BinaryOpcode::SRem,
+        prepare::PreparedI128RuntimeHelperKind::SignedRem,
+        "__modti3",
+        carriers[0],
+        carriers[1],
+        carriers[2]);
+    if (!include_clobber_policy) {
+      helper.clobbered_registers.clear();
+    }
+    prepared.i128_runtime_helpers.functions.push_back(
+        prepare::PreparedI128RuntimeHelperFunction{
+            .function_name = function_name,
+            .helpers = {std::move(helper)},
+        });
   }
   prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
       .function_name = function_name,
@@ -3433,6 +3593,100 @@ int block_dispatch_reports_missing_i128_pair_carrier_authority() {
   return 0;
 }
 
+int block_dispatch_lowers_i128_runtime_helper_from_prepared_authority() {
+  auto prepared = prepared_with_i128_runtime_helper_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  const auto* helper =
+      block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::I128RuntimeHelperBoundaryRecord>(
+                &block.instructions.front().target.payload);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      helper == nullptr ||
+      block.instructions.front().target.opcode !=
+          aarch64_codegen::MachineOpcode::I128RuntimeHelper ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::CallBoundary ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      helper->helper_kind != prepare::PreparedI128RuntimeHelperKind::SignedRem ||
+      helper->callee_name != "__modti3" ||
+      helper->source_binary_opcode != bir::BinaryOpcode::SRem ||
+      helper->result_ownership !=
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
+      helper->result.low_lane.reg->reg != aarch64_abi::x_register(6) ||
+      helper->lhs.high_lane.reg->reg != aarch64_abi::x_register(9) ||
+      !helper->resource_policy.call_boundary ||
+      helper->abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper->clobbered_registers.empty() ||
+      block.instructions.front().target.clobbers.empty()) {
+    return fail("expected dispatch to select i128 helper boundary from prepared authority");
+  }
+  return 0;
+}
+
+int block_dispatch_reports_missing_i128_runtime_helper_authority() {
+  auto missing_helper_prepared = prepared_with_i128_runtime_helper_operation(false);
+  const auto& function_cf = missing_helper_prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      missing_helper_prepared, missing_helper_prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics missing_helper_diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, missing_helper_diagnostics);
+  if (result.visited_operations != 1 ||
+      result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 ||
+      missing_helper_diagnostics.entries.size() != 1 ||
+      missing_helper_diagnostics.entries.front().message.find(
+          "missing_prepared_i128_runtime_helper") == std::string::npos) {
+    return fail("expected i128 helper dispatch to fail closed without helper authority");
+  }
+
+  auto missing_clobber_prepared =
+      prepared_with_i128_runtime_helper_operation(true, false);
+  const auto& clobber_function_cf = missing_clobber_prepared.control_flow.functions.front();
+  const auto& clobber_block_cf = clobber_function_cf.blocks.front();
+  const auto clobber_function_context = aarch64_codegen::make_function_lowering_context(
+      missing_clobber_prepared,
+      missing_clobber_prepared.target_profile,
+      clobber_function_cf);
+  const auto clobber_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          clobber_function_context, clobber_block_cf, 0);
+
+  aarch64_module::MachineBlock clobber_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_clobber_diagnostics;
+  const auto clobber_result =
+      aarch64_codegen::dispatch_prepared_block(
+          clobber_block_context, clobber_block, missing_clobber_diagnostics);
+  if (clobber_result.visited_operations != 1 ||
+      clobber_result.emitted_instructions != 1 ||
+      clobber_block.instructions.size() != 1 ||
+      missing_clobber_diagnostics.entries.size() != 1 ||
+      missing_clobber_diagnostics.entries.front().message.find("missing_clobber_policy") ==
+          std::string::npos) {
+    return fail("expected i128 helper dispatch to fail closed without clobber policy");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_i128_shift_from_prepared_carriers() {
   auto prepared = prepared_with_i128_shift_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -3941,6 +4195,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_i128_pair_carrier_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_i128_runtime_helper_from_prepared_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_reports_missing_i128_runtime_helper_authority();
       status != 0) {
     return status;
   }

@@ -183,6 +183,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "i128_shift";
     case MachineOpcode::I128Compare:
       return "i128_compare";
+    case MachineOpcode::I128RuntimeHelper:
+      return "i128_runtime_helper";
     case MachineOpcode::Add:
       return "add";
     case MachineOpcode::Sub:
@@ -311,6 +313,11 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::CalleeSaveStore:
     case MachineOpcode::CalleeSaveLoad:
     case MachineOpcode::CallBoundaryAbiBinding:
+    case MachineOpcode::I128Transport:
+    case MachineOpcode::I128Pair:
+    case MachineOpcode::I128Shift:
+    case MachineOpcode::I128Compare:
+    case MachineOpcode::I128RuntimeHelper:
     case MachineOpcode::And:
     case MachineOpcode::Mul:
     case MachineOpcode::Div:
@@ -798,6 +805,21 @@ std::string_view i128_compare_high_word_semantics_name(
   return "unknown";
 }
 
+std::string_view i128_runtime_helper_boundary_kind_name(
+    I128RuntimeHelperBoundaryKind kind) {
+  switch (kind) {
+    case I128RuntimeHelperBoundaryKind::SignedDiv:
+      return "signed_div";
+    case I128RuntimeHelperBoundaryKind::UnsignedDiv:
+      return "unsigned_div";
+    case I128RuntimeHelperBoundaryKind::SignedRem:
+      return "signed_rem";
+    case I128RuntimeHelperBoundaryKind::UnsignedRem:
+      return "unsigned_rem";
+  }
+  return "unknown";
+}
+
 std::string_view prepared_i128_pair_record_error_name(
     PreparedI128PairRecordError error) {
   switch (error) {
@@ -831,6 +853,41 @@ std::string_view prepared_i128_pair_record_error_name(
       return "unsupported_shift_count";
     case PreparedI128PairRecordError::MissingShiftCountStorage:
       return "missing_shift_count_storage";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_i128_runtime_helper_record_error_name(
+    PreparedI128RuntimeHelperRecordError error) {
+  switch (error) {
+    case PreparedI128RuntimeHelperRecordError::None:
+      return "none";
+    case PreparedI128RuntimeHelperRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedI128RuntimeHelperRecordError::MissingPreparedI128RuntimeHelper:
+      return "missing_prepared_i128_runtime_helper";
+    case PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper:
+      return "incomplete_prepared_i128_runtime_helper";
+    case PreparedI128RuntimeHelperRecordError::UnsupportedHelperFamily:
+      return "unsupported_helper_family";
+    case PreparedI128RuntimeHelperRecordError::UnsupportedSourceOperation:
+      return "unsupported_source_operation";
+    case PreparedI128RuntimeHelperRecordError::UnsupportedResultOwnership:
+      return "unsupported_result_ownership";
+    case PreparedI128RuntimeHelperRecordError::MissingPreparedI128Carrier:
+      return "missing_prepared_i128_carrier";
+    case PreparedI128RuntimeHelperRecordError::IncompletePreparedI128Carrier:
+      return "incomplete_prepared_i128_carrier";
+    case PreparedI128RuntimeHelperRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedI128RuntimeHelperRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedI128RuntimeHelperRecordError::MissingBoundaryResourcePolicy:
+      return "missing_boundary_resource_policy";
+    case PreparedI128RuntimeHelperRecordError::MissingBoundaryAbiPolicy:
+      return "missing_boundary_abi_policy";
+    case PreparedI128RuntimeHelperRecordError::MissingClobberPolicy:
+      return "missing_clobber_policy";
   }
   return "unknown";
 }
@@ -3527,6 +3584,119 @@ InstructionRecord make_i128_compare_instruction(I128CompareRecord instruction) {
   };
 }
 
+MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
+    const I128RuntimeHelperBoundaryRecord& instruction) {
+  const auto has_pair_registers = [](const I128PairOperandRecord& operand) {
+    return operand.source_carrier != nullptr &&
+           operand.carrier_kind == prepare::PreparedI128CarrierKind::RegisterPair &&
+           operand.low_lane.reg.has_value() &&
+           operand.high_lane.reg.has_value();
+  };
+  if (instruction.source_helper == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing prepared helper provenance"};
+  }
+  if (instruction.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem ||
+      instruction.callee_name.empty()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing helper family or callee identity"};
+  }
+  if (instruction.result_ownership !=
+      prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "i128 helper boundary requires direct low/high result ownership"};
+  }
+  if (instruction.total_size_bytes != 16 || instruction.lane_width_bytes != 8 ||
+      instruction.total_align_bytes == 0 ||
+      instruction.source_type != bir::TypeKind::I128 ||
+      instruction.result_type != bir::TypeKind::I128) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary has invalid type, size, or alignment facts"};
+  }
+  if (!has_pair_registers(instruction.result) ||
+      !has_pair_registers(instruction.lhs) ||
+      !has_pair_registers(instruction.rhs)) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing low/high register-pair lanes"};
+  }
+  if (!instruction.resource_policy.call_boundary ||
+      !instruction.resource_policy.runtime_helper_callee ||
+      !instruction.resource_policy.caller_saved_clobbers ||
+      !instruction.resource_policy.preserves_source_operation_identity) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing resource policy facts"};
+  }
+  if (instruction.abi_policy.transition !=
+          prepare::PreparedI128RuntimeHelperAbiTransition::
+              DirectRegisterPairArgumentsAndResult ||
+      instruction.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      instruction.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      instruction.abi_policy.argument_count != 2 ||
+      instruction.abi_policy.lanes_per_argument != 2 ||
+      instruction.abi_policy.result_lane_count != 2 ||
+      instruction.abi_policy.lane_width_bytes != 8) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing ABI/register-bank policy facts"};
+  }
+  if (instruction.clobbered_registers.empty()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing caller-saved clobber policy"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+InstructionRecord make_i128_runtime_helper_boundary_instruction(
+    I128RuntimeHelperBoundaryRecord instruction) {
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  const auto add_def = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      defs.push_back(effect_from_operand(operand));
+    }
+  };
+  const auto add_use = [&](const std::optional<RegisterOperand>& reg) {
+    if (reg.has_value()) {
+      const auto operand = make_register_operand(*reg);
+      operands.push_back(operand);
+      uses.push_back(effect_from_operand(operand));
+    }
+  };
+  add_def(instruction.result.low_lane.reg);
+  add_def(instruction.result.high_lane.reg);
+  add_use(instruction.lhs.low_lane.reg);
+  add_use(instruction.lhs.high_lane.reg);
+  add_use(instruction.rhs.low_lane.reg);
+  add_use(instruction.rhs.high_lane.reg);
+
+  return InstructionRecord{
+      .family = InstructionFamily::CallBoundary,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::I128RuntimeHelper,
+      .selection = i128_runtime_helper_boundary_selection_status(instruction),
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
+      .side_effects = {MachineSideEffectKind::Call},
+      .payload = instruction,
+  };
+}
+
 InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction) {
   std::vector<OperandRecord> operands;
@@ -4991,6 +5161,14 @@ PreparedI128CompareRecordResult i128_compare_record_error(
   };
 }
 
+PreparedI128RuntimeHelperRecordResult i128_runtime_helper_record_error(
+    PreparedI128RuntimeHelperRecordError error) {
+  return PreparedI128RuntimeHelperRecordResult{
+      .record = std::nullopt,
+      .error = error,
+  };
+}
+
 bool is_i128_shift_opcode(bir::BinaryOpcode opcode) {
   return opcode == bir::BinaryOpcode::Shl || opcode == bir::BinaryOpcode::LShr ||
          opcode == bir::BinaryOpcode::AShr;
@@ -5264,6 +5442,203 @@ PreparedI128CompareRecordResult make_prepared_i128_compare_record(
   return PreparedI128CompareRecordResult{
       .record = std::move(record),
       .error = PreparedI128PairRecordError::None,
+  };
+}
+
+bool is_i128_div_rem_opcode(bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::UDiv ||
+         opcode == bir::BinaryOpcode::SRem || opcode == bir::BinaryOpcode::URem;
+}
+
+I128RuntimeHelperBoundaryKind i128_runtime_helper_boundary_kind_from_prepared(
+    prepare::PreparedI128RuntimeHelperKind kind) {
+  switch (kind) {
+    case prepare::PreparedI128RuntimeHelperKind::SignedDiv:
+      return I128RuntimeHelperBoundaryKind::SignedDiv;
+    case prepare::PreparedI128RuntimeHelperKind::UnsignedDiv:
+      return I128RuntimeHelperBoundaryKind::UnsignedDiv;
+    case prepare::PreparedI128RuntimeHelperKind::SignedRem:
+      return I128RuntimeHelperBoundaryKind::SignedRem;
+    case prepare::PreparedI128RuntimeHelperKind::UnsignedRem:
+      return I128RuntimeHelperBoundaryKind::UnsignedRem;
+  }
+  return I128RuntimeHelperBoundaryKind::SignedDiv;
+}
+
+PreparedI128RuntimeHelperRecordError make_i128_helper_operand_record(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& low,
+    const std::optional<prepare::PreparedI128RuntimeHelper::LaneBinding>& high,
+    I128PairOperandRecord& operand) {
+  if (!low.has_value() || !high.has_value()) {
+    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
+  }
+  if (low->value_id != value_id || high->value_id != value_id ||
+      low->value_name != value_name || high->value_name != value_name ||
+      low->role != prepare::PreparedI128LaneRole::Low ||
+      high->role != prepare::PreparedI128LaneRole::High ||
+      low->lane_index != 0 || high->lane_index != 1 ||
+      low->width_bytes != 8 || high->width_bytes != 8) {
+    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
+  }
+
+  const auto* carrier = prepare::find_prepared_i128_carrier(i128_carriers, value_id);
+  if (carrier == nullptr || carrier->value_name != value_name) {
+    return PreparedI128RuntimeHelperRecordError::MissingPreparedI128Carrier;
+  }
+  if (!carrier->missing_required_facts.empty() ||
+      carrier->kind == prepare::PreparedI128CarrierKind::Missing ||
+      carrier->total_size_bytes != 16 || carrier->lane_width_bytes != 8) {
+    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128Carrier;
+  }
+  if (carrier->kind != prepare::PreparedI128CarrierKind::RegisterPair) {
+    return PreparedI128RuntimeHelperRecordError::UnsupportedCarrierKind;
+  }
+  if (carrier->low_lane.register_name != low->register_name ||
+      carrier->high_lane.register_name != high->register_name) {
+    return PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper;
+  }
+
+  operand = I128PairOperandRecord{
+      .value_id = carrier->value_id,
+      .value_name = carrier->value_name,
+      .carrier_kind = carrier->kind,
+      .low_lane =
+          I128LaneTransportRecord{
+              .role = low->role,
+              .lane_index = low->lane_index,
+              .width_bytes = low->width_bytes,
+          },
+      .high_lane =
+          I128LaneTransportRecord{
+              .role = high->role,
+              .lane_index = high->lane_index,
+              .width_bytes = high->width_bytes,
+          },
+      .source_carrier = carrier,
+  };
+  operand.low_lane.reg = make_i128_lane_register_operand(*carrier, carrier->low_lane);
+  operand.high_lane.reg = make_i128_lane_register_operand(*carrier, carrier->high_lane);
+  if (!operand.low_lane.reg.has_value() || !operand.high_lane.reg.has_value()) {
+    return PreparedI128RuntimeHelperRecordError::RegisterConversionFailed;
+  }
+  return PreparedI128RuntimeHelperRecordError::None;
+}
+
+PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary_record(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const prepare::PreparedI128RuntimeHelper& helper) {
+  if (i128_carriers.function_name == c4c::kInvalidFunctionName ||
+      helper.function_name != i128_carriers.function_name) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::InvalidFunction);
+  }
+  if (helper.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::UnsupportedHelperFamily);
+  }
+  if (!is_i128_div_rem_opcode(helper.source_binary_opcode) ||
+      helper.source_type != bir::TypeKind::I128 ||
+      helper.result_type != bir::TypeKind::I128 ||
+      helper.callee_name.empty()) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::UnsupportedSourceOperation);
+  }
+  if (!helper.missing_required_facts.empty()) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper);
+  }
+  if (helper.result_ownership !=
+      prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::UnsupportedResultOwnership);
+  }
+  if (!helper.resource_policy.call_boundary ||
+      !helper.resource_policy.runtime_helper_callee ||
+      !helper.resource_policy.caller_saved_clobbers ||
+      !helper.resource_policy.preserves_source_operation_identity) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::MissingBoundaryResourcePolicy);
+  }
+  if (helper.abi_policy.transition !=
+          prepare::PreparedI128RuntimeHelperAbiTransition::
+              DirectRegisterPairArgumentsAndResult ||
+      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.argument_count != 2 ||
+      helper.abi_policy.lanes_per_argument != 2 ||
+      helper.abi_policy.result_lane_count != 2 ||
+      helper.abi_policy.lane_width_bytes != 8) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::MissingBoundaryAbiPolicy);
+  }
+  if (helper.clobbered_registers.empty()) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::MissingClobberPolicy);
+  }
+
+  I128RuntimeHelperBoundaryRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .boundary_kind = i128_runtime_helper_boundary_kind_from_prepared(helper.helper_kind),
+      .helper_family = helper.helper_family,
+      .helper_kind = helper.helper_kind,
+      .callee_name = helper.callee_name,
+      .source_binary_opcode = helper.source_binary_opcode,
+      .function_name = helper.function_name,
+      .block_index = helper.block_index,
+      .instruction_index = helper.instruction_index,
+      .source_type = helper.source_type,
+      .result_type = helper.result_type,
+      .result_value_id = helper.result_value_id,
+      .result_value_name = helper.result_value_name,
+      .lhs_value_id = helper.lhs_value_id,
+      .lhs_value_name = helper.lhs_value_name,
+      .rhs_value_id = helper.rhs_value_id,
+      .rhs_value_name = helper.rhs_value_name,
+      .result_ownership = helper.result_ownership,
+      .lane_width_bytes = helper.abi_policy.lane_width_bytes,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .resource_policy = helper.resource_policy,
+      .abi_policy = helper.abi_policy,
+      .clobbered_registers = helper.clobbered_registers,
+      .source_helper = &helper,
+  };
+  if (const auto error =
+          make_i128_helper_operand_record(i128_carriers,
+                                          helper.result_value_id,
+                                          helper.result_value_name,
+                                          helper.result_low_lane,
+                                          helper.result_high_lane,
+                                          record.result);
+      error != PreparedI128RuntimeHelperRecordError::None) {
+    return i128_runtime_helper_record_error(error);
+  }
+  if (const auto error =
+          make_i128_helper_operand_record(i128_carriers,
+                                          helper.lhs_value_id,
+                                          helper.lhs_value_name,
+                                          helper.lhs_low_lane,
+                                          helper.lhs_high_lane,
+                                          record.lhs);
+      error != PreparedI128RuntimeHelperRecordError::None) {
+    return i128_runtime_helper_record_error(error);
+  }
+  if (const auto error =
+          make_i128_helper_operand_record(i128_carriers,
+                                          helper.rhs_value_id,
+                                          helper.rhs_value_name,
+                                          helper.rhs_low_lane,
+                                          helper.rhs_high_lane,
+                                          record.rhs);
+      error != PreparedI128RuntimeHelperRecordError::None) {
+    return i128_runtime_helper_record_error(error);
+  }
+  return PreparedI128RuntimeHelperRecordResult{
+      .record = std::move(record),
+      .error = PreparedI128RuntimeHelperRecordError::None,
   };
 }
 
