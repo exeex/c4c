@@ -613,7 +613,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   if (raw_callee.find("llvm.x86.") != std::string_view::npos ||
       raw_callee.find("llvm.aarch64.crc32w") != std::string_view::npos ||
       raw_callee.find("llvm.aarch64.neon.ld1.v16i8.p0i8") != std::string_view::npos ||
-      raw_callee.find("llvm.aarch64.neon.add.v16i8") != std::string_view::npos) {
+      raw_callee.find("llvm.aarch64.neon.add.v16i8") != std::string_view::npos ||
+      raw_callee.find("llvm.aarch64.dmb") != std::string_view::npos) {
     return fail_aarch64_semantic_intrinsic_family();
   }
   const bool is_direct_global_call =
@@ -1445,7 +1446,9 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const bool is_crc32w = intrinsic_name == "llvm.aarch64.crc32w";
     const bool is_v16i8_load = intrinsic_name == "llvm.aarch64.neon.ld1.v16i8.p0i8";
     const bool is_v16i8_add = intrinsic_name == "llvm.aarch64.neon.add.v16i8";
-    const bool is_known_aarch64_candidate = is_crc32w || is_v16i8_load || is_v16i8_add;
+    const bool is_dmb = intrinsic_name == "llvm.aarch64.dmb";
+    const bool is_known_aarch64_candidate =
+        is_crc32w || is_v16i8_load || is_v16i8_add || is_dmb;
     if (!is_known_aarch64_candidate) {
       if (intrinsic_name.rfind("llvm.x86.", 0) == 0) {
         return fail_aarch64_intrinsic();
@@ -1460,11 +1463,51 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     if (!parsed_call.has_value()) {
       return fail_aarch64_intrinsic();
     }
+    const auto return_type = c4c::codegen::lir::trim_lir_arg_text(call.return_type.str());
+    if (is_dmb) {
+      if (parsed_call->args.size() != 1 || parsed_call->param_types.size() != 1 ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "i32" ||
+          return_type != "void" ||
+          call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return fail_aarch64_intrinsic();
+      }
+      const auto lowered_domain = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+          bir::TypeKind::I32,
+          value_aliases);
+      if (!lowered_domain.has_value() ||
+          lowered_domain->kind != bir::Value::Kind::Immediate ||
+          lowered_domain->immediate != 15) {
+        return fail_aarch64_intrinsic();
+      }
+      lowered_insts->push_back(bir::CallInst{
+          .callee = std::string(intrinsic_name),
+          .args = {*lowered_domain},
+          .arg_types = {bir::TypeKind::I32},
+          .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::I32)},
+          .return_type_name = "void",
+          .return_type = bir::TypeKind::Void,
+          .result_abi =
+              compute_function_return_abi(context_.target_profile, bir::TypeKind::Void, false),
+          .intrinsic = bir::IntrinsicOperation{
+              .family = bir::IntrinsicFamilyKind::Barrier,
+              .operation = bir::IntrinsicOperationKind::BarrierDmb,
+              .operand_type = bir::TypeKind::I32,
+              .result_type = bir::TypeKind::Void,
+              .operand_roles = {bir::IntrinsicOperandRole::BarrierDomain},
+              .barrier_domain = bir::IntrinsicBarrierDomainKind::Sy,
+              .has_immediate_operand = true,
+              .requires_immediate_operand = true,
+              .immediate_value = 15,
+              .has_side_effects = true,
+          },
+      });
+      return true;
+    }
     if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
       return fail_aarch64_intrinsic();
     }
 
-    const auto return_type = c4c::codegen::lir::trim_lir_arg_text(call.return_type.str());
     if (is_crc32w) {
       if (parsed_call->args.size() != 2 || parsed_call->param_types.size() != 2 ||
           c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "i32" ||

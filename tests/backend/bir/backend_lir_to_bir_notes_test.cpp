@@ -113,6 +113,7 @@ int expect_structured_incoming_byval_param_materializes_from_type_ref();
 int expect_aarch64_crc32w_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_load_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_add_intrinsic_carries_bir_semantics();
+int expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection();
 int expect_aarch64_semantic_intrinsic_fail_closed_cases();
 int expect_incoming_byval_param_with_missing_struct_layout_fails_closed();
 int expect_incoming_byval_param_with_mismatched_struct_id_fails_closed();
@@ -3137,6 +3138,38 @@ LirModule make_aarch64_vector_add_intrinsic_module(std::string vector_type = "<1
   return module;
 }
 
+LirModule make_aarch64_dmb_intrinsic_module(
+    std::string target_triple = "aarch64-unknown-linux-gnu",
+    std::string domain_type = "i32",
+    std::string domain_value = "15",
+    std::string return_type = "void",
+    LirOperand result = LirOperand()) {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple(target_triple);
+
+  LirFunction function;
+  function.name = "aarch64_dmb_intrinsic";
+  function.signature_text = "define void @aarch64_dmb_intrinsic()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = std::move(result),
+      .return_type = return_type,
+      .callee = LirOperand("@llvm.aarch64.dmb"),
+      .callee_type_suffix = "(" + domain_type + ")",
+      .args_str = domain_type + " " + domain_value,
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_x86_only_intrinsic_on_aarch64_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -3272,9 +3305,38 @@ int expect_aarch64_v16i8_vector_add_intrinsic_carries_bir_semantics() {
   return 0;
 }
 
+int expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection() {
+  auto result = try_lower_to_bir_with_options(make_aarch64_dmb_intrinsic_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("aarch64 dmb intrinsic should lower to BIR semantic intrinsic facts");
+  }
+  const auto* call = find_intrinsic_call(
+      *result.module, c4c::backend::bir::IntrinsicOperationKind::BarrierDmb);
+  if (call == nullptr || !call->intrinsic.has_value()) {
+    return fail("aarch64 dmb intrinsic should carry a BIR intrinsic operation");
+  }
+  const auto& intrinsic = *call->intrinsic;
+  if (call->result.has_value() || call->return_type != TypeKind::Void ||
+      intrinsic.family != c4c::backend::bir::IntrinsicFamilyKind::Barrier ||
+      intrinsic.required_feature != c4c::backend::bir::IntrinsicFeatureKind::None ||
+      intrinsic.operand_type != TypeKind::I32 || intrinsic.result_type != TypeKind::Void ||
+      intrinsic.operand_roles.size() != 1 ||
+      intrinsic.operand_roles[0] != c4c::backend::bir::IntrinsicOperandRole::BarrierDomain ||
+      intrinsic.barrier_domain != c4c::backend::bir::IntrinsicBarrierDomainKind::Sy ||
+      !intrinsic.has_immediate_operand || !intrinsic.requires_immediate_operand ||
+      !intrinsic.immediate_value.has_value() || *intrinsic.immediate_value != 15 ||
+      intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_access != c4c::backend::bir::IntrinsicMemoryAccessKind::None ||
+      !intrinsic.has_side_effects) {
+    return fail("aarch64 dmb intrinsic should carry complete no-result barrier facts");
+  }
+  return 0;
+}
+
 int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
   constexpr std::string_view kFamily = "aarch64 semantic intrinsic family";
-  const std::array<std::pair<std::string_view, LirModule>, 4> modules = {
+  const std::array<std::pair<std::string_view, LirModule>, 7> modules = {
       std::pair<std::string_view, LirModule>{"x86-only intrinsic",
                                              make_x86_only_intrinsic_on_aarch64_module()},
       std::pair<std::string_view, LirModule>{"crc wrong data type",
@@ -3284,6 +3346,15 @@ int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
           make_aarch64_vector_load_intrinsic_module("<16 x i8>", "i32")},
       std::pair<std::string_view, LirModule>{"vector add lane mismatch",
                                              make_aarch64_vector_add_intrinsic_module("<8 x i8>")},
+      std::pair<std::string_view, LirModule>{"dmb target mismatch",
+                                             make_aarch64_dmb_intrinsic_module(
+                                                 "x86_64-unknown-linux-gnu")},
+      std::pair<std::string_view, LirModule>{"dmb unsupported domain",
+                                             make_aarch64_dmb_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu", "i32", "14")},
+      std::pair<std::string_view, LirModule>{"dmb non-immediate domain",
+                                             make_aarch64_dmb_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu", "i32", "%domain")},
   };
   for (const auto& [case_name, module] : modules) {
     auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
@@ -5515,6 +5586,11 @@ int main() {
           expect_aarch64_v16i8_vector_add_intrinsic_carries_bir_semantics();
       aarch64_vector_add_status != 0) {
     return aarch64_vector_add_status;
+  }
+  if (const int aarch64_dmb_status =
+          expect_aarch64_dmb_intrinsic_carries_bir_semantics_without_selection();
+      aarch64_dmb_status != 0) {
+    return aarch64_dmb_status;
   }
   if (const int aarch64_intrinsic_fail_closed_status =
           expect_aarch64_semantic_intrinsic_fail_closed_cases();

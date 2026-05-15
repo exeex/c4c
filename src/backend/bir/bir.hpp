@@ -210,6 +210,7 @@ enum class IntrinsicFamilyKind : unsigned char {
   Crc,
   VectorMemory,
   VectorOperation,
+  Barrier,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_family_kind_name(
@@ -225,6 +226,8 @@ enum class IntrinsicFamilyKind : unsigned char {
       return "vector_memory";
     case IntrinsicFamilyKind::VectorOperation:
       return "vector_operation";
+    case IntrinsicFamilyKind::Barrier:
+      return "barrier";
   }
   return "unknown";
 }
@@ -235,6 +238,7 @@ enum class IntrinsicOperationKind : unsigned char {
   Crc32W,
   VectorLoad,
   VectorAdd,
+  BarrierDmb,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_operation_kind_name(
@@ -250,6 +254,8 @@ enum class IntrinsicOperationKind : unsigned char {
       return "vector_load";
     case IntrinsicOperationKind::VectorAdd:
       return "vector_add";
+    case IntrinsicOperationKind::BarrierDmb:
+      return "barrier_dmb";
   }
   return "unknown";
 }
@@ -280,6 +286,7 @@ enum class IntrinsicOperandRole : unsigned char {
   Pointer,
   VectorLhs,
   VectorRhs,
+  BarrierDomain,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_operand_role_name(
@@ -297,6 +304,24 @@ enum class IntrinsicOperandRole : unsigned char {
       return "vector_lhs";
     case IntrinsicOperandRole::VectorRhs:
       return "vector_rhs";
+    case IntrinsicOperandRole::BarrierDomain:
+      return "barrier_domain";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicBarrierDomainKind : unsigned char {
+  None,
+  Sy,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_barrier_domain_kind_name(
+    IntrinsicBarrierDomainKind domain) {
+  switch (domain) {
+    case IntrinsicBarrierDomainKind::None:
+      return "none";
+    case IntrinsicBarrierDomainKind::Sy:
+      return "sy";
   }
   return "unknown";
 }
@@ -662,8 +687,10 @@ struct IntrinsicOperation {
   IntrinsicSignedness signedness = IntrinsicSignedness::None;
   std::optional<MemoryAddress> memory_operand;
   IntrinsicMemoryAccessKind memory_access = IntrinsicMemoryAccessKind::None;
+  IntrinsicBarrierDomainKind barrier_domain = IntrinsicBarrierDomainKind::None;
   bool has_immediate_operand = false;
   bool requires_immediate_operand = false;
+  std::optional<std::int64_t> immediate_value;
   bool has_side_effects = false;
 };
 
