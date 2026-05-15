@@ -2130,6 +2130,45 @@ std::string spill_slot_placement_text(
          "+stack" + std::to_string(placement->offset_bytes);
 }
 
+std::string saved_register_slot_placement_text(
+    const std::optional<prepare::PreparedSavedRegisterSlotPlacement>& placement) {
+  if (!placement.has_value()) {
+    return "slot_placement=<missing>";
+  }
+  std::string text = "slot_placement=";
+  text += placement->slot_id.has_value() ? "slot#" + std::to_string(*placement->slot_id)
+                                         : "<none>";
+  text += "+stack";
+  text += placement->stack_offset_bytes.has_value()
+              ? std::to_string(*placement->stack_offset_bytes)
+              : "<unknown>";
+  text += " slot_size=";
+  text += placement->size_bytes.has_value() ? std::to_string(*placement->size_bytes)
+                                            : "<unknown>";
+  text += " slot_align=";
+  text += placement->align_bytes.has_value() ? std::to_string(*placement->align_bytes)
+                                             : "<unknown>";
+  text += " fixed_location=";
+  text += placement->fixed_location ? "yes" : "no";
+  text += " slot_reg=";
+  text += std::string(prepare::prepared_register_bank_name(placement->bank)) + ":" +
+          placement->register_name;
+  text += " slot_save_index=" + std::to_string(placement->save_index);
+  text += " slot_width=" + std::to_string(placement->contiguous_width);
+  if (!placement->occupied_register_names.empty()) {
+    text += " slot_units=";
+    for (std::size_t index = 0; index < placement->occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        text += ",";
+      }
+      text += placement->occupied_register_names[index];
+    }
+  }
+  text += " " + register_placement_text(placement->register_placement,
+                                         "slot_register_placement");
+  return text;
+}
+
 const prepare::PreparedFrameSlot* find_frame_slot(const prepare::PreparedBirModule& prepared,
                                                   prepare::PreparedObjectId object_id) {
   for (const auto& slot : prepared.stack_layout.frame_slots) {
@@ -3224,12 +3263,32 @@ int main() {
     std::cerr << "[FAIL] missing published save authority for s1 in cross-call dump fixture\n";
     return EXIT_FAILURE;
   }
-  if (!cross_call_saved_it->placement.has_value()) {
+  if (!cross_call_saved_it->placement.has_value() ||
+      !cross_call_saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(
+          *cross_call_saved_it->slot_placement)) {
     std::cerr << "[FAIL] missing structured saved-register placement for s1 in cross-call dump fixture\n";
     return EXIT_FAILURE;
   }
   const std::size_t cross_call_save_index = cross_call_saved_it->save_index;
   const std::string cross_call_dump = prepare::print(cross_call_prepared);
+  if (!expect_contains(cross_call_dump,
+                       "saved gpr:s1 order=" + std::to_string(cross_call_save_index) +
+                           " " + register_placement_text(cross_call_saved_it->placement) +
+                           " width=1 units=s1 " +
+                           saved_register_slot_placement_text(cross_call_saved_it->slot_placement),
+                       "cross-call saved-register slot placement summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(cross_call_dump,
+                       "saved_register bank=gpr " +
+                           register_placement_text(cross_call_saved_it->placement) +
+                           " reg=s1 save_index=" + std::to_string(cross_call_save_index) +
+                           " width=1 units=s1 " +
+                           saved_register_slot_placement_text(cross_call_saved_it->slot_placement),
+                       "cross-call frame-plan saved-register slot placement")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(cross_call_dump,
                        "preserves=carry#" + std::to_string(cross_call_carry->value_id) +
                            ":callee_saved_register:s1[s1]:save" +
@@ -3340,11 +3399,37 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!grouped_saved_it->placement.has_value() ||
+      !grouped_saved_it->slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(
+          *grouped_saved_it->slot_placement) ||
       !grouped_cross_call_carry->register_placement.has_value()) {
     std::cerr << "[FAIL] missing grouped structured placement identity in dump fixture\n";
     return EXIT_FAILURE;
   }
   const std::string grouped_cross_call_dump = prepare::print(grouped_cross_call_prepared);
+  if (!expect_contains(grouped_cross_call_dump,
+                       "saved vreg:" + grouped_saved_it->register_name +
+                           " order=" + std::to_string(grouped_saved_it->save_index) +
+                           " " + register_placement_text(grouped_saved_it->placement) +
+                           " width=2 units=" +
+                           grouped_saved_it->occupied_register_names.front() + "," +
+                           grouped_saved_it->occupied_register_names.back() + " " +
+                           saved_register_slot_placement_text(grouped_saved_it->slot_placement),
+                       "grouped saved-register slot placement summary")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(grouped_cross_call_dump,
+                       "saved_register bank=vreg " +
+                           register_placement_text(grouped_saved_it->placement) +
+                           " reg=" + grouped_saved_it->register_name +
+                           " save_index=" + std::to_string(grouped_saved_it->save_index) +
+                           " width=2 units=" +
+                           grouped_saved_it->occupied_register_names.front() + "," +
+                           grouped_saved_it->occupied_register_names.back() + " " +
+                           saved_register_slot_placement_text(grouped_saved_it->slot_placement),
+                       "grouped frame-plan saved-register slot placement")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(grouped_cross_call_dump,
                        "carry.pre#" + std::to_string(grouped_preserved_it->value_id) +
                            ":callee_saved_register:" + *grouped_preserved_it->register_name +

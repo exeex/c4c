@@ -441,6 +441,38 @@ void append_spill_slot_placement(std::ostringstream& out,
       << "+stack" << placement->offset_bytes;
 }
 
+void append_saved_register_slot_placement(
+    std::ostringstream& out,
+    const std::optional<PreparedSavedRegisterSlotPlacement>& placement) {
+  if (!placement.has_value()) {
+    return;
+  }
+  out << " slot_placement=";
+  if (placement->slot_id.has_value()) {
+    out << "slot#" << *placement->slot_id;
+  } else {
+    out << "<none>";
+  }
+  out << "+stack" << optional_size_text(placement->stack_offset_bytes)
+      << " slot_size=" << optional_size_text(placement->size_bytes)
+      << " slot_align=" << optional_size_text(placement->align_bytes)
+      << " fixed_location=" << (placement->fixed_location ? "yes" : "no")
+      << " slot_reg=" << prepared_register_bank_name(placement->bank)
+      << ":" << placement->register_name
+      << " slot_save_index=" << placement->save_index
+      << " slot_width=" << placement->contiguous_width;
+  if (!placement->occupied_register_names.empty()) {
+    out << " slot_units=";
+    for (std::size_t index = 0; index < placement->occupied_register_names.size(); ++index) {
+      if (index != 0) {
+        out << ",";
+      }
+      out << placement->occupied_register_names[index];
+    }
+  }
+  append_register_placement(out, "slot_register_placement", placement->register_placement);
+}
+
 std::string prepared_join_transfer_ownership_name(const PreparedJoinTransfer& transfer) {
   if (transfer.source_branch_block_label.has_value()) {
     return "authoritative_branch_pair";
@@ -580,6 +612,7 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
             << " order=" << saved.save_index;
         append_register_placement(out, "placement", saved.placement);
         append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
+        append_saved_register_slot_placement(out, saved.slot_placement);
         out << "\n";
       }
     }
@@ -1233,6 +1266,7 @@ void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module)
       out << " reg=" << saved.register_name
           << " save_index=" << saved.save_index;
       append_register_occupancy(out, saved.contiguous_width, saved.occupied_register_names);
+      append_saved_register_slot_placement(out, saved.slot_placement);
       out << "\n";
     }
     for (const auto slot_id : function_plan.frame_slot_order) {
