@@ -43,3 +43,23 @@ authority.
   high-word behavior.
 - Runtime div/rem or float-conversion helper calls consume structured argument,
   result, and clobber facts.
+
+## Lifecycle Blocker
+
+Step 6 found that i128 helper-boundary lowering cannot proceed without a
+separate prepared/shared authority initiative. The active prerequisite is now
+`ideas/open/248_prepared_i128_runtime_helper_authority.md`.
+
+That prerequisite must supply helper facts for i128 operations that require
+runtime calls:
+
+- source operation identity mapped to helper kind and callee symbol
+- low/high argument lane bindings
+- low/high result lane bindings or memory-return ownership
+- helper-specific clobber and resource policy
+- ABI and register-bank transition facts needed at the helper boundary
+
+This idea should resume at Step 6 only after those facts exist as prepared or
+shared authority. Step 7 printer work must not proceed while helper boundary
+records would require AArch64 target lowering to choose helper families,
+callee names, fixed registers, lane bindings, or clobber policy locally.

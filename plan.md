@@ -1,252 +1,202 @@
-# AArch64 I128 Pair Lowering Runbook
+# Prepared I128 Runtime Helper Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/236_aarch64_i128_pair_lowering.md
-Activated from: ideas/open/236_aarch64_i128_pair_lowering.md
+Source Idea: ideas/open/248_prepared_i128_runtime_helper_authority.md
+Activated from: ideas/open/248_prepared_i128_runtime_helper_authority.md
+Supersedes active runbook: ideas/open/236_aarch64_i128_pair_lowering.md is parked on a prepared-helper-authority blocker.
 
 ## Purpose
 
-Lower supported AArch64 i128 transport and operations through explicit
-low/high pair or memory-backed carriers, selected machine-node records, and
-printer output.
+Provide prepared/shared runtime-helper authority for i128 operations that need
+helper calls before AArch64 i128 pair lowering consumes helper boundaries.
 
 ## Goal
 
-Establish enough prepared/shared i128 authority for AArch64 lowering to
-consume structured low/high or memory-backed facts, then add selected
-machine-node support for representative i128 transport, arithmetic,
-comparisons, shifts, and helper-call boundaries without recreating archived
-accumulator-pair shortcuts.
+Map helper-required i128 source operations to structured helper kind, callee,
+lane, memory-return, clobber, resource, ABI, and register-bank facts without
+moving helper selection or marshaling policy into AArch64 target lowering.
 
 ## Core Rule
 
-AArch64 i128 lowering must consume prepared pair homes, memory carriers,
-lane-ordering, helper-call, and clobber/resource facts. Do not create a local
-i128 allocator or infer pair homes from rendered register names, fixed
-`x0`/`x1` conventions, or named proof cases.
+This runbook prepares helper authority only. It must not implement AArch64
+selected helper-call nodes, printer output, local i128 allocation, fixed
+register marshaling, or scalar-i64 substitutes.
 
 ## Read First
 
+- `ideas/open/248_prepared_i128_runtime_helper_authority.md`
 - `ideas/open/236_aarch64_i128_pair_lowering.md`
-- `src/backend/mir/aarch64/codegen/instruction.hpp`
-- `src/backend/mir/aarch64/codegen/instruction.cpp`
-- `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
-- prepared value-home, ABI, regalloc, and call-boundary facts for wide integer
-  values
+- prepared call-boundary, value-home, ABI, regalloc, and clobber/resource
+  facts for retained calls and wide integer values
+- BIR operation forms for i128 div/rem and float/i128 conversions
 - focused backend tests under `tests/backend/mir/`
 
 ## Current Targets
 
-- Prepared low/high pair homes or explicit memory-backed i128 carriers.
-- Structured low/high lane ordering and lane register facts.
-- I128 pair load/store transport records.
-- I128 add, sub, bitwise, shift, and comparison records where pair facts are
-  complete.
-- Runtime helper-call records for div/rem or float-conversion boundaries where
-  structured argument, result, and clobber facts exist.
-- Printer support that emits only from structured pair operands and prepared
-  helper-call facts.
+- Source i128 operation identity for helper-required operations.
+- Helper kind and callee symbol authority.
+- Low/high argument lane bindings.
+- Low/high result lane bindings or memory-return ownership.
+- Helper-specific clobber and resource policy.
+- ABI and register-bank transition facts needed by later selected records.
+- Fail-closed diagnostics for incomplete helper authority.
 
 ## Non-Goals
 
-- Do not create a separate i128 allocator inside AArch64 codegen.
-- Do not infer low/high homes from register names or fixed accumulator pairs.
-- Do not lower i128 as scalar i64 or through named testcase shortcuts.
-- Do not merge binary128 soft-float, F32/F64 scalar FP, atomics, intrinsics,
-  inline asm, callee-save placement, or preserved-value extent work into this
-  route.
-- Do not weaken unsupported expectations to claim i128 progress.
+- Do not add selected AArch64 helper-call machine nodes or terminal printer
+  output.
+- Do not synthesize helper calls in AArch64 dispatch from `BinaryInst` or
+  `CastInst` opcodes.
+- Do not create a local i128 allocator, fixed `x0`/`x1` marshaler, or
+  scalar-i64 lowering path.
+- Do not broaden into binary128 soft-float, scalar FP, atomics, intrinsics,
+  inline asm, callee-save placement, or preserved-value extent work.
+- Do not weaken unsupported expectations to claim helper progress.
 
 ## Working Model
 
-I128 lowering spans prepared allocation facts and AArch64 selected nodes. This
-runbook starts by verifying whether prepared low/high or memory-backed carrier
-authority exists. If it is missing, execution must stop with an explicit
-prepared/shared blocker. If it is present, add selected records in small
-families and print only when every lane, ordering, register, memory, or helper
-fact is structured.
+Idea 236 already owns selected i128 pair lowering and will resume at Step 6
+after this prerequisite lands. This runbook creates or validates the producer
+facts that let selected AArch64 helper records consume i128 helper boundaries
+without guessing helper families, callee symbols, argument/result lanes,
+memory-return ownership, or clobber/resource policy.
 
 ## Execution Rules
 
 - Keep routine packet progress and proof in `todo.md`.
-- Start with inspection; do not jump directly into pair instruction selection.
-- Add or validate prepared/shared pair authority before target codegen
-  consumes it.
-- Preserve fail-closed diagnostics for missing pair homes, lane ordering,
-  memory extents, helper-call facts, or clobber/resource authority.
-- Treat expectation-only changes, fixed-register matching, scalar-i64
-  lowering, and named-case helper shortcuts as route drift.
-- For every code-changing packet, prove with a build plus the
-  supervisor-chosen focused AArch64 i128 backend subset. Escalate to broader
-  backend validation after shared prepared, call, or printer behavior changes.
+- Start by inspecting current i128 operation shapes and generic call facts.
+- Add prepared/shared carriers at the producer layer that owns helper
+  selection, ABI, lane ownership, and clobber/resource policy.
+- Preserve fail-closed behavior whenever helper authority is incomplete.
+- Treat AArch64-side helper synthesis, helper-name hard-coding, expectation
+  rewrites, scalar-i64 substitutes, and fixed-register matching as route drift.
+- For code-changing packets, prove with a build plus the supervisor-chosen
+  focused prepared/i128 backend subset. Escalate to broader backend validation
+  after shared prepared, ABI, or call-boundary behavior changes.
 
 ## Ordered Steps
 
-### Step 1: Inspect I128 Prepared And AArch64 Surfaces
+### Step 1: Inspect I128 Helper Authority Gap
 
-Goal: determine which i128 carrier, dispatch, helper-call, and printer facts
-already exist and which must become prepared/shared blockers before selection.
+Goal: identify the exact producer surfaces that can own i128 helper-required
+operation identity, helper selection, lane ownership, memory-return policy,
+and clobber/resource facts.
 
 Primary targets:
 
-- prepared value homes and regalloc classification for `I128`
-- ABI and call/return legalization facts for i128
-- current AArch64 instruction records, dispatch diagnostics, and printer paths
-- runtime helper-call records and clobber/resource facts
+- BIR i128 div/rem and float/i128 conversion operation shapes
+- prepared value-home and i128 lane carrier facts
+- generic retained-call `PreparedCallPlan` facts
+- ABI, register-bank, and clobber/resource observations
 
 Actions:
 
-- Trace representative i128 transport, add/sub, comparison, shift, div/rem,
-  and conversion cases from BIR through prepared state into AArch64 dispatch.
-- Identify required structured operands: low/high homes, memory carrier,
-  lane ordering, source/result pair facts, carry/borrow behavior, shift count,
-  comparison signedness, helper arguments/results, and helper clobbers.
-- Compare required operands against existing prepared/shared facts.
+- Trace representative helper-required i128 operations from BIR through
+  prepared state.
+- Identify the source operation identity, helper kind, callee, low/high
+  argument lanes, result lanes, memory-return ownership, clobbers, resources,
+  ABI, and register-bank transition facts each helper family needs.
+- Compare those requirements against existing generic call and prepared value
+  facts.
 - Record the first implementation packet target and focused proof subset in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` records whether execution can proceed to i128 pair carrier
-  preparation or selected transport, or must split out a narrower
-  prepared/shared authority blocker with exact missing facts.
+- `todo.md` names the exact producer-owned carrier or diagnostic gap to
+  implement first, without assigning helper selection to AArch64 target
+  lowering.
 
-### Step 2: Establish I128 Pair Or Memory Carrier Authority
+### Step 2: Define Source Operation To Helper Mapping
 
-Goal: ensure values requiring i128 transport have explicit prepared low/high
-pair homes or memory-backed carriers before AArch64 lowering consumes them.
-
-Actions:
-
-- Define or complete carrier facts for low/high pair homes and memory-backed
-  i128 values.
-- Preserve lane ordering, value identity, storage extent, alignment, and
-  register/memory ownership as structured facts.
-- Add missing-fact diagnostics for incomplete pair or memory carrier state.
-- Add focused prepared/record coverage that proves carriers are structural and
-  not inferred from names.
-
-Completion check:
-
-- I128 values expose explicit low/high or memory-backed authority that selected
-  AArch64 records can consume, or `todo.md` records the exact blocker.
-
-### Step 3: Select I128 Transport Nodes
-
-Goal: lower i128 load/store and pair transport paths from complete prepared
-carrier facts.
+Goal: expose helper kind and callee symbol authority for supported
+helper-required i128 source operations.
 
 Actions:
 
-- Add selected records for pair-to-pair, memory-to-pair, pair-to-memory, or
-  supported memory-backed transport paths.
-- Consume low/high lane homes, memory carrier facts, size, alignment, and lane
-  ordering directly.
-- Preserve fail-closed diagnostics for incomplete transport authority.
-- Add focused dispatch/record coverage for representative transport paths.
+- Define prepared/shared records that map source i128 operation identity to
+  helper kind and callee symbol.
+- Cover supported div/rem and float/i128 conversion families only where the
+  source and ABI facts are complete.
+- Preserve explicit unsupported diagnostics for unmapped helper families.
+- Add focused coverage proving the mapping is structural, not fixture-shaped.
 
 Completion check:
 
-- Supported i128 transport emits structured selected records from prepared
-  pair or memory facts; unsupported transport remains explicitly diagnosed.
+- Supported i128 helper-required operations expose helper kind and callee
+  symbol facts, and unsupported mappings fail closed.
 
-### Step 4: Select I128 Arithmetic And Bitwise Nodes
+### Step 3: Add Low/High Argument And Result Lane Authority
 
-Goal: lower add, sub, and bitwise i128 pair operations while preserving
-low/high lane semantics.
+Goal: preserve helper argument and result ownership for i128 low/high lanes.
 
 Actions:
 
-- Add selected records for supported add, sub, and bitwise operations.
-- Preserve carry/borrow propagation and low/high lane ordering as structured
-  fields.
-- Consume prepared source/result pair facts directly.
-- Keep missing pair homes or unsupported operation shapes fail-closed.
-- Add focused coverage for add/sub and at least one bitwise operation.
+- Add structured low/high argument lane bindings for each supported helper
+  family.
+- Add structured low/high result lane bindings where results return directly.
+- Preserve lane ordering, source/result value identity, and register-bank facts.
+- Diagnose incomplete source or result lane authority explicitly.
+- Add focused coverage for lane bindings.
 
 Completion check:
 
-- Supported i128 arithmetic and bitwise cases produce selected pair records
-  without scalar-i64 shortcuts or fixed-register assumptions.
+- Helper records expose enough low/high argument and direct-result lane facts
+  for idea 236 to consume without fixed-register assumptions.
 
-### Step 5: Select I128 Shift And Comparison Nodes
+### Step 4: Add Memory-Return Ownership Where Needed
 
-Goal: lower supported i128 shifts and comparisons from structured pair facts.
+Goal: represent helper ABI cases where i128 results are returned through
+memory rather than direct low/high result lanes.
 
 Actions:
 
-- Add selected records for supported shift operations with explicit shift-count
-  operands and lane behavior.
-- Add selected comparison records that preserve signed/unsigned high-word
-  behavior.
-- Consume prepared pair and scalar result facts directly.
-- Preserve diagnostics for unsupported shift/count/comparison states.
-- Add focused coverage for representative shift and signed/unsigned comparison
-  paths.
+- Identify helper families that require memory-return ownership.
+- Add memory-return carrier facts with destination identity, storage extent,
+  alignment, and ownership.
+- Preserve explicit diagnostics for missing memory-return authority.
+- Add focused coverage for direct-result versus memory-return helper shapes.
 
 Completion check:
 
-- Supported i128 shifts and comparisons emit structured selected records with
-  correct lane and signedness semantics, or record the exact blocker.
+- Memory-return helpers expose structured destination ownership and extent
+  facts, while unsupported memory-return cases remain fail-closed.
 
-### Step 6: Add Runtime Helper Boundary Records
+### Step 5: Add Helper Clobber, Resource, And ABI Authority
 
-Goal: represent required i128 runtime helper calls with structured argument,
-result, and clobber/resource facts.
+Goal: make helper-specific clobber/resource and ABI/register-bank transition
+facts explicit for selected consumers.
 
 Actions:
 
-- Identify div/rem and float-conversion i128 helper paths that require runtime
-  calls.
-- Add or consume helper-call records for low/high arguments, results, clobbers,
-  and resource requirements.
-- Preserve helper-call boundaries instead of local marshaling through fixed
-  registers.
-- Add focused coverage for at least one required helper-call family, or record
-  missing helper authority exactly.
+- Add or connect clobber facts for each supported i128 helper family.
+- Add resource facts needed by helper boundary consumers, including call
+  scratch, stack, or preserved-state requirements where applicable.
+- Preserve ABI and register-bank transition facts needed to marshal helper
+  arguments and results.
+- Add focused coverage for complete and incomplete helper policy facts.
 
 Completion check:
 
-- Supported helper-call i128 paths expose structured call boundary records, and
-  unsupported helper facts remain fail-closed.
+- Supported i128 helper boundary facts include clobber/resource/ABI policy
+  that selected AArch64 records can consume directly.
 
-### Step 7: Print Supported I128 Pair Nodes
+### Step 6: Validate And Hand Back To I128 Pair Lowering
 
-Goal: print supported i128 pair operations only from complete selected records.
+Goal: prove the prerequisite helper authority and make the lifecycle handoff
+back to idea 236 explicit.
 
 Actions:
 
-- Add printer support for selected transport and simple pair operation records
-  that have complete lane/register/memory facts.
-- Print helper-call boundaries only from structured helper records.
-- Preserve explicit diagnostics for incomplete pair, memory, lane, or helper
-  facts.
-- Add focused printer coverage for the supported subset.
+- Run the supervisor-chosen build and focused prepared/i128 backend subset.
+- Escalate to broader backend validation if shared prepared, ABI, or
+  call-boundary behavior changed beyond one narrow carrier.
+- Summarize available helper families, lane ownership, memory-return, and
+  clobber/resource facts in `todo.md`.
+- Ask the supervisor to route plan-owner to reactivate idea 236 only if Step 6
+  helper-boundary authority is complete.
 
 Completion check:
 
-- Supported i128 selected records print from structured fields; unsupported
-  cases do not recover operands from rendered names or fixed conventions.
-
-### Step 8: Validate And Summarize
-
-Goal: prove accepted i128 pair lowering coverage and preserve remaining
-blockers at the correct lifecycle layer.
-
-Actions:
-
-- Run the supervisor-chosen build and focused i128 backend subset.
-- Escalate to broader backend validation if shared prepared, call, or printer
-  behavior changed across multiple operation families.
-- Summarize supported transport, arithmetic, comparison, shift, and helper
-  paths in `todo.md`.
-- Record remaining binary128, scalar FP, atomic, intrinsic, inline-asm, or
-  prepared-frame blockers as separate lifecycle candidates rather than
-  expanding this route.
-
-Completion check:
-
-- Supported i128 pair paths pass through structured lowering/printing or fail
-  with explicit unsupported diagnostics, and no supported case depends on
-  name-shaped matching or scalar-i64 shortcuts.
+- The prerequisite helper facts are structurally present, incomplete facts
+  still fail closed, and `todo.md` names whether idea 236 can resume Step 6.
