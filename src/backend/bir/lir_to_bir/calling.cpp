@@ -119,6 +119,10 @@ std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) 
   return std::nullopt;
 }
 
+bool is_v16i8_type(std::string_view type_text) {
+  return c4c::codegen::lir::trim_lir_arg_text(type_text) == "<16 x i8>";
+}
+
 }  // namespace
 
 using lir_to_bir_detail::lower_integer_type;
@@ -595,10 +599,23 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   constexpr std::string_view kDirectCallFamily = "direct-call semantic family";
   constexpr std::string_view kIndirectCallFamily = "indirect-call semantic family";
   constexpr std::string_view kCallReturnFamily = "call-return semantic family";
+  constexpr std::string_view kAarch64SemanticIntrinsicFamily =
+      "aarch64 semantic intrinsic family";
   const auto fail_call_family = [&](std::string_view family) -> bool {
     note_semantic_call_family_failure(family);
     return false;
   };
+  const auto fail_aarch64_semantic_intrinsic_family = [&]() -> bool {
+    note_runtime_intrinsic_family_failure(kAarch64SemanticIntrinsicFamily);
+    return false;
+  };
+  const std::string_view raw_callee = call.callee.str();
+  if (raw_callee.find("llvm.x86.") != std::string_view::npos ||
+      raw_callee.find("llvm.aarch64.crc32w") != std::string_view::npos ||
+      raw_callee.find("llvm.aarch64.neon.ld1.v16i8.p0i8") != std::string_view::npos ||
+      raw_callee.find("llvm.aarch64.neon.add.v16i8") != std::string_view::npos) {
+    return fail_aarch64_semantic_intrinsic_family();
+  }
   const bool is_direct_global_call =
       c4c::codegen::lir::parse_lir_direct_global_callee(call.callee).has_value();
   const bool metadata_rich_direct_call =
@@ -1407,10 +1424,198 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     });
     return true;
   };
+  const auto lower_aarch64_semantic_intrinsic_call =
+      [&](const c4c::codegen::lir::LirCallOp& call) -> std::optional<bool> {
+    constexpr std::string_view kFamily = "aarch64 semantic intrinsic family";
+    const auto fail_aarch64_intrinsic = [&]() -> bool {
+      return fail_runtime_family(kFamily);
+    };
+    const auto raw_callee = call.callee.str();
+    if (raw_callee.find("llvm.x86.") != std::string::npos) {
+      return fail_aarch64_intrinsic();
+    }
+
+    const auto parsed_callee = c4c::codegen::lir::parse_lir_call_callee(call.callee.str());
+    if (!parsed_callee.has_value() ||
+        parsed_callee->kind != c4c::codegen::lir::LirCallCalleeKind::DirectIntrinsic) {
+      return std::nullopt;
+    }
+
+    const auto intrinsic_name = parsed_callee->symbol_name;
+    const bool is_crc32w = intrinsic_name == "llvm.aarch64.crc32w";
+    const bool is_v16i8_load = intrinsic_name == "llvm.aarch64.neon.ld1.v16i8.p0i8";
+    const bool is_v16i8_add = intrinsic_name == "llvm.aarch64.neon.add.v16i8";
+    const bool is_known_aarch64_candidate = is_crc32w || is_v16i8_load || is_v16i8_add;
+    if (!is_known_aarch64_candidate) {
+      if (intrinsic_name.rfind("llvm.x86.", 0) == 0) {
+        return fail_aarch64_intrinsic();
+      }
+      return std::nullopt;
+    }
+    if (context_.target_profile.arch != c4c::TargetArch::Aarch64) {
+      return fail_aarch64_intrinsic();
+    }
+
+    const auto parsed_call = parse_typed_call(call);
+    if (!parsed_call.has_value()) {
+      return fail_aarch64_intrinsic();
+    }
+    if (call.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return fail_aarch64_intrinsic();
+    }
+
+    const auto return_type = c4c::codegen::lir::trim_lir_arg_text(call.return_type.str());
+    if (is_crc32w) {
+      if (parsed_call->args.size() != 2 || parsed_call->param_types.size() != 2 ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "i32" ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[1]) != "i32" ||
+          return_type != "i32") {
+        return fail_aarch64_intrinsic();
+      }
+      const auto lowered_accumulator = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+          bir::TypeKind::I32,
+          value_aliases);
+      const auto lowered_data = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[1].operand)),
+          bir::TypeKind::I32,
+          value_aliases);
+      if (!lowered_accumulator.has_value() || !lowered_data.has_value()) {
+        return fail_aarch64_intrinsic();
+      }
+      lowered_insts->push_back(bir::CallInst{
+          .result = bir::Value::named(bir::TypeKind::I32, call.result.str()),
+          .callee = std::string(intrinsic_name),
+          .args = {*lowered_accumulator, *lowered_data},
+          .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+          .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::I32),
+                      *compute_call_arg_abi(context_.target_profile, bir::TypeKind::I32)},
+          .return_type = bir::TypeKind::I32,
+          .result_abi =
+              compute_function_return_abi(context_.target_profile, bir::TypeKind::I32, false),
+          .intrinsic = bir::IntrinsicOperation{
+              .family = bir::IntrinsicFamilyKind::Crc,
+              .operation = bir::IntrinsicOperationKind::Crc32W,
+              .required_feature = bir::IntrinsicFeatureKind::AArch64Crc,
+              .operand_type = bir::TypeKind::I32,
+              .result_type = bir::TypeKind::I32,
+              .operand_roles =
+                  {bir::IntrinsicOperandRole::Accumulator, bir::IntrinsicOperandRole::Data},
+              .signedness = bir::IntrinsicSignedness::Unsigned,
+              .has_side_effects = false,
+          },
+      });
+      return true;
+    }
+
+    if (!is_v16i8_type(return_type)) {
+      return fail_aarch64_intrinsic();
+    }
+    const auto result_value = bir::Value::named(bir::TypeKind::I128, call.result.str());
+    const auto vector_result_abi =
+        compute_function_return_abi(context_.target_profile, bir::TypeKind::I128, false);
+    const auto vector_arg_abi =
+        compute_call_arg_abi(context_.target_profile, bir::TypeKind::I128);
+
+    if (is_v16i8_load) {
+      if (parsed_call->args.size() != 1 || parsed_call->param_types.size() != 1 ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "ptr") {
+        return fail_aarch64_intrinsic();
+      }
+      const auto lowered_pointer = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+          bir::TypeKind::Ptr,
+          value_aliases);
+      if (!lowered_pointer.has_value()) {
+        return fail_aarch64_intrinsic();
+      }
+      lowered_insts->push_back(bir::CallInst{
+          .result = result_value,
+          .callee = std::string(intrinsic_name),
+          .args = {*lowered_pointer},
+          .arg_types = {bir::TypeKind::Ptr},
+          .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)},
+          .return_type_name = std::string(return_type),
+          .return_type = bir::TypeKind::I128,
+          .result_abi = vector_result_abi,
+          .intrinsic = bir::IntrinsicOperation{
+              .family = bir::IntrinsicFamilyKind::VectorMemory,
+              .operation = bir::IntrinsicOperationKind::VectorLoad,
+              .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+              .operand_type = bir::TypeKind::Ptr,
+              .result_type = bir::TypeKind::I128,
+              .operand_roles = {bir::IntrinsicOperandRole::Pointer},
+              .vector_element_type = bir::TypeKind::I8,
+              .vector_element_width_bytes = 1,
+              .vector_lane_count = 16,
+              .vector_total_width_bytes = 16,
+              .signedness = bir::IntrinsicSignedness::Unsigned,
+              .memory_operand = bir::MemoryAddress{
+                  .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                  .base_value = *lowered_pointer,
+                  .size_bytes = 16,
+                  .align_bytes = 16,
+                  .address_space = bir::AddressSpace::Default,
+                  .is_volatile = false,
+              },
+              .memory_access = bir::IntrinsicMemoryAccessKind::Read,
+              .has_side_effects = false,
+          },
+      });
+      return true;
+    }
+
+    if (parsed_call->args.size() != 2 || parsed_call->param_types.size() != 2 ||
+        !is_v16i8_type(parsed_call->param_types[0]) ||
+        !is_v16i8_type(parsed_call->param_types[1])) {
+      return fail_aarch64_intrinsic();
+    }
+    const auto lowered_lhs = lower_value(
+        c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+        bir::TypeKind::I128,
+        value_aliases);
+    const auto lowered_rhs = lower_value(
+        c4c::codegen::lir::LirOperand(std::string(parsed_call->args[1].operand)),
+        bir::TypeKind::I128,
+        value_aliases);
+    if (!lowered_lhs.has_value() || !lowered_rhs.has_value() || !vector_arg_abi.has_value()) {
+      return fail_aarch64_intrinsic();
+    }
+    lowered_insts->push_back(bir::CallInst{
+        .result = result_value,
+        .callee = std::string(intrinsic_name),
+        .args = {*lowered_lhs, *lowered_rhs},
+        .arg_types = {bir::TypeKind::I128, bir::TypeKind::I128},
+        .arg_abi = {*vector_arg_abi, *vector_arg_abi},
+        .return_type_name = std::string(return_type),
+        .return_type = bir::TypeKind::I128,
+        .result_abi = vector_result_abi,
+        .intrinsic = bir::IntrinsicOperation{
+            .family = bir::IntrinsicFamilyKind::VectorOperation,
+            .operation = bir::IntrinsicOperationKind::VectorAdd,
+            .required_feature = bir::IntrinsicFeatureKind::AArch64Neon,
+            .operand_type = bir::TypeKind::I128,
+            .result_type = bir::TypeKind::I128,
+            .operand_roles =
+                {bir::IntrinsicOperandRole::VectorLhs, bir::IntrinsicOperandRole::VectorRhs},
+            .vector_element_type = bir::TypeKind::I8,
+            .vector_element_width_bytes = 1,
+            .vector_lane_count = 16,
+            .vector_total_width_bytes = 16,
+            .signedness = bir::IntrinsicSignedness::Unsigned,
+            .has_side_effects = false,
+        },
+    });
+    return true;
+  };
 
   if (const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst)) {
     if (const auto lowered_fabs = lower_fabs_intrinsic_call(*call); lowered_fabs.has_value()) {
       return *lowered_fabs;
+    }
+    if (const auto lowered_aarch64 = lower_aarch64_semantic_intrinsic_call(*call);
+        lowered_aarch64.has_value()) {
+      return *lowered_aarch64;
     }
   }
 

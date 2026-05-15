@@ -207,6 +207,9 @@ enum class AtomicResultMode : unsigned char {
 enum class IntrinsicFamilyKind : unsigned char {
   None,
   ScalarFpUnary,
+  Crc,
+  VectorMemory,
+  VectorOperation,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_family_kind_name(
@@ -216,6 +219,12 @@ enum class IntrinsicFamilyKind : unsigned char {
       return "none";
     case IntrinsicFamilyKind::ScalarFpUnary:
       return "scalar_fp_unary";
+    case IntrinsicFamilyKind::Crc:
+      return "crc";
+    case IntrinsicFamilyKind::VectorMemory:
+      return "vector_memory";
+    case IntrinsicFamilyKind::VectorOperation:
+      return "vector_operation";
   }
   return "unknown";
 }
@@ -223,6 +232,9 @@ enum class IntrinsicFamilyKind : unsigned char {
 enum class IntrinsicOperationKind : unsigned char {
   None,
   FAbs,
+  Crc32W,
+  VectorLoad,
+  VectorAdd,
 };
 
 [[nodiscard]] constexpr std::string_view intrinsic_operation_kind_name(
@@ -232,6 +244,100 @@ enum class IntrinsicOperationKind : unsigned char {
       return "none";
     case IntrinsicOperationKind::FAbs:
       return "fabs";
+    case IntrinsicOperationKind::Crc32W:
+      return "crc32w";
+    case IntrinsicOperationKind::VectorLoad:
+      return "vector_load";
+    case IntrinsicOperationKind::VectorAdd:
+      return "vector_add";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicFeatureKind : unsigned char {
+  None,
+  AArch64Crc,
+  AArch64Neon,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_feature_kind_name(
+    IntrinsicFeatureKind kind) {
+  switch (kind) {
+    case IntrinsicFeatureKind::None:
+      return "none";
+    case IntrinsicFeatureKind::AArch64Crc:
+      return "aarch64_crc";
+    case IntrinsicFeatureKind::AArch64Neon:
+      return "aarch64_neon";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicOperandRole : unsigned char {
+  None,
+  Accumulator,
+  Data,
+  Pointer,
+  VectorLhs,
+  VectorRhs,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_operand_role_name(
+    IntrinsicOperandRole role) {
+  switch (role) {
+    case IntrinsicOperandRole::None:
+      return "none";
+    case IntrinsicOperandRole::Accumulator:
+      return "accumulator";
+    case IntrinsicOperandRole::Data:
+      return "data";
+    case IntrinsicOperandRole::Pointer:
+      return "pointer";
+    case IntrinsicOperandRole::VectorLhs:
+      return "vector_lhs";
+    case IntrinsicOperandRole::VectorRhs:
+      return "vector_rhs";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicSignedness : unsigned char {
+  None,
+  Unsigned,
+  Signed,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_signedness_name(
+    IntrinsicSignedness signedness) {
+  switch (signedness) {
+    case IntrinsicSignedness::None:
+      return "none";
+    case IntrinsicSignedness::Unsigned:
+      return "unsigned";
+    case IntrinsicSignedness::Signed:
+      return "signed";
+  }
+  return "unknown";
+}
+
+enum class IntrinsicMemoryAccessKind : unsigned char {
+  None,
+  Read,
+  Write,
+  ReadWrite,
+};
+
+[[nodiscard]] constexpr std::string_view intrinsic_memory_access_kind_name(
+    IntrinsicMemoryAccessKind access) {
+  switch (access) {
+    case IntrinsicMemoryAccessKind::None:
+      return "none";
+    case IntrinsicMemoryAccessKind::Read:
+      return "read";
+    case IntrinsicMemoryAccessKind::Write:
+      return "write";
+    case IntrinsicMemoryAccessKind::ReadWrite:
+      return "read_write";
   }
   return "unknown";
 }
@@ -545,8 +651,19 @@ struct InlineAsmMetadata {
 struct IntrinsicOperation {
   IntrinsicFamilyKind family = IntrinsicFamilyKind::None;
   IntrinsicOperationKind operation = IntrinsicOperationKind::None;
+  IntrinsicFeatureKind required_feature = IntrinsicFeatureKind::None;
   TypeKind operand_type = TypeKind::Void;
   TypeKind result_type = TypeKind::Void;
+  std::vector<IntrinsicOperandRole> operand_roles;
+  TypeKind vector_element_type = TypeKind::Void;
+  std::size_t vector_element_width_bytes = 0;
+  std::size_t vector_lane_count = 0;
+  std::size_t vector_total_width_bytes = 0;
+  IntrinsicSignedness signedness = IntrinsicSignedness::None;
+  std::optional<MemoryAddress> memory_operand;
+  IntrinsicMemoryAccessKind memory_access = IntrinsicMemoryAccessKind::None;
+  bool has_immediate_operand = false;
+  bool requires_immediate_operand = false;
   bool has_side_effects = false;
 };
 
