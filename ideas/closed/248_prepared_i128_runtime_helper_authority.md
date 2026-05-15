@@ -1,6 +1,6 @@
 # Prepared I128 Runtime Helper Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
 
 Parent Context: ideas/open/236_aarch64_i128_pair_lowering.md
@@ -86,3 +86,35 @@ opcodes, rendered register names, or fixed `x0`/`x1` accumulator conventions.
   and low/high lane authority.
 - The route broadens into binary128, scalar FP, atomic, intrinsic, inline-asm,
   callee-save, preserved-value extent, or unrelated frame/call rewrites.
+
+## Closure Notes
+
+Closed: 2026-05-15
+
+The active runbook completed the prepared helper authority needed for the
+currently supported i128 div/rem handoff back to idea 236:
+
+- source-operation mapping exists for i128 `SDiv`, `UDiv`, `SRem`, and `URem`
+  with function/block/instruction identity, source opcode, result value
+  identity, operand value identities, and source/result type facts
+- helper kind and callee identity are structural on
+  `PreparedI128RuntimeHelper` records for `__divti3`, `__udivti3`, `__modti3`,
+  and `__umodti3`
+- low/high argument and direct-result lane ownership is populated from
+  canonical `PreparedI128Carrier` facts by prepared value identity
+- current div/rem helpers use direct low/high result lanes; memory-return
+  ownership remains represented as a carrier shape but is not populated by
+  these supported helpers
+- helper boundary policy carries call-boundary, runtime-helper callee,
+  caller-saved clobber, source-operation identity resource, ABI, and
+  register-bank facts
+
+Float/i128 conversion helper mapping remains explicitly deferred and should
+not be treated as part of this closed div/rem prerequisite. A future helper
+family that needs memory-return ownership must provide explicit destination
+identity, storage extent, alignment, slot, and offset ownership or fail closed.
+
+Idea 236 can resume Step 6 selected AArch64 helper-boundary consumption using
+these prepared div/rem helper records without synthesizing helper calls from
+opcodes, fixed registers, rendered names, register adjacency, or scalar-i64
+substitutes.
