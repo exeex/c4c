@@ -824,7 +824,7 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
   return target_unsupported(
       bad_header(instruction) +
       "i128 helper boundary printing requires structured helper marshaling "
-      "and ABI register-binding facts");
+      "ABI register-binding, selected-call ownership, and live-preservation facts");
 }
 
 mir::TargetInstructionPrintResult print_call(const InstructionRecord& instruction,

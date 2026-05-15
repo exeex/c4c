@@ -1724,6 +1724,26 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_marshaling_move("rhs.high", helper.rhs_high_argument_move);
       append_marshaling_move("result.low", helper.result_low_unmarshal_move);
       append_marshaling_move("result.high", helper.result_high_unmarshal_move);
+      out << " live_preservation=[evaluated="
+          << (helper.live_preservation_policy.evaluated ? "yes" : "no")
+          << ",caller_saved_clobbers="
+          << (helper.live_preservation_policy.caller_saved_clobbers_modeled ? "yes" : "no")
+          << ",additional="
+          << (helper.live_preservation_policy.no_additional_live_preservation_required
+                  ? "none"
+                  : "required")
+          << ",preserved=" << helper.live_preservation_policy.preserved_values.size()
+          << "]";
+      out << " selected_call_ownership=[owns_terminal_call="
+          << (helper.selected_call_ownership.owns_terminal_call ? "yes" : "no")
+          << ",callee=" << (helper.selected_call_ownership.has_callee_identity ? "yes" : "no")
+          << ",resources=" << (helper.selected_call_ownership.has_resource_policy ? "yes" : "no")
+          << ",clobbers=" << (helper.selected_call_ownership.has_clobber_policy ? "yes" : "no")
+          << ",abi_bindings=" << (helper.selected_call_ownership.has_abi_bindings ? "yes" : "no")
+          << ",marshaling=" << (helper.selected_call_ownership.has_marshaling ? "yes" : "no")
+          << ",live_preservation="
+          << (helper.selected_call_ownership.has_live_preservation ? "yes" : "no")
+          << "]";
       if (!helper.missing_required_facts.empty()) {
         out << " missing_facts=";
         for (std::size_t index = 0; index < helper.missing_required_facts.size(); ++index) {

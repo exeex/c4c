@@ -1989,6 +1989,56 @@ prepare::PreparedI128RuntimeHelper::LaneBinding make_i128_helper_lane(
   };
 }
 
+prepare::PreparedI128RuntimeHelper::AbiRegisterBinding make_i128_helper_abi_binding(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedI128LaneRole role,
+    std::size_t lane_index,
+    std::optional<std::size_t> argument_index,
+    std::size_t abi_index,
+    std::string register_name,
+    prepare::PreparedRegisterSlotPool pool) {
+  const std::vector<std::string> occupied_register_names{register_name};
+  return prepare::PreparedI128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .role = role,
+      .lane_index = lane_index,
+      .width_bytes = 8,
+      .helper_argument_index = argument_index,
+      .abi_register_index = abi_index,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .register_name = std::move(register_name),
+      .contiguous_width = 1,
+      .occupied_register_names = occupied_register_names,
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .pool = pool,
+              .slot_index = abi_index,
+              .contiguous_width = 1,
+          },
+  };
+}
+
+prepare::PreparedI128RuntimeHelper::MarshalingMove make_i128_helper_marshaling_move(
+    const prepare::PreparedI128RuntimeHelper::LaneBinding& lane,
+    const prepare::PreparedI128RuntimeHelper::AbiRegisterBinding& binding,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction) {
+  return prepare::PreparedI128RuntimeHelper::MarshalingMove{
+      .direction = direction,
+      .phase =
+          direction ==
+                  prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument
+              ? prepare::PreparedMovePhase::BeforeCall
+              : prepare::PreparedMovePhase::AfterCall,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .carrier_lane = lane,
+      .abi_register = binding,
+  };
+}
+
 prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
     c4c::FunctionNameId function_name,
     std::size_t instruction_index,
@@ -1998,7 +2048,7 @@ prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
     const prepare::PreparedI128Carrier& result,
     const prepare::PreparedI128Carrier& lhs,
     const prepare::PreparedI128Carrier& rhs) {
-  return prepare::PreparedI128RuntimeHelper{
+  auto helper = prepare::PreparedI128RuntimeHelper{
       .function_name = function_name,
       .block_index = 0,
       .instruction_index = instruction_index,
@@ -2049,6 +2099,59 @@ prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
               .occupied_register_names = {"x13"},
           }},
   };
+  helper.lhs_low_abi_argument = make_i128_helper_abi_binding(
+      helper.lhs_value_id, helper.lhs_value_name, prepare::PreparedI128LaneRole::Low, 0,
+      std::size_t{0}, 0, "x0", prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.lhs_high_abi_argument = make_i128_helper_abi_binding(
+      helper.lhs_value_id, helper.lhs_value_name, prepare::PreparedI128LaneRole::High, 1,
+      std::size_t{0}, 1, "x1", prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.rhs_low_abi_argument = make_i128_helper_abi_binding(
+      helper.rhs_value_id, helper.rhs_value_name, prepare::PreparedI128LaneRole::Low, 0,
+      std::size_t{1}, 2, "x2", prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.rhs_high_abi_argument = make_i128_helper_abi_binding(
+      helper.rhs_value_id, helper.rhs_value_name, prepare::PreparedI128LaneRole::High, 1,
+      std::size_t{1}, 3, "x3", prepare::PreparedRegisterSlotPool::CallArgument);
+  helper.result_low_abi_result = make_i128_helper_abi_binding(
+      helper.result_value_id, helper.result_value_name, prepare::PreparedI128LaneRole::Low, 0,
+      std::nullopt, 0, "x0", prepare::PreparedRegisterSlotPool::CallResult);
+  helper.result_high_abi_result = make_i128_helper_abi_binding(
+      helper.result_value_id, helper.result_value_name, prepare::PreparedI128LaneRole::High, 1,
+      std::nullopt, 1, "x1", prepare::PreparedRegisterSlotPool::CallResult);
+  helper.lhs_low_argument_move = make_i128_helper_marshaling_move(
+      *helper.lhs_low_lane, *helper.lhs_low_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.lhs_high_argument_move = make_i128_helper_marshaling_move(
+      *helper.lhs_high_lane, *helper.lhs_high_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.rhs_low_argument_move = make_i128_helper_marshaling_move(
+      *helper.rhs_low_lane, *helper.rhs_low_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.rhs_high_argument_move = make_i128_helper_marshaling_move(
+      *helper.rhs_high_lane, *helper.rhs_high_abi_argument,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument);
+  helper.result_low_unmarshal_move = make_i128_helper_marshaling_move(
+      *helper.result_low_lane, *helper.result_low_abi_result,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane);
+  helper.result_high_unmarshal_move = make_i128_helper_marshaling_move(
+      *helper.result_high_lane, *helper.result_high_abi_result,
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane);
+  helper.live_preservation_policy =
+      prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
+          .evaluated = true,
+          .caller_saved_clobbers_modeled = true,
+          .no_additional_live_preservation_required = false,
+      };
+  helper.selected_call_ownership =
+      prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
+          .owns_terminal_call = false,
+          .has_callee_identity = true,
+          .has_resource_policy = true,
+          .has_clobber_policy = true,
+          .has_abi_bindings = true,
+          .has_marshaling = true,
+          .has_live_preservation = false,
+      };
+  return helper;
 }
 
 int i128_transport_records_preserve_prepared_carrier_lanes() {
@@ -2142,43 +2245,11 @@ int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
   auto prepared =
       aarch64_codegen::make_prepared_i128_runtime_helper_boundary_record(
           carriers, helper);
-  if (!prepared.record.has_value() ||
+  if (prepared.record.has_value() ||
       prepared.error !=
-          aarch64_codegen::PreparedI128RuntimeHelperRecordError::None ||
-      prepared.record->boundary_kind !=
-          aarch64_codegen::I128RuntimeHelperBoundaryKind::UnsignedDiv ||
-      prepared.record->helper_kind !=
-          prepare::PreparedI128RuntimeHelperKind::UnsignedDiv ||
-      prepared.record->callee_name != "__udivti3" ||
-      prepared.record->source_binary_opcode != bir::BinaryOpcode::UDiv ||
-      prepared.record->source_helper != &helper ||
-      prepared.record->result.value_id != prepare::PreparedValueId{190} ||
-      prepared.record->lhs.low_lane.reg->reg != aarch64_abi::x_register(8) ||
-      prepared.record->rhs.high_lane.reg->reg != aarch64_abi::x_register(11) ||
-      !prepared.record->resource_policy.call_boundary ||
-      prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
-      prepared.record->clobbered_registers.empty()) {
-    return fail("expected i128 helper boundary record to consume prepared helper authority");
-  }
-  const auto instruction =
-      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(*prepared.record);
-  const auto* payload =
-      std::get_if<aarch64_codegen::I128RuntimeHelperBoundaryRecord>(&instruction.payload);
-  if (payload == nullptr ||
-      instruction.family != aarch64_codegen::InstructionFamily::CallBoundary ||
-      instruction.opcode != aarch64_codegen::MachineOpcode::I128RuntimeHelper ||
-      aarch64_codegen::machine_opcode_name(instruction.opcode) !=
-          "i128_runtime_helper" ||
-      instruction.selection.status !=
-          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      instruction.operands.size() != 6 ||
-      instruction.defs.size() != 2 ||
-      instruction.uses.size() != 4 ||
-      instruction.clobbers.empty() ||
-      instruction.side_effects.size() != 1 ||
-      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
-      payload->result.high_lane.reg->reg != aarch64_abi::x_register(7)) {
-    return fail("expected selected i128 helper boundary instruction effects");
+          aarch64_codegen::PreparedI128RuntimeHelperRecordError::
+              IncompletePreparedI128RuntimeHelper) {
+    return fail("expected i128 helper boundary to fail closed without live preservation");
   }
 
   helper.clobbered_registers.clear();

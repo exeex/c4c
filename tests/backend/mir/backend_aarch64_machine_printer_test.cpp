@@ -194,6 +194,22 @@ aarch64_codegen::I128RuntimeHelperBoundaryRecord i128_helper_record() {
               .result_lane_count = 2,
               .lane_width_bytes = 8,
           },
+      .live_preservation_policy =
+          prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
+              .evaluated = true,
+              .caller_saved_clobbers_modeled = true,
+              .no_additional_live_preservation_required = false,
+          },
+      .selected_call_ownership =
+          prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
+              .owns_terminal_call = false,
+              .has_callee_identity = true,
+              .has_resource_policy = true,
+              .has_clobber_policy = true,
+              .has_abi_bindings = true,
+              .has_marshaling = true,
+              .has_live_preservation = false,
+          },
       .clobbered_registers =
           {prepare::PreparedClobberedRegister{
               .bank = prepare::PreparedRegisterBank::Gpr,
@@ -870,9 +886,8 @@ int selected_i128_records_reject_incomplete_structured_fields() {
       aarch64_codegen::make_i128_runtime_helper_boundary_instruction(helper_record);
   const auto helper_result = aarch64_codegen::print_machine_instruction_line_payloads(helper);
   if (helper_result.ok ||
-      helper_result.diagnostic.find("helper marshaling") == std::string::npos ||
-      helper_result.diagnostic.find("ABI register-binding facts") == std::string::npos) {
-    return fail("expected i128 helper boundary without marshaling facts to fail closed");
+      helper_result.diagnostic.find("live-preservation policy") == std::string::npos) {
+    return fail("expected i128 helper boundary without live preservation to fail closed");
   }
 
   auto pair_record = aarch64_codegen::I128PairOperationRecord{

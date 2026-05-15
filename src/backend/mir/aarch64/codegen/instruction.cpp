@@ -3650,6 +3650,24 @@ MachineNodeStatusRecord i128_runtime_helper_boundary_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 helper boundary is missing caller-saved clobber policy"};
   }
+  if (!instruction.live_preservation_policy.evaluated ||
+      !instruction.live_preservation_policy.caller_saved_clobbers_modeled ||
+      !instruction.live_preservation_policy.no_additional_live_preservation_required) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing live-preservation policy"};
+  }
+  if (!instruction.selected_call_ownership.owns_terminal_call ||
+      !instruction.selected_call_ownership.has_callee_identity ||
+      !instruction.selected_call_ownership.has_resource_policy ||
+      !instruction.selected_call_ownership.has_clobber_policy ||
+      !instruction.selected_call_ownership.has_abi_bindings ||
+      !instruction.selected_call_ownership.has_marshaling ||
+      !instruction.selected_call_ownership.has_live_preservation) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "i128 helper boundary is missing selected-call ownership policy"};
+  }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
@@ -5578,6 +5596,19 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
     return i128_runtime_helper_record_error(
         PreparedI128RuntimeHelperRecordError::MissingClobberPolicy);
   }
+  if (!helper.live_preservation_policy.evaluated ||
+      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
+      !helper.live_preservation_policy.no_additional_live_preservation_required ||
+      !helper.selected_call_ownership.owns_terminal_call ||
+      !helper.selected_call_ownership.has_callee_identity ||
+      !helper.selected_call_ownership.has_resource_policy ||
+      !helper.selected_call_ownership.has_clobber_policy ||
+      !helper.selected_call_ownership.has_abi_bindings ||
+      !helper.selected_call_ownership.has_marshaling ||
+      !helper.selected_call_ownership.has_live_preservation) {
+    return i128_runtime_helper_record_error(
+        PreparedI128RuntimeHelperRecordError::IncompletePreparedI128RuntimeHelper);
+  }
 
   I128RuntimeHelperBoundaryRecord record{
       .surface = RecordSurfaceKind::RecordOnly,
@@ -5603,6 +5634,8 @@ PreparedI128RuntimeHelperRecordResult make_prepared_i128_runtime_helper_boundary
       .total_align_bytes = 16,
       .resource_policy = helper.resource_policy,
       .abi_policy = helper.abi_policy,
+      .live_preservation_policy = helper.live_preservation_policy,
+      .selected_call_ownership = helper.selected_call_ownership,
       .clobbered_registers = helper.clobbered_registers,
       .source_helper = &helper,
   };

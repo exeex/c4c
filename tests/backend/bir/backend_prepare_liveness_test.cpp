@@ -2705,14 +2705,34 @@ int check_i128_runtime_helper_mapping_authority() {
           helper.lhs_low_argument_move->carrier_lane.register_name !=
               helper.lhs_low_lane->register_name ||
           helper.lhs_low_argument_move->abi_register.register_name != "rdi" ||
-          helper.result_high_unmarshal_move->direction !=
-              prepare::PreparedI128RuntimeHelperMarshalDirection::
-                  AbiResultToCarrierLane ||
-          helper.result_high_unmarshal_move->phase != prepare::PreparedMovePhase::AfterCall ||
-          helper.result_high_unmarshal_move->abi_register.register_name != "rdx" ||
-          helper.result_high_unmarshal_move->carrier_lane.register_name !=
-              helper.result_high_lane->register_name) {
-        return fail("prepared i128 runtime helper lost structured marshaling move authority");
+        helper.result_high_unmarshal_move->direction !=
+            prepare::PreparedI128RuntimeHelperMarshalDirection::
+                AbiResultToCarrierLane ||
+        helper.result_high_unmarshal_move->phase != prepare::PreparedMovePhase::AfterCall ||
+        helper.result_high_unmarshal_move->abi_register.register_name != "rdx" ||
+        helper.result_high_unmarshal_move->carrier_lane.register_name !=
+            helper.result_high_lane->register_name ||
+        !helper.live_preservation_policy.evaluated ||
+        !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
+        helper.live_preservation_policy.no_additional_live_preservation_required ||
+        !helper.live_preservation_policy.preserved_values.empty() ||
+        helper.selected_call_ownership.owns_terminal_call ||
+        !helper.selected_call_ownership.has_callee_identity ||
+        !helper.selected_call_ownership.has_resource_policy ||
+        !helper.selected_call_ownership.has_clobber_policy ||
+        !helper.selected_call_ownership.has_abi_bindings ||
+        !helper.selected_call_ownership.has_marshaling ||
+        helper.selected_call_ownership.has_live_preservation ||
+        std::find(helper.missing_required_facts.begin(),
+                  helper.missing_required_facts.end(),
+                  "live_preservation_requires_structured_live_across_helper_facts") ==
+            helper.missing_required_facts.end() ||
+        std::find(helper.missing_required_facts.begin(),
+                  helper.missing_required_facts.end(),
+                  "selected_call_ownership_requires_live_preservation_policy") ==
+            helper.missing_required_facts.end()) {
+        return fail(
+            "prepared i128 runtime helper overclaimed terminal-call live preservation");
       }
     }
   }
@@ -2763,8 +2783,17 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("result.high=abi_result_to_carrier_lane") == std::string::npos ||
       dump.find("phase=after_call,op=move,value=q.s#") == std::string::npos ||
       dump.find("result,abi_index=1,abi_reg=rdx") == std::string::npos ||
+      dump.find("live_preservation=[evaluated=yes,caller_saved_clobbers=yes,"
+                "additional=required,preserved=0]") == std::string::npos ||
+      dump.find("selected_call_ownership=[owns_terminal_call=no,callee=yes,"
+                "resources=yes,clobbers=yes,abi_bindings=yes,marshaling=yes,"
+                "live_preservation=no]") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||
       dump.find("result_requires_register_pair_carrier") == std::string::npos ||
+      dump.find("live_preservation_requires_structured_live_across_helper_facts") ==
+          std::string::npos ||
+      dump.find("selected_call_ownership_requires_live_preservation_policy") ==
+          std::string::npos ||
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
           std::string::npos) {
     return fail("prepared printer did not expose i128 runtime helper mapping facts");

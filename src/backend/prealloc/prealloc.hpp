@@ -1778,6 +1778,23 @@ struct PreparedI128RuntimeHelper {
     AbiRegisterBinding abi_register;
   };
 
+  struct LivePreservationPolicy {
+    bool evaluated = false;
+    bool caller_saved_clobbers_modeled = false;
+    bool no_additional_live_preservation_required = false;
+    std::vector<PreparedCallPreservedValue> preserved_values;
+  };
+
+  struct SelectedCallOwnershipPolicy {
+    bool owns_terminal_call = false;
+    bool has_callee_identity = false;
+    bool has_resource_policy = false;
+    bool has_clobber_policy = false;
+    bool has_abi_bindings = false;
+    bool has_marshaling = false;
+    bool has_live_preservation = false;
+  };
+
   struct ResourcePolicy {
     bool call_boundary = false;
     bool runtime_helper_callee = false;
@@ -1840,6 +1857,8 @@ struct PreparedI128RuntimeHelper {
   std::optional<MarshalingMove> rhs_high_argument_move;
   std::optional<MarshalingMove> result_low_unmarshal_move;
   std::optional<MarshalingMove> result_high_unmarshal_move;
+  LivePreservationPolicy live_preservation_policy;
+  SelectedCallOwnershipPolicy selected_call_ownership;
   std::optional<MemoryReturnOwnership> memory_return;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;

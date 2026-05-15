@@ -854,6 +854,8 @@ struct I128RuntimeHelperBoundaryRecord {
   I128PairOperandRecord rhs;
   prepare::PreparedI128RuntimeHelper::ResourcePolicy resource_policy;
   prepare::PreparedI128RuntimeHelper::AbiPolicy abi_policy;
+  prepare::PreparedI128RuntimeHelper::LivePreservationPolicy live_preservation_policy;
+  prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy selected_call_ownership;
   std::vector<prepare::PreparedClobberedRegister> clobbered_registers;
   const prepare::PreparedI128RuntimeHelper* source_helper = nullptr;
 };

@@ -1,62 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/249_prepared_i128_helper_marshaling_abi_binding.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Structured Helper Marshaling Facts
+Current Step ID: 4
+Current Step Title: Add Call-Clobber And Live Preservation Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added structured helper marshaling and unmarshaling facts for supported
-i128 div/rem helpers.
+Step 4 was revised after `review/step4_i128_helper_call_ownership.md`
+rejected the previous ownership claim. The slice now keeps helper boundary
+policy facts structured, but it does not claim terminal-call ownership until
+real live-across-helper preservation authority exists.
 
 What changed:
 
-- `PreparedI128RuntimeHelper` now carries structured `MarshalingMove` facts for
-  lhs/rhs low/high source lanes and direct-result low/high lanes.
-- Source marshaling moves connect canonical `PreparedI128Carrier` lane
-  authority to Step 2 helper ABI argument-register bindings with explicit
-  `carrier_lane_to_abi_argument` direction and `before_call` phase.
-- Result unmarshaling moves connect helper ABI result-register bindings to
-  canonical result carrier lanes with explicit `abi_result_to_carrier_lane`
-  direction and `after_call` phase.
-- Marshaling facts preserve value identity, lane role/index, lane width,
-  carrier register or memory slot/offset authority, ABI register identity,
-  register placement, phase, and move operation kind.
-- Memory-backed carrier lanes are represented structurally through slot and
-  stack-offset fields; the producer does not require register-pair lanes just
-  to describe marshal/unmarshal movement.
-- Incomplete carrier lanes, missing ABI bindings, unsupported target register
-  bindings, and lane identity mismatches still diagnose through helper
-  `missing_required_facts`.
-- Prepared printer output now dumps helper marshaling facts, and focused
-  prepared tests prove source marshal, result unmarshal, and memory-backed
-  carrier-lane facts.
+- `PreparedI128RuntimeHelper` carries `LivePreservationPolicy` and
+  `SelectedCallOwnershipPolicy` facts beside the helper resource, clobber, ABI
+  binding, and marshal/unmarshal facts.
+- Prepared helper enrichment marks caller-saved helper clobbers as modeled, but
+  leaves `no_additional_live_preservation_required` false and records
+  `live_preservation_requires_structured_live_across_helper_facts`.
+- Prepared selected-call ownership records callee identity, resource policy,
+  clobber policy, ABI bindings, and marshaling/unmarshaling as present, but
+  keeps `owns_terminal_call` false while live-preservation authority is
+  incomplete.
+- Incomplete selected-call ownership diagnoses through helper
+  `missing_required_facts` instead of letting consumers infer call readiness
+  from lane names or helper opcode.
+- `I128RuntimeHelperBoundaryRecord` now preserves live-preservation and
+  selected-call ownership policies for AArch64 selected consumers.
+- AArch64 helper-boundary record construction and selected-node status fail
+  closed when live-preservation or selected-call ownership facts are incomplete.
+- Focused prepared, selected-record, dispatch, and machine-printer tests cover
+  the fail-closed incomplete-live-preservation state instead of proving a false
+  readiness bit.
 
-No selected-call ownership, live-preservation authority, terminal `bl <callee>`
-helper-call output, fake `PreparedCallPlan` entries, target-local fixed-register
-marshaling, scalar-i64 substitute, conversion helper mapping, or memory-return
-helper support was added.
+Terminal helper-call printing still fails closed; this packet only publishes
+the policy and diagnostic facts needed for a later packet to derive real
+live-preservation authority before `bl <callee>` is allowed.
 
 ## Suggested Next
 
-Execute Step 4: add helper call-clobber, live-preservation, and selected-call
-ownership authority. The next packet should decide when a helper boundary has
-complete resource/clobber/live-preservation facts and explicit ownership of the
-terminal helper call, while keeping printer output fail-closed until those
-selected facts are consumed.
+Derive real live-preservation authority or explicit preservation facts for
+supported i128 div/rem helper boundaries. Only after structured live-across-helper
+facts prove that no additional preservation is required, or identify the exact
+preservation moves/ownership needed, may `selected_call_ownership.owns_terminal_call`
+become true and terminal helper-call printing be reconsidered.
 
 ## Watchouts
 
-- Step 3 describes marshal/unmarshal moves as prepared facts only. It still
-  does not authorize terminal helper-call printing.
-- `I128RuntimeHelperBoundaryRecord` printer output must remain fail-closed
-  until selected-call ownership and live-preservation facts are structurally
-  available and consumed.
-- Do not convert helper div/rem operations into fake retained calls or generic
-  `PreparedCallPlan` records. The helper-specific facts now carry ABI binding
-  and marshal/unmarshal authority directly.
+- The current active prerequisite is intentionally not complete enough for a
+  selected consumer to own terminal helper-call emission. It exposes the missing
+  live-preservation authority explicitly and fails closed.
+- Do not treat selected-call ownership as permission to recover operands from
+  fixed `x0..x5` conventions. The future printer packet must consume the
+  structured ABI binding and marshal/unmarshal fields.
+- `machine_printer.cpp` now names selected-call ownership and live-preservation
+  authority in the helper-boundary diagnostic rather than only ABI/marshaling.
 - Float/i128 conversion helpers and memory-return helper families remain
   deferred.
 
@@ -76,11 +77,6 @@ passed, 6/6 tests. Proof log: `test_after.log`.
 
 Additional hygiene: `git diff --check` passed.
 
-Supervisor full-suite acceptance also passed for this Step 3 slice:
-
-```sh
-(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1
-```
-
-Regression guard used `test_before.log` copied from accepted
-`test_baseline.log`; result was 3167/3167 before and 3167/3167 after.
+Supervisor full-suite acceptance: `(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1`
+passed with regression guard against `test_before.log` copied from
+`test_baseline.log`; before 3167/3167 and after 3167/3167.

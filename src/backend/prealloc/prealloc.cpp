@@ -1549,6 +1549,85 @@ void populate_i128_runtime_helper_marshaling(
             helper.result_high_unmarshal_move);
 }
 
+void populate_i128_runtime_helper_call_ownership(
+    PreparedI128RuntimeHelper& helper) {
+  helper.live_preservation_policy = PreparedI128RuntimeHelper::LivePreservationPolicy{};
+  helper.selected_call_ownership = PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{};
+
+  const bool has_clobber_policy =
+      helper.resource_policy.caller_saved_clobbers && !helper.clobbered_registers.empty();
+  helper.live_preservation_policy = PreparedI128RuntimeHelper::LivePreservationPolicy{
+      .evaluated = true,
+      .caller_saved_clobbers_modeled = has_clobber_policy,
+      .no_additional_live_preservation_required = false,
+      .preserved_values = {},
+  };
+  if (helper.live_preservation_policy.evaluated &&
+      helper.live_preservation_policy.caller_saved_clobbers_modeled &&
+      !helper.live_preservation_policy.no_additional_live_preservation_required) {
+    append_i128_runtime_helper_fact(
+        helper, "live_preservation_requires_structured_live_across_helper_facts");
+  }
+
+  const bool has_resource_policy =
+      helper.resource_policy.call_boundary &&
+      helper.resource_policy.runtime_helper_callee &&
+      helper.resource_policy.caller_saved_clobbers &&
+      helper.resource_policy.preserves_source_operation_identity;
+  const bool has_abi_bindings =
+      helper.lhs_low_abi_argument.has_value() &&
+      helper.lhs_high_abi_argument.has_value() &&
+      helper.rhs_low_abi_argument.has_value() &&
+      helper.rhs_high_abi_argument.has_value() &&
+      helper.result_low_abi_result.has_value() &&
+      helper.result_high_abi_result.has_value();
+  const bool has_marshaling =
+      helper.lhs_low_argument_move.has_value() &&
+      helper.lhs_high_argument_move.has_value() &&
+      helper.rhs_low_argument_move.has_value() &&
+      helper.rhs_high_argument_move.has_value() &&
+      helper.result_low_unmarshal_move.has_value() &&
+      helper.result_high_unmarshal_move.has_value();
+  const bool has_live_preservation =
+      helper.live_preservation_policy.evaluated &&
+      helper.live_preservation_policy.caller_saved_clobbers_modeled &&
+      helper.live_preservation_policy.no_additional_live_preservation_required;
+
+  helper.selected_call_ownership =
+      PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
+          .owns_terminal_call =
+              !helper.callee_name.empty() && has_resource_policy &&
+              has_clobber_policy && has_abi_bindings && has_marshaling &&
+              has_live_preservation,
+          .has_callee_identity = !helper.callee_name.empty(),
+          .has_resource_policy = has_resource_policy,
+          .has_clobber_policy = has_clobber_policy,
+          .has_abi_bindings = has_abi_bindings,
+          .has_marshaling = has_marshaling,
+          .has_live_preservation = has_live_preservation,
+      };
+
+  if (!helper.selected_call_ownership.has_callee_identity) {
+    append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_callee_identity");
+  }
+  if (!helper.selected_call_ownership.has_resource_policy) {
+    append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_resource_policy");
+  }
+  if (!helper.selected_call_ownership.has_clobber_policy) {
+    append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_clobber_policy");
+  }
+  if (!helper.selected_call_ownership.has_abi_bindings) {
+    append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_abi_bindings");
+  }
+  if (!helper.selected_call_ownership.has_marshaling) {
+    append_i128_runtime_helper_fact(helper, "selected_call_ownership_requires_marshaling");
+  }
+  if (!helper.selected_call_ownership.has_live_preservation) {
+    append_i128_runtime_helper_fact(
+        helper, "selected_call_ownership_requires_live_preservation_policy");
+  }
+}
+
 void populate_i128_runtime_helper_boundary_policy(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function,
@@ -1661,6 +1740,7 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
           break;
       }
       populate_i128_runtime_helper_marshaling(helper);
+      populate_i128_runtime_helper_call_ownership(helper);
     }
   }
 }
