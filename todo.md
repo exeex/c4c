@@ -1,49 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/240_aarch64_inline_asm_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Expand Output, Tie, And Clobber Coverage
+Current Step ID: 6
+Current Step Title: Broader Backend Validation And Closure Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 5 by hardening selected and printed AArch64 inline-asm
-coverage for output homes, numeric ties, side effects, and explicit clobber
-diagnostics without adding allocator-scale behavior.
+Completed Plan Step 6 broader backend validation and closure-readiness review
+for the AArch64 inline-asm machine-node route.
 
 Implemented:
 
-- Dispatch now reports a distinct fail-closed diagnostic for complete-but-bad
-  clobber operands instead of folding them into generic unsupported operands.
-- Machine-printer diagnostics now distinguish unsupported clobber operands and
-  unstructured clobber lists from ordinary unsupported constraints.
-- Prepared-printer coverage now proves source/LIR clobber operands still become
-  explicit unsupported-clobber facts.
-- Dispatch coverage now uses non-trivial prepared homes (`w3`/`w5`) and checks
-  output, tied input, named register input, side-effect marker, selected defs
-  and uses, and printed `%wN`/`%xN` substitution from prepared homes.
-- Printer coverage now proves tied placeholders print through the selected
-  output operand while ordinary operands use their selected homes, and clobber
-  operands/lists remain diagnostic-only.
+- Ran the supervisor-selected broader backend validation for the active route.
+- Compared matching backend before/after proof logs with the regression guard.
+- Reviewed remaining gaps against the source idea and current runbook.
+- The source idea is not closure-ready yet because named operand substitution,
+  structured clobber authority, memory/address constraints, and allocator-scale
+  tied-output/coallocation policy remain unsupported or diagnostic-only.
 
 ## Suggested Next
 
-Next coherent packet: execute Plan Step 6 broader backend validation and
-closure-readiness review for the inline-asm machine-node route.
+Ask the plan owner to decide whether to replace the exhausted runbook with a
+follow-up plan or split the remaining durable scope into one or more
+`ideas/open/` files. Do not close the source idea as complete.
 
 ## Watchouts
 
-- Source/LIR still lacks structured clobber authority for printable clobber
-  effects; clobber operands and clobber lists intentionally remain explicit
-  diagnostics.
-- Allocator/spill work, tied-output coallocation policy, memory constraints,
-  named operand references, and broader constraint families remain outside this
-  packet and should not be claimed as implemented by Step 5.
-- Immediate substitution intentionally emits the raw integer string so templates
-  can decide whether to include `#`.
-- `clang-format` is not installed in this environment; changed formatting was
-  checked manually.
+- Current implemented support covers structured positional register input,
+  one register output, numeric tie facts, integer immediates, `%wN`/`%xN`
+  register-width modifiers, side-effect marking, and explicit diagnostics for
+  unsupported forms.
+- Named operand references are still fail-closed; retained operand names are
+  carried but not substituted from `%[name]`.
+- Clobbers remain diagnostic-only because source/LIR does not provide
+  structured clobber vectors.
+- Memory/address constraints and allocator-scale tie/coallocation policy remain
+  out of scope for the completed runbook.
 
 ## Proof
 
@@ -53,3 +47,10 @@ Ran the delegated proof command:
 
 Result: passed. `test_after.log` contains the build plus 139/139 backend tests
 passing.
+
+Regression guard:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed. Before and after both report 139/139 backend tests passing,
+with no new failures and no new slow-test entries.
