@@ -8,8 +8,8 @@ Current Step Title: Broader Backend Validation And Closure Readiness
 
 ## Just Finished
 
-Plan-owner review after Plan Step 4 accepted the builtin-address ownership
-boundary and advanced the route to Plan Step 6 validation/closure readiness.
+Plan Step 6 - Broader Backend Validation And Closure Readiness completed after
+plan-owner review accepted the builtin-address ownership boundary.
 
 Step 5 boundary status:
 
@@ -41,13 +41,7 @@ representative.
 
 ## Suggested Next
 
-Run Plan Step 6 broader backend validation from the supervisor side:
-
-```sh
-set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log
-```
-
-If the broader backend subset is green, ask the plan owner to close
+Ask the plan owner to close
 `ideas/open/243_aarch64_cache_hint_builtin_intrinsic_carriers.md`. No split is
 needed right now because builtin-address has no concrete non-materialization
 representative in this source idea.
@@ -73,15 +67,14 @@ representative in this source idea.
 
 ## Proof
 
-Latest delegated proof before plan-owner review:
+Broader backend validation:
 
 ```sh
-set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_(lir_to_bir_notes|prepared_printer|aarch64_instruction_dispatch|aarch64_machine_printer)'; } 2>&1 | tee test_after.log
+set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log
 ```
 
-Result: passed. Build was up to date and all 4 delegated tests passed:
-`backend_lir_to_bir_notes`, `backend_prepared_printer`,
-`backend_aarch64_instruction_dispatch`, and
-`backend_aarch64_machine_printer`.
+Result: passed. Build was up to date and 139/139 backend tests passed.
+Matching before/after backend logs passed the regression guard with no new
+failures.
 
 Log path: `test_after.log`.
