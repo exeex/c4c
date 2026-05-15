@@ -3669,6 +3669,17 @@ int selected_inline_asm_template_prints_from_structured_operands() {
       named_result.instruction_lines[1] != "mov x3, #7") {
     return fail("expected selected inline-asm named substitution");
   }
+
+  auto clobber_list = selected_inline_asm_record("add %w0, %w1, %w2");
+  clobber_list.inline_asm_clobbers = {"x7", "memory", "cc"};
+  const auto clobber_list_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(clobber_list)));
+  if (!clobber_list_result.ok ||
+      clobber_list_result.instruction_lines.size() != 1 ||
+      clobber_list_result.instruction_lines.front() != "add w3, w3, w5") {
+    return fail("expected selected inline-asm clobber list to print from record facts");
+  }
   return 0;
 }
 
@@ -3831,16 +3842,6 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
     return fail("expected inline-asm clobber operand to fail closed");
   }
 
-  auto clobber_list = selected_inline_asm_record("add %w0, %w1, %w2");
-  clobber_list.inline_asm_clobbers = {"x1"};
-  const auto clobber_list_result =
-      aarch64_codegen::print_machine_instruction_line_payloads(
-          selected_inline_asm_instruction(std::move(clobber_list)));
-  if (clobber_list_result.ok ||
-      clobber_list_result.diagnostic.find("structured clobber authority") ==
-          std::string::npos) {
-    return fail("expected inline-asm clobber list to fail closed");
-  }
   return 0;
 }
 

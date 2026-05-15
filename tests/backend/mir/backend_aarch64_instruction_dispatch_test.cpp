@@ -181,6 +181,10 @@ enum class InlineAsmCarrierFixtureKind {
   UnsupportedOperand,
   UnsupportedClobber,
   UnsupportedTemplateModifier,
+  SupportedClobbers,
+  UnknownClobber,
+  MalformedClobber,
+  TargetInvalidClobber,
 };
 
 prepare::PreparedValueHome inline_asm_register_home(
@@ -393,6 +397,16 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .home = imm_home,
                .immediate_value = std::int64_t{7},
            }},
+      .clobbers =
+          kind == InlineAsmCarrierFixtureKind::SupportedClobbers
+              ? std::vector<std::string>{"x7", "memory", "cc"}
+          : kind == InlineAsmCarrierFixtureKind::UnknownClobber
+              ? std::vector<std::string>{"v0"}
+          : kind == InlineAsmCarrierFixtureKind::MalformedClobber
+              ? std::vector<std::string>{"~{x7}"}
+          : kind == InlineAsmCarrierFixtureKind::TargetInvalidClobber
+              ? std::vector<std::string>{"sp"}
+              : std::vector<std::string>{},
       .result = out_value,
       .result_value_name = out_name,
       .result_home = kind == InlineAsmCarrierFixtureKind::MissingResultHome
@@ -4463,6 +4477,54 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
   return 0;
 }
 
+int block_dispatch_selects_inline_asm_structured_clobbers() {
+  auto prepared =
+      prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::SupportedClobbers);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected inline-asm structured clobbers to select without diagnostics");
+  }
+  const auto& instruction = block.instructions.front().target;
+  const auto* assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(&instruction.payload);
+  if (assembler == nullptr || assembler->inline_asm_clobbers.size() != 3 ||
+      assembler->inline_asm_clobbers[0] != "x7" ||
+      assembler->inline_asm_clobbers[1] != "memory" ||
+      assembler->inline_asm_clobbers[2] != "cc") {
+    return fail("expected selected inline-asm record to carry structured clobber list");
+  }
+  if (instruction.clobbers.size() != 3 ||
+      instruction.clobbers[0].kind !=
+          aarch64_codegen::MachineEffectResourceKind::Register ||
+      instruction.clobbers[0].reg != aarch64_abi::x_register(7) ||
+      instruction.clobbers[1].kind !=
+          aarch64_codegen::MachineEffectResourceKind::Memory ||
+      instruction.clobbers[2].kind !=
+          aarch64_codegen::MachineEffectResourceKind::Flags) {
+    return fail("expected inline-asm structured clobbers to become machine effects");
+  }
+
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "add w3, w3, w5") {
+    return fail("expected inline-asm printer to accept selected clobber facts");
+  }
+  return 0;
+}
+
 int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
   const std::array cases{
       std::pair{InlineAsmCarrierFixtureKind::Incomplete,
@@ -4484,6 +4546,12 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{"unsupported_inline_asm_clobber_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
                 std::string_view{"unsupported_template_modifiers"}},
+      std::pair{InlineAsmCarrierFixtureKind::UnknownClobber,
+                std::string_view{"unknown_inline_asm_clobber"}},
+      std::pair{InlineAsmCarrierFixtureKind::MalformedClobber,
+                std::string_view{"malformed_inline_asm_clobber"}},
+      std::pair{InlineAsmCarrierFixtureKind::TargetInvalidClobber,
+                std::string_view{"target_invalid_inline_asm_clobber"}},
   };
 
   for (const auto& [kind, expected_fact] : cases) {
@@ -8739,6 +8807,10 @@ int main() {
   }
   if (const int status =
           block_dispatch_selects_complete_inline_asm_machine_record();
+      status != 0) {
+    return status;
+  }
+  if (const int status = block_dispatch_selects_inline_asm_structured_clobbers();
       status != 0) {
     return status;
   }

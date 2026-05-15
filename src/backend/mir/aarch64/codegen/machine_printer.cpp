@@ -896,9 +896,6 @@ InlineAsmSubstitutionResult substitute_inline_asm_template(
   if (!assembler.has_inline_asm_payload) {
     return {.diagnostic = "assembler node is missing inline-asm payload"};
   }
-  if (!assembler.inline_asm_clobbers.empty()) {
-    return {.diagnostic = "inline-asm clobber list requires structured clobber authority"};
-  }
   if (assembler.inline_asm_template.empty()) {
     return {.diagnostic = "inline-asm template is empty"};
   }

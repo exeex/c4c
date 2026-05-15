@@ -527,6 +527,110 @@ require_prepared_variadic_entry_plan(
   return effect;
 }
 
+[[nodiscard]] bool inline_asm_clobber_has_malformed_spelling(std::string_view clobber) {
+  if (clobber.empty()) {
+    return true;
+  }
+  for (const char ch : clobber) {
+    if (ch == '~' || ch == '{' || ch == '}' || ch == ',' || ch == ' ' ||
+        ch == '\t' || ch == '\n' || ch == '\r') {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<unsigned> inline_asm_gpr_clobber_index(
+    std::string_view clobber) {
+  if (clobber.size() < 2 || (clobber.front() != 'x' && clobber.front() != 'w')) {
+    return std::nullopt;
+  }
+  unsigned value = 0;
+  for (std::size_t index = 1; index < clobber.size(); ++index) {
+    const char ch = clobber[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10 + static_cast<unsigned>(ch - '0');
+    if (value > 30) {
+      return std::nullopt;
+    }
+  }
+  return value;
+}
+
+[[nodiscard]] std::optional<MachineEffectResource> inline_asm_clobber_effect(
+    std::string_view clobber,
+    std::string* diagnostic_fact) {
+  if (inline_asm_clobber_has_malformed_spelling(clobber)) {
+    *diagnostic_fact = "malformed_inline_asm_clobber:";
+    diagnostic_fact->append(clobber);
+    return std::nullopt;
+  }
+  if (clobber == "memory") {
+    return MachineEffectResource{.kind = MachineEffectResourceKind::Memory};
+  }
+  if (clobber == "cc") {
+    return MachineEffectResource{.kind = MachineEffectResourceKind::Flags};
+  }
+  if (clobber == "sp" || clobber == "wsp" || clobber == "xzr" ||
+      clobber == "wzr") {
+    *diagnostic_fact = "target_invalid_inline_asm_clobber:";
+    diagnostic_fact->append(clobber);
+    return std::nullopt;
+  }
+  const auto index = inline_asm_gpr_clobber_index(clobber);
+  if (!index.has_value()) {
+    *diagnostic_fact = "unknown_inline_asm_clobber:";
+    diagnostic_fact->append(clobber);
+    return std::nullopt;
+  }
+
+  const std::string canonical_name = "x" + std::to_string(*index);
+  const auto converted = abi::convert_prepared_register(
+      canonical_name,
+      prepare::PreparedRegisterBank::Gpr,
+      prepare::PreparedRegisterClass::General,
+      abi::RegisterView::X);
+  if (!converted.reg.has_value()) {
+    *diagnostic_fact = "target_invalid_inline_asm_clobber:";
+    diagnostic_fact->append(clobber);
+    return std::nullopt;
+  }
+
+  const OperandRecord operand = make_register_operand(RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::CallAbi,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = abi::RegisterView::X,
+      .contiguous_width = 1,
+      .occupied_register_references = {*converted.reg},
+      .occupied_registers = {canonical_name},
+  });
+  return MachineEffectResource{
+      .kind = MachineEffectResourceKind::Register,
+      .operand = operand,
+      .reg = *converted.reg,
+  };
+}
+
+[[nodiscard]] std::optional<std::vector<MachineEffectResource>>
+inline_asm_clobber_effects(
+    const std::vector<std::string>& clobbers,
+    std::string* diagnostic_fact) {
+  std::vector<MachineEffectResource> effects;
+  effects.reserve(clobbers.size());
+  for (const auto& clobber : clobbers) {
+    auto effect = inline_asm_clobber_effect(clobber, diagnostic_fact);
+    if (!effect.has_value()) {
+      return std::nullopt;
+    }
+    effects.push_back(std::move(*effect));
+  }
+  return effects;
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_inline_asm_register_operand(
     const prepare::PreparedValueHome& home,
     module::ModuleLoweringDiagnostics& diagnostics,
@@ -2673,6 +2777,18 @@ struct LowerMemoryInstructionResult {
                            inline_asm_carrier_error_message({}, carrier));
     return std::nullopt;
   }
+  std::string clobber_diagnostic_fact;
+  auto clobber_effects =
+      inline_asm_clobber_effects(carrier->clobbers, &clobber_diagnostic_fact);
+  if (!clobber_effects.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message(clobber_diagnostic_fact));
+    return std::nullopt;
+  }
   AssemblerInstructionRecord record{
       .has_inline_asm_payload = true,
       .side_effects = carrier->side_effects,
@@ -2681,6 +2797,7 @@ struct LowerMemoryInstructionResult {
       .inline_asm_has_named_operand_references =
           carrier->has_named_operand_references,
       .inline_asm_has_template_modifiers = carrier->has_template_modifiers,
+      .inline_asm_clobbers = carrier->clobbers,
       .inline_asm_result = carrier->result,
       .inline_asm_result_value_name = carrier->result_value_name,
       .inline_asm_result_home = carrier->result_home,
@@ -2837,6 +2954,7 @@ struct LowerMemoryInstructionResult {
   target.operands = record.operands;
   target.defs.clear();
   target.uses.clear();
+  target.clobbers = std::move(*clobber_effects);
   for (const auto& inline_operand : record.inline_asm_operands) {
     if (!inline_operand.selected_operand.has_value()) {
       continue;
