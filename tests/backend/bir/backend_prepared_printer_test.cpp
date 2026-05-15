@@ -3030,20 +3030,15 @@ int main() {
   }
   if (!expect_contains(i128_helper_dump,
                        "live_preservation=[evaluated=yes,caller_saved_clobbers=yes,"
-                       "additional=required,preserved=0]",
+                       "additional=none,preserved=0]",
                        "i128 helper live-preservation policy")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
-                       "selected_call_ownership=[owns_terminal_call=no,callee=yes,"
+                       "selected_call_ownership=[owns_terminal_call=yes,callee=yes,"
                        "resources=yes,clobbers=yes,abi_bindings=yes,marshaling=yes,"
-                       "live_preservation=no]",
+                       "live_preservation=yes]",
                        "i128 helper selected-call ownership policy")) {
-    return EXIT_FAILURE;
-  }
-  if (!expect_contains(i128_helper_dump,
-                       "live_preservation_requires_structured_live_across_helper_facts",
-                       "i128 helper live-preservation missing fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,

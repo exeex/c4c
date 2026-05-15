@@ -1433,17 +1433,17 @@ prepare::PreparedI128RuntimeHelper dispatch_i128_runtime_helper(
       prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
           .evaluated = true,
           .caller_saved_clobbers_modeled = true,
-          .no_additional_live_preservation_required = false,
+          .no_additional_live_preservation_required = true,
       };
   helper.selected_call_ownership =
       prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
-          .owns_terminal_call = false,
+          .owns_terminal_call = true,
           .has_callee_identity = true,
           .has_resource_policy = true,
           .has_clobber_policy = true,
           .has_abi_bindings = true,
           .has_marshaling = true,
-          .has_live_preservation = false,
+          .has_live_preservation = true,
       };
   return helper;
 }
@@ -3710,11 +3710,36 @@ int block_dispatch_lowers_i128_runtime_helper_from_prepared_authority() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (diagnostics.entries.size() != 1 || result.visited_operations != 1 ||
-      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
-      diagnostics.entries.front().message.find("incomplete_prepared_i128_runtime_helper") ==
-          std::string::npos) {
-    return fail("expected i128 helper dispatch to fail closed without live preservation");
+  const auto* helper =
+      block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::I128RuntimeHelperBoundaryRecord>(
+                &block.instructions.front().target.payload);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      helper == nullptr ||
+      block.instructions.front().target.opcode !=
+          aarch64_codegen::MachineOpcode::I128RuntimeHelper ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::CallBoundary ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      helper->helper_kind != prepare::PreparedI128RuntimeHelperKind::SignedRem ||
+      helper->callee_name != "__modti3" ||
+      helper->source_binary_opcode != bir::BinaryOpcode::SRem ||
+      helper->result_ownership !=
+          prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
+      helper->result.low_lane.reg->reg != aarch64_abi::x_register(6) ||
+      helper->lhs.high_lane.reg->reg != aarch64_abi::x_register(9) ||
+      !helper->resource_policy.call_boundary ||
+      helper->abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      !helper->live_preservation_policy.evaluated ||
+      !helper->live_preservation_policy.no_additional_live_preservation_required ||
+      !helper->selected_call_ownership.owns_terminal_call ||
+      !helper->selected_call_ownership.has_live_preservation ||
+      helper->clobbered_registers.empty() ||
+      block.instructions.front().target.clobbers.empty()) {
+    return fail("expected dispatch to select i128 helper boundary from prepared authority");
   }
   return 0;
 }
@@ -3739,6 +3764,32 @@ int block_dispatch_reports_missing_i128_runtime_helper_authority() {
       missing_helper_diagnostics.entries.front().message.find(
           "missing_prepared_i128_runtime_helper") == std::string::npos) {
     return fail("expected i128 helper dispatch to fail closed without helper authority");
+  }
+
+  auto missing_live_prepared = prepared_with_i128_runtime_helper_operation();
+  auto& helper = missing_live_prepared.i128_runtime_helpers.functions.front().helpers.front();
+  helper.live_preservation_policy.no_additional_live_preservation_required = false;
+  helper.selected_call_ownership.owns_terminal_call = false;
+  helper.selected_call_ownership.has_live_preservation = false;
+  const auto& live_function_cf = missing_live_prepared.control_flow.functions.front();
+  const auto& live_block_cf = live_function_cf.blocks.front();
+  const auto live_function_context = aarch64_codegen::make_function_lowering_context(
+      missing_live_prepared, missing_live_prepared.target_profile, live_function_cf);
+  const auto live_block_context =
+      aarch64_codegen::make_block_lowering_context(live_function_context, live_block_cf, 0);
+
+  aarch64_module::MachineBlock live_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_live_diagnostics;
+  const auto live_result =
+      aarch64_codegen::dispatch_prepared_block(
+          live_block_context, live_block, missing_live_diagnostics);
+  if (live_result.visited_operations != 1 ||
+      live_result.emitted_instructions != 1 ||
+      live_block.instructions.size() != 1 ||
+      missing_live_diagnostics.entries.size() != 1 ||
+      missing_live_diagnostics.entries.front().message.find(
+          "incomplete_prepared_i128_runtime_helper") == std::string::npos) {
+    return fail("expected i128 helper dispatch to fail closed without live preservation");
   }
 
   auto missing_clobber_prepared =

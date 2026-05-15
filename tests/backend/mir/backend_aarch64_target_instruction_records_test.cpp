@@ -2139,17 +2139,30 @@ prepare::PreparedI128RuntimeHelper make_i128_runtime_helper(
       prepare::PreparedI128RuntimeHelper::LivePreservationPolicy{
           .evaluated = true,
           .caller_saved_clobbers_modeled = true,
-          .no_additional_live_preservation_required = false,
+          .no_additional_live_preservation_required = true,
+          .preserved_values =
+              {prepare::PreparedCallPreservedValue{
+                  .value_id = lhs.value_id,
+                  .value_name = lhs.value_name,
+                  .route = prepare::PreparedCallPreservationRoute::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{99},
+                  .stack_offset_bytes = std::size_t{128},
+                  .spill_slot_placement =
+                      prepare::PreparedSpillSlotPlacement{
+                          .slot_id = prepare::PreparedFrameSlotId{99},
+                          .offset_bytes = 128,
+                      },
+              }},
       };
   helper.selected_call_ownership =
       prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{
-          .owns_terminal_call = false,
+          .owns_terminal_call = true,
           .has_callee_identity = true,
           .has_resource_policy = true,
           .has_clobber_policy = true,
           .has_abi_bindings = true,
           .has_marshaling = true,
-          .has_live_preservation = false,
+          .has_live_preservation = true,
       };
   return helper;
 }
@@ -2245,12 +2258,70 @@ int i128_runtime_helper_boundary_records_consume_prepared_helper_authority() {
   auto prepared =
       aarch64_codegen::make_prepared_i128_runtime_helper_boundary_record(
           carriers, helper);
-  if (prepared.record.has_value() ||
+  if (!prepared.record.has_value() ||
       prepared.error !=
+          aarch64_codegen::PreparedI128RuntimeHelperRecordError::None ||
+      prepared.record->boundary_kind !=
+          aarch64_codegen::I128RuntimeHelperBoundaryKind::UnsignedDiv ||
+      prepared.record->helper_kind !=
+          prepare::PreparedI128RuntimeHelperKind::UnsignedDiv ||
+      prepared.record->callee_name != "__udivti3" ||
+      prepared.record->source_binary_opcode != bir::BinaryOpcode::UDiv ||
+      prepared.record->source_helper != &helper ||
+      prepared.record->result.value_id != prepare::PreparedValueId{190} ||
+      prepared.record->lhs.low_lane.reg->reg != aarch64_abi::x_register(8) ||
+      prepared.record->rhs.high_lane.reg->reg != aarch64_abi::x_register(11) ||
+      !prepared.record->resource_policy.call_boundary ||
+      prepared.record->abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      !prepared.record->live_preservation_policy.evaluated ||
+      !prepared.record->live_preservation_policy
+           .no_additional_live_preservation_required ||
+      prepared.record->live_preservation_policy.preserved_values.size() != 1 ||
+      prepared.record->live_preservation_policy.preserved_values.front().route !=
+          prepare::PreparedCallPreservationRoute::StackSlot ||
+      !prepared.record->selected_call_ownership.owns_terminal_call ||
+      !prepared.record->selected_call_ownership.has_marshaling ||
+      !prepared.record->selected_call_ownership.has_live_preservation ||
+      prepared.record->clobbered_registers.empty()) {
+    return fail("expected i128 helper boundary record to consume prepared helper authority");
+  }
+  const auto instruction =
+      aarch64_codegen::make_i128_runtime_helper_boundary_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::I128RuntimeHelperBoundaryRecord>(&instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::CallBoundary ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::I128RuntimeHelper ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) !=
+          "i128_runtime_helper" ||
+      instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.operands.size() != 6 ||
+      instruction.defs.size() != 2 ||
+      instruction.uses.size() != 4 ||
+      instruction.clobbers.empty() ||
+      instruction.side_effects.size() != 1 ||
+      instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::Call ||
+      !payload->selected_call_ownership.owns_terminal_call ||
+      payload->result.high_lane.reg->reg != aarch64_abi::x_register(7)) {
+    return fail("expected selected i128 helper boundary instruction effects");
+  }
+
+  helper.live_preservation_policy.no_additional_live_preservation_required = false;
+  helper.selected_call_ownership.owns_terminal_call = false;
+  helper.selected_call_ownership.has_live_preservation = false;
+  const auto missing_ownership =
+      aarch64_codegen::make_prepared_i128_runtime_helper_boundary_record(
+          carriers, helper);
+  if (missing_ownership.record.has_value() ||
+      missing_ownership.error !=
           aarch64_codegen::PreparedI128RuntimeHelperRecordError::
               IncompletePreparedI128RuntimeHelper) {
     return fail("expected i128 helper boundary to fail closed without live preservation");
   }
+  helper.live_preservation_policy.no_additional_live_preservation_required = true;
+  helper.selected_call_ownership.owns_terminal_call = true;
+  helper.selected_call_ownership.has_live_preservation = true;
 
   helper.clobbered_registers.clear();
   const auto missing =

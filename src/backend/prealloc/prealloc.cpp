@@ -1459,6 +1459,18 @@ make_i128_helper_marshaling_move(
   };
 }
 
+[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedLivenessFunction* liveness_function,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t program_point,
+    bool require_call_crossing_value);
+
+[[nodiscard]] bool preserved_value_has_complete_route(
+    const PreparedCallPreservedValue& preserved);
+
 void populate_i128_runtime_helper_marshaling(
     PreparedI128RuntimeHelper& helper) {
   helper.lhs_low_argument_move.reset();
@@ -1550,24 +1562,52 @@ void populate_i128_runtime_helper_marshaling(
 }
 
 void populate_i128_runtime_helper_call_ownership(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedLivenessFunction* liveness_function,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
     PreparedI128RuntimeHelper& helper) {
   helper.live_preservation_policy = PreparedI128RuntimeHelper::LivePreservationPolicy{};
   helper.selected_call_ownership = PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy{};
 
   const bool has_clobber_policy =
       helper.resource_policy.caller_saved_clobbers && !helper.clobbered_registers.empty();
+  const auto helper_point =
+      liveness_function == nullptr
+          ? std::optional<std::size_t>{}
+          : find_call_program_point(*liveness_function,
+                                    helper.block_index,
+                                    helper.instruction_index);
+  std::vector<PreparedCallPreservedValue> preserved_values =
+      helper_point.has_value()
+          ? build_call_preserved_values(prepared,
+                                        frame_plan,
+                                        liveness_function,
+                                        regalloc_function,
+                                        value_locations,
+                                        *helper_point,
+                                        false)
+          : std::vector<PreparedCallPreservedValue>{};
+  const bool preserved_values_complete =
+      std::all_of(preserved_values.begin(),
+                  preserved_values.end(),
+                  preserved_value_has_complete_route);
+  if (liveness_function == nullptr || regalloc_function == nullptr ||
+      !helper_point.has_value()) {
+    append_i128_runtime_helper_fact(
+        helper, "live_preservation_requires_structured_live_across_helper_facts");
+  } else if (!preserved_values_complete) {
+    append_i128_runtime_helper_fact(
+        helper, "live_preservation_requires_complete_preserved_value_routes");
+  }
   helper.live_preservation_policy = PreparedI128RuntimeHelper::LivePreservationPolicy{
       .evaluated = true,
       .caller_saved_clobbers_modeled = has_clobber_policy,
-      .no_additional_live_preservation_required = false,
-      .preserved_values = {},
+      .no_additional_live_preservation_required =
+          helper_point.has_value() && preserved_values_complete,
+      .preserved_values = std::move(preserved_values),
   };
-  if (helper.live_preservation_policy.evaluated &&
-      helper.live_preservation_policy.caller_saved_clobbers_modeled &&
-      !helper.live_preservation_policy.no_additional_live_preservation_required) {
-    append_i128_runtime_helper_fact(
-        helper, "live_preservation_requires_structured_live_across_helper_facts");
-  }
 
   const bool has_resource_policy =
       helper.resource_policy.call_boundary &&
@@ -1686,6 +1726,11 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
         find_prepared_i128_carriers(prepared.i128_carriers, function_helpers.function_name);
     const auto* regalloc_function =
         find_regalloc_function(prepared.regalloc, function_helpers.function_name);
+    const auto* frame_plan = find_prepared_frame_plan(prepared, function_helpers.function_name);
+    const auto* liveness_function =
+        find_liveness_function(prepared.liveness, function_helpers.function_name);
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_helpers.function_name);
     for (auto& helper : function_helpers.helpers) {
       helper.lhs_low_lane.reset();
       helper.lhs_high_lane.reset();
@@ -1740,7 +1785,12 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
           break;
       }
       populate_i128_runtime_helper_marshaling(helper);
-      populate_i128_runtime_helper_call_ownership(helper);
+      populate_i128_runtime_helper_call_ownership(prepared,
+                                                  frame_plan,
+                                                  liveness_function,
+                                                  regalloc_function,
+                                                  value_locations,
+                                                  helper);
     }
   }
 }
@@ -2003,25 +2053,20 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
     const PreparedLivenessFunction* liveness_function,
     const PreparedRegallocFunction* regalloc_function,
     const PreparedValueLocationFunction* value_locations,
-    std::size_t block_index,
-    std::size_t instruction_index) {
+    std::size_t program_point,
+    bool require_call_crossing_value) {
   std::vector<PreparedCallPreservedValue> preserved_values;
   if (liveness_function == nullptr || regalloc_function == nullptr) {
     return preserved_values;
   }
 
-  const auto call_point =
-      find_call_program_point(*liveness_function, block_index, instruction_index);
-  if (!call_point.has_value()) {
-    return preserved_values;
-  }
-
   for (const auto& value : regalloc_function->values) {
-    if (!value.crosses_call || !value.live_interval.has_value()) {
+    if ((require_call_crossing_value && !value.crosses_call) ||
+        !value.live_interval.has_value()) {
       continue;
     }
-    if (!(*call_point > value.live_interval->start_point &&
-          *call_point < value.live_interval->end_point)) {
+    if (!(program_point > value.live_interval->start_point &&
+          program_point < value.live_interval->end_point)) {
       continue;
     }
 
@@ -2088,6 +2133,50 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
               return lhs.value_id < rhs.value_id;
             });
   return preserved_values;
+}
+
+[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedLivenessFunction* liveness_function,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  if (liveness_function == nullptr) {
+    return {};
+  }
+  const auto call_point =
+      find_call_program_point(*liveness_function, block_index, instruction_index);
+  if (!call_point.has_value()) {
+    return {};
+  }
+  return build_call_preserved_values(prepared,
+                                     frame_plan,
+                                     liveness_function,
+                                     regalloc_function,
+                                     value_locations,
+                                     *call_point,
+                                     true);
+}
+
+[[nodiscard]] bool preserved_value_has_complete_route(
+    const PreparedCallPreservedValue& preserved) {
+  switch (preserved.route) {
+    case PreparedCallPreservationRoute::Unknown:
+      return false;
+    case PreparedCallPreservationRoute::CalleeSavedRegister:
+      return preserved.register_name.has_value() &&
+             preserved.register_bank.has_value() &&
+             !preserved.occupied_register_names.empty() &&
+             preserved.register_placement.has_value() &&
+             preserved.callee_saved_save_index.has_value();
+    case PreparedCallPreservationRoute::StackSlot:
+      return preserved.slot_id.has_value() &&
+             preserved.stack_offset_bytes.has_value() &&
+             preserved.spill_slot_placement.has_value();
+  }
+  return false;
 }
 
 void populate_frame_plan(PreparedBirModule& prepared) {
