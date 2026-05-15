@@ -3267,6 +3267,65 @@ int check_cross_call_preservation_contract() {
   return 0;
 }
 
+int check_saved_register_slot_placement_carrier_contract() {
+  const prepare::PreparedRegisterPlacement register_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegisterSlotPlacement complete{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "s1",
+      .contiguous_width = 1,
+      .occupied_register_names = {"s1"},
+      .save_index = 3,
+      .register_placement = register_placement,
+      .slot_id = prepare::PreparedFrameSlotId{42},
+      .stack_offset_bytes = std::size_t{24},
+      .size_bytes = std::size_t{8},
+      .align_bytes = std::size_t{8},
+      .fixed_location = true,
+  };
+  const prepare::PreparedSavedRegister saved{
+      .bank = complete.bank,
+      .register_name = complete.register_name,
+      .contiguous_width = complete.contiguous_width,
+      .occupied_register_names = complete.occupied_register_names,
+      .save_index = complete.save_index,
+      .placement = complete.register_placement,
+      .slot_placement = complete,
+  };
+  if (!prepare::has_complete_prepared_saved_register_slot_placement(complete) ||
+      !saved.slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(*saved.slot_placement) ||
+      saved.slot_placement->bank != saved.bank ||
+      saved.slot_placement->register_name != saved.register_name ||
+      saved.slot_placement->contiguous_width != saved.contiguous_width ||
+      saved.slot_placement->occupied_register_names != saved.occupied_register_names ||
+      saved.slot_placement->save_index != saved.save_index ||
+      saved.slot_placement->register_placement != saved.placement ||
+      saved.slot_placement->slot_id != std::optional<prepare::PreparedFrameSlotId>{42} ||
+      saved.slot_placement->stack_offset_bytes != std::optional<std::size_t>{24} ||
+      saved.slot_placement->size_bytes != std::optional<std::size_t>{8} ||
+      saved.slot_placement->align_bytes != std::optional<std::size_t>{8} ||
+      !saved.slot_placement->fixed_location) {
+    return fail("saved-register slot-placement carrier lost structured register or frame-slot facts");
+  }
+
+  auto incomplete = complete;
+  incomplete.stack_offset_bytes.reset();
+  if (prepare::has_complete_prepared_saved_register_slot_placement(incomplete)) {
+    return fail("saved-register slot-placement carrier should fail closed without stack offset");
+  }
+  incomplete = complete;
+  incomplete.register_placement.reset();
+  if (prepare::has_complete_prepared_saved_register_slot_placement(incomplete)) {
+    return fail("saved-register slot-placement carrier should fail closed without register placement");
+  }
+  return 0;
+}
+
 int check_stack_cross_call_preservation_contract() {
   const auto prepared = prepare_module(make_stack_cross_call_preservation_contract_module());
   const auto* call_plans =
@@ -5345,6 +5404,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_cross_call_preservation_contract(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_saved_register_slot_placement_carrier_contract(); rc != 0) {
     return rc;
   }
   if (const int rc = check_stack_cross_call_preservation_contract(); rc != 0) {

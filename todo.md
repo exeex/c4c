@@ -1,56 +1,41 @@
 Status: Active
 Source Idea Path: ideas/open/241_prepared_callee_save_slot_placement.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Placement Authority
+Current Step ID: 2
+Current Step Title: Define The Placement Carrier
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 from `plan.md`: inspected prepared callee-save register and
-frame-slot authority without implementation edits.
+Completed Step 2 from `plan.md`: defined the prepared saved-register
+slot-placement carrier and attached it to `PreparedSavedRegister`.
 
-Current production facts:
+Concrete work completed:
 
-- `PreparedFrameSlot` is produced by `stack_layout::assign_frame_slots` from
-  prepared stack objects that require home slots. Each slot already has a
-  `PreparedFrameSlotId`, object identity, function identity, byte offset,
-  size, alignment, and fixed-location bit.
-- `BirPreAlloc::run_stack_layout` owns the per-function stack-object collection
-  and initializes the global `next_slot_id` used by `assign_frame_slots`.
-- `populate_frame_plan` reads `prepared.stack_layout.frame_slots` by function,
-  publishes `PreparedFramePlanFunction::frame_slot_order`, and sorts slot IDs
-  by authoritative `PreparedFrameSlot::offset_bytes`.
-- `populate_frame_plan` also produces `PreparedSavedRegister` entries from
-  regalloc values assigned to target callee-saved registers. Each saved record
-  carries register bank, register spelling, contiguous width, occupied register
-  names, `save_index`, and optional register placement, then is sorted by
-  bank, save index, width, and register name.
-- No prepared-layer record currently ties a `PreparedSavedRegister` to a
-  `PreparedFrameSlotId` or prepared stack offset. AArch64 has optional
-  `CalleeSaveInstructionRecord::slot_id` and `stack_offset_bytes` fields ready
-  to consume that link, but `PreparedFramePlanFunction` currently publishes
-  saved registers and frame-slot order as separate streams.
+- Added `PreparedSavedRegisterSlotPlacement` in
+  `src/backend/prealloc/prealloc.hpp`.
+- The carrier preserves register bank, register name, contiguous width,
+  occupied register names, save index, optional register placement, optional
+  frame slot id, optional stack offset, optional size, optional alignment, and
+  the fixed-location bit.
+- Added `has_complete_prepared_saved_register_slot_placement` so incomplete
+  placement data remains fail-closed instead of being silently consumed.
+- Added a focused prepared frame/call contract check proving the carrier can
+  hold the structured facts and rejects incomplete stack-offset or register
+  placement facts.
 
 ## Suggested Next
 
-Proceed to the first implementation packet: define the prepared carrier in
-`src/backend/prealloc/prealloc.hpp`, rooted in `PreparedSavedRegister`, so each
-saved callee register can optionally publish its explicit
-`PreparedFrameSlotId` and prepared stack offset. The focused proof subset for
-that packet should build and run the prepared/AArch64 carrier tests:
-`cmake --build build --target backend_prepare_frame_stack_call_contract_test
-backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test`
-then `ctest --test-dir build -R
-'^(backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$'
---output-on-failure`.
+Proceed to Step 3: populate `PreparedSavedRegister::slot_placement` from
+prepared frame/layout authority, preserving deterministic saved-register order
+and avoiding target-local reconstruction from `save_index`, register spelling,
+or `frame_slot_order`.
 
 ## Watchouts
 
-- Execution can proceed to carrier definition; the missing authority is not
-  source intent, but the lack of a prepared data edge between saved registers
-  and frame slots.
+- The carrier is defined but not populated yet; current prepared output still
+  publishes saved registers and frame slots separately.
 - Do not place saved-register slots by deriving offsets in AArch64 from
   `save_index`, sorted slot order, or register spelling. AArch64 should consume
   prepared slot facts after they are published.
@@ -68,5 +53,8 @@ then `ctest --test-dir build -R
 
 ## Proof
 
-Inspection-only packet. No build was required by the delegated proof contract;
-ran `git diff --check` after updating `todo.md`.
+Ran the delegated proof:
+
+`(cmake --build build --target backend_prepare_frame_stack_call_contract_test backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test -j2 && ctest --test-dir build -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_target_instruction_records|backend_aarch64_machine_printer)$' --output-on-failure) > test_after.log 2>&1`
+
+Result: passed. Proof log: `test_after.log`.

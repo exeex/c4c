@@ -310,6 +310,36 @@ struct PreparedSpillSlotPlacement {
   }
 };
 
+struct PreparedSavedRegisterSlotPlacement {
+  PreparedRegisterBank bank = PreparedRegisterBank::None;
+  std::string register_name;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  std::size_t save_index = 0;
+  std::optional<PreparedRegisterPlacement> register_placement;
+  std::optional<PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> size_bytes;
+  std::optional<std::size_t> align_bytes;
+  bool fixed_location = false;
+};
+
+[[nodiscard]] inline bool has_complete_prepared_saved_register_slot_placement(
+    const PreparedSavedRegisterSlotPlacement& placement) {
+  return placement.bank != PreparedRegisterBank::None &&
+         !placement.register_name.empty() &&
+         placement.contiguous_width > 0 &&
+         !placement.occupied_register_names.empty() &&
+         placement.register_placement.has_value() &&
+         has_prepared_register_placement(*placement.register_placement) &&
+         placement.slot_id.has_value() &&
+         placement.stack_offset_bytes.has_value() &&
+         placement.size_bytes.has_value() &&
+         *placement.size_bytes > 0 &&
+         placement.align_bytes.has_value() &&
+         *placement.align_bytes > 0;
+}
+
 struct PreparedSavedRegister {
   PreparedRegisterBank bank = PreparedRegisterBank::None;
   std::string register_name;
@@ -317,6 +347,7 @@ struct PreparedSavedRegister {
   std::vector<std::string> occupied_register_names;
   std::size_t save_index = 0;
   std::optional<PreparedRegisterPlacement> placement;
+  std::optional<PreparedSavedRegisterSlotPlacement> slot_placement;
 };
 
 struct PreparedFramePlanFunction {
