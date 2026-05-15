@@ -302,6 +302,29 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return "";
 }
 
+[[nodiscard]] std::size_t i128_helper_type_width_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I16:
+      return 2;
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::Ptr:
+      return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
+    case bir::TypeKind::Void:
+      return 0;
+  }
+  return 0;
+}
+
 [[nodiscard]] bool is_i128_float_integer_conversion_cast(const bir::CastInst& cast) {
   switch (cast.opcode) {
     case bir::CastOpcode::FPToSI:
@@ -321,6 +344,107 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
       return false;
   }
   return false;
+}
+
+[[nodiscard]] bool is_supported_i128_float_integer_conversion_cast(
+    const bir::CastInst& cast) {
+  if (!is_i128_float_integer_conversion_cast(cast)) {
+    return false;
+  }
+  const bool source_is_supported_float =
+      cast.operand.type == bir::TypeKind::F32 || cast.operand.type == bir::TypeKind::F64;
+  const bool result_is_supported_float =
+      cast.result.type == bir::TypeKind::F32 || cast.result.type == bir::TypeKind::F64;
+  switch (cast.opcode) {
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+      return source_is_supported_float && cast.result.type == bir::TypeKind::I128;
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+      return cast.operand.type == bir::TypeKind::I128 && result_is_supported_float;
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] PreparedI128RuntimeHelperKind i128_float_integer_conversion_helper_kind(
+    bir::CastOpcode opcode) {
+  switch (opcode) {
+    case bir::CastOpcode::FPToSI:
+      return PreparedI128RuntimeHelperKind::FloatToSignedInt;
+    case bir::CastOpcode::FPToUI:
+      return PreparedI128RuntimeHelperKind::FloatToUnsignedInt;
+    case bir::CastOpcode::SIToFP:
+      return PreparedI128RuntimeHelperKind::SignedIntToFloat;
+    case bir::CastOpcode::UIToFP:
+      return PreparedI128RuntimeHelperKind::UnsignedIntToFloat;
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      break;
+  }
+  return PreparedI128RuntimeHelperKind::FloatToSignedInt;
+}
+
+[[nodiscard]] std::string_view i128_float_integer_conversion_helper_callee(
+    const bir::CastInst& cast) {
+  switch (cast.opcode) {
+    case bir::CastOpcode::FPToSI:
+      if (cast.operand.type == bir::TypeKind::F32 && cast.result.type == bir::TypeKind::I128) {
+        return "__fixsfti";
+      }
+      if (cast.operand.type == bir::TypeKind::F64 && cast.result.type == bir::TypeKind::I128) {
+        return "__fixdfti";
+      }
+      break;
+    case bir::CastOpcode::FPToUI:
+      if (cast.operand.type == bir::TypeKind::F32 && cast.result.type == bir::TypeKind::I128) {
+        return "__fixunssfti";
+      }
+      if (cast.operand.type == bir::TypeKind::F64 && cast.result.type == bir::TypeKind::I128) {
+        return "__fixunsdfti";
+      }
+      break;
+    case bir::CastOpcode::SIToFP:
+      if (cast.operand.type == bir::TypeKind::I128 && cast.result.type == bir::TypeKind::F32) {
+        return "__floattisf";
+      }
+      if (cast.operand.type == bir::TypeKind::I128 && cast.result.type == bir::TypeKind::F64) {
+        return "__floattidf";
+      }
+      break;
+    case bir::CastOpcode::UIToFP:
+      if (cast.operand.type == bir::TypeKind::I128 && cast.result.type == bir::TypeKind::F32) {
+        return "__floatuntisf";
+      }
+      if (cast.operand.type == bir::TypeKind::I128 && cast.result.type == bir::TypeKind::F64) {
+        return "__floatuntidf";
+      }
+      break;
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      break;
+  }
+  return "";
 }
 
 [[nodiscard]] std::optional<std::pair<std::string, std::size_t>> split_trailing_register_index(
@@ -1869,9 +1993,67 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
 
       if (const auto* cast = std::get_if<bir::CastInst>(&inst);
           cast != nullptr && is_i128_float_integer_conversion_cast(*cast)) {
-        append_i128_runtime_helper_fact(
-            function_helpers,
-            "i128_float_integer_conversion_helper_mapping_deferred");
+        if (!is_supported_i128_float_integer_conversion_cast(*cast)) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_float_integer_conversion_helper_mapping_deferred");
+          continue;
+        }
+        if (cast->result.kind != bir::Value::Kind::Named ||
+            cast->operand.kind != bir::Value::Kind::Named) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_float_integer_conversion_helper_requires_named_result_and_operand");
+          continue;
+        }
+        const auto* result =
+            find_regalloc_value(regalloc_function, names, cast->result.name);
+        const auto* operand =
+            find_regalloc_value(regalloc_function, names, cast->operand.name);
+        if (result == nullptr || operand == nullptr) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_float_integer_conversion_helper_requires_prepared_value_id_for_result_operand");
+          continue;
+        }
+        const auto callee = i128_float_integer_conversion_helper_callee(*cast);
+        if (callee.empty()) {
+          append_i128_runtime_helper_fact(
+              function_helpers,
+              "i128_float_integer_conversion_helper_requires_callee_identity");
+          continue;
+        }
+        const bool source_signed = cast->opcode == bir::CastOpcode::SIToFP;
+        const bool result_signed = cast->opcode == bir::CastOpcode::FPToSI;
+        PreparedI128RuntimeHelper helper{
+            .function_name = regalloc_function.function_name,
+            .block_index = block_index,
+            .instruction_index = instruction_index,
+            .source_binary_opcode = bir::BinaryOpcode::Add,
+            .source_cast_opcode = cast->opcode,
+            .source_type = cast->operand.type,
+            .result_type = cast->result.type,
+            .source_width_bytes = i128_helper_type_width_bytes(cast->operand.type),
+            .result_width_bytes = i128_helper_type_width_bytes(cast->result.type),
+            .source_signed = source_signed,
+            .result_signed = result_signed,
+            .result_value_id = result->value_id,
+            .result_value_name = result->value_name,
+            .operand_value_id = operand->value_id,
+            .operand_value_name = operand->value_name,
+            .lhs_value_id = operand->value_id,
+            .lhs_value_name = operand->value_name,
+            .rhs_value_id = 0,
+            .rhs_value_name = kInvalidValueName,
+            .helper_family = PreparedI128RuntimeHelperFamily::FloatIntegerConversion,
+            .helper_kind = i128_float_integer_conversion_helper_kind(cast->opcode),
+            .callee_name = std::string(callee),
+            .result_ownership =
+                cast->result.type == bir::TypeKind::I128
+                    ? PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes
+                    : PreparedI128RuntimeHelperResultOwnership::Missing,
+        };
+        function_helpers.helpers.push_back(std::move(helper));
       }
     }
   }

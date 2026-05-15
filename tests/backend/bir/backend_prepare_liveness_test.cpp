@@ -2399,6 +2399,18 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_contract_module()
       .size_bytes = 8,
       .align_bytes = 8,
   });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F32,
+      .name = "p.f32",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "p.f128",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
   auto entry = make_block(module, "entry");
   entry.insts.push_back(bir::BinaryInst{
       .opcode = bir::BinaryOpcode::SDiv,
@@ -2430,8 +2442,28 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_contract_module()
   });
   entry.insts.push_back(bir::CastInst{
       .opcode = bir::CastOpcode::FPToSI,
-      .result = bir::Value::named(bir::TypeKind::I128, "from.f64"),
+      .result = bir::Value::named(bir::TypeKind::I128, "from.f64.s"),
       .operand = bir::Value::named(bir::TypeKind::F64, "p.f64"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPToUI,
+      .result = bir::Value::named(bir::TypeKind::I128, "from.f32.u"),
+      .operand = bir::Value::named(bir::TypeKind::F32, "p.f32"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SIToFP,
+      .result = bir::Value::named(bir::TypeKind::F64, "to.f64.s"),
+      .operand = bir::Value::named(bir::TypeKind::I128, "p.lhs"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::UIToFP,
+      .result = bir::Value::named(bir::TypeKind::F32, "to.f32.u"),
+      .operand = bir::Value::named(bir::TypeKind::I128, "p.rhs"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPToSI,
+      .result = bir::Value::named(bir::TypeKind::I128, "from.f128.deferred"),
+      .operand = bir::Value::named(bir::TypeKind::F128, "p.f128"),
   });
   entry.terminator = bir::ReturnTerminator{};
   function.blocks.push_back(std::move(entry));
@@ -2451,7 +2483,7 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_contract_module()
 
   auto prepared = std::move(planner.prepared());
   for (const std::string_view value_name :
-       {"p.lhs", "p.rhs", "q.s", "q.u", "r.s", "r.u"}) {
+       {"p.lhs", "p.rhs", "q.s", "q.u", "r.s", "r.u", "from.f64.s", "from.f32.u"}) {
     set_register_group_override(prepared,
                                 "i128_runtime_helper_mapping_contract",
                                 value_name,
@@ -2574,8 +2606,8 @@ int check_i128_runtime_helper_mapping_authority() {
   const auto prepared = prepare_i128_runtime_helper_mapping_contract_module();
   const auto* helpers =
       find_i128_runtime_helpers(prepared, "i128_runtime_helper_mapping_contract");
-  if (helpers == nullptr || helpers->helpers.size() != 4) {
-    return fail("expected prepared i128 runtime helper mappings for four div/rem operations");
+  if (helpers == nullptr || helpers->helpers.size() != 8) {
+    return fail("expected prepared i128 runtime helper mappings for div/rem and conversion operations");
   }
 
   const struct ExpectedHelper {
@@ -2737,6 +2769,110 @@ int check_i128_runtime_helper_mapping_authority() {
     }
   }
 
+  const struct ExpectedConversionHelper {
+    bir::CastOpcode opcode;
+    prepare::PreparedI128RuntimeHelperKind kind;
+    bir::TypeKind source_type;
+    bir::TypeKind result_type;
+    std::size_t source_width;
+    std::size_t result_width;
+    bool source_signed;
+    bool result_signed;
+    std::string_view operand;
+    std::string_view result;
+    std::string_view callee;
+    std::size_t instruction_index;
+  } expected_conversions[] = {
+      {bir::CastOpcode::FPToSI,
+       prepare::PreparedI128RuntimeHelperKind::FloatToSignedInt,
+       bir::TypeKind::F64,
+       bir::TypeKind::I128,
+       8,
+       16,
+       false,
+       true,
+       "p.f64",
+       "from.f64.s",
+       "__fixdfti",
+       4},
+      {bir::CastOpcode::FPToUI,
+       prepare::PreparedI128RuntimeHelperKind::FloatToUnsignedInt,
+       bir::TypeKind::F32,
+       bir::TypeKind::I128,
+       4,
+       16,
+       false,
+       false,
+       "p.f32",
+       "from.f32.u",
+       "__fixunssfti",
+       5},
+      {bir::CastOpcode::SIToFP,
+       prepare::PreparedI128RuntimeHelperKind::SignedIntToFloat,
+       bir::TypeKind::I128,
+       bir::TypeKind::F64,
+       16,
+       8,
+       true,
+       false,
+       "p.lhs",
+       "to.f64.s",
+       "__floattidf",
+       6},
+      {bir::CastOpcode::UIToFP,
+       prepare::PreparedI128RuntimeHelperKind::UnsignedIntToFloat,
+       bir::TypeKind::I128,
+       bir::TypeKind::F32,
+       16,
+       4,
+       false,
+       false,
+       "p.rhs",
+       "to.f32.u",
+       "__floatuntisf",
+       7},
+  };
+
+  for (std::size_t index = 0;
+       index < sizeof(expected_conversions) / sizeof(expected_conversions[0]);
+       ++index) {
+    const auto& helper = helpers->helpers[sizeof(expected) / sizeof(expected[0]) + index];
+    const auto& want = expected_conversions[index];
+    if (!helper.source_cast_opcode.has_value() ||
+        *helper.source_cast_opcode != want.opcode ||
+        helper.source_binary_opcode != bir::BinaryOpcode::Add ||
+        helper.helper_family !=
+            prepare::PreparedI128RuntimeHelperFamily::FloatIntegerConversion ||
+        helper.helper_kind != want.kind ||
+        helper.source_type != want.source_type ||
+        helper.result_type != want.result_type ||
+        helper.source_width_bytes != want.source_width ||
+        helper.result_width_bytes != want.result_width ||
+        helper.source_signed != want.source_signed ||
+        helper.result_signed != want.result_signed ||
+        helper.callee_name != want.callee ||
+        helper.block_index != 0 ||
+        helper.instruction_index != want.instruction_index ||
+        prepare::prepared_value_name(prepared.names, helper.operand_value_name) !=
+            want.operand ||
+        prepare::prepared_value_name(prepared.names, helper.result_value_name) !=
+            want.result ||
+        helper.lhs_value_id != helper.operand_value_id ||
+        helper.lhs_value_name != helper.operand_value_name ||
+        helper.rhs_value_id != 0 ||
+        helper.rhs_value_name != c4c::kInvalidValueName ||
+        helper.resource_policy.call_boundary ||
+        helper.abi_policy.transition !=
+            prepare::PreparedI128RuntimeHelperAbiTransition::Missing ||
+        helper.selected_call_ownership.owns_terminal_call ||
+        std::find(helper.missing_required_facts.begin(),
+                  helper.missing_required_facts.end(),
+                  "i128_helper_boundary_policy_deferred_for_family") ==
+            helper.missing_required_facts.end()) {
+      return fail("prepared i128 conversion helper mapping lost structural source facts");
+    }
+  }
+
   if (std::none_of(helpers->helpers.begin(),
                    helpers->helpers.end(),
                    [](const prepare::PreparedI128RuntimeHelper& helper) {
@@ -2751,7 +2887,7 @@ int check_i128_runtime_helper_mapping_authority() {
   if (helpers->missing_required_facts.size() != 1 ||
       helpers->missing_required_facts.front() !=
           "i128_float_integer_conversion_helper_mapping_deferred") {
-    return fail("expected i128 float/integer conversion helper mapping to remain explicitly deferred");
+    return fail("expected unsupported F128 i128 conversion helper mapping to remain explicitly deferred");
   }
 
   const auto dump = prepare::print(prepared);
@@ -2760,6 +2896,18 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("kind=unsigned_div opcode=udiv callee=__udivti3") == std::string::npos ||
       dump.find("kind=signed_rem opcode=srem callee=__modti3") == std::string::npos ||
       dump.find("kind=unsigned_rem opcode=urem callee=__umodti3") == std::string::npos ||
+      dump.find("family=float_integer_conversion kind=float_to_signed_int opcode=fptosi "
+                "callee=__fixdfti source_type=f64 result_type=i128 result=from.f64.s#") ==
+          std::string::npos ||
+      dump.find("operand=p.f64#") == std::string::npos ||
+      dump.find("source_width=8 result_width=16 source_signed=no result_signed=yes") ==
+          std::string::npos ||
+      dump.find("family=float_integer_conversion kind=signed_int_to_float opcode=sitofp "
+                "callee=__floattidf source_type=i128 result_type=f64 result=to.f64.s#") ==
+          std::string::npos ||
+      dump.find("operand=p.lhs#") == std::string::npos ||
+      dump.find("source_width=16 result_width=8 source_signed=yes result_signed=no") ==
+          std::string::npos ||
       dump.find("result_ownership=direct_low_high_lanes memory_return=<none>") ==
           std::string::npos ||
       dump.find("resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"
@@ -2790,6 +2938,7 @@ int check_i128_runtime_helper_mapping_authority() {
                 "live_preservation=yes]") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||
       dump.find("result_requires_register_pair_carrier") == std::string::npos ||
+      dump.find("i128_helper_boundary_policy_deferred_for_family") == std::string::npos ||
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
           std::string::npos) {
     return fail("prepared printer did not expose i128 runtime helper mapping facts");

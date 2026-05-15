@@ -1669,6 +1669,10 @@ enum class PreparedI128RuntimeHelperKind {
   UnsignedDiv,
   SignedRem,
   UnsignedRem,
+  FloatToSignedInt,
+  FloatToUnsignedInt,
+  SignedIntToFloat,
+  UnsignedIntToFloat,
 };
 
 [[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_kind_name(
@@ -1682,6 +1686,14 @@ enum class PreparedI128RuntimeHelperKind {
       return "signed_rem";
     case PreparedI128RuntimeHelperKind::UnsignedRem:
       return "unsigned_rem";
+    case PreparedI128RuntimeHelperKind::FloatToSignedInt:
+      return "float_to_signed_int";
+    case PreparedI128RuntimeHelperKind::FloatToUnsignedInt:
+      return "float_to_unsigned_int";
+    case PreparedI128RuntimeHelperKind::SignedIntToFloat:
+      return "signed_int_to_float";
+    case PreparedI128RuntimeHelperKind::UnsignedIntToFloat:
+      return "unsigned_int_to_float";
   }
   return "unknown";
 }
@@ -1826,10 +1838,17 @@ struct PreparedI128RuntimeHelper {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  std::optional<bir::CastOpcode> source_cast_opcode;
   bir::TypeKind source_type = bir::TypeKind::I128;
   bir::TypeKind result_type = bir::TypeKind::I128;
+  std::size_t source_width_bytes = 16;
+  std::size_t result_width_bytes = 16;
+  bool source_signed = false;
+  bool result_signed = false;
   PreparedValueId result_value_id = 0;
   ValueNameId result_value_name = kInvalidValueName;
+  PreparedValueId operand_value_id = 0;
+  ValueNameId operand_value_name = kInvalidValueName;
   PreparedValueId lhs_value_id = 0;
   ValueNameId lhs_value_name = kInvalidValueName;
   PreparedValueId rhs_value_id = 0;

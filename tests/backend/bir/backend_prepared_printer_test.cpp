@@ -2240,6 +2240,12 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
       .size_bytes = 16,
       .align_bytes = 16,
   });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F64,
+      .name = "fp",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
 
   bir::Block entry;
   entry.label = "entry";
@@ -2256,6 +2262,16 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
       .operand_type = bir::TypeKind::I128,
       .lhs = bir::Value::named(bir::TypeKind::I128, "wide.div"),
       .rhs = bir::Value::named(bir::TypeKind::I128, "rhs"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::FPToSI,
+      .result = bir::Value::named(bir::TypeKind::I128, "from.fp"),
+      .operand = bir::Value::named(bir::TypeKind::F64, "fp"),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::UIToFP,
+      .result = bir::Value::named(bir::TypeKind::F64, "to.fp"),
+      .operand = bir::Value::named(bir::TypeKind::I128, "rhs"),
   });
   entry.terminator = bir::ReturnTerminator{};
   function.blocks.push_back(std::move(entry));
@@ -2274,7 +2290,7 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
   planner.run_liveness();
 
   auto prepared = std::move(planner.prepared());
-  for (const std::string_view value_name : {"lhs", "rhs", "wide.div", "wide.rem"}) {
+  for (const std::string_view value_name : {"lhs", "rhs", "wide.div", "wide.rem", "from.fp"}) {
     set_register_group_override(prepared,
                                 "i128_runtime_helper_mapping_dump_contract",
                                 value_name,
@@ -2961,6 +2977,36 @@ int main() {
   if (!expect_contains(i128_helper_dump,
                        "i128_helper block=0 inst=1 family=div_rem kind=unsigned_rem opcode=urem callee=__umodti3 source_type=i128 result_type=i128 result=wide.rem#",
                        "i128 unsigned rem helper mapping detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "i128_helper block=0 inst=2 family=float_integer_conversion kind=float_to_signed_int opcode=fptosi callee=__fixdfti source_type=f64 result_type=i128 result=from.fp#",
+                       "i128 float-to-signed conversion helper mapping detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "operand=fp#",
+                       "i128 conversion helper operand identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "source_width=8 result_width=16 source_signed=no result_signed=yes",
+                       "i128 conversion helper signedness and width facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "i128_helper block=0 inst=3 family=float_integer_conversion kind=unsigned_int_to_float opcode=uitofp callee=__floatuntidf source_type=i128 result_type=f64 result=to.fp#",
+                       "i128 unsigned-to-float conversion helper mapping detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "source_width=16 result_width=8 source_signed=no result_signed=no",
+                       "i128 conversion helper unsigned source facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "i128_helper_boundary_policy_deferred_for_family",
+                       "i128 conversion helper deferred boundary diagnostic")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,

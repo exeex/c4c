@@ -1632,12 +1632,24 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
           << " inst=" << helper.instruction_index
           << " family=" << prepared_i128_runtime_helper_family_name(helper.helper_family)
           << " kind=" << prepared_i128_runtime_helper_kind_name(helper.helper_kind)
-          << " opcode=" << bir::render_binary_opcode(helper.source_binary_opcode)
+          << " opcode=";
+      if (helper.source_cast_opcode.has_value()) {
+        out << bir::render_cast_opcode(*helper.source_cast_opcode);
+      } else {
+        out << bir::render_binary_opcode(helper.source_binary_opcode);
+      }
+      out
           << " callee=" << helper.callee_name
           << " source_type=" << type_kind_name(helper.source_type)
           << " result_type=" << type_kind_name(helper.result_type)
           << " result=" << maybe_value_name(module.names, helper.result_value_name)
           << "#" << helper.result_value_id
+          << " operand=" << maybe_value_name(module.names, helper.operand_value_name)
+          << "#" << helper.operand_value_id
+          << " source_width=" << helper.source_width_bytes
+          << " result_width=" << helper.result_width_bytes
+          << " source_signed=" << (helper.source_signed ? "yes" : "no")
+          << " result_signed=" << (helper.result_signed ? "yes" : "no")
           << " lhs=" << maybe_value_name(module.names, helper.lhs_value_name)
           << "#" << helper.lhs_value_id
           << " rhs=" << maybe_value_name(module.names, helper.rhs_value_name)
