@@ -8,28 +8,28 @@ Current Step Title: Consume Prepared Facts For Scalar `va_arg`
 
 ## Just Finished
 
-Lifecycle handoff completed: prerequisite idea 245 closed after supplying
-`helper_operand_homes.va_arg.scalar_access_plan`, and idea 243 is reactivated
-at scalar `va_arg` selected machine-node consumption.
+Step 3 completed scalar `va_arg` selected machine-node consumption from prepared
+`helper_operand_homes.va_arg.scalar_access_plan` facts. The AArch64 lowering now
+fails closed when scalar access-plan facts are absent or incomplete, and selects
+structured GP, FP, and overflow-backed scalar `va_arg` records with printer
+output from prepared storage, helper resources, source `va_list` homes, and
+result homes.
 
 ## Suggested Next
 
-Execute Step 3 by consuming the prepared/shared scalar access-plan fact in
-AArch64 selected lowering. Start with the narrow scalar `va_arg` path and
-preserve fail-closed diagnostics for missing or incomplete prepared authority.
+Execute Step 4 by consuming prepared facts for aggregate `va_arg` helper
+effects, keeping aggregate payload source selection and destination copy
+semantics separate from the scalar path.
 
 ## Watchouts
 
-- Do not reconstruct GP/FP/overflow source selection, scalar size/alignment,
-  result-home relationships, or `va_list` progression in AArch64 target
-  lowering.
-- Do not claim scalar `va_arg` support through prepared-printer coverage alone;
-  selected machine-node records and printer output are required.
-- Treat fixture-name matching, expectation-only changes, and unsupported
-  downgrades as route drift.
+- Scalar `va_arg` lowering is now selected only when the prepared scalar access
+  plan is complete; missing or partial fields still report
+  `helper_operand_homes.va_arg.scalar_access_plan`.
+- Step 4 should not reuse scalar shortcuts for aggregate payload transport.
 
 ## Proof
 
-Lifecycle-only transition. Prerequisite proof was supplied for commit
-`770a457cf`: focused backend proof 139/139 and accepted full-suite baseline
-3167/3167.
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
+
+Passed: backend subset 139/139. Proof log: `test_after.log`.

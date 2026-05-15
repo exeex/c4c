@@ -1069,6 +1069,166 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected variadic entry helper call to print prepared va_start records");
   }
 
+  const prepare::PreparedCallPlan prepared_va_arg_call{
+      .block_index = 0,
+      .instruction_index = 3,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_arg.i32"},
+  };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_arg_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+      .block_index = 0,
+      .instruction_index = 3,
+      .source_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{15},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{5},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x3"},
+          },
+      .scalar_result =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{16},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{6},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"w0"},
+          },
+      .scalar_access_plan =
+          prepare::PreparedVariadicScalarVaArgAccessPlan{
+              .source_class =
+                  prepare::PreparedVariadicScalarVaArgSourceClass::OverflowArgArea,
+              .value_type = bir::TypeKind::I32,
+              .value_size_bytes = 4,
+              .value_align_bytes = 4,
+              .result_home =
+                  prepare::PreparedValueHome{
+                      .value_id = prepare::PreparedValueId{16},
+                      .function_name = c4c::FunctionNameId{2},
+                      .value_name = c4c::ValueNameId{6},
+                      .kind = prepare::PreparedValueHomeKind::Register,
+                      .register_name = std::string{"w0"},
+                  },
+              .source_field =
+                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+              .source_field_offset_bytes = std::size_t{8},
+              .source_slot_size_bytes = std::size_t{8},
+              .progression_field =
+                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+              .progression_field_offset_bytes = std::size_t{8},
+              .progression_stride_bytes = std::size_t{8},
+              .overflow_source_field =
+                  prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+              .overflow_source_field_offset_bytes = std::size_t{8},
+              .overflow_stride_bytes = std::size_t{8},
+          },
+  };
+  auto scalar_va_arg_entry = variadic_entry;
+  scalar_va_arg_entry.helper_resources.required_helpers =
+      {prepare::PreparedVariadicEntryHelperKind::VaArg};
+  scalar_va_arg_entry.helper_resources.scratch_register_count = std::size_t{2};
+  scalar_va_arg_entry.helper_operand_homes = {va_arg_homes};
+  const auto va_arg_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{12},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_arg.i32",
+          .wrapper_kind = prepared_va_arg_call.wrapper_kind,
+          .source_call = &prepared_va_arg_call,
+          .source_variadic_entry = &scalar_va_arg_entry,
+          .source_variadic_helper_operand_homes =
+              &scalar_va_arg_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto va_arg_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(va_arg_call);
+  if (!va_arg_result.ok || va_arg_result.instruction_lines.size() != 3 ||
+      va_arg_result.instruction_lines[0].find(
+          "va.arg.scalar source=overflow_arg_area va_list=value#15:register:x3 result=value#16:register:w0") ==
+          std::string::npos ||
+      va_arg_result.instruction_lines[1].find(
+          "field=overflow_arg_area field_offset=8 slot_size=8") ==
+          std::string::npos ||
+      va_arg_result.instruction_lines[2].find(
+          "progress field=overflow_arg_area field_offset=8 stride=8") ==
+          std::string::npos ||
+      va_arg_result.instruction_lines[2].find(
+          "overflow_slot#6 overflow_stack+208") == std::string::npos) {
+    return fail("expected scalar va_arg helper call to print prepared access-plan records");
+  }
+
+  auto scalar_fp_va_arg_entry = scalar_va_arg_entry;
+  auto fp_homes = scalar_fp_va_arg_entry.helper_operand_homes.front();
+  fp_homes.scalar_result =
+      prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{17},
+          .function_name = c4c::FunctionNameId{2},
+          .value_name = c4c::ValueNameId{7},
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"d0"},
+      };
+  fp_homes.scalar_access_plan =
+      prepare::PreparedVariadicScalarVaArgAccessPlan{
+          .source_class =
+              prepare::PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea,
+          .value_type = bir::TypeKind::F64,
+          .value_size_bytes = 8,
+          .value_align_bytes = 8,
+          .result_home = fp_homes.scalar_result,
+          .source_field =
+              prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea,
+          .source_field_offset_bytes = std::size_t{24},
+          .source_slot_size_bytes = std::size_t{16},
+          .progression_field =
+              prepare::PreparedVariadicVaListFieldKind::FpOffset,
+          .progression_field_offset_bytes = std::size_t{4},
+          .progression_stride_bytes = std::size_t{16},
+          .overflow_source_field =
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .overflow_source_field_offset_bytes = std::size_t{8},
+          .overflow_stride_bytes = std::size_t{8},
+      };
+  scalar_fp_va_arg_entry.helper_operand_homes = {fp_homes};
+  const auto fp_va_arg_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{13},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_arg.f64",
+          .wrapper_kind = prepared_va_arg_call.wrapper_kind,
+          .source_call = &prepared_va_arg_call,
+          .source_variadic_entry = &scalar_fp_va_arg_entry,
+          .source_variadic_helper_operand_homes =
+              &scalar_fp_va_arg_entry.helper_operand_homes.front(),
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaArg,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto fp_va_arg_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(fp_va_arg_call);
+  if (!fp_va_arg_result.ok || fp_va_arg_result.instruction_lines.size() != 3 ||
+      fp_va_arg_result.instruction_lines[0].find(
+          "va.arg.scalar source=fp_register_save_area va_list=value#15:register:x3 result=value#17:register:d0") ==
+          std::string::npos ||
+      fp_va_arg_result.instruction_lines[1].find(
+          "field=fp_register_save_area field_offset=24 slot_size=16") ==
+          std::string::npos ||
+      fp_va_arg_result.instruction_lines[1].find(
+          "fp_base=64 gp_slot=8 fp_slot=16") == std::string::npos ||
+      fp_va_arg_result.instruction_lines[2].find(
+          "progress field=fp_offset field_offset=4 stride=16") ==
+          std::string::npos) {
+    return fail("expected scalar fp va_arg helper call to print prepared access-plan records");
+  }
+
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
       aarch64_codegen::FrameInstructionRecord{
           .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,

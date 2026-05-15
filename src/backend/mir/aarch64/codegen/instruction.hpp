@@ -125,6 +125,7 @@ enum class MachineOpcode {
   SpillToSlot,
   ReloadFromSlot,
   VariadicVaStart,
+  VariadicVaArgScalar,
 };
 
 enum class MachinePseudoKind {
@@ -146,6 +147,7 @@ enum class MachinePrinterMnemonicKind {
   Move,
   Return,
   VariadicVaStart,
+  VariadicVaArgScalar,
 };
 
 enum class MachineNodeSelectionStatus {
@@ -630,6 +632,41 @@ struct VariadicVaStartRecord {
   std::size_t scratch_stack_bytes = 0;
 };
 
+struct VariadicScalarVaArgRecord {
+  prepare::PreparedVariadicScalarVaArgSourceClass source_class =
+      prepare::PreparedVariadicScalarVaArgSourceClass::Unknown;
+  bir::TypeKind value_type = bir::TypeKind::Void;
+  std::size_t value_size_bytes = 0;
+  std::size_t value_align_bytes = 0;
+  prepare::PreparedValueHome source_va_list;
+  prepare::PreparedValueHome result_home;
+  prepare::PreparedVariadicVaListFieldKind source_field =
+      prepare::PreparedVariadicVaListFieldKind::GpOffset;
+  std::size_t source_field_offset_bytes = 0;
+  std::size_t source_slot_size_bytes = 0;
+  prepare::PreparedVariadicVaListFieldKind progression_field =
+      prepare::PreparedVariadicVaListFieldKind::GpOffset;
+  std::size_t progression_field_offset_bytes = 0;
+  std::size_t progression_stride_bytes = 0;
+  prepare::PreparedVariadicVaListFieldKind overflow_source_field =
+      prepare::PreparedVariadicVaListFieldKind::OverflowArgArea;
+  std::size_t overflow_source_field_offset_bytes = 0;
+  std::size_t overflow_stride_bytes = 0;
+  prepare::PreparedFrameSlotId register_save_area_slot_id = 0;
+  std::size_t register_save_area_stack_offset_bytes = 0;
+  std::size_t register_save_area_size_bytes = 0;
+  std::size_t register_save_area_align_bytes = 0;
+  std::size_t register_save_area_gp_offset_bytes = 0;
+  std::size_t register_save_area_fp_offset_bytes = 0;
+  std::size_t register_save_area_gp_slot_size_bytes = 0;
+  std::size_t register_save_area_fp_slot_size_bytes = 0;
+  prepare::PreparedFrameSlotId overflow_area_base_slot_id = 0;
+  std::size_t overflow_area_base_stack_offset_bytes = 0;
+  std::size_t overflow_area_align_bytes = 0;
+  std::size_t scratch_register_count = 0;
+  std::size_t scratch_stack_bytes = 0;
+};
+
 struct CallInstructionRecord {
   std::optional<SymbolOperand> direct_callee;
   std::string_view direct_callee_label;
@@ -651,6 +688,7 @@ struct CallInstructionRecord {
       source_variadic_helper_operand_homes = nullptr;
   std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper;
   std::optional<VariadicVaStartRecord> variadic_va_start;
+  std::optional<VariadicScalarVaArgRecord> variadic_scalar_va_arg;
   bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

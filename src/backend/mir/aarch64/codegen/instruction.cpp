@@ -195,6 +195,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "reload_from_slot";
     case MachineOpcode::VariadicVaStart:
       return "variadic_va_start";
+    case MachineOpcode::VariadicVaArgScalar:
+      return "variadic_va_arg_scalar";
   }
   return "unknown";
 }
@@ -237,6 +239,8 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "ret";
     case MachinePrinterMnemonicKind::VariadicVaStart:
       return "va.start";
+    case MachinePrinterMnemonicKind::VariadicVaArgScalar:
+      return "va.arg.scalar";
   }
   return "";
 }
@@ -269,6 +273,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
       return MachinePrinterMnemonicKind::Move;
     case MachineOpcode::VariadicVaStart:
       return MachinePrinterMnemonicKind::VariadicVaStart;
+    case MachineOpcode::VariadicVaArgScalar:
+      return MachinePrinterMnemonicKind::VariadicVaArgScalar;
     case MachineOpcode::Unspecified:
     case MachineOpcode::CompareBranch:
     case MachineOpcode::CalleeSaveStore:
@@ -2133,6 +2139,80 @@ std::optional<VariadicVaStartRecord> make_variadic_va_start_record(
   };
 }
 
+std::optional<VariadicScalarVaArgRecord> make_variadic_scalar_va_arg_record(
+    const prepare::PreparedVariadicEntryPlanFunction& entry,
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  if (!homes.source_va_list.has_value() || !homes.scalar_result.has_value() ||
+      !homes.scalar_access_plan.has_value()) {
+    return std::nullopt;
+  }
+  const auto& plan = *homes.scalar_access_plan;
+  if (plan.source_class == prepare::PreparedVariadicScalarVaArgSourceClass::Unknown ||
+      plan.value_type == bir::TypeKind::Void ||
+      plan.value_size_bytes == 0 ||
+      plan.value_align_bytes == 0 ||
+      !plan.result_home.has_value() ||
+      !plan.source_field.has_value() ||
+      !plan.source_field_offset_bytes.has_value() ||
+      !plan.source_slot_size_bytes.has_value() ||
+      !plan.progression_field.has_value() ||
+      !plan.progression_field_offset_bytes.has_value() ||
+      !plan.progression_stride_bytes.has_value() ||
+      !plan.overflow_source_field.has_value() ||
+      !plan.overflow_source_field_offset_bytes.has_value() ||
+      !plan.overflow_stride_bytes.has_value() ||
+      !entry.register_save_area.slot_id.has_value() ||
+      !entry.register_save_area.stack_offset_bytes.has_value() ||
+      !entry.register_save_area.size_bytes.has_value() ||
+      !entry.register_save_area.align_bytes.has_value() ||
+      !entry.register_save_area.gp_offset_bytes.has_value() ||
+      !entry.register_save_area.fp_offset_bytes.has_value() ||
+      !entry.register_save_area.gp_slot_size_bytes.has_value() ||
+      !entry.register_save_area.fp_slot_size_bytes.has_value() ||
+      !entry.overflow_area.base_slot_id.has_value() ||
+      !entry.overflow_area.base_stack_offset_bytes.has_value() ||
+      !entry.overflow_area.align_bytes.has_value() ||
+      !entry.helper_resources.scratch_register_count.has_value() ||
+      !entry.helper_resources.scratch_stack_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  return VariadicScalarVaArgRecord{
+      .source_class = plan.source_class,
+      .value_type = plan.value_type,
+      .value_size_bytes = plan.value_size_bytes,
+      .value_align_bytes = plan.value_align_bytes,
+      .source_va_list = *homes.source_va_list,
+      .result_home = *plan.result_home,
+      .source_field = *plan.source_field,
+      .source_field_offset_bytes = *plan.source_field_offset_bytes,
+      .source_slot_size_bytes = *plan.source_slot_size_bytes,
+      .progression_field = *plan.progression_field,
+      .progression_field_offset_bytes = *plan.progression_field_offset_bytes,
+      .progression_stride_bytes = *plan.progression_stride_bytes,
+      .overflow_source_field = *plan.overflow_source_field,
+      .overflow_source_field_offset_bytes = *plan.overflow_source_field_offset_bytes,
+      .overflow_stride_bytes = *plan.overflow_stride_bytes,
+      .register_save_area_slot_id = *entry.register_save_area.slot_id,
+      .register_save_area_stack_offset_bytes =
+          *entry.register_save_area.stack_offset_bytes,
+      .register_save_area_size_bytes = *entry.register_save_area.size_bytes,
+      .register_save_area_align_bytes = *entry.register_save_area.align_bytes,
+      .register_save_area_gp_offset_bytes = *entry.register_save_area.gp_offset_bytes,
+      .register_save_area_fp_offset_bytes = *entry.register_save_area.fp_offset_bytes,
+      .register_save_area_gp_slot_size_bytes =
+          *entry.register_save_area.gp_slot_size_bytes,
+      .register_save_area_fp_slot_size_bytes =
+          *entry.register_save_area.fp_slot_size_bytes,
+      .overflow_area_base_slot_id = *entry.overflow_area.base_slot_id,
+      .overflow_area_base_stack_offset_bytes =
+          *entry.overflow_area.base_stack_offset_bytes,
+      .overflow_area_align_bytes = *entry.overflow_area.align_bytes,
+      .scratch_register_count = *entry.helper_resources.scratch_register_count,
+      .scratch_stack_bytes = *entry.helper_resources.scratch_stack_bytes,
+  };
+}
+
 MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instruction) {
   if (instruction.variadic_entry_helper.has_value()) {
     if (instruction.source_variadic_entry == nullptr) {
@@ -2159,11 +2239,14 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
     }
     if (*instruction.variadic_entry_helper ==
         prepare::PreparedVariadicEntryHelperKind::VaArg) {
-      return MachineNodeStatusRecord{
-          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-          .diagnostic =
-              "scalar va_arg machine-node lowering requires prepared fact "
-              "helper_operand_homes.va_arg.scalar_access_plan"};
+      if (!instruction.variadic_scalar_va_arg.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic =
+                "scalar va_arg machine-node lowering requires complete prepared fact "
+                "helper_operand_homes.va_arg.scalar_access_plan"};
+      }
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
@@ -2423,6 +2506,17 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
         make_variadic_va_start_record(*instruction.source_variadic_entry,
                                       *instruction.source_variadic_helper_operand_homes);
   }
+  if (instruction.variadic_entry_helper ==
+          std::optional<prepare::PreparedVariadicEntryHelperKind>{
+              prepare::PreparedVariadicEntryHelperKind::VaArg} &&
+      !instruction.variadic_scalar_va_arg.has_value() &&
+      instruction.source_variadic_entry != nullptr &&
+      instruction.source_variadic_helper_operand_homes != nullptr) {
+    instruction.variadic_scalar_va_arg =
+        make_variadic_scalar_va_arg_record(
+            *instruction.source_variadic_entry,
+            *instruction.source_variadic_helper_operand_homes);
+  }
 
   std::vector<OperandRecord> operands = instruction.arguments;
   if (instruction.indirect_callee.has_value()) {
@@ -2434,6 +2528,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
   if (instruction.result.has_value()) {
     defs.push_back(effect_from_operand(*instruction.result));
   }
+  std::vector<MachineEffectResource> uses = effects_from_operands(operands);
   std::vector<MachineSideEffectKind> side_effects = {MachineSideEffectKind::Call};
   if (instruction.memory_return_storage.has_value()) {
     defs.push_back(effect_from_operand(make_memory_operand(*instruction.memory_return_storage)));
@@ -2445,17 +2540,29 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
         instruction.variadic_va_start->destination_va_list.value_name));
     side_effects.push_back(MachineSideEffectKind::MemoryWrite);
   }
+  if (instruction.variadic_scalar_va_arg.has_value()) {
+    defs.push_back(prepared_value_def(
+        instruction.variadic_scalar_va_arg->result_home.value_id,
+        instruction.variadic_scalar_va_arg->result_home.value_name));
+    uses.push_back(prepared_value_def(
+        instruction.variadic_scalar_va_arg->source_va_list.value_id,
+        instruction.variadic_scalar_va_arg->source_va_list.value_name));
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
   return InstructionRecord{
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .opcode = instruction.variadic_va_start.has_value()
                     ? MachineOpcode::VariadicVaStart
-                    : (instruction.is_indirect ? MachineOpcode::IndirectCall
-                                               : MachineOpcode::DirectCall),
+                    : (instruction.variadic_scalar_va_arg.has_value()
+                           ? MachineOpcode::VariadicVaArgScalar
+                           : (instruction.is_indirect ? MachineOpcode::IndirectCall
+                                                      : MachineOpcode::DirectCall)),
       .selection = call_selection_status(instruction),
       .operands = operands,
       .defs = defs,
-      .uses = effects_from_operands(operands),
+      .uses = uses,
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
       .preserves = effects_from_prepared_call_preserved_values(instruction.preserved_values),
       .side_effects = std::move(side_effects),

@@ -256,11 +256,33 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
 
 [[nodiscard]] bool variadic_helper_operand_homes_complete(
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  const auto scalar_access_plan_complete = [&homes]() {
+    if (!homes.scalar_access_plan.has_value()) {
+      return false;
+    }
+    const auto& plan = *homes.scalar_access_plan;
+    return plan.source_class !=
+               prepare::PreparedVariadicScalarVaArgSourceClass::Unknown &&
+           plan.value_type != bir::TypeKind::Void &&
+           plan.value_size_bytes != 0 &&
+           plan.value_align_bytes != 0 &&
+           plan.result_home.has_value() &&
+           plan.source_field.has_value() &&
+           plan.source_field_offset_bytes.has_value() &&
+           plan.source_slot_size_bytes.has_value() &&
+           plan.progression_field.has_value() &&
+           plan.progression_field_offset_bytes.has_value() &&
+           plan.progression_stride_bytes.has_value() &&
+           plan.overflow_source_field.has_value() &&
+           plan.overflow_source_field_offset_bytes.has_value() &&
+           plan.overflow_stride_bytes.has_value();
+  };
   switch (homes.helper) {
     case prepare::PreparedVariadicEntryHelperKind::VaStart:
       return homes.destination_va_list.has_value();
     case prepare::PreparedVariadicEntryHelperKind::VaArg:
-      return homes.scalar_result.has_value() && homes.source_va_list.has_value();
+      return homes.scalar_result.has_value() && homes.source_va_list.has_value() &&
+             scalar_access_plan_complete();
     case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
       return homes.aggregate_destination_payload.has_value() &&
              homes.source_va_list.has_value();
@@ -856,23 +878,19 @@ require_prepared_variadic_entry_plan(
             *variadic_entry_plan, context.block_index, instruction_index);
     if (variadic_helper_operand_homes == nullptr ||
         !variadic_helper_operand_homes_complete(*variadic_helper_operand_homes)) {
+      std::string message =
+          "AArch64 variadic entry helper lowering requires prepared helper operand-home facts";
+      const auto missing_consumption_fact =
+          variadic_helper_missing_consumption_fact_message(*variadic_helper);
+      if (!missing_consumption_fact.empty()) {
+        message = missing_consumption_fact;
+      }
       append_call_diagnostic(
           diagnostics,
           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
           context,
           instruction_index,
-          "AArch64 variadic entry helper lowering requires prepared helper operand-home facts");
-      return std::nullopt;
-    }
-    const auto missing_consumption_fact =
-        variadic_helper_missing_consumption_fact_message(*variadic_helper);
-    if (!missing_consumption_fact.empty()) {
-      append_call_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-          context,
-          instruction_index,
-          missing_consumption_fact);
+          std::move(message));
       return std::nullopt;
     }
   }

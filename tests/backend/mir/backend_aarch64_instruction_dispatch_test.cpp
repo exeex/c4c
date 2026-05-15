@@ -1404,6 +1404,125 @@ int scalar_va_arg_dispatch_reports_missing_prepared_access_plan() {
     return fail("expected scalar va_arg dispatch to report missing prepared access plan");
   }
 
+  auto selected_prepared = prepared_with_scalar_va_arg_helper_call();
+  auto& selected_entry = selected_prepared.variadic_entry_plans.functions.front();
+  selected_entry.helper_operand_homes.front().scalar_access_plan =
+      prepare::PreparedVariadicScalarVaArgAccessPlan{
+          .source_class =
+              prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea,
+          .value_type = bir::TypeKind::I32,
+          .value_size_bytes = 4,
+          .value_align_bytes = 4,
+          .result_home = selected_entry.helper_operand_homes.front().scalar_result,
+          .source_field =
+              prepare::PreparedVariadicVaListFieldKind::GpRegisterSaveArea,
+          .source_field_offset_bytes = std::size_t{16},
+          .source_slot_size_bytes = std::size_t{8},
+          .progression_field = prepare::PreparedVariadicVaListFieldKind::GpOffset,
+          .progression_field_offset_bytes = std::size_t{0},
+          .progression_stride_bytes = std::size_t{8},
+          .overflow_source_field =
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+          .overflow_source_field_offset_bytes = std::size_t{8},
+          .overflow_stride_bytes = std::size_t{8},
+      };
+  const auto& selected_function_cf =
+      selected_prepared.control_flow.functions.front();
+  const auto& selected_block_cf = selected_function_cf.blocks.front();
+  const auto selected_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          selected_prepared, selected_prepared.target_profile, selected_function_cf);
+  const auto selected_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          selected_function_context, selected_block_cf, 0);
+  aarch64_module::MachineBlock selected_block;
+  aarch64_module::ModuleLoweringDiagnostics selected_diagnostics;
+  const auto selected_result =
+      aarch64_codegen::dispatch_prepared_block(
+          selected_block_context, selected_block, selected_diagnostics);
+  const auto* selected_call =
+      selected_block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+                &selected_block.instructions.front().target.payload);
+  if (selected_result.visited_operations != 1 ||
+      !selected_result.visited_terminator ||
+      selected_result.emitted_instructions != 2 ||
+      selected_block.instructions.size() != 2 ||
+      !selected_diagnostics.entries.empty() ||
+      selected_call == nullptr ||
+      selected_block.instructions.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      selected_block.instructions.front().target.opcode !=
+          aarch64_module::codegen::MachineOpcode::VariadicVaArgScalar ||
+      !selected_call->variadic_scalar_va_arg.has_value() ||
+      selected_call->variadic_scalar_va_arg->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea ||
+      selected_call->variadic_scalar_va_arg->source_va_list.register_name !=
+          std::optional<std::string>{"x3"} ||
+      selected_call->variadic_scalar_va_arg->result_home.register_name !=
+          std::optional<std::string>{"w0"}) {
+    return fail("expected scalar va_arg dispatch to select prepared access plan");
+  }
+
+  auto fp_access_plan = *selected_entry.helper_operand_homes.front().scalar_access_plan;
+  fp_access_plan.source_class =
+      prepare::PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea;
+  fp_access_plan.value_type = bir::TypeKind::F64;
+  fp_access_plan.value_size_bytes = 8;
+  fp_access_plan.value_align_bytes = 8;
+  fp_access_plan.result_home =
+      prepare::PreparedValueHome{
+          .value_id = prepare::PreparedValueId{24},
+          .function_name = selected_entry.function_name,
+          .value_name =
+              selected_prepared.names.value_names.intern("%next_fp"),
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"d0"},
+      };
+  fp_access_plan.source_field =
+      prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea;
+  fp_access_plan.source_field_offset_bytes = std::size_t{24};
+  fp_access_plan.source_slot_size_bytes = std::size_t{16};
+  fp_access_plan.progression_field =
+      prepare::PreparedVariadicVaListFieldKind::FpOffset;
+  fp_access_plan.progression_field_offset_bytes = std::size_t{4};
+  fp_access_plan.progression_stride_bytes = std::size_t{16};
+  selected_entry.helper_operand_homes.front().scalar_result =
+      *fp_access_plan.result_home;
+  selected_entry.helper_operand_homes.front().scalar_access_plan = fp_access_plan;
+  aarch64_module::MachineBlock selected_fp_block;
+  aarch64_module::ModuleLoweringDiagnostics selected_fp_diagnostics;
+  const auto selected_fp_result =
+      aarch64_codegen::dispatch_prepared_block(
+          selected_block_context, selected_fp_block, selected_fp_diagnostics);
+  const auto* selected_fp_call =
+      selected_fp_block.instructions.empty()
+          ? nullptr
+          : std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+                &selected_fp_block.instructions.front().target.payload);
+  if (selected_fp_result.visited_operations != 1 ||
+      !selected_fp_result.visited_terminator ||
+      selected_fp_result.emitted_instructions != 2 ||
+      selected_fp_block.instructions.size() != 2 ||
+      !selected_fp_diagnostics.entries.empty() ||
+      selected_fp_call == nullptr ||
+      selected_fp_block.instructions.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      selected_fp_block.instructions.front().target.opcode !=
+          aarch64_module::codegen::MachineOpcode::VariadicVaArgScalar ||
+      !selected_fp_call->variadic_scalar_va_arg.has_value() ||
+      selected_fp_call->variadic_scalar_va_arg->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea ||
+      selected_fp_call->variadic_scalar_va_arg->source_field !=
+          prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea ||
+      selected_fp_call->variadic_scalar_va_arg->progression_field !=
+          prepare::PreparedVariadicVaListFieldKind::FpOffset ||
+      selected_fp_call->variadic_scalar_va_arg->result_home.register_name !=
+          std::optional<std::string>{"d0"}) {
+    return fail("expected scalar fp va_arg dispatch to select prepared access plan");
+  }
+
   return 0;
 }
 
