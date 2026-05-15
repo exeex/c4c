@@ -44,3 +44,20 @@ transport nodes; it must not be patched as a scalar float shortcut.
   scalar approximation.
 - F128 load/store and copy paths preserve low/high halves and 16-byte storage
   size/alignment.
+
+## Lifecycle Checkpoint: 2026-05-15
+
+The first active runbook completed its Step 6 representative AArch64 backend
+route proof. The proven route covers prepared full-width F128 transport,
+soft-float helper boundaries, selected machine records, printer output, and a
+representative backend path through load, helper call, store-back, and return.
+The supervisor committed that route proof after the backend subset passed
+139/139 tests.
+
+The source idea remains open. Full-width F128 constant payload authority is
+tracked separately in
+`ideas/open/241_f128_full_width_constant_carriers.md` and must land before this
+parent route can claim structured F128 constant transport. Remaining unmodeled
+F128 helper or sign-bit-like operations should continue to fail closed until a
+future runbook gives them complete prepared helper, carrier, and printer
+authority.
