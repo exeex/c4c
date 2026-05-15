@@ -1720,6 +1720,7 @@ struct PreparedF128Carrier {
   std::optional<PreparedRegisterPlacement> register_placement;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  std::optional<c4c::backend::bir::Value::F128Payload> constant_payload;
   std::vector<std::string> missing_required_facts;
 };
 

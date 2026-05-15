@@ -13,6 +13,13 @@ std::string render_value(const c4c::backend::bir::Value& value) {
   if (value.kind == c4c::backend::bir::Value::Kind::Named) {
     return value.name;
   }
+  if (value.type == c4c::backend::bir::TypeKind::F128 && value.f128_payload.has_value()) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << std::setfill('0')
+        << std::setw(16) << value.f128_payload->high_bits
+        << std::setw(16) << value.f128_payload->low_bits;
+    return out.str();
+  }
   if (value.type == c4c::backend::bir::TypeKind::F32 ||
       value.type == c4c::backend::bir::TypeKind::F64) {
     std::ostringstream out;
@@ -1608,6 +1615,12 @@ void append_f128_carriers(std::ostringstream& out, const PreparedBirModule& modu
       }
       if (carrier.stack_offset_bytes.has_value()) {
         out << " stack_offset=" << *carrier.stack_offset_bytes;
+      }
+      if (carrier.constant_payload.has_value()) {
+        out << " constant_payload=0x" << std::hex << std::uppercase << std::setfill('0')
+            << std::setw(16) << carrier.constant_payload->high_bits
+            << std::setw(16) << carrier.constant_payload->low_bits
+            << std::dec;
       }
       if (!carrier.missing_required_facts.empty()) {
         out << " missing_facts=";

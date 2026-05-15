@@ -63,6 +63,19 @@ Value Value::immediate_f64_bits(std::uint64_t bits) {
   return result;
 }
 
+Value Value::immediate_f128_bits(std::uint64_t low_bits, std::uint64_t high_bits) {
+  Value result;
+  result.kind = Kind::Immediate;
+  result.type = TypeKind::F128;
+  result.immediate = static_cast<std::int64_t>(low_bits);
+  result.immediate_bits = low_bits;
+  result.f128_payload = F128Payload{
+      .low_bits = low_bits,
+      .high_bits = high_bits,
+  };
+  return result;
+}
+
 Value Value::named(TypeKind type, std::string value_name) {
   Value result;
   result.kind = Kind::Named;

@@ -39,6 +39,13 @@ std::string render_value(const Value& value) {
   if (value.kind == Value::Kind::Named) {
     return value.name;
   }
+  if (value.type == TypeKind::F128 && value.f128_payload.has_value()) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << std::setfill('0')
+        << std::setw(16) << value.f128_payload->high_bits
+        << std::setw(16) << value.f128_payload->low_bits;
+    return out.str();
+  }
   if (value.type == TypeKind::F32 || value.type == TypeKind::F64) {
     std::ostringstream out;
     out << "0x" << std::hex << std::uppercase << std::setfill('0');

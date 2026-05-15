@@ -2441,6 +2441,70 @@ prepare::PreparedBirModule prepare_f128_register_carrier_dump_module() {
       });
 }
 
+prepare::PreparedBirModule prepare_f128_constant_payload_dump_module() {
+  prepare::PreparedBirModule prepared;
+  const auto function_name =
+      prepared.names.function_names.intern("f128_constant_payload_dump_contract");
+  const auto value_name = prepared.names.value_names.intern("const.tf");
+  constexpr std::uint64_t low_bits = 0x0123456789abcdefULL;
+  constexpr std::uint64_t high_bits = 0x3fff800000000000ULL;
+
+  bir::Function function;
+  function.name = "f128_constant_payload_dump_contract";
+  function.return_type = bir::TypeKind::F128;
+  function.blocks.push_back(bir::Block{
+      .label = "entry",
+      .terminator = bir::ReturnTerminator{
+          .value = bir::Value::immediate_f128_bits(low_bits, high_bits),
+      },
+  });
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {
+              prepare::PreparedF128Carrier{
+                  .function_name = function_name,
+                  .value_id = prepare::PreparedValueId{42},
+                  .value_name = value_name,
+                  .source_type = bir::TypeKind::F128,
+                  .kind = prepare::PreparedF128CarrierKind::Missing,
+                  .total_size_bytes = 16,
+                  .total_align_bytes = 16,
+                  .constant_payload = bir::Value::F128Payload{
+                      .low_bits = low_bits,
+                      .high_bits = high_bits,
+                  },
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls =
+          {
+              prepare::PreparedCallPlan{
+                  .instruction_index = 3,
+                  .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                  .direct_callee_name = std::string{"consume_tf"},
+                  .arguments =
+                      {
+                          prepare::PreparedCallArgumentPlan{
+                              .arg_index = 0,
+                              .value_bank = prepare::PreparedRegisterBank::Vreg,
+                              .source_encoding =
+                                  prepare::PreparedStorageEncodingKind::Immediate,
+                              .source_value_id = prepare::PreparedValueId{42},
+                              .source_literal =
+                                  bir::Value::immediate_f128_bits(low_bits, high_bits),
+                          },
+                      },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
     std::string function_name_spelling = "f128_soft_float_helper_dump_contract",
@@ -3627,6 +3691,40 @@ int main() {
   if (!expect_contains(f128_register_dump,
                        "width=1 units=q0 reg=q0",
                        "f128 register carrier q-register occupancy")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f128_constant_prepared = prepare_f128_constant_payload_dump_module();
+  const auto* f128_constant_carrier = find_f128_carrier(
+      f128_constant_prepared, "f128_constant_payload_dump_contract", "const.tf");
+  if (f128_constant_carrier == nullptr ||
+      !f128_constant_carrier->constant_payload.has_value() ||
+      f128_constant_carrier->constant_payload->low_bits != 0x0123456789abcdefULL ||
+      f128_constant_carrier->constant_payload->high_bits != 0x3fff800000000000ULL ||
+      f128_constant_carrier->total_size_bytes != 16 ||
+      f128_constant_carrier->total_align_bytes != 16) {
+    std::cerr << "[FAIL] prepared f128 constant carrier lost exact low/high payload\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string f128_constant_dump = prepare::print(f128_constant_prepared);
+  if (!expect_contains(
+          f128_constant_dump,
+          "bir.ret f128 0x3FFF8000000000000123456789ABCDEF",
+          "bir f128 immediate literal preserves both halves")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          f128_constant_dump,
+          "constant_payload=0x3FFF8000000000000123456789ABCDEF",
+          "f128 carrier full-width constant payload")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          f128_constant_dump,
+          "arg index=0 value_bank=vreg source_encoding=immediate source_value_id=42 "
+          "source_literal=0x3FFF8000000000000123456789ABCDEF",
+          "f128 prepared immediate literal preserves both halves")) {
     return EXIT_FAILURE;
   }
 
