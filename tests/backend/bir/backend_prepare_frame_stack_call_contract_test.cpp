@@ -5202,12 +5202,47 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
   const auto* copy_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 4);
+  const auto* va_arg_i32_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 1);
+  const auto* va_arg_f64_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 2);
   if (aggregate_homes == nullptr || copy_homes == nullptr ||
+      va_arg_i32_homes == nullptr || va_arg_f64_homes == nullptr ||
       !aggregate_homes->aggregate_destination_payload.has_value() ||
       !aggregate_homes->source_va_list.has_value() ||
       !copy_homes->destination_va_list.has_value() ||
       !copy_homes->source_va_list.has_value()) {
     return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg or va_copy operand homes");
+  }
+  if (!va_arg_i32_homes->scalar_access_plan.has_value() ||
+      va_arg_i32_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea ||
+      va_arg_i32_homes->scalar_access_plan->value_size_bytes != 4 ||
+      va_arg_i32_homes->scalar_access_plan->value_align_bytes != 4 ||
+      va_arg_i32_homes->scalar_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::GpRegisterSaveArea} ||
+      va_arg_i32_homes->scalar_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::GpOffset} ||
+      va_arg_i32_homes->scalar_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{8} ||
+      !va_arg_i32_homes->scalar_access_plan->result_home.has_value() ||
+      !va_arg_f64_homes->scalar_access_plan.has_value() ||
+      va_arg_f64_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea ||
+      va_arg_f64_homes->scalar_access_plan->value_size_bytes != 8 ||
+      va_arg_f64_homes->scalar_access_plan->value_align_bytes != 8 ||
+      va_arg_f64_homes->scalar_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea} ||
+      va_arg_f64_homes->scalar_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpOffset} ||
+      va_arg_f64_homes->scalar_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{16} ||
+      !va_arg_f64_homes->scalar_access_plan->result_home.has_value()) {
+    return fail("AAPCS64 variadic helper-family frame contract: lost scalar va_arg access-plan carrier facts");
   }
   const auto* register_save_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,

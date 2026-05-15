@@ -195,6 +195,34 @@ std::string storage_encoding_kind_name(PreparedStorageEncodingKind kind) {
   return "unknown";
 }
 
+std::string type_kind_name(c4c::backend::bir::TypeKind type) {
+  switch (type) {
+    case c4c::backend::bir::TypeKind::Void:
+      return "void";
+    case c4c::backend::bir::TypeKind::I1:
+      return "i1";
+    case c4c::backend::bir::TypeKind::I8:
+      return "i8";
+    case c4c::backend::bir::TypeKind::I16:
+      return "i16";
+    case c4c::backend::bir::TypeKind::I32:
+      return "i32";
+    case c4c::backend::bir::TypeKind::I64:
+      return "i64";
+    case c4c::backend::bir::TypeKind::I128:
+      return "i128";
+    case c4c::backend::bir::TypeKind::Ptr:
+      return "ptr";
+    case c4c::backend::bir::TypeKind::F32:
+      return "f32";
+    case c4c::backend::bir::TypeKind::F64:
+      return "f64";
+    case c4c::backend::bir::TypeKind::F128:
+      return "f128";
+  }
+  return "unknown";
+}
+
 std::string optional_size_text(const std::optional<std::size_t>& value) {
   return value.has_value() ? std::to_string(*value) : std::string("<unknown>");
 }
@@ -801,6 +829,54 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
       append_home("src_va_list", homes.source_va_list);
       append_home("scalar_result", homes.scalar_result);
       append_home("aggregate_dst", homes.aggregate_destination_payload);
+      if (homes.helper == PreparedVariadicEntryHelperKind::VaArg) {
+        out << " scalar_access_plan=";
+        if (!homes.scalar_access_plan.has_value()) {
+          out << "<none>";
+        } else {
+          const auto& plan = *homes.scalar_access_plan;
+          out << "source_class="
+              << prepared_variadic_scalar_va_arg_source_class_name(plan.source_class)
+              << ":type=" << type_kind_name(plan.value_type)
+              << ":size=" << plan.value_size_bytes
+              << ":align=" << plan.value_align_bytes;
+          if (plan.result_home.has_value()) {
+            out << ":result_home="
+                << maybe_value_name(module.names, plan.result_home->value_name)
+                << "/" << prepared_value_home_kind_name(plan.result_home->kind);
+          }
+          if (plan.source_field.has_value()) {
+            out << ":source_field="
+                << prepared_variadic_va_list_field_kind_name(*plan.source_field);
+            if (plan.source_field_offset_bytes.has_value()) {
+              out << "@" << *plan.source_field_offset_bytes;
+            }
+          }
+          if (plan.source_slot_size_bytes.has_value()) {
+            out << ":source_slot=" << *plan.source_slot_size_bytes;
+          }
+          if (plan.progression_field.has_value()) {
+            out << ":progression_field="
+                << prepared_variadic_va_list_field_kind_name(*plan.progression_field);
+            if (plan.progression_field_offset_bytes.has_value()) {
+              out << "@" << *plan.progression_field_offset_bytes;
+            }
+          }
+          if (plan.progression_stride_bytes.has_value()) {
+            out << ":progression_stride=" << *plan.progression_stride_bytes;
+          }
+          if (plan.overflow_source_field.has_value()) {
+            out << ":overflow_source_field="
+                << prepared_variadic_va_list_field_kind_name(*plan.overflow_source_field);
+            if (plan.overflow_source_field_offset_bytes.has_value()) {
+              out << "@" << *plan.overflow_source_field_offset_bytes;
+            }
+          }
+          if (plan.overflow_stride_bytes.has_value()) {
+            out << ":overflow_stride=" << *plan.overflow_stride_bytes;
+          }
+        }
+      }
       out << "\n";
     }
     for (const auto& fact : function_plan.missing_required_facts) {

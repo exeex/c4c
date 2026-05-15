@@ -1288,6 +1288,47 @@ struct PreparedVariadicEntryHelperResources {
   std::optional<std::size_t> scratch_stack_bytes;
 };
 
+enum class PreparedVariadicScalarVaArgSourceClass {
+  Unknown,
+  GpRegisterSaveArea,
+  FpRegisterSaveArea,
+  OverflowArgArea,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_variadic_scalar_va_arg_source_class_name(
+    PreparedVariadicScalarVaArgSourceClass source_class) {
+  switch (source_class) {
+    case PreparedVariadicScalarVaArgSourceClass::Unknown:
+      return "unknown";
+    case PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea:
+      return "gp_register_save_area";
+    case PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea:
+      return "fp_register_save_area";
+    case PreparedVariadicScalarVaArgSourceClass::OverflowArgArea:
+      return "overflow_arg_area";
+  }
+  return "unknown";
+}
+
+struct PreparedVariadicScalarVaArgAccessPlan {
+  PreparedVariadicScalarVaArgSourceClass source_class =
+      PreparedVariadicScalarVaArgSourceClass::Unknown;
+  bir::TypeKind value_type = bir::TypeKind::Void;
+  std::size_t value_size_bytes = 0;
+  std::size_t value_align_bytes = 0;
+  std::optional<PreparedValueHome> result_home;
+  std::optional<PreparedVariadicVaListFieldKind> source_field;
+  std::optional<std::size_t> source_field_offset_bytes;
+  std::optional<std::size_t> source_slot_size_bytes;
+  std::optional<PreparedVariadicVaListFieldKind> progression_field;
+  std::optional<std::size_t> progression_field_offset_bytes;
+  std::optional<std::size_t> progression_stride_bytes;
+  std::optional<PreparedVariadicVaListFieldKind> overflow_source_field;
+  std::optional<std::size_t> overflow_source_field_offset_bytes;
+  std::optional<std::size_t> overflow_stride_bytes;
+};
+
 struct PreparedVariadicEntryHelperOperandHomes {
   PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
   std::size_t block_index = 0;
@@ -1296,6 +1337,7 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedValueHome> source_va_list;
   std::optional<PreparedValueHome> scalar_result;
   std::optional<PreparedValueHome> aggregate_destination_payload;
+  std::optional<PreparedVariadicScalarVaArgAccessPlan> scalar_access_plan;
 };
 
 struct PreparedVariadicEntryPlanFunction {

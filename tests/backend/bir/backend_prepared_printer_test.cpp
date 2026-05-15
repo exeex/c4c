@@ -2583,6 +2583,49 @@ int main() {
       return EXIT_FAILURE;
     }
   }
+  const auto* scalar_i32_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 1);
+  const auto* scalar_f64_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 2);
+  if (scalar_i32_homes == nullptr || scalar_f64_homes == nullptr ||
+      !scalar_i32_homes->scalar_access_plan.has_value() ||
+      scalar_i32_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea ||
+      scalar_i32_homes->scalar_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::GpRegisterSaveArea} ||
+      scalar_i32_homes->scalar_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{8} ||
+      scalar_i32_homes->scalar_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::GpOffset} ||
+      scalar_i32_homes->scalar_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{24} ||
+      scalar_i32_homes->scalar_access_plan->overflow_source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      scalar_i32_homes->scalar_access_plan->overflow_source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      !scalar_f64_homes->scalar_access_plan.has_value() ||
+      scalar_f64_homes->scalar_access_plan->source_class !=
+          prepare::PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea ||
+      scalar_f64_homes->scalar_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea} ||
+      scalar_f64_homes->scalar_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{16} ||
+      scalar_f64_homes->scalar_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::FpOffset} ||
+      scalar_f64_homes->scalar_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{28} ||
+      scalar_f64_homes->scalar_access_plan->overflow_source_field_offset_bytes !=
+          std::optional<std::size_t>{0}) {
+    std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier missed scalar va_arg access-plan facts\n";
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(
           aapcs64_helper_family_dump,
           "prepared.func @aapcs64_variadic_entry_helper_family_dump_contract named_params=3 named_gp=1 named_fp=1 helpers=4",
@@ -2602,6 +2645,30 @@ int main() {
   if (!expect_contains(aapcs64_helper_family_dump,
                        "helper_operand kind=va_arg block=0 inst=1",
                        "AAPCS64 variadic scalar va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "scalar_access_plan=source_class=gp_register_save_area:type=i32:size=4:align=4",
+          "AAPCS64 variadic scalar i32 va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "source_field=gp_register_save_area@8:source_slot=8:progression_field=gp_offset@24:progression_stride=8:overflow_source_field=overflow_arg_area@0:overflow_stride=4",
+          "AAPCS64 variadic scalar i32 va_arg source coordinates")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "scalar_access_plan=source_class=fp_register_save_area:type=f64:size=8:align=8",
+          "AAPCS64 variadic scalar f64 va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "source_field=fp_register_save_area@16:source_slot=16:progression_field=fp_offset@28:progression_stride=16:overflow_source_field=overflow_arg_area@0:overflow_stride=8",
+          "AAPCS64 variadic scalar f64 va_arg source coordinates")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_helper_family_dump,

@@ -209,6 +209,17 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
   return remainder == 0 ? value : value + (alignment - remainder);
 }
 
+[[nodiscard]] std::optional<PreparedVariadicVaListField> find_variadic_va_list_field(
+    const PreparedVariadicVaListLayout& layout,
+    PreparedVariadicVaListFieldKind kind) {
+  for (const auto& field : layout.fields) {
+    if (field.kind == kind) {
+      return field;
+    }
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] PreparedObjectId next_prepared_object_id(
     const PreparedStackLayout& stack_layout) {
   PreparedObjectId next = 0;
@@ -448,6 +459,82 @@ void populate_aapcs64_variadic_entry_helper_resource_authority(
   return *home;
 }
 
+[[nodiscard]] std::optional<PreparedVariadicScalarVaArgAccessPlan>
+make_aapcs64_scalar_va_arg_access_plan(
+    const c4c::TargetProfile& target_profile,
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const bir::CallInst& call) {
+  if (!homes.scalar_result.has_value() || !homes.source_va_list.has_value()) {
+    return std::nullopt;
+  }
+  const auto abi = infer_call_arg_abi(target_profile, call.return_type);
+  if (!abi.has_value()) {
+    return std::nullopt;
+  }
+
+  PreparedVariadicScalarVaArgAccessPlan plan{
+      .value_type = abi->type,
+      .value_size_bytes = abi->size_bytes,
+      .value_align_bytes = abi->align_bytes,
+      .result_home = homes.scalar_result,
+      .overflow_source_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .overflow_stride_bytes =
+          align_prepared_offset(std::max<std::size_t>(abi->size_bytes, 1),
+                                std::max<std::size_t>(abi->align_bytes, 1)),
+  };
+
+  if (const auto overflow_field = find_variadic_va_list_field(
+          function_plan.va_list_layout, PreparedVariadicVaListFieldKind::OverflowArgArea);
+      overflow_field.has_value()) {
+    plan.overflow_source_field_offset_bytes = overflow_field->offset_bytes;
+  }
+
+  switch (abi->primary_class) {
+    case bir::AbiValueClass::Integer:
+      plan.source_class = PreparedVariadicScalarVaArgSourceClass::GpRegisterSaveArea;
+      plan.source_field = PreparedVariadicVaListFieldKind::GpRegisterSaveArea;
+      plan.progression_field = PreparedVariadicVaListFieldKind::GpOffset;
+      plan.source_slot_size_bytes = function_plan.register_save_area.gp_slot_size_bytes;
+      plan.progression_stride_bytes = function_plan.register_save_area.gp_slot_size_bytes;
+      break;
+    case bir::AbiValueClass::Sse:
+      plan.source_class = PreparedVariadicScalarVaArgSourceClass::FpRegisterSaveArea;
+      plan.source_field = PreparedVariadicVaListFieldKind::FpRegisterSaveArea;
+      plan.progression_field = PreparedVariadicVaListFieldKind::FpOffset;
+      plan.source_slot_size_bytes = function_plan.register_save_area.fp_slot_size_bytes;
+      plan.progression_stride_bytes = function_plan.register_save_area.fp_slot_size_bytes;
+      break;
+    case bir::AbiValueClass::Memory:
+      plan.source_class = PreparedVariadicScalarVaArgSourceClass::OverflowArgArea;
+      plan.source_field = PreparedVariadicVaListFieldKind::OverflowArgArea;
+      plan.progression_field = PreparedVariadicVaListFieldKind::OverflowArgArea;
+      plan.source_slot_size_bytes = plan.overflow_stride_bytes;
+      plan.progression_stride_bytes = plan.overflow_stride_bytes;
+      break;
+    case bir::AbiValueClass::None:
+    case bir::AbiValueClass::X87:
+      return std::nullopt;
+  }
+
+  if (plan.source_field.has_value()) {
+    if (const auto source_field = find_variadic_va_list_field(
+            function_plan.va_list_layout, *plan.source_field);
+        source_field.has_value()) {
+      plan.source_field_offset_bytes = source_field->offset_bytes;
+    }
+  }
+  if (plan.progression_field.has_value()) {
+    if (const auto progression_field = find_variadic_va_list_field(
+            function_plan.va_list_layout, *plan.progression_field);
+        progression_field.has_value()) {
+      plan.progression_field_offset_bytes = progression_field->offset_bytes;
+    }
+  }
+
+  return plan;
+}
+
 void require_variadic_helper_operand_home(
     PreparedVariadicEntryPlanFunction& function_plan,
     const PreparedVariadicEntryHelperOperandHomes& homes,
@@ -514,6 +601,12 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
               function_plan, homes, homes.scalar_result, "scalar_result");
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
+          homes.scalar_access_plan = make_aapcs64_scalar_va_arg_access_plan(
+              prepared.target_profile, function_plan, homes, *call);
+          if (!homes.scalar_access_plan.has_value()) {
+            append_missing_variadic_entry_fact(
+                function_plan, "helper_operand_homes.va_arg.scalar_access_plan");
+          }
           break;
         case PreparedVariadicEntryHelperKind::VaArgAggregate:
           if (call->args.size() > 1) {
