@@ -477,6 +477,10 @@ require_prepared_variadic_entry_plan(
   return message;
 }
 
+[[nodiscard]] std::string f128_transport_error_message() {
+  return "AArch64 binary128 memory transport lowering requires prepared f128 carrier facts; error=missing_prepared_f128_carrier";
+}
+
 [[nodiscard]] std::string i128_pair_error_message(
     PreparedI128PairRecordError error) {
   std::string message =
@@ -607,6 +611,26 @@ struct LowerMemoryInstructionResult {
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] LowerMemoryInstructionResult lower_f128_transport_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* load = std::get_if<bir::LoadLocalInst>(&inst);
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if ((load == nullptr || load->result.type != bir::TypeKind::F128) &&
+      (store == nullptr || store->value.type != bir::TypeKind::F128)) {
+    return LowerMemoryInstructionResult{.handled = false};
+  }
+
+  append_memory_diagnostic(diagnostics,
+                           module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                           context,
+                           instruction_index,
+                           f128_transport_error_message());
+  return LowerMemoryInstructionResult{.handled = true};
 }
 
 [[nodiscard]] LowerMemoryInstructionResult lower_i128_transport_instruction(
@@ -1751,7 +1775,11 @@ InstructionDispatchResult dispatch_prepared_block(
           continue;
         }
         auto lowered_memory =
-            lower_memory_instruction(context, inst, instruction_index, diagnostics);
+            lower_f128_transport_instruction(context, inst, instruction_index, diagnostics);
+        if (!lowered_memory.handled) {
+          lowered_memory =
+              lower_memory_instruction(context, inst, instruction_index, diagnostics);
+        }
         if (lowered_memory.handled) {
           if (lowered_memory.instruction.has_value()) {
             if (const auto* memory_record =

@@ -1656,6 +1656,90 @@ prepare::PreparedBirModule prepared_with_i128_frame_slot_load(bool include_carri
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_f128_frame_slot_load() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.load");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.f128.load.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.load.entry");
+  const auto result_name = prepared.names.value_names.intern("%loaded.f128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.load",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.load.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                      .result = bir::Value::named(bir::TypeKind::F128, "%loaded.f128"),
+                      .slot_id = c4c::SlotNameId{5},
+                      .byte_offset = 16,
+                      .align_bytes = 16,
+                      .address =
+                          bir::MemoryAddress{
+                              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                              .byte_offset = 16,
+                              .size_bytes = 16,
+                              .align_bytes = 16,
+                              .address_space = bir::AddressSpace::Default,
+                              .base_slot_id = c4c::SlotNameId{5},
+                          },
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{111},
+              .function_name = function_name,
+              .value_name = result_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = "q4",
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {fpr_storage(prepare::PreparedValueId{111}, result_name, "q4")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .result_value_name = result_name,
+              .address_space = bir::AddressSpace::Default,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{20},
+                      .byte_offset = 16,
+                      .size_bytes = 16,
+                      .align_bytes = 16,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_i128_pair_operation(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
     bool include_rhs_carrier = true) {
@@ -3620,6 +3704,36 @@ int block_dispatch_reports_missing_i128_carrier_authority() {
   return 0;
 }
 
+int block_dispatch_reports_missing_f128_carrier_authority() {
+  auto prepared = prepared_with_f128_frame_slot_load();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingValueAuthority ||
+      diagnostics.entries.front().instruction_family !=
+          aarch64_module::InstructionLoweringFamily::Memory ||
+      diagnostics.entries.front().message.find("missing_prepared_f128_carrier") ==
+          std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected f128 memory transport to fail closed without carrier authority");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_i128_pair_add_from_prepared_carriers() {
   auto prepared = prepared_with_i128_pair_operation();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -4335,6 +4449,10 @@ int main() {
     return status;
   }
   if (const int status = block_dispatch_reports_missing_i128_carrier_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status = block_dispatch_reports_missing_f128_carrier_authority();
       status != 0) {
     return status;
   }
