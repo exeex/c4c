@@ -1,7 +1,8 @@
 # Inline Assembly Tied-Home Allocation Policy
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/240_aarch64_inline_asm_machine_nodes.md
 
@@ -48,6 +49,16 @@ and should not be hidden in template substitution or machine printing.
 - Existing supported inline-asm operand, name, immediate, modifier, side-effect,
   output, and concrete numeric-tie tests continue to pass.
 - A regression guard over the supervisor-selected scope passes.
+
+## Completion Notes
+
+- Alias-aware tied output/input operands are accepted only through structured
+  prepared-home coallocation authority.
+- Missing, mismatched, target-invalid, class-invalid, allocator-dependent, and
+  incomplete selected tied records fail closed with explicit backend coverage.
+- Close proof passed with the supervisor-selected backend regression guard:
+  `test_before.log` and `test_after.log` both report 139/139 passing tests, and
+  the monotonic regression checker reported no new failures.
 
 ## Reviewer Reject Signals
 
