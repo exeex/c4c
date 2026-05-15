@@ -2552,7 +2552,8 @@ prepare::PreparedBirModule manual_f128_constant_payload_dump_module() {
 prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Add,
     std::string function_name_spelling = "f128_soft_float_helper_dump_contract",
-    std::string result_name_spelling = "sum") {
+    std::string result_name_spelling = "sum",
+    bool rhs_constant = false) {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
 
@@ -2579,7 +2580,10 @@ prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module(
       .result = bir::Value::named(bir::TypeKind::F128, result_name_spelling),
       .operand_type = bir::TypeKind::F128,
       .lhs = bir::Value::named(bir::TypeKind::F128, "lhs"),
-      .rhs = bir::Value::named(bir::TypeKind::F128, "rhs"),
+      .rhs = rhs_constant
+                 ? bir::Value::immediate_f128_bits(0x0123456789abcdefULL,
+                                                   0x3fff800000000000ULL)
+                 : bir::Value::named(bir::TypeKind::F128, "rhs"),
   });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::F128, result_name_spelling),
@@ -3888,6 +3892,39 @@ int main() {
                        "f128_helper block=0 inst=0 family=arithmetic kind=add opcode=add "
                        "callee=__addtf3 source_type=f128 result_type=f128 result=sum#",
                        "f128 add helper identity and callee")) {
+    return EXIT_FAILURE;
+  }
+  const auto f128_constant_rhs_helper_prepared =
+      prepare_f128_soft_float_helper_dump_module(
+          bir::BinaryOpcode::Add,
+          "f128_soft_float_constant_rhs_helper_dump_contract",
+          "sum",
+          true);
+  const auto* f128_constant_rhs_helper = find_first_f128_runtime_helper(
+      f128_constant_rhs_helper_prepared,
+      "f128_soft_float_constant_rhs_helper_dump_contract");
+  if (f128_constant_rhs_helper == nullptr ||
+      f128_constant_rhs_helper->rhs_value_name == c4c::kInvalidValueName ||
+      f128_constant_rhs_helper_prepared.names.value_names
+              .spelling(f128_constant_rhs_helper->rhs_value_name)
+              .find("__f128.const.3fff8000000000000123456789abcdef") != 0 ||
+      !f128_constant_rhs_helper->rhs_carrier.has_value() ||
+      f128_constant_rhs_helper->rhs_carrier->carrier_kind !=
+          prepare::PreparedF128CarrierKind::Missing) {
+    std::cerr
+        << "[FAIL] prepared f128 helper did not resolve full-width constant rhs carrier\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_constant_rhs_helper_dump =
+      prepare::print(f128_constant_rhs_helper_prepared);
+  if (!expect_contains(f128_constant_rhs_helper_dump,
+                       "constant_payload=0x3FFF8000000000000123456789ABCDEF",
+                       "f128 helper constant rhs preserves full-width payload")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_constant_rhs_helper_dump,
+                       "rhs_requires_full_width_f128_carrier",
+                       "f128 helper constant rhs remains fail-closed before helper rematerialization")) {
     return EXIT_FAILURE;
   }
   const auto f128_sub_helper_prepared =

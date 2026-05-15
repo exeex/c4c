@@ -3180,15 +3180,15 @@ int check_f128_constant_helper_fails_closed() {
   if (!helpers->helpers.empty() ||
       helpers->missing_required_facts.size() != 1 ||
       helpers->missing_required_facts.front() !=
-          "f128_soft_float_helper_requires_named_result_and_operands") {
-    return fail("expected F128 immediate operand to stay out of helper mappings");
+          "f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs") {
+    return fail("expected partial F128 immediate operand to stay out of helper mappings");
   }
 
   const auto dump = prepare::print(prepared);
   if (dump.find("--- prepared-f128-runtime-helpers ---") == std::string::npos ||
-      dump.find("f128_soft_float_helper_requires_named_result_and_operands") ==
+      dump.find("f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs") ==
           std::string::npos) {
-    return fail("prepared printer did not expose F128 immediate helper rejection");
+    return fail("prepared printer did not expose partial F128 immediate helper rejection");
   }
   return 0;
 }

@@ -1366,6 +1366,47 @@ prepare::PreparedBirModule prepared_semantic_f128_constant_call_argument() {
       });
 }
 
+prepare::PreparedBirModule prepared_semantic_f128_constant_helper_operand() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "dispatch.semantic.f128.const.helper";
+  function.return_type = bir::TypeKind::F128;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F128, "sum"),
+      .operand_type = bir::TypeKind::F128,
+      .lhs = bir::Value::named(bir::TypeKind::F128, "lhs"),
+      .rhs = bir::Value::immediate_f128_bits(0x0123456789abcdefULL,
+                                             0x3fff800000000000ULL),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F128, "sum"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 prepare::PreparedBirModule prepared_with_indirect_call_plan(bool register_callee) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -4756,6 +4797,66 @@ int semantic_f128_constant_argument_reaches_call_boundary_selection() {
   return 0;
 }
 
+int semantic_f128_constant_helper_operand_reaches_carrier_and_fails_closed() {
+  auto prepared = prepared_semantic_f128_constant_helper_operand();
+  const auto function_id =
+      prepared.names.function_names.find("dispatch.semantic.f128.const.helper");
+  const auto* helpers = prepare::find_prepared_f128_runtime_helpers(prepared, function_id);
+  const auto* carriers = prepare::find_prepared_f128_carriers(prepared, function_id);
+  if (helpers == nullptr || helpers->helpers.empty() || carriers == nullptr) {
+    return fail("expected semantic f128 constant helper fixture to produce helper carriers");
+  }
+  const auto& helper = helpers->helpers.front();
+  const auto* rhs_carrier = prepare::find_prepared_f128_carrier(*carriers, helper.rhs_value_id);
+  if (rhs_carrier == nullptr ||
+      rhs_carrier->kind != prepare::PreparedF128CarrierKind::Missing ||
+      !rhs_carrier->constant_payload.has_value() ||
+      rhs_carrier->constant_payload->low_bits != 0x0123456789abcdefULL ||
+      rhs_carrier->constant_payload->high_bits != 0x3fff800000000000ULL) {
+    return fail("expected f128 helper rhs to resolve the structured constant carrier");
+  }
+  const auto missing_fact = std::find(helper.missing_required_facts.begin(),
+                                      helper.missing_required_facts.end(),
+                                      "rhs_requires_full_width_f128_carrier");
+  if (missing_fact == helper.missing_required_facts.end()) {
+    return fail("expected f128 helper constant rhs to stay fail-closed before rematerialization");
+  }
+
+  const prepare::PreparedControlFlowFunction* function_cf = nullptr;
+  for (const auto& candidate : prepared.control_flow.functions) {
+    if (candidate.function_name == function_id) {
+      function_cf = &candidate;
+      break;
+    }
+  }
+  if (function_cf == nullptr || function_cf->blocks.empty()) {
+    return fail("expected semantic f128 constant helper fixture to produce control flow");
+  }
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, *function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, function_cf->blocks.front(), 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 || diagnostics.entries.empty()) {
+    return fail("expected f128 helper constant operand to fail closed during dispatch");
+  }
+  const auto diagnostic = std::find_if(
+      diagnostics.entries.begin(),
+      diagnostics.entries.end(),
+      [](const aarch64_module::ModuleLoweringDiagnostic& entry) {
+        return entry.message.find("incomplete_prepared_f128_runtime_helper") !=
+               std::string::npos;
+      });
+  if (diagnostic == diagnostics.entries.end()) {
+    return fail("expected dispatch diagnostic for incomplete f128 helper constant route");
+  }
+  return 0;
+}
+
 int block_dispatch_rejects_incomplete_f128_constant_argument_carriers() {
   struct Case {
     const char* label;
@@ -6777,6 +6878,11 @@ int main() {
   }
   if (const int status =
           semantic_f128_constant_argument_reaches_call_boundary_selection();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          semantic_f128_constant_helper_operand_reaches_carrier_and_fails_closed();
       status != 0) {
     return status;
   }

@@ -2360,6 +2360,16 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
   return &*it;
 }
 
+[[nodiscard]] const PreparedRegallocValue* find_f128_helper_operand_value(
+    const PreparedRegallocFunction& function,
+    const PreparedNameTables& names,
+    const bir::Value& value) {
+  if (value.kind == bir::Value::Kind::Named) {
+    return find_regalloc_value(function, names, value.name);
+  }
+  return find_f128_constant_regalloc_value(function, value);
+}
+
 void append_i128_runtime_helper_fact(PreparedI128RuntimeHelperFunction& function_helpers,
                                      std::string fact) {
   if (std::find(function_helpers.missing_required_facts.begin(),
@@ -2406,18 +2416,18 @@ void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
           continue;
         }
 
-        if (binary->result.kind != bir::Value::Kind::Named ||
-            binary->lhs.kind != bir::Value::Kind::Named ||
-            binary->rhs.kind != bir::Value::Kind::Named) {
+        if (binary->result.kind != bir::Value::Kind::Named) {
           append_f128_runtime_helper_fact(
               function_helpers,
-              "f128_soft_float_helper_requires_named_result_and_operands");
+              "f128_soft_float_helper_requires_named_result");
           continue;
         }
         const auto* result =
             find_regalloc_value(regalloc_function, names, binary->result.name);
-        const auto* lhs = find_regalloc_value(regalloc_function, names, binary->lhs.name);
-        const auto* rhs = find_regalloc_value(regalloc_function, names, binary->rhs.name);
+        const auto* lhs =
+            find_f128_helper_operand_value(regalloc_function, names, binary->lhs);
+        const auto* rhs =
+            find_f128_helper_operand_value(regalloc_function, names, binary->rhs);
         if (result == nullptr || lhs == nullptr || rhs == nullptr) {
           append_f128_runtime_helper_fact(
               function_helpers,
