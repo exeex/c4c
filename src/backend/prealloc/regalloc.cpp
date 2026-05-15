@@ -1060,6 +1060,8 @@ template <typename CanEvict>
     return PreparedStackSlotAssignment{
         .slot_id = slot.slot_id,
         .offset_bytes = slot.offset_bytes,
+        .size_bytes = slot.size_bytes,
+        .align_bytes = slot.align_bytes,
     };
   }
   return std::nullopt;
@@ -1080,6 +1082,8 @@ template <typename CanEvict>
   PreparedStackSlotAssignment slot{
       .slot_id = next_slot_id++,
       .offset_bytes = next_offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
   };
   next_offset_bytes += size_bytes;
   frame_alignment_bytes = std::max(frame_alignment_bytes, align_bytes);
@@ -1100,6 +1104,8 @@ template <typename CanEvict>
       .register_name = std::nullopt,
       .slot_id = std::nullopt,
       .offset_bytes = std::nullopt,
+      .size_bytes = std::nullopt,
+      .align_bytes = std::nullopt,
       .immediate_i32 = std::nullopt,
       .pointer_base_value_name = std::nullopt,
       .pointer_byte_delta = std::nullopt,
@@ -1206,6 +1212,8 @@ template <typename CanEvict>
       if (value.assigned_stack_slot.has_value()) {
         home.slot_id = value.assigned_stack_slot->slot_id;
         home.offset_bytes = value.assigned_stack_slot->offset_bytes;
+        home.size_bytes = value.assigned_stack_slot->size_bytes;
+        home.align_bytes = value.assigned_stack_slot->align_bytes;
       }
       return home;
     }
@@ -1219,6 +1227,8 @@ template <typename CanEvict>
     home.kind = PreparedValueHomeKind::StackSlot;
     home.slot_id = value.assigned_stack_slot->slot_id;
     home.offset_bytes = value.assigned_stack_slot->offset_bytes;
+    home.size_bytes = value.assigned_stack_slot->size_bytes;
+    home.align_bytes = value.assigned_stack_slot->align_bytes;
     return home;
   }
   return home;

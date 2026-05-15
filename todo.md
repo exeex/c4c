@@ -1,60 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/242_prepared_stack_slot_preserved_value_extent.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Map Existing Prepared Authority
+Current Step ID: 2
+Current Step Title: Add Prepared Extent Fields
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 by mapping every
-`PreparedCallPreservationRoute::StackSlot` producer branch in
-`prepare::build_call_preserved_values`.
+Completed `plan.md` Step 2 by adding optional prepared extent fields for
+stack-slot `PreparedCallPreservedValue` records and feeding them from
+prepared/shared authority only.
 
-Stack-slot route mapping:
+Concrete Step 2 results:
 
-- `PreparedValueHomeKind::StackSlot` branch:
-  `find_prepared_value_home(*value_locations, value.value_id)` supplies
-  `PreparedValueHome::slot_id` and `PreparedValueHome::offset_bytes` only.
-  `PreparedValueHome` has no size or alignment fields. Blocker: no exact
-  prepared size/alignment authority is carried by this branch today; a later
-  code packet must either attach extent to the home or resolve the home's
-  slot id to an authoritative prepared frame/assignment record before any
-  target consumes it.
-- `value.stack_object_id` branch:
-  `find_prepared_frame_slot(prepared.stack_layout, *value.stack_object_id)`
-  returns `PreparedFrameSlot`. This is the existing prepared authority for
-  size/alignment: `PreparedFrameSlot::size_bytes` and
-  `PreparedFrameSlot::align_bytes`, alongside `slot_id` and `offset_bytes`.
-- `value.assigned_stack_slot` branch:
-  `PreparedRegallocValue::assigned_stack_slot` supplies
-  `PreparedStackSlotAssignment::slot_id` and `offset_bytes` only.
-  `PreparedStackSlotAssignment` and its `PreparedSpillSlotPlacement` carry no
-  size or alignment. Allocation computes normalized value size/alignment in
-  `regalloc.cpp::allocate_stack_slot`, but the assignment does not publish
-  those values as prepared facts. Blocker: no retained prepared
-  size/alignment authority is available from this branch today.
+- Added `stack_size_bytes` and `stack_align_bytes` to
+  `PreparedCallPreservedValue`.
+- Published assignment extents through `PreparedStackSlotAssignment` and
+  `PreparedValueHome` so value-home and assigned-stack-slot preservation
+  routes copy prepared facts rather than recomputing type extents.
+- Populated the `value.stack_object_id` branch directly from
+  `PreparedFrameSlot::size_bytes` and `PreparedFrameSlot::align_bytes`.
+- Tightened stack-slot route completeness to require slot id, stack offset,
+  size, alignment, and spill placement. Register-route completeness remains
+  unchanged.
 
 ## Suggested Next
 
-Start `plan.md` Step 2 by adding first-class prepared extent fields for
-stack-slot preserved values, populating the `value.stack_object_id` route from
-`PreparedFrameSlot::size_bytes` and `PreparedFrameSlot::align_bytes`, and
-making the two missing-authority routes fail or remain absent explicitly until
-they have prepared extent authority.
+Start `plan.md` Step 3 by exposing stack-slot preserved-value size and
+alignment in prepared observation output, with focused coverage selected by
+the supervisor.
 
 ## Watchouts
 
-- Do not infer stack-slot preserved-value size or alignment inside AArch64
-  lowering.
-- Do not weaken preserved-value or call tests to claim progress.
-- Keep register-route preserved values behaviorally stable.
-- The `PreparedValueHomeKind::StackSlot` and `value.assigned_stack_slot`
-  producer branches are current blockers for complete extent population unless
-  the next packet adds or resolves prepared authority for them.
+- Prepared extents now exist in memory but are not yet printed by prepared
+  observation output; Step 3 owns that visibility.
+- AArch64 lowering was intentionally untouched. Future consumers should use
+  the prepared fields rather than reconstructing extents locally.
+- Stack-slot completeness now rejects zero or absent size/alignment; if a
+  later route creates stack-slot preserved values without assignment or frame
+  extents, it should surface as an incomplete route instead of fabricated
+  target-local data.
 
 ## Proof
 
-Documentation/mapping packet only; no build or test run required. Per packet
-instruction, `test_after.log` was not created or modified.
+Ran the delegated proof:
+
+`cmake --build --preset default > test_after.log 2>&1`
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+
+Result: build passed and all `139/139` selected backend tests passed.
+Canonical proof log: `test_after.log`.

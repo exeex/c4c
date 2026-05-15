@@ -2541,6 +2541,8 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
         .occupied_register_names = {},
         .slot_id = std::nullopt,
         .stack_offset_bytes = std::nullopt,
+        .stack_size_bytes = std::nullopt,
+        .stack_align_bytes = std::nullopt,
         .register_placement = std::nullopt,
         .spill_slot_placement = std::nullopt,
     };
@@ -2551,6 +2553,8 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value_home->slot_id;
       preserved.stack_offset_bytes = value_home->offset_bytes;
+      preserved.stack_size_bytes = value_home->size_bytes;
+      preserved.stack_align_bytes = value_home->align_bytes;
       preserved.spill_slot_placement =
           make_spill_slot_placement(value_home->slot_id, value_home->offset_bytes);
     } else if (value.stack_object_id.has_value()) {
@@ -2560,6 +2564,8 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
         preserved.route = PreparedCallPreservationRoute::StackSlot;
         preserved.slot_id = frame_slot->slot_id;
         preserved.stack_offset_bytes = frame_slot->offset_bytes;
+        preserved.stack_size_bytes = frame_slot->size_bytes;
+        preserved.stack_align_bytes = frame_slot->align_bytes;
         preserved.spill_slot_placement = PreparedSpillSlotPlacement{
             .slot_id = frame_slot->slot_id,
             .offset_bytes = frame_slot->offset_bytes,
@@ -2569,6 +2575,8 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       preserved.route = PreparedCallPreservationRoute::StackSlot;
       preserved.slot_id = value.assigned_stack_slot->slot_id;
       preserved.stack_offset_bytes = value.assigned_stack_slot->offset_bytes;
+      preserved.stack_size_bytes = value.assigned_stack_slot->size_bytes;
+      preserved.stack_align_bytes = value.assigned_stack_slot->align_bytes;
       preserved.spill_slot_placement =
           make_spill_slot_placement(preserved.slot_id, preserved.stack_offset_bytes);
     } else if (value.assigned_register.has_value()) {
@@ -2634,6 +2642,10 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
     case PreparedCallPreservationRoute::StackSlot:
       return preserved.slot_id.has_value() &&
              preserved.stack_offset_bytes.has_value() &&
+             preserved.stack_size_bytes.has_value() &&
+             *preserved.stack_size_bytes > 0 &&
+             preserved.stack_align_bytes.has_value() &&
+             *preserved.stack_align_bytes > 0 &&
              preserved.spill_slot_placement.has_value();
   }
   return false;

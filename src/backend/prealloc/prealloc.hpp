@@ -932,6 +932,8 @@ struct PreparedRegisterCandidateSpan {
 struct PreparedStackSlotAssignment {
   PreparedFrameSlotId slot_id = 0;
   std::size_t offset_bytes = 0;
+  std::optional<std::size_t> size_bytes;
+  std::optional<std::size_t> align_bytes;
   std::optional<PreparedSpillSlotPlacement> placement;
 };
 
@@ -1131,6 +1133,8 @@ struct PreparedValueHome {
   std::optional<std::string> register_name;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> offset_bytes;
+  std::optional<std::size_t> size_bytes;
+  std::optional<std::size_t> align_bytes;
   std::optional<std::int64_t> immediate_i32;
   std::optional<ValueNameId> pointer_base_value_name;
   std::optional<std::int64_t> pointer_byte_delta;
@@ -1266,6 +1270,8 @@ struct PreparedCallPreservedValue {
   std::vector<std::string> occupied_register_names;
   std::optional<PreparedFrameSlotId> slot_id;
   std::optional<std::size_t> stack_offset_bytes;
+  std::optional<std::size_t> stack_size_bytes;
+  std::optional<std::size_t> stack_align_bytes;
   std::optional<PreparedRegisterPlacement> register_placement;
   std::optional<PreparedSpillSlotPlacement> spill_slot_placement;
 };
