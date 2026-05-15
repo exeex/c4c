@@ -1025,6 +1025,8 @@ struct CallBoundaryMoveInstructionRecord {
   prepare::PreparedMoveResolution move;
   std::optional<RegisterOperand> source_register;
   std::optional<RegisterOperand> destination_register;
+  const prepare::PreparedF128Carrier* source_f128_carrier = nullptr;
+  const prepare::PreparedF128Carrier* destination_f128_carrier = nullptr;
   const prepare::PreparedMoveBundle* source_bundle = nullptr;
   const prepare::PreparedMoveResolution* source_move = nullptr;
 };

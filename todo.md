@@ -8,21 +8,22 @@ Current Step Title: Select Binary128 Memory And Copy Nodes
 
 ## Just Finished
 
-Step 3 added a narrow structured F128 memory-transport selection slice. The
-record builder now fails closed unless prepared F128 carrier facts prove the
-complete 16-byte size and 16-byte alignment authority, and focused record
-coverage proves a `StoreToMemory` transport preserves q-register carrier
-identity, vector-bank/vector-class authority, occupied q-register names, and a
-16-byte structured memory operand. Dispatch coverage now proves an F128
-frame-slot store selects an `F128TransportRecord` with the prepared carrier and
-memory facts, while an incomplete prepared carrier reports
-`incomplete_prepared_f128_carrier` and emits only the return node.
+Step 3 finished the remaining copy-transport question by adding a real
+structured F128 call-boundary move slice. The existing AArch64
+`lower_before_call_move` / `lower_after_call_move` dispatch boundary now admits
+q-register call moves only when prepared call plans, move bundles, value homes,
+ABI bindings, and complete `PreparedF128Carrier` facts agree on a full-width
+16-byte/16-byte vector carrier. The call-boundary move record preserves the
+source or destination F128 carrier pointer and stays fail-closed for non-GPR
+register moves that lack structured q-register authority. Focused record and
+dispatch coverage proves an F128 argument move selects `q2 -> q0` from prepared
+carrier facts without adding named-case shortcuts.
 
 ## Suggested Next
 
-Delegate the next packet to either add the smallest remaining Step 3 copy-node
-transport case if the plan expects copy coverage beyond load/store memory
-transport, or review Step 3 sufficiency before moving to helper-boundary work.
+Delegate review of Step 3 sufficiency before moving to helper-boundary work, or
+select the next Step 4 packet if the supervisor accepts memory plus
+call-boundary copy transport as enough Step 3 coverage.
 
 ## Watchouts
 
@@ -47,9 +48,13 @@ transport, or review Step 3 sufficiency before moving to helper-boundary work.
 - This packet covered F128 load/store-style memory transport selection, with
   new store proof and existing load proof. It did not add final assembly
   printing or arithmetic/cast/helper-call support.
-- No explicit non-memory copy node was found or added in this packet; if Step 3
-  requires more than memory transport, keep the next slice focused on the
-  established move/copy authority boundary.
+- The inspected copy boundary was the call-boundary move route:
+  `lower_before_call_move`, `lower_after_call_move`,
+  `make_call_boundary_move_instruction`, and
+  `call_boundary_move_selection_status`. That boundary now handles the narrow
+  structured F128 q-register move case; generic parallel copies, memory-backed
+  F128 copies, helper-call lowering, final assembly printing, and arithmetic
+  remain outside this packet.
 
 ## Proof
 

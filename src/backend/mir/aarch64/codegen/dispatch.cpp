@@ -1239,6 +1239,17 @@ struct LowerMemoryInstructionResult {
   return prepare::PreparedRegisterClass::None;
 }
 
+[[nodiscard]] bool complete_full_width_f128_carrier(
+    const prepare::PreparedF128Carrier* carrier) {
+  return carrier != nullptr &&
+         carrier->kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+         carrier->missing_required_facts.empty() &&
+         carrier->total_size_bytes == 16 && carrier->total_align_bytes == 16 &&
+         carrier->register_bank == prepare::PreparedRegisterBank::Vreg &&
+         carrier->register_class == prepare::PreparedRegisterClass::Vector &&
+         carrier->contiguous_width == 1 && carrier->register_name.has_value();
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
     const std::optional<std::string>& register_name,
     const std::optional<prepare::PreparedRegisterPlacement>& placement,
@@ -1248,6 +1259,7 @@ struct LowerMemoryInstructionResult {
     c4c::ValueNameId value_name,
     std::size_t contiguous_width,
     const std::vector<std::string>& occupied_registers,
+    std::optional<abi::RegisterView> expected_view,
     module::ModuleLoweringDiagnostics& diagnostics,
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
@@ -1257,10 +1269,10 @@ struct LowerMemoryInstructionResult {
                        : std::nullopt;
   abi::PreparedRegisterConversionResult converted;
   if (placement.has_value()) {
-    converted = abi::convert_prepared_register(*placement, prepared_class, std::nullopt);
+    converted = abi::convert_prepared_register(*placement, prepared_class, expected_view);
   } else if (register_name.has_value()) {
     converted = abi::convert_prepared_register(
-        *register_name, bank, prepared_class, std::nullopt);
+        *register_name, bank, prepared_class, expected_view);
   } else {
     return std::nullopt;
   }
@@ -1282,6 +1294,7 @@ struct LowerMemoryInstructionResult {
       .value_name = value_name,
       .prepared_class = prepared_class.value_or(prepare::PreparedRegisterClass::None),
       .prepared_bank = bank.value_or(prepare::PreparedRegisterBank::None),
+      .expected_view = expected_view,
       .contiguous_width = contiguous_width,
       .occupied_register_references = {*converted.reg},
       .occupied_registers =
@@ -1306,6 +1319,18 @@ struct LowerMemoryInstructionResult {
                                               move.from_value_id);
   const auto* argument = find_prepared_argument_plan(call_plan, move);
   const auto* binding = find_prepared_argument_binding(bundle, move);
+  const auto* f128_carriers =
+      context.function.prepared == nullptr
+          ? nullptr
+          : prepare::find_prepared_f128_carriers(
+                *context.function.prepared,
+                context.function.control_flow != nullptr
+                    ? context.function.control_flow->function_name
+                    : c4c::kInvalidFunctionName);
+  const auto* source_f128_carrier =
+      f128_carriers != nullptr && source_home != nullptr
+          ? prepare::find_prepared_f128_carrier(*f128_carriers, source_home->value_name)
+          : nullptr;
 
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow != nullptr
@@ -1324,6 +1349,16 @@ struct LowerMemoryInstructionResult {
       .source_move = &move,
   };
 
+  const bool selected_gpr_argument_move =
+      argument != nullptr &&
+      argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
+  const bool selected_f128_argument_move =
+      argument != nullptr &&
+      argument->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      complete_full_width_f128_carrier(source_f128_carrier);
+
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
@@ -1332,8 +1367,7 @@ struct LowerMemoryInstructionResult {
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
       source_home->register_name.has_value() && argument != nullptr &&
       argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
-      argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
-      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      (selected_gpr_argument_move || selected_f128_argument_move) &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
     if (argument->source_register_name.has_value() &&
@@ -1346,6 +1380,19 @@ struct LowerMemoryInstructionResult {
           "AArch64 call-boundary move source register disagrees with prepared value home");
       return std::nullopt;
     }
+    if (selected_f128_argument_move &&
+        source_f128_carrier->register_name != source_home->register_name) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 call-boundary move source register disagrees with prepared f128 carrier");
+      return std::nullopt;
+    }
+    const auto expected_view =
+        selected_f128_argument_move ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
+                                    : std::nullopt;
     auto source = make_register_operand_from_prepared_authority(
         source_home->register_name,
         argument->source_register_placement,
@@ -1353,8 +1400,10 @@ struct LowerMemoryInstructionResult {
         RegisterOperandRole::CallAbi,
         source_home->value_id,
         source_home->value_name,
-        1,
-        {},
+        selected_f128_argument_move ? source_f128_carrier->contiguous_width : 1,
+        selected_f128_argument_move ? source_f128_carrier->occupied_register_names
+                                    : std::vector<std::string>{},
+        expected_view,
         diagnostics,
         context,
         instruction_index);
@@ -1368,6 +1417,7 @@ struct LowerMemoryInstructionResult {
         source_home->value_name,
         binding->destination_contiguous_width,
         binding->destination_occupied_register_names,
+        expected_view,
         diagnostics,
         context,
         instruction_index);
@@ -1376,6 +1426,8 @@ struct LowerMemoryInstructionResult {
     }
     move_record.source_register = *source;
     move_record.destination_register = *destination;
+    move_record.source_f128_carrier =
+        selected_f128_argument_move ? source_f128_carrier : nullptr;
   }
 
   InstructionRecord target = make_call_boundary_move_instruction(std::move(move_record));
@@ -1411,6 +1463,18 @@ struct LowerMemoryInstructionResult {
                                               move.to_value_id);
   const auto* result_plan = call_plan.result.has_value() ? &*call_plan.result : nullptr;
   const auto* binding = find_prepared_result_binding(bundle, move);
+  const auto* f128_carriers =
+      context.function.prepared == nullptr
+          ? nullptr
+          : prepare::find_prepared_f128_carriers(
+                *context.function.prepared,
+                context.function.control_flow != nullptr
+                    ? context.function.control_flow->function_name
+                    : c4c::kInvalidFunctionName);
+  const auto* destination_f128_carrier =
+      f128_carriers != nullptr && destination_home != nullptr
+          ? prepare::find_prepared_f128_carrier(*f128_carriers, destination_home->value_name)
+          : nullptr;
 
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow != nullptr
@@ -1429,6 +1493,16 @@ struct LowerMemoryInstructionResult {
       .source_move = &move,
   };
 
+  const bool selected_gpr_result_move =
+      result_plan != nullptr &&
+      result_plan->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      result_plan->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
+  const bool selected_f128_result_move =
+      result_plan != nullptr &&
+      result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      result_plan->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      complete_full_width_f128_carrier(destination_f128_carrier);
+
   if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
@@ -1444,8 +1518,7 @@ struct LowerMemoryInstructionResult {
       result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       result_plan->source_register_name.has_value() &&
       result_plan->destination_register_name.has_value() &&
-      result_plan->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
-      result_plan->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      (selected_gpr_result_move || selected_f128_result_move) &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       binding->destination_register_name.has_value()) {
@@ -1468,6 +1541,19 @@ struct LowerMemoryInstructionResult {
           "AArch64 call-result move destination register disagrees with prepared value home");
       return std::nullopt;
     }
+    if (selected_f128_result_move &&
+        destination_f128_carrier->register_name != destination_home->register_name) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 call-result move destination register disagrees with prepared f128 carrier");
+      return std::nullopt;
+    }
+    const auto expected_view =
+        selected_f128_result_move ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
+                                  : std::nullopt;
     auto source = make_register_operand_from_prepared_authority(
         binding->destination_register_name,
         result_plan->source_register_placement.has_value()
@@ -1482,6 +1568,7 @@ struct LowerMemoryInstructionResult {
         result_plan->source_occupied_register_names.empty()
             ? binding->destination_occupied_register_names
             : result_plan->source_occupied_register_names,
+        expected_view,
         diagnostics,
         context,
         instruction_index);
@@ -1494,6 +1581,7 @@ struct LowerMemoryInstructionResult {
         destination_home->value_name,
         result_plan->destination_contiguous_width,
         result_plan->destination_occupied_register_names,
+        expected_view,
         diagnostics,
         context,
         instruction_index);
@@ -1502,6 +1590,8 @@ struct LowerMemoryInstructionResult {
     }
     move_record.source_register = *source;
     move_record.destination_register = *destination;
+    move_record.destination_f128_carrier =
+        selected_f128_result_move ? destination_f128_carrier : nullptr;
   }
 
   InstructionRecord target = make_call_boundary_move_instruction(std::move(move_record));

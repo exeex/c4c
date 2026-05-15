@@ -1810,6 +1810,87 @@ int after_call_result_move_record_selects_register_to_register_subset() {
   return 0;
 }
 
+int f128_call_boundary_move_record_selects_structured_q_register_subset() {
+  const prepare::PreparedMoveBundle bundle{
+      .function_name = c4c::FunctionNameId{12},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 4,
+      .instruction_index = 8,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{81},
+                  .to_value_id = prepare::PreparedValueId{81},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"q0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"q0"},
+                  .block_index = 4,
+                  .instruction_index = 8,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "f128 before-call arg move",
+              },
+          },
+  };
+  const auto value_name = c4c::ValueNameId{19};
+  const auto carrier = f128_full_width_register_carrier(
+      bundle.function_name, prepare::PreparedValueId{81}, value_name, "q2");
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .move = bundle.moves.front(),
+          .source_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::q_register(2),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{81},
+                  .value_name = value_name,
+                  .prepared_class = prepare::PreparedRegisterClass::Vector,
+                  .prepared_bank = prepare::PreparedRegisterBank::Vreg,
+                  .expected_view = aarch64_abi::RegisterView::Q,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"q2"},
+              },
+          .destination_register =
+              aarch64_codegen::RegisterOperand{
+                  .reg = aarch64_abi::q_register(0),
+                  .role = aarch64_codegen::RegisterOperandRole::CallAbi,
+                  .value_id = prepare::PreparedValueId{81},
+                  .value_name = value_name,
+                  .prepared_class = prepare::PreparedRegisterClass::Vector,
+                  .prepared_bank = prepare::PreparedRegisterBank::Vreg,
+                  .expected_view = aarch64_abi::RegisterView::Q,
+                  .contiguous_width = 1,
+                  .occupied_registers = {"q0"},
+              },
+          .source_f128_carrier = &carrier,
+          .source_bundle = &bundle,
+          .source_move = &bundle.moves.front(),
+      });
+  const auto* payload =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(&move.payload);
+
+  if (payload == nullptr ||
+      move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      move.operands.size() != 2 || move.uses.size() != 1 || move.defs.size() != 1 ||
+      move.uses.front().reg != aarch64_abi::q_register(2) ||
+      move.defs.front().reg != aarch64_abi::q_register(0) ||
+      payload->source_f128_carrier != &carrier ||
+      payload->source_register->expected_view != aarch64_abi::RegisterView::Q ||
+      payload->destination_register->expected_view != aarch64_abi::RegisterView::Q ||
+      payload->source_f128_carrier->total_size_bytes != 16 ||
+      payload->source_f128_carrier->total_align_bytes != 16) {
+    return fail("expected f128 call-boundary move record to select structured q registers");
+  }
+
+  return 0;
+}
+
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
@@ -2776,6 +2857,10 @@ int main() {
     return status;
   }
   if (const int status = after_call_result_move_record_selects_register_to_register_subset();
+      status != 0) {
+    return status;
+  }
+  if (const int status = f128_call_boundary_move_record_selects_structured_q_register_subset();
       status != 0) {
     return status;
   }

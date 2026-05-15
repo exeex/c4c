@@ -2898,12 +2898,28 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .diagnostic =
             "call-boundary move node requires prepared register source and destination"};
   }
-  if (instruction.source_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
-      instruction.destination_register->prepared_bank != prepare::PreparedRegisterBank::Gpr) {
+  if (instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  const auto* f128_carrier =
+      instruction.source_f128_carrier != nullptr
+          ? instruction.source_f128_carrier
+          : instruction.destination_f128_carrier;
+  const bool selected_f128_register_move =
+      instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+      instruction.source_register->expected_view == abi::RegisterView::Q &&
+      instruction.destination_register->expected_view == abi::RegisterView::Q &&
+      f128_carrier != nullptr &&
+      f128_carrier->kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+      f128_carrier->missing_required_facts.empty() &&
+      f128_carrier->total_size_bytes == 16 && f128_carrier->total_align_bytes == 16;
+  if (!selected_f128_register_move) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
-            "call-boundary move node requires prepared GPR source and destination"};
+            "call-boundary move node requires prepared GPR registers or structured f128 q-register authority"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
