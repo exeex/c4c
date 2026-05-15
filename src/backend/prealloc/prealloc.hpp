@@ -1733,6 +1733,150 @@ struct PreparedF128Carriers {
   std::vector<PreparedF128CarrierFunction> functions;
 };
 
+enum class PreparedF128RuntimeHelperFamily {
+  Arithmetic,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_family_name(
+    PreparedF128RuntimeHelperFamily family) {
+  switch (family) {
+    case PreparedF128RuntimeHelperFamily::Arithmetic:
+      return "arithmetic";
+  }
+  return "unknown";
+}
+
+enum class PreparedF128RuntimeHelperKind {
+  Add,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_kind_name(
+    PreparedF128RuntimeHelperKind kind) {
+  switch (kind) {
+    case PreparedF128RuntimeHelperKind::Add:
+      return "add";
+  }
+  return "unknown";
+}
+
+enum class PreparedF128RuntimeHelperResultOwnership {
+  Missing,
+  FullWidthCarrier,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_result_ownership_name(
+    PreparedF128RuntimeHelperResultOwnership ownership) {
+  switch (ownership) {
+    case PreparedF128RuntimeHelperResultOwnership::Missing:
+      return "missing";
+    case PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier:
+      return "full_width_carrier";
+  }
+  return "unknown";
+}
+
+enum class PreparedF128RuntimeHelperAbiTransition {
+  Missing,
+  DirectF128ArgumentsAndResult,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_f128_runtime_helper_abi_transition_name(
+    PreparedF128RuntimeHelperAbiTransition transition) {
+  switch (transition) {
+    case PreparedF128RuntimeHelperAbiTransition::Missing:
+      return "missing";
+    case PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult:
+      return "direct_f128_arguments_and_result";
+  }
+  return "unknown";
+}
+
+struct PreparedF128RuntimeHelper {
+  struct CarrierBinding {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    PreparedF128CarrierKind carrier_kind = PreparedF128CarrierKind::Missing;
+    std::size_t width_bytes = 16;
+    std::size_t align_bytes = 16;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedRegisterClass register_class = PreparedRegisterClass::None;
+    std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
+  struct ResourcePolicy {
+    bool call_boundary = false;
+    bool runtime_helper_callee = false;
+    bool caller_saved_clobbers = false;
+    bool preserves_source_operation_identity = false;
+  };
+
+  struct AbiPolicy {
+    PreparedF128RuntimeHelperAbiTransition transition =
+        PreparedF128RuntimeHelperAbiTransition::Missing;
+    PreparedRegisterBank argument_bank = PreparedRegisterBank::None;
+    PreparedRegisterBank result_bank = PreparedRegisterBank::None;
+    std::size_t argument_count = 0;
+    std::size_t result_count = 0;
+    std::size_t width_bytes = 16;
+  };
+
+  struct LivePreservationPolicy {
+    bool evaluated = false;
+    bool caller_saved_clobbers_modeled = false;
+    bool no_additional_live_preservation_required = false;
+    std::vector<PreparedCallPreservedValue> preserved_values;
+  };
+
+  struct SelectedCallOwnershipPolicy {
+    bool owns_terminal_call = false;
+    bool has_callee_identity = false;
+    bool has_resource_policy = false;
+    bool has_clobber_policy = false;
+    bool has_abi_bindings = false;
+    bool has_marshaling = false;
+    bool has_live_preservation = false;
+  };
+
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Add;
+  bir::TypeKind source_type = bir::TypeKind::F128;
+  bir::TypeKind result_type = bir::TypeKind::F128;
+  PreparedValueId result_value_id = 0;
+  ValueNameId result_value_name = kInvalidValueName;
+  PreparedValueId lhs_value_id = 0;
+  ValueNameId lhs_value_name = kInvalidValueName;
+  PreparedValueId rhs_value_id = 0;
+  ValueNameId rhs_value_name = kInvalidValueName;
+  PreparedF128RuntimeHelperFamily helper_family = PreparedF128RuntimeHelperFamily::Arithmetic;
+  PreparedF128RuntimeHelperKind helper_kind = PreparedF128RuntimeHelperKind::Add;
+  std::string callee_name;
+  PreparedF128RuntimeHelperResultOwnership result_ownership =
+      PreparedF128RuntimeHelperResultOwnership::Missing;
+  std::optional<CarrierBinding> lhs_carrier;
+  std::optional<CarrierBinding> rhs_carrier;
+  std::optional<CarrierBinding> result_carrier;
+  ResourcePolicy resource_policy;
+  AbiPolicy abi_policy;
+  LivePreservationPolicy live_preservation_policy;
+  SelectedCallOwnershipPolicy selected_call_ownership;
+  std::vector<PreparedClobberedRegister> clobbered_registers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedF128RuntimeHelperFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedF128RuntimeHelper> helpers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedF128RuntimeHelpers {
+  std::vector<PreparedF128RuntimeHelperFunction> functions;
+};
+
 enum class PreparedI128RuntimeHelperFamily {
   DivRem,
   FloatIntegerConversion,
@@ -5001,6 +5145,7 @@ struct PreparedBirModule {
   PreparedStoragePlans storage_plans;
   PreparedI128Carriers i128_carriers;
   PreparedF128Carriers f128_carriers;
+  PreparedF128RuntimeHelpers f128_runtime_helpers;
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
   std::vector<PrepareNote> notes;
@@ -5215,6 +5360,23 @@ find_prepared_i128_runtime_helpers(const PreparedI128RuntimeHelpers& helpers,
 find_prepared_i128_runtime_helpers(const PreparedBirModule& module,
                                    FunctionNameId function_name) {
   return find_prepared_i128_runtime_helpers(module.i128_runtime_helpers, function_name);
+}
+
+[[nodiscard]] inline const PreparedF128RuntimeHelperFunction*
+find_prepared_f128_runtime_helpers(const PreparedF128RuntimeHelpers& helpers,
+                                   FunctionNameId function_name) {
+  for (const auto& function_helpers : helpers.functions) {
+    if (function_helpers.function_name == function_name) {
+      return &function_helpers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedF128RuntimeHelperFunction*
+find_prepared_f128_runtime_helpers(const PreparedBirModule& module,
+                                   FunctionNameId function_name) {
+  return find_prepared_f128_runtime_helpers(module.f128_runtime_helpers, function_name);
 }
 
 [[nodiscard]] inline const PreparedI128Carrier* find_prepared_i128_carrier(

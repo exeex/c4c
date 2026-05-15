@@ -8,32 +8,20 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 4 started with the smallest real helper-boundary check and resolved it as
-blocked, not as a code slice. I inspected the prepared and AArch64 dispatch
-surfaces for helper calls: `PreparedF128Carrier`, `PreparedI128RuntimeHelper`,
-`append_i128_runtime_helper_mappings`, `populate_i128_runtime_helper_*`,
-`make_prepared_i128_runtime_helper_boundary_record`, and the dispatch path that
-selects only prepared i128 div/rem helpers. The current prepared F128 authority
-is carrier-only: named full-width q-register or memory-backed 16-byte storage
-facts. There is no genuine prepared binary128 soft-float helper boundary yet.
-
-Exact missing prepared helper authority: a structured F128 soft-float helper
-fact family that maps one binary128 arithmetic operation to a concrete helper
-identity/callee, records 16-byte F128 argument and result carriers, models
-argument marshaling and result unmarshaling across the helper ABI, publishes
-caller-saved clobbers and preserved live values, and exposes selected
-call-ownership flags equivalent to the existing i128 helper boundary policy.
-Without that fact family, selecting an AArch64 F128 helper node would require
-guessing from BIR operation shape or scalar FP behavior instead of consuming
-prepared authority.
+Step 4 added the first record-only prepared binary128 soft-float helper
+authority slice for F128 add. `PreparedF128RuntimeHelper` now maps an F128
+`add` BIR instruction to `__addtf3`, preserves helper identity, source opcode,
+result/lhs/rhs value ids, full-width 16-byte F128 carrier references, resource
+flags, selected-call ownership flags, and explicit fail-closed diagnostics for
+missing ABI marshaling, caller-saved clobber, and live-preservation authority.
+No AArch64 machine selection was added.
 
 ## Suggested Next
 
-Stay on Step 4 and add the first prepared binary128 soft-float helper authority
-slice. The smallest coherent packet is to introduce a record-only prepared F128
-helper fact for one operation such as F128 add, with helper identity, full-width
-operand/result carrier references, ABI marshaling facts, clobber policy, and
-live-preservation ownership before AArch64 dispatch selects a machine node.
+Stay on Step 4 and fill the next exact F128 helper-boundary gap: add explicit
+ABI marshaling/unmarshaling authority for the prepared F128 soft-float helper
+record, then add caller-saved clobber and live-preservation facts before any
+AArch64 dispatch consumes the helper.
 
 ## Watchouts
 
@@ -80,6 +68,13 @@ live-preservation ownership before AArch64 dispatch selects a machine node.
 - Unsupported F128 arithmetic/cast/comparison operations should remain
   diagnosed until the prepared helper fact family exists; do not add scalar F64
   approximations or dispatch-only callee guesses.
+- The new F128 add helper record intentionally keeps
+  `owns_terminal_call=no`; the prepared fact is not complete enough for AArch64
+  dispatch until ABI marshaling, clobbers, and live preservation become
+  structured authority.
+- Only F128 add maps to a helper callee in this slice. Sub/mul/div/compare/cast
+  helpers remain unsupported until their semantic helper identities and ABI
+  facts are added deliberately.
 
 ## Proof
 

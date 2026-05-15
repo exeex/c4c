@@ -2083,6 +2083,21 @@ const prepare::PreparedF128Carrier* find_f128_carrier(
   return prepare::find_prepared_f128_carrier(*function_carriers, value_id);
 }
 
+const prepare::PreparedF128RuntimeHelper* find_first_f128_runtime_helper(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  const auto* function_helpers =
+      prepare::find_prepared_f128_runtime_helpers(prepared, function_id);
+  if (function_helpers == nullptr || function_helpers->helpers.empty()) {
+    return nullptr;
+  }
+  return &function_helpers->helpers.front();
+}
+
 std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
   std::string summary = std::string(prepare::prepared_register_bank_name(clobber.bank)) + ":" +
                         clobber.register_name + "/w" + std::to_string(clobber.contiguous_width);
@@ -2412,6 +2427,52 @@ prepare::PreparedBirModule prepare_f128_register_carrier_dump_module() {
   bir::Block entry;
   entry.label = "entry";
   entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
+prepare::PreparedBirModule prepare_f128_soft_float_helper_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "f128_soft_float_helper_dump_contract";
+  function.return_type = bir::TypeKind::F128;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "rhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F128, "sum"),
+      .operand_type = bir::TypeKind::F128,
+      .lhs = bir::Value::named(bir::TypeKind::F128, "lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::F128, "rhs"),
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F128, "sum"),
+  };
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
 
@@ -3514,6 +3575,83 @@ int main() {
   if (!expect_contains(f128_register_dump,
                        "width=1 units=q0 reg=q0",
                        "f128 register carrier q-register occupancy")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f128_helper_prepared = prepare_f128_soft_float_helper_dump_module();
+  const auto* f128_helper = find_first_f128_runtime_helper(
+      f128_helper_prepared, "f128_soft_float_helper_dump_contract");
+  if (f128_helper == nullptr ||
+      f128_helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      f128_helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      f128_helper->callee_name != "__addtf3" ||
+      f128_helper->source_type != bir::TypeKind::F128 ||
+      f128_helper->result_type != bir::TypeKind::F128 ||
+      f128_helper->result_ownership !=
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      !f128_helper->lhs_carrier.has_value() ||
+      !f128_helper->rhs_carrier.has_value() ||
+      !f128_helper->result_carrier.has_value() ||
+      f128_helper->lhs_carrier->width_bytes != 16 ||
+      f128_helper->rhs_carrier->width_bytes != 16 ||
+      f128_helper->result_carrier->width_bytes != 16 ||
+      f128_helper->selected_call_ownership.owns_terminal_call) {
+    std::cerr << "[FAIL] prepared f128 soft-float helper lost structured record authority\n";
+    return EXIT_FAILURE;
+  }
+  const auto has_f128_missing_fact = [&](std::string_view fact) {
+    return std::any_of(f128_helper->missing_required_facts.begin(),
+                       f128_helper->missing_required_facts.end(),
+                       [&](const std::string& candidate) {
+                         return candidate == fact;
+                       });
+  };
+  if (!has_f128_missing_fact("f128_helper_boundary_requires_explicit_abi_marshaling_policy") ||
+      !has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
+      !has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
+      !has_f128_missing_fact("selected_call_ownership_requires_abi_bindings")) {
+    std::cerr << "[FAIL] prepared f128 soft-float helper did not fail closed on missing authority\n";
+    return EXIT_FAILURE;
+  }
+  const std::string f128_helper_dump = prepare::print(f128_helper_prepared);
+  if (!expect_contains(f128_helper_dump,
+                       "--- prepared-f128-runtime-helpers ---",
+                       "f128 runtime helper printer section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "f128_helper block=0 inst=0 family=arithmetic kind=add opcode=add callee=__addtf3 source_type=f128 result_type=f128 result=sum#",
+                       "f128 add helper identity and callee")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "result_ownership=full_width_carrier resources=[call_boundary,runtime_helper_callee,source_operation_identity]",
+                       "f128 helper resource record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "carriers lhs=lhs#",
+                       "f128 helper lhs carrier record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "rhs=rhs#",
+                       "f128 helper rhs carrier record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "result=sum#",
+                       "f128 helper result carrier record")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "selected_call_ownership=[owns_terminal_call=no,callee=yes,resources=no,clobbers=no,abi_bindings=no,marshaling=no,live_preservation=no]",
+                       "f128 helper fail-closed selected ownership")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_helper_dump,
+                       "f128_helper_boundary_requires_explicit_abi_marshaling_policy",
+                       "f128 helper missing ABI diagnostic")) {
     return EXIT_FAILURE;
   }
 

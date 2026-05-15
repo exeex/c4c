@@ -302,6 +302,100 @@ using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointe
   return "";
 }
 
+[[nodiscard]] bool is_f128_soft_float_helper_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return true;
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] PreparedF128RuntimeHelperKind f128_soft_float_helper_kind(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return PreparedF128RuntimeHelperKind::Add;
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return PreparedF128RuntimeHelperKind::Add;
+}
+
+[[nodiscard]] std::string_view f128_soft_float_helper_callee(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return "__addtf3";
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      break;
+  }
+  return "";
+}
+
 [[nodiscard]] std::size_t i128_helper_type_width_bytes(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -1941,6 +2035,91 @@ void append_i128_runtime_helper_fact(PreparedI128RuntimeHelperFunction& function
   }
 }
 
+void append_f128_runtime_helper_fact(PreparedF128RuntimeHelperFunction& function_helpers,
+                                     std::string fact) {
+  if (std::find(function_helpers.missing_required_facts.begin(),
+                function_helpers.missing_required_facts.end(),
+                fact) == function_helpers.missing_required_facts.end()) {
+    function_helpers.missing_required_facts.push_back(std::move(fact));
+  }
+}
+
+void append_f128_runtime_helper_mappings(const PreparedNameTables& names,
+                                         const bir::Function& function,
+                                         const PreparedRegallocFunction& regalloc_function,
+                                         PreparedF128RuntimeHelpers& helper_mappings) {
+  PreparedF128RuntimeHelperFunction function_helpers{
+      .function_name = regalloc_function.function_name,
+      .helpers = {},
+      .missing_required_facts = {},
+  };
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto& inst = block.insts[instruction_index];
+      const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+      if (binary == nullptr ||
+          binary->operand_type != bir::TypeKind::F128 ||
+          binary->result.type != bir::TypeKind::F128 ||
+          !is_f128_soft_float_helper_opcode(binary->opcode)) {
+        continue;
+      }
+
+      if (binary->result.kind != bir::Value::Kind::Named ||
+          binary->lhs.kind != bir::Value::Kind::Named ||
+          binary->rhs.kind != bir::Value::Kind::Named) {
+        append_f128_runtime_helper_fact(
+            function_helpers,
+            "f128_soft_float_helper_requires_named_result_and_operands");
+        continue;
+      }
+      const auto* result =
+          find_regalloc_value(regalloc_function, names, binary->result.name);
+      const auto* lhs = find_regalloc_value(regalloc_function, names, binary->lhs.name);
+      const auto* rhs = find_regalloc_value(regalloc_function, names, binary->rhs.name);
+      if (result == nullptr || lhs == nullptr || rhs == nullptr) {
+        append_f128_runtime_helper_fact(
+            function_helpers,
+            "f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs");
+        continue;
+      }
+      const auto callee = f128_soft_float_helper_callee(binary->opcode);
+      if (callee.empty()) {
+        append_f128_runtime_helper_fact(
+            function_helpers,
+            "f128_soft_float_helper_requires_callee_identity");
+        continue;
+      }
+
+      function_helpers.helpers.push_back(PreparedF128RuntimeHelper{
+          .function_name = regalloc_function.function_name,
+          .block_index = block_index,
+          .instruction_index = instruction_index,
+          .source_binary_opcode = binary->opcode,
+          .source_type = binary->operand_type,
+          .result_type = binary->result.type,
+          .result_value_id = result->value_id,
+          .result_value_name = result->value_name,
+          .lhs_value_id = lhs->value_id,
+          .lhs_value_name = lhs->value_name,
+          .rhs_value_id = rhs->value_id,
+          .rhs_value_name = rhs->value_name,
+          .helper_family = PreparedF128RuntimeHelperFamily::Arithmetic,
+          .helper_kind = f128_soft_float_helper_kind(binary->opcode),
+          .callee_name = std::string(callee),
+          .result_ownership = PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+      });
+    }
+  }
+
+  if (!function_helpers.helpers.empty() ||
+      !function_helpers.missing_required_facts.empty()) {
+    helper_mappings.functions.push_back(std::move(function_helpers));
+  }
+}
+
 void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
                                          const bir::Function& function,
                                          const PreparedRegallocFunction& regalloc_function,
@@ -3127,6 +3306,10 @@ void BirPreAlloc::run_regalloc() {
                                           *function,
                                           regalloc_function,
                                           prepared_.i128_runtime_helpers);
+      append_f128_runtime_helper_mappings(prepared_.names,
+                                          *function,
+                                          regalloc_function,
+                                          prepared_.f128_runtime_helpers);
     }
 
     prepared_.stack_layout.frame_size_bytes =

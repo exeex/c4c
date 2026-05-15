@@ -1377,6 +1377,185 @@ void populate_f128_carriers(PreparedBirModule& prepared) {
   }
 }
 
+void append_f128_runtime_helper_fact(PreparedF128RuntimeHelper& helper,
+                                     std::string fact) {
+  if (std::find(helper.missing_required_facts.begin(),
+                helper.missing_required_facts.end(),
+                fact) == helper.missing_required_facts.end()) {
+    helper.missing_required_facts.push_back(std::move(fact));
+  }
+}
+
+[[nodiscard]] PreparedF128RuntimeHelper::CarrierBinding make_f128_helper_carrier_binding(
+    const PreparedF128Carrier& carrier) {
+  return PreparedF128RuntimeHelper::CarrierBinding{
+      .value_id = carrier.value_id,
+      .value_name = carrier.value_name,
+      .carrier_kind = carrier.kind,
+      .width_bytes = carrier.total_size_bytes,
+      .align_bytes = carrier.total_align_bytes,
+      .register_bank = carrier.register_bank,
+      .register_class = carrier.register_class,
+      .register_name = carrier.register_name,
+      .slot_id = carrier.slot_id,
+      .stack_offset_bytes = carrier.stack_offset_bytes,
+  };
+}
+
+void populate_f128_helper_carrier_from_fact(
+    const PreparedF128CarrierFunction* function_carriers,
+    PreparedF128RuntimeHelper& helper,
+    PreparedValueId value_id,
+    std::optional<PreparedF128RuntimeHelper::CarrierBinding>& output,
+    std::string_view fact_prefix) {
+  output.reset();
+  if (function_carriers == nullptr) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_missing_prepared_f128_carriers");
+    return;
+  }
+  const auto* carrier = find_prepared_f128_carrier(*function_carriers, value_id);
+  if (carrier == nullptr) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_missing_prepared_f128_carrier");
+    return;
+  }
+  output = make_f128_helper_carrier_binding(*carrier);
+  if (carrier->kind == PreparedF128CarrierKind::Missing) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_requires_full_width_f128_carrier");
+  }
+  if (carrier->total_size_bytes != 16 || carrier->total_align_bytes != 16) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_requires_16_byte_f128_carrier");
+  }
+  for (const auto& fact : carrier->missing_required_facts) {
+    append_f128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_carrier_fact:" + fact);
+  }
+}
+
+void populate_f128_runtime_helper_boundary_policy(PreparedF128RuntimeHelper& helper) {
+  helper.resource_policy = PreparedF128RuntimeHelper::ResourcePolicy{
+      .call_boundary = true,
+      .runtime_helper_callee = !helper.callee_name.empty(),
+      .caller_saved_clobbers = false,
+      .preserves_source_operation_identity = true,
+  };
+  helper.abi_policy = PreparedF128RuntimeHelper::AbiPolicy{
+      .transition = PreparedF128RuntimeHelperAbiTransition::Missing,
+      .argument_bank = PreparedRegisterBank::None,
+      .result_bank = PreparedRegisterBank::None,
+      .argument_count = 2,
+      .result_count = 1,
+      .width_bytes = 16,
+  };
+  helper.live_preservation_policy = PreparedF128RuntimeHelper::LivePreservationPolicy{
+      .evaluated = false,
+      .caller_saved_clobbers_modeled = false,
+      .no_additional_live_preservation_required = false,
+      .preserved_values = {},
+  };
+  helper.clobbered_registers.clear();
+
+  if (helper.callee_name.empty()) {
+    append_f128_runtime_helper_fact(helper, "f128_helper_boundary_requires_callee_identity");
+  }
+  append_f128_runtime_helper_fact(
+      helper, "f128_helper_boundary_requires_explicit_abi_marshaling_policy");
+  append_f128_runtime_helper_fact(
+      helper, "f128_helper_boundary_requires_caller_saved_clobber_policy");
+  append_f128_runtime_helper_fact(
+      helper, "f128_helper_boundary_requires_live_preservation_policy");
+}
+
+void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
+  const bool has_carriers =
+      helper.lhs_carrier.has_value() &&
+      helper.rhs_carrier.has_value() &&
+      helper.result_carrier.has_value();
+  const bool has_resource_policy =
+      helper.resource_policy.call_boundary &&
+      helper.resource_policy.runtime_helper_callee &&
+      helper.resource_policy.caller_saved_clobbers &&
+      helper.resource_policy.preserves_source_operation_identity;
+  const bool has_clobber_policy =
+      helper.resource_policy.caller_saved_clobbers && !helper.clobbered_registers.empty();
+  const bool has_abi_bindings =
+      helper.abi_policy.transition ==
+          PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult &&
+      helper.abi_policy.argument_bank != PreparedRegisterBank::None &&
+      helper.abi_policy.result_bank != PreparedRegisterBank::None &&
+      helper.abi_policy.argument_count == 2 &&
+      helper.abi_policy.result_count == 1 &&
+      helper.abi_policy.width_bytes == 16;
+  const bool has_marshaling = has_abi_bindings;
+  const bool has_live_preservation =
+      helper.live_preservation_policy.evaluated &&
+      helper.live_preservation_policy.caller_saved_clobbers_modeled &&
+      helper.live_preservation_policy.no_additional_live_preservation_required;
+
+  helper.selected_call_ownership =
+      PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy{
+          .owns_terminal_call =
+              !helper.callee_name.empty() && has_carriers && has_resource_policy &&
+              has_clobber_policy && has_abi_bindings && has_marshaling &&
+              has_live_preservation,
+          .has_callee_identity = !helper.callee_name.empty(),
+          .has_resource_policy = has_resource_policy,
+          .has_clobber_policy = has_clobber_policy,
+          .has_abi_bindings = has_abi_bindings,
+          .has_marshaling = has_marshaling,
+          .has_live_preservation = has_live_preservation,
+      };
+
+  if (!has_carriers) {
+    append_f128_runtime_helper_fact(helper, "selected_call_ownership_requires_f128_carriers");
+  }
+  if (!helper.selected_call_ownership.has_resource_policy) {
+    append_f128_runtime_helper_fact(helper, "selected_call_ownership_requires_resource_policy");
+  }
+  if (!helper.selected_call_ownership.has_clobber_policy) {
+    append_f128_runtime_helper_fact(helper, "selected_call_ownership_requires_clobber_policy");
+  }
+  if (!helper.selected_call_ownership.has_abi_bindings) {
+    append_f128_runtime_helper_fact(helper, "selected_call_ownership_requires_abi_bindings");
+  }
+  if (!helper.selected_call_ownership.has_marshaling) {
+    append_f128_runtime_helper_fact(helper, "selected_call_ownership_requires_marshaling");
+  }
+  if (!helper.selected_call_ownership.has_live_preservation) {
+    append_f128_runtime_helper_fact(
+        helper, "selected_call_ownership_requires_live_preservation_policy");
+  }
+}
+
+void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
+  for (auto& function_helpers : prepared.f128_runtime_helpers.functions) {
+    const auto* function_carriers =
+        find_prepared_f128_carriers(prepared.f128_carriers, function_helpers.function_name);
+    for (auto& helper : function_helpers.helpers) {
+      helper.lhs_carrier.reset();
+      helper.rhs_carrier.reset();
+      helper.result_carrier.reset();
+      helper.missing_required_facts.clear();
+      populate_f128_runtime_helper_boundary_policy(helper);
+      populate_f128_helper_carrier_from_fact(
+          function_carriers, helper, helper.lhs_value_id, helper.lhs_carrier, "lhs");
+      populate_f128_helper_carrier_from_fact(
+          function_carriers, helper, helper.rhs_value_id, helper.rhs_carrier, "rhs");
+      populate_f128_helper_carrier_from_fact(
+          function_carriers, helper, helper.result_value_id, helper.result_carrier, "result");
+      if (helper.result_ownership !=
+          PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier) {
+        append_f128_runtime_helper_fact(
+            helper, "f128_helper_result_requires_full_width_carrier_ownership");
+      }
+      populate_f128_runtime_helper_ownership(helper);
+    }
+  }
+}
+
 [[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function);
@@ -3571,6 +3750,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_storage_plans(prepared_);
   populate_i128_carriers(prepared_);
   populate_f128_carriers(prepared_);
+  populate_f128_runtime_helper_facts(prepared_);
   populate_i128_runtime_helper_lanes(prepared_);
 }
 

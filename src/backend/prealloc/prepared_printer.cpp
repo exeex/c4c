@@ -1626,6 +1626,126 @@ void append_f128_carriers(std::ostringstream& out, const PreparedBirModule& modu
   }
 }
 
+void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
+  out << "--- prepared-f128-runtime-helpers ---\n";
+  auto append_carrier =
+      [&](std::string_view label,
+          const std::optional<PreparedF128RuntimeHelper::CarrierBinding>& carrier) {
+        out << " " << label << "=";
+        if (!carrier.has_value()) {
+          out << "<missing>";
+          return;
+        }
+        out << maybe_value_name(module.names, carrier->value_name)
+            << "#" << carrier->value_id
+            << "[kind=" << prepared_f128_carrier_kind_name(carrier->carrier_kind)
+            << ",width=" << carrier->width_bytes
+            << ",align=" << carrier->align_bytes
+            << ",bank=" << prepared_register_bank_name(carrier->register_bank)
+            << ",class=" << prepared_register_class_name(carrier->register_class);
+        if (carrier->register_name.has_value()) {
+          out << ",reg=" << *carrier->register_name;
+        }
+        if (carrier->slot_id.has_value()) {
+          out << ",slot=#" << *carrier->slot_id;
+        }
+        if (carrier->stack_offset_bytes.has_value()) {
+          out << ",stack_offset=" << *carrier->stack_offset_bytes;
+        }
+        out << "]";
+      };
+
+  for (const auto& function_helpers : module.f128_runtime_helpers.functions) {
+    out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
+        << "\n";
+    for (const auto& helper : function_helpers.helpers) {
+      out << "  f128_helper block=" << helper.block_index
+          << " inst=" << helper.instruction_index
+          << " family=" << prepared_f128_runtime_helper_family_name(helper.helper_family)
+          << " kind=" << prepared_f128_runtime_helper_kind_name(helper.helper_kind)
+          << " opcode=" << bir::render_binary_opcode(helper.source_binary_opcode)
+          << " callee=" << helper.callee_name
+          << " source_type=" << type_kind_name(helper.source_type)
+          << " result_type=" << type_kind_name(helper.result_type)
+          << " result=" << maybe_value_name(module.names, helper.result_value_name)
+          << "#" << helper.result_value_id
+          << " lhs=" << maybe_value_name(module.names, helper.lhs_value_name)
+          << "#" << helper.lhs_value_id
+          << " rhs=" << maybe_value_name(module.names, helper.rhs_value_name)
+          << "#" << helper.rhs_value_id
+          << " result_ownership="
+          << prepared_f128_runtime_helper_result_ownership_name(helper.result_ownership)
+          << " resources=[";
+      bool printed_resource = false;
+      auto append_resource = [&](std::string_view resource) {
+        if (printed_resource) {
+          out << ",";
+        }
+        out << resource;
+        printed_resource = true;
+      };
+      if (helper.resource_policy.call_boundary) {
+        append_resource("call_boundary");
+      }
+      if (helper.resource_policy.runtime_helper_callee) {
+        append_resource("runtime_helper_callee");
+      }
+      if (helper.resource_policy.caller_saved_clobbers) {
+        append_resource("caller_saved_clobbers");
+      }
+      if (helper.resource_policy.preserves_source_operation_identity) {
+        append_resource("source_operation_identity");
+      }
+      if (!printed_resource) {
+        out << "<none>";
+      }
+      out << "] abi_transition="
+          << prepared_f128_runtime_helper_abi_transition_name(helper.abi_policy.transition)
+          << " arg_bank=" << prepared_register_bank_name(helper.abi_policy.argument_bank)
+          << " result_bank=" << prepared_register_bank_name(helper.abi_policy.result_bank)
+          << " arg_count=" << helper.abi_policy.argument_count
+          << " result_count=" << helper.abi_policy.result_count
+          << " width=" << helper.abi_policy.width_bytes
+          << " carriers";
+      append_carrier("lhs", helper.lhs_carrier);
+      append_carrier("rhs", helper.rhs_carrier);
+      append_carrier("result", helper.result_carrier);
+      out << " live_preservation=[evaluated="
+          << (helper.live_preservation_policy.evaluated ? "yes" : "no")
+          << ",caller_saved_clobbers="
+          << (helper.live_preservation_policy.caller_saved_clobbers_modeled ? "yes" : "no")
+          << ",additional="
+          << (helper.live_preservation_policy.no_additional_live_preservation_required
+                  ? "none"
+                  : "required")
+          << ",preserved=" << helper.live_preservation_policy.preserved_values.size()
+          << "] selected_call_ownership=[owns_terminal_call="
+          << (helper.selected_call_ownership.owns_terminal_call ? "yes" : "no")
+          << ",callee=" << (helper.selected_call_ownership.has_callee_identity ? "yes" : "no")
+          << ",resources=" << (helper.selected_call_ownership.has_resource_policy ? "yes" : "no")
+          << ",clobbers=" << (helper.selected_call_ownership.has_clobber_policy ? "yes" : "no")
+          << ",abi_bindings=" << (helper.selected_call_ownership.has_abi_bindings ? "yes" : "no")
+          << ",marshaling=" << (helper.selected_call_ownership.has_marshaling ? "yes" : "no")
+          << ",live_preservation="
+          << (helper.selected_call_ownership.has_live_preservation ? "yes" : "no")
+          << "]";
+      if (!helper.missing_required_facts.empty()) {
+        out << " missing_facts=";
+        for (std::size_t index = 0; index < helper.missing_required_facts.size(); ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          out << helper.missing_required_facts[index];
+        }
+      }
+      out << "\n";
+    }
+    for (const auto& fact : function_helpers.missing_required_facts) {
+      out << "    missing fact=" << fact << "\n";
+    }
+  }
+}
+
 void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-i128-runtime-helpers ---\n";
   auto append_lane = [&](std::string_view label,
@@ -2115,6 +2235,7 @@ std::string print(const PreparedBirModule& module) {
   append_storage_plans(out, module);
   append_i128_carriers(out, module);
   append_f128_carriers(out, module);
+  append_f128_runtime_helpers(out, module);
   append_i128_runtime_helpers(out, module);
   append_addressing(out, module);
   return out.str();
