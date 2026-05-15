@@ -662,6 +662,71 @@ int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
   return 0;
 }
 
+int volatile_memory_does_not_fabricate_atomic_authority() {
+  auto fixture = make_fixture();
+  const bir::LoadLocalInst load{
+      .result = named_value(bir::TypeKind::I32, "%load"),
+      .slot_id = c4c::SlotNameId{5},
+      .byte_offset = 8,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .byte_offset = 8,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .address_space = bir::AddressSpace::Fs,
+              .is_volatile = true,
+              .base_slot_id = c4c::SlotNameId{5},
+          },
+  };
+
+  const auto selected =
+      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          2,
+          load);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected volatile memory load to select as ordinary memory");
+  }
+
+  const auto instruction = aarch64_codegen::make_memory_instruction(*selected.record);
+  if (instruction.opcode != aarch64_codegen::MachineOpcode::Load ||
+      instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.side_effects.size() != 2 ||
+      instruction.side_effects[0] != aarch64_codegen::MachineSideEffectKind::MemoryRead ||
+      instruction.side_effects[1] !=
+          aarch64_codegen::MachineSideEffectKind::VolatileMemoryAccess) {
+    return fail("expected volatile memory to remain volatile memory, not atomic authority");
+  }
+
+  const bir::LoadLocalInst missing_structured_address_load{
+      .result = named_value(bir::TypeKind::I32, "%load"),
+      .slot_id = c4c::SlotNameId{5},
+      .byte_offset = 8,
+      .align_bytes = 4,
+  };
+  const auto missing_structured_address =
+      aarch64_codegen::make_prepared_memory_operand_record(
+          fixture.names,
+          fixture.locations,
+          fixture.addressing,
+          fixture.block_label,
+          2,
+          missing_structured_address_load);
+  if (missing_structured_address.record.has_value() ||
+      missing_structured_address.error !=
+          aarch64_codegen::PreparedMemoryOperandRecordError::AddressFactMismatch) {
+    return fail("expected missing structured memory facts to fail closed");
+  }
+  return 0;
+}
+
 int unsupported_or_mismatched_memory_facts_fail_closed() {
   auto fixture = make_fixture();
   const bir::LoadLocalInst load{
@@ -1316,6 +1381,10 @@ int main() {
     return status;
   }
   if (const int status = string_constant_load_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = volatile_memory_does_not_fabricate_atomic_authority();
       status != 0) {
     return status;
   }
