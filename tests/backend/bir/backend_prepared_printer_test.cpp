@@ -2974,6 +2974,26 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
+                       "abi_bindings lhs.low=lhs#",
+                       "i128 helper ABI binding section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "arg=0,abi_index=0,bank=gpr,class=general,reg=rdi",
+                       "i128 helper lhs low ABI argument register binding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "arg=1,abi_index=3,bank=gpr,class=general,reg=rcx",
+                       "i128 helper rhs high ABI argument register binding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result,abi_index=1,bank=gpr,class=general,reg=rdx",
+                       "i128 helper high result ABI register binding")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
                        "carrier=memory_backed,slot=",
                        "i128 helper structured memory-backed lane authority")) {
     return EXIT_FAILURE;

@@ -2657,6 +2657,30 @@ int check_i128_runtime_helper_mapping_authority() {
         !helper.rhs_high_lane.has_value() ||
         !helper.result_low_lane.has_value() ||
         !helper.result_high_lane.has_value() ||
+        !helper.lhs_low_abi_argument.has_value() ||
+        !helper.lhs_high_abi_argument.has_value() ||
+        !helper.rhs_low_abi_argument.has_value() ||
+        !helper.rhs_high_abi_argument.has_value() ||
+        !helper.result_low_abi_result.has_value() ||
+        !helper.result_high_abi_result.has_value() ||
+        helper.lhs_low_abi_argument->helper_argument_index != std::optional<std::size_t>{0} ||
+        helper.lhs_low_abi_argument->abi_register_index != 0 ||
+        helper.lhs_low_abi_argument->register_name != "rdi" ||
+        helper.lhs_high_abi_argument->register_name != "rsi" ||
+        helper.rhs_low_abi_argument->helper_argument_index != std::optional<std::size_t>{1} ||
+        helper.rhs_low_abi_argument->register_name != "rdx" ||
+        helper.rhs_high_abi_argument->register_name != "rcx" ||
+        helper.result_low_abi_result->helper_argument_index.has_value() ||
+        helper.result_low_abi_result->register_name != "rax" ||
+        helper.result_high_abi_result->register_name != "rdx" ||
+        helper.result_high_abi_result->register_placement !=
+            std::optional<prepare::PreparedRegisterPlacement>{
+                prepare::PreparedRegisterPlacement{
+                    .bank = prepare::PreparedRegisterBank::Gpr,
+                    .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                    .slot_index = 1,
+                    .contiguous_width = 1,
+                }} ||
         helper.lhs_low_lane->carrier_kind == prepare::PreparedI128CarrierKind::Missing ||
         helper.lhs_low_lane->role != prepare::PreparedI128LaneRole::Low ||
         helper.lhs_high_lane->role != prepare::PreparedI128LaneRole::High ||
@@ -2702,6 +2726,12 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("clobbers=gpr:") == std::string::npos ||
       dump.find("lhs.low=p.lhs#") == std::string::npos ||
       dump.find("result.high=r.u#") == std::string::npos ||
+      dump.find("abi_bindings lhs.low=p.lhs#") == std::string::npos ||
+      dump.find("arg=0,abi_index=0,bank=gpr,class=general,reg=rdi") == std::string::npos ||
+      dump.find("rhs.high=p.rhs#") == std::string::npos ||
+      dump.find("arg=1,abi_index=3,bank=gpr,class=general,reg=rcx") == std::string::npos ||
+      dump.find("result.high=r.u#") == std::string::npos ||
+      dump.find("result,abi_index=1,bank=gpr,class=general,reg=rdx") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||
       dump.find("result_requires_register_pair_carrier") == std::string::npos ||
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==

@@ -2,6 +2,7 @@
 #include "target_register_profile.hpp"
 
 #include <algorithm>
+#include <array>
 #include <unordered_set>
 
 namespace c4c::backend::prepare {
@@ -1230,6 +1231,99 @@ void append_i128_runtime_helper_fact(PreparedI128RuntimeHelper& helper,
   };
 }
 
+[[nodiscard]] std::optional<std::string> i128_helper_abi_register_name(
+    const c4c::TargetProfile& target_profile,
+    bool result,
+    std::size_t abi_register_index) {
+  switch (target_profile.arch) {
+    case c4c::TargetArch::X86_64:
+      if (result) {
+        constexpr std::array<std::string_view, 2> kResultRegisters = {"rax", "rdx"};
+        if (abi_register_index < kResultRegisters.size()) {
+          return std::string(kResultRegisters[abi_register_index]);
+        }
+        return std::nullopt;
+      }
+      break;
+    case c4c::TargetArch::Aarch64:
+    case c4c::TargetArch::Riscv64:
+      if (result) {
+        const bir::CallResultAbiInfo result_abi{
+            .type = bir::TypeKind::I64,
+            .primary_class = bir::AbiValueClass::Integer,
+        };
+        const auto low = call_result_destination_register_name(target_profile, result_abi);
+        if (!low.has_value()) {
+          return std::nullopt;
+        }
+        if (abi_register_index == 0) {
+          return low;
+        }
+        if (abi_register_index == 1) {
+          if (target_profile.arch == c4c::TargetArch::Aarch64) {
+            return std::string("x1");
+          }
+          return std::string("a1");
+        }
+        return std::nullopt;
+      }
+      break;
+    case c4c::TargetArch::I686:
+    case c4c::TargetArch::Unknown:
+      return std::nullopt;
+  }
+
+  const bir::CallArgAbiInfo arg_abi{
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .primary_class = bir::AbiValueClass::Integer,
+      .passed_in_register = true,
+  };
+  return call_arg_destination_register_name(target_profile, arg_abi, abi_register_index);
+}
+
+[[nodiscard]] std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>
+make_i128_helper_abi_register_binding(
+    const c4c::TargetProfile& target_profile,
+    PreparedValueId value_id,
+    ValueNameId value_name,
+    PreparedI128LaneRole role,
+    std::size_t lane_index,
+    std::optional<std::size_t> helper_argument_index,
+    std::size_t abi_register_index) {
+  const auto register_name =
+      i128_helper_abi_register_name(target_profile,
+                                    !helper_argument_index.has_value(),
+                                    abi_register_index);
+  if (!register_name.has_value()) {
+    return std::nullopt;
+  }
+  return PreparedI128RuntimeHelper::AbiRegisterBinding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .role = role,
+      .lane_index = lane_index,
+      .width_bytes = 8,
+      .helper_argument_index = helper_argument_index,
+      .abi_register_index = abi_register_index,
+      .register_bank = PreparedRegisterBank::Gpr,
+      .register_class = PreparedRegisterClass::General,
+      .register_name = *register_name,
+      .contiguous_width = 1,
+      .occupied_register_names = {*register_name},
+      .register_placement =
+          PreparedRegisterPlacement{
+              .bank = PreparedRegisterBank::Gpr,
+              .pool = helper_argument_index.has_value()
+                          ? PreparedRegisterSlotPool::CallArgument
+                          : PreparedRegisterSlotPool::CallResult,
+              .slot_index = abi_register_index,
+              .contiguous_width = 1,
+          },
+  };
+}
+
 void populate_i128_helper_lanes_from_carrier(
     const PreparedI128CarrierFunction* function_carriers,
     PreparedI128RuntimeHelper& helper,
@@ -1262,6 +1356,89 @@ void populate_i128_helper_lanes_from_carrier(
   for (const auto& fact : carrier->missing_required_facts) {
     append_i128_runtime_helper_fact(
         helper, std::string(fact_prefix) + "_carrier_fact:" + fact);
+  }
+}
+
+void populate_i128_runtime_helper_abi_bindings(
+    const c4c::TargetProfile& target_profile,
+    PreparedI128RuntimeHelper& helper) {
+  helper.lhs_low_abi_argument.reset();
+  helper.lhs_high_abi_argument.reset();
+  helper.rhs_low_abi_argument.reset();
+  helper.rhs_high_abi_argument.reset();
+  helper.result_low_abi_result.reset();
+  helper.result_high_abi_result.reset();
+
+  if (helper.helper_family != PreparedI128RuntimeHelperFamily::DivRem) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_abi_bindings_deferred_for_family");
+    return;
+  }
+  if (helper.result_ownership !=
+      PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
+    append_i128_runtime_helper_fact(
+        helper, "i128_helper_abi_bindings_require_direct_low_high_result");
+    return;
+  }
+  if (helper.callee_name.empty()) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_abi_bindings_require_callee_identity");
+    return;
+  }
+
+  helper.lhs_low_abi_argument =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.lhs_value_id,
+                                            helper.lhs_value_name,
+                                            PreparedI128LaneRole::Low,
+                                            0,
+                                            std::size_t{0},
+                                            0);
+  helper.lhs_high_abi_argument =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.lhs_value_id,
+                                            helper.lhs_value_name,
+                                            PreparedI128LaneRole::High,
+                                            1,
+                                            std::size_t{0},
+                                            1);
+  helper.rhs_low_abi_argument =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.rhs_value_id,
+                                            helper.rhs_value_name,
+                                            PreparedI128LaneRole::Low,
+                                            0,
+                                            std::size_t{1},
+                                            2);
+  helper.rhs_high_abi_argument =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.rhs_value_id,
+                                            helper.rhs_value_name,
+                                            PreparedI128LaneRole::High,
+                                            1,
+                                            std::size_t{1},
+                                            3);
+  helper.result_low_abi_result =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.result_value_id,
+                                            helper.result_value_name,
+                                            PreparedI128LaneRole::Low,
+                                            0,
+                                            std::nullopt,
+                                            0);
+  helper.result_high_abi_result =
+      make_i128_helper_abi_register_binding(target_profile,
+                                            helper.result_value_id,
+                                            helper.result_value_name,
+                                            PreparedI128LaneRole::High,
+                                            1,
+                                            std::nullopt,
+                                            1);
+
+  if (!helper.lhs_low_abi_argument.has_value() || !helper.lhs_high_abi_argument.has_value() ||
+      !helper.rhs_low_abi_argument.has_value() || !helper.rhs_high_abi_argument.has_value() ||
+      !helper.result_low_abi_result.has_value() ||
+      !helper.result_high_abi_result.has_value()) {
+    append_i128_runtime_helper_fact(
+        helper, "i128_helper_abi_bindings_require_supported_target_registers");
   }
 }
 
@@ -1334,6 +1511,7 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.missing_required_facts.clear();
       populate_i128_runtime_helper_boundary_policy(
           prepared.target_profile, regalloc_function, helper);
+      populate_i128_runtime_helper_abi_bindings(prepared.target_profile, helper);
 
       populate_i128_helper_lanes_from_carrier(function_carriers,
                                              helper,

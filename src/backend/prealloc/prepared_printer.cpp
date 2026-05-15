@@ -1555,6 +1555,41 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
     }
     out << "]";
   };
+  auto append_abi_binding =
+      [&](std::string_view label,
+          const std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>& binding) {
+        out << " " << label << "=";
+        if (!binding.has_value()) {
+          out << "<missing>";
+          return;
+        }
+        out << maybe_value_name(module.names, binding->value_name)
+            << "#" << binding->value_id
+            << ":" << prepared_i128_lane_role_name(binding->role)
+            << "[index=" << binding->lane_index
+            << ",width=" << binding->width_bytes;
+        if (binding->helper_argument_index.has_value()) {
+          out << ",arg=" << *binding->helper_argument_index;
+        } else {
+          out << ",result";
+        }
+        out << ",abi_index=" << binding->abi_register_index
+            << ",bank=" << prepared_register_bank_name(binding->register_bank)
+            << ",class=" << prepared_register_class_name(binding->register_class)
+            << ",reg=" << binding->register_name
+            << ",contiguous_width=" << binding->contiguous_width;
+        if (!binding->occupied_register_names.empty()) {
+          out << ",occupied=";
+          for (std::size_t index = 0; index < binding->occupied_register_names.size(); ++index) {
+            if (index != 0) {
+              out << ",";
+            }
+            out << binding->occupied_register_names[index];
+          }
+        }
+        out << "]";
+        append_register_placement(out, "placement", binding->register_placement);
+      };
   for (const auto& function_helpers : module.i128_runtime_helpers.functions) {
     out << "prepared.func @" << maybe_function_name(module.names, function_helpers.function_name)
         << "\n";
@@ -1641,6 +1676,13 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_lane("rhs.high", helper.rhs_high_lane);
       append_lane("result.low", helper.result_low_lane);
       append_lane("result.high", helper.result_high_lane);
+      out << " abi_bindings";
+      append_abi_binding("lhs.low", helper.lhs_low_abi_argument);
+      append_abi_binding("lhs.high", helper.lhs_high_abi_argument);
+      append_abi_binding("rhs.low", helper.rhs_low_abi_argument);
+      append_abi_binding("rhs.high", helper.rhs_high_abi_argument);
+      append_abi_binding("result.low", helper.result_low_abi_result);
+      append_abi_binding("result.high", helper.result_high_abi_result);
       if (!helper.missing_required_facts.empty()) {
         out << " missing_facts=";
         for (std::size_t index = 0; index < helper.missing_required_facts.size(); ++index) {

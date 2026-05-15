@@ -1737,6 +1737,22 @@ struct PreparedI128RuntimeHelper {
     std::optional<std::size_t> stack_offset_bytes;
   };
 
+  struct AbiRegisterBinding {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    PreparedI128LaneRole role = PreparedI128LaneRole::Low;
+    std::size_t lane_index = 0;
+    std::size_t width_bytes = 8;
+    std::optional<std::size_t> helper_argument_index;
+    std::size_t abi_register_index = 0;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedRegisterClass register_class = PreparedRegisterClass::None;
+    std::string register_name;
+    std::size_t contiguous_width = 1;
+    std::vector<std::string> occupied_register_names;
+    std::optional<PreparedRegisterPlacement> register_placement;
+  };
+
   struct ResourcePolicy {
     bool call_boundary = false;
     bool runtime_helper_callee = false;
@@ -1787,6 +1803,12 @@ struct PreparedI128RuntimeHelper {
   std::optional<LaneBinding> rhs_high_lane;
   std::optional<LaneBinding> result_low_lane;
   std::optional<LaneBinding> result_high_lane;
+  std::optional<AbiRegisterBinding> lhs_low_abi_argument;
+  std::optional<AbiRegisterBinding> lhs_high_abi_argument;
+  std::optional<AbiRegisterBinding> rhs_low_abi_argument;
+  std::optional<AbiRegisterBinding> rhs_high_abi_argument;
+  std::optional<AbiRegisterBinding> result_low_abi_result;
+  std::optional<AbiRegisterBinding> result_high_abi_result;
   std::optional<MemoryReturnOwnership> memory_return;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;
