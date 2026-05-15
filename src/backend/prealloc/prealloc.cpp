@@ -1202,6 +1202,14 @@ void append_intrinsic_missing_fact(PreparedIntrinsicCarrierFunction& function_ca
       "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
 }
 
+void append_inline_asm_missing_fact(PreparedInlineAsmCarrierFunction& function_carriers,
+                                    PreparedInlineAsmCarrier& carrier,
+                                    std::string fact) {
+  carrier.missing_required_facts.push_back(fact);
+  function_carriers.missing_required_facts.push_back(
+      "inst#" + std::to_string(carrier.inst_index) + ":" + std::move(fact));
+}
+
 [[nodiscard]] std::optional<ValueNameId> prepared_atomic_named_value_id(
     PreparedNameTables& names,
     const std::optional<bir::Value>& value) {
@@ -1259,6 +1267,214 @@ prepared_intrinsic_operand_homes(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] bool is_inline_asm_integer_immediate_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return true;
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::Void:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::int64_t> inline_asm_integer_immediate_value(
+    const bir::Value& value,
+    const std::optional<PreparedValueHome>& home) {
+  if (value.kind == bir::Value::Kind::Immediate &&
+      is_inline_asm_integer_immediate_type(value.type)) {
+    return value.immediate;
+  }
+  if (home.has_value() &&
+      home->kind == PreparedValueHomeKind::RematerializableImmediate &&
+      home->immediate_i32.has_value()) {
+    return *home->immediate_i32;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] PreparedInlineAsmOperand make_prepared_inline_asm_operand(
+    PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::CallInst& call,
+    const bir::InlineAsmOperandMetadata& metadata) {
+  PreparedInlineAsmOperand operand{
+      .kind = metadata.kind,
+      .constraint_index = metadata.constraint_index,
+      .constraint = metadata.constraint,
+      .arg_index = metadata.arg_index,
+      .output_index = metadata.output_index,
+      .tied_output_index = metadata.tied_output_index,
+      .value = std::nullopt,
+      .value_name = std::nullopt,
+      .home = std::nullopt,
+      .immediate_value = std::nullopt,
+  };
+  if (metadata.arg_index.has_value() && *metadata.arg_index < call.args.size()) {
+    operand.value = call.args[*metadata.arg_index];
+    operand.value_name = prepared_intrinsic_named_value_id(names, operand.value);
+    operand.home = prepared_home_for_named_value(names, value_locations, *operand.value);
+    if (metadata.kind == bir::InlineAsmOperandKind::IntegerImmediateInput) {
+      operand.immediate_value =
+          inline_asm_integer_immediate_value(*operand.value, operand.home);
+    }
+  }
+  return operand;
+}
+
+[[nodiscard]] std::size_t inline_asm_input_operand_count(
+    const std::vector<PreparedInlineAsmOperand>& operands) {
+  std::size_t count = 0;
+  for (const auto& operand : operands) {
+    if (operand.arg_index.has_value()) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+[[nodiscard]] std::size_t inline_asm_output_operand_count(
+    const std::vector<PreparedInlineAsmOperand>& operands) {
+  std::size_t count = 0;
+  for (const auto& operand : operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::RegisterOutput) {
+      ++count;
+    }
+  }
+  return count;
+}
+
+void validate_inline_asm_carrier(PreparedInlineAsmCarrierFunction& function_carriers,
+                                 PreparedInlineAsmCarrier& carrier,
+                                 const bir::CallInst& call,
+                                 const bir::InlineAsmMetadata& inline_asm) {
+  for (const auto& fact : inline_asm.unsupported_facts) {
+    append_inline_asm_missing_fact(function_carriers, carrier, fact);
+  }
+
+  const std::size_t output_count = inline_asm_output_operand_count(carrier.operands);
+  if (call.result.has_value() && output_count == 0) {
+    append_inline_asm_missing_fact(function_carriers, carrier, "missing_output_constraint");
+  }
+  if (!call.result.has_value() && output_count != 0) {
+    append_inline_asm_missing_fact(function_carriers, carrier, "output_constraint_requires_result");
+  }
+  if (output_count > 1) {
+    append_inline_asm_missing_fact(function_carriers, carrier, "unsupported_multiple_outputs");
+  }
+  if (call.args.size() != inline_asm_input_operand_count(carrier.operands)) {
+    append_inline_asm_missing_fact(function_carriers, carrier, "constraint_operand_count_mismatch");
+  }
+
+  for (const auto& operand : carrier.operands) {
+    switch (operand.kind) {
+      case bir::InlineAsmOperandKind::RegisterOutput:
+        if (!call.result.has_value()) {
+          break;
+        }
+        if (!carrier.result_home.has_value()) {
+          append_inline_asm_missing_fact(function_carriers, carrier, "missing_result_home");
+        } else if (carrier.result_home->kind != PreparedValueHomeKind::Register) {
+          append_inline_asm_missing_fact(function_carriers, carrier, "result_requires_register_home");
+        }
+        if (!operand.output_index.has_value() || *operand.output_index != 0) {
+          append_inline_asm_missing_fact(function_carriers, carrier, "unsupported_output_index");
+        }
+        break;
+      case bir::InlineAsmOperandKind::RegisterInput:
+        if (!operand.arg_index.has_value() || !operand.value.has_value()) {
+          append_inline_asm_missing_fact(
+              function_carriers,
+              carrier,
+              "missing_operand" +
+                  std::to_string(operand.arg_index.value_or(call.args.size())) + "_value");
+          break;
+        }
+        if (!operand.home.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "missing_operand" +
+                                             std::to_string(*operand.arg_index) + "_home");
+        } else if (operand.home->kind != PreparedValueHomeKind::Register) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "operand" + std::to_string(*operand.arg_index) +
+                                             "_requires_register_home");
+        }
+        break;
+      case bir::InlineAsmOperandKind::TiedInput:
+        if (!operand.arg_index.has_value() || !operand.value.has_value()) {
+          append_inline_asm_missing_fact(
+              function_carriers,
+              carrier,
+              "missing_operand" +
+                  std::to_string(operand.arg_index.value_or(call.args.size())) + "_value");
+          break;
+        }
+        if (!operand.tied_output_index.has_value() ||
+            *operand.tied_output_index >= output_count) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "malformed_tied_operand" +
+                                             std::to_string(*operand.arg_index));
+        }
+        if (!operand.home.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "missing_operand" +
+                                             std::to_string(*operand.arg_index) + "_home");
+        } else if (operand.home->kind != PreparedValueHomeKind::Register) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "operand" + std::to_string(*operand.arg_index) +
+                                             "_requires_register_home");
+        }
+        if (!carrier.result_home.has_value()) {
+          append_inline_asm_missing_fact(function_carriers, carrier, "missing_result_home");
+        } else if (carrier.result_home->kind != PreparedValueHomeKind::Register) {
+          append_inline_asm_missing_fact(function_carriers, carrier, "result_requires_register_home");
+        }
+        break;
+      case bir::InlineAsmOperandKind::IntegerImmediateInput:
+        if (!operand.arg_index.has_value() || !operand.value.has_value()) {
+          append_inline_asm_missing_fact(
+              function_carriers,
+              carrier,
+              "missing_operand" +
+                  std::to_string(operand.arg_index.value_or(call.args.size())) + "_value");
+          break;
+        }
+        if (!operand.immediate_value.has_value()) {
+          append_inline_asm_missing_fact(function_carriers,
+                                         carrier,
+                                         "operand" + std::to_string(*operand.arg_index) +
+                                             "_requires_integer_immediate");
+        }
+        break;
+      case bir::InlineAsmOperandKind::Clobber:
+        append_inline_asm_missing_fact(function_carriers,
+                                       carrier,
+                                       "unsupported_clobber_operand" +
+                                           std::to_string(operand.constraint_index));
+        break;
+      case bir::InlineAsmOperandKind::Unsupported:
+        append_inline_asm_missing_fact(function_carriers,
+                                       carrier,
+                                       "unsupported_operand_constraint" +
+                                           std::to_string(operand.constraint_index));
+        break;
+    }
+  }
 }
 
 [[nodiscard]] bool intrinsic_roles_are(
@@ -1798,6 +2014,49 @@ void validate_pause_hint_intrinsic(
   return carrier;
 }
 
+[[nodiscard]] PreparedInlineAsmCarrier build_inline_asm_carrier(
+    PreparedNameTables& names,
+    PreparedInlineAsmCarrierFunction& function_carriers,
+    const bir::CallInst& call,
+    std::size_t block_index,
+    std::size_t instruction_index,
+    const PreparedValueLocationFunction* value_locations) {
+  const bir::InlineAsmMetadata inline_asm =
+      call.inline_asm.value_or(bir::InlineAsmMetadata{});
+  PreparedInlineAsmCarrier carrier{
+      .function_name = function_carriers.function_name,
+      .carrier_kind = PreparedInlineAsmCarrierKind::Missing,
+      .block_index = block_index,
+      .inst_index = instruction_index,
+      .asm_text = inline_asm.asm_text,
+      .constraints = inline_asm.constraints,
+      .side_effects = inline_asm.side_effects,
+      .has_named_operand_references = inline_asm.has_named_operand_references,
+      .has_template_modifiers = inline_asm.has_template_modifiers,
+      .operands = {},
+      .result = call.result,
+      .result_value_name = prepared_intrinsic_named_value_id(names, call.result),
+      .result_home = call.result.has_value()
+                         ? prepared_home_for_named_value(names, value_locations, *call.result)
+                         : std::nullopt,
+      .missing_required_facts = {},
+  };
+  carrier.operands.reserve(inline_asm.operands.size());
+  for (const auto& operand : inline_asm.operands) {
+    carrier.operands.push_back(
+        make_prepared_inline_asm_operand(names, value_locations, call, operand));
+  }
+
+  if (!call.inline_asm.has_value()) {
+    append_inline_asm_missing_fact(function_carriers, carrier, "missing_inline_asm_metadata");
+  }
+  validate_inline_asm_carrier(function_carriers, carrier, call, inline_asm);
+  if (carrier.missing_required_facts.empty()) {
+    carrier.carrier_kind = PreparedInlineAsmCarrierKind::Complete;
+  }
+  return carrier;
+}
+
 [[nodiscard]] PreparedI128Carrier build_i128_carrier(
     PreparedI128CarrierFunction& function_carriers,
     const PreparedRegallocValue& value,
@@ -2117,6 +2376,47 @@ void populate_intrinsic_carriers(PreparedBirModule& prepared) {
     if (!function_carriers.carriers.empty() ||
         !function_carriers.missing_required_facts.empty()) {
       prepared.intrinsic_carriers.functions.push_back(std::move(function_carriers));
+    }
+  }
+}
+
+void populate_inline_asm_carriers(PreparedBirModule& prepared) {
+  prepared.inline_asm_carriers.functions.clear();
+
+  for (const auto& function : prepared.module.functions) {
+    const FunctionNameId function_name =
+        prepared.names.function_names.find(function.name);
+    if (function_name == kInvalidFunctionName) {
+      continue;
+    }
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_name);
+    PreparedInlineAsmCarrierFunction function_carriers{
+        .function_name = function_name,
+        .carriers = {},
+        .missing_required_facts = {},
+    };
+
+    for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+      const auto& block = function.blocks[block_index];
+      for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+           ++instruction_index) {
+        const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+        if (call == nullptr || !call->inline_asm.has_value()) {
+          continue;
+        }
+        function_carriers.carriers.push_back(
+            build_inline_asm_carrier(prepared.names,
+                                     function_carriers,
+                                     *call,
+                                     block_index,
+                                     instruction_index,
+                                     value_locations));
+      }
+    }
+    if (!function_carriers.carriers.empty() ||
+        !function_carriers.missing_required_facts.empty()) {
+      prepared.inline_asm_carriers.functions.push_back(std::move(function_carriers));
     }
   }
 }
@@ -5109,6 +5409,7 @@ void BirPreAlloc::publish_contract_plans() {
   populate_f128_carriers(prepared_);
   populate_atomic_operations(prepared_);
   populate_intrinsic_carriers(prepared_);
+  populate_inline_asm_carriers(prepared_);
   populate_f128_runtime_helper_facts(prepared_);
   populate_i128_runtime_helper_lanes(prepared_);
 }

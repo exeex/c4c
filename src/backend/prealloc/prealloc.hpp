@@ -1866,6 +1866,63 @@ struct PreparedIntrinsicCarriers {
   std::vector<PreparedIntrinsicCarrierFunction> functions;
 };
 
+enum class PreparedInlineAsmCarrierKind {
+  Missing,
+  Complete,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_inline_asm_carrier_kind_name(
+    PreparedInlineAsmCarrierKind kind) {
+  switch (kind) {
+    case PreparedInlineAsmCarrierKind::Missing:
+      return "missing";
+    case PreparedInlineAsmCarrierKind::Complete:
+      return "complete";
+  }
+  return "unknown";
+}
+
+struct PreparedInlineAsmOperand {
+  c4c::backend::bir::InlineAsmOperandKind kind =
+      c4c::backend::bir::InlineAsmOperandKind::Unsupported;
+  std::size_t constraint_index = 0;
+  std::string constraint;
+  std::optional<std::size_t> arg_index;
+  std::optional<std::size_t> output_index;
+  std::optional<std::size_t> tied_output_index;
+  std::optional<c4c::backend::bir::Value> value;
+  std::optional<ValueNameId> value_name;
+  std::optional<PreparedValueHome> home;
+  std::optional<std::int64_t> immediate_value;
+};
+
+struct PreparedInlineAsmCarrier {
+  FunctionNameId function_name = kInvalidFunctionName;
+  PreparedInlineAsmCarrierKind carrier_kind = PreparedInlineAsmCarrierKind::Missing;
+  std::size_t block_index = 0;
+  std::size_t inst_index = 0;
+  std::string asm_text;
+  std::string constraints;
+  bool side_effects = false;
+  bool has_named_operand_references = false;
+  bool has_template_modifiers = false;
+  std::vector<PreparedInlineAsmOperand> operands;
+  std::optional<c4c::backend::bir::Value> result;
+  std::optional<ValueNameId> result_value_name;
+  std::optional<PreparedValueHome> result_home;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedInlineAsmCarrierFunction {
+  FunctionNameId function_name = kInvalidFunctionName;
+  std::vector<PreparedInlineAsmCarrier> carriers;
+  std::vector<std::string> missing_required_facts;
+};
+
+struct PreparedInlineAsmCarriers {
+  std::vector<PreparedInlineAsmCarrierFunction> functions;
+};
+
 enum class PreparedF128RuntimeHelperFamily {
   Arithmetic,
   Comparison,
@@ -5459,6 +5516,7 @@ struct PreparedBirModule {
   PreparedF128Carriers f128_carriers;
   PreparedAtomicOperations atomic_operations;
   PreparedIntrinsicCarriers intrinsic_carriers;
+  PreparedInlineAsmCarriers inline_asm_carriers;
   PreparedF128RuntimeHelpers f128_runtime_helpers;
   PreparedI128RuntimeHelpers i128_runtime_helpers;
   std::vector<std::string> completed_phases;
@@ -5691,6 +5749,23 @@ find_prepared_intrinsic_carriers(const PreparedIntrinsicCarriers& carriers,
 find_prepared_intrinsic_carriers(const PreparedBirModule& module,
                                  FunctionNameId function_name) {
   return find_prepared_intrinsic_carriers(module.intrinsic_carriers, function_name);
+}
+
+[[nodiscard]] inline const PreparedInlineAsmCarrierFunction*
+find_prepared_inline_asm_carriers(const PreparedInlineAsmCarriers& carriers,
+                                  FunctionNameId function_name) {
+  for (const auto& function_carriers : carriers.functions) {
+    if (function_carriers.function_name == function_name) {
+      return &function_carriers;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] inline const PreparedInlineAsmCarrierFunction*
+find_prepared_inline_asm_carriers(const PreparedBirModule& module,
+                                  FunctionNameId function_name) {
+  return find_prepared_inline_asm_carriers(module.inline_asm_carriers, function_name);
 }
 
 [[nodiscard]] inline const PreparedI128RuntimeHelperFunction*

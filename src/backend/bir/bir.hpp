@@ -682,6 +682,44 @@ struct PhiInst {
   std::vector<PhiIncoming> incomings;
 };
 
+enum class InlineAsmOperandKind : unsigned char {
+  Unsupported,
+  RegisterInput,
+  RegisterOutput,
+  TiedInput,
+  IntegerImmediateInput,
+  Clobber,
+};
+
+[[nodiscard]] constexpr std::string_view inline_asm_operand_kind_name(
+    InlineAsmOperandKind kind) {
+  switch (kind) {
+    case InlineAsmOperandKind::Unsupported:
+      return "unsupported";
+    case InlineAsmOperandKind::RegisterInput:
+      return "register_input";
+    case InlineAsmOperandKind::RegisterOutput:
+      return "register_output";
+    case InlineAsmOperandKind::TiedInput:
+      return "tied_input";
+    case InlineAsmOperandKind::IntegerImmediateInput:
+      return "integer_immediate_input";
+    case InlineAsmOperandKind::Clobber:
+      return "clobber";
+  }
+  return "unknown";
+}
+
+struct InlineAsmOperandMetadata {
+  InlineAsmOperandKind kind = InlineAsmOperandKind::Unsupported;
+  std::size_t constraint_index = 0;
+  std::string constraint;
+  std::optional<std::size_t> arg_index;
+  std::optional<std::size_t> output_index;
+  std::optional<std::size_t> tied_output_index;
+  std::optional<std::string> name;
+};
+
 struct InlineAsmMetadata {
   // Inline assembly payload text is final spelling passed through for dumps and
   // target emission diagnostics; it is not BIR lookup authority.
@@ -689,6 +727,10 @@ struct InlineAsmMetadata {
   std::string constraints;
   std::string args_text;
   bool side_effects = false;
+  std::vector<InlineAsmOperandMetadata> operands;
+  std::vector<std::string> unsupported_facts;
+  bool has_named_operand_references = false;
+  bool has_template_modifiers = false;
 };
 
 struct IntrinsicOperation {

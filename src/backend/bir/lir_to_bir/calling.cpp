@@ -54,6 +54,131 @@ std::string extern_decl_name_for_identity(const c4c::LinkNameTable& link_names,
   return decl.name;
 }
 
+[[nodiscard]] bool decimal_digits_only(std::string_view text) {
+  if (text.empty()) {
+    return false;
+  }
+  for (const char ch : text) {
+    if (ch < '0' || ch > '9') {
+      return false;
+    }
+  }
+  return true;
+}
+
+[[nodiscard]] std::size_t parse_decimal_index(std::string_view text) {
+  std::size_t value = 0;
+  for (const char ch : text) {
+    value = (value * 10U) + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] std::vector<std::string_view> split_inline_asm_constraint_tokens(
+    std::string_view constraints) {
+  std::vector<std::string_view> tokens;
+  if (constraints.empty()) {
+    return tokens;
+  }
+  std::size_t token_start = 0;
+  for (std::size_t index = 0; index <= constraints.size(); ++index) {
+    if (index != constraints.size() && constraints[index] != ',') {
+      continue;
+    }
+    const auto raw_token = constraints.substr(token_start, index - token_start);
+    tokens.push_back(c4c::codegen::lir::trim_lir_arg_text(raw_token));
+    token_start = index + 1;
+  }
+  return tokens;
+}
+
+[[nodiscard]] bool inline_asm_template_has_named_operand_reference(std::string_view asm_text) {
+  return asm_text.find("%[") != std::string_view::npos;
+}
+
+[[nodiscard]] bool inline_asm_template_has_modifier(std::string_view asm_text) {
+  for (std::size_t index = 0; index + 2 < asm_text.size(); ++index) {
+    if (asm_text[index] != '%') {
+      continue;
+    }
+    if (asm_text[index + 1] == '%') {
+      ++index;
+      continue;
+    }
+    const char modifier = asm_text[index + 1];
+    const char operand = asm_text[index + 2];
+    if (((modifier >= 'A' && modifier <= 'Z') || (modifier >= 'a' && modifier <= 'z')) &&
+        ((operand >= '0' && operand <= '9') || operand == '[')) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bir::InlineAsmMetadata make_inline_asm_metadata(
+    const c4c::codegen::lir::LirInlineAsmOp& inline_asm) {
+  bir::InlineAsmMetadata metadata{
+      .asm_text = inline_asm.asm_text,
+      .constraints = inline_asm.constraints,
+      .args_text = inline_asm.args_str,
+      .side_effects = inline_asm.side_effects,
+      .operands = {},
+      .unsupported_facts = {},
+      .has_named_operand_references =
+          inline_asm_template_has_named_operand_reference(inline_asm.asm_text),
+      .has_template_modifiers = inline_asm_template_has_modifier(inline_asm.asm_text),
+  };
+
+  std::size_t next_arg_index = 0;
+  std::size_t next_output_index = 0;
+  const auto tokens = split_inline_asm_constraint_tokens(inline_asm.constraints);
+  metadata.operands.reserve(tokens.size());
+  for (std::size_t index = 0; index < tokens.size(); ++index) {
+    const std::string token{tokens[index]};
+    bir::InlineAsmOperandMetadata operand{
+        .kind = bir::InlineAsmOperandKind::Unsupported,
+        .constraint_index = index,
+        .constraint = token,
+        .arg_index = std::nullopt,
+        .output_index = std::nullopt,
+        .tied_output_index = std::nullopt,
+        .name = std::nullopt,
+    };
+    if (token.empty()) {
+      metadata.unsupported_facts.push_back(
+          "empty_constraint" + std::to_string(index));
+    } else if (token == "r") {
+      operand.kind = bir::InlineAsmOperandKind::RegisterInput;
+      operand.arg_index = next_arg_index++;
+    } else if (token == "=r") {
+      operand.kind = bir::InlineAsmOperandKind::RegisterOutput;
+      operand.output_index = next_output_index++;
+    } else if (token == "i" || token == "I") {
+      operand.kind = bir::InlineAsmOperandKind::IntegerImmediateInput;
+      operand.arg_index = next_arg_index++;
+    } else if (decimal_digits_only(token)) {
+      operand.kind = bir::InlineAsmOperandKind::TiedInput;
+      operand.arg_index = next_arg_index++;
+      operand.tied_output_index = parse_decimal_index(token);
+    } else if (token.rfind("~{", 0) == 0) {
+      operand.kind = bir::InlineAsmOperandKind::Clobber;
+      metadata.unsupported_facts.push_back(
+          "unsupported_clobber_constraint" + std::to_string(index));
+    } else {
+      metadata.unsupported_facts.push_back(
+          "unsupported_constraint" + std::to_string(index) + ":" + token);
+    }
+    metadata.operands.push_back(std::move(operand));
+  }
+  if (metadata.has_named_operand_references) {
+    metadata.unsupported_facts.push_back("unsupported_named_operands");
+  }
+  if (metadata.has_template_modifiers) {
+    metadata.unsupported_facts.push_back("unsupported_template_modifiers");
+  }
+  return metadata;
+}
+
 std::optional<std::string> parse_byval_pointee_type(std::string_view type_text) {
   constexpr std::string_view kPrefix = "ptr byval(";
 
@@ -1292,12 +1417,7 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
         .callee = "llvm.inline_asm",
         .return_type_name = return_type_text,
         .return_type = bir::TypeKind::Void,
-        .inline_asm = bir::InlineAsmMetadata{
-            .asm_text = inline_asm.asm_text,
-            .constraints = inline_asm.constraints,
-            .args_text = inline_asm.args_str,
-            .side_effects = inline_asm.side_effects,
-        },
+        .inline_asm = make_inline_asm_metadata(inline_asm),
     };
 
     if (return_type_text != "void") {

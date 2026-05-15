@@ -2093,6 +2093,16 @@ const prepare::PreparedIntrinsicCarrierFunction* find_intrinsic_carriers(
   return prepare::find_prepared_intrinsic_carriers(prepared, function_id);
 }
 
+const prepare::PreparedInlineAsmCarrierFunction* find_inline_asm_carriers(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_inline_asm_carriers(prepared, function_id);
+}
+
 const prepare::PreparedF128RuntimeHelper* find_first_f128_runtime_helper(
     const prepare::PreparedBirModule& prepared,
     std::string_view function_name) {
@@ -2684,6 +2694,270 @@ int partial_and_unsupported_intrinsic_carriers_fail_closed() {
       prepare_intrinsic_carrier_dump_module(bir::TypeKind::F64, true, false);
   if (find_intrinsic_carriers(call_only, "intrinsic_carrier_dump_contract") != nullptr) {
     std::cerr << "[FAIL] ordinary call plan fabricated intrinsic carrier\n";
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+bir::CallArgAbiInfo scalar_arg_abi(bir::TypeKind type);
+
+bir::InlineAsmOperandMetadata inline_asm_operand(
+    bir::InlineAsmOperandKind kind,
+    std::size_t constraint_index,
+    std::string constraint,
+    std::optional<std::size_t> arg_index = std::nullopt,
+    std::optional<std::size_t> output_index = std::nullopt,
+    std::optional<std::size_t> tied_output_index = std::nullopt) {
+  return bir::InlineAsmOperandMetadata{
+      .kind = kind,
+      .constraint_index = constraint_index,
+      .constraint = std::move(constraint),
+      .arg_index = arg_index,
+      .output_index = output_index,
+      .tied_output_index = tied_output_index,
+      .name = std::nullopt,
+  };
+}
+
+prepare::PreparedBirModule prepare_inline_asm_carrier_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "inline_asm_carrier_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "x")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "mov %0, %0",
+          .constraints = "r",
+          .side_effects = true,
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::RegisterInput, 0, "r", std::size_t{0})},
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "out"),
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "x"),
+               bir::Value::immediate_i32(7)},
+      .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32),
+                  scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::I32,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::I32,
+          .primary_class = bir::AbiValueClass::Integer,
+      },
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "add %0, %0, #7",
+          .constraints = "=r,0,I",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::RegisterOutput,
+                                 0,
+                                 "=r",
+                                 std::nullopt,
+                                 std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::TiedInput,
+                                 1,
+                                 "0",
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::size_t{0}),
+              inline_asm_operand(bir::InlineAsmOperandKind::IntegerImmediateInput,
+                                 2,
+                                 "I",
+                                 std::size_t{1}),
+          },
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "out"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "inline_asm_fail_closed_dump_contract";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "x",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::I32, "x")},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "%w0 %[src]",
+          .constraints = "m,~{memory}",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::Unsupported,
+                                 0,
+                                 "m"),
+              inline_asm_operand(bir::InlineAsmOperandKind::Clobber,
+                                 1,
+                                 "~{memory}"),
+          },
+          .unsupported_facts = {
+              "unsupported_constraint0:m",
+              "unsupported_clobber_constraint1",
+              "unsupported_named_operands",
+              "unsupported_template_modifiers",
+          },
+          .has_named_operand_references = true,
+          .has_template_modifiers = true,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::immediate_i32(9)},
+      .arg_types = {bir::TypeKind::I32},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::I32)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "",
+          .constraints = "r",
+          .side_effects = true,
+          .operands = {inline_asm_operand(
+              bir::InlineAsmOperandKind::RegisterInput, 0, "r", std::size_t{0})},
+      },
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::I32, "x"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), prepare::PrepareOptions{});
+}
+
+int inline_asm_carriers_preserve_supported_facts_and_printer_visibility() {
+  const auto prepared = prepare_inline_asm_carrier_dump_module();
+  const auto* function_carriers =
+      find_inline_asm_carriers(prepared, "inline_asm_carrier_dump_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 2) {
+    std::cerr << "[FAIL] expected two prepared inline asm carrier facts\n";
+    return EXIT_FAILURE;
+  }
+  const auto& input_carrier = function_carriers->carriers[0];
+  const auto& tied_carrier = function_carriers->carriers[1];
+  if (input_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      input_carrier.operands.size() != 1 ||
+      input_carrier.operands.front().kind !=
+          bir::InlineAsmOperandKind::RegisterInput ||
+      !input_carrier.operands.front().home.has_value() ||
+      !input_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] positional register input inline asm carrier incomplete\n";
+    return EXIT_FAILURE;
+  }
+  if (tied_carrier.carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      tied_carrier.operands.size() != 3 ||
+      tied_carrier.operands[0].kind !=
+          bir::InlineAsmOperandKind::RegisterOutput ||
+      tied_carrier.operands[1].kind != bir::InlineAsmOperandKind::TiedInput ||
+      tied_carrier.operands[1].tied_output_index.value_or(99) != 0 ||
+      tied_carrier.operands[2].kind !=
+          bir::InlineAsmOperandKind::IntegerImmediateInput ||
+      tied_carrier.operands[2].immediate_value.value_or(0) != 7 ||
+      !tied_carrier.result_home.has_value() ||
+      !tied_carrier.missing_required_facts.empty()) {
+    std::cerr << "[FAIL] output/tie/immediate inline asm carrier incomplete\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "--- prepared-inline-asm-carriers ---",
+                       "prepared inline asm carriers section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "inline_asm_carrier asm=\"add %0, %0, #7\" "
+                       "constraints=\"=r,0,I\" block_index=0 inst_index=1 "
+                       "side_effects=yes operands=3 result=out result_home=yes",
+                       "complete inline asm carrier")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "operand2[kind=integer_immediate_input,constraint=\"I\","
+                       "arg=1,immediate=7,home=no]",
+                       "integer immediate inline asm operand")) {
+    return EXIT_FAILURE;
+  }
+  return EXIT_SUCCESS;
+}
+
+int inline_asm_carriers_fail_closed_without_required_facts() {
+  const auto prepared = prepare_inline_asm_fail_closed_dump_module();
+  const auto* function_carriers =
+      find_inline_asm_carriers(prepared, "inline_asm_fail_closed_dump_contract");
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 2 ||
+      function_carriers->carriers[0].carrier_kind !=
+          prepare::PreparedInlineAsmCarrierKind::Missing ||
+      function_carriers->carriers[1].carrier_kind !=
+          prepare::PreparedInlineAsmCarrierKind::Missing) {
+    std::cerr << "[FAIL] expected fail-closed inline asm carrier diagnostics\n";
+    return EXIT_FAILURE;
+  }
+  const std::string dump = prepare::print(prepared);
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:unsupported_constraint0:m",
+                       "unsupported inline asm constraint diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:unsupported_named_operands",
+                       "unsupported inline asm named operand diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:unsupported_template_modifiers",
+                       "unsupported inline asm template modifier diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#0:unsupported_clobber_constraint1",
+                       "unsupported inline asm clobber diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#1:missing_operand0_home",
+                       "missing inline asm register home diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_not_contains(dump,
+                           "inline_asm_carrier asm=\"%w0 %[src]\"",
+                           "incomplete inline asm carrier printer record")) {
     return EXIT_FAILURE;
   }
   return EXIT_SUCCESS;
@@ -3903,6 +4177,15 @@ int main() {
     return status;
   }
   if (const int status = partial_and_unsupported_intrinsic_carriers_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          inline_asm_carriers_preserve_supported_facts_and_printer_visibility();
+      status != 0) {
+    return status;
+  }
+  if (const int status = inline_asm_carriers_fail_closed_without_required_facts();
       status != 0) {
     return status;
   }

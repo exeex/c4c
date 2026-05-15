@@ -2410,6 +2410,82 @@ LirModule make_unsupported_inline_asm_module() {
   return module;
 }
 
+LirModule make_structured_inline_asm_metadata_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  c4c::TypeSpec int_type{};
+  int_type.base = c4c::TB_INT;
+  int_type.enum_underlying_base = c4c::TB_VOID;
+
+  LirFunction function;
+  function.name = "structured_inline_asm_metadata";
+  function.signature_text = "define i32 @structured_inline_asm_metadata(i32 %x)";
+  function.params.push_back({"%x", int_type});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirInlineAsmOp{
+      .result = LirOperand("%out"),
+      .ret_type = "i32",
+      .asm_text = "add %0, %1, #7",
+      .constraints = "=r,0,I",
+      .side_effects = true,
+      .args_str = "i32 %x, i32 7",
+  });
+  entry.terminator = LirRet{
+      .value_str = "%out",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int inline_asm_lir_lowering_preserves_structured_operand_metadata() {
+  auto result = try_lower_to_bir_with_options(make_structured_inline_asm_metadata_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("structured inline asm metadata fixture should lower to BIR");
+  }
+  const auto& function = result.module->functions.front();
+  const auto* call =
+      std::get_if<c4c::backend::bir::CallInst>(&function.blocks.front().insts.front());
+  if (call == nullptr || !call->inline_asm.has_value()) {
+    return fail("structured inline asm fixture should lower to an inline asm call");
+  }
+  const auto& inline_asm = *call->inline_asm;
+  if (inline_asm.asm_text != "add %0, %1, #7" ||
+      inline_asm.constraints != "=r,0,I" ||
+      !inline_asm.side_effects ||
+      !inline_asm.args_text.empty() ||
+      inline_asm.operands.size() != 3 ||
+      inline_asm.has_named_operand_references ||
+      inline_asm.has_template_modifiers ||
+      !inline_asm.unsupported_facts.empty()) {
+    return fail("structured inline asm metadata lost top-level facts");
+  }
+  if (inline_asm.operands[0].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::RegisterOutput ||
+      inline_asm.operands[0].output_index.value_or(99) != 0 ||
+      inline_asm.operands[1].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::TiedInput ||
+      inline_asm.operands[1].arg_index.value_or(99) != 0 ||
+      inline_asm.operands[1].tied_output_index.value_or(99) != 0 ||
+      inline_asm.operands[2].kind !=
+          c4c::backend::bir::InlineAsmOperandKind::IntegerImmediateInput ||
+      inline_asm.operands[2].arg_index.value_or(99) != 1) {
+    return fail("structured inline asm operand facts were not preserved");
+  }
+  if (call->args.size() != 2 ||
+      call->args[0] != c4c::backend::bir::Value::named(TypeKind::I32, "%x") ||
+      call->args[1] != c4c::backend::bir::Value::immediate_i32(7)) {
+    return fail("structured inline asm typed operands were not lowered");
+  }
+  return 0;
+}
+
 LirModule make_bad_direct_call_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -5629,6 +5705,11 @@ int main() {
           "missing module note carrying the runtime family failure");
       inline_asm_status != 0) {
     return inline_asm_status;
+  }
+
+  if (const int status = inline_asm_lir_lowering_preserves_structured_operand_metadata();
+      status != 0) {
+    return status;
   }
 
   if (const int direct_call_status = expect_failure_notes(
