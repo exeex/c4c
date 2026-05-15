@@ -8,6 +8,7 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <iostream>
@@ -5445,28 +5446,76 @@ int block_dispatch_prints_representative_f128_load_helper_store_route() {
   const auto* store =
       std::get_if<aarch64_codegen::F128TransportRecord>(
           &block.instructions[2].target.payload);
+  const bool all_nodes_selected = std::all_of(
+      block.instructions.begin(),
+      block.instructions.end(),
+      [](const aarch64_module::MachineInstruction& instruction) {
+        return instruction.target.selection.status ==
+               aarch64_codegen::MachineNodeSelectionStatus::Selected;
+      });
   if (load == nullptr || helper == nullptr || store == nullptr ||
+      !all_nodes_selected ||
       load->transport_kind != aarch64_codegen::F128TransportKind::LoadFromMemory ||
+      load->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      load->value_type != bir::TypeKind::F128 ||
+      load->total_size_bytes != 16 ||
+      load->total_align_bytes != 16 ||
       !load->reg.has_value() ||
       !load->memory.has_value() ||
       load->reg->reg != aarch64_abi::q_register(6) ||
+      load->reg->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      load->reg->expected_view != aarch64_abi::RegisterView::Q ||
       load->memory->size_bytes != 16 ||
+      load->memory->align_bytes != 16 ||
       helper->callee_name != "__addtf3" ||
+      helper->helper_family != prepare::PreparedF128RuntimeHelperFamily::Arithmetic ||
+      helper->helper_kind != prepare::PreparedF128RuntimeHelperKind::Add ||
+      helper->source_binary_opcode != bir::BinaryOpcode::Add ||
+      helper->source_type != bir::TypeKind::F128 ||
+      helper->result_type != bir::TypeKind::F128 ||
       helper->result_ownership !=
           prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
+      helper->width_bytes != 16 ||
+      helper->align_bytes != 16 ||
       !helper->lhs.carrier_register.has_value() ||
       !helper->rhs.carrier_register.has_value() ||
       !helper->result.carrier_register.has_value() ||
       helper->lhs.carrier_register->reg != aarch64_abi::q_register(6) ||
       helper->rhs.carrier_register->reg != aarch64_abi::q_register(8) ||
       helper->result.carrier_register->reg != aarch64_abi::q_register(4) ||
+      helper->lhs.carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      helper->rhs.carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      helper->result.carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      helper->lhs.width_bytes != 16 ||
+      helper->rhs.width_bytes != 16 ||
+      helper->result.width_bytes != 16 ||
+      !helper->lhs.abi_register.has_value() ||
+      !helper->rhs.abi_register.has_value() ||
+      !helper->result.abi_register.has_value() ||
+      helper->lhs.abi_register->reg != aarch64_abi::q_register(0) ||
+      helper->rhs.abi_register->reg != aarch64_abi::q_register(1) ||
+      helper->result.abi_register->reg != aarch64_abi::q_register(0) ||
+      helper->abi_policy.result_bank != prepare::PreparedRegisterBank::Vreg ||
+      helper->selected_call_ownership.owns_terminal_call != true ||
+      !helper->selected_call_ownership.has_marshaling ||
       store->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
+      store->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      store->value_type != bir::TypeKind::F128 ||
+      store->total_size_bytes != 16 ||
+      store->total_align_bytes != 16 ||
       !store->reg.has_value() ||
       !store->memory.has_value() ||
       store->reg->reg != aarch64_abi::q_register(4) ||
+      store->reg->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      store->reg->expected_view != aarch64_abi::RegisterView::Q ||
       store->memory->size_bytes != 16 ||
+      store->memory->align_bytes != 16 ||
       store->memory->stored_value_id != prepare::PreparedValueId{272}) {
     return fail("expected representative f128 route to preserve full-width facts");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions[3].target.payload)) {
+    return fail("expected representative f128 route to finish with selected return");
   }
 
   const auto printed = print_route_block(function_cf.function_name, block);

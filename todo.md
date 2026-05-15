@@ -1,38 +1,34 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconcile Parent Binary128 Route With Constant Carrier
+Current Step ID: 2
+Current Step Title: Prove Representative Binary128 Parent Route Closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 `Reconcile Parent Binary128 Route With Constant Carrier` reconciled the
-parent F128 helper mapping with the closed full-width constant carrier. F128
-soft-float helper operands now resolve named values or semantic full-width
-`F128Payload` immediates through prepared regalloc values, so a binary128
-helper operand can point at the structured constant carrier instead of being
-rejected as a non-named operand. Helper selection remains fail-closed because
-the existing helper boundary still requires a full-width register carrier for
-marshaling; partial/scalar-only F128 immediates still do not enter helper
-mappings.
+Step 2 `Prove Representative Binary128 Parent Route Closure` strengthened the
+representative AArch64 F128 route proof. The dispatch test now verifies that a
+loaded full-width F128 input flows through the soft-float `__addtf3` helper,
+keeps Q-register/Vreg carrier authority across ABI marshaling, stores the
+full-width result back through 16-byte memory transport, and reaches the
+selected return terminator. No implementation change was needed.
 
 ## Suggested Next
 
-Run the Step 2 representative parent-route proof, including the already
-selected semantic constant call-boundary path and the newly guarded helper
-constant-carrier fail-closed path.
+Ask the plan owner to perform Step 3 closure review for
+`ideas/open/237_aarch64_binary128_softfloat_lowering.md` against the completed
+parent-route proof and the closed constant-carrier dependency.
 
 ## Watchouts
 
-- The helper route now sees full-width F128 constants, but it intentionally
-  does not rematerialize them into helper ABI Q registers yet; diagnostics stay
-  on `rhs_requires_full_width_f128_carrier` /
-  `incomplete_prepared_f128_runtime_helper`.
-- Partial or scalar-only F128 constants still fail before helper mapping
-  through `f128_soft_float_helper_requires_prepared_value_id_for_result_lhs_rhs`.
-- No AArch64 constant assembly printing was added.
+- The semantic constant call-boundary path and constant-helper fail-closed path
+  remain covered by the Step 1 tests.
+- This Step 2 slice did not add constant rematerialization into helper ABI
+  Q-registers and did not add AArch64 constant assembly printing.
+- Atomic, intrinsic, inline-assembly, scalar FP, and i128 behavior remain out
+  of scope for the parent binary128 closure decision.
 
 ## Proof
 
