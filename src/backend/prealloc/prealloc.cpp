@@ -1201,6 +1201,10 @@ void populate_i128_carriers(PreparedBirModule& prepared) {
   }
 }
 
+[[nodiscard]] std::vector<PreparedClobberedRegister> build_call_clobber_set(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function);
+
 void append_i128_runtime_helper_fact(PreparedI128RuntimeHelper& helper,
                                      std::string fact) {
   if (std::find(helper.missing_required_facts.begin(),
@@ -1261,10 +1265,64 @@ void populate_i128_helper_lanes_from_carrier(
   }
 }
 
+void populate_i128_runtime_helper_boundary_policy(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocFunction* regalloc_function,
+    PreparedI128RuntimeHelper& helper) {
+  helper.resource_policy = PreparedI128RuntimeHelper::ResourcePolicy{};
+  helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{};
+  helper.clobbered_registers.clear();
+
+  if (helper.helper_family != PreparedI128RuntimeHelperFamily::DivRem) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_boundary_policy_deferred_for_family");
+    return;
+  }
+
+  helper.resource_policy = PreparedI128RuntimeHelper::ResourcePolicy{
+      .call_boundary = true,
+      .runtime_helper_callee = true,
+      .caller_saved_clobbers = true,
+      .preserves_source_operation_identity = true,
+  };
+  helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{
+      .transition = PreparedI128RuntimeHelperAbiTransition::DirectRegisterPairArgumentsAndResult,
+      .argument_bank = PreparedRegisterBank::Gpr,
+      .result_bank = PreparedRegisterBank::Gpr,
+      .argument_count = 2,
+      .lanes_per_argument = 2,
+      .result_lane_count = 2,
+      .lane_width_bytes = 8,
+  };
+  helper.clobbered_registers = build_call_clobber_set(target_profile, regalloc_function);
+
+  if (helper.callee_name.empty()) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_callee_identity");
+  }
+  if (helper.abi_policy.argument_bank == PreparedRegisterBank::None ||
+      helper.abi_policy.result_bank == PreparedRegisterBank::None ||
+      helper.abi_policy.argument_count != 2 ||
+      helper.abi_policy.lanes_per_argument != 2 ||
+      helper.abi_policy.result_lane_count != 2 ||
+      helper.abi_policy.lane_width_bytes != 8) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_direct_gpr_pair_abi");
+  }
+  if (!helper.resource_policy.call_boundary ||
+      !helper.resource_policy.runtime_helper_callee ||
+      !helper.resource_policy.caller_saved_clobbers ||
+      !helper.resource_policy.preserves_source_operation_identity) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_resource_policy");
+  }
+  if (helper.clobbered_registers.empty()) {
+    append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_caller_saved_clobbers");
+  }
+}
+
 void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
   for (auto& function_helpers : prepared.i128_runtime_helpers.functions) {
     const auto* function_carriers =
         find_prepared_i128_carriers(prepared.i128_carriers, function_helpers.function_name);
+    const auto* regalloc_function =
+        find_regalloc_function(prepared.regalloc, function_helpers.function_name);
     for (auto& helper : function_helpers.helpers) {
       helper.lhs_low_lane.reset();
       helper.lhs_high_lane.reset();
@@ -1274,6 +1332,8 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.result_high_lane.reset();
       helper.memory_return.reset();
       helper.missing_required_facts.clear();
+      populate_i128_runtime_helper_boundary_policy(
+          prepared.target_profile, regalloc_function, helper);
 
       populate_i128_helper_lanes_from_carrier(function_carriers,
                                              helper,

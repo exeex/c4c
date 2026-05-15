@@ -1591,6 +1591,48 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       } else {
         out << "<none>";
       }
+      out << " resources=[";
+      bool printed_resource = false;
+      auto append_resource = [&](std::string_view resource) {
+        if (printed_resource) {
+          out << ",";
+        }
+        out << resource;
+        printed_resource = true;
+      };
+      if (helper.resource_policy.call_boundary) {
+        append_resource("call_boundary");
+      }
+      if (helper.resource_policy.runtime_helper_callee) {
+        append_resource("runtime_helper_callee");
+      }
+      if (helper.resource_policy.caller_saved_clobbers) {
+        append_resource("caller_saved_clobbers");
+      }
+      if (helper.resource_policy.preserves_source_operation_identity) {
+        append_resource("source_operation_identity");
+      }
+      if (!printed_resource) {
+        out << "<none>";
+      }
+      out << "]"
+          << " abi_transition="
+          << prepared_i128_runtime_helper_abi_transition_name(helper.abi_policy.transition)
+          << " arg_bank=" << prepared_register_bank_name(helper.abi_policy.argument_bank)
+          << " result_bank=" << prepared_register_bank_name(helper.abi_policy.result_bank)
+          << " arg_count=" << helper.abi_policy.argument_count
+          << " lanes_per_arg=" << helper.abi_policy.lanes_per_argument
+          << " result_lanes=" << helper.abi_policy.result_lane_count
+          << " lane_width=" << helper.abi_policy.lane_width_bytes;
+      if (!helper.clobbered_registers.empty()) {
+        out << " clobbers=";
+        for (std::size_t index = 0; index < helper.clobbered_registers.size(); ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          append_clobbered_register_summary(out, helper.clobbered_registers[index]);
+        }
+      }
       out
           << " lanes";
       append_lane("lhs.low", helper.lhs_low_lane);

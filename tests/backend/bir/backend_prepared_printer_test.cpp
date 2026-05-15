@@ -2942,6 +2942,23 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
+                       "resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"
+                       "source_operation_identity]",
+                       "i128 helper resource boundary policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "abi_transition=direct_register_pair_arguments_and_result arg_bank=gpr "
+                       "result_bank=gpr arg_count=2 lanes_per_arg=2 result_lanes=2 lane_width=8",
+                       "i128 helper ABI register-bank transition policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "clobbers=gpr:",
+                       "i128 helper call-clobber policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
                        "i128_helper block=0 inst=1 family=div_rem kind=unsigned_rem opcode=urem callee=__umodti3 source_type=i128 result_type=i128 result=wide.rem#",
                        "i128 unsigned rem helper mapping detail")) {
     return EXIT_FAILURE;

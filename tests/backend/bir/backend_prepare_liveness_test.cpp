@@ -2622,6 +2622,31 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.result_ownership !=
             prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
         helper.memory_return.has_value() ||
+        !helper.resource_policy.call_boundary ||
+        !helper.resource_policy.runtime_helper_callee ||
+        !helper.resource_policy.caller_saved_clobbers ||
+        !helper.resource_policy.preserves_source_operation_identity ||
+        helper.abi_policy.transition !=
+            prepare::PreparedI128RuntimeHelperAbiTransition::
+                DirectRegisterPairArgumentsAndResult ||
+        helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+        helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+        helper.abi_policy.argument_count != 2 ||
+        helper.abi_policy.lanes_per_argument != 2 ||
+        helper.abi_policy.result_lane_count != 2 ||
+        helper.abi_policy.lane_width_bytes != 8 ||
+        helper.clobbered_registers.empty() ||
+        std::none_of(helper.clobbered_registers.begin(),
+                     helper.clobbered_registers.end(),
+                     [](const prepare::PreparedClobberedRegister& clobber) {
+                       return clobber.bank == prepare::PreparedRegisterBank::Gpr &&
+                              clobber.contiguous_width == 1 &&
+                              !clobber.register_name.empty() &&
+                              !clobber.occupied_register_names.empty() &&
+                              clobber.placement.has_value() &&
+                              clobber.placement->pool ==
+                                  prepare::PreparedRegisterSlotPool::ReservedScratch;
+                     }) ||
         prepare::prepared_value_name(prepared.names, helper.result_value_name) != want.result ||
         helper.result_value_id == 0 ||
         helper.lhs_value_name == c4c::kInvalidValueName ||
@@ -2669,6 +2694,12 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("kind=unsigned_rem opcode=urem callee=__umodti3") == std::string::npos ||
       dump.find("result_ownership=direct_low_high_lanes memory_return=<none>") ==
           std::string::npos ||
+      dump.find("resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"
+                "source_operation_identity]") == std::string::npos ||
+      dump.find("abi_transition=direct_register_pair_arguments_and_result arg_bank=gpr "
+                "result_bank=gpr arg_count=2 lanes_per_arg=2 result_lanes=2 lane_width=8") ==
+          std::string::npos ||
+      dump.find("clobbers=gpr:") == std::string::npos ||
       dump.find("lhs.low=p.lhs#") == std::string::npos ||
       dump.find("result.high=r.u#") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||

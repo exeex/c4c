@@ -1,43 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/248_prepared_i128_runtime_helper_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add Memory-Return Ownership Where Needed
+Current Step ID: 5
+Current Step Title: Add Helper Clobber, Resource, And ABI Authority
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 added explicit prepared i128 helper result ownership policy while
-preserving the current div/rem helpers as direct low/high result-lane helpers.
+Step 5 added explicit prepared i128 runtime helper boundary policy for the
+currently supported div/rem helper family.
 
 What changed:
 
-- `PreparedI128RuntimeHelper` now distinguishes `missing`,
-  `direct_low_high_lanes`, and `memory_return` result ownership policy.
-- Div/rem helper mappings set `result_ownership=direct_low_high_lanes`, keeping
-  their result authority tied to structured low/high result lane bindings.
-- Added a structured `MemoryReturnOwnership` carrier shape on helper records
-  for future memory-return helpers: destination value id/name, size, alignment,
-  slot id, and stack offset.
-- Helper lane enrichment now validates result ownership: direct helpers require
-  result low/high lanes, memory-return helpers fail closed until explicit
-  destination ownership is populated, and missing policy diagnoses explicitly.
-- Prepared printer output exposes `result_ownership` and `memory_return`
-  fields, with div/rem printing `memory_return=<none>`.
-- Focused prepared tests prove div/rem direct-result policy and printer
-  visibility alongside the existing lane/carrier diagnostics.
-
-No clobber/resource policy, AArch64 selected helper nodes, terminal printer
-output, target-local helper synthesis, fixed-register marshaling, or
-scalar-i64 substitutes were added.
+- `PreparedI128RuntimeHelper` now carries structured resource policy facts for
+  call-boundary use, runtime-helper callee use, caller-saved clobbers, and
+  source-operation identity preservation.
+- Helper records now carry structured ABI/register-bank transition facts:
+  direct register-pair argument/result transition, GPR argument/result banks,
+  two source operands, two low/high lanes per operand, two result lanes, and
+  8-byte lane width.
+- Helper clobber authority reuses the existing prepared call clobber vocabulary
+  by publishing `PreparedClobberedRegister` records from the same caller-saved
+  clobber set builder used by retained `PreparedCallPlan` records.
+- Boundary enrichment remains producer-side in prepared state after canonical
+  i128 carriers exist; no AArch64 helper node, printer output, target-local
+  helper synthesis, fixed-register marshaling, or scalar-i64 substitute was
+  added.
+- Prepared printer output now dumps helper resources, ABI transition policy,
+  register banks, lane counts, lane width, and clobber summaries.
+- Focused tests prove div/rem helpers expose resource, ABI/register-bank, and
+  clobber facts while preserving direct-result ownership and existing
+  fail-closed carrier diagnostics.
 
 ## Suggested Next
 
-Execute Step 5 as a prepared/shared helper clobber/resource/ABI policy packet:
-add explicit helper boundary policy for supported i128 helper families,
-including call-clobber/resource facts and ABI/register-bank transition facts
-needed by later AArch64 selected helper records.
+Execute Step 6 validation and handoff: prove the prepared i128 helper
+authority prerequisite, summarize supported div/rem helper mapping, low/high
+lane ownership, direct-result ownership, clobber/resource policy, and ABI
+transition facts, then state whether idea 236 can resume its selected AArch64
+i128 helper-boundary packet.
 
 Suggested focused proof:
 
@@ -47,17 +49,16 @@ Suggested focused proof:
 
 ## Watchouts
 
-- Currently supported div/rem helpers are explicitly direct-result helpers, not
-  memory-return helpers.
-- The memory-return carrier shape exists, but no supported helper family
-  populates it yet; a future memory-return helper must provide destination
-  slot/offset/size/alignment facts or fail closed.
-- Helper lane records still consume canonical `PreparedI128Carrier` facts and
-  diagnose non-register result/argument lanes as missing direct register-pair
-  ABI authority.
-- Float/i128 conversion helper mapping remains explicitly deferred from Step 2.
-- `PreparedCallPlan` is still retained-call-only; do not synthesize fake call
-  plans for helper operations in AArch64 dispatch.
+- Supported div/rem helpers are still direct low/high result-lane helpers; the
+  memory-return carrier shape exists but no current supported family populates
+  memory-return ownership.
+- Helper lanes still consume canonical `PreparedI128Carrier` records; do not
+  infer lanes from raw regalloc assignment order, rendered register names,
+  register adjacency, or fixed ABI registers.
+- The boundary policy records helper ABI shape and register banks, not actual
+  target-local marshaling registers. Later AArch64 selected records must
+  consume these facts without synthesizing helper calls from opcodes alone.
+- Float/i128 conversion helper mapping remains explicitly deferred.
 
 ## Proof
 
@@ -73,7 +74,7 @@ passed, 3/3 tests. Proof log: `test_after.log`.
 
 Additional hygiene: `git diff --check` passed.
 
-Supervisor full-suite acceptance also passed for this Step 4 slice:
+Supervisor full-suite acceptance also passed for this Step 5 slice:
 
 ```sh
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1

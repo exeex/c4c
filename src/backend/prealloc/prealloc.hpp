@@ -1705,6 +1705,25 @@ enum class PreparedI128RuntimeHelperResultOwnership {
   return "unknown";
 }
 
+enum class PreparedI128RuntimeHelperAbiTransition {
+  Missing,
+  DirectRegisterPairArgumentsAndResult,
+  MemoryReturn,
+};
+
+[[nodiscard]] constexpr std::string_view prepared_i128_runtime_helper_abi_transition_name(
+    PreparedI128RuntimeHelperAbiTransition transition) {
+  switch (transition) {
+    case PreparedI128RuntimeHelperAbiTransition::Missing:
+      return "missing";
+    case PreparedI128RuntimeHelperAbiTransition::DirectRegisterPairArgumentsAndResult:
+      return "direct_register_pair_arguments_and_result";
+    case PreparedI128RuntimeHelperAbiTransition::MemoryReturn:
+      return "memory_return";
+  }
+  return "unknown";
+}
+
 struct PreparedI128RuntimeHelper {
   struct LaneBinding {
     PreparedValueId value_id = 0;
@@ -1716,6 +1735,24 @@ struct PreparedI128RuntimeHelper {
     std::optional<std::string> register_name;
     std::optional<PreparedFrameSlotId> slot_id;
     std::optional<std::size_t> stack_offset_bytes;
+  };
+
+  struct ResourcePolicy {
+    bool call_boundary = false;
+    bool runtime_helper_callee = false;
+    bool caller_saved_clobbers = false;
+    bool preserves_source_operation_identity = false;
+  };
+
+  struct AbiPolicy {
+    PreparedI128RuntimeHelperAbiTransition transition =
+        PreparedI128RuntimeHelperAbiTransition::Missing;
+    PreparedRegisterBank argument_bank = PreparedRegisterBank::None;
+    PreparedRegisterBank result_bank = PreparedRegisterBank::None;
+    std::size_t argument_count = 0;
+    std::size_t lanes_per_argument = 0;
+    std::size_t result_lane_count = 0;
+    std::size_t lane_width_bytes = 0;
   };
 
   struct MemoryReturnOwnership {
@@ -1751,6 +1788,9 @@ struct PreparedI128RuntimeHelper {
   std::optional<LaneBinding> result_low_lane;
   std::optional<LaneBinding> result_high_lane;
   std::optional<MemoryReturnOwnership> memory_return;
+  ResourcePolicy resource_policy;
+  AbiPolicy abi_policy;
+  std::vector<PreparedClobberedRegister> clobbered_registers;
   std::vector<std::string> missing_required_facts;
 };
 
