@@ -1,168 +1,213 @@
-# Prepared Aggregate `va_arg` Access Plan Runbook
+# AArch64 Variadic Machine Node Consumption Runbook
 
 Status: Active
-Source Idea: ideas/open/246_prepared_aggregate_va_arg_access_plan.md
-Activated from: ideas/open/246_prepared_aggregate_va_arg_access_plan.md
-Split from parked idea: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Source Idea: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Activated from: ideas/open/243_aarch64_variadic_machine_node_consumption.md
+Reactivated after closing prerequisite: ideas/closed/246_prepared_aggregate_va_arg_access_plan.md
 
 ## Purpose
 
-Provide the prepared/shared aggregate `va_arg` access-plan authority that
-AArch64 selected machine-node lowering needs before it can consume aggregate
-variadic helper effects without target-local ABI reconstruction.
+Consume prepared AArch64 variadic-entry facts in selected machine-node lowering
+for `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy` without
+rebuilding AAPCS64 ABI or frame-layout decisions in target codegen.
 
 ## Goal
 
-Expose `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` for a
-representative supported aggregate `va_arg` path, prove it through prepared
-facts and printer coverage, and keep selected AArch64 aggregate machine-node
-consumption deferred to idea 243.
+Produce structured AArch64 machine-node records and printer output for
+representative variadic helper paths from complete prepared/shared facts, or
+stop with an exact lifecycle blocker naming any remaining missing prepared
+storage, scratch, operand-home, or access-plan fact.
 
 ## Core Rule
 
-Shared preparation may compute and carry aggregate variadic access facts;
-AArch64 target lowering must only consume those facts and must not reconstruct
-aggregate classification, register-save coordinates, overflow progression,
-copy extent, `va_list` layout, named argument counts, or scratch policy.
+AArch64 lowering may consume prepared variadic facts, but must not reconstruct
+AAPCS64 `va_list` layout, register-save areas, overflow-area offsets, named
+argument counts, operand homes, scalar access plans, aggregate access plans, or
+scratch-resource policy locally.
 
 ## Read First
 
-- `ideas/open/246_prepared_aggregate_va_arg_access_plan.md`
 - `ideas/open/243_aarch64_variadic_machine_node_consumption.md`
+- `ideas/closed/232_aarch64_variadic_function_entry_carriers.md`
 - `ideas/closed/244_aarch64_variadic_prepared_storage_and_helper_authority.md`
 - `ideas/closed/245_prepared_scalar_va_arg_access_plan.md`
+- `ideas/closed/246_prepared_aggregate_va_arg_access_plan.md`
 - `src/backend/prealloc/prealloc.hpp`
 - `src/backend/prealloc/prealloc.cpp`
 - `src/backend/prealloc/prepared_printer.cpp`
-- focused prepared and variadic backend tests under `tests/backend/bir/`
-- current fail-closed aggregate selected-node tests under `tests/backend/mir/`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `src/backend/mir/aarch64/codegen/variadic.md`
+- focused tests under `tests/backend/mir/` and variadic C cases under
+  `tests/c/internal/abi/`
 
 ## Current Targets
 
-- `PreparedVariadicHelperOperandHomes` aggregate `va_arg` carrier.
-- New prepared/shared aggregate access-plan record and complete-fact checks.
-- AAPCS64 preparation path that already owns variadic helper classification,
-  register-save storage, overflow storage, aggregate homes, and helper
-  resources.
-- Prepared printer output for the aggregate access-plan fields.
-- Focused tests that prove the fact exists independently from selected
-  machine-node consumption.
+- `PreparedVariadicEntryPlanFunction` storage and helper-resource facts.
+- Helper operand-home records from the prepared/shared carriers closed in idea
+  244.
+- Scalar `va_arg` access-plan records from the prepared/shared carrier closed
+  in idea 245.
+- Aggregate `va_arg` access-plan records from the prepared/shared carrier
+  closed in idea 246.
+- AArch64 helper-call dispatch that recognizes variadic helpers and must now
+  consume prepared aggregate `va_arg` authority.
+- Selected machine-node records for aggregate `va_arg`, then `va_copy`.
+- Printer support that emits only from structured operands and prepared/shared
+  facts.
+- Focused tests that distinguish prepared-carrier presence from real machine
+  node consumption.
 
 ## Non-Goals
 
-- Do not implement selected AArch64 machine-node consumption for aggregate
-  `va_arg`; that resumes in idea 243 after this prerequisite closes.
-- Do not infer AAPCS64 aggregate classification, source coordinates,
-  size/alignment, copy extent, overflow progression, or `va_list` layout inside
-  AArch64 target lowering.
-- Do not weaken fail-closed diagnostics or mark aggregate `va_arg` selected
-  nodes as supported before the active prerequisite closes.
-- Do not broaden into scalar `va_arg`, `va_start`, `va_copy`, unrelated
-  AArch64 machine-node families, or frame-allocation policy.
+- Do not infer register-save slots, stack offsets, overflow bases, `va_list`
+  layout, named GP/FP counts, operand homes, scalar access plans, aggregate
+  access plans, or scratch allocation inside AArch64 codegen.
+- Do not weaken fail-closed diagnostics or mark unsupported helper cases as
+  supported without selected machine-node evidence.
+- Do not claim support through prepared dump coverage alone.
+- Do not broaden into global address, memory load/store, scalar cast, i128,
+  binary128, atomic, intrinsic, inline-asm, callee-save slot-placement, or
+  preserved-value extent work.
+- Do not rewrite closed prepared-authority ideas 244, 245, or 246 except for
+  historical correction explicitly requested by the supervisor.
 
 ## Working Model
 
-Idea 243 Step 4 stopped with the precise missing prepared/shared fact
-`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`. Existing
-prepared facts already expose the aggregate destination payload home and source
-`va_list` home, but do not expose the semantic source selection, payload copy
-extent, aggregate size/alignment, or progression facts needed by selected
-machine-node consumers.
+Idea 232 made variadic callee-entry metadata visible and guarded. Step 1 of
+this idea found missing storage, scratch, and operand-home authority, so idea
+244 supplied those prerequisites as prepared/shared facts. Step 2 then landed
+`va_start` selected machine-node consumption. Step 3 consumed scalar `va_arg`
+after idea 245 supplied `helper_operand_homes.va_arg.scalar_access_plan`, then
+stopped on the narrower missing aggregate `va_arg` access-plan fact. Idea 246
+has now supplied `helper_operand_homes.va_arg_aggregate.aggregate_access_plan`
+as prepared/shared authority.
 
-This runbook should add that carrier in shared preparation, prove it with
-prepared/printer tests, and leave AArch64 aggregate selected-node consumption
-fail-closed until idea 243 is reactivated.
+This reactivated runbook resumes at aggregate `va_arg` consumption. AArch64
+target lowering should consume the aggregate access plan directly for source
+selection, payload size/alignment, source coordinates, destination payload
+relationship, copy extent, and `va_list` progression. If any helper still
+lacks a necessary structured fact, keep AArch64 fail-closed behavior and
+record the smallest missing prepared/shared fact as a new lifecycle blocker.
 
 ## Execution Rules
 
 - Keep routine packet progress and proof in `todo.md`.
-- Add focused prepared-carrier tests before changing printer expectations.
-- Preserve fail-closed behavior for missing or incomplete aggregate
-  access-plan authority.
-- Treat fixture-name matching, expectation-only changes, unsupported
-  downgrades, diagnostic-only rewrites, or target-local ABI reconstruction as
-  route drift.
+- Resume with aggregate `va_arg`, then `va_copy`, and final validation.
+- Add or strengthen focused tests before relying on broader backend
+  validation.
+- Treat expectation-only changes, fixture-name matching, unsupported
+  downgrades, diagnostic-only rewrites, prepared-dump-only claims, or local ABI
+  reconstruction as route drift.
 - For every code-changing packet, prove with a build plus the
-  supervisor-chosen focused prepared/variadic backend subset. Escalate to
-  broader backend validation after shared prepared-carrier or printer behavior
-  changes.
+  supervisor-chosen focused AArch64 variadic subset. Escalate to broader
+  backend validation after shared selected-node, printer, or prepared-consumer
+  behavior changes.
+- If complete storage, scratch, operand-home, or access-plan authority is still
+  missing, stop at an explicit blocker rather than filling the gap in AArch64
+  target codegen.
 
 ## Ordered Steps
 
-### Step 1: Define Prepared Aggregate Access Plan Carrier
+### Step 1: Inspect Prepared Variadic Consumption Boundary
 
-Goal: Add the typed prepared/shared record and completeness checks for
-aggregate `va_arg` access planning.
+Status: Completed before prerequisite split.
 
-Actions:
-
-- Extend the variadic helper operand-home carrier with an optional aggregate
-  access-plan record for aggregate `va_arg` helpers.
-- Include source class, payload size/alignment, source storage coordinates,
-  destination payload relationship, copy extent, and `va_list` progression
-  facts needed by later selected-node lowering.
-- Keep missing or incomplete aggregate access-plan facts observable through the
-  existing fail-closed missing-fact path.
+Goal: Determine which prepared variadic facts are already complete enough for
+machine-node consumption and which helper paths still need new prepared/shared
+authority.
 
 Completion check:
 
-- The prepared model can represent complete and missing aggregate access-plan
-  authority without changing selected AArch64 aggregate machine-node support.
+- Completed by splitting and closing prerequisite idea 244. Do not redo this
+  step unless a later packet finds that the closed prepared/shared facts are
+  insufficient or stale.
 
-### Step 2: Populate Aggregate Access Plans In Shared Preparation
+### Step 2: Consume Prepared Facts For `va_start`
 
-Goal: Fill the aggregate access-plan carrier from the AAPCS64 prepared helper
-facts that already own variadic ABI decisions.
+Status: Completed in commit `6009e54a9`.
 
-Actions:
-
-- Populate the aggregate access plan for representative supported aggregate
-  `va_arg` helper records.
-- Derive source selection, payload coordinates, copy extent, and progression
-  only in shared preparation, not in AArch64 target lowering.
-- Preserve explicit failure for unsupported or incomplete aggregate facts.
+Goal: Lower a representative `va_start` path into selected machine nodes from
+prepared entry, helper-resource, and operand-home facts.
 
 Completion check:
 
-- Focused preparation coverage sees populated
-  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` for a supported
-  aggregate path and explicit missing-fact diagnostics when it cannot be built.
+- Completed by selected `va_start` machine-node records and proof from prepared
+  facts. Do not redo this step unless a later packet proves the shared
+  variadic helper boundary needs a targeted correction.
 
-### Step 3: Print And Prove Prepared Aggregate Access Plans
+### Step 3: Consume Prepared Facts For Scalar `va_arg`
 
-Goal: Make the new prepared fact inspectable and covered without claiming
-selected machine-node consumption.
+Status: Completed in commit `b1a69adb6`.
 
-Actions:
-
-- Extend prepared printer output for aggregate access-plan fields.
-- Add focused printer/preparation assertions for source class, size/alignment,
-  source coordinates, destination payload, copy extent, and progression.
-- Ensure existing AArch64 aggregate selected-node tests still fail closed until
-  idea 243 consumes the fact.
+Goal: Lower selected scalar `va_arg` paths without target-local ABI
+reconstruction.
 
 Completion check:
 
-- Focused prepared/printer tests prove the new aggregate access-plan carrier,
-  and selected AArch64 aggregate `va_arg` consumption remains out of scope.
+- Completed by selected scalar `va_arg` records that consume
+  `helper_operand_homes.va_arg.scalar_access_plan` from prepared/shared facts.
+  Do not redo this step unless aggregate or `va_copy` work proves a targeted
+  correction is needed.
 
-### Step 4: Validate And Hand Back To Idea 243
+### Step 4: Consume Prepared Facts For Aggregate `va_arg`
 
-Goal: Prove the prerequisite and preserve the lifecycle handoff point.
+Goal: Lower aggregate `va_arg` helper effects while preserving aggregate
+storage and copy semantics.
 
 Actions:
 
-- Run the supervisor-chosen build and focused prepared/variadic backend subset.
-- Escalate to broader backend validation if shared prepared-carrier changes
-  affect more than the aggregate helper family.
-- Summarize the fact supplied and any remaining unsupported aggregate cases in
-  `todo.md`.
-- Ask the supervisor to close this prerequisite and reactivate idea 243 at
-  Step 4 when acceptance criteria are met.
+- Add records for aggregate payload source selection and destination copy.
+- Consume prepared aggregate size, alignment, destination payload homes, source
+  `va_list` homes, source storage coordinates, copy extent, register-save or
+  overflow progression, helper resources, and
+  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
+- Keep full-width aggregate transport separate from scalar shortcuts.
+- Add focused tests for an aggregate variadic argument path and printer output.
+- Preserve explicit fail-closed diagnostics for missing or incomplete prepared
+  aggregate access-plan authority.
 
 Completion check:
 
-- The prerequisite has fresh proof for the aggregate access-plan fact and idea
-  243 can resume consuming
-  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` as shared
-  prepared authority.
+- Aggregate `va_arg` either produces structured machine-node effects from
+  prepared/shared facts or records an exact prepared extent/storage blocker.
+
+### Step 5: Consume Prepared Facts For `va_copy`
+
+Goal: Lower `va_copy` as a structured copy of the prepared `va_list` layout.
+
+Actions:
+
+- Add machine-node records for copying each supported `va_list` field.
+- Consume prepared source/destination homes, field layout facts, storage facts,
+  and helper resources directly.
+- Preserve explicit diagnostics for incomplete storage or layout facts.
+- Add focused tests for `va_copy` record and printer output.
+
+Completion check:
+
+- `va_copy` emits structured copy effects from prepared/shared facts, or the
+  route records the exact missing prepared source/destination storage
+  authority.
+
+### Step 6: Validate And Summarize
+
+Goal: Prove the accepted consumption route and preserve any remaining blockers
+at the correct lifecycle layer.
+
+Actions:
+
+- Run the supervisor-chosen build and focused variadic backend subset.
+- Escalate to broader `backend_` validation if selected machine records,
+  printer behavior, or prepared facts changed beyond one helper family.
+- Summarize supported helper paths, remaining unsupported cases, and any split
+  prepared/shared initiatives in `todo.md`.
+- Ask the supervisor to decide whether the source idea is complete, blocked, or
+  should remain active for another runbook rewrite.
+
+Completion check:
+
+- Supported variadic helper paths have structured selected machine-node and
+  printer proof, and remaining gaps are explicit non-overfit lifecycle notes.

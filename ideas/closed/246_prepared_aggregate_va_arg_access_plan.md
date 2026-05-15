@@ -1,7 +1,8 @@
 # Prepared Aggregate `va_arg` Access Plan
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Blocked Idea: ideas/open/243_aarch64_variadic_machine_node_consumption.md
@@ -66,6 +67,27 @@ from helper names, local ABI layout rules, or destination-home shape.
   without changing selected machine-node support claims.
 - Idea 243 can resume Step 4 with the access-plan fact as shared prepared
   authority instead of target-local reconstruction.
+
+## Closure Notes
+
+Closed after commits `2fbc9f171`, `c28ae98bc`, and `f1591bb2b` defined,
+populated, printed, and proved
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
+
+The closed prerequisite supplies aggregate source class, payload
+size/alignment, source storage coordinates, destination payload relationship,
+copy extent, and `va_list` progression as shared prepared authority for the
+supported AAPCS64 aggregate path. Prepared-printer coverage also proves the
+explicit incomplete-path state and the missing-fact diagnostic remains
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
+
+Selected AArch64 aggregate machine-node consumption intentionally remains out
+of scope here and resumes in
+`ideas/open/243_aarch64_variadic_machine_node_consumption.md` Step 4.
+
+Close evidence: accepted focused backend proof passed 139/139 in
+`test_before.log`; the supervisor also reported accepted full-suite baseline
+3167/3167 for commit `c28ae98bc`.
 
 ## Reviewer Reject Signals
 

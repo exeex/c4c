@@ -1,37 +1,39 @@
 Status: Active
-Source Idea Path: ideas/open/246_prepared_aggregate_va_arg_access_plan.md
+Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Print And Prove Prepared Aggregate Access Plans
+Current Step ID: 4
+Current Step Title: Consume Prepared Facts For Aggregate `va_arg`
 
 # Current Packet
 
 ## Just Finished
 
-Plan Step 3 confirmed prepared-printer coverage for aggregate `va_arg` access
-plans without adding selected AArch64 aggregate machine-node consumption. The
-existing focused prepared-printer test asserts populated aggregate access-plan
-fields for the supported AAPCS64 path, `aggregate_access_plan=<none>` for the
-incomplete path, and the missing fact
-`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`. Existing selected
-AArch64 dispatch coverage still fails closed on that same missing fact.
+Lifecycle handoff completed: prerequisite idea 246 closed after supplying
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`, and idea 243 is
+reactivated at aggregate `va_arg` selected machine-node consumption.
 
 ## Suggested Next
 
-Execute Step 4 by validating the prerequisite handoff and asking the supervisor
-to close idea 246 or reactivate idea 243 when lifecycle acceptance is ready.
+Execute Step 4 by consuming the prepared/shared aggregate access-plan fact in
+AArch64 selected lowering. Start with a narrow aggregate `va_arg` path and
+preserve fail-closed diagnostics for missing or incomplete prepared authority.
 
 ## Watchouts
 
-- No Step 3 code changes were needed; committed tests already covered the
-  prepared-printer and fail-closed diagnostic contracts requested by the packet.
-- Keep selected aggregate `va_arg` machine-node consumption parked in idea 243
-  until the supervisor accepts and closes this prerequisite.
+- Do not reconstruct aggregate source selection, register-save coordinates,
+  overflow coordinates, aggregate size/alignment, copy extent, destination
+  payload relationships, or `va_list` progression in AArch64 target lowering.
+- Do not claim aggregate `va_arg` support through prepared-printer coverage
+  alone; selected machine-node records and printer output are required.
+- Treat fixture-name matching, expectation-only changes, and unsupported
+  downgrades as route drift.
 - The fail-closed selected AArch64 diagnostic remains
-  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan`.
+  `helper_operand_homes.va_arg_aggregate.aggregate_access_plan` until Step 4
+  consumes the prepared fact.
 
 ## Proof
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_') > test_after.log 2>&1`
-
-Passed. `test_after.log` is the proof log.
+Lifecycle-only transition. Prerequisite proof was supplied by commits
+`2fbc9f171`, `c28ae98bc`, and `f1591bb2b`: focused backend proof passed
+139/139 in `test_before.log`, and the supervisor reported accepted full-suite
+baseline 3167/3167 for commit `c28ae98bc`.

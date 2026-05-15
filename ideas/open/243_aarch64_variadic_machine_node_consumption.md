@@ -1,6 +1,6 @@
 # AArch64 Variadic Machine Node Consumption
 
-Status: Parked
+Status: Open
 Created: 2026-05-15
 
 Parent Context: ideas/closed/232_aarch64_variadic_function_entry_carriers.md
@@ -100,6 +100,15 @@ missing fact. Resume Step 4 only after
 `ideas/open/246_prepared_aggregate_va_arg_access_plan.md` supplies aggregate
 source selection, payload size/alignment, copy extent, destination/source
 relationship, and `va_list` progression as shared prepared authority.
+
+Reactivated on 2026-05-15 after
+`ideas/closed/246_prepared_aggregate_va_arg_access_plan.md` supplied the
+prepared/shared aggregate access-plan authority. Resume Step 4 at aggregate
+`va_arg` selected machine-node consumption and consume
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan` directly rather
+than reconstructing source selection, payload size/alignment, source
+coordinates, destination payload relationship, copy extent, or `va_list`
+progression in AArch64 target lowering.
 
 ## Reviewer Reject Signals
 
