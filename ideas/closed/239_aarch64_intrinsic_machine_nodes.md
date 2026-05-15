@@ -1,7 +1,8 @@
 # AArch64 Intrinsic Machine Nodes
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
 
@@ -69,7 +70,7 @@ Completed scalar route:
 Dependency split:
 
 - CRC, vector memory, and vector operation carrier authority is tracked by
-  `ideas/open/241_aarch64_crc_vector_intrinsic_carriers.md`.
+  `ideas/closed/241_aarch64_crc_vector_intrinsic_carriers.md`.
 - Those families must not be selected or printed by this idea until complete
   semantic and prepared carrier facts exist.
 
@@ -84,3 +85,38 @@ Latest broad backend proof for the retired scalar runbook:
 
 - `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`
 - Result: 139/139 backend tests passed in `test_before.log`.
+
+## Closure Note - 2026-05-15
+
+Closed after the second active runbook completed the machine-node route for
+the intrinsic families with complete carrier authority.
+
+Completed machine-node support:
+
+- Scalar F32/F64 `fabs` selection and printing from selected records remained
+  intact.
+- CRC32W, vector load, and vector add now select from complete prepared
+  intrinsic carriers into AArch64 machine records.
+- The machine printer emits `crc32w`, `ld1 {vN.16b}, [xN]`, and `add
+  vD.16b, vL.16b, vR.16b` only from selected structured records with explicit
+  register and shape authority.
+- Unsupported x86-only, incomplete-carrier, malformed-vector-shape,
+  non-selected, and fabricated intrinsic-shaped paths remain fail-closed.
+
+Dependency split:
+
+- Barrier, cache-maintenance, pause/hint, and builtin-address intrinsic
+  families still lack complete BIR semantic intrinsic facts plus prepared
+  intrinsic carrier authority.
+- That upstream work is split to
+  `ideas/open/242_aarch64_barrier_cache_hint_builtin_intrinsic_carriers.md`.
+- Machine-node selection or printer support for those families must wait for
+  that dependency route or a later explicit follow-on machine-node idea.
+
+Close proof:
+
+- Supervisor acceptance after commit `e6d4a1216` passed
+  `cmake --build --preset default`, the narrow intrinsic backend subset, and
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+- Plan-owner close gate passed with matching backend before/after logs:
+  139/139 backend tests passed.
