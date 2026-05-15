@@ -3858,6 +3858,68 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
     return fail("expected inline-asm mismatched tied home to fail closed");
   }
 
+  auto target_invalid_tie_home =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  target_invalid_tie_home.inline_asm_operands[1].home->register_name =
+      std::string{"sp"};
+  target_invalid_tie_home.inline_asm_operands[1]
+      .home->target_register_identity = std::nullopt;
+  const auto target_invalid_tie_home_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(target_invalid_tie_home)));
+  if (target_invalid_tie_home_result.ok ||
+      target_invalid_tie_home_result.diagnostic.find(
+          "missing prepared coallocation authority") == std::string::npos) {
+    return fail("expected inline-asm target-invalid tied home to fail closed");
+  }
+
+  auto class_invalid_tie_home =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  class_invalid_tie_home.inline_asm_operands[1].home->register_name =
+      std::string{"s3"};
+  class_invalid_tie_home.inline_asm_operands[1]
+      .home->target_register_identity =
+      prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Aarch64,
+          .bank = prepare::PreparedRegisterBank::Fpr,
+          .register_class = prepare::PreparedRegisterClass::Float,
+          .physical_index = 3,
+      };
+  const auto class_invalid_tie_home_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(class_invalid_tie_home)));
+  if (class_invalid_tie_home_result.ok ||
+      class_invalid_tie_home_result.diagnostic.find(
+          "incompatible prepared register class") == std::string::npos) {
+    return fail("expected inline-asm class-invalid tied home to fail closed");
+  }
+
+  auto selected_tie_disagrees =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  selected_tie_disagrees.inline_asm_operands[1].selected_operand =
+      aarch64_codegen::make_register_operand(wreg(4));
+  const auto selected_tie_disagrees_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(selected_tie_disagrees)));
+  if (selected_tie_disagrees_result.ok ||
+      selected_tie_disagrees_result.diagnostic.find(
+          "selected register disagrees with prepared home") == std::string::npos) {
+    return fail("expected inline-asm tied selected register mismatch to fail closed");
+  }
+
+  auto selected_output_disagrees =
+      selected_inline_asm_record("add %w0, %w1, %w2");
+  selected_output_disagrees.inline_asm_operands[0].selected_operand =
+      aarch64_codegen::make_register_operand(wreg(4));
+  const auto selected_output_disagrees_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(selected_output_disagrees)));
+  if (selected_output_disagrees_result.ok ||
+      selected_output_disagrees_result.diagnostic.find(
+          "selected register disagrees with prepared home") == std::string::npos) {
+    return fail("expected inline-asm output selected register mismatch to fail closed");
+  }
+
   auto unsupported_constraint = selected_inline_asm_record("add %w0, %w1, %w2");
   unsupported_constraint.inline_asm_operands[2].constraint = "m";
   const auto unsupported_constraint_result =

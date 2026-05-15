@@ -759,6 +759,12 @@ find_inline_asm_prepared_output_operand(
          home.register_name.has_value();
 }
 
+[[nodiscard]] bool inline_asm_identity_matches_register_constraint(
+    const prepare::PreparedTargetRegisterIdentity& identity) {
+  return identity.bank == prepare::PreparedRegisterBank::Gpr &&
+         identity.register_class == prepare::PreparedRegisterClass::General;
+}
+
 [[nodiscard]] bool require_inline_asm_tied_home_agreement(
     const prepare::PreparedInlineAsmCarrier& carrier,
     const prepare::PreparedInlineAsmOperand& operand,
@@ -796,12 +802,35 @@ find_inline_asm_prepared_output_operand(
     append_tied_diagnostic("tied_input_output_home_requires_concrete_registers");
     return false;
   }
+  const auto tied_identity = operand.home->target_register_identity;
+  if (!tied_identity.has_value()) {
+    append_tied_diagnostic("target_invalid_tied_input_register_home");
+    return false;
+  }
+  const auto output_identity = carrier.result_home->target_register_identity;
+  if (!output_identity.has_value()) {
+    append_tied_diagnostic("target_invalid_tied_output_register_home");
+    return false;
+  }
+  if (!inline_asm_identity_matches_register_constraint(*tied_identity) ||
+      !inline_asm_identity_matches_register_constraint(*output_identity)) {
+    append_tied_diagnostic("tied_input_output_home_incompatible_register_class");
+    return false;
+  }
+  if (*tied_identity != *output_identity) {
+    append_tied_diagnostic("tied_input_output_home_mismatch");
+    return false;
+  }
   if (!operand.tied_home_authority.has_value()) {
     append_tied_diagnostic("missing_tied_home_coallocation_authority");
     return false;
   }
   if (operand.tied_home_authority->tied_output_index != *operand.tied_output_index) {
     append_tied_diagnostic("tied_home_coallocation_authority_output_mismatch");
+    return false;
+  }
+  if (operand.tied_home_authority->shared_register != *tied_identity) {
+    append_tied_diagnostic("tied_home_coallocation_authority_home_mismatch");
     return false;
   }
   return true;

@@ -1,49 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/243_inline_asm_tied_home_allocation_policy.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Tied-Home Coallocation Authority
+Current Step ID: 3
+Current Step Title: Harden Fail-Closed Tied-Home Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added structured tied-home coallocation authority for prepared
-inline-asm homes:
+Step 3 hardened the fail-closed tied-home boundaries:
 
-- `PreparedValueHome` now carries an optional target-normalized register
-  identity, and prepared inline-asm tied operands record explicit shared-home
-  authority only after both sides normalize to the same target-valid GPR home.
-- AArch64 inline-asm preparation normalizes `wN`/`xN` aliases to the same
-  physical GPR identity, rejects target-invalid/class-incompatible/mismatched
-  tied homes with structured facts, and leaves allocator-dependent homes
-  fail-closed.
-- AArch64 dispatch now requires the prepared tied-home authority instead of
-  comparing rendered register strings, and the printer validates selected tied
-  operands through structured target-home identity rather than raw text.
-- Coverage now includes alias-aware `w3`/`x3` tied homes, preserved same-register
-  concrete ties, selected-printer fail-closed checks, and a prepared-carrier
-  mismatch case that records `tied_input_output_home_mismatch` instead of being
-  treated as complete.
+- AArch64 dispatch now validates target-normalized tied input/output identities,
+  register class compatibility, home agreement, authority output index, and
+  authority shared-register payload before it selects a tied inline-asm operand.
+- The selected inline-asm printer now rejects tied records whose selected input
+  or output register payload disagrees with the structured prepared home instead
+  of printing from the selected operand alone.
+- Coverage now includes dispatch fail-closed cases for target-invalid tied homes,
+  incompatible register classes, mismatched homes, mismatched authority payloads,
+  allocator-dependent homes, missing homes, and missing tied authority, while
+  existing concrete and alias-aware supported ties still pass.
 
 ## Suggested Next
 
-Proceed to Step 3 by hardening the remaining fail-closed boundaries around
-missing authority, target-invalid tied register names, incompatible register
-classes, and allocator-dependent tied homes before selection or printing can
-infer a home.
+Proceed to Step 4 by carrying proven alias-aware tied-home authority through
+AArch64 selection and printing as the accepted path, while keeping the Step 3
+fail-closed cases intact.
 
 ## Watchouts
 
-- Current preparation proves coallocation only when both prepared homes already
-  carry concrete target-normalized identities; it does not introduce allocator
-  repair or move insertion for mismatched homes.
-- A semantic prepared-carrier example whose allocator places the tied input in
-  `x0` and the output in `x21` now correctly remains incomplete with
-  `tied_input_output_home_mismatch`.
-- Keep using structured `PreparedValueHome::target_register_identity` and
-  `PreparedInlineAsmTiedHomeAuthority`; do not reintroduce raw
-  `register_name` equality in dispatch or printer checks.
+- `InlineAsmMachineOperandRecord` still does not carry
+  `PreparedInlineAsmTiedHomeAuthority` directly, so the printer boundary validates
+  selected operands against the structured prepared homes available on the
+  selected record.
+- Preparation remains allocator-policy-free: allocator-dependent tied homes still
+  fail closed instead of inserting moves or repairing allocation.
+- Keep dispatch/printer checks based on `target_register_identity` and prepared
+  authority payloads; do not fall back to rendered register text.
 
 ## Proof
 

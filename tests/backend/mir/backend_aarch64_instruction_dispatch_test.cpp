@@ -177,7 +177,10 @@ enum class InlineAsmCarrierFixtureKind {
   MissingTiedInputHome,
   MissingTiedOutputIndex,
   AllocatorDependentTiedInputHome,
+  TargetInvalidTiedInputHome,
+  ClassInvalidTiedInputHome,
   MismatchedTiedInputHome,
+  AuthorityMismatchedTiedInputHome,
   AliasAwareTiedInputHome,
   UnsupportedOperand,
   SupportedMemoryInputSelection,
@@ -378,14 +381,33 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
       }},
   });
 
-  const auto out_home = inline_asm_register_home(
+  auto out_home = inline_asm_register_home(
       prepare::PreparedValueId{50}, function_name, out_name, "w3");
   auto seed_home = inline_asm_register_home(
       prepare::PreparedValueId{51}, function_name, seed_name, "w3");
   if (kind == InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome) {
     seed_home.register_name = std::nullopt;
+  } else if (kind == InlineAsmCarrierFixtureKind::TargetInvalidTiedInputHome) {
+    seed_home.register_name = std::string{"sp"};
+    seed_home.target_register_identity = std::nullopt;
+  } else if (kind == InlineAsmCarrierFixtureKind::ClassInvalidTiedInputHome) {
+    seed_home.register_name = std::string{"s3"};
+    seed_home.target_register_identity =
+        prepare::PreparedTargetRegisterIdentity{
+            .target_arch = c4c::TargetArch::Aarch64,
+            .bank = prepare::PreparedRegisterBank::Fpr,
+            .register_class = prepare::PreparedRegisterClass::Float,
+            .physical_index = 3,
+        };
   } else if (kind == InlineAsmCarrierFixtureKind::MismatchedTiedInputHome) {
     seed_home.register_name = std::string{"w4"};
+    seed_home.target_register_identity =
+        prepare::PreparedTargetRegisterIdentity{
+            .target_arch = c4c::TargetArch::Aarch64,
+            .bank = prepare::PreparedRegisterBank::Gpr,
+            .register_class = prepare::PreparedRegisterClass::General,
+            .physical_index = 4,
+        };
   } else if (kind == InlineAsmCarrierFixtureKind::AliasAwareTiedInputHome) {
     seed_home.register_name = std::string{"x3"};
   }
@@ -446,11 +468,17 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .tied_home_authority =
                    kind == InlineAsmCarrierFixtureKind::MismatchedTiedInputHome ||
                            kind == InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome ||
+                           kind == InlineAsmCarrierFixtureKind::TargetInvalidTiedInputHome ||
+                           kind == InlineAsmCarrierFixtureKind::ClassInvalidTiedInputHome ||
                            kind == InlineAsmCarrierFixtureKind::MissingTiedInputHome ||
                            kind == InlineAsmCarrierFixtureKind::MissingTiedOutputIndex
                        ? std::nullopt
                        : std::optional<prepare::PreparedInlineAsmTiedHomeAuthority>{
-                             inline_asm_tied_home_authority(0, 3)},
+                             inline_asm_tied_home_authority(
+                                 0,
+                                 kind == InlineAsmCarrierFixtureKind::AuthorityMismatchedTiedInputHome
+                                     ? 4
+                                     : 3)},
            },
            prepare::PreparedInlineAsmOperand{
                .kind = selected_input_kind,
@@ -4770,8 +4798,16 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
       std::pair{InlineAsmCarrierFixtureKind::AllocatorDependentTiedInputHome,
                 std::string_view{
                     "tied_input_output_home_requires_concrete_registers"}},
+      std::pair{InlineAsmCarrierFixtureKind::TargetInvalidTiedInputHome,
+                std::string_view{"target_invalid_tied_input_register_home"}},
+      std::pair{InlineAsmCarrierFixtureKind::ClassInvalidTiedInputHome,
+                std::string_view{
+                    "tied_input_output_home_incompatible_register_class"}},
       std::pair{InlineAsmCarrierFixtureKind::MismatchedTiedInputHome,
-                std::string_view{"missing_tied_home_coallocation_authority"}},
+                std::string_view{"tied_input_output_home_mismatch"}},
+      std::pair{InlineAsmCarrierFixtureKind::AuthorityMismatchedTiedInputHome,
+                std::string_view{
+                    "tied_home_coallocation_authority_home_mismatch"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedMemoryInputSelection,
@@ -4814,6 +4850,9 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
             aarch64_module::InstructionLoweringFamily::Call ||
         diagnostics.entries.front().message.find(expected_fact) ==
             std::string::npos) {
+      std::cerr << "[FAIL] expected fact: " << expected_fact
+                << "\n[FAIL] actual diagnostic: "
+                << diagnostics.entries.front().message << "\n";
       return fail("expected inline-asm fail-closed diagnostic fact");
     }
     if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(

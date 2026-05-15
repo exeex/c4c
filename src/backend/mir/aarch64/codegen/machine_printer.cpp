@@ -718,6 +718,32 @@ bool inline_asm_home_is_concrete_register(
          home.register_name.has_value();
 }
 
+bool inline_asm_identity_matches_register_constraint(
+    const prepare::PreparedTargetRegisterIdentity& identity) {
+  return identity.bank == prepare::PreparedRegisterBank::Gpr &&
+         identity.register_class == prepare::PreparedRegisterClass::General;
+}
+
+std::optional<prepare::PreparedTargetRegisterIdentity>
+inline_asm_selected_register_identity(const OperandRecord& selected) {
+  if (selected.kind != OperandKind::Register) {
+    return std::nullopt;
+  }
+  const auto* reg = std::get_if<RegisterOperand>(&selected.payload);
+  if (reg == nullptr) {
+    return std::nullopt;
+  }
+  if (reg->reg.bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  return prepare::PreparedTargetRegisterIdentity{
+      .target_arch = c4c::TargetArch::Aarch64,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .physical_index = reg->reg.index,
+  };
+}
+
 struct InlineAsmNamedOperandLookup {
   const InlineAsmMachineOperandRecord* operand = nullptr;
   std::string diagnostic;
@@ -836,9 +862,33 @@ std::optional<std::string> inline_asm_operand_text(
           "inline-asm tied input is missing prepared coallocation authority";
       return std::nullopt;
     }
+    if (!inline_asm_identity_matches_register_constraint(
+            *operand.home->target_register_identity) ||
+        !inline_asm_identity_matches_register_constraint(
+            *printable_operand->home->target_register_identity)) {
+      *diagnostic =
+          "inline-asm tied input has incompatible prepared register class";
+      return std::nullopt;
+    }
     if (*operand.home->target_register_identity !=
         *printable_operand->home->target_register_identity) {
       *diagnostic = "inline-asm tied input prepared home disagrees with output";
+      return std::nullopt;
+    }
+    const auto tied_selected_identity =
+        inline_asm_selected_register_identity(*operand.selected_operand);
+    if (!tied_selected_identity.has_value() ||
+        *tied_selected_identity != *operand.home->target_register_identity) {
+      *diagnostic =
+          "inline-asm tied input selected register disagrees with prepared home";
+      return std::nullopt;
+    }
+    const auto output_selected_identity =
+        inline_asm_selected_register_identity(*printable_operand->selected_operand);
+    if (!output_selected_identity.has_value() ||
+        *output_selected_identity != *printable_operand->home->target_register_identity) {
+      *diagnostic =
+          "inline-asm tied output selected register disagrees with prepared home";
       return std::nullopt;
     }
   }
