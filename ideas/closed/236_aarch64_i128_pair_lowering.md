@@ -1,6 +1,6 @@
 # AArch64 I128 Pair Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
 
 Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
@@ -89,3 +89,35 @@ direct-result i128 div/rem helpers. Float/i128 conversion helpers,
 memory-return helper families, and incomplete live-preservation states remain
 deferred or fail-closed unless a separate source idea supplies the missing
 authority.
+
+## Closure Notes
+
+Closed: 2026-05-15
+
+The active runbook completed the supported AArch64 i128 pair-lowering route:
+
+- prepared/shared i128 carrier authority exists for register pairs and
+  memory-backed values
+- selected AArch64 transport records consume complete prepared carriers
+- supported i128 add, sub, and bitwise operations select into pair records with
+  low/high lane semantics
+- supported immediate shifts and representative signed/unsigned comparisons
+  select into structured i128 records
+- supported i128 `SDiv`, `UDiv`, `SRem`, and `URem` helper boundaries select
+  from prepared runtime-helper authority
+- terminal printing covers supported i128 transport, pair arithmetic/bitwise,
+  shifts, comparisons, and direct-result div/rem helper-boundary calls from
+  structured record fields
+- incomplete carrier authority, missing helper ownership/live-preservation/ABI
+  or marshaling facts, unsupported count/comparison states, float/i128
+  conversions, and memory-return helper families remain fail-closed or
+  explicitly deferred
+
+Deferred helper families were split to
+`ideas/open/250_i128_deferred_helper_family_authority.md` rather than expanding
+this closed source idea. Future work must continue consuming structured
+marshal/unmarshal, ABI binding, preserved-value, and selected-call ownership
+facts instead of adding fixed-register shortcuts.
+
+Close proof used the accepted full-suite regression artifact in
+`test_before.log`: 3167/3167 tests passed.
