@@ -3211,6 +3211,40 @@ LirModule make_aarch64_dc_cvau_intrinsic_module(
   return module;
 }
 
+LirModule make_aarch64_hint_intrinsic_module(
+    std::string target_triple = "aarch64-unknown-linux-gnu",
+    std::string hint_type = "i32",
+    std::string hint_value = "1",
+    std::string return_type = "void",
+    LirOperand result = LirOperand()) {
+  LirModule module;
+  module.target_profile = target_triple == "x86_64-unknown-linux-gnu"
+                              ? c4c::default_target_profile(c4c::TargetArch::X86_64)
+                              : c4c::target_profile_from_triple(target_triple);
+
+  LirFunction function;
+  function.name = "aarch64_hint_intrinsic";
+  function.signature_text = "define void @aarch64_hint_intrinsic()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = std::move(result),
+      .return_type = return_type,
+      .callee = LirOperand("@llvm.aarch64.hint"),
+      .callee_type_suffix = "(" + hint_type + ")",
+      .args_str = hint_type + " " + hint_value,
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_x86_only_intrinsic_on_aarch64_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
@@ -3409,9 +3443,38 @@ int expect_aarch64_dc_cvau_intrinsic_carries_cache_semantics_without_selection()
   return 0;
 }
 
+int expect_aarch64_hint_intrinsic_carries_pause_hint_semantics_without_selection() {
+  auto result = try_lower_to_bir_with_options(make_aarch64_hint_intrinsic_module(),
+                                              BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("aarch64 hint intrinsic should lower to BIR semantic intrinsic facts");
+  }
+  const auto* call = find_intrinsic_call(
+      *result.module, c4c::backend::bir::IntrinsicOperationKind::HintYield);
+  if (call == nullptr || !call->intrinsic.has_value()) {
+    return fail("aarch64 hint intrinsic should carry a BIR intrinsic operation");
+  }
+  const auto& intrinsic = *call->intrinsic;
+  if (call->result.has_value() || call->return_type != TypeKind::Void ||
+      intrinsic.family != c4c::backend::bir::IntrinsicFamilyKind::PauseHint ||
+      intrinsic.required_feature != c4c::backend::bir::IntrinsicFeatureKind::None ||
+      intrinsic.operand_type != TypeKind::I32 || intrinsic.result_type != TypeKind::Void ||
+      intrinsic.operand_roles.size() != 1 ||
+      intrinsic.operand_roles[0] != c4c::backend::bir::IntrinsicOperandRole::HintImmediate ||
+      intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_access != c4c::backend::bir::IntrinsicMemoryAccessKind::None ||
+      intrinsic.barrier_domain != c4c::backend::bir::IntrinsicBarrierDomainKind::None ||
+      !intrinsic.has_immediate_operand || !intrinsic.requires_immediate_operand ||
+      !intrinsic.immediate_value.has_value() || *intrinsic.immediate_value != 1 ||
+      !intrinsic.has_side_effects) {
+    return fail("aarch64 hint intrinsic should carry complete pause/hint facts");
+  }
+  return 0;
+}
+
 int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
   constexpr std::string_view kFamily = "aarch64 semantic intrinsic family";
-  const std::array<std::pair<std::string_view, LirModule>, 10> modules = {
+  const std::array<std::pair<std::string_view, LirModule>, 13> modules = {
       std::pair<std::string_view, LirModule>{"x86-only intrinsic",
                                              make_x86_only_intrinsic_on_aarch64_module()},
       std::pair<std::string_view, LirModule>{"crc wrong data type",
@@ -3442,10 +3505,29 @@ int expect_aarch64_semantic_intrinsic_fail_closed_cases() {
                                                  "ptr",
                                                  "ptr",
                                                  LirOperand("%cache"))},
+      std::pair<std::string_view, LirModule>{"hint unsupported immediate",
+                                             make_aarch64_hint_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu", "i32", "0")},
+      std::pair<std::string_view, LirModule>{"hint non-immediate",
+                                             make_aarch64_hint_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu", "i32", "%hint")},
+      std::pair<std::string_view, LirModule>{"hint unexpected result",
+                                             make_aarch64_hint_intrinsic_module(
+                                                 "aarch64-unknown-linux-gnu",
+                                                 "i32",
+                                                 "1",
+                                                 "i32",
+                                                 LirOperand("%hint"))},
   };
   for (const auto& [case_name, module] : modules) {
     auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
     if (result.module.has_value()) {
+      if (case_name.rfind("hint ", 0) == 0 &&
+          find_intrinsic_call(
+              *result.module,
+              c4c::backend::bir::IntrinsicOperationKind::HintYield) == nullptr) {
+        continue;
+      }
       return fail((std::string("malformed or unsupported aarch64 semantic intrinsic case should "
                                "fail closed: ") +
                    std::string(case_name))
@@ -5683,6 +5765,11 @@ int main() {
           expect_aarch64_dc_cvau_intrinsic_carries_cache_semantics_without_selection();
       aarch64_dc_cvau_status != 0) {
     return aarch64_dc_cvau_status;
+  }
+  if (const int aarch64_hint_status =
+          expect_aarch64_hint_intrinsic_carries_pause_hint_semantics_without_selection();
+      aarch64_hint_status != 0) {
+    return aarch64_hint_status;
   }
   if (const int aarch64_intrinsic_fail_closed_status =
           expect_aarch64_semantic_intrinsic_fail_closed_cases();

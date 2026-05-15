@@ -5041,6 +5041,61 @@ prepare::PreparedBirModule prepared_with_complete_aarch64_cache_dc_cvau_intrinsi
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_complete_aarch64_hint_yield_intrinsic_carrier() {
+  auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(bir::TypeKind::F64);
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  auto& call =
+      std::get<bir::CallInst>(prepared.module.functions.front().blocks.front().insts.front());
+  call.result = std::nullopt;
+  call.callee = "llvm.aarch64.hint";
+  call.callee_link_name_id = prepared.names.link_names.intern("llvm.aarch64.hint");
+  call.args = {bir::Value::immediate_i32(1)};
+  call.arg_types = {bir::TypeKind::I32};
+  call.return_type = bir::TypeKind::Void;
+  call.intrinsic = bir::IntrinsicOperation{
+      .family = bir::IntrinsicFamilyKind::PauseHint,
+      .operation = bir::IntrinsicOperationKind::HintYield,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::Void,
+      .operand_roles = {bir::IntrinsicOperandRole::HintImmediate},
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .has_immediate_operand = true,
+      .requires_immediate_operand = true,
+      .immediate_value = 1,
+      .has_side_effects = true,
+  };
+
+  prepared.value_locations.functions.front().value_homes.clear();
+  prepared.storage_plans.functions.front().values.clear();
+  auto& plan = prepared.call_plans.functions.front().calls.front();
+  plan.direct_callee_name = std::string{"llvm.aarch64.hint"};
+  plan.arguments.clear();
+  plan.result = std::nullopt;
+
+  auto& carrier = prepared.intrinsic_carriers.functions.front().carriers.front();
+  carrier = prepare::PreparedIntrinsicCarrier{
+      .function_name = function_name,
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::PauseHint,
+      .operation = bir::IntrinsicOperationKind::HintYield,
+      .block_index = 0,
+      .inst_index = 0,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::Void,
+      .operand_roles = {bir::IntrinsicOperandRole::HintImmediate},
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .has_immediate_operand = true,
+      .requires_immediate_operand = true,
+      .immediate_value = 1,
+      .operands = call.args,
+      .operand_homes = {std::nullopt},
+      .has_side_effects = true,
+      .source_callee_name = std::string{"llvm.aarch64.hint"},
+      .has_prepared_call_plan = true,
+  };
+  return prepared;
+}
+
 int block_dispatch_selects_complete_scalar_fp_unary_fabs_intrinsic_carrier() {
   for (const auto type : {bir::TypeKind::F32, bir::TypeKind::F64}) {
     auto prepared = prepared_with_scalar_fp_unary_fabs_intrinsic(type);
@@ -5350,6 +5405,42 @@ int block_dispatch_keeps_complete_cache_dc_cvau_carrier_fail_closed() {
       std::holds_alternative<aarch64_codegen::CallInstructionRecord>(
           block.instructions.front().target.payload)) {
     return fail("expected cache DC CVAU carrier not to select intrinsic or call");
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_complete_hint_yield_carrier_fail_closed() {
+  auto prepared = prepared_with_complete_aarch64_hint_yield_intrinsic_carrier();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+      diagnostics.entries.front().message.find("unsupported_intrinsic_family") ==
+          std::string::npos ||
+      !std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected complete hint yield carrier to remain non-selected");
+  }
+  if (std::holds_alternative<aarch64_codegen::ScalarFpUnaryIntrinsicRecord>(
+          block.instructions.front().target.payload) ||
+      std::holds_alternative<aarch64_codegen::Crc32WIntrinsicRecord>(
+          block.instructions.front().target.payload) ||
+      std::holds_alternative<aarch64_codegen::VectorLoadIntrinsicRecord>(
+          block.instructions.front().target.payload) ||
+      std::holds_alternative<aarch64_codegen::VectorAddIntrinsicRecord>(
+          block.instructions.front().target.payload) ||
+      std::holds_alternative<aarch64_codegen::CallInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected hint yield carrier not to select intrinsic or call");
   }
   return 0;
 }
@@ -8420,6 +8511,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_keeps_complete_cache_dc_cvau_carrier_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_complete_hint_yield_carrier_fail_closed();
       status != 0) {
     return status;
   }

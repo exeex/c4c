@@ -2098,6 +2098,40 @@ int complete_unsupported_intrinsic_carriers_do_not_print_as_machine_records() {
     return fail("expected complete cache DC CVAU carrier not to print as an AArch64 machine record");
   }
 
+  auto hint = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
+  static const prepare::PreparedIntrinsicCarrier hint_carrier{
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::PauseHint,
+      .operation = bir::IntrinsicOperationKind::HintYield,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::Void,
+      .operand_roles = {bir::IntrinsicOperandRole::HintImmediate},
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .has_immediate_operand = true,
+      .requires_immediate_operand = true,
+      .immediate_value = 1,
+      .has_side_effects = true,
+      .source_callee_name = std::string{"llvm.aarch64.hint"},
+      .has_prepared_call_plan = true,
+  };
+  hint.source_carrier = &hint_carrier;
+  hint.family = bir::IntrinsicFamilyKind::PauseHint;
+  hint.operation = bir::IntrinsicOperationKind::HintYield;
+  hint.operand_type = bir::TypeKind::I32;
+  hint.result_type = bir::TypeKind::Void;
+  hint.source_callee_name = std::string{"llvm.aarch64.hint"};
+  hint.has_side_effects = true;
+  const auto hint_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(hint);
+  const auto hint_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(hint_instruction);
+  if (hint_print.ok ||
+      hint_print.diagnostic.find("outside the selected scalar FP unary subset") ==
+          std::string::npos ||
+      !hint_print.instruction_lines.empty()) {
+    return fail("expected complete hint yield carrier not to print as an AArch64 machine record");
+  }
+
   return 0;
 }
 

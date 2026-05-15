@@ -1549,6 +1549,42 @@ void validate_cache_maintenance_intrinsic(
   require_intrinsic_value_homes(function_carriers, carrier, 1, false);
 }
 
+void validate_pause_hint_intrinsic(
+    PreparedIntrinsicCarrierFunction& function_carriers,
+    PreparedIntrinsicCarrier& carrier,
+    const bir::IntrinsicOperation& intrinsic,
+    const bir::CallInst& call,
+    const PreparedCallPlan* call_plan) {
+  if (carrier.operation != bir::IntrinsicOperationKind::HintYield) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_pause_hint_operation");
+  }
+  if (intrinsic.required_feature != bir::IntrinsicFeatureKind::None) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "pause_hint_requires_no_target_feature");
+  }
+  if (call.args.size() != 1 || call.arg_types.size() != 1 ||
+      !intrinsic_roles_are(intrinsic, {bir::IntrinsicOperandRole::HintImmediate})) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "hint_yield_requires_immediate_operand");
+  }
+  if (carrier.result.has_value() || call.return_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "hint_yield_requires_void_result");
+  }
+  if (carrier.operand_type != bir::TypeKind::I32 ||
+      carrier.result_type != bir::TypeKind::Void) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "hint_yield_requires_i32_to_void_types");
+  }
+  if (!intrinsic.has_immediate_operand || !intrinsic.requires_immediate_operand ||
+      !intrinsic.immediate_value.has_value() || *intrinsic.immediate_value != 1) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "hint_yield_requires_immediate_1");
+  }
+  if (intrinsic.memory_operand.has_value() ||
+      intrinsic.memory_access != bir::IntrinsicMemoryAccessKind::None ||
+      intrinsic.barrier_domain != bir::IntrinsicBarrierDomainKind::None ||
+      !carrier.has_side_effects) {
+    append_intrinsic_missing_fact(function_carriers, carrier, "hint_yield_requires_side_effect_only_semantics");
+  }
+  require_intrinsic_call_plan_shape(function_carriers, carrier, call_plan, 1, false);
+}
+
 [[nodiscard]] PreparedAtomicOperationCarrier build_atomic_operation_carrier(
     PreparedNameTables& names,
     const bir::NameTables& bir_names,
@@ -1748,6 +1784,9 @@ void validate_cache_maintenance_intrinsic(
     case bir::IntrinsicFamilyKind::CacheMaintenance:
       validate_cache_maintenance_intrinsic(
           function_carriers, carrier, intrinsic, call, call_plan);
+      break;
+    case bir::IntrinsicFamilyKind::PauseHint:
+      validate_pause_hint_intrinsic(function_carriers, carrier, intrinsic, call, call_plan);
       break;
     case bir::IntrinsicFamilyKind::None:
       append_intrinsic_missing_fact(function_carriers, carrier, "unsupported_intrinsic_family");

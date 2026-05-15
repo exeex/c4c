@@ -1449,8 +1449,13 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
     const bool is_v16i8_add = intrinsic_name == "llvm.aarch64.neon.add.v16i8";
     const bool is_dmb = intrinsic_name == "llvm.aarch64.dmb";
     const bool is_dc_cvau = intrinsic_name == "llvm.aarch64.dc.cvau";
+    const bool is_hint = intrinsic_name == "llvm.aarch64.hint";
+    if (is_hint && context_.target_profile.arch != c4c::TargetArch::Aarch64) {
+      return fail_aarch64_intrinsic();
+    }
     const bool is_known_aarch64_candidate =
-        is_crc32w || is_v16i8_load || is_v16i8_add || is_dmb || is_dc_cvau;
+        is_crc32w || is_v16i8_load || is_v16i8_add || is_dmb || is_dc_cvau ||
+        is_hint;
     if (!is_known_aarch64_candidate) {
       if (intrinsic_name.rfind("llvm.x86.", 0) == 0) {
         return fail_aarch64_intrinsic();
@@ -1544,6 +1549,46 @@ bool BirFunctionLowerer::lower_runtime_intrinsic_inst(
                   .is_volatile = false,
               },
               .memory_access = bir::IntrinsicMemoryAccessKind::None,
+              .has_side_effects = true,
+          },
+      });
+      return true;
+    }
+    if (is_hint) {
+      if (parsed_call->args.size() != 1 || parsed_call->param_types.size() != 1 ||
+          c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[0]) != "i32" ||
+          return_type != "void" ||
+          call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        return fail_aarch64_intrinsic();
+      }
+      const auto lowered_hint = lower_value(
+          c4c::codegen::lir::LirOperand(std::string(parsed_call->args[0].operand)),
+          bir::TypeKind::I32,
+          value_aliases);
+      if (!lowered_hint.has_value() ||
+          lowered_hint->kind != bir::Value::Kind::Immediate ||
+          lowered_hint->immediate != 1) {
+        return fail_aarch64_intrinsic();
+      }
+      lowered_insts->push_back(bir::CallInst{
+          .callee = std::string(intrinsic_name),
+          .args = {*lowered_hint},
+          .arg_types = {bir::TypeKind::I32},
+          .arg_abi = {*compute_call_arg_abi(context_.target_profile, bir::TypeKind::I32)},
+          .return_type_name = "void",
+          .return_type = bir::TypeKind::Void,
+          .result_abi =
+              compute_function_return_abi(context_.target_profile, bir::TypeKind::Void, false),
+          .intrinsic = bir::IntrinsicOperation{
+              .family = bir::IntrinsicFamilyKind::PauseHint,
+              .operation = bir::IntrinsicOperationKind::HintYield,
+              .operand_type = bir::TypeKind::I32,
+              .result_type = bir::TypeKind::Void,
+              .operand_roles = {bir::IntrinsicOperandRole::HintImmediate},
+              .memory_access = bir::IntrinsicMemoryAccessKind::None,
+              .has_immediate_operand = true,
+              .requires_immediate_operand = true,
+              .immediate_value = 1,
               .has_side_effects = true,
           },
       });
