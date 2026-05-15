@@ -381,6 +381,42 @@ std::optional<std::string> append_f128_scalar_move_line(
   return std::nullopt;
 }
 
+std::optional<std::string> validate_f128_cmp_scalar_result(
+    const F128RuntimeHelperScalarResultRecord& scalar) {
+  if (!scalar.marshaling_move.has_value() ||
+      scalar.marshaling_move->direction !=
+          prepare::PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar ||
+      !scalar.abi_register.has_value() ||
+      !scalar.materialized_i1_register.has_value()) {
+    return std::string{
+        "f128 comparison helper requires structured scalar cmp-result marshal facts"};
+  }
+  if (scalar.type != bir::TypeKind::I32 ||
+      scalar.width_bytes != 4 ||
+      scalar.register_bank != prepare::PreparedRegisterBank::Gpr ||
+      scalar.scalar_ownership.type != bir::TypeKind::I32 ||
+      scalar.scalar_ownership.width_bytes != 4 ||
+      scalar.scalar_ownership.register_bank != prepare::PreparedRegisterBank::Gpr ||
+      scalar.marshaling_move->scalar_result.type != bir::TypeKind::I32 ||
+      scalar.marshaling_move->scalar_result.width_bytes != 4 ||
+      scalar.marshaling_move->scalar_result.register_bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      scalar.marshaling_move->abi_register.register_bank !=
+          prepare::PreparedRegisterBank::Gpr ||
+      scalar.marshaling_move->abi_register.width_bytes != 4) {
+    return std::string{
+        "f128 comparison helper requires structured i32 GPR cmp-result facts"};
+  }
+  if (!register_name_with_view(*scalar.abi_register, abi::RegisterView::W).has_value() ||
+      !register_name_with_view(*scalar.materialized_i1_register,
+                               abi::RegisterView::W)
+           .has_value()) {
+    return std::string{
+        "f128 comparison helper has incomplete printable scalar GPR register facts"};
+  }
+  return std::nullopt;
+}
+
 std::optional<std::string> f128_cmp_condition(
     prepare::PreparedF128CmpResultZeroTest zero_test) {
   switch (zero_test) {
@@ -1313,11 +1349,9 @@ mir::TargetInstructionPrintResult print_f128_runtime_helper(
       return target_unsupported(bad_header(instruction) + *error);
     }
     emit_call();
-    if (!helper.scalar_result.abi_register.has_value() ||
-        !helper.scalar_result.materialized_i1_register.has_value()) {
-      return target_unsupported(
-          bad_header(instruction) +
-          "f128 comparison helper is missing scalar result registers");
+    if (const auto error = validate_f128_cmp_scalar_result(helper.scalar_result);
+        error.has_value()) {
+      return target_unsupported(bad_header(instruction) + *error);
     }
     const auto condition = f128_cmp_condition(
         helper.scalar_result.cmp_result_consumption->zero_test);

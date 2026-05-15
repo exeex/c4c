@@ -8,20 +8,18 @@ Current Step Title: Print Supported Binary128 Machine Nodes
 
 ## Just Finished
 
-Step 5 completed the first binary128 printer packet. AArch64 machine printing
-now emits structured F128 load/store transport from selected full-width
-q-register carriers and emits selected F128 helper-boundary call sequences from
-record-level q-register/scalar marshal facts. The printer still rejects
-memory-backed F128 transport without a printable q-register and incomplete F128
-helper records through diagnostics instead of reconstructing operands from
-rendered text.
+Step 5 completed the printer coverage packet for selected binary128 comparison
+and cast helper boundaries. AArch64 machine printing now proves selected
+`__eqtf2`, `__extenddftf2`, and `__trunctfsf2` helper paths print only from
+structured q-register, scalar FP, and scalar cmp-result marshal/result records,
+and the comparison printer now rejects missing `AbiCmpResultToScalar` facts
+instead of printing from bare register spelling.
 
 ## Suggested Next
 
-Run the next supervisor-selected Step 5 packet against real prepared dispatch
-fixtures for any remaining selected F128 comparison/cast/helper printer cases,
-or move to the final narrow binary128 route proof if the supervisor treats this
-printer surface as sufficient.
+Run the supervisor-selected final Step 5 acceptance or broader binary128 route
+proof, or hand Step 5 back to plan-owner closure if this printer surface is now
+sufficient.
 
 ## Watchouts
 
@@ -34,6 +32,9 @@ printer surface as sufficient.
   packet adds a structured printable register or copy authority.
 - F128 helper printing uses prepared marshal/unmarshal facts; do not replace
   those with callee-name or rendered-text guessing.
+- F128 comparison printing validates the structured scalar cmp-result marshal
+  record but still intentionally emits the selected `cmp`/`cset` consumption
+  rather than a separate synthetic move.
 
 ## Proof
 
