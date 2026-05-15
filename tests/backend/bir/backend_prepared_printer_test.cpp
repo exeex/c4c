@@ -2395,6 +2395,37 @@ prepare::PreparedBirModule prepare_f128_memory_carrier_dump_module() {
       });
 }
 
+prepare::PreparedBirModule prepare_f128_register_carrier_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "f128_register_carrier_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "p.value",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 }  // namespace
 
 int main() {
@@ -3448,6 +3479,41 @@ int main() {
   if (!expect_contains(f128_memory_dump,
                        "stack_offset=",
                        "f128 memory carrier frame-slot offset")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f128_register_prepared = prepare_f128_register_carrier_dump_module();
+  const auto* f128_register_carrier = find_f128_carrier(
+      f128_register_prepared, "f128_register_carrier_dump_contract", "p.value");
+  if (f128_register_carrier == nullptr ||
+      f128_register_carrier->kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      f128_register_carrier->source_type != bir::TypeKind::F128 ||
+      f128_register_carrier->total_size_bytes != 16 ||
+      f128_register_carrier->total_align_bytes != 16 ||
+      f128_register_carrier->register_bank != prepare::PreparedRegisterBank::Vreg ||
+      f128_register_carrier->register_class != prepare::PreparedRegisterClass::Vector ||
+      f128_register_carrier->contiguous_width != 1 ||
+      f128_register_carrier->register_name != std::optional<std::string>{"q0"} ||
+      f128_register_carrier->occupied_register_names != std::vector<std::string>{"q0"} ||
+      !f128_register_carrier->missing_required_facts.empty()) {
+    std::cerr << "[FAIL] prepared f128 register carrier lost q-register authority\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string f128_register_dump = prepare::print(f128_register_prepared);
+  if (!expect_contains(f128_register_dump,
+                       "f128_carrier p.value value_id=0",
+                       "f128 register carrier value identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_register_dump,
+                       "kind=full_width_register size=16 align=16 bank=vreg class=vector",
+                       "f128 register carrier storage shape")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_register_dump,
+                       "width=1 units=q0 reg=q0",
+                       "f128 register carrier q-register occupancy")) {
     return EXIT_FAILURE;
   }
 

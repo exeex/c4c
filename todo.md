@@ -8,20 +8,21 @@ Current Step Title: Add Binary128 Full-Width Carrier Facts
 
 ## Just Finished
 
-Step 2 added focused real prepared-module coverage for F128 full-width carrier
+Step 2 added real prepared-module coverage for F128 full-width register carrier
 publication. `backend_prepared_printer` now builds an AArch64 prepared module
-whose `f128` byval parameter gets a real 16-byte frame-slot home through
-stack-layout/liveness/regalloc, then verifies the published
-`PreparedF128Carrier` is `memory_backed` with slot id, stack offset, size,
-alignment, and no missing facts. The test also checks the prepared-printer
-`prepared-f128-carriers` section exposes those frame-slot carrier facts.
+whose non-byval `f128` parameter naturally receives ABI q-register home
+authority, then verifies the published `PreparedF128Carrier` is
+`full_width_register` with size 16, alignment 16, vector-bank/vector-class
+authority, `q0` register identity, single-register occupancy, and no missing
+facts. The slice also added the missing AArch64 F128 ABI register-name mapping
+so inferred F128 register-passed ABI values publish `qN` homes instead of
+falling back to no full-width register name.
 
 ## Suggested Next
 
-Delegate the next Step 2 packet to decide whether F128 full-width register
-carrier publication needs an equivalent real prepared-module coverage fixture,
-or whether Step 2 is now sufficient and helper-boundary preservation facts
-should be deferred to the Step 4 helper packet.
+Delegate the next packet to review whether Step 2 is now sufficient as a
+carrier-fact milestone, or move to the Step 3/Step 4 helper-boundary work
+without adding arithmetic, cast, or final assembly support in this step.
 
 ## Watchouts
 
@@ -37,6 +38,12 @@ should be deferred to the Step 4 helper packet.
   facts remain outside this packet.
 - The new real-path F128 coverage uses a byval parameter to force a prepared
   frame-slot home; it does not claim helper-boundary or arithmetic support.
+- The new register-carrier coverage uses a normal ABI-passed `f128` parameter
+  to prove q-register carrier facts; it does not force register-group overrides
+  or testcase-shaped assignments.
+- Storage-plan bank text for the ABI home can still report the generic scalar
+  FP source bank before `PreparedF128Carrier` normalizes full-width F128
+  transport to vector-bank/vector-class authority.
 
 ## Proof
 

@@ -125,6 +125,9 @@ template <std::size_t N>
   if (type == bir::TypeKind::F64) {
     return "d" + std::to_string(index);
   }
+  if (type == bir::TypeKind::F128) {
+    return "q" + std::to_string(index);
+  }
   return std::nullopt;
 }
 
