@@ -1,39 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/250_i128_deferred_helper_family_authority.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Add Clobber, Resource, Live-Preservation, And Selected-Call Facts
+Current Step ID: 6
+Current Step Title: Validate And Summarize
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 5 by adding clobber/resource, live-preservation, and
-selected-call ownership facts for supported i128 float-conversion helper
-families.
+Executed Step 6 by running the delegated full-suite proof and summarizing the
+prepared/shared deferred i128 helper authority completed by Steps 2-5.
 
-Supported FP-to-I128 and I128-to-FP helpers now publish runtime-helper call
-resources, caller-saved clobber policy, live-preservation evaluation, and
-selected-call ownership when callee identity, resource/clobber policy, ABI
-bindings, marshaling/unmarshaling, and live preservation are complete.
-Selected-call completeness now uses the conversion helper's scalar/pair shape
-instead of the div/rem six-lane shape. F128/binary128 conversion mappings
-remain explicitly deferred, and memory-return-required ownership remains
-fail-closed because destination/slot/offset producer authority is still absent.
+Supported deferred i128 conversion helpers now have structured prepared/shared
+authority for source-operation mapping, helper family/kind, callee identity,
+direct result/argument lane ownership, ABI/register-bank bindings,
+marshal/unmarshal moves, runtime-helper resources, caller-saved clobber policy,
+live-preservation evaluation, and selected-call ownership. The supported set is
+the direct-result F32/F64 conversion family:
+
+- FP-to-I128: `__fixsfti`, `__fixdfti`, `__fixunssfti`, `__fixunsdfti`.
+- I128-to-FP: `__floattisf`, `__floattidf`, `__floatuntisf`,
+  `__floatuntidf`.
+
+Remaining unsupported shapes are explicit blockers, not target-local lowering
+gaps: F128/binary128 conversion mappings remain deferred, and i128 helper
+memory-return ownership remains fail-closed because destination identity,
+storage extent/alignment, slot, offset, and producer authority are not complete
+for helper-selected memory results.
 
 ## Suggested Next
 
-Execute Step 6 as the validation and summary packet. Confirm the prepared/shared
-deferred helper authority is sufficient for supported conversion helpers,
-summarize remaining unsupported memory-return and F128/binary128 shapes, and
-ask the supervisor whether to close this prerequisite or activate a later
-selected AArch64 consumer route.
-
-Suggested focused proof for Step 6:
-
-```bash
-(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1
-```
+Ask the supervisor to route this exhausted runbook to plan-owner
+close/deactivate review. If accepted, the next separate initiative should be a
+selected AArch64 consumer route that consumes the prepared helper authority
+without synthesizing helper ABI facts locally.
 
 ## Watchouts
 
@@ -55,10 +55,10 @@ Suggested focused proof for Step 6:
 
 ## Proof
 
-Focused proof passed:
+Full-suite proof passed:
 
 ```bash
-(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1
+(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure) > test_after.log 2>&1
 ```
 
-Result: 3/3 tests passed. `git diff --check` also passed.
+Result: 3167/3167 tests passed. `test_after.log` is the preserved proof log.
