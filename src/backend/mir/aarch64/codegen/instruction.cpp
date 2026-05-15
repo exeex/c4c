@@ -1929,6 +1929,58 @@ std::vector<abi::RegisterReference> occupied_register_references(
   return {reg};
 }
 
+bool same_gp_allocation_register(abi::RegisterReference lhs,
+                                 abi::RegisterReference rhs) {
+  return lhs.bank == abi::RegisterBank::GeneralPurpose &&
+         rhs.bank == abi::RegisterBank::GeneralPurpose &&
+         lhs.index == rhs.index;
+}
+
+bool record_uses_gp_register(const AtomicMemoryInstructionRecord& record,
+                             abi::RegisterReference candidate) {
+  const auto used_by = [&](const std::optional<RegisterOperand>& operand) {
+    return operand.has_value() && same_gp_allocation_register(operand->reg, candidate);
+  };
+  return used_by(record.pointer_register) || used_by(record.result_register) ||
+         used_by(record.stored_register) || used_by(record.expected_register) ||
+         used_by(record.desired_register) ||
+         used_by(record.exclusive_status_register) ||
+         used_by(record.rmw_new_value_register) ||
+         used_by(record.compare_loaded_register);
+}
+
+std::optional<RegisterOperand> next_reserved_gp_scratch_operand(
+    const AtomicMemoryInstructionRecord& record,
+    abi::RegisterView expected_view) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (record_uses_gp_register(record, scratch)) {
+      continue;
+    }
+    const auto viewed = abi::gp_register(scratch.index, expected_view);
+    if (!viewed.has_value()) {
+      continue;
+    }
+    return RegisterOperand{
+        .reg = *viewed,
+        .role = RegisterOperandRole::ReservedMirScratch,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = expected_view,
+        .contiguous_width = 1,
+        .occupied_register_references = occupied_register_references(*viewed),
+        .occupied_registers = occupied_register_views(*viewed),
+    };
+  }
+  return std::nullopt;
+}
+
+std::optional<abi::RegisterView> atomic_value_register_view(std::size_t width_bytes) {
+  if (width_bytes == 0 || width_bytes > 8) {
+    return std::nullopt;
+  }
+  return width_bytes == 8 ? abi::RegisterView::X : abi::RegisterView::W;
+}
+
 std::optional<abi::RegisterView> prepared_clobber_expected_view(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
@@ -3013,12 +3065,14 @@ MachineNodeStatusRecord atomic_memory_selection_status(
           !instruction.result_value_id.has_value() ||
           !instruction.result_value_name.has_value() ||
           !instruction.result_register.has_value() ||
+          !instruction.rmw_new_value_register.has_value() ||
+          !instruction.exclusive_status_register.has_value() ||
           instruction.rmw_opcode == bir::AtomicRmwOpcode::None ||
           instruction.result_mode != bir::AtomicResultMode::OldValue ||
           !instruction.exclusive_retry_loop) {
         return MachineNodeStatusRecord{
             .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-            .diagnostic = "atomic rmw loop is missing operand, result, opcode, or retry-loop authority"};
+            .diagnostic = "atomic rmw loop is missing operand, result, scratch, status, opcode, or retry-loop authority"};
       }
       break;
     case AtomicMemoryInstructionKind::CompareExchangeLoop:
@@ -3034,18 +3088,25 @@ MachineNodeStatusRecord atomic_memory_selection_status(
           !instruction.result_value_id.has_value() ||
           !instruction.result_value_name.has_value() ||
           !instruction.result_register.has_value() ||
+          !instruction.exclusive_status_register.has_value() ||
           !instruction.exclusive_retry_loop ||
           !instruction.compare_exchange_failure_clears_monitor ||
           instruction.failure_ordering == bir::AtomicOrdering::None) {
         return MachineNodeStatusRecord{
             .status = MachineNodeSelectionStatus::MissingRequiredFacts,
-            .diagnostic = "atomic compare-exchange loop is missing operand, result, ordering, or monitor-clear authority"};
+            .diagnostic = "atomic compare-exchange loop is missing operand, result, status, ordering, or monitor-clear authority"};
       }
       if (!instruction.compare_exchange_result_is_boolean &&
           !instruction.compare_exchange_result_is_old_value) {
         return MachineNodeStatusRecord{
             .status = MachineNodeSelectionStatus::MissingRequiredFacts,
             .diagnostic = "atomic compare-exchange loop is missing result-mode authority"};
+      }
+      if (instruction.compare_exchange_result_is_boolean &&
+          !instruction.compare_loaded_register.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic compare-exchange loop is missing loaded-value register authority"};
       }
       break;
   }
@@ -3698,6 +3759,18 @@ InstructionRecord make_atomic_memory_instruction(
              instruction.result_value_name.has_value()) {
     defs.push_back(prepared_value_def(instruction.result_value_id,
                                       *instruction.result_value_name));
+  }
+  if (instruction.rmw_new_value_register.has_value()) {
+    defs.push_back(effect_from_operand(
+        make_register_operand(*instruction.rmw_new_value_register)));
+  }
+  if (instruction.compare_loaded_register.has_value()) {
+    defs.push_back(effect_from_operand(
+        make_register_operand(*instruction.compare_loaded_register)));
+  }
+  if (instruction.exclusive_status_register.has_value()) {
+    defs.push_back(effect_from_operand(
+        make_register_operand(*instruction.exclusive_status_register)));
   }
 
   const auto selection = atomic_memory_selection_status(instruction);
@@ -5803,6 +5876,20 @@ make_prepared_atomic_operation_instruction_record(
           error != PreparedAtomicOperationRecordError::None) {
         return atomic_instruction_record_error(error);
       }
+      const auto value_view = atomic_value_register_view(operation.width_bytes);
+      if (!value_view.has_value()) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      record.rmw_new_value_register =
+          next_reserved_gp_scratch_operand(record, *value_view);
+      record.exclusive_status_register =
+          next_reserved_gp_scratch_operand(record, abi::RegisterView::W);
+      if (!record.rmw_new_value_register.has_value() ||
+          !record.exclusive_status_register.has_value()) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::RegisterConversionFailed);
+      }
       break;
     }
     case bir::AtomicOperationKind::CompareExchange: {
@@ -5889,6 +5976,23 @@ make_prepared_atomic_operation_instruction_record(
               record.result_register);
           error != PreparedAtomicOperationRecordError::None) {
         return atomic_instruction_record_error(error);
+      }
+      const auto value_view = atomic_value_register_view(operation.width_bytes);
+      if (!value_view.has_value()) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      if (record.compare_exchange_result_is_boolean) {
+        record.compare_loaded_register =
+            next_reserved_gp_scratch_operand(record, *value_view);
+      }
+      record.exclusive_status_register =
+          next_reserved_gp_scratch_operand(record, abi::RegisterView::W);
+      if ((record.compare_exchange_result_is_boolean &&
+           !record.compare_loaded_register.has_value()) ||
+          !record.exclusive_status_register.has_value()) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::RegisterConversionFailed);
       }
       break;
     }

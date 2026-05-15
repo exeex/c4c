@@ -8,43 +8,43 @@ Current Step Title: Allocate Atomic Loop Printer Facts In Selection
 
 ## Just Finished
 
-Step 6 lifecycle review rejected closure for now and repaired the active
-runbook. Step 5 proved selected atomic records can print structured atomic
-machine nodes, but the source idea still requires the prepared-to-selected route
-to generate the loop scratch/status/loaded-value register facts needed by
-printable RMW and compare-exchange programs.
+Step 6 `Allocate Atomic Loop Printer Facts In Selection` now makes the
+prepared-to-selected AArch64 atomic route allocate explicit reserved-MIR scratch
+facts for printable loop records. RMW records carry a structured new-value
+scratch register plus exclusive-store status register, boolean compare-exchange
+records carry a loaded-value scratch register plus status register, and
+old-value compare-exchange records reuse the result register for the loaded
+value while still carrying status authority.
+
+Selection now rejects selected atomic loop records that lack these required
+printer facts before the printer sees them. The real prepared atomic route is
+covered by dispatch proof that RMW and compare-exchange records preserve the
+pointer/input/expected/desired/result/status/loaded-value register authorities
+and print without fixed archived scratch-register assumptions.
 
 ## Suggested Next
 
-Execute Step 6 `Allocate Atomic Loop Printer Facts In Selection`.
-
-Required proof command:
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
+Proceed to Step 7 `Prove Atomic Route And Decide Lifecycle`; supervisor should
+run or delegate the lifecycle proof/closure decision against the source idea.
 
 ## Watchouts
 
 - Do not infer atomic semantics from volatile flags, rendered text, fixed
   scratch-register snippets, or named testcase shortcuts.
-- Step 5 prints from selected atomic records, but the prepared-to-selected route
-  still does not allocate loop scratch/status/loaded-value registers for all
-  end-to-end atomic programs; Step 6 owns that gap.
 - Preserve ordinary volatile memory behavior separately from atomic behavior;
   atomic selection must continue to require carrier provenance.
-- RMW and compare-exchange printer records now require explicit scratch/status
-  register facts; do not replace that with fixed scratch-register assumptions.
+- Atomic loop scratch facts are selected from structured reserved-MIR scratch
+  register authority and collision-checked against prepared operand/result
+  registers; if the reserved scratch facts cannot be published, selection fails
+  closed instead of fabricating a loop.
 - Do not fold intrinsic, inline-assembly, binary128, scalar FP, or i128 behavior
   into this route.
 
 ## Proof
 
-Latest implementation proof command:
+Implementation proof command:
 `set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
-Result: passed, `139/139` backend tests green for Step 5.
+Result: passed, `139/139` backend tests green for Step 6.
 
 Proof log: `test_after.log`.
-
-Lifecycle review:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-
-Result: passed, `139/139` before and after.

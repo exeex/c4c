@@ -1287,7 +1287,7 @@ int selected_atomic_records_reject_missing_printer_facts() {
   const auto rmw = aarch64_codegen::make_atomic_memory_instruction(rmw_record);
   const auto rmw_result = aarch64_codegen::print_machine_instruction_line_payloads(rmw);
   if (rmw_result.ok ||
-      rmw_result.diagnostic.find("scratch, or status registers") == std::string::npos) {
+      rmw_result.diagnostic.find("scratch, status") == std::string::npos) {
     return fail("expected atomic rmw without loop scratch facts to fail closed");
   }
 

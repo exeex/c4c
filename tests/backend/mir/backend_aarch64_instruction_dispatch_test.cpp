@@ -4231,8 +4231,18 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
       !rmw->stored_register.has_value() ||
       rmw->stored_register->occupied_registers.empty() ||
       rmw->stored_register->occupied_registers.front() != "w2" ||
+      !rmw->rmw_new_value_register.has_value() ||
+      rmw->rmw_new_value_register->role !=
+          aarch64_codegen::RegisterOperandRole::ReservedMirScratch ||
+      rmw->rmw_new_value_register->occupied_registers.empty() ||
+      rmw->rmw_new_value_register->occupied_registers.front() != "w9" ||
+      !rmw->exclusive_status_register.has_value() ||
+      rmw->exclusive_status_register->role !=
+          aarch64_codegen::RegisterOperandRole::ReservedMirScratch ||
+      rmw->exclusive_status_register->occupied_registers.empty() ||
+      rmw->exclusive_status_register->occupied_registers.front() != "w10" ||
       block.instructions[3].target.side_effects.size() != 3) {
-    return fail("expected atomic rmw loop to preserve old-value and retry facts");
+    return fail("expected atomic rmw loop to preserve old-value, retry, and scratch facts");
   }
   if (compare_bool->atomic_kind !=
           aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop ||
@@ -4251,7 +4261,17 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
       compare_bool->desired_register->occupied_registers.front() != "w2" ||
       !compare_bool->result_register.has_value() ||
       compare_bool->result_register->occupied_registers.empty() ||
-      compare_bool->result_register->occupied_registers.front() != "w3") {
+      compare_bool->result_register->occupied_registers.front() != "w3" ||
+      !compare_bool->compare_loaded_register.has_value() ||
+      compare_bool->compare_loaded_register->role !=
+          aarch64_codegen::RegisterOperandRole::ReservedMirScratch ||
+      compare_bool->compare_loaded_register->occupied_registers.empty() ||
+      compare_bool->compare_loaded_register->occupied_registers.front() != "w9" ||
+      !compare_bool->exclusive_status_register.has_value() ||
+      compare_bool->exclusive_status_register->role !=
+          aarch64_codegen::RegisterOperandRole::ReservedMirScratch ||
+      compare_bool->exclusive_status_register->occupied_registers.empty() ||
+      compare_bool->exclusive_status_register->occupied_registers.front() != "w10") {
     return fail("expected boolean compare-exchange loop facts to survive selection");
   }
   if (compare_old->atomic_kind !=
@@ -4265,8 +4285,26 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
       !compare_old->compare_exchange_failure_clears_monitor ||
       !compare_old->result_register.has_value() ||
       compare_old->result_register->occupied_registers.empty() ||
-      compare_old->result_register->occupied_registers.front() != "w4") {
+      compare_old->result_register->occupied_registers.front() != "w4" ||
+      compare_old->compare_loaded_register.has_value() ||
+      !compare_old->exclusive_status_register.has_value() ||
+      compare_old->exclusive_status_register->role !=
+          aarch64_codegen::RegisterOperandRole::ReservedMirScratch ||
+      compare_old->exclusive_status_register->occupied_registers.empty() ||
+      compare_old->exclusive_status_register->occupied_registers.front() != "w9") {
     return fail("expected old-value compare-exchange loop facts to survive selection");
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected prepared atomic route to print from selected loop facts: " +
+                printed.diagnostic);
+  }
+  if (printed.assembly.find("add w9, w4, w2") == std::string::npos ||
+      printed.assembly.find("stlxr w10, w9, [x0]") == std::string::npos ||
+      printed.assembly.find("ldaxr w9, [x0]") == std::string::npos ||
+      printed.assembly.find("stlxr w10, w2, [x0]") == std::string::npos ||
+      printed.assembly.find("stxr w9, w2, [x0]") == std::string::npos) {
+    return fail("expected real prepared atomic route to print allocated loop facts");
   }
   return 0;
 }
