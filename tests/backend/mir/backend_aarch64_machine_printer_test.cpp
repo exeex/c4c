@@ -394,6 +394,62 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
   return 0;
 }
 
+int selected_simple_integer_casts_print_from_structured_operands() {
+  const auto sext = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::SignExtend,
+          .source_cast_opcode = bir::CastOpcode::SExt,
+          .source_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{52},
+          .result_value_name = c4c::ValueNameId{53},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .source = aarch64_codegen::make_register_operand(wreg(1)),
+          .supported_simple_integer_cast = true,
+      }));
+  const auto zext = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::ZeroExtend,
+          .source_cast_opcode = bir::CastOpcode::ZExt,
+          .source_type = bir::TypeKind::I1,
+          .result_value_id = prepare::PreparedValueId{54},
+          .result_value_name = c4c::ValueNameId{55},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(2),
+          .source = aarch64_codegen::make_register_operand(wreg(3)),
+          .supported_simple_integer_cast = true,
+      }));
+  const auto trunc = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::Truncate,
+          .source_cast_opcode = bir::CastOpcode::Trunc,
+          .source_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{56},
+          .result_value_name = c4c::ValueNameId{57},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(4),
+          .source = aarch64_codegen::make_register_operand(xreg(5)),
+          .supported_simple_integer_cast = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({sext, zext, trunc});
+  if (!result.ok) {
+    return fail("expected simple integer casts to print from structured operands: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    sxtw x0, w1\n"
+      "    ubfx w2, w3, #0, #1\n"
+      "    mov w4, w5\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "simple integer cast common-printer drift guard");
+}
+
 int selected_immediate_return_node_prints_callable_epilogue() {
   const auto ret = aarch64_codegen::make_return_instruction(
       aarch64_codegen::ReturnInstructionRecord{
@@ -588,6 +644,56 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
       negative_result.diagnostic.find("plain #imm encoding range 0..4095") ==
           std::string::npos) {
     return fail("expected scalar sub with negative immediate to fail closed");
+  }
+
+  return 0;
+}
+
+int selected_simple_integer_casts_reject_missing_or_unsupported_facts() {
+  const auto missing_source = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::SignExtend,
+          .source_cast_opcode = bir::CastOpcode::SExt,
+          .source_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{58},
+          .result_value_name = c4c::ValueNameId{59},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .source = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 1,
+          }),
+          .supported_simple_integer_cast = true,
+      }));
+  const auto missing_source_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(missing_source);
+  if (missing_source_result.ok ||
+      missing_source_result.diagnostic.find("structured register source operand") ==
+          std::string::npos) {
+    return fail("expected simple integer cast without source register to fail closed");
+  }
+
+  const auto unsupported_type = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::SignExtend,
+          .source_cast_opcode = bir::CastOpcode::SExt,
+          .source_type = bir::TypeKind::F128,
+          .result_value_id = prepare::PreparedValueId{60},
+          .result_value_name = c4c::ValueNameId{61},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .source = aarch64_codegen::make_register_operand(xreg(1)),
+          .supported_simple_integer_cast = true,
+      }));
+  const auto unsupported_type_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(unsupported_type);
+  if (unsupported_type_result.ok ||
+      unsupported_type_result.diagnostic.find("supported integer source/result width") ==
+          std::string::npos) {
+    return fail("expected simple integer cast with unsupported type to fail closed");
   }
 
   return 0;
@@ -1934,6 +2040,10 @@ int main() {
       result != 0) {
     return result;
   }
+  if (const int result = selected_simple_integer_casts_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
   if (const int result = selected_immediate_return_node_prints_callable_epilogue();
       result != 0) {
     return result;
@@ -1947,6 +2057,10 @@ int main() {
     return result;
   }
   if (const int result = selected_scalar_add_sub_reject_nonencodable_immediates();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_simple_integer_casts_reject_missing_or_unsupported_facts();
       result != 0) {
     return result;
   }
