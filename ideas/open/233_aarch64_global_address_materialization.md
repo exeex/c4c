@@ -46,3 +46,13 @@ gap.
 - GOT-required globals emit a GOT load from explicit relocation policy.
 - TLS globals read the thread pointer and apply thread-pointer-relative
   relocation facts before storing the address result.
+
+## Lifecycle Notes
+
+- 2026-05-15: Direct page+low12 global/string-constant materialization and
+  label address selection have landed. GOT-backed global materialization is
+  parked on prerequisite idea
+  `ideas/open/247_explicit_got_materialization_policy.md` because no explicit
+  GOT-required policy source exists yet. Do not resume GOT selection from this
+  idea until that prerequisite provides structured policy; TLS and final
+  printer/validation work remain in this idea's source scope.

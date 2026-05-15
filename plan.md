@@ -1,266 +1,150 @@
-# AArch64 Global Address Materialization Runbook
+# Explicit GOT Materialization Policy Runbook
 
 Status: Active
-Source Idea: ideas/open/233_aarch64_global_address_materialization.md
+Source Idea: ideas/open/247_explicit_got_materialization_policy.md
+Supersedes: parked Step 6 of ideas/open/233_aarch64_global_address_materialization.md
 
 ## Purpose
 
-Make AArch64 global, label, and TLS address materialization an explicit
-selected-machine-node capability backed by structured relocation/address-kind
-facts.
+Create the explicit policy source required before AArch64 GOT-backed global
+address materialization can be selected.
 
-Goal: lower address-producing global/label/TLS cases without hiding them inside
-memory load/store support or rendered symbol-name conventions.
+Goal: let prepared address materialization classify a global address as
+GOT-required from structured compiler policy, not from symbol text or extern
+status alone.
 
-Core Rule: preserve address kind and relocation policy as structured target
-facts before printing; do not infer GOT, direct, label, or TLS behavior from
-text.
+Core Rule: GOT materialization policy must be explicit and source-owned before
+AArch64 selection consumes it. Do not infer GOT from symbol spelling,
+`is_extern`, fixture names, or downstream assembler relocation enums.
 
 ## Read First
 
+- `ideas/open/247_explicit_got_materialization_policy.md`
 - `ideas/open/233_aarch64_global_address_materialization.md`
-- Existing BIR/global value handling and prepared value-home records.
-- Current AArch64 instruction record and printer support for symbol-backed
-  operands.
-- Any diagnostics that currently defer global, label, or TLS address
-  materialization.
+- Current BIR global metadata and CLI target option handling.
+- Prepared address materialization carriers and AArch64 selection diagnostics.
+- Commit `236be6f41`, which records the blocker.
 
 ## Current Targets
 
-- Completed direct page+low12 carriers, selected records, and printer output
-  for direct globals and string constants.
-- Remaining structured carriers and selected/printer paths for label
-  addresses, GOT-backed globals, and TLS-relative globals.
-- AArch64 selected machine nodes that materialize remaining address kinds into
-  prepared result homes.
-- Printer support for remaining explicit relocation operands once machine-node
-  facts are present.
-- Focused backend tests that prove semantic address lowering, not
-  name-shaped shortcuts.
+- A narrow policy source that can distinguish direct page+low12 globals from
+  GOT-required globals.
+- Prepared address materialization facts that publish `GotGlobal` only when
+  that explicit policy exists.
+- Diagnostics for missing or unsupported GOT policy.
+- Focused proof that policy reaches prepared/MIR selection without name-shaped
+  shortcuts.
 
 ## Non-Goals
 
-- Do not rebuild the archived `globals.cpp` implicit `x0` scratch convention.
-- Do not infer GOT or TLS policy from rendered symbol names.
-- Do not claim global memory load/store lowering as address materialization.
-- Do not broaden into ordinary memory load/store lowering, dynamic stack/frame
-  setup, or unrelated call lowering.
+- Do not implement terminal GOT assembly printing in this prerequisite unless a
+  later packet explicitly delegates it after policy exists.
+- Do not build a full relocation-model or platform ABI matrix beyond the
+  minimum needed to unblock GOT address materialization.
+- Do not change direct global, string constant, or label address behavior except
+  for shared carrier compatibility.
+- Do not continue Step 6 of idea 233 by inferring GOT from `is_extern`.
 
 ## Working Model
 
-- Prepared value homes and allocation results decide where the address result
-  lives.
-- A structured address-kind carrier decides whether the selected node is direct
-  page+low12, GOT load, label address, or TLS-relative.
-- AArch64 printing consumes selected machine-node records; it does not recover
-  relocation semantics from textual assembly.
-- Unsupported or incomplete address states should produce explicit diagnostics
-  rather than fabricated assembly.
-- Direct page+low12 global and string-constant materialization is the completed
-  milestone as of commit `90640a317`; do not reopen it except to keep shared
-  abstractions coherent while implementing remaining kinds.
+- Frontend/target/global metadata must provide a structured policy bit or
+  equivalent decision that a global address requires GOT materialization.
+- Prepared address materialization copies that policy into its own records.
+- AArch64 selection may select `GotGlobal` only when result-home authority and
+  explicit GOT policy are both present.
+- Unsupported or absent policy states should fail before terminal printing with
+  diagnostics that identify the missing policy input.
 
 ## Execution Rules
 
-- Keep each code slice narrow enough to prove with build plus targeted backend
-  checks.
-- Add printer output only after the machine node carries every relocation and
-  operand fact the printer needs.
-- Prefer semantic lowering paths that cover nearby same-feature cases.
-- Treat expectation rewrites, named symbol shortcuts, or single-fixture matches
-  as route drift unless they accompany real carrier/lowering support.
+- Keep each packet narrow: policy source first, prepared publication second,
+  AArch64 consumption third.
+- Add tests at the layer being changed; do not prove policy by changing only
+  printer expectations.
+- Preserve direct and label address-materialization tests while adding GOT
+  policy support.
+- Stop and report if the only available policy would be symbol spelling or
+  `is_extern` alone.
 
 ## Ordered Steps
 
-### Step 1: Inspect Existing Global Address Surfaces
+### Step 1: Locate The Policy Owner
 
-Goal: identify the current carriers, deferrals, and printer records involved in
-global, label, and TLS address-producing cases.
+Goal: choose the narrowest existing compiler layer that should own explicit
+GOT-required policy.
 
-Primary Target: shared BIR/prepared value facts and AArch64 instruction/printer
-records related to global symbols, labels, string constants, and TLS globals.
-
-Actions:
-
-- Inspect existing symbol-backed memory operands and value-home preparation.
-- Locate current diagnostics or unsupported paths for address materialization.
-- Identify where relocation/address-kind policy is currently represented or
-  missing.
-- Record the first implementation packet target in `todo.md` before code work.
-
-Completion Check: the executor can name the exact carrier or dispatch gap that
-Step 2 will address, without changing source intent.
-
-### Step 2: Add Structured Address-Kind Carriers
-
-Goal: make direct global, label, GOT-backed global, and TLS-relative address
-materialization explicit before AArch64 selection.
-
-Primary Target: the smallest shared/prepared layer that already owns global
-address policy or value-home preparation.
+Primary Target: TargetProfile, CLI option transfer, BIR globals, and prepared
+address materialization inputs.
 
 Actions:
 
-- Add carrier fields or records for address kind, symbol/label identity, TLS
-  mode, and relocation operands.
-- Preserve prepared result-home authority and reserved scratch policy.
-- Emit explicit diagnostics when a required address-kind fact is unavailable.
-- Keep memory-access carriers separate from address-producing carriers.
+- Inspect where target relocation options or global linkage/preemptibility
+  facts could be represented without text inference.
+- Decide whether the first policy should be target-wide, per-global, or a
+  small structured combination of both.
+- Record any unsupported policy dimensions as diagnostics, not implicit
+  defaults.
+- Update `todo.md` with the chosen implementation packet and proof command.
 
-Completion Check: dumps or targeted observations expose structured address
-materialization facts independently from load/store memory operands.
+Completion Check: the next executor can name the exact owner and field(s) to
+add before touching AArch64 selection.
 
-### Step 3: Select AArch64 Address Materialization Nodes
+### Step 2: Publish Explicit GOT Policy Into Prepared Facts
 
-Goal: lower supported address-producing facts into AArch64 selected machine
-nodes.
+Goal: make prepared address materialization observe and dump explicit GOT
+policy.
 
-Primary Target: AArch64 block/operation dispatch and machine-instruction record
-types.
-
-Actions:
-
-- Add selected node variants for direct page+low12 materialization, label
-  addresses, GOT loads, and TLS-relative address materialization.
-- Consume prepared result homes instead of writing through an implicit scratch
-  register.
-- Preserve relocation operands, address kind, and result register facts in the
-  selected node.
-- Leave unsupported address kinds deferred with explicit diagnostics.
-
-Completion Check: selected-node dumps or focused backend tests show structured
-address nodes for at least one direct global/label path and one policy-specific
-path when the required facts exist.
-
-### Step 4: Print Direct Page+Low12 AArch64 Sequences
-
-Status: Completed by commit `90640a317`.
-
-Goal: print valid AArch64 assembly for selected direct global and string
-constant address-materialization nodes.
-
-Primary Target: AArch64 terminal printer paths for selected direct page+low12
-machine records.
-
-Completed Actions:
-
-- Printed selected `DirectPageLow12` direct-global records as structured `adrp`
-  plus low-12 `add` sequences.
-- Printed selected string-constant address records through the same structured
-  page+low12 sequence.
-- Preserved fail-closed terminal diagnostics for TLS and deferred diagnostics
-  for GOT/label paths.
-
-Completion Check: direct global and string constant printer tests pass through
-structured record fields, not symbol-name inference.
-
-### Step 5: Populate Label Address Materialization
-
-Goal: make label address materialization reach selected AArch64 records with
-all relocation operands required for terminal printing.
-
-Primary Target: the existing prepared address-materialization carrier and
-AArch64 selection path.
+Primary Target: BIR/prepared global-address carrier code and prepared dump or
+focused tests.
 
 Actions:
 
-- Identify why label address facts remain unpopulated or deferred after the
-  direct milestone.
-- Reuse the direct page+low12 relocation carrier shape when label semantics
-  require the same `adrp` plus low-12 sequence.
-- Preserve prepared result-home authority and label identity as structured
-  fields.
-- Keep label memory-reference behavior separate from address-producing label
-  materialization.
+- Add the selected policy field(s) to the owner from Step 1.
+- Carry the policy into prepared address materialization records.
+- Publish `PreparedAddressMaterializationKind::GotGlobal` only from explicit
+  policy.
+- Emit missing-policy diagnostics when a GOT-required test cannot be classified
+  from structured facts.
 
-Completion Check: focused tests show label address materialization selected
-with structured label/page/low12 facts, or fail with a diagnostic naming the
-missing prepared label fact.
+Completion Check: focused prepared tests or dumps show direct and GOT-required
+globals distinguished by structured policy, not by symbol spelling or
+`is_extern` alone.
 
-### Step 6: Populate GOT-Backed Global Materialization
+### Step 3: Consume GOT Policy In AArch64 Selection
 
-Goal: make GOT-required global address materialization explicit before terminal
-printing.
+Goal: let AArch64 selection select GOT-backed address materialization records
+when prepared policy is complete.
 
-Primary Target: prepared address-kind policy and AArch64 selected machine
-records for GOT loads.
+Primary Target: AArch64 address-materialization dispatch and selected record
+construction.
 
 Actions:
 
-- Locate the policy input that distinguishes GOT-required globals from direct
-  page+low12 globals.
-- Add or complete structured GOT relocation operands without deriving policy
-  from symbol spelling.
-- Select a GOT materialization record only when the result home and relocation
-  facts are complete.
-- Preserve explicit deferred diagnostics when GOT policy or relocation operands
-  are unavailable.
+- Consume the prepared `GotGlobal` kind and relocation identity facts.
+- Preserve result-home authority and symbol identity in the selected record.
+- Keep GOT selection deferred or missing-fact when policy or relocation inputs
+  are incomplete.
+- Do not add terminal GOT printing unless the record already carries every
+  required field and the supervisor delegates that packet.
 
-Completion Check: GOT-required globals either select a structured GOT record
-ready for printer consumption or fail with a precise missing-policy/missing-
-relocation diagnostic.
+Completion Check: selected-record tests prove GOT-backed globals reach a
+structured `GotGlobal` record, while direct globals still select direct
+page+low12 records.
 
-### Step 7: Specify TLS Materialization Facts
+### Step 4: Validate And Hand Back To Address Materialization
 
-Goal: define and carry the TLS facts required before selected TLS records can
-print terminal AArch64 assembly.
+Goal: prove the prerequisite and make idea 233 resumable at GOT Step 6.
 
-Primary Target: prepared TLS address-kind carrier, selected TLS record fields,
-and fail-closed printer diagnostics.
+Primary Target: focused backend tests plus the supervisor-selected validation
+subset.
 
 Actions:
 
-- Identify the required thread-pointer-relative relocation facts for the
-  supported TLS model.
-- Keep TLS model selection explicit; do not infer TLS behavior from symbol
-  names or storage class text.
-- Ensure selected TLS records carry result-home authority, symbol identity,
-  TLS model, and thread-pointer-relative operands.
-- Leave terminal printing fail-closed until the record contains every field the
-  printer needs.
+- Run the delegated build and focused tests for policy, prepared carriers, and
+  AArch64 selection.
+- Record proof and remaining handoff notes in `todo.md`.
+- Do not close idea 233; report that its Step 6 can resume once this
+  prerequisite is accepted.
 
-Completion Check: selected TLS records expose structured TLS facts, and missing
-facts produce diagnostics that name the absent TLS policy or relocation input.
-
-### Step 8: Print Remaining Relocation-Aware AArch64 Sequences
-
-Goal: print valid AArch64 assembly for label, GOT, and TLS address-
-materialization records once their selected records are complete.
-
-Primary Target: AArch64 terminal printer paths for selected label, GOT, and TLS
-machine records.
-
-Actions:
-
-- Print label page+low12 materialization from structured label operands.
-- Print GOT-required globals as explicit GOT loads from structured relocation
-  fields.
-- Print TLS materialization only after Step 7 supplies the required
-  thread-pointer-relative facts.
-- Keep deferred printer diagnostics for any selected record missing required
-  relocation fields.
-
-Completion Check: printer output for label, GOT, and TLS is driven by selected
-record fields and fails explicitly when required relocation operands are
-absent.
-
-### Step 9: Validate Semantic Coverage
-
-Goal: prove the feature across nearby cases without overfitting one fixture.
-
-Primary Target: focused AArch64 backend tests plus the supervisor-selected
-broader check.
-
-Actions:
-
-- Add or update tests for direct global address, label address, GOT-required
-  global, and TLS global paths as implementation support lands.
-- Verify global load/store cases remain separate from address materialization.
-- Run build proof and the delegated narrow backend test subset after each code
-  slice.
-- Escalate to broader validation once multiple address kinds or printer paths
-  are active.
-
-Completion Check: direct, GOT, label, and TLS proof cases either pass through
-structured lowering or fail with explicit unsupported diagnostics; no supported
-case depends on name-shaped matching.
+Completion Check: explicit GOT policy exists end to end through prepared and
+selected records, and no accepted proof depends on forbidden GOT inference.
