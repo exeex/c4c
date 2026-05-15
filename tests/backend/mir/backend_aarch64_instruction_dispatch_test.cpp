@@ -1609,6 +1609,7 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
   const auto loaded_name = prepared.names.value_names.intern("%loaded");
   const auto stored_name = prepared.names.value_names.intern("%stored");
   const auto success_name = prepared.names.value_names.intern("%success");
+  const auto old_name = prepared.names.value_names.intern("%old");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.atomic",
@@ -1658,6 +1659,13 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
                   .kind = prepare::PreparedValueHomeKind::Register,
                   .register_name = std::string{"w3"},
               },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{14},
+                  .function_name = function_name,
+                  .value_name = old_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w4"},
+              },
           },
   });
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
@@ -1668,6 +1676,7 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
               register_storage(prepare::PreparedValueId{11}, loaded_name, "w1"),
               register_storage(prepare::PreparedValueId{12}, stored_name, "w2"),
               register_storage(prepare::PreparedValueId{13}, success_name, "w3"),
+              register_storage(prepare::PreparedValueId{14}, old_name, "w4"),
           },
   });
 
@@ -1714,6 +1723,57 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
                         .block_label = entry_label,
                         .inst_index = 2,
                         .ordering = bir::AtomicOrdering::SeqCst,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Rmw,
+                        .block_label = entry_label,
+                        .inst_index = 3,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = old_name,
+                        .pointer_value_name = ptr_name,
+                        .value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::AcqRel,
+                        .rmw_opcode = bir::AtomicRmwOpcode::Add,
+                        .result_mode = bir::AtomicResultMode::OldValue,
+                        .address_space = bir::AddressSpace::Default,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::CompareExchange,
+                        .block_label = entry_label,
+                        .inst_index = 4,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = success_name,
+                        .pointer_value_name = ptr_name,
+                        .expected_value_name = loaded_name,
+                        .desired_value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::SeqCst,
+                        .failure_ordering = bir::AtomicOrdering::Acquire,
+                        .result_mode = bir::AtomicResultMode::BooleanSuccess,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::CompareExchange,
+                        .block_label = entry_label,
+                        .inst_index = 5,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = old_name,
+                        .pointer_value_name = ptr_name,
+                        .expected_value_name = loaded_name,
+                        .desired_value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::Acquire,
+                        .failure_ordering = bir::AtomicOrdering::Relaxed,
+                        .result_mode = bir::AtomicResultMode::OldValue,
                     },
                 },
         });
@@ -1787,7 +1847,7 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
                         .pointer_value_name = ptr_name,
                         .value_name = stored_name,
                         .ordering = bir::AtomicOrdering::AcqRel,
-                        .rmw_opcode = bir::AtomicRmwOpcode::Add,
+                        .rmw_opcode = bir::AtomicRmwOpcode::None,
                         .result_mode = bir::AtomicResultMode::OldValue,
                     },
                     prepare::PreparedAtomicOperationCarrier{
@@ -1805,7 +1865,7 @@ prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
                         .expected_value_name = loaded_name,
                         .desired_value_name = stored_name,
                         .ordering = bir::AtomicOrdering::SeqCst,
-                        .failure_ordering = bir::AtomicOrdering::Acquire,
+                        .failure_ordering = bir::AtomicOrdering::Release,
                         .result_mode = bir::AtomicResultMode::BooleanSuccess,
                     },
                 },
@@ -4077,10 +4137,10 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (result.visited_operations != 3 || !result.visited_terminator ||
-      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+  if (result.visited_operations != 6 || !result.visited_terminator ||
+      result.emitted_instructions != 7 || block.instructions.size() != 7 ||
       !diagnostics.empty()) {
-    return fail("expected three selected atomic records plus return without diagnostics");
+    return fail("expected selected atomic records plus return without diagnostics");
   }
 
   const auto* load =
@@ -4092,12 +4152,27 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
   const auto* fence =
       std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
           &block.instructions[2].target.payload);
-  if (load == nullptr || store == nullptr || fence == nullptr) {
-    return fail("expected atomic load/store/fence selected payloads");
+  const auto* rmw =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[3].target.payload);
+  const auto* compare_bool =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[4].target.payload);
+  const auto* compare_old =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[5].target.payload);
+  if (load == nullptr || store == nullptr || fence == nullptr || rmw == nullptr ||
+      compare_bool == nullptr || compare_old == nullptr) {
+    return fail("expected atomic selected payloads");
   }
   if (block.instructions[0].target.opcode != aarch64_codegen::MachineOpcode::AtomicLoad ||
       block.instructions[1].target.opcode != aarch64_codegen::MachineOpcode::AtomicStore ||
-      block.instructions[2].target.opcode != aarch64_codegen::MachineOpcode::AtomicFence) {
+      block.instructions[2].target.opcode != aarch64_codegen::MachineOpcode::AtomicFence ||
+      block.instructions[3].target.opcode != aarch64_codegen::MachineOpcode::AtomicRmw ||
+      block.instructions[4].target.opcode !=
+          aarch64_codegen::MachineOpcode::AtomicCompareExchange ||
+      block.instructions[5].target.opcode !=
+          aarch64_codegen::MachineOpcode::AtomicCompareExchange) {
     return fail("expected atomic-specific machine opcodes");
   }
   if (load->atomic_kind != aarch64_codegen::AtomicMemoryInstructionKind::Load ||
@@ -4143,6 +4218,56 @@ int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
       block.instructions[2].target.side_effects.size() != 3) {
     return fail("expected atomic fence to preserve barrier semantics");
   }
+  if (rmw->atomic_kind != aarch64_codegen::AtomicMemoryInstructionKind::RmwLoop ||
+      rmw->ordering != bir::AtomicOrdering::AcqRel ||
+      rmw->rmw_opcode != bir::AtomicRmwOpcode::Add ||
+      rmw->result_mode != bir::AtomicResultMode::OldValue ||
+      !rmw->exclusive_retry_loop ||
+      !rmw->acquire_semantics ||
+      !rmw->release_semantics ||
+      !rmw->result_register.has_value() ||
+      rmw->result_register->occupied_registers.empty() ||
+      rmw->result_register->occupied_registers.front() != "w4" ||
+      !rmw->stored_register.has_value() ||
+      rmw->stored_register->occupied_registers.empty() ||
+      rmw->stored_register->occupied_registers.front() != "w2" ||
+      block.instructions[3].target.side_effects.size() != 3) {
+    return fail("expected atomic rmw loop to preserve old-value and retry facts");
+  }
+  if (compare_bool->atomic_kind !=
+          aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop ||
+      compare_bool->ordering != bir::AtomicOrdering::SeqCst ||
+      compare_bool->failure_ordering != bir::AtomicOrdering::Acquire ||
+      compare_bool->result_mode != bir::AtomicResultMode::BooleanSuccess ||
+      !compare_bool->compare_exchange_result_is_boolean ||
+      compare_bool->compare_exchange_result_is_old_value ||
+      !compare_bool->exclusive_retry_loop ||
+      !compare_bool->compare_exchange_failure_clears_monitor ||
+      !compare_bool->expected_register.has_value() ||
+      compare_bool->expected_register->occupied_registers.empty() ||
+      compare_bool->expected_register->occupied_registers.front() != "w1" ||
+      !compare_bool->desired_register.has_value() ||
+      compare_bool->desired_register->occupied_registers.empty() ||
+      compare_bool->desired_register->occupied_registers.front() != "w2" ||
+      !compare_bool->result_register.has_value() ||
+      compare_bool->result_register->occupied_registers.empty() ||
+      compare_bool->result_register->occupied_registers.front() != "w3") {
+    return fail("expected boolean compare-exchange loop facts to survive selection");
+  }
+  if (compare_old->atomic_kind !=
+          aarch64_codegen::AtomicMemoryInstructionKind::CompareExchangeLoop ||
+      compare_old->ordering != bir::AtomicOrdering::Acquire ||
+      compare_old->failure_ordering != bir::AtomicOrdering::Relaxed ||
+      compare_old->result_mode != bir::AtomicResultMode::OldValue ||
+      compare_old->compare_exchange_result_is_boolean ||
+      !compare_old->compare_exchange_result_is_old_value ||
+      !compare_old->exclusive_retry_loop ||
+      !compare_old->compare_exchange_failure_clears_monitor ||
+      !compare_old->result_register.has_value() ||
+      compare_old->result_register->occupied_registers.empty() ||
+      compare_old->result_register->occupied_registers.front() != "w4") {
+    return fail("expected old-value compare-exchange loop facts to survive selection");
+  }
   return 0;
 }
 
@@ -4172,8 +4297,8 @@ int block_dispatch_rejects_incomplete_and_deferred_atomic_carriers() {
       "unsupported_width",
       "unsupported_ordering",
       "unsupported_ordering",
-      "unsupported_operation_kind",
-      "unsupported_operation_kind",
+      "unsupported_rmw_opcode",
+      "unsupported_failure_ordering",
   };
   for (std::size_t i = 0; i < expected_errors.size(); ++i) {
     if (diagnostics.entries[i].kind !=

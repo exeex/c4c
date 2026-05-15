@@ -138,6 +138,8 @@ enum class MachineOpcode {
   AtomicLoad,
   AtomicStore,
   AtomicFence,
+  AtomicRmw,
+  AtomicCompareExchange,
   SpillToSlot,
   ReloadFromSlot,
   VariadicVaStart,
@@ -471,7 +473,10 @@ enum class PreparedAtomicOperationRecordError {
   IncompletePreparedAtomicOperation,
   UnsupportedOperationKind,
   UnsupportedOrdering,
+  UnsupportedFailureOrdering,
   UnsupportedWidth,
+  UnsupportedRmwOpcode,
+  UnsupportedResultMode,
   MissingPointerValueName,
   MissingPointerValueHome,
   MissingPointerValueStorage,
@@ -481,6 +486,12 @@ enum class PreparedAtomicOperationRecordError {
   MissingStoredValueName,
   MissingStoredValueHome,
   MissingStoredStorage,
+  MissingExpectedValueName,
+  MissingExpectedValueHome,
+  MissingExpectedStorage,
+  MissingDesiredValueName,
+  MissingDesiredValueHome,
+  MissingDesiredStorage,
   RegisterConversionFailed,
 };
 
@@ -793,6 +804,8 @@ enum class AtomicMemoryInstructionKind {
   Load,
   Store,
   Fence,
+  RmwLoop,
+  CompareExchangeLoop,
 };
 
 struct AtomicMemoryInstructionRecord {
@@ -816,6 +829,18 @@ struct AtomicMemoryInstructionRecord {
   std::optional<prepare::PreparedValueId> stored_value_id;
   std::optional<c4c::ValueNameId> stored_value_name;
   std::optional<RegisterOperand> stored_register;
+  std::optional<prepare::PreparedValueId> expected_value_id;
+  std::optional<c4c::ValueNameId> expected_value_name;
+  std::optional<RegisterOperand> expected_register;
+  std::optional<prepare::PreparedValueId> desired_value_id;
+  std::optional<c4c::ValueNameId> desired_value_name;
+  std::optional<RegisterOperand> desired_register;
+  bir::AtomicRmwOpcode rmw_opcode = bir::AtomicRmwOpcode::None;
+  bir::AtomicOrdering failure_ordering = bir::AtomicOrdering::None;
+  bool exclusive_retry_loop = false;
+  bool compare_exchange_failure_clears_monitor = false;
+  bool compare_exchange_result_is_boolean = false;
+  bool compare_exchange_result_is_old_value = false;
   bool acquire_semantics = false;
   bool release_semantics = false;
   bool sequentially_consistent = false;

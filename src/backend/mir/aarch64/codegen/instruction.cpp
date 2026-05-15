@@ -221,6 +221,10 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "atomic_store";
     case MachineOpcode::AtomicFence:
       return "atomic_fence";
+    case MachineOpcode::AtomicRmw:
+      return "atomic_rmw";
+    case MachineOpcode::AtomicCompareExchange:
+      return "atomic_compare_exchange";
     case MachineOpcode::SpillToSlot:
       return "spill_to_slot";
     case MachineOpcode::ReloadFromSlot:
@@ -335,6 +339,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::AtomicLoad:
     case MachineOpcode::AtomicStore:
     case MachineOpcode::AtomicFence:
+    case MachineOpcode::AtomicRmw:
+    case MachineOpcode::AtomicCompareExchange:
     case MachineOpcode::And:
     case MachineOpcode::Mul:
     case MachineOpcode::Div:
@@ -714,8 +720,14 @@ std::string_view prepared_atomic_operation_record_error_name(
       return "unsupported_operation_kind";
     case PreparedAtomicOperationRecordError::UnsupportedOrdering:
       return "unsupported_ordering";
+    case PreparedAtomicOperationRecordError::UnsupportedFailureOrdering:
+      return "unsupported_failure_ordering";
     case PreparedAtomicOperationRecordError::UnsupportedWidth:
       return "unsupported_width";
+    case PreparedAtomicOperationRecordError::UnsupportedRmwOpcode:
+      return "unsupported_rmw_opcode";
+    case PreparedAtomicOperationRecordError::UnsupportedResultMode:
+      return "unsupported_result_mode";
     case PreparedAtomicOperationRecordError::MissingPointerValueName:
       return "missing_pointer_value_name";
     case PreparedAtomicOperationRecordError::MissingPointerValueHome:
@@ -734,6 +746,18 @@ std::string_view prepared_atomic_operation_record_error_name(
       return "missing_stored_value_home";
     case PreparedAtomicOperationRecordError::MissingStoredStorage:
       return "missing_stored_storage";
+    case PreparedAtomicOperationRecordError::MissingExpectedValueName:
+      return "missing_expected_value_name";
+    case PreparedAtomicOperationRecordError::MissingExpectedValueHome:
+      return "missing_expected_value_home";
+    case PreparedAtomicOperationRecordError::MissingExpectedStorage:
+      return "missing_expected_storage";
+    case PreparedAtomicOperationRecordError::MissingDesiredValueName:
+      return "missing_desired_value_name";
+    case PreparedAtomicOperationRecordError::MissingDesiredValueHome:
+      return "missing_desired_value_home";
+    case PreparedAtomicOperationRecordError::MissingDesiredStorage:
+      return "missing_desired_storage";
     case PreparedAtomicOperationRecordError::RegisterConversionFailed:
       return "register_conversion_failed";
   }
@@ -749,6 +773,10 @@ std::string_view atomic_memory_instruction_kind_name(
       return "store";
     case AtomicMemoryInstructionKind::Fence:
       return "fence";
+    case AtomicMemoryInstructionKind::RmwLoop:
+      return "rmw_loop";
+    case AtomicMemoryInstructionKind::CompareExchangeLoop:
+      return "compare_exchange_loop";
   }
   return "unknown";
 }
@@ -2554,6 +2582,10 @@ MachineOpcode machine_opcode_from_atomic_memory_instruction(
       return MachineOpcode::AtomicStore;
     case AtomicMemoryInstructionKind::Fence:
       return MachineOpcode::AtomicFence;
+    case AtomicMemoryInstructionKind::RmwLoop:
+      return MachineOpcode::AtomicRmw;
+    case AtomicMemoryInstructionKind::CompareExchangeLoop:
+      return MachineOpcode::AtomicCompareExchange;
   }
   return MachineOpcode::Unspecified;
 }
@@ -2764,6 +2796,11 @@ std::vector<MachineSideEffectKind> atomic_memory_side_effects(
       return {MachineSideEffectKind::MemoryRead,
               MachineSideEffectKind::MemoryWrite,
               MachineSideEffectKind::AtomicMemoryAccess};
+    case AtomicMemoryInstructionKind::RmwLoop:
+    case AtomicMemoryInstructionKind::CompareExchangeLoop:
+      return {MachineSideEffectKind::MemoryRead,
+              MachineSideEffectKind::MemoryWrite,
+              MachineSideEffectKind::AtomicMemoryAccess};
   }
   return {};
 }
@@ -2964,6 +3001,51 @@ MachineNodeStatusRecord atomic_memory_selection_status(
         return MachineNodeStatusRecord{
             .status = MachineNodeSelectionStatus::DeferredUnsupported,
             .diagnostic = "relaxed atomic fence is outside the selected subset"};
+      }
+      break;
+    case AtomicMemoryInstructionKind::RmwLoop:
+      if (!instruction.pointer_value_id.has_value() ||
+          !instruction.pointer_value_name.has_value() ||
+          !instruction.pointer_register.has_value() ||
+          !instruction.stored_value_id.has_value() ||
+          !instruction.stored_value_name.has_value() ||
+          !instruction.stored_register.has_value() ||
+          !instruction.result_value_id.has_value() ||
+          !instruction.result_value_name.has_value() ||
+          !instruction.result_register.has_value() ||
+          instruction.rmw_opcode == bir::AtomicRmwOpcode::None ||
+          instruction.result_mode != bir::AtomicResultMode::OldValue ||
+          !instruction.exclusive_retry_loop) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic rmw loop is missing operand, result, opcode, or retry-loop authority"};
+      }
+      break;
+    case AtomicMemoryInstructionKind::CompareExchangeLoop:
+      if (!instruction.pointer_value_id.has_value() ||
+          !instruction.pointer_value_name.has_value() ||
+          !instruction.pointer_register.has_value() ||
+          !instruction.expected_value_id.has_value() ||
+          !instruction.expected_value_name.has_value() ||
+          !instruction.expected_register.has_value() ||
+          !instruction.desired_value_id.has_value() ||
+          !instruction.desired_value_name.has_value() ||
+          !instruction.desired_register.has_value() ||
+          !instruction.result_value_id.has_value() ||
+          !instruction.result_value_name.has_value() ||
+          !instruction.result_register.has_value() ||
+          !instruction.exclusive_retry_loop ||
+          !instruction.compare_exchange_failure_clears_monitor ||
+          instruction.failure_ordering == bir::AtomicOrdering::None) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic compare-exchange loop is missing operand, result, ordering, or monitor-clear authority"};
+      }
+      if (!instruction.compare_exchange_result_is_boolean &&
+          !instruction.compare_exchange_result_is_old_value) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic compare-exchange loop is missing result-mode authority"};
       }
       break;
   }
@@ -3601,6 +3683,12 @@ InstructionRecord make_atomic_memory_instruction(
   }
   if (instruction.stored_register.has_value()) {
     operands.push_back(make_register_operand(*instruction.stored_register));
+  }
+  if (instruction.expected_register.has_value()) {
+    operands.push_back(make_register_operand(*instruction.expected_register));
+  }
+  if (instruction.desired_register.has_value()) {
+    operands.push_back(make_register_operand(*instruction.desired_register));
   }
 
   std::vector<MachineEffectResource> defs;
@@ -5465,6 +5553,33 @@ bool supported_atomic_fence_ordering(bir::AtomicOrdering ordering) {
          ordering == bir::AtomicOrdering::SeqCst;
 }
 
+bool supported_atomic_rmw_ordering(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Relaxed ||
+         ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::Release ||
+         ordering == bir::AtomicOrdering::AcqRel ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool supported_atomic_compare_exchange_success_ordering(bir::AtomicOrdering ordering) {
+  return supported_atomic_rmw_ordering(ordering);
+}
+
+bool supported_atomic_compare_exchange_failure_ordering(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Relaxed ||
+         ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool supported_atomic_rmw_opcode(bir::AtomicRmwOpcode opcode) {
+  return opcode == bir::AtomicRmwOpcode::Exchange ||
+         opcode == bir::AtomicRmwOpcode::Add ||
+         opcode == bir::AtomicRmwOpcode::Sub ||
+         opcode == bir::AtomicRmwOpcode::And ||
+         opcode == bir::AtomicRmwOpcode::Or ||
+         opcode == bir::AtomicRmwOpcode::Xor;
+}
+
 PreparedAtomicOperationRecordError register_for_named_atomic_value(
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
@@ -5626,8 +5741,157 @@ make_prepared_atomic_operation_instruction_record(
       record.value_type = bir::TypeKind::Void;
       record.width_bytes = 0;
       break;
-    case bir::AtomicOperationKind::Rmw:
-    case bir::AtomicOperationKind::CompareExchange:
+    case bir::AtomicOperationKind::Rmw: {
+      if (!supported_atomic_width(operation.width_bytes)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      if (!supported_atomic_rmw_ordering(operation.ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedOrdering);
+      }
+      if (!supported_atomic_rmw_opcode(operation.rmw_opcode)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedRmwOpcode);
+      }
+      if (operation.result_mode != bir::AtomicResultMode::OldValue) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedResultMode);
+      }
+      record.atomic_kind = AtomicMemoryInstructionKind::RmwLoop;
+      record.pointer_value_name = operation.pointer_value_name;
+      record.stored_value_name = operation.value_name;
+      record.result_value_name = operation.result_value_name;
+      record.rmw_opcode = operation.rmw_opcode;
+      record.exclusive_retry_loop = true;
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.pointer_value_name,
+              bir::TypeKind::Ptr,
+              PreparedAtomicOperationRecordError::MissingPointerValueName,
+              PreparedAtomicOperationRecordError::MissingPointerValueHome,
+              PreparedAtomicOperationRecordError::MissingPointerValueStorage,
+              record.pointer_value_id,
+              record.pointer_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingStoredValueName,
+              PreparedAtomicOperationRecordError::MissingStoredValueHome,
+              PreparedAtomicOperationRecordError::MissingStoredStorage,
+              record.stored_value_id,
+              record.stored_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.result_value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingResultValueName,
+              PreparedAtomicOperationRecordError::MissingResultValueHome,
+              PreparedAtomicOperationRecordError::MissingResultStorage,
+              record.result_value_id,
+              record.result_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      break;
+    }
+    case bir::AtomicOperationKind::CompareExchange: {
+      if (!supported_atomic_width(operation.width_bytes)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      if (!supported_atomic_compare_exchange_success_ordering(operation.ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedOrdering);
+      }
+      if (!supported_atomic_compare_exchange_failure_ordering(
+              operation.failure_ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedFailureOrdering);
+      }
+      if (operation.result_mode != bir::AtomicResultMode::BooleanSuccess &&
+          operation.result_mode != bir::AtomicResultMode::OldValue) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedResultMode);
+      }
+      record.atomic_kind = AtomicMemoryInstructionKind::CompareExchangeLoop;
+      record.pointer_value_name = operation.pointer_value_name;
+      record.expected_value_name = operation.expected_value_name;
+      record.desired_value_name = operation.desired_value_name;
+      record.result_value_name = operation.result_value_name;
+      record.failure_ordering = operation.failure_ordering;
+      record.exclusive_retry_loop = true;
+      record.compare_exchange_failure_clears_monitor = true;
+      record.compare_exchange_result_is_boolean =
+          operation.result_mode == bir::AtomicResultMode::BooleanSuccess;
+      record.compare_exchange_result_is_old_value =
+          operation.result_mode == bir::AtomicResultMode::OldValue;
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.pointer_value_name,
+              bir::TypeKind::Ptr,
+              PreparedAtomicOperationRecordError::MissingPointerValueName,
+              PreparedAtomicOperationRecordError::MissingPointerValueHome,
+              PreparedAtomicOperationRecordError::MissingPointerValueStorage,
+              record.pointer_value_id,
+              record.pointer_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.expected_value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingExpectedValueName,
+              PreparedAtomicOperationRecordError::MissingExpectedValueHome,
+              PreparedAtomicOperationRecordError::MissingExpectedStorage,
+              record.expected_value_id,
+              record.expected_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.desired_value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingDesiredValueName,
+              PreparedAtomicOperationRecordError::MissingDesiredValueHome,
+              PreparedAtomicOperationRecordError::MissingDesiredStorage,
+              record.desired_value_id,
+              record.desired_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.result_value_name,
+              operation.result_mode == bir::AtomicResultMode::BooleanSuccess
+                  ? bir::TypeKind::I1
+                  : operation.value_type,
+              PreparedAtomicOperationRecordError::MissingResultValueName,
+              PreparedAtomicOperationRecordError::MissingResultValueHome,
+              PreparedAtomicOperationRecordError::MissingResultStorage,
+              record.result_value_id,
+              record.result_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      break;
+    }
     case bir::AtomicOperationKind::None:
       return atomic_instruction_record_error(
           PreparedAtomicOperationRecordError::UnsupportedOperationKind);
