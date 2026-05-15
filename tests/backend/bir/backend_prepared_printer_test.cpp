@@ -2067,6 +2067,22 @@ const prepare::PreparedStoragePlanValue* find_storage_value(
   return nullptr;
 }
 
+const prepare::PreparedF128Carrier* find_f128_carrier(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name,
+    std::string_view value_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  const auto value_id = prepared.names.value_names.find(value_name);
+  if (function_id == c4c::kInvalidFunctionName || value_id == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto* function_carriers = prepare::find_prepared_f128_carriers(prepared, function_id);
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  return prepare::find_prepared_f128_carrier(*function_carriers, value_id);
+}
+
 std::string clobber_summary(const prepare::PreparedClobberedRegister& clobber) {
   std::string summary = std::string(prepare::prepared_register_bank_name(clobber.bank)) + ":" +
                         clobber.register_name + "/w" + std::to_string(clobber.contiguous_width);
@@ -2345,6 +2361,38 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_dump_module() {
   regalloc_planner.run_regalloc();
   regalloc_planner.publish_contract_plans();
   return std::move(regalloc_planner.prepared());
+}
+
+prepare::PreparedBirModule prepare_f128_memory_carrier_dump_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "f128_memory_carrier_dump_contract";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "p.value",
+      .size_bytes = 16,
+      .align_bytes = 16,
+      .is_byval = true,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      aarch64_target_profile(),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
 }
 
 }  // namespace
@@ -3358,6 +3406,48 @@ int main() {
                            " stack_align=" +
                            std::to_string(*stack_preserved_it->stack_align_bytes),
                        "stack-preserved structured spill-slot extent detail")) {
+    return EXIT_FAILURE;
+  }
+
+  const auto f128_memory_prepared = prepare_f128_memory_carrier_dump_module();
+  const auto* f128_memory_carrier = find_f128_carrier(
+      f128_memory_prepared, "f128_memory_carrier_dump_contract", "p.value");
+  if (f128_memory_carrier == nullptr ||
+      f128_memory_carrier->kind != prepare::PreparedF128CarrierKind::MemoryBacked ||
+      f128_memory_carrier->source_type != bir::TypeKind::F128 ||
+      f128_memory_carrier->total_size_bytes != 16 ||
+      f128_memory_carrier->total_align_bytes != 16 ||
+      !f128_memory_carrier->slot_id.has_value() ||
+      !f128_memory_carrier->stack_offset_bytes.has_value() ||
+      !f128_memory_carrier->missing_required_facts.empty()) {
+    std::cerr << "[FAIL] prepared f128 memory carrier lost frame-slot storage authority\n";
+    return EXIT_FAILURE;
+  }
+
+  const std::string f128_memory_dump = prepare::print(f128_memory_prepared);
+  if (!expect_contains(f128_memory_dump,
+                       "--- prepared-f128-carriers ---",
+                       "f128 carrier printer section")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_memory_dump,
+                       "f128_carrier p.value value_id=0",
+                       "f128 memory carrier value identity")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_memory_dump,
+                       "kind=memory_backed size=16 align=16",
+                       "f128 memory carrier storage shape")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_memory_dump,
+                       "slot_id=#",
+                       "f128 memory carrier frame-slot id")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(f128_memory_dump,
+                       "stack_offset=",
+                       "f128 memory carrier frame-slot offset")) {
     return EXIT_FAILURE;
   }
 
