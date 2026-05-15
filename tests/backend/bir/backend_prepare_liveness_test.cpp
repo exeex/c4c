@@ -32,6 +32,10 @@ c4c::TargetProfile x86_target_profile() {
   return c4c::default_target_profile(c4c::TargetArch::X86_64);
 }
 
+c4c::TargetProfile aarch64_target_profile() {
+  return c4c::default_target_profile(c4c::TargetArch::Aarch64);
+}
+
 int fail(const char* message) {
   std::cerr << message << "\n";
   return 1;
@@ -175,6 +179,16 @@ const prepare::PreparedI128RuntimeHelperFunction* find_i128_runtime_helpers(
     return nullptr;
   }
   return prepare::find_prepared_i128_runtime_helpers(prepared, function_id);
+}
+
+const prepare::PreparedF128RuntimeHelperFunction* find_f128_runtime_helpers(
+    const prepare::PreparedBirModule& prepared,
+    std::string_view function_name) {
+  const auto function_id = prepared.names.function_names.find(function_name);
+  if (function_id == c4c::kInvalidFunctionName) {
+    return nullptr;
+  }
+  return prepare::find_prepared_f128_runtime_helpers(prepared, function_id);
 }
 
 void set_register_group_override(prepare::PreparedBirModule& prepared,
@@ -2501,6 +2515,73 @@ prepare::PreparedBirModule prepare_i128_runtime_helper_mapping_contract_module()
   return std::move(regalloc_planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_f128_constant_helper_fails_closed_module() {
+  prepare::PreparedBirModule seeded;
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+  bir::Function function;
+  function.name = "f128_constant_helper_fails_closed";
+  function.return_type = bir::TypeKind::F128;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::F128,
+      .name = "p.lhs",
+      .size_bytes = 16,
+      .align_bytes = 16,
+  });
+
+  auto constant_rhs = bir::Value{};
+  constant_rhs.kind = bir::Value::Kind::Immediate;
+  constant_rhs.type = bir::TypeKind::F128;
+  constant_rhs.immediate_bits = 0x3fff000000000000ULL;
+
+  auto entry = make_block(module, "entry");
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::F128, "sum"),
+      .operand_type = bir::TypeKind::F128,
+      .lhs = bir::Value::named(bir::TypeKind::F128, "p.lhs"),
+      .rhs = constant_rhs,
+  });
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named(bir::TypeKind::F128, "sum"),
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  seeded.module = std::move(module);
+  seeded.target_profile = aarch64_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = false;
+  prepare::BirPreAlloc planner(std::move(seeded), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  planner.run_liveness();
+
+  auto prepared = std::move(planner.prepared());
+  set_register_group_override(prepared,
+                              "f128_constant_helper_fails_closed",
+                              "p.lhs",
+                              prepare::PreparedRegisterClass::Vector,
+                              1);
+  set_register_group_override(prepared,
+                              "f128_constant_helper_fails_closed",
+                              "sum",
+                              prepare::PreparedRegisterClass::Vector,
+                              1);
+
+  options.run_legalize = false;
+  options.run_stack_layout = false;
+  options.run_liveness = false;
+  options.run_regalloc = true;
+  prepare::BirPreAlloc regalloc_planner(std::move(prepared), options);
+  regalloc_planner.run_regalloc();
+  regalloc_planner.publish_contract_plans();
+  return std::move(regalloc_planner.prepared());
+}
+
 int check_i128_memory_backed_carrier_authority() {
   const auto prepared = prepare_i128_memory_carrier_contract_module();
   const auto* carrier =
@@ -3085,6 +3166,29 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
           std::string::npos) {
     return fail("prepared printer did not expose i128 runtime helper mapping facts");
+  }
+  return 0;
+}
+
+int check_f128_constant_helper_fails_closed() {
+  const auto prepared = prepare_f128_constant_helper_fails_closed_module();
+  const auto* helpers =
+      find_f128_runtime_helpers(prepared, "f128_constant_helper_fails_closed");
+  if (helpers == nullptr) {
+    return fail("expected F128 constant helper rejection to publish missing authority facts");
+  }
+  if (!helpers->helpers.empty() ||
+      helpers->missing_required_facts.size() != 1 ||
+      helpers->missing_required_facts.front() !=
+          "f128_soft_float_helper_requires_named_result_and_operands") {
+    return fail("expected F128 immediate operand to stay out of helper mappings");
+  }
+
+  const auto dump = prepare::print(prepared);
+  if (dump.find("--- prepared-f128-runtime-helpers ---") == std::string::npos ||
+      dump.find("f128_soft_float_helper_requires_named_result_and_operands") ==
+          std::string::npos) {
+    return fail("prepared printer did not expose F128 immediate helper rejection");
   }
   return 0;
 }
@@ -6900,6 +7004,9 @@ int main() {
     return rc;
   }
   if (const int rc = check_i128_runtime_helper_mapping_authority(); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_f128_constant_helper_fails_closed(); rc != 0) {
     return rc;
   }
   const auto general_grouped_evicted_spill_prepared =

@@ -75,6 +75,7 @@ lir::LirCallSignature void_call_signature(
 }
 
 LirModule make_admitted_scalar_float_globals_module();
+LirModule make_f128_scalar_constant_binop_fails_closed_module();
 LirModule make_admitted_scalar_i16_globals_module();
 LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
@@ -198,6 +199,28 @@ int expect_admitted_scalar_float_globals() {
     return fail("scalar double globals should lower into an admitted F64 BIR initializer lane");
   }
 
+  return 0;
+}
+
+int expect_f128_scalar_constant_binop_fails_closed() {
+  auto result = try_lower_to_bir_with_options(
+      make_f128_scalar_constant_binop_fails_closed_module(), BirLoweringOptions{});
+  if (result.module.has_value()) {
+    return fail("F128 scalar constants must not lower through the current 64-bit immediate lane");
+  }
+  if (!contains_note(result.notes,
+                     "function",
+                     "semantic lir_to_bir function 'f128_scalar_constant_binop_fails_closed' "
+                     "failed in scalar-binop semantic family")) {
+    return fail("missing scalar-binop failure for unsupported F128 scalar constant");
+  }
+  if (!contains_note(result.notes,
+                     "module",
+                     "latest function failure: semantic lir_to_bir function "
+                     "'f128_scalar_constant_binop_fails_closed' failed in scalar-binop "
+                     "semantic family")) {
+    return fail("missing module summary for unsupported F128 scalar constant");
+  }
   return 0;
 }
 
@@ -4391,6 +4414,34 @@ LirModule make_admitted_float_scalar_binop_module() {
   return module;
 }
 
+LirModule make_f128_scalar_constant_binop_fails_closed_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  LirFunction function;
+  function.name = "f128_scalar_constant_binop_fails_closed";
+  function.signature_text = "define f128 @f128_scalar_constant_binop_fails_closed(f128 %lhs)";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_LONGDOUBLE};
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirBinOp{
+      .result = LirOperand("%sum"),
+      .opcode = c4c::codegen::lir::LirBinaryOpcode::FAdd,
+      .type_str = "f128",
+      .lhs = LirOperand("%lhs"),
+      .rhs = LirOperand("0xL00000000000000000000000000000000"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::string("%sum"),
+      .type_str = "f128",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 LirModule make_bad_gep_module() {
   LirModule module;
   module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
@@ -5590,6 +5641,12 @@ int main() {
           "scalar-binop semantic-family note");
       admitted_float_scalar_binop_status != 0) {
     return admitted_float_scalar_binop_status;
+  }
+
+  if (const int f128_scalar_constant_status =
+          expect_f128_scalar_constant_binop_fails_closed();
+      f128_scalar_constant_status != 0) {
+    return f128_scalar_constant_status;
   }
 
   if (const int gep_status = expect_failure_notes(
