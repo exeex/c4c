@@ -2589,6 +2589,9 @@ int main() {
   const auto* scalar_f64_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *aapcs64_helper_family_entry_plan, 0, 2);
+  const auto* aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 3);
   if (scalar_i32_homes == nullptr || scalar_f64_homes == nullptr ||
       !scalar_i32_homes->scalar_access_plan.has_value() ||
       scalar_i32_homes->scalar_access_plan->source_class !=
@@ -2624,6 +2627,60 @@ int main() {
       scalar_f64_homes->scalar_access_plan->overflow_source_field_offset_bytes !=
           std::optional<std::size_t>{0}) {
     std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier missed scalar va_arg access-plan facts\n";
+    return EXIT_FAILURE;
+  }
+  prepare::PreparedValueHome aggregate_payload_home{
+      .value_name = c4c::kInvalidValueName,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = std::size_t{42},
+      .offset_bytes = std::size_t{16},
+  };
+  prepare::PreparedValueHome aggregate_source_va_list_home{
+      .value_name = c4c::kInvalidValueName,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::string("x0"),
+  };
+  prepare::PreparedVariadicAggregateVaArgAccessPlan incomplete_aggregate_plan;
+  if (prepare::is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          incomplete_aggregate_plan)) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier treated an empty access plan as complete\n";
+    return EXIT_FAILURE;
+  }
+  prepare::PreparedVariadicAggregateVaArgAccessPlan complete_aggregate_plan{
+      .source_class = prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea,
+      .payload_size_bytes = 8,
+      .payload_align_bytes = 4,
+      .destination_payload_home = aggregate_payload_home,
+      .source_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .source_field_offset_bytes = std::size_t{0},
+      .source_payload_offset_bytes = std::size_t{0},
+      .source_slot_size_bytes = std::size_t{8},
+      .copy_size_bytes = std::size_t{8},
+      .copy_align_bytes = std::size_t{4},
+      .progression_field = prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .progression_field_offset_bytes = std::size_t{0},
+      .progression_stride_bytes = std::size_t{8},
+  };
+  prepare::PreparedVariadicEntryHelperOperandHomes complete_aggregate_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaArgAggregate,
+      .source_va_list = aggregate_source_va_list_home,
+      .aggregate_destination_payload = aggregate_payload_home,
+      .aggregate_access_plan = complete_aggregate_plan,
+  };
+  if (!prepare::is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          complete_aggregate_plan) ||
+      !prepare::has_complete_prepared_variadic_aggregate_va_arg_access_plan(
+          complete_aggregate_homes)) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier cannot represent a complete access plan\n";
+    return EXIT_FAILURE;
+  }
+  if (aggregate_homes == nullptr ||
+      aggregate_homes->aggregate_access_plan.has_value() ||
+      std::find(aapcs64_helper_family_entry_plan->missing_required_facts.begin(),
+                aapcs64_helper_family_entry_plan->missing_required_facts.end(),
+                "helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ==
+          aapcs64_helper_family_entry_plan->missing_required_facts.end()) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier did not expose the missing aggregate access-plan fact\n";
     return EXIT_FAILURE;
   }
   if (!expect_contains(
@@ -2674,6 +2731,17 @@ int main() {
   if (!expect_contains(aapcs64_helper_family_dump,
                        "helper_operand kind=va_arg_aggregate block=0 inst=3",
                        "AAPCS64 variadic aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "aggregate_access_plan=<none>",
+                       "AAPCS64 variadic aggregate va_arg explicit missing access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "missing fact=helper_operand_homes.va_arg_aggregate.aggregate_access_plan",
+          "AAPCS64 variadic aggregate va_arg missing access-plan fact")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_helper_family_dump,

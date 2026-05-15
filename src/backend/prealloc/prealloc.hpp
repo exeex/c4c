@@ -1329,6 +1329,67 @@ struct PreparedVariadicScalarVaArgAccessPlan {
   std::optional<std::size_t> overflow_stride_bytes;
 };
 
+enum class PreparedVariadicAggregateVaArgSourceClass {
+  Unknown,
+  RegisterSaveArea,
+  OverflowArgArea,
+  ExplicitPayload,
+};
+
+[[nodiscard]] constexpr std::string_view
+prepared_variadic_aggregate_va_arg_source_class_name(
+    PreparedVariadicAggregateVaArgSourceClass source_class) {
+  switch (source_class) {
+    case PreparedVariadicAggregateVaArgSourceClass::Unknown:
+      return "unknown";
+    case PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea:
+      return "register_save_area";
+    case PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea:
+      return "overflow_arg_area";
+    case PreparedVariadicAggregateVaArgSourceClass::ExplicitPayload:
+      return "explicit_payload";
+  }
+  return "unknown";
+}
+
+struct PreparedVariadicAggregateVaArgAccessPlan {
+  PreparedVariadicAggregateVaArgSourceClass source_class =
+      PreparedVariadicAggregateVaArgSourceClass::Unknown;
+  std::size_t payload_size_bytes = 0;
+  std::size_t payload_align_bytes = 0;
+  std::optional<PreparedValueHome> destination_payload_home;
+  std::optional<PreparedVariadicVaListFieldKind> source_field;
+  std::optional<std::size_t> source_field_offset_bytes;
+  std::optional<std::size_t> source_payload_offset_bytes;
+  std::optional<std::size_t> source_slot_size_bytes;
+  std::optional<std::size_t> copy_size_bytes;
+  std::optional<std::size_t> copy_align_bytes;
+  std::optional<PreparedVariadicVaListFieldKind> progression_field;
+  std::optional<std::size_t> progression_field_offset_bytes;
+  std::optional<std::size_t> progression_stride_bytes;
+};
+
+[[nodiscard]] inline bool
+is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+    const PreparedVariadicAggregateVaArgAccessPlan& plan) {
+  return plan.source_class != PreparedVariadicAggregateVaArgSourceClass::Unknown &&
+         plan.payload_size_bytes > 0 &&
+         plan.payload_align_bytes > 0 &&
+         plan.destination_payload_home.has_value() &&
+         plan.source_field.has_value() &&
+         plan.source_field_offset_bytes.has_value() &&
+         plan.source_payload_offset_bytes.has_value() &&
+         plan.source_slot_size_bytes.has_value() &&
+         plan.copy_size_bytes.has_value() &&
+         *plan.copy_size_bytes > 0 &&
+         plan.copy_align_bytes.has_value() &&
+         *plan.copy_align_bytes > 0 &&
+         plan.progression_field.has_value() &&
+         plan.progression_field_offset_bytes.has_value() &&
+         plan.progression_stride_bytes.has_value() &&
+         *plan.progression_stride_bytes > 0;
+}
+
 struct PreparedVariadicEntryHelperOperandHomes {
   PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
   std::size_t block_index = 0;
@@ -1338,7 +1399,18 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::optional<PreparedValueHome> scalar_result;
   std::optional<PreparedValueHome> aggregate_destination_payload;
   std::optional<PreparedVariadicScalarVaArgAccessPlan> scalar_access_plan;
+  std::optional<PreparedVariadicAggregateVaArgAccessPlan> aggregate_access_plan;
 };
+
+[[nodiscard]] inline bool has_complete_prepared_variadic_aggregate_va_arg_access_plan(
+    const PreparedVariadicEntryHelperOperandHomes& homes) {
+  return homes.helper == PreparedVariadicEntryHelperKind::VaArgAggregate &&
+         homes.source_va_list.has_value() &&
+         homes.aggregate_destination_payload.has_value() &&
+         homes.aggregate_access_plan.has_value() &&
+         is_complete_prepared_variadic_aggregate_va_arg_access_plan(
+             *homes.aggregate_access_plan);
+}
 
 struct PreparedVariadicEntryPlanFunction {
   FunctionNameId function_name = kInvalidFunctionName;

@@ -876,6 +876,55 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
             out << ":overflow_stride=" << *plan.overflow_stride_bytes;
           }
         }
+      } else if (homes.helper == PreparedVariadicEntryHelperKind::VaArgAggregate) {
+        out << " aggregate_access_plan=";
+        if (!homes.aggregate_access_plan.has_value()) {
+          out << "<none>";
+        } else {
+          const auto& plan = *homes.aggregate_access_plan;
+          out << "source_class="
+              << prepared_variadic_aggregate_va_arg_source_class_name(plan.source_class)
+              << ":payload_size=" << plan.payload_size_bytes
+              << ":payload_align=" << plan.payload_align_bytes;
+          if (plan.destination_payload_home.has_value()) {
+            out << ":destination_payload="
+                << maybe_value_name(module.names,
+                                    plan.destination_payload_home->value_name)
+                << "/"
+                << prepared_value_home_kind_name(
+                       plan.destination_payload_home->kind);
+          }
+          if (plan.source_field.has_value()) {
+            out << ":source_field="
+                << prepared_variadic_va_list_field_kind_name(*plan.source_field);
+            if (plan.source_field_offset_bytes.has_value()) {
+              out << "@" << *plan.source_field_offset_bytes;
+            }
+          }
+          if (plan.source_payload_offset_bytes.has_value()) {
+            out << ":source_payload_offset="
+                << *plan.source_payload_offset_bytes;
+          }
+          if (plan.source_slot_size_bytes.has_value()) {
+            out << ":source_slot=" << *plan.source_slot_size_bytes;
+          }
+          if (plan.copy_size_bytes.has_value()) {
+            out << ":copy_size=" << *plan.copy_size_bytes;
+          }
+          if (plan.copy_align_bytes.has_value()) {
+            out << ":copy_align=" << *plan.copy_align_bytes;
+          }
+          if (plan.progression_field.has_value()) {
+            out << ":progression_field="
+                << prepared_variadic_va_list_field_kind_name(*plan.progression_field);
+            if (plan.progression_field_offset_bytes.has_value()) {
+              out << "@" << *plan.progression_field_offset_bytes;
+            }
+          }
+          if (plan.progression_stride_bytes.has_value()) {
+            out << ":progression_stride=" << *plan.progression_stride_bytes;
+          }
+        }
       }
       out << "\n";
     }

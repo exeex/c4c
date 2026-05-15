@@ -630,6 +630,11 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
                                                "aggregate_destination_payload");
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
+          if (!has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
+            append_missing_variadic_entry_fact(
+                function_plan,
+                "helper_operand_homes.va_arg_aggregate.aggregate_access_plan");
+          }
           break;
         case PreparedVariadicEntryHelperKind::VaCopy:
           if (!call->args.empty()) {
