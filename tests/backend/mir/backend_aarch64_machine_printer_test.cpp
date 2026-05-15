@@ -101,6 +101,17 @@ aarch64_codegen::RegisterOperand dreg(unsigned index) {
   };
 }
 
+aarch64_codegen::RegisterOperand qreg(unsigned index) {
+  return aarch64_codegen::RegisterOperand{
+      .reg = aarch64_abi::q_register(static_cast<std::uint8_t>(index)),
+      .role = aarch64_codegen::RegisterOperandRole::PreparedAssignment,
+      .prepared_class = prepare::PreparedRegisterClass::Vector,
+      .prepared_bank = prepare::PreparedRegisterBank::Vreg,
+      .expected_view = aarch64_abi::RegisterView::Q,
+      .contiguous_width = 1,
+  };
+}
+
 aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
   return aarch64_codegen::MemoryOperand{
       .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -116,6 +127,13 @@ aarch64_codegen::MemoryOperand frame_slot(std::int64_t offset) {
       .address_space = bir::AddressSpace::Default,
       .can_use_base_plus_offset = true,
   };
+}
+
+aarch64_codegen::MemoryOperand f128_frame_slot(std::int64_t offset) {
+  auto memory = frame_slot(offset);
+  memory.size_bytes = 16;
+  memory.align_bytes = 16;
+  return memory;
 }
 
 aarch64_codegen::I128PairOperandRecord i128_pair_operand(
@@ -147,6 +165,165 @@ aarch64_codegen::I128PairOperandRecord i128_pair_operand(
               .reg = high,
           },
       .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
+  };
+}
+
+aarch64_codegen::F128RuntimeHelperOperandRecord f128_helper_operand(
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    unsigned carrier_register,
+    unsigned abi_register,
+    prepare::PreparedF128RuntimeHelperMarshalDirection direction,
+    std::optional<std::size_t> argument_index = std::nullopt) {
+  auto carrier = qreg(carrier_register);
+  carrier.value_id = value_id;
+  carrier.value_name = value_name;
+  auto abi = qreg(abi_register);
+  abi.value_id = value_id;
+  abi.value_name = value_name;
+  const auto carrier_name = std::string{"q"} + std::to_string(carrier_register);
+  const auto abi_name = std::string{"q"} + std::to_string(abi_register);
+  const prepare::PreparedF128RuntimeHelper::CarrierBinding carrier_binding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .carrier_kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+      .width_bytes = 16,
+      .align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .register_name = carrier_name,
+  };
+  const prepare::PreparedF128RuntimeHelper::AbiRegisterBinding abi_binding{
+      .value_id = value_id,
+      .value_name = value_name,
+      .helper_argument_index = argument_index,
+      .abi_register_index = abi_register,
+      .width_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .register_name = abi_name,
+      .contiguous_width = 1,
+      .occupied_register_names = {abi_name},
+      .register_placement =
+          prepare::PreparedRegisterPlacement{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .pool = argument_index.has_value()
+                          ? prepare::PreparedRegisterSlotPool::CallArgument
+                          : prepare::PreparedRegisterSlotPool::CallResult,
+              .slot_index = abi_register,
+              .contiguous_width = 1,
+          },
+  };
+  return aarch64_codegen::F128RuntimeHelperOperandRecord{
+      .value_id = value_id,
+      .value_name = value_name,
+      .carrier_kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+      .width_bytes = 16,
+      .align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .carrier_register = carrier,
+      .abi_register = abi,
+      .carrier_binding = carrier_binding,
+      .abi_binding = abi_binding,
+      .marshaling_move =
+          prepare::PreparedF128RuntimeHelper::MarshalingMove{
+              .direction = direction,
+              .carrier = carrier_binding,
+              .abi_register = abi_binding,
+          },
+      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+  };
+}
+
+aarch64_codegen::F128RuntimeHelperBoundaryRecord printable_f128_arithmetic_helper() {
+  return aarch64_codegen::F128RuntimeHelperBoundaryRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .boundary_kind = aarch64_codegen::F128RuntimeHelperBoundaryKind::Add,
+      .helper_family = prepare::PreparedF128RuntimeHelperFamily::Arithmetic,
+      .helper_kind = prepare::PreparedF128RuntimeHelperKind::Add,
+      .callee_name = "__addtf3",
+      .source_binary_opcode = bir::BinaryOpcode::Add,
+      .function_name = c4c::FunctionNameId{2},
+      .block_index = 0,
+      .instruction_index = 2,
+      .source_type = bir::TypeKind::F128,
+      .result_type = bir::TypeKind::F128,
+      .result_value_id = prepare::PreparedValueId{90},
+      .result_value_name = c4c::ValueNameId{90},
+      .lhs_value_id = prepare::PreparedValueId{91},
+      .lhs_value_name = c4c::ValueNameId{91},
+      .rhs_value_id = prepare::PreparedValueId{92},
+      .rhs_value_name = c4c::ValueNameId{92},
+      .result_ownership =
+          prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier,
+      .width_bytes = 16,
+      .align_bytes = 16,
+      .result =
+          f128_helper_operand(prepare::PreparedValueId{90},
+                              c4c::ValueNameId{90},
+                              4,
+                              0,
+                              prepare::PreparedF128RuntimeHelperMarshalDirection::
+                                  AbiResultToCarrier),
+      .lhs =
+          f128_helper_operand(prepare::PreparedValueId{91},
+                              c4c::ValueNameId{91},
+                              6,
+                              0,
+                              prepare::PreparedF128RuntimeHelperMarshalDirection::
+                                  CarrierToAbiArgument,
+                              std::size_t{0}),
+      .rhs =
+          f128_helper_operand(prepare::PreparedValueId{92},
+                              c4c::ValueNameId{92},
+                              8,
+                              1,
+                              prepare::PreparedF128RuntimeHelperMarshalDirection::
+                                  CarrierToAbiArgument,
+                              std::size_t{1}),
+      .resource_policy =
+          prepare::PreparedF128RuntimeHelper::ResourcePolicy{
+              .call_boundary = true,
+              .runtime_helper_callee = true,
+              .caller_saved_clobbers = true,
+              .preserves_source_operation_identity = true,
+          },
+      .abi_policy =
+          prepare::PreparedF128RuntimeHelper::AbiPolicy{
+              .transition =
+                  prepare::PreparedF128RuntimeHelperAbiTransition::
+                      DirectF128ArgumentsAndResult,
+              .argument_bank = prepare::PreparedRegisterBank::Vreg,
+              .result_bank = prepare::PreparedRegisterBank::Vreg,
+              .argument_count = 2,
+              .result_count = 1,
+              .width_bytes = 16,
+          },
+      .live_preservation_policy =
+          prepare::PreparedF128RuntimeHelper::LivePreservationPolicy{
+              .evaluated = true,
+              .caller_saved_clobbers_modeled = true,
+              .no_additional_live_preservation_required = true,
+          },
+      .selected_call_ownership =
+          prepare::PreparedF128RuntimeHelper::SelectedCallOwnershipPolicy{
+              .owns_terminal_call = true,
+              .has_callee_identity = true,
+              .has_resource_policy = true,
+              .has_clobber_policy = true,
+              .has_abi_bindings = true,
+              .has_marshaling = true,
+              .has_live_preservation = true,
+          },
+      .clobbered_registers =
+          {prepare::PreparedClobberedRegister{
+              .bank = prepare::PreparedRegisterBank::Vreg,
+              .register_name = "q0",
+              .contiguous_width = 1,
+              .occupied_register_names = {"q0"},
+          }},
+      .source_helper = reinterpret_cast<const prepare::PreparedF128RuntimeHelper*>(0x1),
   };
 }
 
@@ -1213,6 +1390,100 @@ int selected_i128_helper_boundaries_print_from_structured_fields() {
                          expected,
                          expected,
                          "i128 helper boundary structured printer");
+}
+
+int selected_f128_transport_and_helper_nodes_print_from_structured_fields() {
+  auto load_record = aarch64_codegen::F128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 1,
+      .value_id = prepare::PreparedValueId{88},
+      .value_name = c4c::ValueNameId{88},
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Vreg,
+      .register_class = prepare::PreparedRegisterClass::Vector,
+      .contiguous_width = 1,
+      .reg = qreg(4),
+      .occupied_register_names = {"q4"},
+      .memory = f128_frame_slot(32),
+      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+  };
+  auto store_record = load_record;
+  store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
+  store_record.instruction_index = 2;
+  store_record.value_id = prepare::PreparedValueId{89};
+  store_record.value_name = c4c::ValueNameId{89};
+  store_record.reg = qreg(5);
+  store_record.occupied_register_names = {"q5"};
+  store_record.memory = f128_frame_slot(48);
+
+  const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
+  const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
+  const auto helper = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
+      printable_f128_arithmetic_helper());
+  const auto result = print_common_instruction_nodes({load, store, helper});
+  if (!result.ok) {
+    return fail("expected selected f128 nodes to print from structured fields: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr q4, [sp, #32]\n"
+      "    str q5, [sp, #48]\n"
+      "    mov v0.16b, v6.16b\n"
+      "    mov v1.16b, v8.16b\n"
+      "    bl __addtf3\n"
+      "    mov v4.16b, v0.16b\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "f128 transport/helper structured printer");
+}
+
+int selected_f128_records_reject_incomplete_structured_fields() {
+  const auto memory_backed = aarch64_codegen::make_f128_transport_instruction(
+      aarch64_codegen::F128TransportRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+          .function_name = c4c::FunctionNameId{2},
+          .block_label = c4c::BlockLabelId{3},
+          .instruction_index = 3,
+          .value_id = prepare::PreparedValueId{93},
+          .value_name = c4c::ValueNameId{93},
+          .value_type = bir::TypeKind::F128,
+          .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+          .total_size_bytes = 16,
+          .total_align_bytes = 16,
+          .slot_id = prepare::PreparedFrameSlotId{7},
+          .stack_offset_bytes = std::size_t{64},
+          .memory = f128_frame_slot(64),
+          .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+      });
+  const auto memory_backed_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(memory_backed);
+  if (memory_backed_result.ok ||
+      memory_backed_result.diagnostic.find("full-width q-register authority") ==
+          std::string::npos) {
+    return fail("expected f128 memory-backed transport to fail closed in printer");
+  }
+
+  auto helper_record = printable_f128_arithmetic_helper();
+  helper_record.lhs.carrier_register.reset();
+  const auto helper =
+      aarch64_codegen::make_f128_runtime_helper_boundary_instruction(helper_record);
+  const auto helper_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(helper);
+  if (helper_result.ok ||
+      helper_result.diagnostic.find("missing full-width q-register carrier or ABI facts") ==
+          std::string::npos) {
+    return fail("expected incomplete f128 helper boundary to fail closed before printing");
+  }
+
+  return 0;
 }
 
 int selected_i128_records_reject_incomplete_structured_fields() {
@@ -2925,6 +3196,14 @@ int main() {
     return result;
   }
   if (const int result = selected_i128_helper_boundaries_print_from_structured_fields();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_f128_transport_and_helper_nodes_print_from_structured_fields();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_f128_records_reject_incomplete_structured_fields();
       result != 0) {
     return result;
   }

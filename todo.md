@@ -1,115 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/237_aarch64_binary128_softfloat_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4.5
-Current Step Title: Unsupported Helper-Family Diagnostics
+Current Step ID: 5
+Current Step Title: Print Supported Binary128 Machine Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 4.5 completed unsupported F128 helper-family diagnostics. Dispatch now
-claims remaining F128 binary helper-shaped operations at the prepared helper
-boundary and reports missing prepared helper authority or
-`unsupported_source_operation`; record construction rejects unsigned division,
-remainders, bitwise/logical operations, shifts, and unsigned predicates instead
-of selecting arithmetic helper records, scalar `F64` operations, or
-dispatch-side callee guesses.
+Step 5 completed the first binary128 printer packet. AArch64 machine printing
+now emits structured F128 load/store transport from selected full-width
+q-register carriers and emits selected F128 helper-boundary call sequences from
+record-level q-register/scalar marshal facts. The printer still rejects
+memory-backed F128 transport without a printable q-register and incomplete F128
+helper records through diagnostics instead of reconstructing operands from
+rendered text.
 
 ## Suggested Next
 
-Proceed to the next supervisor-selected Step 4/Step 5 packet. If Step 5 starts,
-keep final assembly printing limited to already selected record-level F128
-authority and do not backfill unsupported helper families without complete
-prepared authority.
+Run the next supervisor-selected Step 5 packet against real prepared dispatch
+fixtures for any remaining selected F128 comparison/cast/helper printer cases,
+or move to the final narrow binary128 route proof if the supervisor treats this
+printer surface as sufficient.
 
 ## Watchouts
 
-- Do not claim binary128 progress through scalar `F64` lowering.
-- Do not add testcase-shaped helper shortcuts or weaken unsupported
-  expectations.
-- Keep atomic, intrinsic, and inline-assembly AArch64 routes out of this plan.
-- F128 q-register transport is modeled as vector-bank full-width storage so it
-  does not reopen scalar `F64` lowering.
-- The selected `F128TransportRecord` is record-level only; final assembly
-  printing remains unsupported until Step 5 adds printer authority.
-- Further helper-call operations, casts, constants, and broader F128
-  preservation facts remain outside this packet.
-- The new real-path F128 coverage uses a byval parameter to force a prepared
-  frame-slot home; it does not claim helper-boundary or arithmetic support.
-- The new register-carrier coverage uses a normal ABI-passed `f128` parameter
-  to prove q-register carrier facts; it does not force register-group overrides
-  or testcase-shaped assignments.
-- Storage-plan bank text for the ABI home can still report the generic scalar
-  FP source bank before `PreparedF128Carrier` normalizes full-width F128
-  transport to vector-bank/vector-class authority.
-- This packet covered F128 load/store-style memory transport selection, with
-  new store proof and existing load proof. It did not add final assembly
-  printing or arithmetic/cast/helper-call support.
-- The inspected copy boundary was the call-boundary move route:
-  `lower_before_call_move`, `lower_after_call_move`,
-  `make_call_boundary_move_instruction`, and
-  `call_boundary_move_selection_status`. That boundary now handles the narrow
-  structured F128 q-register move case; generic parallel copies, memory-backed
-  F128 copies, helper-call lowering, final assembly printing, and arithmetic
-  remain outside this packet.
-- The inspected constant boundary was fail-closed: `StoreLocalInst` with a
-  non-named F128 value reaches `lower_f128_transport_instruction`, cannot map
-  to a `ValueNameId`, and reports missing prepared F128 carrier authority.
-  Adding an AArch64 constant case now would require inventing 128-bit payload
-  authority outside the prepared facts.
-- Exact missing authority: a prepared full-width F128 constant carrier carrying
-  both 64-bit halves or equivalent 16-byte payload provenance, linked to a BIR
-  value or storage fact that instruction selection can consume.
-- Step 4 cannot reuse `PreparedI128RuntimeHelper` as-is without overfitting:
-  its helper family, ABI transition, operand lanes, and selected record
-  builder are i128-specific and require GPR low/high lanes, while binary128
-  helper calls need F128 full-width carriers and a soft-float ABI contract.
-- Unsupported F128 comparison, unmodeled cast, sign-bit, and other
-  helper-family operations should remain diagnosed until their prepared helper
-  identities and complete ownership facts exist; do not add scalar F64
-  approximations or dispatch-only callee guesses.
-- Only F128 add, sub, mul, and signed binary128 division map to helper callees
-  in this slice. Compare/cast/sign-bit and unsigned div/rem helpers remain
-  unsupported until their semantic helper identities and ABI facts are added
-  deliberately.
-- The AArch64 F128 helper boundary is now selected only from a complete
-  `PreparedF128RuntimeHelper` with selected-call ownership. Do not reintroduce
-  raw BIR-shape, rendered-text, or scalar F64 inference.
-- The selected F128 add/sub/mul/div helper boundary is record-level only.
-  Final assembly printing remains unsupported until Step 5 adds printer
-  authority; do not start Step 5 until the remaining Step 4
-  helper-family/helper-identity packets are deliberately handled or explicitly
-  deferred by the supervisor.
-- Unsigned F128 predicates remain fail-closed until an ordered/unordered
-  predicate contract is explicitly modeled.
-- The CMPtype-to-`I1` consumption contract is still record-level target MIR
-  authority; final instruction printing/encoding is Step 5 work.
-- Stack-homed comparison results remain fail-closed at this boundary because
-  this packet proves the register materialization path only.
-- F32/F64<->F128 cast helpers are record-level only. Final assembly printing
-  and encoded helper-call emission remain Step 5 work.
-- F128 cast helper dispatch was proved from prepared authority with manual
-  q/s/d-register fixtures because the current prepared F128 carrier printer can
-  still expose generic FP storage register names before carrier normalization.
-  Do not weaken that into scalar `F64` cast records.
-- Step 4.3 did not add new production cast support beyond the modeled
-  `FPExt`/`FPTrunc` pairs. Unsupported F128 casts, mismatched helper identities,
-  and missing prepared helper facts should continue to diagnose instead of
-  manufacturing scalar fallback records.
-- Step 4.4 did not add positive F128 sign-bit negation support. Exact missing
-  authority is a distinct prepared sign-bit/full-width bit-operation contract:
-  semantic source identity, full-width operand/result carrier ownership, mask or
-  helper identity, clobber/resource policy, live preservation, and a selected
-  terminal operation. Until that lands, F128 sign-bit-like `xor` remains
-  diagnostic-only.
-- Step 4.5 did not add positive support for unsigned F128 division/remainder,
-  signed remainder, bitwise/logical operations, shifts, or unsigned comparison
-  predicates. Those families now diagnose through the F128 helper boundary
-  instead of falling through to generic dispatch or scalar lowering.
+- Keep final assembly printing tied to selected `MachineInstructionNode`
+  records and structured q/s/d/w register operands.
+- Do not infer unsupported F128 helper families, unsigned predicates, sign-bit
+  operations, constants, atomics, intrinsics, or inline assembly from printer
+  spelling.
+- Memory-backed F128 carrier snapshots remain diagnostic-only unless a later
+  packet adds a structured printable register or copy authority.
+- F128 helper printing uses prepared marshal/unmarshal facts; do not replace
+  those with callee-name or rendered-text guessing.
 
 ## Proof
 
-`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepared_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_alu_records)$'; } 2>&1 | tee test_after.log`
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|backend_prepared_printer)$'; } 2>&1 | tee test_after.log`
 
-Passed, 6/6 tests. Proof log: `test_after.log`.
+Passed, 4/4 tests. Proof log: `test_after.log`.
