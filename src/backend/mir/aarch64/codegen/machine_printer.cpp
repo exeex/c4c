@@ -750,6 +750,14 @@ std::optional<std::string> inline_asm_operand_text(
     const InlineAsmMachineOperandRecord& operand,
     std::optional<char> modifier,
     std::string* diagnostic) {
+  if (operand.kind == bir::InlineAsmOperandKind::Clobber) {
+    *diagnostic = "inline-asm clobber operand requires structured clobber authority";
+    return std::nullopt;
+  }
+  if (operand.kind == bir::InlineAsmOperandKind::Unsupported) {
+    *diagnostic = "inline-asm operand kind is unsupported for selected printer";
+    return std::nullopt;
+  }
   if (!inline_asm_constraint_matches_kind(operand)) {
     *diagnostic = "inline-asm operand has unsupported constraint for selected printer";
     return std::nullopt;
@@ -832,12 +840,18 @@ InlineAsmSubstitutionResult substitute_inline_asm_template(
     return {.diagnostic = "inline-asm named operand references are not printable"};
   }
   if (!assembler.inline_asm_clobbers.empty()) {
-    return {.diagnostic = "inline-asm clobbers are outside the selected printer subset"};
+    return {.diagnostic = "inline-asm clobber list requires structured clobber authority"};
   }
   if (assembler.inline_asm_template.empty()) {
     return {.diagnostic = "inline-asm template is empty"};
   }
   for (const auto& operand : assembler.inline_asm_operands) {
+    if (operand.kind == bir::InlineAsmOperandKind::Clobber) {
+      return {.diagnostic = "inline-asm clobber operand requires structured clobber authority"};
+    }
+    if (operand.kind == bir::InlineAsmOperandKind::Unsupported) {
+      return {.diagnostic = "inline-asm operand kind is unsupported for selected printer"};
+    }
     if (!inline_asm_constraint_matches_kind(operand)) {
       return {.diagnostic = "inline-asm operand has unsupported constraint for selected printer"};
     }

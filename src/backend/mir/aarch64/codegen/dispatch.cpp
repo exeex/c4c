@@ -2726,6 +2726,13 @@ struct LowerMemoryInstructionResult {
         break;
       }
       case bir::InlineAsmOperandKind::Clobber:
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+            context,
+            instruction_index,
+            inline_asm_carrier_error_message("unsupported_inline_asm_clobber_operand_kind"));
+        return std::nullopt;
       case bir::InlineAsmOperandKind::Unsupported:
         append_call_diagnostic(
             diagnostics,

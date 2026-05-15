@@ -124,15 +124,15 @@ aarch64_codegen::InstructionRecord selected_inline_asm_instruction(
 
 aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
     std::string templ = "add %w0, %w1, %w2\nmov %x0, #%3") {
-  auto output = wreg(0);
+  auto output = wreg(3);
   output.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   output.value_id = prepare::PreparedValueId{50};
   output.value_name = c4c::ValueNameId{50};
-  auto tied = wreg(0);
+  auto tied = wreg(4);
   tied.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   tied.value_id = prepare::PreparedValueId{51};
   tied.value_name = c4c::ValueNameId{51};
-  auto input = wreg(1);
+  auto input = wreg(5);
   input.role = aarch64_codegen::RegisterOperandRole::ValueHome;
   input.value_id = prepare::PreparedValueId{52};
   input.value_name = c4c::ValueNameId{52};
@@ -3605,8 +3605,8 @@ int selected_inline_asm_template_prints_from_structured_operands() {
                 result.diagnostic);
   }
   if (const int check = expect_equal(result.assembly,
-                                     "    add w0, w0, w1\n"
-                                     "    mov x0, #7\n",
+                                     "    add w3, w3, w5\n"
+                                     "    mov x3, #7\n",
                                      "selected inline-asm substitution");
       check != 0) {
     return check;
@@ -3621,7 +3621,7 @@ int selected_inline_asm_template_prints_from_structured_operands() {
                 literal_result.diagnostic);
   }
   if (const int check = expect_equal(literal_result.instruction_lines.front(),
-                                     "mov w0, w1 // %literal",
+                                     "mov w3, w5 // %literal",
                                      "selected inline-asm literal percent");
       check != 0) {
     return check;
@@ -3700,9 +3700,20 @@ int selected_inline_asm_template_rejects_incomplete_or_unsupported_records() {
       aarch64_codegen::print_machine_instruction_line_payloads(
           selected_inline_asm_instruction(std::move(clobber)));
   if (clobber_result.ok ||
-      clobber_result.diagnostic.find("unsupported constraint") ==
+      clobber_result.diagnostic.find("structured clobber authority") ==
           std::string::npos) {
     return fail("expected inline-asm clobber operand to fail closed");
+  }
+
+  auto clobber_list = selected_inline_asm_record("add %w0, %w1, %w2");
+  clobber_list.inline_asm_clobbers = {"x1"};
+  const auto clobber_list_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(clobber_list)));
+  if (clobber_list_result.ok ||
+      clobber_list_result.diagnostic.find("structured clobber authority") ==
+          std::string::npos) {
+    return fail("expected inline-asm clobber list to fail closed");
   }
   return 0;
 }

@@ -2953,6 +2953,11 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
+                       "missing fact=inst#0:unsupported_clobber_operand1",
+                       "unsupported inline asm clobber operand diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
                        "missing fact=inst#1:missing_operand0_home",
                        "missing inline asm register home diagnostic")) {
     return EXIT_FAILURE;

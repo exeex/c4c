@@ -174,6 +174,7 @@ enum class InlineAsmCarrierFixtureKind {
   Incomplete,
   MissingResultHome,
   UnsupportedOperand,
+  UnsupportedClobber,
   UnsupportedTemplateModifier,
 };
 
@@ -297,20 +298,32 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
   });
 
   const auto out_home = inline_asm_register_home(
-      prepare::PreparedValueId{50}, function_name, out_name, "w0");
+      prepare::PreparedValueId{50}, function_name, out_name, "w3");
   const auto seed_home = inline_asm_register_home(
-      prepare::PreparedValueId{51}, function_name, seed_name, "w0");
+      prepare::PreparedValueId{51}, function_name, seed_name, "w3");
   const auto input_home = inline_asm_register_home(
-      prepare::PreparedValueId{52}, function_name, input_name, "w1");
+      prepare::PreparedValueId{52}, function_name, input_name, "w5");
   const auto imm_home = inline_asm_immediate_home(
       prepare::PreparedValueId{53}, function_name, imm_name, 7);
+  auto selected_input_kind = bir::InlineAsmOperandKind::RegisterInput;
+  if (kind == InlineAsmCarrierFixtureKind::UnsupportedOperand) {
+    selected_input_kind = bir::InlineAsmOperandKind::Unsupported;
+  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedClobber) {
+    selected_input_kind = bir::InlineAsmOperandKind::Clobber;
+  }
+  auto carrier_kind = prepare::PreparedInlineAsmCarrierKind::Complete;
+  std::vector<std::string> missing_facts;
+  if (kind == InlineAsmCarrierFixtureKind::Incomplete) {
+    carrier_kind = prepare::PreparedInlineAsmCarrierKind::Missing;
+    missing_facts = {"missing_result_home"};
+  } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier) {
+    carrier_kind = prepare::PreparedInlineAsmCarrierKind::Missing;
+    missing_facts = {"unsupported_template_modifiers"};
+  }
 
   prepare::PreparedInlineAsmCarrier carrier{
       .function_name = function_name,
-      .carrier_kind = kind == InlineAsmCarrierFixtureKind::Incomplete ||
-                              kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
-                          ? prepare::PreparedInlineAsmCarrierKind::Missing
-                          : prepare::PreparedInlineAsmCarrierKind::Complete,
+      .carrier_kind = carrier_kind,
       .block_index = 0,
       .inst_index = 0,
       .asm_text = inline_asm.asm_text,
@@ -335,9 +348,7 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                .home = seed_home,
            },
            prepare::PreparedInlineAsmOperand{
-               .kind = kind == InlineAsmCarrierFixtureKind::UnsupportedOperand
-                           ? bir::InlineAsmOperandKind::Clobber
-                           : bir::InlineAsmOperandKind::RegisterInput,
+               .kind = selected_input_kind,
                .constraint_index = 2,
                .constraint = "r",
                .arg_index = std::size_t{1},
@@ -360,12 +371,7 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
       .result_home = kind == InlineAsmCarrierFixtureKind::MissingResultHome
                          ? std::nullopt
                          : std::optional<prepare::PreparedValueHome>{out_home},
-      .missing_required_facts =
-          kind == InlineAsmCarrierFixtureKind::Incomplete
-              ? std::vector<std::string>{"missing_result_home"}
-              : kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
-                    ? std::vector<std::string>{"unsupported_template_modifiers"}
-                    : std::vector<std::string>{},
+      .missing_required_facts = missing_facts,
   };
 
   prepared.inline_asm_carriers.functions.push_back(
@@ -4386,17 +4392,22 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
           bir::InlineAsmOperandKind::RegisterOutput ||
       assembler->inline_asm_operands[0].constraint != "=r" ||
       !assembler->inline_asm_operands[0].output_index.has_value() ||
-      !assembler->inline_asm_operands[0].home.has_value()) {
+      !assembler->inline_asm_operands[0].home.has_value() ||
+      assembler->inline_asm_operands[0].home->register_name.value_or("") != "w3") {
     return fail("expected register output placeholder and home");
   }
   if (assembler->inline_asm_operands[1].kind !=
           bir::InlineAsmOperandKind::TiedInput ||
-      !assembler->inline_asm_operands[1].tied_output_index.has_value()) {
+      !assembler->inline_asm_operands[1].tied_output_index.has_value() ||
+      !assembler->inline_asm_operands[1].home.has_value() ||
+      assembler->inline_asm_operands[1].home->register_name.value_or("") != "w3") {
     return fail("expected tied inline-asm input facts");
   }
   if (assembler->inline_asm_operands[2].kind !=
           bir::InlineAsmOperandKind::RegisterInput ||
-      assembler->inline_asm_operands[2].name.value_or("") != "rhs") {
+      assembler->inline_asm_operands[2].name.value_or("") != "rhs" ||
+      !assembler->inline_asm_operands[2].home.has_value() ||
+      assembler->inline_asm_operands[2].home->register_name.value_or("") != "w5") {
     return fail("expected named register input fact when retained metadata has one");
   }
   if (assembler->inline_asm_operands[3].kind !=
@@ -4414,8 +4425,8 @@ int block_dispatch_selects_complete_inline_asm_machine_record() {
   const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
       block.instructions.front().target);
   if (!printed.ok || printed.instruction_lines.size() != 2 ||
-      printed.instruction_lines[0] != "add w0, w0, w1" ||
-      printed.instruction_lines[1] != "mov x0, x0") {
+      printed.instruction_lines[0] != "add w3, w3, w5" ||
+      printed.instruction_lines[1] != "mov x3, x3") {
     return fail("expected supported inline-asm modifiers to print after dispatch");
   }
   if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
@@ -4433,6 +4444,8 @@ int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
                 std::string_view{"missing_result_register_home"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
                 std::string_view{"unsupported_inline_asm_operand_kind"}},
+      std::pair{InlineAsmCarrierFixtureKind::UnsupportedClobber,
+                std::string_view{"unsupported_inline_asm_clobber_operand_kind"}},
       std::pair{InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier,
                 std::string_view{"unsupported_template_modifiers"}},
   };
