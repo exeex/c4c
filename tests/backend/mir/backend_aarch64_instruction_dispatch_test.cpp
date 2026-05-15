@@ -180,6 +180,7 @@ enum class InlineAsmCarrierFixtureKind {
   MismatchedTiedInputHome,
   UnsupportedOperand,
   SupportedMemoryInputSelection,
+  SupportedAddressInputSelection,
   UnsupportedMemoryInputSelection,
   UnsupportedAddressInputSelection,
   UnsupportedClobber,
@@ -237,7 +238,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
   const auto out_value = bir::Value::named(bir::TypeKind::I32, "%out");
   const auto seed_value = bir::Value::named(bir::TypeKind::I32, "%seed");
   const auto input_value =
-      kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection
+      kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection ||
+              kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection
           ? bir::Value::named(bir::TypeKind::Ptr, "%input")
           : bir::Value::named(bir::TypeKind::I32, "%input");
   const auto imm_value = bir::Value::immediate_i32(7);
@@ -247,6 +249,9 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
   if (kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection) {
     selected_input_kind = bir::InlineAsmOperandKind::MemoryInput;
     selected_input_constraint = "m";
+  } else if (kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection) {
+    selected_input_kind = bir::InlineAsmOperandKind::AddressInput;
+    selected_input_constraint = "p";
   } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedOperand) {
     selected_input_kind = bir::InlineAsmOperandKind::Unsupported;
   } else if (kind == InlineAsmCarrierFixtureKind::UnsupportedMemoryInputSelection) {
@@ -265,6 +270,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                       ? "add %w0, %w1, %[rhs]\nmov %x0, #%[imm]"
                       : kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection
                       ? "ldr %w0, %2"
+                  : kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection
+                      ? "adr %x0, %2"
                   : kind == InlineAsmCarrierFixtureKind::SupportedTemplateModifier
                       ? "add %w0, %w1, %w2\nmov %x0, %x1"
                       : kind == InlineAsmCarrierFixtureKind::UnsupportedTemplateModifier
@@ -361,7 +368,8 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
       inline_asm_register_home(prepare::PreparedValueId{52},
                                function_name,
                                input_name,
-                               kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection
+                               kind == InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection ||
+                                       kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection
                                    ? "x5"
                                    : "w5");
   const auto imm_home = inline_asm_immediate_home(
@@ -419,6 +427,16 @@ prepare::PreparedBirModule prepared_with_inline_asm_carrier(
                              .byte_offset = 8,
                              .size_bytes = 4,
                              .align_bytes = 4,
+                         }}
+                       : std::nullopt,
+               .address =
+                   kind == InlineAsmCarrierFixtureKind::SupportedAddressInputSelection
+                       ? std::optional<bir::MemoryAddress>{bir::MemoryAddress{
+                             .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                             .base_value = input_value,
+                             .byte_offset = 16,
+                             .size_bytes = 8,
+                             .align_bytes = 8,
                          }}
                        : std::nullopt,
            },
@@ -4560,7 +4578,7 @@ int block_dispatch_selects_inline_asm_structured_clobbers() {
   return 0;
 }
 
-int block_dispatch_selects_inline_asm_prepared_memory_address() {
+int block_dispatch_selects_inline_asm_prepared_memory_and_address_operands() {
   auto prepared =
       prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::SupportedMemoryInputSelection);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -4604,6 +4622,55 @@ int block_dispatch_selects_inline_asm_prepared_memory_address() {
   if (!printed.ok || printed.instruction_lines.size() != 1 ||
       printed.instruction_lines.front() != "ldr w3, [x5, #8]") {
     return fail("expected selected prepared inline-asm memory address to print");
+  }
+
+  prepared =
+      prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::SupportedAddressInputSelection);
+  const auto& address_function_cf = prepared.control_flow.functions.front();
+  const auto& address_block_cf = address_function_cf.blocks.front();
+  const auto address_function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, address_function_cf);
+  const auto address_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          address_function_context, address_block_cf, 0);
+
+  aarch64_module::MachineBlock address_block;
+  aarch64_module::ModuleLoweringDiagnostics address_diagnostics;
+  const auto address_result =
+      aarch64_codegen::dispatch_prepared_block(
+          address_block_context, address_block, address_diagnostics);
+  if (!address_diagnostics.empty() || address_result.visited_operations != 1 ||
+      address_result.emitted_instructions != 2 || address_block.instructions.empty()) {
+    return fail("expected prepared inline-asm address input to lower without diagnostics");
+  }
+  const auto* address_assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &address_block.instructions.front().target.payload);
+  if (address_assembler == nullptr ||
+      address_assembler->inline_asm_operands.size() != 4 ||
+      address_assembler->inline_asm_operands[2].kind !=
+          bir::InlineAsmOperandKind::AddressInput ||
+      !address_assembler->inline_asm_operands[2].selected_operand.has_value()) {
+    return fail("expected selected inline-asm address operand record");
+  }
+  const auto* address_memory = std::get_if<aarch64_codegen::MemoryOperand>(
+      &address_assembler->inline_asm_operands[2].selected_operand->payload);
+  if (address_assembler->inline_asm_operands[2].selected_operand->kind !=
+          aarch64_codegen::OperandKind::Memory ||
+      address_memory == nullptr ||
+      address_memory->base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      !address_memory->base_register.has_value() ||
+      !address_memory->pointer_value_name.has_value() ||
+      address_memory->byte_offset != 16 ||
+      address_memory->size_bytes != 8 ||
+      address_memory->align_bytes != 8) {
+    return fail("expected prepared pointer address input to become a selected address operand");
+  }
+  const auto address_printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      address_block.instructions.front().target);
+  if (!address_printed.ok || address_printed.instruction_lines.size() != 1 ||
+      address_printed.instruction_lines.front() != "adr x3, [x5, #16]") {
+    return fail("expected selected prepared inline-asm address input to print");
   }
   return 0;
 }
@@ -8901,7 +8968,8 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = block_dispatch_selects_inline_asm_prepared_memory_address();
+  if (const int status =
+          block_dispatch_selects_inline_asm_prepared_memory_and_address_operands();
       status != 0) {
     return status;
   }

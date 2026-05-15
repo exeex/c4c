@@ -2917,6 +2917,46 @@ prepare::PreparedBirModule prepare_inline_asm_fail_closed_dump_module() {
           },
       },
   });
+  const bir::MemoryAddress local_slot_address{
+      .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+      .base_name = "slot.invalid",
+      .byte_offset = 4,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  };
+  entry.insts.push_back(bir::CallInst{
+      .callee = "llvm.inline_asm",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "x"),
+               bir::Value::named(bir::TypeKind::Ptr, "x")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi = {scalar_arg_abi(bir::TypeKind::Ptr),
+                  scalar_arg_abi(bir::TypeKind::Ptr)},
+      .return_type = bir::TypeKind::Void,
+      .inline_asm = bir::InlineAsmMetadata{
+          .asm_text = "",
+          .constraints = "m,p",
+          .side_effects = true,
+          .operands = {
+              inline_asm_operand(bir::InlineAsmOperandKind::MemoryInput,
+                                 0,
+                                 "m",
+                                 std::size_t{0},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 local_slot_address),
+              inline_asm_operand(bir::InlineAsmOperandKind::AddressInput,
+                                 1,
+                                 "p",
+                                 std::size_t{1},
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 std::nullopt,
+                                 local_slot_address),
+          },
+      },
+  });
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.inline_asm",
       .args = {bir::Value::immediate_i32(9)},
@@ -3025,12 +3065,14 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
   const auto prepared = prepare_inline_asm_fail_closed_dump_module();
   const auto* function_carriers =
       find_inline_asm_carriers(prepared, "inline_asm_fail_closed_dump_contract");
-  if (function_carriers == nullptr || function_carriers->carriers.size() != 3 ||
+  if (function_carriers == nullptr || function_carriers->carriers.size() != 4 ||
       function_carriers->carriers[0].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing ||
       function_carriers->carriers[1].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Complete ||
       function_carriers->carriers[2].carrier_kind !=
+          prepare::PreparedInlineAsmCarrierKind::Missing ||
+      function_carriers->carriers[3].carrier_kind !=
           prepare::PreparedInlineAsmCarrierKind::Missing) {
     std::cerr << "[FAIL] expected fail-closed inline asm carrier diagnostics\n";
     return EXIT_FAILURE;
@@ -3112,7 +3154,17 @@ int inline_asm_carriers_fail_closed_without_required_facts() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(dump,
-                       "missing fact=inst#2:missing_operand0_home",
+                       "missing fact=inst#2:unsupported_operand0_memory_address_selection",
+                       "invalid inline asm memory address diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#2:unsupported_operand1_address_selection",
+                       "invalid inline asm address diagnostic")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(dump,
+                       "missing fact=inst#3:missing_operand0_home",
                        "missing inline asm register home diagnostic")) {
     return EXIT_FAILURE;
   }

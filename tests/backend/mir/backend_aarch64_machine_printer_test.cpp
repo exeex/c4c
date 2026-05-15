@@ -3713,6 +3713,33 @@ int selected_inline_asm_template_prints_from_structured_operands() {
     return fail("expected selected inline-asm memory operand to print from structured address");
   }
 
+  auto address_record = selected_inline_asm_record("adr %x0, %2");
+  const auto address_operand = aarch64_codegen::make_memory_operand(
+      aarch64_codegen::MemoryOperand{
+          .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+          .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+          .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+          .base_register = memory_base,
+          .pointer_value_name = c4c::ValueNameId{52},
+          .pointer_value_id = prepare::PreparedValueId{52},
+          .byte_offset = 16,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .can_use_base_plus_offset = true,
+      });
+  address_record.operands[2] = address_operand;
+  address_record.inline_asm_operands[2].kind = bir::InlineAsmOperandKind::AddressInput;
+  address_record.inline_asm_operands[2].constraint = "p";
+  address_record.inline_asm_operands[2].home->register_name = std::string{"x5"};
+  address_record.inline_asm_operands[2].selected_operand = address_operand;
+  const auto address_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          selected_inline_asm_instruction(std::move(address_record)));
+  if (!address_result.ok || address_result.instruction_lines.size() != 1 ||
+      address_result.instruction_lines.front() != "adr x3, [x5, #16]") {
+    return fail("expected selected inline-asm address operand to print from structured address");
+  }
+
   auto clobber_list = selected_inline_asm_record("add %w0, %w1, %w2");
   clobber_list.inline_asm_clobbers = {"x7", "memory", "cc"};
   const auto clobber_list_result =
