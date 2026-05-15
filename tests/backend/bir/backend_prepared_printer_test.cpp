@@ -3323,6 +3323,8 @@ int main() {
   if (stack_preserved_it == stack_cross_call.preserved_values.end() ||
       !stack_preserved_it->slot_id.has_value() ||
       !stack_preserved_it->stack_offset_bytes.has_value() ||
+      !stack_preserved_it->stack_size_bytes.has_value() ||
+      !stack_preserved_it->stack_align_bytes.has_value() ||
       !stack_preserved_it->spill_slot_placement.has_value()) {
     std::cerr << "[FAIL] missing stack-slot preservation authority in dump fixture\n";
     return EXIT_FAILURE;
@@ -3333,10 +3335,12 @@ int main() {
                                                stack_preserved_it->value_name)) +
       "#" + std::to_string(stack_preserved_it->value_id) + ":stack_slot:slot#" +
       std::to_string(*stack_preserved_it->slot_id) + ":stack+" +
-      std::to_string(*stack_preserved_it->stack_offset_bytes);
+      std::to_string(*stack_preserved_it->stack_offset_bytes) + ":size=" +
+      std::to_string(*stack_preserved_it->stack_size_bytes) + ":align=" +
+      std::to_string(*stack_preserved_it->stack_align_bytes);
   if (!expect_contains(stack_cross_call_dump,
                        stack_preserved_summary,
-                       "stack-preserved call-slot summary")) {
+                       "stack-preserved call-slot extent summary")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(stack_cross_call_dump,
@@ -3345,8 +3349,15 @@ int main() {
                                                                     stack_preserved_it->value_name)) +
                            " value_id=" + std::to_string(stack_preserved_it->value_id) +
                            " route=stack_slot " +
-                           spill_slot_placement_text(stack_preserved_it->spill_slot_placement),
-                       "stack-preserved structured spill-slot detail")) {
+                           spill_slot_placement_text(stack_preserved_it->spill_slot_placement) +
+                           " bank=none slot=#" + std::to_string(*stack_preserved_it->slot_id) +
+                           " stack_offset=" +
+                           std::to_string(*stack_preserved_it->stack_offset_bytes) +
+                           " stack_size=" +
+                           std::to_string(*stack_preserved_it->stack_size_bytes) +
+                           " stack_align=" +
+                           std::to_string(*stack_preserved_it->stack_align_bytes),
+                       "stack-preserved structured spill-slot extent detail")) {
     return EXIT_FAILURE;
   }
 

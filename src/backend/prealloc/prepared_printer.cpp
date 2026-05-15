@@ -406,6 +406,14 @@ void append_preserved_value_summary(std::ostringstream& out,
   } else if (preserved.stack_offset_bytes.has_value()) {
     out << ":stack+" << *preserved.stack_offset_bytes;
   }
+  if (preserved.route == PreparedCallPreservationRoute::StackSlot) {
+    if (preserved.stack_size_bytes.has_value()) {
+      out << ":size=" << *preserved.stack_size_bytes;
+    }
+    if (preserved.stack_align_bytes.has_value()) {
+      out << ":align=" << *preserved.stack_align_bytes;
+    }
+  }
   if (preserved.callee_saved_save_index.has_value()) {
     out << ":save" << *preserved.callee_saved_save_index;
   }
@@ -741,6 +749,12 @@ void append_function_summaries(std::ostringstream& out, const PreparedBirModule&
           }
           if (preserved.stack_offset_bytes.has_value()) {
             out << " stack_offset=" << *preserved.stack_offset_bytes;
+          }
+          if (preserved.stack_size_bytes.has_value()) {
+            out << " stack_size=" << *preserved.stack_size_bytes;
+          }
+          if (preserved.stack_align_bytes.has_value()) {
+            out << " stack_align=" << *preserved.stack_align_bytes;
           }
           out << "\n";
         }
@@ -1452,6 +1466,12 @@ void append_call_plans(std::ostringstream& out, const PreparedBirModule& module)
         }
         if (preserved.stack_offset_bytes.has_value()) {
           out << " stack_offset=" << *preserved.stack_offset_bytes;
+        }
+        if (preserved.stack_size_bytes.has_value()) {
+          out << " stack_size=" << *preserved.stack_size_bytes;
+        }
+        if (preserved.stack_align_bytes.has_value()) {
+          out << " stack_align=" << *preserved.stack_align_bytes;
         }
         out << "\n";
       }

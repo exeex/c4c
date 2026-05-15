@@ -1,40 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/242_prepared_stack_slot_preserved_value_extent.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Prepared Extent Fields
+Current Step ID: 3
+Current Step Title: Expose Extents In Prepared Observations
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 2 by adding optional prepared extent fields for
-stack-slot `PreparedCallPreservedValue` records and feeding them from
-prepared/shared authority only.
+Completed `plan.md` Step 3 by exposing optional stack-slot preserved-value
+extent fields in prepared observation output and focused prepared-printer
+coverage.
 
-Concrete Step 2 results:
+Concrete Step 3 results:
 
-- Added `stack_size_bytes` and `stack_align_bytes` to
-  `PreparedCallPreservedValue`.
-- Published assignment extents through `PreparedStackSlotAssignment` and
-  `PreparedValueHome` so value-home and assigned-stack-slot preservation
-  routes copy prepared facts rather than recomputing type extents.
-- Populated the `value.stack_object_id` branch directly from
-  `PreparedFrameSlot::size_bytes` and `PreparedFrameSlot::align_bytes`.
-- Tightened stack-slot route completeness to require slot id, stack offset,
-  size, alignment, and spill placement. Register-route completeness remains
-  unchanged.
+- Prepared callsite summaries now append `:size=N:align=N` for stack-slot
+  `PreparedCallPreservedValue` records when those optional fields are present.
+- Detailed prepared call-plan preserve lines now print `stack_size=N` and
+  `stack_align=N` when present.
+- `backend_prepared_printer` now requires the stack-crossing stack-slot
+  preservation fixture to publish and print both prepared extent fields.
 
 ## Suggested Next
 
-Start `plan.md` Step 3 by exposing stack-slot preserved-value size and
-alignment in prepared observation output, with focused coverage selected by
-the supervisor.
+Supervisor should review Step 3 for acceptance and choose the next lifecycle
+packet.
 
 ## Watchouts
 
-- Prepared extents now exist in memory but are not yet printed by prepared
-  observation output; Step 3 owns that visibility.
+- Prepared observation output now exposes the in-memory stack-slot preserved
+  extents without recomputing type sizes in the printer.
 - AArch64 lowering was intentionally untouched. Future consumers should use
   the prepared fields rather than reconstructing extents locally.
 - Stack-slot completeness now rejects zero or absent size/alignment; if a
