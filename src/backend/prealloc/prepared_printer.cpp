@@ -1776,7 +1776,21 @@ void append_f128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
                   ? "none"
                   : "required")
           << ",preserved=" << helper.live_preservation_policy.preserved_values.size()
-          << "] selected_call_ownership=[owns_terminal_call="
+          << "]";
+      if (!helper.live_preservation_policy.preserved_values.empty()) {
+        out << " preserved_values=[";
+        for (std::size_t index = 0;
+             index < helper.live_preservation_policy.preserved_values.size();
+             ++index) {
+          if (index != 0) {
+            out << ",";
+          }
+          append_preserved_value_summary(
+              out, module.names, helper.live_preservation_policy.preserved_values[index]);
+        }
+        out << "]";
+      }
+      out << " selected_call_ownership=[owns_terminal_call="
           << (helper.selected_call_ownership.owns_terminal_call ? "yes" : "no")
           << ",callee=" << (helper.selected_call_ownership.has_callee_identity ? "yes" : "no")
           << ",resources=" << (helper.selected_call_ownership.has_resource_policy ? "yes" : "no")

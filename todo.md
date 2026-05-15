@@ -8,19 +8,20 @@ Current Step Title: Select Binary128 Soft-Float Helper Nodes
 
 ## Just Finished
 
-Step 4 added explicit caller-saved clobber authority to the prepared binary128
-soft-float helper record for F128 add. `PreparedF128RuntimeHelper` now reuses
-the prepared call-boundary clobber set for `__addtf3`, publishes the clobber
-resource in the F128 helper printer, and lets selected-call ownership report
-clobber authority while still keeping `owns_terminal_call=no`. The remaining
-fail-closed reason is live-preservation authority; no AArch64 machine
+Step 4 added live-preservation authority to the prepared binary128 soft-float
+helper record for F128 add. `PreparedF128RuntimeHelper` now evaluates
+helper-point liveness through the structured preserved-value route builder,
+models caller-saved clobbers plus complete preservation facts, and reports
+`owns_terminal_call=yes` when F128 carriers, ABI bindings, marshaling,
+clobbers, and live-preservation authority are all present. No AArch64 dispatch
 selection was added.
 
 ## Suggested Next
 
-Stay on Step 4 and add live-preservation facts for the prepared F128
-soft-float helper call boundary before any AArch64 dispatch consumes the
-helper.
+Stay on Step 4 and add a record-only AArch64 F128 soft-float helper boundary
+record plus dispatch consumption that finds the prepared `PreparedF128RuntimeHelper`
+for the source F128 add instruction and fails closed from that prepared helper
+fact, not from BIR shape or scalar F64 inference.
 
 ## Watchouts
 
@@ -75,8 +76,14 @@ helper.
   facts are added deliberately.
 - This packet models ABI marshaling plus caller-saved clobbers only for the
   existing record-only F128 add helper on AAPCS64: lhs uses `q0`, rhs uses
-  `q1`, and the result uses `q0`. Live-preservation, selected dispatch, and
-  final assembly printing remain out of scope.
+  `q1`, and the result uses `q0`. Selected dispatch and final assembly printing
+  remain out of scope.
+- The exact next dispatch gap is the missing AArch64 `PreparedF128RuntimeHelper`
+  consumption surface: there is no F128 counterpart to
+  `make_prepared_i128_runtime_helper_boundary_record`/
+  `I128RuntimeHelperBoundaryRecord` and no `dispatch.cpp` lookup that selects
+  an F128 helper from the prepared helper table. Add that record-only boundary
+  before emitting any final assembly.
 
 ## Proof
 

@@ -3615,8 +3615,13 @@ int main() {
           prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument ||
       f128_helper->result_unmarshal_move->direction !=
           prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier ||
+      !f128_helper->live_preservation_policy.evaluated ||
+      !f128_helper->live_preservation_policy.caller_saved_clobbers_modeled ||
+      !f128_helper->live_preservation_policy.no_additional_live_preservation_required ||
+      !f128_helper->live_preservation_policy.preserved_values.empty() ||
       !f128_helper->selected_call_ownership.has_clobber_policy ||
-      f128_helper->selected_call_ownership.owns_terminal_call) {
+      !f128_helper->selected_call_ownership.has_live_preservation ||
+      !f128_helper->selected_call_ownership.owns_terminal_call) {
     std::cerr << "[FAIL] prepared f128 soft-float helper lost structured record authority\n";
     return EXIT_FAILURE;
   }
@@ -3645,8 +3650,10 @@ int main() {
                          return candidate == fact;
                        });
   };
-  if (!has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
-      !has_f128_missing_fact("selected_call_ownership_requires_live_preservation_policy") ||
+  if (has_f128_missing_fact("f128_helper_boundary_requires_live_preservation_policy") ||
+      has_f128_missing_fact("selected_call_ownership_requires_live_preservation_policy") ||
+      has_f128_missing_fact("live_preservation_requires_structured_live_across_helper_facts") ||
+      has_f128_missing_fact("live_preservation_requires_complete_preserved_value_routes") ||
       has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobber_policy") ||
       has_f128_missing_fact("f128_helper_boundary_requires_caller_saved_clobbers") ||
       has_f128_missing_fact("selected_call_ownership_requires_clobber_policy") ||
@@ -3742,14 +3749,15 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "selected_call_ownership=[owns_terminal_call=no,callee=yes,resources=yes,"
-                       "clobbers=yes,abi_bindings=yes,marshaling=yes,live_preservation=no]",
-                       "f128 helper fail-closed selected ownership")) {
+                       "live_preservation=[evaluated=yes,caller_saved_clobbers=yes,"
+                       "additional=none,preserved=0]",
+                       "f128 helper live-preservation authority")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(f128_helper_dump,
-                       "f128_helper_boundary_requires_live_preservation_policy",
-                       "f128 helper missing live-preservation diagnostic")) {
+                       "selected_call_ownership=[owns_terminal_call=yes,callee=yes,resources=yes,"
+                       "clobbers=yes,abi_bindings=yes,marshaling=yes,live_preservation=yes]",
+                       "f128 helper complete selected ownership")) {
     return EXIT_FAILURE;
   }
 

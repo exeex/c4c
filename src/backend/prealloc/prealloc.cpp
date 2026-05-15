@@ -1628,6 +1628,18 @@ void populate_f128_runtime_helper_marshaling(PreparedF128RuntimeHelper& helper) 
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function);
 
+[[nodiscard]] std::vector<PreparedCallPreservedValue> build_call_preserved_values(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedLivenessFunction* liveness_function,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    std::size_t program_point,
+    bool require_call_crossing_value);
+
+[[nodiscard]] bool preserved_value_has_complete_route(
+    const PreparedCallPreservedValue& preserved);
+
 void populate_f128_runtime_helper_boundary_policy(
     const c4c::TargetProfile& target_profile,
     const PreparedRegallocFunction* regalloc_function,
@@ -1661,8 +1673,52 @@ void populate_f128_runtime_helper_boundary_policy(
     append_f128_runtime_helper_fact(
         helper, "f128_helper_boundary_requires_caller_saved_clobbers");
   }
-  append_f128_runtime_helper_fact(
-      helper, "f128_helper_boundary_requires_live_preservation_policy");
+}
+
+void populate_f128_runtime_helper_call_ownership(
+    const PreparedBirModule& prepared,
+    const PreparedFramePlanFunction* frame_plan,
+    const PreparedLivenessFunction* liveness_function,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    PreparedF128RuntimeHelper& helper) {
+  const bool has_clobber_policy =
+      helper.resource_policy.caller_saved_clobbers && !helper.clobbered_registers.empty();
+  const auto helper_point =
+      liveness_function == nullptr
+          ? std::optional<std::size_t>{}
+          : find_call_program_point(*liveness_function,
+                                    helper.block_index,
+                                    helper.instruction_index);
+  std::vector<PreparedCallPreservedValue> preserved_values =
+      helper_point.has_value()
+          ? build_call_preserved_values(prepared,
+                                        frame_plan,
+                                        liveness_function,
+                                        regalloc_function,
+                                        value_locations,
+                                        *helper_point,
+                                        false)
+          : std::vector<PreparedCallPreservedValue>{};
+  const bool preserved_values_complete =
+      std::all_of(preserved_values.begin(),
+                  preserved_values.end(),
+                  preserved_value_has_complete_route);
+  if (liveness_function == nullptr || regalloc_function == nullptr ||
+      !helper_point.has_value()) {
+    append_f128_runtime_helper_fact(
+        helper, "live_preservation_requires_structured_live_across_helper_facts");
+  } else if (!preserved_values_complete) {
+    append_f128_runtime_helper_fact(
+        helper, "live_preservation_requires_complete_preserved_value_routes");
+  }
+  helper.live_preservation_policy = PreparedF128RuntimeHelper::LivePreservationPolicy{
+      .evaluated = true,
+      .caller_saved_clobbers_modeled = has_clobber_policy,
+      .no_additional_live_preservation_required =
+          helper_point.has_value() && preserved_values_complete,
+      .preserved_values = std::move(preserved_values),
+  };
 }
 
 void populate_f128_runtime_helper_ownership(PreparedF128RuntimeHelper& helper) {
@@ -1734,6 +1790,11 @@ void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
         find_prepared_f128_carriers(prepared.f128_carriers, function_helpers.function_name);
     const auto* regalloc_function =
         find_regalloc_function(prepared.regalloc, function_helpers.function_name);
+    const auto* frame_plan = find_prepared_frame_plan(prepared, function_helpers.function_name);
+    const auto* liveness_function =
+        find_liveness_function(prepared.liveness, function_helpers.function_name);
+    const auto* value_locations =
+        find_prepared_value_location_function(prepared, function_helpers.function_name);
     for (auto& helper : function_helpers.helpers) {
       helper.lhs_carrier.reset();
       helper.rhs_carrier.reset();
@@ -1754,6 +1815,12 @@ void populate_f128_runtime_helper_facts(PreparedBirModule& prepared) {
         append_f128_runtime_helper_fact(
             helper, "f128_helper_result_requires_full_width_carrier_ownership");
       }
+      populate_f128_runtime_helper_call_ownership(prepared,
+                                                  frame_plan,
+                                                  liveness_function,
+                                                  regalloc_function,
+                                                  value_locations,
+                                                  helper);
       populate_f128_runtime_helper_ownership(helper);
     }
   }
