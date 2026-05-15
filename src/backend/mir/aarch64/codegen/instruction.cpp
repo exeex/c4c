@@ -215,6 +215,12 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "load";
     case MachineOpcode::Store:
       return "store";
+    case MachineOpcode::AtomicLoad:
+      return "atomic_load";
+    case MachineOpcode::AtomicStore:
+      return "atomic_store";
+    case MachineOpcode::AtomicFence:
+      return "atomic_fence";
     case MachineOpcode::SpillToSlot:
       return "spill_to_slot";
     case MachineOpcode::ReloadFromSlot:
@@ -326,6 +332,9 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::I128Shift:
     case MachineOpcode::I128Compare:
     case MachineOpcode::I128RuntimeHelper:
+    case MachineOpcode::AtomicLoad:
+    case MachineOpcode::AtomicStore:
+    case MachineOpcode::AtomicFence:
     case MachineOpcode::And:
     case MachineOpcode::Mul:
     case MachineOpcode::Div:
@@ -425,6 +434,8 @@ std::string_view machine_side_effect_kind_name(MachineSideEffectKind kind) {
       return "memory_write";
     case MachineSideEffectKind::VolatileMemoryAccess:
       return "volatile_memory_access";
+    case MachineSideEffectKind::AtomicMemoryAccess:
+      return "atomic_memory_access";
     case MachineSideEffectKind::Call:
       return "call";
     case MachineSideEffectKind::Return:
@@ -684,6 +695,60 @@ std::string_view prepared_memory_operand_record_error_name(
       return "unsupported_stored_storage";
     case PreparedMemoryOperandRecordError::RegisterConversionFailed:
       return "register_conversion_failed";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_atomic_operation_record_error_name(
+    PreparedAtomicOperationRecordError error) {
+  switch (error) {
+    case PreparedAtomicOperationRecordError::None:
+      return "none";
+    case PreparedAtomicOperationRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedAtomicOperationRecordError::MissingPreparedAtomicOperation:
+      return "missing_prepared_atomic_operation";
+    case PreparedAtomicOperationRecordError::IncompletePreparedAtomicOperation:
+      return "incomplete_prepared_atomic_operation";
+    case PreparedAtomicOperationRecordError::UnsupportedOperationKind:
+      return "unsupported_operation_kind";
+    case PreparedAtomicOperationRecordError::UnsupportedOrdering:
+      return "unsupported_ordering";
+    case PreparedAtomicOperationRecordError::UnsupportedWidth:
+      return "unsupported_width";
+    case PreparedAtomicOperationRecordError::MissingPointerValueName:
+      return "missing_pointer_value_name";
+    case PreparedAtomicOperationRecordError::MissingPointerValueHome:
+      return "missing_pointer_value_home";
+    case PreparedAtomicOperationRecordError::MissingPointerValueStorage:
+      return "missing_pointer_value_storage";
+    case PreparedAtomicOperationRecordError::MissingResultValueName:
+      return "missing_result_value_name";
+    case PreparedAtomicOperationRecordError::MissingResultValueHome:
+      return "missing_result_value_home";
+    case PreparedAtomicOperationRecordError::MissingResultStorage:
+      return "missing_result_storage";
+    case PreparedAtomicOperationRecordError::MissingStoredValueName:
+      return "missing_stored_value_name";
+    case PreparedAtomicOperationRecordError::MissingStoredValueHome:
+      return "missing_stored_value_home";
+    case PreparedAtomicOperationRecordError::MissingStoredStorage:
+      return "missing_stored_storage";
+    case PreparedAtomicOperationRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+  }
+  return "unknown";
+}
+
+std::string_view atomic_memory_instruction_kind_name(
+    AtomicMemoryInstructionKind kind) {
+  switch (kind) {
+    case AtomicMemoryInstructionKind::Load:
+      return "load";
+    case AtomicMemoryInstructionKind::Store:
+      return "store";
+    case AtomicMemoryInstructionKind::Fence:
+      return "fence";
   }
   return "unknown";
 }
@@ -2480,6 +2545,19 @@ MachineOpcode machine_opcode_from_memory_instruction(const MemoryInstructionReco
   return MachineOpcode::Unspecified;
 }
 
+MachineOpcode machine_opcode_from_atomic_memory_instruction(
+    const AtomicMemoryInstructionRecord& instruction) {
+  switch (instruction.atomic_kind) {
+    case AtomicMemoryInstructionKind::Load:
+      return MachineOpcode::AtomicLoad;
+    case AtomicMemoryInstructionKind::Store:
+      return MachineOpcode::AtomicStore;
+    case AtomicMemoryInstructionKind::Fence:
+      return MachineOpcode::AtomicFence;
+  }
+  return MachineOpcode::Unspecified;
+}
+
 MachineOpcode machine_opcode_from_address_materialization(
     const AddressMaterializationRecord& instruction) {
   switch (instruction.kind) {
@@ -2673,6 +2751,23 @@ std::vector<MachineSideEffectKind> memory_side_effects(
   return side_effects;
 }
 
+std::vector<MachineSideEffectKind> atomic_memory_side_effects(
+    const AtomicMemoryInstructionRecord& instruction) {
+  switch (instruction.atomic_kind) {
+    case AtomicMemoryInstructionKind::Load:
+      return {MachineSideEffectKind::MemoryRead,
+              MachineSideEffectKind::AtomicMemoryAccess};
+    case AtomicMemoryInstructionKind::Store:
+      return {MachineSideEffectKind::MemoryWrite,
+              MachineSideEffectKind::AtomicMemoryAccess};
+    case AtomicMemoryInstructionKind::Fence:
+      return {MachineSideEffectKind::MemoryRead,
+              MachineSideEffectKind::MemoryWrite,
+              MachineSideEffectKind::AtomicMemoryAccess};
+  }
+  return {};
+}
+
 std::vector<MachineSideEffectKind> spill_reload_side_effects(
     const SpillReloadInstructionRecord& instruction) {
   switch (instruction.pseudo_kind) {
@@ -2822,6 +2917,55 @@ MachineNodeStatusRecord memory_selection_status(const MemoryInstructionRecord& i
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "store node is missing prepared stored value identity"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+MachineNodeStatusRecord atomic_memory_selection_status(
+    const AtomicMemoryInstructionRecord& instruction) {
+  if (instruction.source_carrier == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "atomic memory node is missing prepared atomic carrier provenance"};
+  }
+  if (instruction.source_carrier->carrier_kind !=
+      prepare::PreparedAtomicOperationCarrierKind::Complete) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "atomic memory node requires a complete prepared carrier"};
+  }
+  switch (instruction.atomic_kind) {
+    case AtomicMemoryInstructionKind::Load:
+      if (!instruction.pointer_value_id.has_value() ||
+          !instruction.pointer_value_name.has_value() ||
+          !instruction.pointer_register.has_value() ||
+          !instruction.result_value_id.has_value() ||
+          !instruction.result_value_name.has_value() ||
+          !instruction.result_register.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic load is missing pointer or result register authority"};
+      }
+      break;
+    case AtomicMemoryInstructionKind::Store:
+      if (!instruction.pointer_value_id.has_value() ||
+          !instruction.pointer_value_name.has_value() ||
+          !instruction.pointer_register.has_value() ||
+          !instruction.stored_value_id.has_value() ||
+          !instruction.stored_value_name.has_value() ||
+          !instruction.stored_register.has_value()) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+            .diagnostic = "atomic store is missing pointer or stored register authority"};
+      }
+      break;
+    case AtomicMemoryInstructionKind::Fence:
+      if (!instruction.memory_barrier_required) {
+        return MachineNodeStatusRecord{
+            .status = MachineNodeSelectionStatus::DeferredUnsupported,
+            .diagnostic = "relaxed atomic fence is outside the selected subset"};
+      }
+      break;
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -3445,6 +3589,43 @@ InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction) {
       .defs = defs,
       .uses = uses,
       .side_effects = memory_side_effects(instruction),
+      .payload = instruction,
+  };
+}
+
+InstructionRecord make_atomic_memory_instruction(
+    AtomicMemoryInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.pointer_register.has_value()) {
+    operands.push_back(make_register_operand(*instruction.pointer_register));
+  }
+  if (instruction.stored_register.has_value()) {
+    operands.push_back(make_register_operand(*instruction.stored_register));
+  }
+
+  std::vector<MachineEffectResource> defs;
+  if (instruction.result_register.has_value()) {
+    defs.push_back(effect_from_operand(make_register_operand(*instruction.result_register)));
+  } else if (instruction.result_value_id.has_value() &&
+             instruction.result_value_name.has_value()) {
+    defs.push_back(prepared_value_def(instruction.result_value_id,
+                                      *instruction.result_value_name));
+  }
+
+  const auto selection = atomic_memory_selection_status(instruction);
+  return InstructionRecord{
+      .family = InstructionFamily::Memory,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = machine_opcode_from_atomic_memory_instruction(instruction),
+      .selection = selection,
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .block_index = instruction.block_index,
+      .instruction_index = instruction.instruction_index,
+      .operands = operands,
+      .defs = defs,
+      .uses = effects_from_operands(operands),
+      .side_effects = atomic_memory_side_effects(instruction),
       .payload = instruction,
   };
 }
@@ -5241,6 +5422,221 @@ PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_rec
       value_locations,
       storage_plan,
       store.value);
+}
+
+PreparedAtomicOperationInstructionRecordResult atomic_instruction_record_error(
+    PreparedAtomicOperationRecordError error) {
+  return PreparedAtomicOperationInstructionRecordResult{.record = std::nullopt,
+                                                        .error = error};
+}
+
+bool supported_atomic_width(std::size_t width_bytes) {
+  return width_bytes == 1 || width_bytes == 2 || width_bytes == 4 || width_bytes == 8;
+}
+
+bool atomic_ordering_has_acquire(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::AcqRel ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool atomic_ordering_has_release(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Release ||
+         ordering == bir::AtomicOrdering::AcqRel ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool supported_atomic_load_ordering(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Relaxed ||
+         ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool supported_atomic_store_ordering(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Relaxed ||
+         ordering == bir::AtomicOrdering::Release ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+bool supported_atomic_fence_ordering(bir::AtomicOrdering ordering) {
+  return ordering == bir::AtomicOrdering::Acquire ||
+         ordering == bir::AtomicOrdering::Release ||
+         ordering == bir::AtomicOrdering::AcqRel ||
+         ordering == bir::AtomicOrdering::SeqCst;
+}
+
+PreparedAtomicOperationRecordError register_for_named_atomic_value(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    std::optional<c4c::ValueNameId> value_name,
+    bir::TypeKind type,
+    PreparedAtomicOperationRecordError missing_name_error,
+    PreparedAtomicOperationRecordError missing_home_error,
+    PreparedAtomicOperationRecordError missing_storage_error,
+    std::optional<prepare::PreparedValueId>& value_id,
+    std::optional<RegisterOperand>& reg) {
+  if (!value_name.has_value() || *value_name == c4c::kInvalidValueName) {
+    return missing_name_error;
+  }
+  const auto* home = prepare::find_prepared_value_home(value_locations, *value_name);
+  if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::Register) {
+    return missing_home_error;
+  }
+  const auto* storage = find_storage_plan_value(storage_plan, home->value_id);
+  if (storage == nullptr || storage->value_name != *value_name) {
+    return missing_storage_error;
+  }
+  if (storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return missing_storage_error;
+  }
+  auto register_operand =
+      make_prepared_register_operand(*home, *storage, type, RegisterOperandRole::StoragePlan);
+  if (!register_operand.has_value()) {
+    return PreparedAtomicOperationRecordError::RegisterConversionFailed;
+  }
+  value_id = home->value_id;
+  reg = *register_operand;
+  return PreparedAtomicOperationRecordError::None;
+}
+
+PreparedAtomicOperationInstructionRecordResult
+make_prepared_atomic_operation_instruction_record(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAtomicOperationCarrier& operation) {
+  if (value_locations.function_name != storage_plan.function_name ||
+      operation.function_name != value_locations.function_name) {
+    return atomic_instruction_record_error(
+        PreparedAtomicOperationRecordError::InvalidFunction);
+  }
+  if (operation.carrier_kind !=
+      prepare::PreparedAtomicOperationCarrierKind::Complete) {
+    return atomic_instruction_record_error(
+        PreparedAtomicOperationRecordError::IncompletePreparedAtomicOperation);
+  }
+
+  AtomicMemoryInstructionRecord record{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .function_name = operation.function_name,
+      .block_label = operation.block_label,
+      .instruction_index = operation.inst_index,
+      .value_type = operation.value_type,
+      .width_bytes = operation.width_bytes,
+      .ordering = operation.ordering,
+      .result_mode = operation.result_mode,
+      .address_space = operation.address_space,
+      .acquire_semantics = atomic_ordering_has_acquire(operation.ordering),
+      .release_semantics = atomic_ordering_has_release(operation.ordering),
+      .sequentially_consistent = operation.ordering == bir::AtomicOrdering::SeqCst,
+      .memory_barrier_required = operation.ordering != bir::AtomicOrdering::Relaxed,
+      .source_carrier = &operation,
+  };
+
+  switch (operation.operation_kind) {
+    case bir::AtomicOperationKind::Load: {
+      if (!supported_atomic_width(operation.width_bytes)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      if (!supported_atomic_load_ordering(operation.ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedOrdering);
+      }
+      record.atomic_kind = AtomicMemoryInstructionKind::Load;
+      record.result_value_name = operation.result_value_name;
+      record.pointer_value_name = operation.pointer_value_name;
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.pointer_value_name,
+              bir::TypeKind::Ptr,
+              PreparedAtomicOperationRecordError::MissingPointerValueName,
+              PreparedAtomicOperationRecordError::MissingPointerValueHome,
+              PreparedAtomicOperationRecordError::MissingPointerValueStorage,
+              record.pointer_value_id,
+              record.pointer_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (operation.result_mode != bir::AtomicResultMode::LoadedValue) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::IncompletePreparedAtomicOperation);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.result_value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingResultValueName,
+              PreparedAtomicOperationRecordError::MissingResultValueHome,
+              PreparedAtomicOperationRecordError::MissingResultStorage,
+              record.result_value_id,
+              record.result_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      break;
+    }
+    case bir::AtomicOperationKind::Store: {
+      if (!supported_atomic_width(operation.width_bytes)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedWidth);
+      }
+      if (!supported_atomic_store_ordering(operation.ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedOrdering);
+      }
+      record.atomic_kind = AtomicMemoryInstructionKind::Store;
+      record.pointer_value_name = operation.pointer_value_name;
+      record.stored_value_name = operation.value_name;
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.pointer_value_name,
+              bir::TypeKind::Ptr,
+              PreparedAtomicOperationRecordError::MissingPointerValueName,
+              PreparedAtomicOperationRecordError::MissingPointerValueHome,
+              PreparedAtomicOperationRecordError::MissingPointerValueStorage,
+              record.pointer_value_id,
+              record.pointer_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      if (const auto error = register_for_named_atomic_value(
+              value_locations,
+              storage_plan,
+              operation.value_name,
+              operation.value_type,
+              PreparedAtomicOperationRecordError::MissingStoredValueName,
+              PreparedAtomicOperationRecordError::MissingStoredValueHome,
+              PreparedAtomicOperationRecordError::MissingStoredStorage,
+              record.stored_value_id,
+              record.stored_register);
+          error != PreparedAtomicOperationRecordError::None) {
+        return atomic_instruction_record_error(error);
+      }
+      break;
+    }
+    case bir::AtomicOperationKind::Fence:
+      if (!supported_atomic_fence_ordering(operation.ordering)) {
+        return atomic_instruction_record_error(
+            PreparedAtomicOperationRecordError::UnsupportedOrdering);
+      }
+      record.atomic_kind = AtomicMemoryInstructionKind::Fence;
+      record.value_type = bir::TypeKind::Void;
+      record.width_bytes = 0;
+      break;
+    case bir::AtomicOperationKind::Rmw:
+    case bir::AtomicOperationKind::CompareExchange:
+    case bir::AtomicOperationKind::None:
+      return atomic_instruction_record_error(
+          PreparedAtomicOperationRecordError::UnsupportedOperationKind);
+  }
+
+  return PreparedAtomicOperationInstructionRecordResult{
+      .record = std::move(record),
+      .error = PreparedAtomicOperationRecordError::None,
+  };
 }
 
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(

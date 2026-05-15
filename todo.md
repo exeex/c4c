@@ -1,57 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/238_aarch64_atomic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Structured Atomic Operation Carriers
+Current Step ID: 3
+Current Step Title: Select Ordered Loads, Stores, And Fences
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 `Define Structured Atomic Operation Carriers` added the first
-target-neutral/prepared atomic operation carrier boundary.
+Step 3 `Select Ordered Loads, Stores, And Fences` added structured AArch64
+selection for simple atomic memory operations from complete prepared carriers.
 
 Changed behavior:
-- BIR functions can now carry structured `AtomicOperation` facts before AArch64
-  selection. The facts explicitly model kind
-  `load/store/fence/rmw/compare_exchange`, success ordering, failure ordering
-  for compare-exchange, width/type, pointer/value operands, compare
-  expected/desired operands, RMW opcode, result mode, and address space.
-- Prepared state now publishes `PreparedAtomicOperationCarrier` records from
-  those BIR facts. Complete carriers are marked `complete`; partial carriers
-  stay `missing` and accumulate specific missing-fact diagnostics instead of
-  falling back to volatile memory or target-local reconstruction.
-- Prepared printer debug output now exposes complete atomic carrier facts under
-  `--- prepared-atomic-operations ---`; incomplete carriers are not printed as
-  usable operation records and only surface missing-fact diagnostics.
+- AArch64 dispatch now consumes complete `PreparedAtomicOperationCarrier`
+  records for atomic load, atomic store, and non-relaxed fence selection.
+- Selected atomic records preserve ordering, width/type, pointer/value/result
+  identity, address space, register authority, and acquire/release/seq-cst
+  side-effect semantics without printing final assembly.
+- Incomplete carriers, unsupported load/store orderings, unsupported widths,
+  relaxed fences, RMW, and compare-exchange remain fail-closed with explicit
+  diagnostics instead of falling back to ordinary volatile memory records.
 
 Added test coverage:
-- `backend_prepared_printer_test` now proves complete load, store, fence, RMW,
-  and compare-exchange carrier facts preserve their fields and print only as
-  structured prepared atomic records.
-- The same test proves incomplete RMW and compare-exchange facts fail closed
-  with missing width/value/expected/failure-ordering diagnostics and do not
-  print as usable atomic operation records.
+- `backend_aarch64_instruction_dispatch_test` now proves ordered atomic load,
+  ordered atomic store, and seq-cst fence carriers select as atomic-specific
+  machine records.
+- The same test proves missing/unsupported atomic carriers, RMW, and
+  compare-exchange are rejected before selection.
 
 ## Suggested Next
 
-Begin Step 3 `Select Ordered Loads, Stores, And Fences` by consuming only
-complete `PreparedAtomicOperationCarrier` records for ordered load, ordered
-store, and fence selection. Keep RMW and compare-exchange selection for Step 4.
+Begin Step 4 `Select Atomic RMW And Compare-Exchange Loops` by adding
+structured exclusive-access selected records for complete RMW and
+compare-exchange carriers while preserving old-value and boolean result modes.
 
 ## Watchouts
 
 - Do not infer atomic semantics from volatile flags, rendered text, fixed
   scratch-register snippets, or named testcase shortcuts.
-- Selection must reject `PreparedAtomicOperationCarrierKind::Missing` and any
-  missing function-level atomic carrier table rather than reconstructing facts
-  from volatile memory or printer text.
-- Step 3 should leave RMW and compare-exchange carriers unselected/fail-closed;
-  this packet only established their facts for later Step 4 consumption.
-- Preserve ordinary volatile memory behavior separately from atomic behavior.
-- RMW and compare-exchange must preserve old-value result semantics when Step 4
-  consumes them; compare exchange also carries explicit boolean-vs-old-value
-  result mode and failure ordering.
+- Step 3 intentionally did not add final assembly printing; Step 5 owns
+  printer emission after all selected atomic node families exist.
+- RMW and compare-exchange currently diagnose as unsupported operation kinds in
+  dispatch. Step 4 should replace only those fail-closed diagnostics with
+  structured exclusive-loop records from complete carriers.
+- Preserve ordinary volatile memory behavior separately from atomic behavior;
+  atomic selection must continue to require carrier provenance.
+- Compare-exchange must preserve success ordering, failure ordering, and
+  boolean-vs-old-value result mode. RMW must preserve old-value result
+  semantics.
 - Do not fold intrinsic, inline-assembly, binary128, scalar FP, or i128 behavior
   into this route.
 

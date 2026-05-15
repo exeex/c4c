@@ -1594,6 +1594,228 @@ prepare::PreparedBirModule prepared_with_simple_fixed_frame() {
 
 prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
                                                    c4c::ValueNameId value_name,
+                                                   const char* register_name);
+
+prepare::PreparedBirModule prepared_with_atomic_memory_carriers(bool selected) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.atomic");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.atomic.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.atomic.entry");
+  const auto ptr_name = prepared.names.value_names.intern("%ptr");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto stored_name = prepared.names.value_names.intern("%stored");
+  const auto success_name = prepared.names.value_names.intern("%success");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.atomic",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.atomic.entry",
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{10},
+                  .function_name = function_name,
+                  .value_name = ptr_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x0"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{11},
+                  .function_name = function_name,
+                  .value_name = loaded_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w1"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{12},
+                  .function_name = function_name,
+                  .value_name = stored_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w2"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{13},
+                  .function_name = function_name,
+                  .value_name = success_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w3"},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              register_storage(prepare::PreparedValueId{10}, ptr_name, "x0"),
+              register_storage(prepare::PreparedValueId{11}, loaded_name, "w1"),
+              register_storage(prepare::PreparedValueId{12}, stored_name, "w2"),
+              register_storage(prepare::PreparedValueId{13}, success_name, "w3"),
+          },
+  });
+
+  if (selected) {
+    prepared.atomic_operations.functions.push_back(
+        prepare::PreparedAtomicOperationFunction{
+            .function_name = function_name,
+            .operations =
+                {
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Load,
+                        .block_label = entry_label,
+                        .inst_index = 0,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = loaded_name,
+                        .pointer_value_name = ptr_name,
+                        .ordering = bir::AtomicOrdering::Acquire,
+                        .result_mode = bir::AtomicResultMode::LoadedValue,
+                        .address_space = bir::AddressSpace::Tls,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Store,
+                        .block_label = entry_label,
+                        .inst_index = 1,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .pointer_value_name = ptr_name,
+                        .value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::Release,
+                        .address_space = bir::AddressSpace::Gs,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Fence,
+                        .block_label = entry_label,
+                        .inst_index = 2,
+                        .ordering = bir::AtomicOrdering::SeqCst,
+                    },
+                },
+        });
+  } else {
+    prepared.atomic_operations.functions.push_back(
+        prepare::PreparedAtomicOperationFunction{
+            .function_name = function_name,
+            .operations =
+                {
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Missing,
+                        .operation_kind = bir::AtomicOperationKind::Load,
+                        .block_label = entry_label,
+                        .inst_index = 0,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = loaded_name,
+                        .pointer_value_name = ptr_name,
+                        .ordering = bir::AtomicOrdering::Acquire,
+                        .result_mode = bir::AtomicResultMode::LoadedValue,
+                        .missing_required_facts = {"missing_atomic_ordering"},
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Store,
+                        .block_label = entry_label,
+                        .inst_index = 1,
+                        .value_type = bir::TypeKind::I128,
+                        .width_bytes = 16,
+                        .pointer_value_name = ptr_name,
+                        .value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::Release,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Load,
+                        .block_label = entry_label,
+                        .inst_index = 2,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = loaded_name,
+                        .pointer_value_name = ptr_name,
+                        .ordering = bir::AtomicOrdering::Release,
+                        .result_mode = bir::AtomicResultMode::LoadedValue,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Fence,
+                        .block_label = entry_label,
+                        .inst_index = 3,
+                        .ordering = bir::AtomicOrdering::Relaxed,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::Rmw,
+                        .block_label = entry_label,
+                        .inst_index = 4,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = loaded_name,
+                        .pointer_value_name = ptr_name,
+                        .value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::AcqRel,
+                        .rmw_opcode = bir::AtomicRmwOpcode::Add,
+                        .result_mode = bir::AtomicResultMode::OldValue,
+                    },
+                    prepare::PreparedAtomicOperationCarrier{
+                        .function_name = function_name,
+                        .carrier_kind =
+                            prepare::PreparedAtomicOperationCarrierKind::Complete,
+                        .operation_kind = bir::AtomicOperationKind::CompareExchange,
+                        .block_label = entry_label,
+                        .inst_index = 5,
+                        .value_type = bir::TypeKind::I32,
+                        .width_bytes = 4,
+                        .result_value_name = success_name,
+                        .pointer_value_name = ptr_name,
+                        .value_name = stored_name,
+                        .expected_value_name = loaded_name,
+                        .desired_value_name = stored_name,
+                        .ordering = bir::AtomicOrdering::SeqCst,
+                        .failure_ordering = bir::AtomicOrdering::Acquire,
+                        .result_mode = bir::AtomicResultMode::BooleanSuccess,
+                    },
+                },
+        });
+  }
+  return prepared;
+}
+
+prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
                                                    const char* register_name) {
   return prepare::PreparedStoragePlanValue{
       .value_id = value_id,
@@ -3837,6 +4059,133 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
       diagnostics.entries[1].instruction_family !=
           aarch64_module::InstructionLoweringFamily::Call) {
     return fail("expected second diagnostic to describe missing prepared call plan");
+  }
+  return 0;
+}
+
+int block_dispatch_selects_ordered_atomic_load_store_and_fence_records() {
+  auto prepared = prepared_with_atomic_memory_carriers(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 3 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      !diagnostics.empty()) {
+    return fail("expected three selected atomic records plus return without diagnostics");
+  }
+
+  const auto* load =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[0].target.payload);
+  const auto* store =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[1].target.payload);
+  const auto* fence =
+      std::get_if<aarch64_codegen::AtomicMemoryInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (load == nullptr || store == nullptr || fence == nullptr) {
+    return fail("expected atomic load/store/fence selected payloads");
+  }
+  if (block.instructions[0].target.opcode != aarch64_codegen::MachineOpcode::AtomicLoad ||
+      block.instructions[1].target.opcode != aarch64_codegen::MachineOpcode::AtomicStore ||
+      block.instructions[2].target.opcode != aarch64_codegen::MachineOpcode::AtomicFence) {
+    return fail("expected atomic-specific machine opcodes");
+  }
+  if (load->atomic_kind != aarch64_codegen::AtomicMemoryInstructionKind::Load ||
+      load->value_type != bir::TypeKind::I32 ||
+      load->width_bytes != 4 ||
+      load->ordering != bir::AtomicOrdering::Acquire ||
+      !load->acquire_semantics ||
+      load->release_semantics ||
+      load->address_space != bir::AddressSpace::Tls ||
+      !load->result_value_id.has_value() ||
+      !load->pointer_value_id.has_value() ||
+      !load->result_register.has_value() ||
+      load->result_register->occupied_registers.empty() ||
+      load->result_register->occupied_registers.front() != "w1" ||
+      !load->pointer_register.has_value() ||
+      load->pointer_register->occupied_registers.empty() ||
+      load->pointer_register->occupied_registers.front() != "x0" ||
+      load->source_carrier == nullptr) {
+    return fail("expected atomic load to preserve structured carrier fields");
+  }
+  if (store->atomic_kind != aarch64_codegen::AtomicMemoryInstructionKind::Store ||
+      store->ordering != bir::AtomicOrdering::Release ||
+      store->acquire_semantics ||
+      !store->release_semantics ||
+      store->address_space != bir::AddressSpace::Gs ||
+      !store->stored_value_id.has_value() ||
+      !store->stored_register.has_value() ||
+      store->stored_register->occupied_registers.empty() ||
+      store->stored_register->occupied_registers.front() != "w2" ||
+      block.instructions[1].target.side_effects.size() != 2 ||
+      block.instructions[1].target.side_effects[0] !=
+          aarch64_codegen::MachineSideEffectKind::MemoryWrite ||
+      block.instructions[1].target.side_effects[1] !=
+          aarch64_codegen::MachineSideEffectKind::AtomicMemoryAccess) {
+    return fail("expected atomic store to preserve release/value/side-effect facts");
+  }
+  if (fence->atomic_kind != aarch64_codegen::AtomicMemoryInstructionKind::Fence ||
+      fence->ordering != bir::AtomicOrdering::SeqCst ||
+      !fence->acquire_semantics ||
+      !fence->release_semantics ||
+      !fence->sequentially_consistent ||
+      !fence->memory_barrier_required ||
+      block.instructions[2].target.side_effects.size() != 3) {
+    return fail("expected atomic fence to preserve barrier semantics");
+  }
+  return 0;
+}
+
+int block_dispatch_rejects_incomplete_and_deferred_atomic_carriers() {
+  auto prepared = prepared_with_atomic_memory_carriers(false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1) {
+    return fail("expected rejected atomic carriers to emit only the return node");
+  }
+  if (diagnostics.entries.size() != 6) {
+    return fail("expected one diagnostic per rejected atomic carrier");
+  }
+  const std::array<std::string_view, 6> expected_errors = {
+      "incomplete_prepared_atomic_operation",
+      "unsupported_width",
+      "unsupported_ordering",
+      "unsupported_ordering",
+      "unsupported_operation_kind",
+      "unsupported_operation_kind",
+  };
+  for (std::size_t i = 0; i < expected_errors.size(); ++i) {
+    if (diagnostics.entries[i].kind !=
+            aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+        diagnostics.entries[i].instruction_index != i ||
+        diagnostics.entries[i].message.find(expected_errors[i]) == std::string::npos) {
+      return fail("expected atomic carrier rejection to stay fail-closed and explicit");
+    }
+  }
+  if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.front().target.payload)) {
+    return fail("expected rejected atomic block to preserve ordinary return lowering");
   }
   return 0;
 }
@@ -6699,6 +7048,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_visits_prepared_instructions_in_order_and_fails_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_selects_ordered_atomic_load_store_and_fence_records();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_rejects_incomplete_and_deferred_atomic_carriers();
       status != 0) {
     return status;
   }

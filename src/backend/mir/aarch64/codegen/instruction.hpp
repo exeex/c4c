@@ -135,6 +135,9 @@ enum class MachineOpcode {
   Truncate,
   Load,
   Store,
+  AtomicLoad,
+  AtomicStore,
+  AtomicFence,
   SpillToSlot,
   ReloadFromSlot,
   VariadicVaStart,
@@ -188,6 +191,7 @@ enum class MachineSideEffectKind {
   MemoryRead,
   MemoryWrite,
   VolatileMemoryAccess,
+  AtomicMemoryAccess,
   Call,
   Return,
   FrameSetup,
@@ -458,6 +462,26 @@ enum class PreparedF128RuntimeHelperRecordError {
   MissingBoundaryResourcePolicy,
   MissingBoundaryAbiPolicy,
   MissingClobberPolicy,
+};
+
+enum class PreparedAtomicOperationRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedAtomicOperation,
+  IncompletePreparedAtomicOperation,
+  UnsupportedOperationKind,
+  UnsupportedOrdering,
+  UnsupportedWidth,
+  MissingPointerValueName,
+  MissingPointerValueHome,
+  MissingPointerValueStorage,
+  MissingResultValueName,
+  MissingResultValueHome,
+  MissingResultStorage,
+  MissingStoredValueName,
+  MissingStoredValueHome,
+  MissingStoredStorage,
+  RegisterConversionFailed,
 };
 
 enum class AddressMaterializationKind {
@@ -763,6 +787,46 @@ struct MemoryInstructionRecord {
 struct PreparedMemoryInstructionRecordResult {
   std::optional<MemoryInstructionRecord> record;
   PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
+};
+
+enum class AtomicMemoryInstructionKind {
+  Load,
+  Store,
+  Fence,
+};
+
+struct AtomicMemoryInstructionRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  AtomicMemoryInstructionKind atomic_kind = AtomicMemoryInstructionKind::Load;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  bir::TypeKind value_type = bir::TypeKind::Void;
+  std::size_t width_bytes = 0;
+  bir::AtomicOrdering ordering = bir::AtomicOrdering::None;
+  bir::AtomicResultMode result_mode = bir::AtomicResultMode::None;
+  bir::AddressSpace address_space = bir::AddressSpace::Default;
+  std::optional<prepare::PreparedValueId> pointer_value_id;
+  std::optional<c4c::ValueNameId> pointer_value_name;
+  std::optional<RegisterOperand> pointer_register;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  std::optional<c4c::ValueNameId> result_value_name;
+  std::optional<RegisterOperand> result_register;
+  std::optional<prepare::PreparedValueId> stored_value_id;
+  std::optional<c4c::ValueNameId> stored_value_name;
+  std::optional<RegisterOperand> stored_register;
+  bool acquire_semantics = false;
+  bool release_semantics = false;
+  bool sequentially_consistent = false;
+  bool memory_barrier_required = false;
+  const prepare::PreparedAtomicOperationCarrier* source_carrier = nullptr;
+};
+
+struct PreparedAtomicOperationInstructionRecordResult {
+  std::optional<AtomicMemoryInstructionRecord> record;
+  PreparedAtomicOperationRecordError error =
+      PreparedAtomicOperationRecordError::None;
 };
 
 struct I128LaneTransportRecord {
@@ -1331,6 +1395,7 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         I128CompareRecord,
                                         I128RuntimeHelperBoundaryRecord,
                                         MemoryInstructionRecord,
+                                        AtomicMemoryInstructionRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
                                         FrameInstructionRecord,
@@ -1405,6 +1470,10 @@ struct InstructionRecord {
     PreparedScalarCastRecordError error);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
+[[nodiscard]] std::string_view prepared_atomic_operation_record_error_name(
+    PreparedAtomicOperationRecordError error);
+[[nodiscard]] std::string_view atomic_memory_instruction_kind_name(
+    AtomicMemoryInstructionKind kind);
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
 [[nodiscard]] std::string_view f128_transport_kind_name(F128TransportKind kind);
 [[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
@@ -1458,6 +1527,8 @@ struct InstructionRecord {
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_atomic_memory_instruction(
+    AtomicMemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
@@ -1564,6 +1635,11 @@ make_prepared_store_memory_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreGlobalInst& store);
+[[nodiscard]] PreparedAtomicOperationInstructionRecordResult
+make_prepared_atomic_operation_instruction_record(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedAtomicOperationCarrier& operation);
 [[nodiscard]] PreparedMemoryInstructionRecordResult
 make_prepared_store_memory_instruction_record(
     const prepare::PreparedNameTables& names,
