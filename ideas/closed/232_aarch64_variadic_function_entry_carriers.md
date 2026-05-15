@@ -1,9 +1,11 @@
 # AArch64 Variadic Function Entry Carriers
 
-Status: Open
+Status: Closed
 Created: 2026-05-14
+Closed: 2026-05-15
 
-Parent Context: ideas/open/229_aarch64_codegen_markdown_shards_to_cpp.md
+Parent Context: ideas/closed/229_aarch64_codegen_markdown_shards_to_cpp.md
+Follow-up: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 
 ## Problem
 
@@ -45,3 +47,23 @@ recreate local ABI state and frame layout authority in the wrong layer.
   recomputation.
 - Variadic call-boundary tests remain separate from `va_start` / `va_arg`
   function-entry tests.
+
+## Completion Notes
+
+The active route added prepared variadic-entry carriers, populated AAPCS64
+callee entry facts in prepared state, exposed those facts through prepared
+dumps and focused tests, and added fail-closed AArch64 helper guards so target
+lowering cannot silently reconstruct missing ABI facts.
+
+Closure proof used the backend close gate:
+
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^backend_')`
+
+Result: 139/139 backend tests passed. The c4c regression guard passed in
+non-decreasing mode against the matching backend logs.
+
+Final `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy`
+machine-node consumption remains intentionally deferred. That downstream scope
+is split into `ideas/open/243_aarch64_variadic_machine_node_consumption.md`
+because it requires complete prepared/frame storage and scratch-resource facts
+before AArch64 selected machine nodes can materialize helper side effects.
