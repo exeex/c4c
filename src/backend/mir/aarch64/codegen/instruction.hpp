@@ -618,6 +618,8 @@ struct CallInstructionRecord {
   std::vector<prepare::PreparedCallPreservedValue> preserved_values;
   std::vector<prepare::PreparedClobberedRegister> clobbered_registers;
   const prepare::PreparedCallPlan* source_call = nullptr;
+  const prepare::PreparedVariadicEntryPlanFunction* source_variadic_entry = nullptr;
+  std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper;
   bir::CallingConv calling_convention = bir::CallingConv::C;
   bool is_indirect = false;
   bool is_variadic = false;

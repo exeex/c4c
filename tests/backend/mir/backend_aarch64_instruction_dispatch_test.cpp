@@ -6,6 +6,7 @@
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
+#include <cstddef>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -210,6 +211,108 @@ prepare::PreparedBirModule prepared_with_direct_memory_return_call_plan() {
               },
       }},
   });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
+    bool include_entry_plan) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.variadic.entry");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.variadic.entry.block");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.variadic.entry.block");
+  const auto va_start_link = prepared.names.link_names.intern("llvm.va_start.p0");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.variadic.entry",
+      .return_type = bir::TypeKind::Void,
+      .is_variadic = true,
+      .params = {bir::Param{.type = bir::TypeKind::I32, .name = "fixed"}},
+      .blocks = {bir::Block{
+          .label = "dispatch.variadic.entry.block",
+          .insts = {bir::CallInst{
+              .callee = "llvm.va_start.p0",
+              .callee_link_name_id = va_start_link,
+              .args = {bir::Value::named(bir::TypeKind::Ptr, "%ap")},
+              .arg_types = {bir::TypeKind::Ptr},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"llvm.va_start.p0"},
+      }},
+  });
+  if (include_entry_plan) {
+    prepared.variadic_entry_plans.functions.push_back(
+        prepare::PreparedVariadicEntryPlanFunction{
+            .function_name = function_name,
+            .named_parameter_count = 1,
+            .named_register_counts =
+                prepare::PreparedVariadicEntryNamedRegisterCounts{
+                    .gp = std::size_t{1},
+                    .fp = std::size_t{0},
+                },
+            .register_save_area =
+                prepare::PreparedVariadicEntryRegisterSaveArea{
+                    .required = true,
+                    .size_bytes = std::size_t{192},
+                    .align_bytes = std::size_t{16},
+                    .gp_offset_bytes = std::size_t{0},
+                    .fp_offset_bytes = std::size_t{64},
+                    .gp_slot_size_bytes = std::size_t{8},
+                    .fp_slot_size_bytes = std::size_t{16},
+                    .saved_gp_register_count = std::size_t{7},
+                    .saved_fp_register_count = std::size_t{8},
+                    .initial_gp_offset_bytes = std::ptrdiff_t{-56},
+                    .initial_fp_offset_bytes = std::ptrdiff_t{-128},
+                },
+            .overflow_area =
+                prepare::PreparedVariadicEntryOverflowArea{
+                    .required = true,
+                    .align_bytes = std::size_t{8},
+                },
+            .va_list_layout =
+                prepare::PreparedVariadicVaListLayout{
+                    .required = true,
+                    .size_bytes = std::size_t{32},
+                    .align_bytes = std::size_t{8},
+                    .fields =
+                        {
+                            prepare::PreparedVariadicVaListField{
+                                .kind =
+                                    prepare::PreparedVariadicVaListFieldKind::GpOffset,
+                                .offset_bytes = 0,
+                                .size_bytes = 4,
+                            },
+                        },
+                },
+            .helper_resources =
+                prepare::PreparedVariadicEntryHelperResources{
+                    .required_helpers =
+                        {prepare::PreparedVariadicEntryHelperKind::VaStart},
+                },
+            .missing_required_facts = {"register_save_area.slot_id"},
+        });
+  }
   return prepared;
 }
 
@@ -876,6 +979,66 @@ int block_dispatch_exposes_prepared_memory_return_storage_on_call_node() {
   return 0;
 }
 
+int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
+  auto missing_entry_prepared = prepared_with_variadic_entry_helper_call(false);
+  const auto& missing_function_cf = missing_entry_prepared.control_flow.functions.front();
+  const auto& missing_block_cf = missing_function_cf.blocks.front();
+  const auto missing_function_context = aarch64_codegen::make_function_lowering_context(
+      missing_entry_prepared, missing_entry_prepared.target_profile, missing_function_cf);
+  const auto missing_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          missing_function_context, missing_block_cf, 0);
+  aarch64_module::MachineBlock missing_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_diagnostics;
+  const auto missing_result = aarch64_codegen::dispatch_prepared_block(
+      missing_block_context, missing_block, missing_diagnostics);
+  if (missing_result.visited_operations != 1 || !missing_result.visited_terminator ||
+      missing_result.emitted_instructions != 1 || missing_block.instructions.size() != 1 ||
+      missing_diagnostics.entries.size() != 1 ||
+      missing_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan ||
+      missing_diagnostics.entries.front().message.find(
+          "PreparedVariadicEntryPlanFunction") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_block.instructions.front().target.payload)) {
+    return fail("expected va_start dispatch to require prepared variadic entry carrier");
+  }
+
+  auto incomplete_entry_prepared = prepared_with_variadic_entry_helper_call(true);
+  const auto& incomplete_function_cf =
+      incomplete_entry_prepared.control_flow.functions.front();
+  const auto& incomplete_block_cf = incomplete_function_cf.blocks.front();
+  const auto incomplete_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          incomplete_entry_prepared,
+          incomplete_entry_prepared.target_profile,
+          incomplete_function_cf);
+  const auto incomplete_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          incomplete_function_context, incomplete_block_cf, 0);
+  aarch64_module::MachineBlock incomplete_block;
+  aarch64_module::ModuleLoweringDiagnostics incomplete_diagnostics;
+  const auto incomplete_result = aarch64_codegen::dispatch_prepared_block(
+      incomplete_block_context, incomplete_block, incomplete_diagnostics);
+  if (incomplete_result.visited_operations != 1 ||
+      !incomplete_result.visited_terminator ||
+      incomplete_result.emitted_instructions != 1 ||
+      incomplete_block.instructions.size() != 1 ||
+      incomplete_diagnostics.entries.size() != 1 ||
+      incomplete_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+      incomplete_diagnostics.entries.front().message.find(
+          "complete prepared variadic entry facts") == std::string::npos ||
+      incomplete_diagnostics.entries.front().message.find(
+          "register_save_area.slot_id") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          incomplete_block.instructions.front().target.payload)) {
+    return fail("expected incomplete va_start prepared entry facts to fail closed");
+  }
+
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1259,6 +1422,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_exposes_prepared_memory_return_storage_on_call_node();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan();
       status != 0) {
     return status;
   }

@@ -549,6 +549,88 @@ int memory_return_call_record_exposes_prepared_frame_slot_storage() {
   return 0;
 }
 
+int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
+  const prepare::PreparedCallPlan prepared_call{
+      .block_index = 0,
+      .instruction_index = 3,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_start.p0"},
+  };
+  const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
+      .function_name = c4c::FunctionNameId{9},
+      .named_parameter_count = 1,
+      .named_register_counts =
+          prepare::PreparedVariadicEntryNamedRegisterCounts{
+              .gp = std::size_t{1},
+              .fp = std::size_t{0},
+          },
+      .helper_resources =
+          prepare::PreparedVariadicEntryHelperResources{
+              .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
+          },
+  };
+
+  const auto helper_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{23},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_start.p0",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .source_variadic_entry = &variadic_entry,
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto missing_entry_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{23},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_start.p0",
+          .wrapper_kind = prepared_call.wrapper_kind,
+          .source_call = &prepared_call,
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+          .calling_convention = bir::CallingConv::C,
+      });
+
+  const auto* helper_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&helper_call.payload);
+  const auto* missing_payload =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&missing_entry_call.payload);
+  if (helper_payload == nullptr ||
+      helper_call.family != aarch64_codegen::InstructionFamily::Call ||
+      helper_call.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      helper_call.selection.diagnostic !=
+          "variadic entry helper machine-node lowering requires a delegated consumption slice" ||
+      helper_payload->source_call != &prepared_call ||
+      helper_payload->source_variadic_entry != &variadic_entry ||
+      helper_payload->variadic_entry_helper !=
+          std::optional<prepare::PreparedVariadicEntryHelperKind>{
+              prepare::PreparedVariadicEntryHelperKind::VaStart} ||
+      !helper_payload->direct_callee.has_value() ||
+      helper_payload->direct_callee_label != "llvm.va_start.p0") {
+    return fail("expected va_start call record to observe prepared entry and defer lowering");
+  }
+  if (missing_payload == nullptr ||
+      missing_entry_call.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
+      missing_entry_call.selection.diagnostic !=
+          "variadic entry helper node is missing prepared entry provenance" ||
+      missing_payload->source_variadic_entry != nullptr) {
+    return fail("expected variadic helper call without prepared entry to fail closed");
+  }
+
+  return 0;
+}
+
 int frame_instruction_records_preserve_prepared_frame_facts() {
   const prepare::PreparedFramePlanFunction prepared_frame{
       .function_name = c4c::FunctionNameId{6},
@@ -1174,6 +1256,10 @@ int main() {
     return status;
   }
   if (const int status = memory_return_call_record_exposes_prepared_frame_slot_storage();
+      status != 0) {
+    return status;
+  }
+  if (const int status = variadic_entry_helper_call_records_are_deferred_prepared_consumers();
       status != 0) {
     return status;
   }

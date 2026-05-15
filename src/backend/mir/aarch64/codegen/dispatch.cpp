@@ -143,6 +143,160 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
+[[nodiscard]] std::optional<prepare::PreparedVariadicEntryHelperKind>
+variadic_entry_helper_kind(std::string_view callee) {
+  if (callee == "llvm.va_start.p0") {
+    return prepare::PreparedVariadicEntryHelperKind::VaStart;
+  }
+  if (callee == "llvm.va_copy.p0.p0") {
+    return prepare::PreparedVariadicEntryHelperKind::VaCopy;
+  }
+  constexpr std::string_view va_arg_prefix = "llvm.va_arg.";
+  if (callee.substr(0, va_arg_prefix.size()) == va_arg_prefix) {
+    if (callee == "llvm.va_arg.aggregate") {
+      return prepare::PreparedVariadicEntryHelperKind::VaArgAggregate;
+    }
+    return prepare::PreparedVariadicEntryHelperKind::VaArg;
+  }
+  return std::nullopt;
+}
+
+void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
+                                        std::string_view fact) {
+  missing.push_back(std::string{fact});
+}
+
+[[nodiscard]] std::vector<std::string> missing_variadic_entry_facts(
+    const prepare::PreparedVariadicEntryPlanFunction& plan) {
+  std::vector<std::string> missing = plan.missing_required_facts;
+  if (!plan.named_register_counts.gp.has_value()) {
+    append_missing_variadic_entry_fact(missing, "named_register_counts.gp");
+  }
+  if (!plan.named_register_counts.fp.has_value()) {
+    append_missing_variadic_entry_fact(missing, "named_register_counts.fp");
+  }
+  if (plan.register_save_area.required) {
+    if (!plan.register_save_area.size_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.size_bytes");
+    }
+    if (!plan.register_save_area.align_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.align_bytes");
+    }
+    if (!plan.register_save_area.slot_id.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.slot_id");
+    }
+    if (!plan.register_save_area.stack_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.stack_offset_bytes");
+    }
+    if (!plan.register_save_area.gp_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.gp_offset_bytes");
+    }
+    if (!plan.register_save_area.fp_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.fp_offset_bytes");
+    }
+    if (!plan.register_save_area.gp_slot_size_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.gp_slot_size_bytes");
+    }
+    if (!plan.register_save_area.fp_slot_size_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "register_save_area.fp_slot_size_bytes");
+    }
+    if (!plan.register_save_area.saved_gp_register_count.has_value()) {
+      append_missing_variadic_entry_fact(missing,
+                                         "register_save_area.saved_gp_register_count");
+    }
+    if (!plan.register_save_area.saved_fp_register_count.has_value()) {
+      append_missing_variadic_entry_fact(missing,
+                                         "register_save_area.saved_fp_register_count");
+    }
+    if (!plan.register_save_area.initial_gp_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing,
+                                         "register_save_area.initial_gp_offset_bytes");
+    }
+    if (!plan.register_save_area.initial_fp_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing,
+                                         "register_save_area.initial_fp_offset_bytes");
+    }
+  }
+  if (plan.overflow_area.required) {
+    if (!plan.overflow_area.base_slot_id.has_value()) {
+      append_missing_variadic_entry_fact(missing, "overflow_area.base_slot_id");
+    }
+    if (!plan.overflow_area.base_stack_offset_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "overflow_area.base_stack_offset_bytes");
+    }
+    if (!plan.overflow_area.align_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "overflow_area.align_bytes");
+    }
+  }
+  if (plan.va_list_layout.required) {
+    if (!plan.va_list_layout.size_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "va_list_layout.size_bytes");
+    }
+    if (!plan.va_list_layout.align_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "va_list_layout.align_bytes");
+    }
+    if (plan.va_list_layout.fields.empty()) {
+      append_missing_variadic_entry_fact(missing, "va_list_layout.fields");
+    }
+  }
+  if (!plan.helper_resources.required_helpers.empty()) {
+    if (!plan.helper_resources.scratch_register_count.has_value()) {
+      append_missing_variadic_entry_fact(missing,
+                                         "helper_resources.scratch_register_count");
+    }
+    if (!plan.helper_resources.scratch_stack_bytes.has_value()) {
+      append_missing_variadic_entry_fact(missing, "helper_resources.scratch_stack_bytes");
+    }
+  }
+  return missing;
+}
+
+[[nodiscard]] std::string variadic_entry_missing_fact_message(
+    const std::vector<std::string>& missing) {
+  std::string message =
+      "AArch64 variadic entry helper lowering requires complete prepared variadic entry facts";
+  if (!missing.empty()) {
+    message += "; missing fact=";
+    message += missing.front();
+  }
+  return message;
+}
+
+[[nodiscard]] const prepare::PreparedVariadicEntryPlanFunction*
+require_prepared_variadic_entry_plan(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto function_name = context.function.control_flow != nullptr
+                                 ? context.function.control_flow->function_name
+                                 : c4c::kInvalidFunctionName;
+  const auto* entry_plan =
+      context.function.prepared != nullptr
+          ? prepare::find_prepared_variadic_entry_plan(*context.function.prepared,
+                                                       function_name)
+          : nullptr;
+  if (entry_plan == nullptr) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan,
+        context,
+        instruction_index,
+        "AArch64 variadic entry helper lowering requires a PreparedVariadicEntryPlanFunction");
+    return nullptr;
+  }
+  const auto missing = missing_variadic_entry_facts(*entry_plan);
+  if (!missing.empty()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        variadic_entry_missing_fact_message(missing));
+    return nullptr;
+  }
+  return entry_plan;
+}
+
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index) {
@@ -639,6 +793,16 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     const bir::CallInst& call_inst,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto variadic_helper = variadic_entry_helper_kind(call_inst.callee);
+  const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan = nullptr;
+  if (variadic_helper.has_value()) {
+    variadic_entry_plan =
+        require_prepared_variadic_entry_plan(context, instruction_index, diagnostics);
+    if (variadic_entry_plan == nullptr) {
+      return std::nullopt;
+    }
+  }
+
   const auto* call_plan = find_prepared_call_plan(context, instruction_index);
   if (call_plan == nullptr) {
     append_call_diagnostic(
@@ -666,6 +830,8 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       .preserved_values = call_plan->preserved_values,
       .clobbered_registers = call_plan->clobbered_registers,
       .source_call = call_plan,
+      .source_variadic_entry = variadic_entry_plan,
+      .variadic_entry_helper = variadic_helper,
       .calling_convention = call_inst.calling_convention,
       .is_indirect = call_plan->is_indirect,
       .is_variadic =

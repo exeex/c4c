@@ -2067,6 +2067,22 @@ MachineNodeStatusRecord call_boundary_abi_binding_selection_status(
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
 
+MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instruction) {
+  if (instruction.variadic_entry_helper.has_value()) {
+    if (instruction.source_variadic_entry == nullptr) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic =
+              "variadic entry helper node is missing prepared entry provenance"};
+    }
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "variadic entry helper machine-node lowering requires a delegated consumption slice"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
 }  // namespace
 
 OperandRecord make_register_operand(RegisterOperand operand) {
@@ -2326,7 +2342,7 @@ InstructionRecord make_call_instruction(CallInstructionRecord instruction) {
       .family = InstructionFamily::Call,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .opcode = instruction.is_indirect ? MachineOpcode::IndirectCall : MachineOpcode::DirectCall,
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .selection = call_selection_status(instruction),
       .operands = operands,
       .defs = defs,
       .uses = effects_from_operands(operands),

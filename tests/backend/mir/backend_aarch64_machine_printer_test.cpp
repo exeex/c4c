@@ -960,6 +960,49 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected indirect call without prepared provenance to fail closed");
   }
 
+  const prepare::PreparedCallPlan prepared_va_start_call{
+      .block_index = 0,
+      .instruction_index = 2,
+      .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+      .direct_callee_name = std::string{"llvm.va_start.p0"},
+  };
+  const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
+      .function_name = c4c::FunctionNameId{2},
+      .named_parameter_count = 1,
+      .named_register_counts =
+          prepare::PreparedVariadicEntryNamedRegisterCounts{
+              .gp = std::size_t{1},
+              .fp = std::size_t{0},
+          },
+      .helper_resources =
+          prepare::PreparedVariadicEntryHelperResources{
+              .required_helpers = {prepare::PreparedVariadicEntryHelperKind::VaStart},
+          },
+  };
+  const auto va_start_call = aarch64_codegen::make_call_instruction(
+      aarch64_codegen::CallInstructionRecord{
+          .direct_callee =
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{11},
+                  .type = bir::TypeKind::Ptr,
+                  .is_extern = true,
+              },
+          .direct_callee_label = "llvm.va_start.p0",
+          .wrapper_kind = prepared_va_start_call.wrapper_kind,
+          .source_call = &prepared_va_start_call,
+          .source_variadic_entry = &variadic_entry,
+          .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+          .calling_convention = bir::CallingConv::C,
+      });
+  const auto va_start_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(va_start_call);
+  if (va_start_result.ok ||
+      va_start_result.diagnostic.find(
+          "variadic entry helper machine-node lowering requires a delegated consumption slice") ==
+          std::string::npos) {
+    return fail("expected variadic entry helper call to fail closed in printer");
+  }
+
   const auto frame_missing_provenance = aarch64_codegen::make_frame_instruction(
       aarch64_codegen::FrameInstructionRecord{
           .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
