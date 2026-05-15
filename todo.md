@@ -8,22 +8,27 @@ Current Step Title: Select Binary128 Memory And Copy Nodes
 
 ## Just Finished
 
-Step 3 finished the remaining copy-transport question by adding a real
-structured F128 call-boundary move slice. The existing AArch64
-`lower_before_call_move` / `lower_after_call_move` dispatch boundary now admits
-q-register call moves only when prepared call plans, move bundles, value homes,
-ABI bindings, and complete `PreparedF128Carrier` facts agree on a full-width
-16-byte/16-byte vector carrier. The call-boundary move record preserves the
-source or destination F128 carrier pointer and stays fail-closed for non-GPR
-register moves that lack structured q-register authority. Focused record and
-dispatch coverage proves an F128 argument move selects `q2 -> q0` from prepared
-carrier facts without adding named-case shortcuts.
+Step 3 resolved the remaining constant-transport question as blocked, not as a
+code slice. I inspected the AArch64 F128 transport boundary through
+`make_prepared_f128_carrier_transport_record`, `f128_transport_selection_status`,
+`make_f128_transport_instruction`, `lower_f128_transport_instruction`, and the
+existing F128 record/dispatch tests. That boundary only has structured
+authority for prepared named F128 carriers plus optional 16-byte memory
+operands. I also inspected `bir::Value`, `BirFunctionLowerer::lower_value`,
+`build_f128_carrier`, and `PreparedF128Carrier`; BIR immediates currently carry
+only 64-bit `immediate` / `immediate_bits`, F128 literals are not parsed into
+full 128-bit low/high halves, and prepared F128 carriers are only derived from
+named regalloc/storage facts. There is therefore no genuine prepared constant
+carrier fact for a structured AArch64 Binary128 constant transport selection
+case yet.
 
 ## Suggested Next
 
-Delegate review of Step 3 sufficiency before moving to helper-boundary work, or
-select the next Step 4 packet if the supervisor accepts memory plus
-call-boundary copy transport as enough Step 3 coverage.
+Ask the plan owner to split or schedule a prepared F128 constant-carrier
+initiative before any backend constant transport selection work. The smallest
+future packet should first define how BIR or prepared state represents full
+16-byte Binary128 constants and then expose that fact to AArch64 instruction
+selection without using rendered-assembly substring matching.
 
 ## Watchouts
 
@@ -55,6 +60,14 @@ call-boundary copy transport as enough Step 3 coverage.
   structured F128 q-register move case; generic parallel copies, memory-backed
   F128 copies, helper-call lowering, final assembly printing, and arithmetic
   remain outside this packet.
+- The inspected constant boundary was fail-closed: `StoreLocalInst` with a
+  non-named F128 value reaches `lower_f128_transport_instruction`, cannot map
+  to a `ValueNameId`, and reports missing prepared F128 carrier authority.
+  Adding an AArch64 constant case now would require inventing 128-bit payload
+  authority outside the prepared facts.
+- Exact missing authority: a prepared full-width F128 constant carrier carrying
+  both 64-bit halves or equivalent 16-byte payload provenance, linked to a BIR
+  value or storage fact that instruction selection can consume.
 
 ## Proof
 
