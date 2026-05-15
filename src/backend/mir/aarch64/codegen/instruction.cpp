@@ -2075,6 +2075,12 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
           .diagnostic =
               "variadic entry helper node is missing prepared entry provenance"};
     }
+    if (instruction.source_variadic_helper_operand_homes == nullptr) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic =
+              "variadic entry helper node is missing prepared operand-home provenance"};
+    }
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =

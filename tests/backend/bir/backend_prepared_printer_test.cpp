@@ -2498,6 +2498,9 @@ int main() {
           std::optional<std::size_t>{1} ||
       aapcs64_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
+      aapcs64_entry_plan->helper_operand_homes.size() != 1 ||
+      !aapcs64_entry_plan->helper_operand_homes.front()
+           .destination_va_list.has_value() ||
       !aapcs64_entry_plan->missing_required_facts.empty()) {
     std::cerr << "[FAIL] AAPCS64 variadic entry carrier did not publish structured ABI facts "
                  "and prepared storage/scratch authority\n";
@@ -2539,6 +2542,11 @@ int main() {
                        "AAPCS64 variadic va_start helper need")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(aapcs64_variadic_dump,
+                       "helper_operand kind=va_start block=0 inst=0 dst_va_list=ap:",
+                       "AAPCS64 variadic va_start helper operand home")) {
+    return EXIT_FAILURE;
+  }
   const auto aapcs64_helper_family_prepared =
       prepare_aapcs64_variadic_entry_helper_family_dump_module();
   const std::string aapcs64_helper_family_dump = prepare::print(aapcs64_helper_family_prepared);
@@ -2558,7 +2566,8 @@ int main() {
       aapcs64_helper_family_entry_plan->helper_resources.scratch_register_count !=
           std::optional<std::size_t>{2} ||
       aapcs64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
-          std::optional<std::size_t>{0}) {
+          std::optional<std::size_t>{0} ||
+      aapcs64_helper_family_entry_plan->helper_operand_homes.size() != 5) {
     std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts, helpers, or scratch facts\n";
     return EXIT_FAILURE;
   }
@@ -2588,6 +2597,21 @@ int main() {
   if (!expect_contains(aapcs64_helper_family_dump,
                        "helper kind=va_copy",
                        "AAPCS64 variadic va_copy helper need")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_operand kind=va_arg block=0 inst=1",
+                       "AAPCS64 variadic scalar va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_operand kind=va_arg_aggregate block=0 inst=3",
+                       "AAPCS64 variadic aggregate va_arg operand homes")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_operand kind=va_copy block=0 inst=4",
+                       "AAPCS64 variadic va_copy operand homes")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(call_wrapper_dump,

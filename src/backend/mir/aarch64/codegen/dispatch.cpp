@@ -247,8 +247,27 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
     if (!plan.helper_resources.scratch_stack_bytes.has_value()) {
       append_missing_variadic_entry_fact(missing, "helper_resources.scratch_stack_bytes");
     }
+    if (plan.helper_operand_homes.empty()) {
+      append_missing_variadic_entry_fact(missing, "helper_operand_homes");
+    }
   }
   return missing;
+}
+
+[[nodiscard]] bool variadic_helper_operand_homes_complete(
+    const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
+  switch (homes.helper) {
+    case prepare::PreparedVariadicEntryHelperKind::VaStart:
+      return homes.destination_va_list.has_value();
+    case prepare::PreparedVariadicEntryHelperKind::VaArg:
+      return homes.scalar_result.has_value() && homes.source_va_list.has_value();
+    case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return homes.aggregate_destination_payload.has_value() &&
+             homes.source_va_list.has_value();
+    case prepare::PreparedVariadicEntryHelperKind::VaCopy:
+      return homes.destination_va_list.has_value() && homes.source_va_list.has_value();
+  }
+  return false;
 }
 
 [[nodiscard]] std::string variadic_entry_missing_fact_message(
@@ -814,6 +833,24 @@ require_prepared_variadic_entry_plan(
     return std::nullopt;
   }
 
+  const prepare::PreparedVariadicEntryHelperOperandHomes* variadic_helper_operand_homes =
+      nullptr;
+  if (variadic_entry_plan != nullptr) {
+    variadic_helper_operand_homes =
+        prepare::find_prepared_variadic_entry_helper_operand_homes(
+            *variadic_entry_plan, context.block_index, instruction_index);
+    if (variadic_helper_operand_homes == nullptr ||
+        !variadic_helper_operand_homes_complete(*variadic_helper_operand_homes)) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 variadic entry helper lowering requires prepared helper operand-home facts");
+      return std::nullopt;
+    }
+  }
+
   CallInstructionRecord call_record{
       .wrapper_kind = call_plan->wrapper_kind,
       .variadic_fpr_arg_register_count = call_plan->variadic_fpr_arg_register_count,
@@ -831,6 +868,7 @@ require_prepared_variadic_entry_plan(
       .clobbered_registers = call_plan->clobbered_registers,
       .source_call = call_plan,
       .source_variadic_entry = variadic_entry_plan,
+      .source_variadic_helper_operand_homes = variadic_helper_operand_homes,
       .variadic_entry_helper = variadic_helper,
       .calling_convention = call_inst.calling_convention,
       .is_indirect = call_plan->is_indirect,

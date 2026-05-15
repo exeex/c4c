@@ -5185,6 +5185,7 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
           std::optional<std::size_t>{2} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
+      entry_plan->helper_operand_homes.size() != 5 ||
       entry_plan->register_save_area.size_bytes != std::optional<std::size_t>{192} ||
       !entry_plan->register_save_area.slot_id.has_value() ||
       !entry_plan->register_save_area.stack_offset_bytes.has_value() ||
@@ -5196,6 +5197,17 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       entry_plan->overflow_area.align_bytes != std::optional<std::size_t>{8}) {
     return fail("AAPCS64 variadic helper-family frame contract: lost prepared entry scratch or storage facts");
+  }
+  const auto* aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
+  const auto* copy_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 4);
+  if (aggregate_homes == nullptr || copy_homes == nullptr ||
+      !aggregate_homes->aggregate_destination_payload.has_value() ||
+      !aggregate_homes->source_va_list.has_value() ||
+      !copy_homes->destination_va_list.has_value() ||
+      !copy_homes->source_va_list.has_value()) {
+    return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg or va_copy operand homes");
   }
   const auto* register_save_slot =
       prepare::find_prepared_frame_slot(prepared.stack_layout,

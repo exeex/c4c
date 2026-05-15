@@ -966,6 +966,19 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
       .direct_callee_name = std::string{"llvm.va_start.p0"},
   };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_start_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .block_index = 0,
+      .instruction_index = 2,
+      .destination_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{14},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{4},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x2"},
+          },
+  };
   const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
       .function_name = c4c::FunctionNameId{2},
       .named_parameter_count = 1,
@@ -980,6 +993,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
               .scratch_register_count = std::size_t{1},
               .scratch_stack_bytes = std::size_t{0},
           },
+      .helper_operand_homes = {va_start_homes},
   };
   const auto va_start_call = aarch64_codegen::make_call_instruction(
       aarch64_codegen::CallInstructionRecord{
@@ -993,6 +1007,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
           .wrapper_kind = prepared_va_start_call.wrapper_kind,
           .source_call = &prepared_va_start_call,
           .source_variadic_entry = &variadic_entry,
+          .source_variadic_helper_operand_homes = &variadic_entry.helper_operand_homes.front(),
           .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
           .calling_convention = bir::CallingConv::C,
       });

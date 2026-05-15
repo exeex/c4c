@@ -5763,6 +5763,7 @@ int check_aapcs64_variadic_entry_helper_family_liveness() {
           std::optional<std::size_t>{2} ||
       entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
+      entry_plan->helper_operand_homes.size() != 5 ||
       !entry_plan->register_save_area.required ||
       !entry_plan->register_save_area.slot_id.has_value() ||
       !entry_plan->register_save_area.stack_offset_bytes.has_value() ||
@@ -5770,6 +5771,36 @@ int check_aapcs64_variadic_entry_helper_family_liveness() {
       !entry_plan->overflow_area.base_stack_offset_bytes.has_value() ||
       !entry_plan->va_list_layout.required) {
     return fail("AAPCS64 variadic helper-family liveness: carrier lost named counts, helpers, scratch, or ABI facts");
+  }
+  const auto* va_start_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 0);
+  const auto* va_arg_i32_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 1);
+  const auto* va_arg_f64_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 2);
+  const auto* va_arg_aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 3);
+  const auto* va_copy_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(*entry_plan, 0, 4);
+  if (va_start_homes == nullptr || va_arg_i32_homes == nullptr ||
+      va_arg_f64_homes == nullptr || va_arg_aggregate_homes == nullptr ||
+      va_copy_homes == nullptr ||
+      va_start_homes->helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+      !va_start_homes->destination_va_list.has_value() ||
+      va_arg_i32_homes->helper != prepare::PreparedVariadicEntryHelperKind::VaArg ||
+      !va_arg_i32_homes->scalar_result.has_value() ||
+      !va_arg_i32_homes->source_va_list.has_value() ||
+      va_arg_f64_homes->helper != prepare::PreparedVariadicEntryHelperKind::VaArg ||
+      !va_arg_f64_homes->scalar_result.has_value() ||
+      !va_arg_f64_homes->source_va_list.has_value() ||
+      va_arg_aggregate_homes->helper !=
+          prepare::PreparedVariadicEntryHelperKind::VaArgAggregate ||
+      !va_arg_aggregate_homes->aggregate_destination_payload.has_value() ||
+      !va_arg_aggregate_homes->source_va_list.has_value() ||
+      va_copy_homes->helper != prepare::PreparedVariadicEntryHelperKind::VaCopy ||
+      !va_copy_homes->destination_va_list.has_value() ||
+      !va_copy_homes->source_va_list.has_value()) {
+    return fail("AAPCS64 variadic helper-family liveness: carrier lost helper operand-home facts");
   }
   return 0;
 }

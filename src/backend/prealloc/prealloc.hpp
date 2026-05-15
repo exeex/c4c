@@ -1288,6 +1288,16 @@ struct PreparedVariadicEntryHelperResources {
   std::optional<std::size_t> scratch_stack_bytes;
 };
 
+struct PreparedVariadicEntryHelperOperandHomes {
+  PreparedVariadicEntryHelperKind helper = PreparedVariadicEntryHelperKind::VaStart;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
+  std::optional<PreparedValueHome> destination_va_list;
+  std::optional<PreparedValueHome> source_va_list;
+  std::optional<PreparedValueHome> scalar_result;
+  std::optional<PreparedValueHome> aggregate_destination_payload;
+};
+
 struct PreparedVariadicEntryPlanFunction {
   FunctionNameId function_name = kInvalidFunctionName;
   std::size_t named_parameter_count = 0;
@@ -1296,6 +1306,7 @@ struct PreparedVariadicEntryPlanFunction {
   PreparedVariadicEntryOverflowArea overflow_area;
   PreparedVariadicVaListLayout va_list_layout;
   PreparedVariadicEntryHelperResources helper_resources;
+  std::vector<PreparedVariadicEntryHelperOperandHomes> helper_operand_homes;
   std::vector<std::string> missing_required_facts;
 };
 
@@ -4436,6 +4447,20 @@ find_prepared_variadic_entry_plan(const PreparedVariadicEntryPlans& variadic_ent
 find_prepared_variadic_entry_plan(const PreparedBirModule& module,
                                   FunctionNameId function_name) {
   return find_prepared_variadic_entry_plan(module.variadic_entry_plans, function_name);
+}
+
+[[nodiscard]] inline const PreparedVariadicEntryHelperOperandHomes*
+find_prepared_variadic_entry_helper_operand_homes(
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& homes : function_plan.helper_operand_homes) {
+    if (homes.block_index == block_index &&
+        homes.instruction_index == instruction_index) {
+      return &homes;
+    }
+  }
+  return nullptr;
 }
 
 [[nodiscard]] inline const PreparedStoragePlanFunction* find_prepared_storage_plan(

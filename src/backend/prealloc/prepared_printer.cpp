@@ -774,6 +774,35 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
           << prepared_variadic_entry_helper_kind_name(helper)
           << "\n";
     }
+    for (const auto& homes : function_plan.helper_operand_homes) {
+      out << "    helper_operand kind="
+          << prepared_variadic_entry_helper_kind_name(homes.helper)
+          << " block=" << homes.block_index
+          << " inst=" << homes.instruction_index;
+      const auto append_home = [&](std::string_view label,
+                                   const std::optional<PreparedValueHome>& home) {
+        if (!home.has_value()) {
+          out << " " << label << "=<none>";
+          return;
+        }
+        out << " " << label << "=" << maybe_value_name(module.names, home->value_name)
+            << ":" << prepared_value_home_kind_name(home->kind);
+        if (home->register_name.has_value()) {
+          out << ":reg=" << *home->register_name;
+        }
+        if (home->slot_id.has_value()) {
+          out << ":slot=#" << *home->slot_id;
+        }
+        if (home->offset_bytes.has_value()) {
+          out << ":offset=" << *home->offset_bytes;
+        }
+      };
+      append_home("dst_va_list", homes.destination_va_list);
+      append_home("src_va_list", homes.source_va_list);
+      append_home("scalar_result", homes.scalar_result);
+      append_home("aggregate_dst", homes.aggregate_destination_payload);
+      out << "\n";
+    }
     for (const auto& fact : function_plan.missing_required_facts) {
       out << "    missing fact=" << fact << "\n";
     }

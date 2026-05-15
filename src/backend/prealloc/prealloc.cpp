@@ -430,6 +430,137 @@ void populate_aapcs64_variadic_entry_helper_resource_authority(
   remove_missing_variadic_entry_fact(function_plan, "helper_resources.scratch_stack_bytes");
 }
 
+[[nodiscard]] std::optional<PreparedValueHome> prepared_home_for_named_value(
+    PreparedNameTables& names,
+    const PreparedValueLocationFunction* value_locations,
+    const bir::Value& value) {
+  if (value_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto value_name = maybe_named_value_id(names, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = find_prepared_value_home(*value_locations, *value_name);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  return *home;
+}
+
+void require_variadic_helper_operand_home(
+    PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const std::optional<PreparedValueHome>& home,
+    std::string_view fact_suffix) {
+  if (home.has_value()) {
+    return;
+  }
+  std::string fact = "helper_operand_homes.";
+  fact += prepared_variadic_entry_helper_kind_name(homes.helper);
+  fact += ".";
+  fact += fact_suffix;
+  append_missing_variadic_entry_fact(function_plan, fact);
+}
+
+void populate_aapcs64_variadic_entry_helper_operand_home_authority(
+    PreparedBirModule& prepared,
+    const bir::Function& function,
+    PreparedVariadicEntryPlanFunction& function_plan) {
+  function_plan.helper_operand_homes.clear();
+  const auto* value_locations =
+      find_prepared_value_location_function(prepared, function_plan.function_name);
+
+  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
+    const auto& block = function.blocks[block_index];
+    for (std::size_t instruction_index = 0; instruction_index < block.insts.size();
+         ++instruction_index) {
+      const auto* call = std::get_if<bir::CallInst>(&block.insts[instruction_index]);
+      if (call == nullptr) {
+        continue;
+      }
+      const auto helper_kind = variadic_entry_helper_kind(call->callee);
+      if (!helper_kind.has_value()) {
+        continue;
+      }
+
+      PreparedVariadicEntryHelperOperandHomes homes{
+          .helper = *helper_kind,
+          .block_index = block_index,
+          .instruction_index = instruction_index,
+      };
+
+      switch (*helper_kind) {
+        case PreparedVariadicEntryHelperKind::VaStart:
+          if (!call->args.empty()) {
+            homes.destination_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+          }
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list,
+                                               "destination_va_list");
+          break;
+        case PreparedVariadicEntryHelperKind::VaArg:
+          if (call->result.has_value()) {
+            homes.scalar_result =
+                prepared_home_for_named_value(prepared.names, value_locations, *call->result);
+          }
+          if (!call->args.empty()) {
+            homes.source_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+          }
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.scalar_result, "scalar_result");
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.source_va_list, "source_va_list");
+          break;
+        case PreparedVariadicEntryHelperKind::VaArgAggregate:
+          if (call->args.size() > 1) {
+            homes.aggregate_destination_payload =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+            homes.source_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[1]);
+          } else {
+            if (call->result.has_value()) {
+              homes.aggregate_destination_payload =
+                  prepared_home_for_named_value(prepared.names, value_locations, *call->result);
+            }
+            if (!call->args.empty()) {
+              homes.source_va_list =
+                  prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+            }
+          }
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.aggregate_destination_payload,
+                                               "aggregate_destination_payload");
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.source_va_list, "source_va_list");
+          break;
+        case PreparedVariadicEntryHelperKind::VaCopy:
+          if (!call->args.empty()) {
+            homes.destination_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+          }
+          if (call->args.size() > 1) {
+            homes.source_va_list =
+                prepared_home_for_named_value(prepared.names, value_locations, call->args[1]);
+          }
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list,
+                                               "destination_va_list");
+          require_variadic_helper_operand_home(
+              function_plan, homes, homes.source_va_list, "source_va_list");
+          break;
+      }
+
+      function_plan.helper_operand_homes.push_back(std::move(homes));
+    }
+  }
+}
+
 void attach_aapcs64_variadic_entry_storage_authority(
     PreparedBirModule& prepared,
     PreparedVariadicEntryPlanFunction& function_plan) {
@@ -1789,6 +1920,8 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
     if (prepared.target_profile.backend_abi == c4c::BackendAbiKind::Aapcs64) {
       populate_aapcs64_variadic_entry_abi_facts(function_plan);
       populate_aapcs64_variadic_entry_helper_resource_authority(function_plan);
+      populate_aapcs64_variadic_entry_helper_operand_home_authority(
+          prepared, function, function_plan);
       attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
     }
 

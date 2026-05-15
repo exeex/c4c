@@ -556,6 +556,19 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
       .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
       .direct_callee_name = std::string{"llvm.va_start.p0"},
   };
+  const prepare::PreparedVariadicEntryHelperOperandHomes va_start_homes{
+      .helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
+      .block_index = 0,
+      .instruction_index = 3,
+      .destination_va_list =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{44},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{7},
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x3"},
+          },
+  };
   const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
       .function_name = c4c::FunctionNameId{9},
       .named_parameter_count = 1,
@@ -570,6 +583,7 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
               .scratch_register_count = std::size_t{1},
               .scratch_stack_bytes = std::size_t{0},
           },
+      .helper_operand_homes = {va_start_homes},
   };
 
   const auto helper_call = aarch64_codegen::make_call_instruction(
@@ -584,6 +598,7 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
           .wrapper_kind = prepared_call.wrapper_kind,
           .source_call = &prepared_call,
           .source_variadic_entry = &variadic_entry,
+          .source_variadic_helper_operand_homes = &variadic_entry.helper_operand_homes.front(),
           .variadic_entry_helper = prepare::PreparedVariadicEntryHelperKind::VaStart,
           .calling_convention = bir::CallingConv::C,
       });
@@ -614,6 +629,9 @@ int variadic_entry_helper_call_records_are_deferred_prepared_consumers() {
           "variadic entry helper machine-node lowering requires a delegated consumption slice" ||
       helper_payload->source_call != &prepared_call ||
       helper_payload->source_variadic_entry != &variadic_entry ||
+      helper_payload->source_variadic_helper_operand_homes !=
+          &variadic_entry.helper_operand_homes.front() ||
+      !helper_payload->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
       helper_payload->source_variadic_entry->helper_resources.scratch_register_count !=
           std::optional<std::size_t>{1} ||
       helper_payload->source_variadic_entry->helper_resources.scratch_stack_bytes !=

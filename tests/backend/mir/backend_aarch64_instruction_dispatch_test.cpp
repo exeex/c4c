@@ -227,6 +227,7 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
   const auto bir_entry_label =
       prepared.module.names.block_labels.intern("dispatch.variadic.entry.block");
   const auto va_start_link = prepared.names.link_names.intern("llvm.va_start.p0");
+  const auto ap_value = prepared.names.value_names.intern("%ap");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.variadic.entry",
@@ -263,7 +264,19 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
           .direct_callee_name = std::string{"llvm.va_start.p0"},
       }},
   });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{12},
+              .function_name = function_name,
+              .value_name = ap_value,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"x3"},
+          }},
+  });
   if (include_entry_plan) {
+    const bool complete_operand_home_facts = complete_storage_facts && complete_scratch_facts;
     prepared.variadic_entry_plans.functions.push_back(
         prepare::PreparedVariadicEntryPlanFunction{
             .function_name = function_name,
@@ -326,6 +339,19 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
                                                ? std::optional<std::size_t>{0}
                                                : std::nullopt,
                 },
+            .helper_operand_homes =
+                complete_operand_home_facts
+                    ? std::vector<prepare::PreparedVariadicEntryHelperOperandHomes>{
+                          prepare::PreparedVariadicEntryHelperOperandHomes{
+                              .helper =
+                                  prepare::PreparedVariadicEntryHelperKind::VaStart,
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .destination_va_list =
+                                  prepared.value_locations.functions.front()
+                                      .value_homes.front(),
+                          }}
+                    : std::vector<prepare::PreparedVariadicEntryHelperOperandHomes>{},
             .missing_required_facts =
                 complete_storage_facts ? std::vector<std::string>{}
                                        : std::vector<std::string>{"overflow_area.base_slot_id"},
@@ -1120,6 +1146,42 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
     return fail("expected incomplete va_start prepared scratch-stack facts to fail closed");
   }
 
+  auto missing_operand_home_prepared =
+      prepared_with_variadic_entry_helper_call(true, true, true);
+  missing_operand_home_prepared.variadic_entry_plans.functions.front()
+      .helper_operand_homes.clear();
+  const auto& missing_operand_home_function_cf =
+      missing_operand_home_prepared.control_flow.functions.front();
+  const auto& missing_operand_home_block_cf =
+      missing_operand_home_function_cf.blocks.front();
+  const auto missing_operand_home_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          missing_operand_home_prepared,
+          missing_operand_home_prepared.target_profile,
+          missing_operand_home_function_cf);
+  const auto missing_operand_home_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          missing_operand_home_function_context, missing_operand_home_block_cf, 0);
+  aarch64_module::MachineBlock missing_operand_home_block;
+  aarch64_module::ModuleLoweringDiagnostics missing_operand_home_diagnostics;
+  const auto missing_operand_home_result = aarch64_codegen::dispatch_prepared_block(
+      missing_operand_home_block_context,
+      missing_operand_home_block,
+      missing_operand_home_diagnostics);
+  if (missing_operand_home_result.visited_operations != 1 ||
+      !missing_operand_home_result.visited_terminator ||
+      missing_operand_home_result.emitted_instructions != 1 ||
+      missing_operand_home_block.instructions.size() != 1 ||
+      missing_operand_home_diagnostics.entries.size() != 1 ||
+      missing_operand_home_diagnostics.entries.front().kind !=
+          aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+      missing_operand_home_diagnostics.entries.front().message.find(
+          "helper_operand_homes") == std::string::npos ||
+      !std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          missing_operand_home_block.instructions.front().target.payload)) {
+    return fail("expected incomplete va_start prepared operand-home facts to fail closed");
+  }
+
   auto complete_entry_prepared = prepared_with_variadic_entry_helper_call(true, true, true);
   const auto& complete_function_cf = complete_entry_prepared.control_flow.functions.front();
   const auto& complete_block_cf = complete_function_cf.blocks.front();
@@ -1147,6 +1209,7 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
           &complete_block.instructions.front().target.payload);
   if (complete_call == nullptr ||
       complete_call->source_variadic_entry == nullptr ||
+      complete_call->source_variadic_helper_operand_homes == nullptr ||
       complete_call->source_variadic_entry->register_save_area.slot_id !=
           std::optional<prepare::PreparedFrameSlotId>{5} ||
       complete_call->source_variadic_entry->register_save_area.stack_offset_bytes !=
@@ -1158,8 +1221,11 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       complete_call->source_variadic_entry->helper_resources.scratch_register_count !=
           std::optional<std::size_t>{1} ||
       complete_call->source_variadic_entry->helper_resources.scratch_stack_bytes !=
-          std::optional<std::size_t>{0}) {
-    return fail("expected deferred va_start helper record to expose prepared storage and scratch authority");
+          std::optional<std::size_t>{0} ||
+      !complete_call->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
+      complete_call->source_variadic_helper_operand_homes->destination_va_list->register_name !=
+          std::optional<std::string>{"x3"}) {
+    return fail("expected deferred va_start helper record to expose prepared storage, scratch, and operand-home authority");
   }
 
   return 0;
