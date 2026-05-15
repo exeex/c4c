@@ -1,32 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/243_aarch64_variadic_machine_node_consumption.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Consume Prepared Facts For Scalar `va_arg`
+Current Step ID: 4
+Current Step Title: Consume Prepared Facts For Aggregate `va_arg`
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed scalar `va_arg` selected machine-node consumption from prepared
-`helper_operand_homes.va_arg.scalar_access_plan` facts. The AArch64 lowering now
-fails closed when scalar access-plan facts are absent or incomplete, and selects
-structured GP, FP, and overflow-backed scalar `va_arg` records with printer
-output from prepared storage, helper resources, source `va_list` homes, and
-result homes.
+Step 4 was tested against aggregate `va_arg` helper lowering and stopped at the
+missing prepared/shared fact required for semantic consumption:
+`helper_operand_homes.va_arg_aggregate.aggregate_access_plan`. AArch64 dispatch
+now fails closed with that exact diagnostic instead of selecting a generic
+deferred helper node when only destination/source homes are present.
 
 ## Suggested Next
 
-Execute Step 4 by consuming prepared facts for aggregate `va_arg` helper
-effects, keeping aggregate payload source selection and destination copy
-semantics separate from the scalar path.
+Ask the plan owner to split or activate the prerequisite prepared/shared carrier
+for aggregate `va_arg` access planning before retrying Step 4 machine-node
+consumption.
 
 ## Watchouts
 
-- Scalar `va_arg` lowering is now selected only when the prepared scalar access
-  plan is complete; missing or partial fields still report
-  `helper_operand_homes.va_arg.scalar_access_plan`.
-- Step 4 should not reuse scalar shortcuts for aggregate payload transport.
+- The current prepared aggregate operand homes expose destination payload and
+  source `va_list` homes, but not aggregate size/alignment, payload source
+  selection, register-save access, overflow progression, or copy extent.
+- Do not reconstruct those AAPCS64 aggregate facts in AArch64 target lowering;
+  Step 4 should resume only after a prepared aggregate access-plan fact exists.
 
 ## Proof
 

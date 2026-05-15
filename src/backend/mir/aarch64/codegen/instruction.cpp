@@ -2248,6 +2248,14 @@ MachineNodeStatusRecord call_selection_status(const CallInstructionRecord& instr
       }
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
+    if (*instruction.variadic_entry_helper ==
+        prepare::PreparedVariadicEntryHelperKind::VaArgAggregate) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic =
+              "aggregate va_arg machine-node lowering requires complete prepared fact "
+              "helper_operand_homes.va_arg_aggregate.aggregate_access_plan"};
+    }
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =

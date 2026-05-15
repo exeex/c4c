@@ -284,8 +284,7 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
       return homes.scalar_result.has_value() && homes.source_va_list.has_value() &&
              scalar_access_plan_complete();
     case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
-      return homes.aggregate_destination_payload.has_value() &&
-             homes.source_va_list.has_value();
+      return false;
     case prepare::PreparedVariadicEntryHelperKind::VaCopy:
       return homes.destination_va_list.has_value() && homes.source_va_list.has_value();
   }
@@ -301,6 +300,8 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
       return "AArch64 scalar va_arg lowering requires prepared fact "
              "helper_operand_homes.va_arg.scalar_access_plan";
     case prepare::PreparedVariadicEntryHelperKind::VaArgAggregate:
+      return "AArch64 aggregate va_arg lowering requires prepared fact "
+             "helper_operand_homes.va_arg_aggregate.aggregate_access_plan";
     case prepare::PreparedVariadicEntryHelperKind::VaCopy:
       return {};
   }
