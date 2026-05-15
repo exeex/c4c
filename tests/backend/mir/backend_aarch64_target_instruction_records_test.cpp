@@ -1915,6 +1915,96 @@ int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   return 0;
 }
 
+int i128_transport_records_preserve_prepared_carrier_lanes() {
+  prepare::PreparedI128CarrierFunction carriers{
+      .function_name = c4c::FunctionNameId{2},
+      .carriers =
+          {prepare::PreparedI128Carrier{
+              .function_name = c4c::FunctionNameId{2},
+              .value_id = prepare::PreparedValueId{60},
+              .value_name = c4c::ValueNameId{30},
+              .source_type = bir::TypeKind::I128,
+              .kind = prepare::PreparedI128CarrierKind::RegisterPair,
+              .lane_width_bytes = 8,
+              .total_size_bytes = 16,
+              .total_align_bytes = 16,
+              .register_bank = prepare::PreparedRegisterBank::Gpr,
+              .register_class = prepare::PreparedRegisterClass::General,
+              .contiguous_width = 2,
+              .occupied_register_names = {"x10", "x11"},
+              .register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                      .slot_index = 10,
+                      .contiguous_width = 2,
+                  },
+              .low_lane =
+                  prepare::PreparedI128LaneCarrier{
+                      .role = prepare::PreparedI128LaneRole::Low,
+                      .lane_index = 0,
+                      .width_bytes = 8,
+                      .register_name = std::string{"x10"},
+                  },
+              .high_lane =
+                  prepare::PreparedI128LaneCarrier{
+                      .role = prepare::PreparedI128LaneRole::High,
+                      .lane_index = 1,
+                      .width_bytes = 8,
+                      .register_name = std::string{"x11"},
+                  },
+          }},
+  };
+  auto prepared = aarch64_codegen::make_prepared_i128_carrier_transport_record(
+      carriers,
+      c4c::ValueNameId{30},
+      aarch64_codegen::I128TransportKind::CarrierSnapshot);
+  if (!prepared.record.has_value() ||
+      prepared.error != aarch64_codegen::PreparedI128TransportRecordError::None) {
+    return fail("expected complete i128 register-pair carrier to select transport record");
+  }
+  const auto instruction =
+      aarch64_codegen::make_i128_transport_instruction(*prepared.record);
+  const auto* payload =
+      std::get_if<aarch64_codegen::I128TransportRecord>(&instruction.payload);
+  if (payload == nullptr ||
+      instruction.family != aarch64_codegen::InstructionFamily::I128Transport ||
+      aarch64_codegen::instruction_family_name(instruction.family) != "i128_transport" ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::I128Transport ||
+      aarch64_codegen::machine_opcode_name(instruction.opcode) != "i128_transport" ||
+      instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      payload->value_id != prepare::PreparedValueId{60} ||
+      payload->carrier_kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+      payload->low_lane.role != prepare::PreparedI128LaneRole::Low ||
+      payload->high_lane.role != prepare::PreparedI128LaneRole::High ||
+      !payload->low_lane.reg.has_value() ||
+      !payload->high_lane.reg.has_value() ||
+      payload->low_lane.reg->reg != aarch64_abi::x_register(10) ||
+      payload->high_lane.reg->reg != aarch64_abi::x_register(11) ||
+      payload->total_size_bytes != 16 ||
+      payload->total_align_bytes != 16 ||
+      instruction.operands.size() != 2 ||
+      instruction.defs.size() != 2 ||
+      instruction.uses.size() != 2) {
+    return fail("expected i128 transport record to preserve low/high register lanes");
+  }
+
+  carriers.carriers.front().kind = prepare::PreparedI128CarrierKind::Missing;
+  carriers.carriers.front().missing_required_facts = {"missing_pair"};
+  const auto incomplete = aarch64_codegen::make_prepared_i128_carrier_transport_record(
+      carriers,
+      c4c::ValueNameId{30},
+      aarch64_codegen::I128TransportKind::CarrierSnapshot);
+  if (incomplete.record.has_value() ||
+      incomplete.error !=
+          aarch64_codegen::PreparedI128TransportRecordError::IncompletePreparedI128Carrier ||
+      aarch64_codegen::prepared_i128_transport_record_error_name(incomplete.error) !=
+          "incomplete_prepared_i128_carrier") {
+    return fail("expected incomplete i128 carrier to fail closed");
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1963,6 +2053,10 @@ int main() {
     return status;
   }
   if (const int status = machine_node_printer_mnemonics_have_one_supported_spelling_source();
+      status != 0) {
+    return status;
+  }
+  if (const int status = i128_transport_records_preserve_prepared_carrier_lanes();
       status != 0) {
     return status;
   }

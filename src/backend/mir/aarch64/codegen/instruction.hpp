@@ -73,6 +73,7 @@ enum class InstructionFamily {
   // concrete AArch64 opcodes.
   Branch,
   Scalar,
+  I128Transport,
   Memory,
   Frame,
   Call,
@@ -113,6 +114,7 @@ enum class MachineOpcode {
   CalleeSaveLoad,
   CallBoundaryMove,
   CallBoundaryAbiBinding,
+  I128Transport,
   Add,
   Sub,
   Mul,
@@ -295,6 +297,23 @@ enum class PreparedMemoryOperandRecordError {
   MissingStoredStorage,
   UnsupportedStoredStorage,
   RegisterConversionFailed,
+};
+
+enum class I128TransportKind {
+  CarrierSnapshot,
+  LoadFromMemory,
+  StoreToMemory,
+};
+
+enum class PreparedI128TransportRecordError {
+  None,
+  InvalidFunction,
+  MissingPreparedI128Carrier,
+  IncompletePreparedI128Carrier,
+  UnsupportedCarrierKind,
+  RegisterConversionFailed,
+  MissingMemoryOperand,
+  MemoryAccessSizeMismatch,
 };
 
 enum class AddressMaterializationKind {
@@ -602,6 +621,46 @@ struct PreparedMemoryInstructionRecordResult {
   PreparedMemoryOperandRecordError error = PreparedMemoryOperandRecordError::None;
 };
 
+struct I128LaneTransportRecord {
+  prepare::PreparedI128LaneRole role = prepare::PreparedI128LaneRole::Low;
+  std::size_t lane_index = 0;
+  std::size_t width_bytes = 8;
+  std::optional<RegisterOperand> reg;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+};
+
+struct I128TransportRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  I128TransportKind transport_kind = I128TransportKind::CarrierSnapshot;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  prepare::PreparedValueId value_id = 0;
+  c4c::ValueNameId value_name = c4c::kInvalidValueName;
+  bir::TypeKind value_type = bir::TypeKind::I128;
+  prepare::PreparedI128CarrierKind carrier_kind = prepare::PreparedI128CarrierKind::Missing;
+  std::size_t lane_width_bytes = 8;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  prepare::PreparedRegisterBank register_bank = prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterClass register_class = prepare::PreparedRegisterClass::None;
+  std::size_t contiguous_width = 1;
+  std::vector<std::string> occupied_register_names;
+  std::optional<prepare::PreparedRegisterPlacement> register_placement;
+  std::optional<prepare::PreparedFrameSlotId> slot_id;
+  std::optional<std::size_t> stack_offset_bytes;
+  I128LaneTransportRecord low_lane;
+  I128LaneTransportRecord high_lane{.role = prepare::PreparedI128LaneRole::High, .lane_index = 1};
+  std::optional<MemoryOperand> memory;
+  const prepare::PreparedI128Carrier* source_carrier = nullptr;
+};
+
+struct PreparedI128TransportRecordResult {
+  std::optional<I128TransportRecord> record;
+  PreparedI128TransportRecordError error = PreparedI128TransportRecordError::None;
+};
+
 struct AddressMaterializationRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   AddressMaterializationKind kind = AddressMaterializationKind::DeferredUnsupported;
@@ -883,6 +942,7 @@ struct ObjectInstructionRecord {
 
 using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
+                                        I128TransportRecord,
                                         MemoryInstructionRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
@@ -958,6 +1018,9 @@ struct InstructionRecord {
     PreparedScalarCastRecordError error);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
+[[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
+[[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
+    PreparedI128TransportRecordError error);
 [[nodiscard]] std::string_view address_materialization_kind_name(
     AddressMaterializationKind kind);
 [[nodiscard]] std::string_view prepared_address_materialization_record_error_name(
@@ -984,6 +1047,8 @@ struct InstructionRecord {
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_i128_transport_instruction(
+    I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
@@ -1087,6 +1152,11 @@ make_prepared_store_memory_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreGlobalInst& store);
+[[nodiscard]] PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    c4c::ValueNameId value_name,
+    I128TransportKind transport_kind,
+    std::optional<MemoryOperand> memory = std::nullopt);
 [[nodiscard]] PreparedAddressMaterializationRecordResult
 make_prepared_address_materialization_record(
     const prepare::PreparedNameTables& names,
