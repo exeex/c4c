@@ -1,46 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/235_aarch64_scalar_cast_and_float_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Select F32/F64 Arithmetic Nodes
+Current Step ID: 5
+Current Step Title: Add Typed Float/Integer Conversion Nodes
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 selected F32/F64 scalar arithmetic nodes from prepared FPR/SIMD
-register authority without adding terminal printer output.
+Step 5 selected typed float/integer and F32/F64 width conversion cast nodes
+from prepared GPR/FPR register authority without adding terminal printer
+output.
 
 Completed work:
 
-- `ScalarAluRecord` now distinguishes supported integer and supported floating
-  operations, so F32/F64 selection does not masquerade as integer ALU support.
-- Added explicit scalar FP/SIMD register-view handling for prepared F32/F64
-  values beside `scalar_register_view`; F32 maps to S registers and F64 maps to
-  D registers without treating floats as W/X.
-- Prepared F32/F64 `Add`, `Sub`, `Mul`, and division-shaped BIR operations now
-  select into structured scalar machine records with destination/source FPR
-  register facts, operation kind, operand order, type width, and def/use facts.
-- `Mul` and `Div` are now explicit scalar machine opcodes/operation kinds for
-  selected records, but terminal printer mnemonics remain deferred.
-- F128/binary128, missing storage, wrong-bank GPR-backed float facts, compare
-  predicates, and unsupported non-arithmetic opcodes remain fail-closed.
-- Focused tests cover raw scalar records, prepared F32/F64 conversion, dispatch
-  selection from prepared FPR facts, and wrong-bank dispatch diagnostics.
+- `ScalarCastRecord` now has explicit conversion operation kinds for
+  `FPExt`, `FPTrunc`, `SIToFP`, `UIToFP`, `FPToSI`, and `FPToUI`.
+- Prepared conversion casts preserve source/result type widths, structured
+  source/destination register operands, and explicit source/result prepared
+  register-bank facts.
+- GPR-to-FPR and FPR-to-GPR conversions record a bank transition through
+  `crosses_register_bank`; F32/F64 width conversions remain within FPR/SIMD.
+- F32/F64 conversion selection uses the existing prepared register conversion
+  authority and the adjacent FP/SIMD view path, not W/X float shortcuts.
+- `Bitcast`, pointer casts, F128/binary128, wrong-bank storage, missing
+  register/storage facts, and unsupported conversion shapes remain fail-closed.
+- Focused tests cover raw conversion vocabulary, prepared int/float and
+  F32/F64 width conversion records, dispatch-selected bank transitions, and
+  missing bank authority diagnostics.
 
 ## Suggested Next
 
-Step 5 implementation packet: print the selected F32/F64 scalar arithmetic
-subset from structured FP/SIMD destination/source register facts, without
-adding F128/binary128 or FP cast output.
+Step 6 implementation packet: print selected F32/F64 arithmetic and conversion
+nodes from structured register/type/bank-transition facts, without adding
+F128/binary128 or unsupported pointer/bitcast output.
 
 ## Watchouts
 
-- Terminal printer output for F32/F64 arithmetic is intentionally still absent;
-  `Mul`/`Div` currently select as machine nodes but have no printable mnemonic
-  mapping.
-- Simple integer cast printing exists, but pointer, bitcast, float/int, and FP
-  width conversion casts remain intentionally unsupported.
+- Terminal printer output for F32/F64 arithmetic and conversion nodes is
+  intentionally still absent.
+- Conversion machine records that have no dedicated terminal opcode currently
+  carry selected scalar records with structured conversion payloads; printer
+  work must use the `ScalarCastRecord` fields, not infer from rendered names.
+- Simple integer cast printing exists, but pointer and bitcast casts remain
+  intentionally unsupported.
 - Do not route F32/F64 through GPR raw-bit conventions or revive the archived
   accumulator/scratch approach.
 - Keep the integer-only `scalar_register_view` behavior intact; use the
@@ -52,6 +55,6 @@ adding F128/binary128 or FP cast output.
 
 Fresh focused backend proof passed and wrote `test_after.log`:
 
-`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_instruction_dispatch|backend_aarch64_scalar_record_contract)$') > test_after.log 2>&1`
+`(cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_instruction_dispatch|backend_aarch64_scalar_record_contract)$') > test_after.log 2>&1`
 
 Result: 4/4 focused backend MIR tests passed.

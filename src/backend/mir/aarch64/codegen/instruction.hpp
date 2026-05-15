@@ -201,6 +201,12 @@ enum class ScalarCastOperationKind {
   SignExtend,
   ZeroExtend,
   Truncate,
+  FloatExtend,
+  FloatTruncate,
+  SignedIntToFloat,
+  UnsignedIntToFloat,
+  FloatToSignedInt,
+  FloatToUnsignedInt,
   Deferred,
 };
 
@@ -534,7 +540,14 @@ struct ScalarCastRecord {
   bir::TypeKind result_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
   OperandRecord source;
+  prepare::PreparedRegisterBank source_register_bank =
+      prepare::PreparedRegisterBank::None;
+  prepare::PreparedRegisterBank result_register_bank =
+      prepare::PreparedRegisterBank::None;
+  bool crosses_register_bank = false;
   bool supported_simple_integer_cast = false;
+  bool supported_float_integer_conversion = false;
+  bool supported_float_width_conversion = false;
 };
 
 struct ScalarInstructionRecord {
@@ -954,6 +967,7 @@ struct InstructionRecord {
 [[nodiscard]] bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_floating_type(bir::TypeKind type);
 [[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
+[[nodiscard]] bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     bir::BinaryOpcode opcode);
 [[nodiscard]] ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(

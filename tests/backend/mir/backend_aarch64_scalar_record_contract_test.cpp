@@ -70,6 +70,11 @@ aarch64_codegen::ScalarCastRecord cast_record(bir::CastOpcode opcode,
                                           source_type,
                                           3),
       .supported_simple_integer_cast = aarch64_codegen::is_simple_integer_cast_opcode(opcode),
+      .supported_float_integer_conversion =
+          opcode == bir::CastOpcode::FPToSI || opcode == bir::CastOpcode::FPToUI ||
+          opcode == bir::CastOpcode::SIToFP || opcode == bir::CastOpcode::UIToFP,
+      .supported_float_width_conversion =
+          opcode == bir::CastOpcode::FPExt || opcode == bir::CastOpcode::FPTrunc,
   };
 }
 
@@ -193,9 +198,10 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
     return fail("expected supported scalar cast vocabulary to be explicit");
   }
   if (aarch64_codegen::is_simple_integer_cast_opcode(bir::CastOpcode::FPExt) ||
+      !aarch64_codegen::is_supported_scalar_conversion_cast_opcode(bir::CastOpcode::FPExt) ||
       aarch64_codegen::is_simple_integer_cast_opcode(bir::CastOpcode::Bitcast) ||
       aarch64_codegen::scalar_cast_operation_from_cast_opcode(bir::CastOpcode::FPExt) !=
-          aarch64_codegen::ScalarCastOperationKind::Deferred ||
+          aarch64_codegen::ScalarCastOperationKind::FloatExtend ||
       aarch64_codegen::scalar_cast_operation_from_cast_opcode(bir::CastOpcode::Bitcast) !=
           aarch64_codegen::ScalarCastOperationKind::Deferred ||
       aarch64_codegen::scalar_cast_operation_kind_name(
@@ -204,7 +210,7 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
   }
 
   const auto deferred_alu = alu_record(bir::BinaryOpcode::Mul);
-  const auto deferred_cast = cast_record(bir::CastOpcode::FPExt,
+  const auto deferred_cast = cast_record(bir::CastOpcode::Bitcast,
                                          bir::TypeKind::F32,
                                          bir::TypeKind::F64);
   if (deferred_alu.operation != aarch64_codegen::ScalarAluOperationKind::Mul ||
@@ -213,7 +219,9 @@ int supported_and_deferred_scalar_vocabulary_is_explicit() {
       deferred_alu.source_binary_opcode != bir::BinaryOpcode::Mul ||
       deferred_cast.operation != aarch64_codegen::ScalarCastOperationKind::Deferred ||
       deferred_cast.supported_simple_integer_cast ||
-      deferred_cast.source_cast_opcode != bir::CastOpcode::FPExt) {
+      deferred_cast.supported_float_integer_conversion ||
+      deferred_cast.supported_float_width_conversion ||
+      deferred_cast.source_cast_opcode != bir::CastOpcode::Bitcast) {
     return fail("expected deferred scalar records to preserve source opcodes without support");
   }
 

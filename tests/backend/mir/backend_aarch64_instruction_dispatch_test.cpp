@@ -1647,6 +1647,103 @@ prepare::PreparedBirModule prepared_with_f64_scalar_alu(
   return prepared;
 }
 
+const char* dispatch_register_for_type(bir::TypeKind type, unsigned index) {
+  if (type == bir::TypeKind::F64) {
+    return index == 0 ? "d0" : "d1";
+  }
+  if (type == bir::TypeKind::F32) {
+    return index == 0 ? "s0" : "s1";
+  }
+  if (type == bir::TypeKind::I64 || type == bir::TypeKind::Ptr) {
+    return index == 0 ? "x0" : "x1";
+  }
+  return index == 0 ? "w0" : "w1";
+}
+
+prepare::PreparedStoragePlanValue dispatch_storage_for_type(prepare::PreparedValueId value_id,
+                                                            c4c::ValueNameId value_name,
+                                                            bir::TypeKind type,
+                                                            const char* register_name) {
+  if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
+    return fpr_storage(value_id, value_name, register_name);
+  }
+  return register_storage(value_id, value_name, register_name);
+}
+
+prepare::PreparedBirModule prepared_with_conversion_cast(
+    bir::CastOpcode opcode = bir::CastOpcode::SIToFP,
+    bir::TypeKind source_type = bir::TypeKind::I32,
+    bir::TypeKind result_type = bir::TypeKind::F64,
+    bool use_correct_banks = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.convert");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.convert.entry");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("dispatch.convert.entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto result_name = prepared.names.value_names.intern("%cast");
+  const char* source_register = dispatch_register_for_type(source_type, 1);
+  const char* result_register = dispatch_register_for_type(result_type, 0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.convert",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.convert.entry",
+              .insts =
+                  {bir::CastInst{
+                      .opcode = opcode,
+                      .result = bir::Value::named(result_type, "%cast"),
+                      .operand = bir::Value::named(source_type, "%src"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{40},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = source_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{41},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = result_register,
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          use_correct_banks
+              ? std::vector<prepare::PreparedStoragePlanValue>{
+                    dispatch_storage_for_type(
+                        prepare::PreparedValueId{40}, source_name, source_type, source_register),
+                    dispatch_storage_for_type(
+                        prepare::PreparedValueId{41}, result_name, result_type, result_register)}
+              : std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{40}, source_name, source_register),
+                    register_storage(prepare::PreparedValueId{41}, result_name, result_register)},
+  });
+  return prepared;
+}
+
 int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -3016,6 +3113,66 @@ int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
   return 0;
 }
 
+int block_dispatch_lowers_prepared_conversion_cast_with_bank_transition_facts() {
+  auto prepared = prepared_with_conversion_cast();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected dispatch to select conversion cast plus return");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (scalar == nullptr || !scalar->scalar_cast.has_value() ||
+      scalar->scalar_cast->operation !=
+          aarch64_codegen::ScalarCastOperationKind::SignedIntToFloat ||
+      !scalar->scalar_cast->supported_float_integer_conversion ||
+      !scalar->scalar_cast->crosses_register_bank ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->reg != aarch64_abi::d_register(0)) {
+    return fail("expected selected conversion cast to preserve result bank transition facts");
+  }
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(&scalar->scalar_cast->source.payload);
+  if (source == nullptr || source->reg != aarch64_abi::w_register(1) ||
+      scalar->scalar_cast->source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      scalar->scalar_cast->result_register_bank != prepare::PreparedRegisterBank::Fpr) {
+    return fail("expected selected conversion cast to preserve source bank transition facts");
+  }
+  return 0;
+}
+
+int block_dispatch_defers_conversion_cast_missing_bank_facts() {
+  auto prepared = prepared_with_conversion_cast(
+      bir::CastOpcode::SIToFP, bir::TypeKind::I32, bir::TypeKind::F64, false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+      block.instructions.size() != 1 || diagnostics.entries.empty()) {
+    return fail("expected conversion cast without bank authority to stay fail-closed");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   for (const auto kind :
        {StoreDispatchFixtureKind::FrameSlot, StoreDispatchFixtureKind::PointerValue}) {
@@ -3172,6 +3329,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_defers_floating_scalar_alu_missing_fpr_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_conversion_cast_with_bank_transition_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_defers_conversion_cast_missing_bank_facts();
       status != 0) {
     return status;
   }

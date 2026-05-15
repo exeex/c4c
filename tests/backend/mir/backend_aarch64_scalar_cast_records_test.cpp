@@ -51,6 +51,14 @@ aarch64_codegen::ScalarCastRecord scalar_cast_record(
       .source = source,
       .supported_simple_integer_cast =
           aarch64_codegen::is_simple_integer_cast_opcode(source_opcode),
+      .supported_float_integer_conversion =
+          source_opcode == bir::CastOpcode::FPToSI ||
+          source_opcode == bir::CastOpcode::FPToUI ||
+          source_opcode == bir::CastOpcode::SIToFP ||
+          source_opcode == bir::CastOpcode::UIToFP,
+      .supported_float_width_conversion =
+          source_opcode == bir::CastOpcode::FPExt ||
+          source_opcode == bir::CastOpcode::FPTrunc,
   };
 }
 
@@ -148,11 +156,18 @@ int truncate_records_preserve_structured_source_operand() {
 
 int unsupported_cast_forms_are_explicit_deferred_records() {
   if (aarch64_codegen::is_simple_integer_cast_opcode(bir::CastOpcode::FPExt) ||
+      !aarch64_codegen::is_supported_scalar_conversion_cast_opcode(bir::CastOpcode::FPExt) ||
+      !aarch64_codegen::is_supported_scalar_conversion_cast_opcode(bir::CastOpcode::FPToSI) ||
       aarch64_codegen::is_simple_integer_cast_opcode(bir::CastOpcode::Bitcast)) {
-    return fail("expected non-slice cast opcodes to remain outside simple cast vocabulary");
+    return fail("expected conversion cast opcodes to be distinct from simple cast vocabulary");
   }
   if (aarch64_codegen::scalar_cast_operation_from_cast_opcode(bir::CastOpcode::FPExt) !=
-          aarch64_codegen::ScalarCastOperationKind::Deferred ||
+          aarch64_codegen::ScalarCastOperationKind::FloatExtend ||
+      aarch64_codegen::scalar_cast_operation_from_cast_opcode(bir::CastOpcode::FPToSI) !=
+          aarch64_codegen::ScalarCastOperationKind::FloatToSignedInt ||
+      aarch64_codegen::scalar_cast_operation_kind_name(
+          aarch64_codegen::ScalarCastOperationKind::UnsignedIntToFloat) !=
+          "unsigned_int_to_float" ||
       aarch64_codegen::scalar_cast_operation_from_cast_opcode(bir::CastOpcode::Bitcast) !=
           aarch64_codegen::ScalarCastOperationKind::Deferred ||
       aarch64_codegen::scalar_cast_operation_kind_name(
@@ -161,7 +176,7 @@ int unsupported_cast_forms_are_explicit_deferred_records() {
   }
 
   const auto deferred = scalar_cast_record(aarch64_codegen::ScalarCastOperationKind::Deferred,
-                                           bir::CastOpcode::FPExt,
+                                           bir::CastOpcode::Bitcast,
                                            bir::TypeKind::F32,
                                            bir::TypeKind::F64,
                                            prepare::PreparedValueId{40},
@@ -171,8 +186,10 @@ int unsupported_cast_forms_are_explicit_deferred_records() {
                                                                      bir::TypeKind::I32,
                                                                      3));
   if (deferred.operation != aarch64_codegen::ScalarCastOperationKind::Deferred ||
-      deferred.source_cast_opcode != bir::CastOpcode::FPExt ||
-      deferred.supported_simple_integer_cast) {
+      deferred.source_cast_opcode != bir::CastOpcode::Bitcast ||
+      deferred.supported_simple_integer_cast ||
+      deferred.supported_float_integer_conversion ||
+      deferred.supported_float_width_conversion) {
     return fail("expected deferred cast record to preserve source opcode without claiming support");
   }
 

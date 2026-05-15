@@ -468,6 +468,18 @@ std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind) {
       return "zero_extend";
     case ScalarCastOperationKind::Truncate:
       return "truncate";
+    case ScalarCastOperationKind::FloatExtend:
+      return "float_extend";
+    case ScalarCastOperationKind::FloatTruncate:
+      return "float_truncate";
+    case ScalarCastOperationKind::SignedIntToFloat:
+      return "signed_int_to_float";
+    case ScalarCastOperationKind::UnsignedIntToFloat:
+      return "unsigned_int_to_float";
+    case ScalarCastOperationKind::FloatToSignedInt:
+      return "float_to_signed_int";
+    case ScalarCastOperationKind::FloatToUnsignedInt:
+      return "float_to_unsigned_int";
     case ScalarCastOperationKind::Deferred:
       return "deferred";
   }
@@ -823,6 +835,26 @@ bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
   return false;
 }
 
+bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode) {
+  switch (opcode) {
+    case bir::CastOpcode::FPTrunc:
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI:
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP:
+      return true;
+    case bir::CastOpcode::SExt:
+    case bir::CastOpcode::ZExt:
+    case bir::CastOpcode::Trunc:
+    case bir::CastOpcode::PtrToInt:
+    case bir::CastOpcode::IntToPtr:
+    case bir::CastOpcode::Bitcast:
+      return false;
+  }
+  return false;
+}
+
 ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -871,11 +903,17 @@ ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
     case bir::CastOpcode::Trunc:
       return ScalarCastOperationKind::Truncate;
     case bir::CastOpcode::FPTrunc:
+      return ScalarCastOperationKind::FloatTruncate;
     case bir::CastOpcode::FPExt:
+      return ScalarCastOperationKind::FloatExtend;
     case bir::CastOpcode::FPToSI:
+      return ScalarCastOperationKind::FloatToSignedInt;
     case bir::CastOpcode::FPToUI:
+      return ScalarCastOperationKind::FloatToUnsignedInt;
     case bir::CastOpcode::SIToFP:
+      return ScalarCastOperationKind::SignedIntToFloat;
     case bir::CastOpcode::UIToFP:
+      return ScalarCastOperationKind::UnsignedIntToFloat;
     case bir::CastOpcode::PtrToInt:
     case bir::CastOpcode::IntToPtr:
     case bir::CastOpcode::Bitcast:
@@ -2031,6 +2069,13 @@ MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation)
       return MachineOpcode::ZeroExtend;
     case ScalarCastOperationKind::Truncate:
       return MachineOpcode::Truncate;
+    case ScalarCastOperationKind::FloatExtend:
+    case ScalarCastOperationKind::FloatTruncate:
+    case ScalarCastOperationKind::SignedIntToFloat:
+    case ScalarCastOperationKind::UnsignedIntToFloat:
+    case ScalarCastOperationKind::FloatToSignedInt:
+    case ScalarCastOperationKind::FloatToUnsignedInt:
+      return MachineOpcode::Unspecified;
     case ScalarCastOperationKind::Deferred:
       return MachineOpcode::Unspecified;
   }
@@ -2359,7 +2404,9 @@ MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& i
                                        "scalar ALU operation is outside the selected subset"};
   }
   if (instruction.scalar_cast.has_value()) {
-    if (instruction.scalar_cast->supported_simple_integer_cast &&
+    if ((instruction.scalar_cast->supported_simple_integer_cast ||
+         instruction.scalar_cast->supported_float_integer_conversion ||
+         instruction.scalar_cast->supported_float_width_conversion) &&
         instruction.scalar_cast->operation != ScalarCastOperationKind::Deferred) {
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
@@ -3619,14 +3666,30 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
       storage_plan.function_name != value_locations.function_name) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::InvalidFunction);
   }
-  if (!is_simple_integer_cast_opcode(cast.opcode)) {
+  const bool is_simple_integer_cast = is_simple_integer_cast_opcode(cast.opcode);
+  const bool is_conversion_cast = is_supported_scalar_conversion_cast_opcode(cast.opcode);
+  if (!is_simple_integer_cast && !is_conversion_cast) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOpcode);
   }
   if (cast.result.kind != bir::Value::Kind::Named || cast.result.name.empty()) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultValue);
   }
-  if (!scalar_register_view(cast.result.type).has_value() ||
-      !scalar_register_view(cast.operand.type).has_value()) {
+  const bool source_is_integer = scalar_register_view(cast.operand.type).has_value();
+  const bool result_is_integer = scalar_register_view(cast.result.type).has_value();
+  const bool source_is_float = is_scalar_alu_floating_type(cast.operand.type);
+  const bool result_is_float = is_scalar_alu_floating_type(cast.result.type);
+  const bool supported_float_width_conversion =
+      (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
+       cast.result.type == bir::TypeKind::F64) ||
+      (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F64 &&
+       cast.result.type == bir::TypeKind::F32);
+  const bool supported_float_integer_conversion =
+      ((cast.opcode == bir::CastOpcode::SIToFP || cast.opcode == bir::CastOpcode::UIToFP) &&
+       source_is_integer && result_is_float) ||
+      ((cast.opcode == bir::CastOpcode::FPToSI || cast.opcode == bir::CastOpcode::FPToUI) &&
+       source_is_float && result_is_integer);
+  if ((!is_simple_integer_cast || !source_is_integer || !result_is_integer) &&
+      !supported_float_width_conversion && !supported_float_integer_conversion) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandType);
   }
 
@@ -3657,6 +3720,14 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
       error != PreparedScalarAluRecordError::None) {
     return scalar_cast_record_error(scalar_cast_operand_error_from_alu_error(error));
   }
+  const auto* source_register = std::get_if<RegisterOperand>(&source.payload);
+  if ((is_conversion_cast || supported_float_width_conversion) &&
+      (source.kind != OperandKind::Register || source_register == nullptr)) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandStorage);
+  }
+  const auto source_bank =
+      source_register != nullptr ? source_register->prepared_bank : prepare::PreparedRegisterBank::None;
+  const auto result_bank = result_register->prepared_bank;
 
   return PreparedScalarCastRecordResult{
       .record =
@@ -3670,7 +3741,14 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
               .result_type = cast.result.type,
               .result_register = result_register,
               .source = source,
-              .supported_simple_integer_cast = true,
+              .source_register_bank = source_bank,
+              .result_register_bank = result_bank,
+              .crosses_register_bank = source_bank != prepare::PreparedRegisterBank::None &&
+                                       result_bank != prepare::PreparedRegisterBank::None &&
+                                       source_bank != result_bank,
+              .supported_simple_integer_cast = is_simple_integer_cast,
+              .supported_float_integer_conversion = supported_float_integer_conversion,
+              .supported_float_width_conversion = supported_float_width_conversion,
           },
       .error = PreparedScalarCastRecordError::None,
   };
