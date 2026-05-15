@@ -1948,20 +1948,46 @@ void populate_i128_runtime_helper_call_ownership(
       helper.resource_policy.runtime_helper_callee &&
       helper.resource_policy.caller_saved_clobbers &&
       helper.resource_policy.preserves_source_operation_identity;
-  const bool has_abi_bindings =
-      helper.lhs_low_abi_argument.has_value() &&
-      helper.lhs_high_abi_argument.has_value() &&
-      helper.rhs_low_abi_argument.has_value() &&
-      helper.rhs_high_abi_argument.has_value() &&
-      helper.result_low_abi_result.has_value() &&
-      helper.result_high_abi_result.has_value();
-  const bool has_marshaling =
-      helper.lhs_low_argument_move.has_value() &&
-      helper.lhs_high_argument_move.has_value() &&
-      helper.rhs_low_argument_move.has_value() &&
-      helper.rhs_high_argument_move.has_value() &&
-      helper.result_low_unmarshal_move.has_value() &&
-      helper.result_high_unmarshal_move.has_value();
+  bool has_abi_bindings = false;
+  bool has_marshaling = false;
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::FloatIntegerConversion) {
+    const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
+    const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
+    if (operand_is_i128 && !result_is_i128) {
+      has_abi_bindings =
+          helper.lhs_low_abi_argument.has_value() &&
+          helper.lhs_high_abi_argument.has_value() &&
+          helper.scalar_result_abi_result.has_value();
+      has_marshaling =
+          helper.lhs_low_argument_move.has_value() &&
+          helper.lhs_high_argument_move.has_value() &&
+          helper.scalar_result_unmarshal_move.has_value();
+    } else if (!operand_is_i128 && result_is_i128) {
+      has_abi_bindings =
+          helper.scalar_operand_abi_argument.has_value() &&
+          helper.result_low_abi_result.has_value() &&
+          helper.result_high_abi_result.has_value();
+      has_marshaling =
+          helper.scalar_operand_argument_move.has_value() &&
+          helper.result_low_unmarshal_move.has_value() &&
+          helper.result_high_unmarshal_move.has_value();
+    }
+  } else if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem) {
+    has_abi_bindings =
+        helper.lhs_low_abi_argument.has_value() &&
+        helper.lhs_high_abi_argument.has_value() &&
+        helper.rhs_low_abi_argument.has_value() &&
+        helper.rhs_high_abi_argument.has_value() &&
+        helper.result_low_abi_result.has_value() &&
+        helper.result_high_abi_result.has_value();
+    has_marshaling =
+        helper.lhs_low_argument_move.has_value() &&
+        helper.lhs_high_argument_move.has_value() &&
+        helper.rhs_low_argument_move.has_value() &&
+        helper.rhs_high_argument_move.has_value() &&
+        helper.result_low_unmarshal_move.has_value() &&
+        helper.result_high_unmarshal_move.has_value();
+  }
   const bool has_live_preservation =
       helper.live_preservation_policy.evaluated &&
       helper.live_preservation_policy.caller_saved_clobbers_modeled &&
@@ -2010,7 +2036,10 @@ void populate_i128_runtime_helper_boundary_policy(
   helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{};
   helper.clobbered_registers.clear();
 
-  if (helper.helper_family != PreparedI128RuntimeHelperFamily::DivRem) {
+  const bool supported_family =
+      helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem ||
+      helper.helper_family == PreparedI128RuntimeHelperFamily::FloatIntegerConversion;
+  if (!supported_family) {
     append_i128_runtime_helper_fact(helper, "i128_helper_boundary_policy_deferred_for_family");
     return;
   }
@@ -2021,26 +2050,30 @@ void populate_i128_runtime_helper_boundary_policy(
       .caller_saved_clobbers = true,
       .preserves_source_operation_identity = true,
   };
-  helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{
-      .transition = PreparedI128RuntimeHelperAbiTransition::DirectRegisterPairArgumentsAndResult,
-      .argument_bank = PreparedRegisterBank::Gpr,
-      .result_bank = PreparedRegisterBank::Gpr,
-      .argument_count = 2,
-      .lanes_per_argument = 2,
-      .result_lane_count = 2,
-      .lane_width_bytes = 8,
-  };
   helper.clobbered_registers = build_call_clobber_set(target_profile, regalloc_function);
+
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem) {
+    helper.abi_policy = PreparedI128RuntimeHelper::AbiPolicy{
+        .transition = PreparedI128RuntimeHelperAbiTransition::DirectRegisterPairArgumentsAndResult,
+        .argument_bank = PreparedRegisterBank::Gpr,
+        .result_bank = PreparedRegisterBank::Gpr,
+        .argument_count = 2,
+        .lanes_per_argument = 2,
+        .result_lane_count = 2,
+        .lane_width_bytes = 8,
+    };
+  }
 
   if (helper.callee_name.empty()) {
     append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_callee_identity");
   }
-  if (helper.abi_policy.argument_bank == PreparedRegisterBank::None ||
-      helper.abi_policy.result_bank == PreparedRegisterBank::None ||
-      helper.abi_policy.argument_count != 2 ||
-      helper.abi_policy.lanes_per_argument != 2 ||
-      helper.abi_policy.result_lane_count != 2 ||
-      helper.abi_policy.lane_width_bytes != 8) {
+  if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem &&
+      (helper.abi_policy.argument_bank == PreparedRegisterBank::None ||
+       helper.abi_policy.result_bank == PreparedRegisterBank::None ||
+       helper.abi_policy.argument_count != 2 ||
+       helper.abi_policy.lanes_per_argument != 2 ||
+       helper.abi_policy.result_lane_count != 2 ||
+       helper.abi_policy.lane_width_bytes != 8)) {
     append_i128_runtime_helper_fact(helper, "i128_helper_boundary_requires_direct_gpr_pair_abi");
   }
   if (!helper.resource_policy.call_boundary ||

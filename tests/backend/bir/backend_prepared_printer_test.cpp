@@ -3025,8 +3025,32 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
-                       "i128_helper_boundary_policy_deferred_for_family",
-                       "i128 conversion helper deferred boundary diagnostic")) {
+                       "i128_helper block=0 inst=2 family=float_integer_conversion "
+                       "kind=float_to_signed_int opcode=fptosi callee=__fixdfti",
+                       "i128 conversion helper supported boundary detail")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"
+                       "source_operation_identity]",
+                       "i128 conversion helper resource boundary policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "scalar.operand=scalar_value_to_abi_argument",
+                       "i128 conversion helper scalar argument marshaling")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "scalar.result=abi_result_to_scalar_value",
+                       "i128 conversion helper scalar result unmarshaling")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "selected_call_ownership=[owns_terminal_call=yes,callee=yes,"
+                       "resources=yes,clobbers=yes,abi_bindings=yes,marshaling=yes,"
+                       "live_preservation=yes]",
+                       "i128 conversion helper selected-call ownership policy")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,

@@ -1,40 +1,35 @@
 Status: Active
 Source Idea Path: ideas/open/250_i128_deferred_helper_family_authority.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Add ABI Binding And Marshaling Authority
+Current Step ID: 5
+Current Step Title: Add Clobber, Resource, Live-Preservation, And Selected-Call Facts
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 4 by adding prepared/shared ABI binding and marshal/unmarshal
-facts for supported i128 float-conversion helper mappings.
+Executed Step 5 by adding clobber/resource, live-preservation, and
+selected-call ownership facts for supported i128 float-conversion helper
+families.
 
-FP-to-I128 helpers now expose scalar FP argument ABI binding in the target call
-argument FP bank, direct low/high i128 result ABI bindings in the call-result
-GPR bank, scalar-value-to-ABI argument marshaling, and ABI-result-to-carrier
-unmarshaling. I128-to-FP helpers now expose low/high i128 source ABI argument
-bindings in the call-argument GPR bank, scalar FP result ABI binding in the
-call-result FP bank, carrier-lane-to-ABI argument marshaling, and
-ABI-result-to-scalar-value unmarshaling.
-
-Unsupported F128/binary128 conversion mappings remain explicitly deferred, and
-memory-return-required helper ownership remains fail-closed because this packet
-does not add destination slot/offset producer authority. The prepared printer
-dumps the new scalar ABI bindings and scalar marshaling facts beside existing
-lane bindings without touching AArch64 selected-record or terminal printer
-consumption.
+Supported FP-to-I128 and I128-to-FP helpers now publish runtime-helper call
+resources, caller-saved clobber policy, live-preservation evaluation, and
+selected-call ownership when callee identity, resource/clobber policy, ABI
+bindings, marshaling/unmarshaling, and live preservation are complete.
+Selected-call completeness now uses the conversion helper's scalar/pair shape
+instead of the div/rem six-lane shape. F128/binary128 conversion mappings
+remain explicitly deferred, and memory-return-required ownership remains
+fail-closed because destination/slot/offset producer authority is still absent.
 
 ## Suggested Next
 
-Execute Step 5 as the clobber/resource, live-preservation, and selected-call
-ownership packet for supported i128 conversion helper families. Use the Step 4
-ABI and marshaling facts to decide when a conversion helper boundary has enough
-call policy to own a later selected terminal call, while keeping memory-return
-and F128/binary128 families fail-closed.
+Execute Step 6 as the validation and summary packet. Confirm the prepared/shared
+deferred helper authority is sufficient for supported conversion helpers,
+summarize remaining unsupported memory-return and F128/binary128 shapes, and
+ask the supervisor whether to close this prerequisite or activate a later
+selected AArch64 consumer route.
 
-Suggested focused proof for Step 5:
+Suggested focused proof for Step 6:
 
 ```bash
 (cmake --build build -j2 && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_liveness|backend_prepare_frame_stack_call_contract|backend_prepared_printer)$') > test_after.log 2>&1
@@ -45,9 +40,9 @@ Suggested focused proof for Step 5:
 - Do not reopen direct-result div/rem helper-call printing unless a concrete
   regression is found.
 - Conversion helpers now have source-operation/helper mapping records,
-  lane/scalar ownership facts, ABI register-bank transitions, and
-  marshal/unmarshal moves. Clobber/resource policy, live-preservation, and
-  selected-call ownership remain incomplete by design.
+  lane/scalar ownership facts, ABI register-bank transitions,
+  marshal/unmarshal moves, clobber/resource policy, live-preservation
+  evaluation, and selected-call ownership facts.
 - Do not treat the existing memory-return vocabulary as ownership. I128 helper
   memory-return support still lacks destination/slot/offset producer authority
   and helper ABI policy tying an sret/memory destination to the helper record.

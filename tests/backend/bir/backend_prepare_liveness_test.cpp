@@ -2861,13 +2861,30 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.lhs_value_name != helper.operand_value_name ||
         helper.rhs_value_id != 0 ||
         helper.rhs_value_name != c4c::kInvalidValueName ||
-        helper.resource_policy.call_boundary ||
-        helper.selected_call_ownership.owns_terminal_call ||
+        !helper.resource_policy.call_boundary ||
+        !helper.resource_policy.runtime_helper_callee ||
+        !helper.resource_policy.caller_saved_clobbers ||
+        !helper.resource_policy.preserves_source_operation_identity ||
+        helper.clobbered_registers.empty() ||
+        !helper.live_preservation_policy.evaluated ||
+        !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
+        !helper.selected_call_ownership.has_callee_identity ||
+        !helper.selected_call_ownership.has_resource_policy ||
+        !helper.selected_call_ownership.has_clobber_policy ||
+        !helper.selected_call_ownership.has_abi_bindings ||
+        !helper.selected_call_ownership.has_marshaling ||
         helper.memory_return.has_value() ||
         std::find(helper.missing_required_facts.begin(),
                   helper.missing_required_facts.end(),
-                  "i128_helper_boundary_policy_deferred_for_family") ==
-            helper.missing_required_facts.end()) {
+                  "i128_helper_boundary_policy_deferred_for_family") !=
+            helper.missing_required_facts.end() ||
+        (helper.selected_call_ownership.owns_terminal_call &&
+         (!helper.selected_call_ownership.has_live_preservation ||
+          !helper.live_preservation_policy.no_additional_live_preservation_required ||
+          std::find(helper.missing_required_facts.begin(),
+                    helper.missing_required_facts.end(),
+                    "selected_call_ownership_requires_live_preservation_policy") !=
+              helper.missing_required_facts.end()))) {
       return fail("prepared i128 conversion helper mapping lost structural source facts");
     }
     if (want.result_type == bir::TypeKind::I128) {
@@ -3065,7 +3082,6 @@ int check_i128_runtime_helper_mapping_authority() {
                 "live_preservation=yes]") == std::string::npos ||
       dump.find("carrier=memory_backed,slot=") == std::string::npos ||
       dump.find("result_requires_register_pair_carrier") == std::string::npos ||
-      dump.find("i128_helper_boundary_policy_deferred_for_family") == std::string::npos ||
       dump.find("missing fact=i128_float_integer_conversion_helper_mapping_deferred") ==
           std::string::npos) {
     return fail("prepared printer did not expose i128 runtime helper mapping facts");
