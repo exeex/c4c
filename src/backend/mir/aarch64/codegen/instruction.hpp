@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <variant>
 #include <vector>
@@ -1530,10 +1531,34 @@ struct ReturnInstructionRecord {
   bir::TypeKind value_type = bir::TypeKind::Void;
 };
 
+struct InlineAsmMachineOperandRecord {
+  bir::InlineAsmOperandKind kind = bir::InlineAsmOperandKind::Unsupported;
+  std::size_t constraint_index = 0;
+  std::string constraint;
+  std::optional<std::size_t> arg_index;
+  std::optional<std::size_t> output_index;
+  std::optional<std::size_t> tied_output_index;
+  std::optional<std::string> name;
+  std::optional<bir::Value> value;
+  std::optional<c4c::ValueNameId> value_name;
+  std::optional<prepare::PreparedValueHome> home;
+  std::optional<std::int64_t> immediate_value;
+  std::optional<OperandRecord> selected_operand;
+};
+
 struct AssemblerInstructionRecord {
   std::vector<OperandRecord> operands;
   bool has_inline_asm_payload = false;
   bool side_effects = false;
+  std::string inline_asm_template;
+  std::string inline_asm_constraints;
+  bool inline_asm_has_named_operand_references = false;
+  bool inline_asm_has_template_modifiers = false;
+  std::vector<InlineAsmMachineOperandRecord> inline_asm_operands;
+  std::vector<std::string> inline_asm_clobbers;
+  std::optional<bir::Value> inline_asm_result;
+  std::optional<c4c::ValueNameId> inline_asm_result_value_name;
+  std::optional<prepare::PreparedValueHome> inline_asm_result_home;
 };
 
 struct ObjectInstructionRecord {

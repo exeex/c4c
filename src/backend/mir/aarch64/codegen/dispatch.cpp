@@ -6,6 +6,7 @@
 #include "returns.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <vector>
 #include <optional>
 #include <string>
@@ -468,6 +469,117 @@ require_prepared_variadic_entry_plan(
     }
   }
   return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedInlineAsmCarrier* find_prepared_inline_asm_carrier(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr || context.function.control_flow == nullptr) {
+    return nullptr;
+  }
+  const auto* function_carriers = prepare::find_prepared_inline_asm_carriers(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (function_carriers == nullptr) {
+    return nullptr;
+  }
+  for (const auto& carrier : function_carriers->carriers) {
+    if (carrier.block_index == context.block_index &&
+        carrier.inst_index == instruction_index) {
+      return &carrier;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<std::string> inline_asm_operand_name(
+    const bir::CallInst& call_inst,
+    std::size_t constraint_index) {
+  if (!call_inst.inline_asm.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto& operand : call_inst.inline_asm->operands) {
+    if (operand.constraint_index == constraint_index && operand.name.has_value()) {
+      return operand.name;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] MachineEffectResource inline_asm_effect_from_operand(
+    const OperandRecord& operand) {
+  MachineEffectResource effect;
+  effect.operand = operand;
+  if (const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+      operand.kind == OperandKind::Register && reg != nullptr) {
+    effect.kind = MachineEffectResourceKind::Register;
+    effect.value_id = reg->value_id;
+    effect.value_name = reg->value_name;
+    effect.reg = reg->reg;
+    return effect;
+  }
+  if (const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+      operand.kind == OperandKind::Immediate && immediate != nullptr) {
+    effect.kind = MachineEffectResourceKind::PreparedValue;
+    effect.value_id = immediate->source_value_id;
+    effect.value_name = immediate->source_value_name;
+    return effect;
+  }
+  return effect;
+}
+
+[[nodiscard]] std::optional<RegisterOperand> make_inline_asm_register_operand(
+    const prepare::PreparedValueHome& home,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto converted =
+      abi::convert_prepared_register(*home.register_name,
+                                     prepare::PreparedRegisterBank::Gpr,
+                                     prepare::PreparedRegisterClass::General,
+                                     std::nullopt);
+  if (!converted.reg.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        converted.error.has_value()
+            ? converted.error->message
+            : "AArch64 inline-asm register home could not be converted");
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::ValueHome,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = prepare::PreparedRegisterClass::General,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .occupied_register_references = {*converted.reg},
+      .occupied_registers = {abi::register_name(*converted.reg)},
+  };
+}
+
+[[nodiscard]] std::string inline_asm_carrier_error_message(
+    std::string_view fact,
+    const prepare::PreparedInlineAsmCarrier* carrier = nullptr) {
+  std::string message =
+      "AArch64 inline-asm lowering requires a complete prepared inline-asm carrier";
+  if (!fact.empty()) {
+    message += "; missing fact=";
+    message += fact;
+  } else if (carrier != nullptr && !carrier->missing_required_facts.empty()) {
+    message += "; missing fact=";
+    message += carrier->missing_required_facts.front();
+  }
+  return message;
 }
 
 [[nodiscard]] std::string address_materialization_error_message(
@@ -2446,6 +2558,229 @@ struct LowerMemoryInstructionResult {
   };
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction> lower_inline_asm_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call_inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (!call_inst.inline_asm.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message("missing_retained_inline_asm_metadata"));
+    return std::nullopt;
+  }
+  if (context.function.target_profile == nullptr ||
+      !abi::is_aarch64_target(*context.function.target_profile)) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message("target_profile_is_not_aarch64"));
+    return std::nullopt;
+  }
+
+  const auto* carrier = find_prepared_inline_asm_carrier(context, instruction_index);
+  if (carrier == nullptr) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message("missing_prepared_inline_asm_carrier"));
+    return std::nullopt;
+  }
+  if (carrier->carrier_kind != prepare::PreparedInlineAsmCarrierKind::Complete ||
+      !carrier->missing_required_facts.empty()) {
+    append_call_diagnostic(diagnostics,
+                           module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+                           context,
+                           instruction_index,
+                           inline_asm_carrier_error_message({}, carrier));
+    return std::nullopt;
+  }
+  if (carrier->has_named_operand_references) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message("unsupported_named_operand_references"));
+    return std::nullopt;
+  }
+  if (carrier->has_template_modifiers) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        inline_asm_carrier_error_message("unsupported_template_modifiers"));
+    return std::nullopt;
+  }
+
+  AssemblerInstructionRecord record{
+      .has_inline_asm_payload = true,
+      .side_effects = carrier->side_effects,
+      .inline_asm_template = carrier->asm_text,
+      .inline_asm_constraints = carrier->constraints,
+      .inline_asm_has_named_operand_references =
+          carrier->has_named_operand_references,
+      .inline_asm_has_template_modifiers = carrier->has_template_modifiers,
+      .inline_asm_result = carrier->result,
+      .inline_asm_result_value_name = carrier->result_value_name,
+      .inline_asm_result_home = carrier->result_home,
+  };
+
+  record.inline_asm_operands.reserve(carrier->operands.size());
+  record.operands.reserve(carrier->operands.size());
+  for (const auto& operand : carrier->operands) {
+    InlineAsmMachineOperandRecord selected{
+        .kind = operand.kind,
+        .constraint_index = operand.constraint_index,
+        .constraint = operand.constraint,
+        .arg_index = operand.arg_index,
+        .output_index = operand.output_index,
+        .tied_output_index = operand.tied_output_index,
+        .name = inline_asm_operand_name(call_inst, operand.constraint_index),
+        .value = operand.value,
+        .value_name = operand.value_name,
+        .home = operand.home,
+        .immediate_value = operand.immediate_value,
+    };
+
+    switch (operand.kind) {
+      case bir::InlineAsmOperandKind::RegisterOutput: {
+        if (!carrier->result_home.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message("missing_result_register_home"));
+          return std::nullopt;
+        }
+        if (carrier->result_home->kind != prepare::PreparedValueHomeKind::Register ||
+            !carrier->result_home->register_name.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message("result_home_not_a_gpr"));
+          return std::nullopt;
+        }
+        selected.value = carrier->result;
+        selected.value_name = carrier->result_value_name;
+        selected.home = carrier->result_home;
+        const auto reg = make_inline_asm_register_operand(
+            *carrier->result_home, diagnostics, context, instruction_index);
+        if (!reg.has_value()) {
+          return std::nullopt;
+        }
+        selected.selected_operand = make_register_operand(*reg);
+        break;
+      }
+      case bir::InlineAsmOperandKind::RegisterInput:
+      case bir::InlineAsmOperandKind::TiedInput: {
+        if (!operand.home.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message("missing_register_operand_home"));
+          return std::nullopt;
+        }
+        if (operand.home->kind != prepare::PreparedValueHomeKind::Register ||
+            !operand.home->register_name.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message("register_operand_home_not_a_gpr"));
+          return std::nullopt;
+        }
+        const auto reg = make_inline_asm_register_operand(
+            *operand.home, diagnostics, context, instruction_index);
+        if (!reg.has_value()) {
+          return std::nullopt;
+        }
+        selected.selected_operand = make_register_operand(*reg);
+        break;
+      }
+      case bir::InlineAsmOperandKind::IntegerImmediateInput: {
+        if (!operand.immediate_value.has_value()) {
+          append_call_diagnostic(
+              diagnostics,
+              module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+              context,
+              instruction_index,
+              inline_asm_carrier_error_message("missing_integer_immediate_value"));
+          return std::nullopt;
+        }
+        selected.selected_operand = make_immediate_operand(ImmediateOperand{
+            .kind = ImmediateKind::SignedInteger,
+            .type = operand.value.has_value() ? operand.value->type : bir::TypeKind::Void,
+            .signed_value = *operand.immediate_value,
+            .unsigned_value = static_cast<std::uint64_t>(*operand.immediate_value),
+            .source_value_id = operand.home.has_value()
+                                   ? std::optional<prepare::PreparedValueId>{
+                                         operand.home->value_id}
+                                   : std::nullopt,
+            .source_value_name = operand.value_name.value_or(c4c::kInvalidValueName),
+        });
+        break;
+      }
+      case bir::InlineAsmOperandKind::Clobber:
+      case bir::InlineAsmOperandKind::Unsupported:
+        append_call_diagnostic(
+            diagnostics,
+            module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+            context,
+            instruction_index,
+            inline_asm_carrier_error_message("unsupported_inline_asm_operand_kind"));
+        return std::nullopt;
+    }
+
+    if (selected.selected_operand.has_value()) {
+      record.operands.push_back(*selected.selected_operand);
+    }
+    record.inline_asm_operands.push_back(std::move(selected));
+  }
+
+  InstructionRecord target = make_assembler_instruction(record);
+  target.surface = RecordSurfaceKind::MachineInstructionNode;
+  target.selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  target.function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName;
+  target.block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  target.operands = record.operands;
+  target.defs.clear();
+  target.uses.clear();
+  for (const auto& inline_operand : record.inline_asm_operands) {
+    if (!inline_operand.selected_operand.has_value()) {
+      continue;
+    }
+    const auto effect = inline_asm_effect_from_operand(*inline_operand.selected_operand);
+    if (inline_operand.kind == bir::InlineAsmOperandKind::RegisterOutput) {
+      target.defs.push_back(effect);
+    } else {
+      target.uses.push_back(effect);
+    }
+  }
+
+  return make_bir_machine_instruction(context, instruction_index, std::move(target));
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction> lower_intrinsic_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -2578,6 +2913,15 @@ InstructionDispatchResult dispatch_prepared_block(
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (call->inline_asm.has_value() ||
+            find_prepared_inline_asm_carrier(context, instruction_index) != nullptr) {
+          if (auto lowered = lower_inline_asm_instruction(
+                  context, *call, instruction_index, diagnostics)) {
+            block.instructions.push_back(std::move(*lowered));
+          }
+          ++result.visited_operations;
+          continue;
+        }
         if (find_prepared_intrinsic_carrier(context, instruction_index) != nullptr) {
           if (auto lowered = lower_intrinsic_instruction(
                   context, instruction_index, diagnostics)) {

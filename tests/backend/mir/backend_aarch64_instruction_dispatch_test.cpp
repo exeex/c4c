@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <iostream>
 #include <optional>
 #include <string>
@@ -164,6 +165,199 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
           }},
       }},
   });
+  return prepared;
+}
+
+enum class InlineAsmCarrierFixtureKind {
+  Complete,
+  Incomplete,
+  MissingResultHome,
+  UnsupportedOperand,
+  TemplateModifier,
+};
+
+prepare::PreparedValueHome inline_asm_register_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    std::string register_name) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = std::move(register_name),
+  };
+}
+
+prepare::PreparedValueHome inline_asm_immediate_home(
+    prepare::PreparedValueId value_id,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name,
+    std::int64_t value) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::RematerializableImmediate,
+      .immediate_i32 = value,
+  };
+}
+
+prepare::PreparedBirModule prepared_with_inline_asm_carrier(
+    InlineAsmCarrierFixtureKind kind) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.inline_asm");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.inline_asm.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.inline_asm.entry");
+  const auto out_name = prepared.names.value_names.intern("%out");
+  const auto seed_name = prepared.names.value_names.intern("%seed");
+  const auto input_name = prepared.names.value_names.intern("%input");
+  const auto imm_name = prepared.names.value_names.intern("7");
+
+  const auto out_value = bir::Value::named(bir::TypeKind::I32, "%out");
+  const auto seed_value = bir::Value::named(bir::TypeKind::I32, "%seed");
+  const auto input_value = bir::Value::named(bir::TypeKind::I32, "%input");
+  const auto imm_value = bir::Value::immediate_i32(7);
+
+  bir::InlineAsmMetadata inline_asm{
+      .asm_text = "add %0, %1, %2",
+      .constraints = "=r,0,r,i",
+      .side_effects = true,
+      .operands =
+          {bir::InlineAsmOperandMetadata{
+               .kind = bir::InlineAsmOperandKind::RegisterOutput,
+               .constraint_index = 0,
+               .constraint = "=r",
+               .output_index = std::size_t{0},
+           },
+           bir::InlineAsmOperandMetadata{
+               .kind = bir::InlineAsmOperandKind::TiedInput,
+               .constraint_index = 1,
+               .constraint = "0",
+               .arg_index = std::size_t{0},
+               .tied_output_index = std::size_t{0},
+           },
+           bir::InlineAsmOperandMetadata{
+               .kind = bir::InlineAsmOperandKind::RegisterInput,
+               .constraint_index = 2,
+               .constraint = "r",
+               .arg_index = std::size_t{1},
+               .name = std::string{"rhs"},
+           },
+           bir::InlineAsmOperandMetadata{
+               .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+               .constraint_index = 3,
+               .constraint = "i",
+               .arg_index = std::size_t{2},
+           }},
+      .has_template_modifiers = kind == InlineAsmCarrierFixtureKind::TemplateModifier,
+  };
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.inline_asm",
+      .return_type = bir::TypeKind::I32,
+      .blocks = {bir::Block{
+          .label = "dispatch.inline_asm.entry",
+          .insts = {bir::CallInst{
+              .result = out_value,
+              .callee = "llvm.inline_asm",
+              .args = {seed_value, input_value, imm_value},
+              .arg_types = {bir::TypeKind::I32, bir::TypeKind::I32, bir::TypeKind::I32},
+              .return_type = bir::TypeKind::I32,
+              .inline_asm = inline_asm,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+
+  const auto out_home = inline_asm_register_home(
+      prepare::PreparedValueId{50}, function_name, out_name, "w0");
+  const auto seed_home = inline_asm_register_home(
+      prepare::PreparedValueId{51}, function_name, seed_name, "w0");
+  const auto input_home = inline_asm_register_home(
+      prepare::PreparedValueId{52}, function_name, input_name, "w1");
+  const auto imm_home = inline_asm_immediate_home(
+      prepare::PreparedValueId{53}, function_name, imm_name, 7);
+
+  prepare::PreparedInlineAsmCarrier carrier{
+      .function_name = function_name,
+      .carrier_kind = kind == InlineAsmCarrierFixtureKind::Incomplete
+                          ? prepare::PreparedInlineAsmCarrierKind::Missing
+                          : prepare::PreparedInlineAsmCarrierKind::Complete,
+      .block_index = 0,
+      .inst_index = 0,
+      .asm_text = inline_asm.asm_text,
+      .constraints = inline_asm.constraints,
+      .side_effects = inline_asm.side_effects,
+      .has_template_modifiers = inline_asm.has_template_modifiers,
+      .operands =
+          {prepare::PreparedInlineAsmOperand{
+               .kind = bir::InlineAsmOperandKind::RegisterOutput,
+               .constraint_index = 0,
+               .constraint = "=r",
+               .output_index = std::size_t{0},
+           },
+           prepare::PreparedInlineAsmOperand{
+               .kind = bir::InlineAsmOperandKind::TiedInput,
+               .constraint_index = 1,
+               .constraint = "0",
+               .arg_index = std::size_t{0},
+               .tied_output_index = std::size_t{0},
+               .value = seed_value,
+               .value_name = seed_name,
+               .home = seed_home,
+           },
+           prepare::PreparedInlineAsmOperand{
+               .kind = kind == InlineAsmCarrierFixtureKind::UnsupportedOperand
+                           ? bir::InlineAsmOperandKind::Clobber
+                           : bir::InlineAsmOperandKind::RegisterInput,
+               .constraint_index = 2,
+               .constraint = "r",
+               .arg_index = std::size_t{1},
+               .value = input_value,
+               .value_name = input_name,
+               .home = input_home,
+           },
+           prepare::PreparedInlineAsmOperand{
+               .kind = bir::InlineAsmOperandKind::IntegerImmediateInput,
+               .constraint_index = 3,
+               .constraint = "i",
+               .arg_index = std::size_t{2},
+               .value = imm_value,
+               .value_name = imm_name,
+               .home = imm_home,
+               .immediate_value = std::int64_t{7},
+           }},
+      .result = out_value,
+      .result_value_name = out_name,
+      .result_home = kind == InlineAsmCarrierFixtureKind::MissingResultHome
+                         ? std::nullopt
+                         : std::optional<prepare::PreparedValueHome>{out_home},
+      .missing_required_facts = kind == InlineAsmCarrierFixtureKind::Incomplete
+                                    ? std::vector<std::string>{"missing_result_home"}
+                                    : std::vector<std::string>{},
+  };
+
+  prepared.inline_asm_carriers.functions.push_back(
+      prepare::PreparedInlineAsmCarrierFunction{
+          .function_name = function_name,
+          .carriers = {std::move(carrier)},
+      });
   return prepared;
 }
 
@@ -4119,6 +4313,137 @@ int block_dispatch_visits_prepared_instructions_in_order_and_fails_closed() {
       diagnostics.entries[1].instruction_family !=
           aarch64_module::InstructionLoweringFamily::Call) {
     return fail("expected second diagnostic to describe missing prepared call plan");
+  }
+  return 0;
+}
+
+int block_dispatch_selects_complete_inline_asm_machine_record() {
+  auto prepared =
+      prepared_with_inline_asm_carrier(InlineAsmCarrierFixtureKind::Complete);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected complete inline-asm carrier plus return without diagnostics");
+  }
+  const auto* assembler =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (assembler == nullptr ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::Assembler ||
+      block.instructions.front().target.surface !=
+          aarch64_codegen::RecordSurfaceKind::MachineInstructionNode ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected) {
+    return fail("expected selected inline-asm assembler machine record");
+  }
+  if (!assembler->has_inline_asm_payload ||
+      assembler->inline_asm_template != "add %0, %1, %2" ||
+      assembler->inline_asm_constraints != "=r,0,r,i" ||
+      !assembler->side_effects || assembler->inline_asm_has_template_modifiers ||
+      assembler->inline_asm_has_named_operand_references) {
+    return fail("expected inline-asm record to preserve raw payload facts");
+  }
+  if (!assembler->inline_asm_result.has_value() ||
+      !assembler->inline_asm_result_value_name.has_value() ||
+      !assembler->inline_asm_result_home.has_value()) {
+    return fail("expected inline-asm output facts on selected record");
+  }
+  if (assembler->operands.size() != 4 ||
+      assembler->inline_asm_operands.size() != 4 ||
+      block.instructions.front().target.defs.size() != 1 ||
+      block.instructions.front().target.uses.size() != 3) {
+    return fail("expected inline-asm selected operands, defs, and uses");
+  }
+  if (assembler->inline_asm_operands[0].kind !=
+          bir::InlineAsmOperandKind::RegisterOutput ||
+      assembler->inline_asm_operands[0].constraint != "=r" ||
+      !assembler->inline_asm_operands[0].output_index.has_value() ||
+      !assembler->inline_asm_operands[0].home.has_value()) {
+    return fail("expected register output placeholder and home");
+  }
+  if (assembler->inline_asm_operands[1].kind !=
+          bir::InlineAsmOperandKind::TiedInput ||
+      !assembler->inline_asm_operands[1].tied_output_index.has_value()) {
+    return fail("expected tied inline-asm input facts");
+  }
+  if (assembler->inline_asm_operands[2].kind !=
+          bir::InlineAsmOperandKind::RegisterInput ||
+      assembler->inline_asm_operands[2].name.value_or("") != "rhs") {
+    return fail("expected named register input fact when retained metadata has one");
+  }
+  if (assembler->inline_asm_operands[3].kind !=
+          bir::InlineAsmOperandKind::IntegerImmediateInput ||
+      assembler->inline_asm_operands[3].immediate_value.value_or(0) != 7 ||
+      assembler->inline_asm_operands[3].selected_operand->kind !=
+          aarch64_codegen::OperandKind::Immediate) {
+    return fail("expected integer immediate inline-asm operand fact");
+  }
+  if (block.instructions.front().target.side_effects.size() != 1 ||
+      block.instructions.front().target.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::InlineAssembly) {
+    return fail("expected inline-asm side-effect marker on selected record");
+  }
+  if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return after selected inline-asm record");
+  }
+  return 0;
+}
+
+int block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed() {
+  const std::array cases{
+      std::pair{InlineAsmCarrierFixtureKind::Incomplete,
+                std::string_view{"missing_result_home"}},
+      std::pair{InlineAsmCarrierFixtureKind::MissingResultHome,
+                std::string_view{"missing_result_register_home"}},
+      std::pair{InlineAsmCarrierFixtureKind::UnsupportedOperand,
+                std::string_view{"unsupported_inline_asm_operand_kind"}},
+      std::pair{InlineAsmCarrierFixtureKind::TemplateModifier,
+                std::string_view{"unsupported_template_modifiers"}},
+  };
+
+  for (const auto& [kind, expected_fact] : cases) {
+    auto prepared = prepared_with_inline_asm_carrier(kind);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1) {
+      return fail("expected malformed inline-asm carrier to remain diagnostic-only");
+    }
+    if (diagnostics.entries.front().kind !=
+            aarch64_module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily ||
+        diagnostics.entries.front().instruction_family !=
+            aarch64_module::InstructionLoweringFamily::Call ||
+        diagnostics.entries.front().message.find(expected_fact) ==
+            std::string::npos) {
+      return fail("expected inline-asm fail-closed diagnostic fact");
+    }
+    if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+            block.instructions.front().target.payload)) {
+      return fail("expected malformed inline-asm carrier to emit only return");
+    }
   }
   return 0;
 }
@@ -8297,6 +8622,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_visits_prepared_instructions_in_order_and_fails_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_selects_complete_inline_asm_machine_record();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_malformed_inline_asm_carriers_fail_closed();
       status != 0) {
     return status;
   }

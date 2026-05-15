@@ -1,54 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/240_aarch64_inline_asm_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Define Structured Inline-Asm Carriers
+Current Step ID: 3
+Current Step Title: Select AArch64 Inline-Asm Machine Records
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 2 first structured BIR/prepared inline-asm carrier packet
-without selecting AArch64 machine records.
+Completed Plan Step 3 AArch64 inline-asm machine-record selection for complete
+prepared carriers without adding template substitution or printer behavior.
 
 Implemented:
 
-- BIR inline-asm operand metadata for supported register inputs (`r`), one
-  register output (`=r`), numeric tied inputs, integer immediates (`i`/`I`),
-  clobber placeholders, unsupported constraints, named-reference flags, and
-  template-modifier flags.
-- LIR-to-BIR constraint-token parsing for structured inline-asm metadata while
-  preserving raw template/constraint text and fail-closed unsupported facts.
-- Prepared inline-asm carrier structs and population after existing value-home
-  authority is available.
-- Prepared validation for register input homes, result register homes, tied
-  input/result homes, literal or rematerializable integer immediates, operand
-  count mismatches, malformed ties, unsupported constraints, named references,
-  template modifiers, clobbers, and missing homes.
-- Prepared-printer section exposing complete inline-asm carriers and
-  missing-fact diagnostics for incomplete carriers.
-- Nearby BIR and prepared-printer tests covering supported positional register
-  input, one output plus numeric tie, integer immediate input, unsupported
-  constraint/name/modifier/clobber diagnostics, and missing-home diagnostics.
+- Selected AArch64 assembler machine records for retained inline-asm calls only
+  when the matching prepared inline-asm carrier is complete and target-valid.
+- The selected record carries raw template text, constraints, side-effect
+  state, operands, selected homes/registers/immediates, output/result facts,
+  numeric tie facts, placeholder indexes, and retained operand names when
+  available from BIR metadata.
+- Dispatch fails closed for missing carriers, incomplete carriers, missing
+  result/register homes, unsupported clobber/operand kinds, template modifiers,
+  and non-AArch64 target profiles.
+- Dispatch tests cover the complete selected carrier shape and representative
+  malformed/incomplete carriers staying diagnostic-only.
 
 ## Suggested Next
 
-Next coherent packet: consume complete prepared inline-asm carriers in the
-AArch64 selection layer by adding selected machine records only for the same
-minimal supported carrier shape, still leaving template substitution,
-modifiers, named operands, clobber modeling, allocator/spill work, and broader
-constraint families out of scope.
+Next coherent packet: implement Step 4 template substitution/printing from the
+selected structured inline-asm record, still using the raw template and
+structured operands as authority instead of formatting during dispatch.
 
 ## Watchouts
 
-- The carrier is structural authority only; this packet intentionally did not
-  select MIR/AArch64 machine records or substitute templates.
-- Named operands and clobbers remain diagnostic-only because source/LIR does
-  not provide structured name or clobber vectors.
-- Template modifiers are detected and preserved as fail-closed facts; no target
-  modifier interpretation is implemented yet.
-- Register constraints require existing prepared register homes. No allocator,
-  spill planner, scratch convention, or physical-register fabrication was added.
+- The selected record intentionally keeps `%0`/placeholder text unsubstituted;
+  no machine-printer behavior changed in this packet.
+- Clobbers and template modifiers remain fail-closed. Named operand references
+  remain unsupported, though retained operand names are copied when present.
+- Inline-asm register operands consume existing prepared GPR homes only; no
+  scratch assignment, allocator, spill, or broader constraint family work was
+  added.
 
 ## Proof
 
