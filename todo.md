@@ -1,53 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/238_aarch64_atomic_machine_nodes.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Print AArch64 Atomic Machine Nodes
+Current Step ID: 6
+Current Step Title: Allocate Atomic Loop Printer Facts In Selection
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 `Print AArch64 Atomic Machine Nodes` added final AArch64 machine-printer
-emission for selected atomic machine nodes from structured record facts.
-
-Changed behavior:
-- Atomic loads and stores now print width-aware plain/acquire/release AArch64
-  forms from selected `AtomicMemoryInstructionRecord` fields.
-- Non-relaxed fences print `dmb ish` from selected fence records.
-- Atomic RMW records print exclusive-access retry loops using structured
-  pointer, old-value, input, new-value scratch, status, opcode, and ordering
-  facts.
-- Compare-exchange records print success/failure paths from structured
-  expected, desired, loaded-value, result, status, success ordering, failure
-  ordering, result-mode, retry-loop, and monitor-clear facts.
-- Printer-only scratch/status fields were added to selected atomic records so
-  loops do not fall back to archived fixed scratch-register contracts.
-- Incomplete selected records remain fail-closed when printer-required loop
-  scratch, status, or loaded-value facts are absent.
-
-Added test coverage:
-- `backend_aarch64_machine_printer_test` now proves selected atomic
-  load/store/fence records print concrete AArch64 assembly.
-- The same printer test proves RMW retry-loop output and compare-exchange
-  boolean/old-value success/failure output are emitted from structured records.
-- Fail-closed printer coverage rejects atomic RMW and compare-exchange records
-  that lack required printer facts.
+Step 6 lifecycle review rejected closure for now and repaired the active
+runbook. Step 5 proved selected atomic records can print structured atomic
+machine nodes, but the source idea still requires the prepared-to-selected route
+to generate the loop scratch/status/loaded-value register facts needed by
+printable RMW and compare-exchange programs.
 
 ## Suggested Next
 
-Begin Step 6 `Prove Atomic Route And Decide Lifecycle` by validating the
-representative atomic backend route and asking the plan owner whether the source
-idea is complete or needs a follow-on gap recorded.
+Execute Step 6 `Allocate Atomic Loop Printer Facts In Selection`.
+
+Required proof command:
+`set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
 ## Watchouts
 
 - Do not infer atomic semantics from volatile flags, rendered text, fixed
   scratch-register snippets, or named testcase shortcuts.
 - Step 5 prints from selected atomic records, but the prepared-to-selected route
-  still does not allocate loop scratch/status registers for all end-to-end
-  atomic programs; Step 6 should decide whether that is a lifecycle-closing gap
-  or a follow-on packet.
+  still does not allocate loop scratch/status/loaded-value registers for all
+  end-to-end atomic programs; Step 6 owns that gap.
 - Preserve ordinary volatile memory behavior separately from atomic behavior;
   atomic selection must continue to require carrier provenance.
 - RMW and compare-exchange printer records now require explicit scratch/status
@@ -57,9 +37,14 @@ idea is complete or needs a follow-on gap recorded.
 
 ## Proof
 
-Proof command:
+Latest implementation proof command:
 `set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } 2>&1 | tee test_after.log`
 
-Result: passed, `139/139` backend tests green.
+Result: passed, `139/139` backend tests green for Step 5.
 
 Proof log: `test_after.log`.
+
+Lifecycle review:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+
+Result: passed, `139/139` before and after.
