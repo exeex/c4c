@@ -217,6 +217,29 @@ const prepare::PreparedIntrinsicCarrier* complete_vector_add_carrier() {
   return &carrier;
 }
 
+const prepare::PreparedIntrinsicCarrier* complete_barrier_dmb_carrier() {
+  static const prepare::PreparedIntrinsicCarrier carrier{
+      .function_name = c4c::FunctionNameId{2},
+      .carrier_kind = prepare::PreparedIntrinsicCarrierKind::Complete,
+      .family = bir::IntrinsicFamilyKind::Barrier,
+      .operation = bir::IntrinsicOperationKind::BarrierDmb,
+      .operand_type = bir::TypeKind::I32,
+      .result_type = bir::TypeKind::Void,
+      .operand_roles = {bir::IntrinsicOperandRole::BarrierDomain},
+      .memory_access = bir::IntrinsicMemoryAccessKind::None,
+      .barrier_domain = bir::IntrinsicBarrierDomainKind::Sy,
+      .has_immediate_operand = true,
+      .requires_immediate_operand = true,
+      .immediate_value = 15,
+      .operands = {bir::Value::immediate_i32(15)},
+      .operand_homes = {std::nullopt},
+      .has_side_effects = true,
+      .source_callee_name = std::string{"llvm.aarch64.dmb"},
+      .has_prepared_call_plan = true,
+  };
+  return &carrier;
+}
+
 aarch64_codegen::Crc32WIntrinsicRecord crc32w_record(
     aarch64_codegen::RegisterOperand result_register,
     aarch64_codegen::RegisterOperand accumulator_register,
@@ -1979,7 +2002,7 @@ int selected_crc_vector_intrinsics_reject_incomplete_printer_facts() {
   return 0;
 }
 
-int complete_crc_vector_intrinsic_carriers_do_not_print_as_machine_records() {
+int complete_unsupported_intrinsic_carriers_do_not_print_as_machine_records() {
   auto crc = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
   crc.source_carrier = complete_crc32w_carrier();
   crc.family = bir::IntrinsicFamilyKind::Crc;
@@ -2016,6 +2039,25 @@ int complete_crc_vector_intrinsic_carriers_do_not_print_as_machine_records() {
           std::string::npos ||
       !vector_print.instruction_lines.empty()) {
     return fail("expected complete vector carrier not to print as an AArch64 machine record");
+  }
+
+  auto barrier = scalar_fp_unary_fabs_record(bir::TypeKind::F32, sreg(0), sreg(1));
+  barrier.source_carrier = complete_barrier_dmb_carrier();
+  barrier.family = bir::IntrinsicFamilyKind::Barrier;
+  barrier.operation = bir::IntrinsicOperationKind::BarrierDmb;
+  barrier.operand_type = bir::TypeKind::I32;
+  barrier.result_type = bir::TypeKind::Void;
+  barrier.source_callee_name = std::string{"llvm.aarch64.dmb"};
+  barrier.has_side_effects = true;
+  const auto barrier_instruction =
+      aarch64_codegen::make_scalar_fp_unary_intrinsic_instruction(barrier);
+  const auto barrier_print =
+      aarch64_codegen::print_machine_instruction_line_payloads(barrier_instruction);
+  if (barrier_print.ok ||
+      barrier_print.diagnostic.find("outside the selected scalar FP unary subset") ==
+          std::string::npos ||
+      !barrier_print.instruction_lines.empty()) {
+    return fail("expected complete barrier DMB carrier not to print as an AArch64 machine record");
   }
 
   return 0;
@@ -4232,7 +4274,7 @@ int main() {
     return result;
   }
   if (const int result =
-          complete_crc_vector_intrinsic_carriers_do_not_print_as_machine_records();
+          complete_unsupported_intrinsic_carriers_do_not_print_as_machine_records();
       result != 0) {
     return result;
   }
