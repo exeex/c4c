@@ -1959,6 +1959,20 @@ prepare::PreparedI128Carrier make_i128_register_pair_carrier(
   };
 }
 
+prepare::PreparedStoragePlanValue make_gpr_storage(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
+                                                   const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
 int i128_transport_records_preserve_prepared_carrier_lanes() {
   prepare::PreparedI128CarrierFunction carriers{
       .function_name = c4c::FunctionNameId{2},
@@ -2111,6 +2125,78 @@ int i128_pair_records_preserve_sources_result_and_lane_semantics() {
       aarch64_codegen::i128_pair_lane_semantics_name(
           bitwise_record.record->lane_semantics) != "independent_bitwise") {
     return fail("expected i128 bitwise operation to preserve independent lane semantics");
+  }
+
+  prepare::PreparedValueLocationFunction value_locations{
+      .function_name = c4c::FunctionNameId{7},
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{80},
+              .function_name = c4c::FunctionNameId{7},
+              .value_name = names.value_names.intern("%cmp"),
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"w0"},
+          }},
+  };
+  prepare::PreparedStoragePlanFunction storage_plan{
+      .function_name = c4c::FunctionNameId{7},
+      .values = {make_gpr_storage(prepare::PreparedValueId{80},
+                                  value_locations.value_homes.front().value_name,
+                                  "w0")},
+  };
+  const bir::BinaryInst shift{
+      .opcode = bir::BinaryOpcode::AShr,
+      .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+      .rhs = bir::Value::immediate_i32(17),
+  };
+  const auto shift_record = aarch64_codegen::make_prepared_i128_shift_record(
+      names, value_locations, storage_plan, carriers, shift);
+  if (!shift_record.record.has_value() ||
+      shift_record.record->shift_kind != aarch64_codegen::I128ShiftKind::ArithmeticRight ||
+      shift_record.record->lane_semantics !=
+          aarch64_codegen::I128ShiftLaneSemantics::CrossLaneArithmeticRight ||
+      shift_record.record->count_kind != aarch64_codegen::I128ShiftCountKind::Immediate ||
+      aarch64_codegen::i128_shift_lane_semantics_name(
+          shift_record.record->lane_semantics) != "cross_lane_arithmetic_right") {
+    return fail("expected i128 shift record to preserve count and lane semantics");
+  }
+  const auto shift_instruction =
+      aarch64_codegen::make_i128_shift_instruction(*shift_record.record);
+  if (shift_instruction.opcode != aarch64_codegen::MachineOpcode::I128Shift ||
+      shift_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      shift_instruction.defs.size() != 2 || shift_instruction.uses.size() != 3) {
+    return fail("expected selected i128 shift instruction effects");
+  }
+
+  const bir::BinaryInst compare{
+      .opcode = bir::BinaryOpcode::Slt,
+      .result = bir::Value::named(bir::TypeKind::I1, "%cmp"),
+      .operand_type = bir::TypeKind::I128,
+      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+      .rhs = bir::Value::named(bir::TypeKind::I128, "%rhs"),
+  };
+  const auto compare_record = aarch64_codegen::make_prepared_i128_compare_record(
+      names, value_locations, storage_plan, carriers, compare);
+  if (!compare_record.record.has_value() ||
+      compare_record.record->signedness != aarch64_codegen::I128CompareSignedness::Signed ||
+      compare_record.record->high_word_semantics !=
+          aarch64_codegen::I128CompareHighWordSemantics::SignedHighWordFirst ||
+      !compare_record.record->result_register.has_value() ||
+      compare_record.record->result_register->reg != aarch64_abi::w_register(0) ||
+      aarch64_codegen::i128_compare_high_word_semantics_name(
+          compare_record.record->high_word_semantics) != "signed_high_word_first") {
+    return fail("expected i128 compare record to preserve signed high-word semantics");
+  }
+  const auto compare_instruction =
+      aarch64_codegen::make_i128_compare_instruction(*compare_record.record);
+  if (compare_instruction.opcode != aarch64_codegen::MachineOpcode::I128Compare ||
+      compare_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      compare_instruction.defs.size() != 1 || compare_instruction.uses.size() != 4) {
+    return fail("expected selected i128 compare instruction effects");
   }
 
   carriers.carriers.pop_back();

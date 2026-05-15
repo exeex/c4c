@@ -1537,6 +1537,140 @@ prepare::PreparedBirModule prepared_with_i128_pair_operation(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_i128_shift_operation() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.i128.shift");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.i128.shift.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.i128.shift.entry");
+  const auto result_name = prepared.names.value_names.intern("%shifted.i128");
+  const auto source_name = prepared.names.value_names.intern("%source.i128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.i128.shift",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.i128.shift.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::LShr,
+                      .result = bir::Value::named(bir::TypeKind::I128, "%shifted.i128"),
+                      .operand_type = bir::TypeKind::I128,
+                      .lhs = bir::Value::named(bir::TypeKind::I128, "%source.i128"),
+                      .rhs = bir::Value::immediate_i32(12),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+  });
+  prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {dispatch_i128_register_pair_carrier(function_name,
+                                               prepare::PreparedValueId{130},
+                                               result_name,
+                                               12),
+           dispatch_i128_register_pair_carrier(function_name,
+                                               prepare::PreparedValueId{131},
+                                               source_name,
+                                               14)},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_i128_compare_operation(bool include_result_storage = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.i128.compare");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.i128.compare.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.i128.compare.entry");
+  const auto result_name = prepared.names.value_names.intern("%cmp.i128");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs.cmp.i128");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs.cmp.i128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.i128.compare",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.i128.compare.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::Ult,
+                      .result = bir::Value::named(bir::TypeKind::I1, "%cmp.i128"),
+                      .operand_type = bir::TypeKind::I128,
+                      .lhs = bir::Value::named(bir::TypeKind::I128, "%lhs.cmp.i128"),
+                      .rhs = bir::Value::named(bir::TypeKind::I128, "%rhs.cmp.i128"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          include_result_storage
+              ? std::vector<prepare::PreparedValueHome>{prepare::PreparedValueHome{
+                    .value_id = prepare::PreparedValueId{140},
+                    .function_name = function_name,
+                    .value_name = result_name,
+                    .kind = prepare::PreparedValueHomeKind::Register,
+                    .register_name = std::string{"w3"},
+                }}
+              : std::vector<prepare::PreparedValueHome>{},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          include_result_storage
+              ? std::vector<prepare::PreparedStoragePlanValue>{
+                    register_storage(prepare::PreparedValueId{140}, result_name, "w3")}
+              : std::vector<prepare::PreparedStoragePlanValue>{},
+  });
+  prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {dispatch_i128_register_pair_carrier(function_name,
+                                               prepare::PreparedValueId{141},
+                                               lhs_name,
+                                               16),
+           dispatch_i128_register_pair_carrier(function_name,
+                                               prepare::PreparedValueId{142},
+                                               rhs_name,
+                                               18)},
+  });
+  return prepared;
+}
+
 enum class StoreDispatchFixtureKind {
   FrameSlot,
   PointerValue,
@@ -3299,6 +3433,99 @@ int block_dispatch_reports_missing_i128_pair_carrier_authority() {
   return 0;
 }
 
+int block_dispatch_lowers_i128_shift_from_prepared_carriers() {
+  auto prepared = prepared_with_i128_shift_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  const auto* shift =
+      !block.instructions.empty()
+          ? std::get_if<aarch64_codegen::I128ShiftRecord>(
+                &block.instructions.front().target.payload)
+          : nullptr;
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || shift == nullptr ||
+      block.instructions.front().target.opcode != aarch64_codegen::MachineOpcode::I128Shift ||
+      shift->shift_kind != aarch64_codegen::I128ShiftKind::LogicalRight ||
+      shift->lane_semantics !=
+          aarch64_codegen::I128ShiftLaneSemantics::CrossLaneLogicalRight ||
+      shift->count_kind != aarch64_codegen::I128ShiftCountKind::Immediate ||
+      shift->result.value_id != prepare::PreparedValueId{130} ||
+      shift->source.value_id != prepare::PreparedValueId{131} ||
+      block.instructions.front().target.defs.size() != 2 ||
+      block.instructions.front().target.uses.size() != 3) {
+    return fail("expected dispatch to select i128 logical shift from prepared carriers");
+  }
+  return 0;
+}
+
+int block_dispatch_lowers_i128_compare_from_prepared_carriers() {
+  auto prepared = prepared_with_i128_compare_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  const auto* compare =
+      !block.instructions.empty()
+          ? std::get_if<aarch64_codegen::I128CompareRecord>(
+                &block.instructions.front().target.payload)
+          : nullptr;
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || compare == nullptr ||
+      block.instructions.front().target.opcode != aarch64_codegen::MachineOpcode::I128Compare ||
+      compare->signedness != aarch64_codegen::I128CompareSignedness::Unsigned ||
+      compare->high_word_semantics !=
+          aarch64_codegen::I128CompareHighWordSemantics::UnsignedHighWordFirst ||
+      !compare->result_register.has_value() ||
+      compare->result_register->reg != aarch64_abi::w_register(3) ||
+      compare->lhs.value_id != prepare::PreparedValueId{141} ||
+      compare->rhs.value_id != prepare::PreparedValueId{142} ||
+      block.instructions.front().target.defs.size() != 1 ||
+      block.instructions.front().target.uses.size() != 4) {
+    return fail("expected dispatch to select i128 unsigned compare from prepared facts");
+  }
+  return 0;
+}
+
+int block_dispatch_reports_missing_i128_compare_result_authority() {
+  auto prepared = prepared_with_i128_compare_operation(false);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (diagnostics.entries.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      diagnostics.entries.front().message.find("missing_scalar_result_value_home") ==
+          std::string::npos) {
+    return fail("expected i128 compare dispatch to fail closed without scalar result authority");
+  }
+  return 0;
+}
+
 int block_dispatch_reports_missing_frame_slot_load_destination_authority() {
   auto prepared = prepared_with_frame_slot_load(false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -3714,6 +3941,19 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_i128_pair_carrier_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status = block_dispatch_lowers_i128_shift_from_prepared_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status = block_dispatch_lowers_i128_compare_from_prepared_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_reports_missing_i128_compare_result_authority();
       status != 0) {
     return status;
   }

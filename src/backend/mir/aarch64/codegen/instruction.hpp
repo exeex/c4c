@@ -117,6 +117,8 @@ enum class MachineOpcode {
   CallBoundaryAbiBinding,
   I128Transport,
   I128Pair,
+  I128Shift,
+  I128Compare,
   Add,
   Sub,
   Mul,
@@ -321,6 +323,35 @@ enum class I128PairLaneSemantics {
   IndependentBitwise,
 };
 
+enum class I128ShiftKind {
+  Left,
+  LogicalRight,
+  ArithmeticRight,
+};
+
+enum class I128ShiftLaneSemantics {
+  CrossLaneLeft,
+  CrossLaneLogicalRight,
+  CrossLaneArithmeticRight,
+};
+
+enum class I128ShiftCountKind {
+  Immediate,
+  Register,
+};
+
+enum class I128CompareSignedness {
+  Equality,
+  Signed,
+  Unsigned,
+};
+
+enum class I128CompareHighWordSemantics {
+  EqualityBothLanes,
+  SignedHighWordFirst,
+  UnsignedHighWordFirst,
+};
+
 enum class PreparedI128TransportRecordError {
   None,
   InvalidFunction,
@@ -343,6 +374,11 @@ enum class PreparedI128PairRecordError {
   IncompletePreparedI128Carrier,
   UnsupportedCarrierKind,
   RegisterConversionFailed,
+  MissingScalarResultValueHome,
+  MissingScalarResultStorage,
+  UnsupportedScalarResultStorage,
+  UnsupportedShiftCount,
+  MissingShiftCountStorage,
 };
 
 enum class AddressMaterializationKind {
@@ -722,6 +758,56 @@ struct PreparedI128PairRecordResult {
   PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
 };
 
+struct I128ShiftRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  I128ShiftKind shift_kind = I128ShiftKind::Left;
+  I128ShiftLaneSemantics lane_semantics = I128ShiftLaneSemantics::CrossLaneLeft;
+  I128ShiftCountKind count_kind = I128ShiftCountKind::Immediate;
+  bir::BinaryOpcode source_binary_opcode = bir::BinaryOpcode::Shl;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  bir::TypeKind operand_type = bir::TypeKind::I128;
+  bir::TypeKind result_type = bir::TypeKind::I128;
+  std::size_t lane_width_bytes = 8;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  I128PairOperandRecord result;
+  I128PairOperandRecord source;
+  OperandRecord shift_count;
+};
+
+struct I128CompareRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
+  I128CompareSignedness signedness = I128CompareSignedness::Equality;
+  I128CompareHighWordSemantics high_word_semantics =
+      I128CompareHighWordSemantics::EqualityBothLanes;
+  c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
+  c4c::BlockLabelId block_label = c4c::kInvalidBlockLabel;
+  std::size_t instruction_index = 0;
+  bir::TypeKind operand_type = bir::TypeKind::I128;
+  bir::TypeKind result_type = bir::TypeKind::I1;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  std::optional<RegisterOperand> result_register;
+  std::size_t lane_width_bytes = 8;
+  std::size_t total_size_bytes = 16;
+  std::size_t total_align_bytes = 16;
+  I128PairOperandRecord lhs;
+  I128PairOperandRecord rhs;
+};
+
+struct PreparedI128ShiftRecordResult {
+  std::optional<I128ShiftRecord> record;
+  PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
+};
+
+struct PreparedI128CompareRecordResult {
+  std::optional<I128CompareRecord> record;
+  PreparedI128PairRecordError error = PreparedI128PairRecordError::None;
+};
+
 struct AddressMaterializationRecord {
   RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
   AddressMaterializationKind kind = AddressMaterializationKind::DeferredUnsupported;
@@ -1005,6 +1091,8 @@ using InstructionPayload = std::variant<BranchInstructionRecord,
                                         ScalarInstructionRecord,
                                         I128TransportRecord,
                                         I128PairOperationRecord,
+                                        I128ShiftRecord,
+                                        I128CompareRecord,
                                         MemoryInstructionRecord,
                                         AddressMaterializationRecord,
                                         SpillReloadInstructionRecord,
@@ -1086,6 +1174,14 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view i128_pair_operation_kind_name(I128PairOperationKind kind);
 [[nodiscard]] std::string_view i128_pair_lane_semantics_name(
     I128PairLaneSemantics semantics);
+[[nodiscard]] std::string_view i128_shift_kind_name(I128ShiftKind kind);
+[[nodiscard]] std::string_view i128_shift_lane_semantics_name(
+    I128ShiftLaneSemantics semantics);
+[[nodiscard]] std::string_view i128_shift_count_kind_name(I128ShiftCountKind kind);
+[[nodiscard]] std::string_view i128_compare_signedness_name(
+    I128CompareSignedness signedness);
+[[nodiscard]] std::string_view i128_compare_high_word_semantics_name(
+    I128CompareHighWordSemantics semantics);
 [[nodiscard]] std::string_view prepared_i128_pair_record_error_name(
     PreparedI128PairRecordError error);
 [[nodiscard]] std::string_view address_materialization_kind_name(
@@ -1118,6 +1214,8 @@ struct InstructionRecord {
     I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_i128_pair_operation_instruction(
     I128PairOperationRecord instruction);
+[[nodiscard]] InstructionRecord make_i128_shift_instruction(I128ShiftRecord instruction);
+[[nodiscard]] InstructionRecord make_i128_compare_instruction(I128CompareRecord instruction);
 [[nodiscard]] InstructionRecord make_address_materialization_instruction(
     AddressMaterializationRecord instruction);
 [[nodiscard]] InstructionRecord make_spill_reload_instruction(
@@ -1228,6 +1326,18 @@ make_prepared_store_memory_instruction_record(
     std::optional<MemoryOperand> memory = std::nullopt);
 [[nodiscard]] PreparedI128PairRecordResult make_prepared_i128_pair_operation_record(
     const prepare::PreparedNameTables& names,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::BinaryInst& binary);
+[[nodiscard]] PreparedI128ShiftRecordResult make_prepared_i128_shift_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::BinaryInst& binary);
+[[nodiscard]] PreparedI128CompareRecordResult make_prepared_i128_compare_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     const bir::BinaryInst& binary);
 [[nodiscard]] PreparedAddressMaterializationRecordResult

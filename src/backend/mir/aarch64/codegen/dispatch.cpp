@@ -752,27 +752,90 @@ struct LowerMemoryInstructionResult {
     return LowerMemoryInstructionResult{.handled = true};
   }
 
-  auto prepared = make_prepared_i128_pair_operation_record(
-      context.function.prepared->names,
-      *i128_carriers,
-      *binary);
-  if (!prepared.record.has_value()) {
-    append_i128_pair_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-        context,
-        instruction_index,
-        i128_pair_error_message(prepared.error));
-    return LowerMemoryInstructionResult{.handled = true};
+  InstructionRecord target;
+  if (binary->opcode == bir::BinaryOpcode::Shl ||
+      binary->opcode == bir::BinaryOpcode::LShr ||
+      binary->opcode == bir::BinaryOpcode::AShr) {
+    if (context.function.value_locations == nullptr ||
+        context.function.storage_plan == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(PreparedI128PairRecordError::MissingShiftCountStorage));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    auto prepared = make_prepared_i128_shift_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *i128_carriers,
+        *binary);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(prepared.error));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    target = make_i128_shift_instruction(*prepared.record);
+  } else if (is_compare_predicate(binary->opcode)) {
+    if (context.function.value_locations == nullptr ||
+        context.function.storage_plan == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(PreparedI128PairRecordError::MissingScalarResultStorage));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    auto prepared = make_prepared_i128_compare_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *i128_carriers,
+        *binary);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(prepared.error));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    target = make_i128_compare_instruction(*prepared.record);
+  } else {
+    auto prepared = make_prepared_i128_pair_operation_record(
+        context.function.prepared->names,
+        *i128_carriers,
+        *binary);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(prepared.error));
+      return LowerMemoryInstructionResult{.handled = true};
+    }
+    target = make_i128_pair_operation_instruction(*prepared.record);
   }
-
-  InstructionRecord target =
-      make_i128_pair_operation_instruction(*prepared.record);
   target.function_name = context.function.control_flow->function_name;
   target.block_label = context.control_flow_block->block_label;
   target.block_index = context.block_index;
   target.instruction_index = instruction_index;
   if (auto* record = std::get_if<I128PairOperationRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  } else if (auto* record = std::get_if<I128ShiftRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  } else if (auto* record = std::get_if<I128CompareRecord>(&target.payload)) {
     record->block_label = context.control_flow_block->block_label;
     record->instruction_index = instruction_index;
   }
