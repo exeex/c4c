@@ -1,7 +1,8 @@
 # Inline Assembly Memory And Address Constraints
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
+Closed: 2026-05-15
 
 Parent Context: ideas/closed/240_aarch64_inline_asm_machine_nodes.md
 
@@ -67,3 +68,10 @@ them as real supported operands.
   claimed as memory/address capability.
 - Reject broad unrelated backend rewrites that do not establish target-valid
   inline-asm memory/address homes.
+
+## Closure Notes
+
+Closed after Step 5 hardened supported and fail-closed backend coverage for the
+structured prepared-home rule. The close-time backend regression guard passed in
+non-decreasing mode over canonical logs: both `test_before.log` and
+`test_after.log` reported 139/139 passing backend tests with no new failures.
