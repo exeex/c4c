@@ -121,6 +121,8 @@ int supported_scalar_cast_records_preserve_prepared_and_bir_facts() {
     aarch64_codegen::ScalarCastOperationKind operation;
     aarch64_abi::RegisterReference source_register;
     aarch64_abi::RegisterView source_view;
+    aarch64_abi::RegisterReference result_register;
+    aarch64_abi::RegisterView result_view;
   };
   const Case cases[] = {
       {bir::CastOpcode::SExt,
@@ -128,19 +130,25 @@ int supported_scalar_cast_records_preserve_prepared_and_bir_facts() {
        bir::TypeKind::I64,
        aarch64_codegen::ScalarCastOperationKind::SignExtend,
        aarch64_abi::w_register(1),
-       aarch64_abi::RegisterView::W},
+       aarch64_abi::RegisterView::W,
+       aarch64_abi::x_register(0),
+       aarch64_abi::RegisterView::X},
       {bir::CastOpcode::ZExt,
        bir::TypeKind::I1,
        bir::TypeKind::I32,
        aarch64_codegen::ScalarCastOperationKind::ZeroExtend,
        aarch64_abi::w_register(1),
+       aarch64_abi::RegisterView::W,
+       aarch64_abi::w_register(0),
        aarch64_abi::RegisterView::W},
       {bir::CastOpcode::Trunc,
        bir::TypeKind::I64,
        bir::TypeKind::I32,
        aarch64_codegen::ScalarCastOperationKind::Truncate,
        aarch64_abi::x_register(1),
-       aarch64_abi::RegisterView::X},
+       aarch64_abi::RegisterView::X,
+       aarch64_abi::w_register(0),
+       aarch64_abi::RegisterView::W},
   };
 
   for (const auto& test_case : cases) {
@@ -161,7 +169,11 @@ int supported_scalar_cast_records_preserve_prepared_and_bir_facts() {
         instruction.result_type != test_case.result_type ||
         instruction.source_cast_opcode != test_case.opcode ||
         instruction.source_binary_opcode.has_value() || !instruction.scalar_cast.has_value() ||
-        instruction.scalar_alu.has_value() || instruction.inputs.size() != 1) {
+        instruction.scalar_alu.has_value() || instruction.inputs.size() != 1 ||
+        !instruction.result_register.has_value() ||
+        instruction.result_register->reg != test_case.result_register ||
+        instruction.result_register->expected_view != test_case.result_view ||
+        instruction.result_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {
       return fail("expected scalar instruction wrapper to preserve cast result and source opcode");
     }
 
@@ -170,7 +182,10 @@ int supported_scalar_cast_records_preserve_prepared_and_bir_facts() {
         cast.operation != test_case.operation || cast.source_cast_opcode != test_case.opcode ||
         cast.source_type != test_case.source_type || cast.result_type != test_case.result_type ||
         cast.result_value_id != prepare::PreparedValueId{21} ||
-        cast.result_value_name != fixture.result_name || !cast.supported_simple_integer_cast) {
+        cast.result_value_name != fixture.result_name || !cast.result_register.has_value() ||
+        cast.result_register->reg != test_case.result_register ||
+        cast.result_register->expected_view != test_case.result_view ||
+        !cast.supported_simple_integer_cast) {
       return fail("expected cast record to preserve structured BIR and prepared ids");
     }
 
@@ -214,6 +229,13 @@ int prepared_scalar_cast_registers_prefer_storage_register_placement() {
       source->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       source->expected_view != aarch64_abi::RegisterView::W) {
     return fail("expected cast source to use storage placement register");
+  }
+  if (!result.record->result_register.has_value() ||
+      result.record->result_register->reg != aarch64_abi::x_register(4) ||
+      result.record->result_register->role !=
+          aarch64_codegen::RegisterOperandRole::StoragePlan ||
+      result.record->result_register->expected_view != aarch64_abi::RegisterView::X) {
+    return fail("expected cast result to use storage placement register");
   }
   return 0;
 }

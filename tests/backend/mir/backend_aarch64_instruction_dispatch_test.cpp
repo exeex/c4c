@@ -12,6 +12,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 namespace {
 
@@ -1472,6 +1473,80 @@ prepare::PreparedBirModule prepared_with_store(StoreDispatchFixtureKind kind,
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_simple_integer_cast(
+    bir::CastOpcode opcode = bir::CastOpcode::SExt,
+    bir::TypeKind source_type = bir::TypeKind::I32,
+    bir::TypeKind result_type = bir::TypeKind::I64,
+    bool include_result_storage = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.cast");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.cast.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.cast.entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto result_name = prepared.names.value_names.intern("%cast");
+  const char* source_register = source_type == bir::TypeKind::I64 ? "x1" : "w1";
+  const char* result_register = result_type == bir::TypeKind::I64 ? "x0" : "w0";
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.cast",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.cast.entry",
+              .insts =
+                  {bir::CastInst{
+                      .opcode = opcode,
+                      .result = bir::Value::named(result_type, "%cast"),
+                      .operand = bir::Value::named(source_type, "%src"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{20},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = source_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{21},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = result_register,
+           }},
+  });
+  std::vector<prepare::PreparedStoragePlanValue> values = {
+      register_storage(prepare::PreparedValueId{20}, source_name, source_register),
+  };
+  if (include_result_storage) {
+    values.push_back(
+        register_storage(prepare::PreparedValueId{21}, result_name, result_register));
+  }
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = values,
+  });
+  return prepared;
+}
+
 int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -2674,6 +2749,100 @@ int block_dispatch_reports_missing_frame_slot_load_destination_authority() {
   return 0;
 }
 
+int block_dispatch_lowers_prepared_simple_integer_cast_with_result_register() {
+  auto prepared = prepared_with_simple_integer_cast();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected dispatch to select simple cast plus return");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (scalar == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !scalar->scalar_cast.has_value() || scalar->scalar_alu.has_value() ||
+      scalar->source_cast_opcode != bir::CastOpcode::SExt ||
+      scalar->result_value_id != prepare::PreparedValueId{21} ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->occupied_registers.empty() ||
+      scalar->result_register->occupied_registers.front() != "x0") {
+    return fail("expected selected simple cast to preserve destination register facts");
+  }
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(
+          &scalar->scalar_cast->source.payload);
+  if (source == nullptr || source->value_id != prepare::PreparedValueId{20} ||
+      source->occupied_registers.empty() || source->occupied_registers.front() != "w1" ||
+      block.instructions.front().target.defs.empty() ||
+      block.instructions.front().target.defs.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::Register) {
+    return fail("expected selected simple cast to preserve source register and def facts");
+  }
+
+  return 0;
+}
+
+int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
+  {
+    auto prepared = prepared_with_simple_integer_cast(
+        bir::CastOpcode::FPExt, bir::TypeKind::F32, bir::TypeKind::F64);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().instruction_family !=
+            aarch64_module::InstructionLoweringFamily::Scalar) {
+      return fail("expected unsupported FP cast to stay fail-closed in dispatch");
+    }
+  }
+
+  {
+    auto prepared = prepared_with_simple_integer_cast(
+        bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64, false);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (result.visited_operations != 1 || result.emitted_instructions != 1 ||
+        block.instructions.size() != 1 || diagnostics.entries.size() != 1 ||
+        diagnostics.entries.front().instruction_family !=
+            aarch64_module::InstructionLoweringFamily::Scalar) {
+      return fail("expected missing cast result storage to stay fail-closed in dispatch");
+    }
+  }
+
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   for (const auto kind :
        {StoreDispatchFixtureKind::FrameSlot, StoreDispatchFixtureKind::PointerValue}) {
@@ -2810,6 +2979,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_reports_missing_frame_slot_load_destination_authority();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_simple_integer_cast_with_result_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts();
       status != 0) {
     return status;
   }

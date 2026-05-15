@@ -2878,6 +2878,7 @@ ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cas
       .result_value_id = cast.result_value_id,
       .result_value_name = cast.result_value_name,
       .result_type = cast.result_type,
+      .result_register = cast.result_register,
       .inputs = {cast.source},
       .source_cast_opcode = cast.source_cast_opcode,
       .scalar_cast = cast,
@@ -3557,6 +3558,11 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
         *result_home->register_name != *result_storage->register_name))) {
     return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultStorage);
   }
+  const auto result_register = make_prepared_register_operand(
+      *result_home, *result_storage, cast.result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return scalar_cast_record_error(PreparedScalarCastRecordError::RegisterConversionFailed);
+  }
 
   OperandRecord source;
   if (const auto error =
@@ -3575,6 +3581,7 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
               .result_value_id = result_home->value_id,
               .result_value_name = result_home->value_name,
               .result_type = cast.result.type,
+              .result_register = result_register,
               .source = source,
               .supported_simple_integer_cast = true,
           },

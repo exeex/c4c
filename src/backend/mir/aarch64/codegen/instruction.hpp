@@ -527,6 +527,7 @@ struct ScalarCastRecord {
   std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   bir::TypeKind result_type = bir::TypeKind::Void;
+  std::optional<RegisterOperand> result_register;
   OperandRecord source;
   bool supported_simple_integer_cast = false;
 };
