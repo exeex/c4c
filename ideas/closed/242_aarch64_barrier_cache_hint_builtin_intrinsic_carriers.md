@@ -1,9 +1,22 @@
 # AArch64 Barrier Cache Hint Builtin Intrinsic Carriers
 
-Status: Open
+Status: Closed
 Created: 2026-05-15
 
 Parent Context: ideas/closed/239_aarch64_intrinsic_machine_nodes.md
+
+## Closure Note
+
+Closed after completing the implementable DMB barrier carrier route: semantic
+BIR records the no-result AArch64 `BarrierDmb` carrier with immediate operand
+authority, prepared carriers preserve the DMB family, feature, operand role,
+and immediate value without inventing value homes, and AArch64 dispatch plus
+machine-printer tests prove the complete carrier remains non-selected.
+
+The non-DMB scope from the original idea is intentionally split to
+`ideas/open/243_aarch64_cache_hint_builtin_intrinsic_carriers.md` because
+cache-maintenance, pause/hint, and builtin-address still need separate carrier
+authority and builtin-address overlaps address-materialization/TLS ownership.
 
 ## Goal
 
