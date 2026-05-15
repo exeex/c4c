@@ -1701,6 +1701,7 @@ enum class PreparedI128RuntimeHelperKind {
 enum class PreparedI128RuntimeHelperResultOwnership {
   Missing,
   DirectLowHighLanes,
+  ScalarValue,
   MemoryReturn,
 };
 
@@ -1711,6 +1712,8 @@ enum class PreparedI128RuntimeHelperResultOwnership {
       return "missing";
     case PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes:
       return "direct_low_high_lanes";
+    case PreparedI128RuntimeHelperResultOwnership::ScalarValue:
+      return "scalar_value";
     case PreparedI128RuntimeHelperResultOwnership::MemoryReturn:
       return "memory_return";
   }
@@ -1834,6 +1837,18 @@ struct PreparedI128RuntimeHelper {
     std::optional<std::size_t> stack_offset_bytes;
   };
 
+  struct ScalarValueOwnership {
+    PreparedValueId value_id = 0;
+    ValueNameId value_name = kInvalidValueName;
+    bir::TypeKind type = bir::TypeKind::Void;
+    std::size_t width_bytes = 0;
+    PreparedRegisterBank register_bank = PreparedRegisterBank::None;
+    PreparedValueHomeKind home_kind = PreparedValueHomeKind::None;
+    std::optional<std::string> register_name;
+    std::optional<PreparedFrameSlotId> slot_id;
+    std::optional<std::size_t> stack_offset_bytes;
+  };
+
   FunctionNameId function_name = kInvalidFunctionName;
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
@@ -1879,6 +1894,8 @@ struct PreparedI128RuntimeHelper {
   LivePreservationPolicy live_preservation_policy;
   SelectedCallOwnershipPolicy selected_call_ownership;
   std::optional<MemoryReturnOwnership> memory_return;
+  std::optional<ScalarValueOwnership> scalar_operand;
+  std::optional<ScalarValueOwnership> scalar_result;
   ResourcePolicy resource_policy;
   AbiPolicy abi_policy;
   std::vector<PreparedClobberedRegister> clobbered_registers;

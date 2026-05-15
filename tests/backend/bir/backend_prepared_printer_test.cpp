@@ -2995,6 +2995,16 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,
+                       "scalar_ownership operand=fp#",
+                       "i128 conversion helper scalar FP source ownership")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "[type=f64,width=8,bank=fpr,home=",
+                       "i128 conversion helper scalar FP home facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
                        "i128_helper block=0 inst=3 family=float_integer_conversion kind=unsigned_int_to_float opcode=uitofp callee=__floatuntidf source_type=i128 result_type=f64 result=to.fp#",
                        "i128 unsigned-to-float conversion helper mapping detail")) {
     return EXIT_FAILURE;
@@ -3002,6 +3012,16 @@ int main() {
   if (!expect_contains(i128_helper_dump,
                        "source_width=16 result_width=8 source_signed=no result_signed=no",
                        "i128 conversion helper unsigned source facts")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "result_ownership=scalar_value memory_return=<none>",
+                       "i128 conversion helper scalar result ownership policy")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(i128_helper_dump,
+                       "scalar_ownership operand=<none> result=to.fp#",
+                       "i128 conversion helper scalar result ownership")) {
     return EXIT_FAILURE;
   }
   if (!expect_contains(i128_helper_dump,

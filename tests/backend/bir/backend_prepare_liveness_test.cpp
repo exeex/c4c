@@ -2865,11 +2865,51 @@ int check_i128_runtime_helper_mapping_authority() {
         helper.abi_policy.transition !=
             prepare::PreparedI128RuntimeHelperAbiTransition::Missing ||
         helper.selected_call_ownership.owns_terminal_call ||
+        helper.memory_return.has_value() ||
         std::find(helper.missing_required_facts.begin(),
                   helper.missing_required_facts.end(),
                   "i128_helper_boundary_policy_deferred_for_family") ==
             helper.missing_required_facts.end()) {
       return fail("prepared i128 conversion helper mapping lost structural source facts");
+    }
+    if (want.result_type == bir::TypeKind::I128) {
+      if (helper.result_ownership !=
+              prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes ||
+          !helper.scalar_operand.has_value() ||
+          helper.scalar_operand->value_name != helper.operand_value_name ||
+          helper.scalar_operand->type != want.source_type ||
+          helper.scalar_operand->width_bytes != want.source_width ||
+          helper.scalar_operand->register_bank != prepare::PreparedRegisterBank::Fpr ||
+          helper.scalar_result.has_value() ||
+          !helper.result_low_lane.has_value() ||
+          !helper.result_high_lane.has_value() ||
+          std::find(helper.missing_required_facts.begin(),
+                    helper.missing_required_facts.end(),
+                    "lhs_missing_prepared_i128_carrier") !=
+              helper.missing_required_facts.end()) {
+        return fail("prepared FP-to-i128 helper lost scalar source or direct i128 result ownership");
+      }
+    } else {
+      if (helper.result_ownership !=
+              prepare::PreparedI128RuntimeHelperResultOwnership::ScalarValue ||
+          helper.scalar_operand.has_value() ||
+          !helper.scalar_result.has_value() ||
+          helper.scalar_result->value_name != helper.result_value_name ||
+          helper.scalar_result->type != want.result_type ||
+          helper.scalar_result->width_bytes != want.result_width ||
+          helper.scalar_result->register_bank != prepare::PreparedRegisterBank::Fpr ||
+          !helper.lhs_low_lane.has_value() ||
+          !helper.lhs_high_lane.has_value() ||
+          std::find(helper.missing_required_facts.begin(),
+                    helper.missing_required_facts.end(),
+                    "result_missing_prepared_i128_carrier") !=
+              helper.missing_required_facts.end() ||
+          std::find(helper.missing_required_facts.begin(),
+                    helper.missing_required_facts.end(),
+                    "missing_i128_helper_result_ownership_policy") !=
+              helper.missing_required_facts.end()) {
+        return fail("prepared i128-to-FP helper lost i128 source or scalar result ownership");
+      }
     }
   }
 
@@ -2902,12 +2942,17 @@ int check_i128_runtime_helper_mapping_authority() {
       dump.find("operand=p.f64#") == std::string::npos ||
       dump.find("source_width=8 result_width=16 source_signed=no result_signed=yes") ==
           std::string::npos ||
+      dump.find("scalar_ownership operand=p.f64#") == std::string::npos ||
+      dump.find("[type=f64,width=8,bank=fpr,home=") == std::string::npos ||
       dump.find("family=float_integer_conversion kind=signed_int_to_float opcode=sitofp "
                 "callee=__floattidf source_type=i128 result_type=f64 result=to.f64.s#") ==
           std::string::npos ||
       dump.find("operand=p.lhs#") == std::string::npos ||
       dump.find("source_width=16 result_width=8 source_signed=yes result_signed=no") ==
           std::string::npos ||
+      dump.find("result_ownership=scalar_value memory_return=<none>") == std::string::npos ||
+      dump.find("scalar_ownership operand=<none> result=to.f64.s#") == std::string::npos ||
+      dump.find("[type=f64,width=8,bank=fpr,home=") == std::string::npos ||
       dump.find("result_ownership=direct_low_high_lanes memory_return=<none>") ==
           std::string::npos ||
       dump.find("resources=[call_boundary,runtime_helper_callee,caller_saved_clobbers,"

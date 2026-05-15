@@ -1359,6 +1359,61 @@ void populate_i128_helper_lanes_from_carrier(
   }
 }
 
+[[nodiscard]] std::optional<PreparedI128RuntimeHelper::ScalarValueOwnership>
+make_i128_helper_scalar_ownership(
+    PreparedI128RuntimeHelper& helper,
+    const PreparedRegallocFunction* regalloc_function,
+    const PreparedValueLocationFunction* value_locations,
+    PreparedValueId value_id,
+    ValueNameId value_name,
+    bir::TypeKind type,
+    std::size_t width_bytes,
+    PreparedRegisterBank expected_bank,
+    std::string_view fact_prefix) {
+  if (value_name == kInvalidValueName) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_value_identity");
+    return std::nullopt;
+  }
+  if (value_locations == nullptr) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_value_locations");
+    return std::nullopt;
+  }
+  const auto* home = find_prepared_value_home(*value_locations, value_name);
+  if (home == nullptr || home->value_id != value_id) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_value_home");
+    return std::nullopt;
+  }
+  const PreparedRegisterBank bank =
+      published_bank_for_value(regalloc_function, value_name, type);
+  if (bank != expected_bank) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_expected_bank");
+  }
+  if (width_bytes == 0) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_width");
+  }
+  if (home->kind != PreparedValueHomeKind::Register &&
+      home->kind != PreparedValueHomeKind::StackSlot) {
+    append_i128_runtime_helper_fact(
+        helper, std::string(fact_prefix) + "_scalar_ownership_requires_register_or_stack_home");
+  }
+  return PreparedI128RuntimeHelper::ScalarValueOwnership{
+      .value_id = value_id,
+      .value_name = value_name,
+      .type = type,
+      .width_bytes = width_bytes,
+      .register_bank = bank,
+      .home_kind = home->kind,
+      .register_name = home->register_name,
+      .slot_id = home->slot_id,
+      .stack_offset_bytes = home->offset_bytes,
+  };
+}
+
 void populate_i128_runtime_helper_abi_bindings(
     const c4c::TargetProfile& target_profile,
     PreparedI128RuntimeHelper& helper) {
@@ -1745,34 +1800,86 @@ void populate_i128_runtime_helper_lanes(PreparedBirModule& prepared) {
       helper.result_low_unmarshal_move.reset();
       helper.result_high_unmarshal_move.reset();
       helper.memory_return.reset();
+      helper.scalar_operand.reset();
+      helper.scalar_result.reset();
       helper.missing_required_facts.clear();
       populate_i128_runtime_helper_boundary_policy(
           prepared.target_profile, regalloc_function, helper);
       populate_i128_runtime_helper_abi_bindings(prepared.target_profile, helper);
 
-      populate_i128_helper_lanes_from_carrier(function_carriers,
-                                             helper,
-                                             helper.lhs_value_id,
-                                             helper.lhs_low_lane,
-                                             helper.lhs_high_lane,
-                                             "lhs");
-      populate_i128_helper_lanes_from_carrier(function_carriers,
-                                             helper,
-                                             helper.rhs_value_id,
-                                             helper.rhs_low_lane,
-                                             helper.rhs_high_lane,
-                                             "rhs");
-      populate_i128_helper_lanes_from_carrier(function_carriers,
-                                             helper,
-                                             helper.result_value_id,
-                                             helper.result_low_lane,
-                                             helper.result_high_lane,
-                                             "result");
+      if (helper.helper_family == PreparedI128RuntimeHelperFamily::DivRem) {
+        populate_i128_helper_lanes_from_carrier(function_carriers,
+                                               helper,
+                                               helper.lhs_value_id,
+                                               helper.lhs_low_lane,
+                                               helper.lhs_high_lane,
+                                               "lhs");
+        populate_i128_helper_lanes_from_carrier(function_carriers,
+                                               helper,
+                                               helper.rhs_value_id,
+                                               helper.rhs_low_lane,
+                                               helper.rhs_high_lane,
+                                               "rhs");
+        populate_i128_helper_lanes_from_carrier(function_carriers,
+                                               helper,
+                                               helper.result_value_id,
+                                               helper.result_low_lane,
+                                               helper.result_high_lane,
+                                               "result");
+      } else if (helper.helper_family ==
+                 PreparedI128RuntimeHelperFamily::FloatIntegerConversion) {
+        const bool operand_is_i128 = helper.source_type == bir::TypeKind::I128;
+        const bool result_is_i128 = helper.result_type == bir::TypeKind::I128;
+        if (operand_is_i128) {
+          populate_i128_helper_lanes_from_carrier(function_carriers,
+                                                 helper,
+                                                 helper.operand_value_id,
+                                                 helper.lhs_low_lane,
+                                                 helper.lhs_high_lane,
+                                                 "operand");
+        } else {
+          helper.scalar_operand =
+              make_i128_helper_scalar_ownership(helper,
+                                                regalloc_function,
+                                                value_locations,
+                                                helper.operand_value_id,
+                                                helper.operand_value_name,
+                                                helper.source_type,
+                                                helper.source_width_bytes,
+                                                PreparedRegisterBank::Fpr,
+                                                "operand");
+        }
+        if (result_is_i128) {
+          populate_i128_helper_lanes_from_carrier(function_carriers,
+                                                 helper,
+                                                 helper.result_value_id,
+                                                 helper.result_low_lane,
+                                                 helper.result_high_lane,
+                                                 "result");
+        } else {
+          helper.scalar_result =
+              make_i128_helper_scalar_ownership(helper,
+                                                regalloc_function,
+                                                value_locations,
+                                                helper.result_value_id,
+                                                helper.result_value_name,
+                                                helper.result_type,
+                                                helper.result_width_bytes,
+                                                PreparedRegisterBank::Fpr,
+                                                "result");
+        }
+      }
       switch (helper.result_ownership) {
         case PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes:
           if (!helper.result_low_lane.has_value() || !helper.result_high_lane.has_value()) {
             append_i128_runtime_helper_fact(
                 helper, "direct_result_requires_low_high_result_lanes");
+          }
+          break;
+        case PreparedI128RuntimeHelperResultOwnership::ScalarValue:
+          if (!helper.scalar_result.has_value()) {
+            append_i128_runtime_helper_fact(
+                helper, "scalar_result_requires_scalar_ownership");
           }
           break;
         case PreparedI128RuntimeHelperResultOwnership::MemoryReturn:

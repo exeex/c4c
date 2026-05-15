@@ -2051,7 +2051,7 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
             .result_ownership =
                 cast->result.type == bir::TypeKind::I128
                     ? PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes
-                    : PreparedI128RuntimeHelperResultOwnership::Missing,
+                    : PreparedI128RuntimeHelperResultOwnership::ScalarValue,
         };
         function_helpers.helpers.push_back(std::move(helper));
       }

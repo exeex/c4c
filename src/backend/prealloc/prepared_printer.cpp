@@ -1555,6 +1555,31 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
     }
     out << "]";
   };
+  auto append_scalar =
+      [&](std::string_view label,
+          const std::optional<PreparedI128RuntimeHelper::ScalarValueOwnership>& scalar) {
+        out << " " << label << "=";
+        if (!scalar.has_value()) {
+          out << "<none>";
+          return;
+        }
+        out << maybe_value_name(module.names, scalar->value_name)
+            << "#" << scalar->value_id
+            << "[type=" << type_kind_name(scalar->type)
+            << ",width=" << scalar->width_bytes
+            << ",bank=" << prepared_register_bank_name(scalar->register_bank)
+            << ",home=" << prepared_value_home_kind_name(scalar->home_kind);
+        if (scalar->register_name.has_value()) {
+          out << ",reg=" << *scalar->register_name;
+        }
+        if (scalar->slot_id.has_value()) {
+          out << ",slot=#" << *scalar->slot_id;
+        }
+        if (scalar->stack_offset_bytes.has_value()) {
+          out << ",stack_offset=" << *scalar->stack_offset_bytes;
+        }
+        out << "]";
+      };
   auto append_abi_binding =
       [&](std::string_view label,
           const std::optional<PreparedI128RuntimeHelper::AbiRegisterBinding>& binding) {
@@ -1722,6 +1747,9 @@ void append_i128_runtime_helpers(std::ostringstream& out, const PreparedBirModul
       append_lane("rhs.high", helper.rhs_high_lane);
       append_lane("result.low", helper.result_low_lane);
       append_lane("result.high", helper.result_high_lane);
+      out << " scalar_ownership";
+      append_scalar("operand", helper.scalar_operand);
+      append_scalar("result", helper.scalar_result);
       out << " abi_bindings";
       append_abi_binding("lhs.low", helper.lhs_low_abi_argument);
       append_abi_binding("lhs.high", helper.lhs_high_abi_argument);
