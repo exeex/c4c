@@ -5140,12 +5140,27 @@ bir::Module make_aapcs64_variadic_entry_helper_family_frame_module() {
       .return_type = bir::TypeKind::F64,
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
       .callee = "llvm.va_arg.aggregate",
-      .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
-      .arg_types = {bir::TypeKind::Ptr},
-      .return_type_name = "ptr",
-      .return_type = bir::TypeKind::Ptr,
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi =
+          {bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 4,
+               .primary_class = bir::AbiValueClass::Memory,
+               .sret_pointer = true,
+           },
+           bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 8,
+               .primary_class = bir::AbiValueClass::Integer,
+               .passed_in_register = true,
+           }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
   });
   entry.insts.push_back(bir::CallInst{
       .callee = "llvm.va_copy.p0.p0",
@@ -5213,6 +5228,33 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
       !copy_homes->destination_va_list.has_value() ||
       !copy_homes->source_va_list.has_value()) {
     return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg or va_copy operand homes");
+  }
+  if (!aggregate_homes->aggregate_access_plan.has_value() ||
+      aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      aggregate_homes->aggregate_access_plan->payload_size_bytes != 8 ||
+      aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      aggregate_homes->aggregate_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_payload_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_align_bytes !=
+          std::optional<std::size_t>{4} ||
+      aggregate_homes->aggregate_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{8}) {
+    return fail("AAPCS64 variadic helper-family frame contract: lost aggregate va_arg access-plan carrier facts");
   }
   if (!va_arg_i32_homes->scalar_access_plan.has_value() ||
       va_arg_i32_homes->scalar_access_plan->source_class !=

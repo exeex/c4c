@@ -793,7 +793,30 @@ prepare::PreparedBirModule prepare_aapcs64_variadic_entry_helper_family_dump_mod
       .return_type = bir::TypeKind::F64,
   });
   entry.insts.push_back(bir::CallInst{
-      .result = bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+      .callee = "llvm.va_arg.aggregate",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "next.aggregate"),
+               bir::Value::named(bir::TypeKind::Ptr, "ap")},
+      .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+      .arg_abi =
+          {bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 4,
+               .primary_class = bir::AbiValueClass::Memory,
+               .sret_pointer = true,
+           },
+           bir::CallArgAbiInfo{
+               .type = bir::TypeKind::Ptr,
+               .size_bytes = 8,
+               .align_bytes = 8,
+               .primary_class = bir::AbiValueClass::Integer,
+               .passed_in_register = true,
+           }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.insts.push_back(bir::CallInst{
+      .result = bir::Value::named(bir::TypeKind::Ptr, "missing.aggregate"),
       .callee = "llvm.va_arg.aggregate",
       .args = {bir::Value::named(bir::TypeKind::Ptr, "ap")},
       .arg_types = {bir::TypeKind::Ptr},
@@ -2567,7 +2590,7 @@ int main() {
           std::optional<std::size_t>{2} ||
       aapcs64_helper_family_entry_plan->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
-      aapcs64_helper_family_entry_plan->helper_operand_homes.size() != 5) {
+      aapcs64_helper_family_entry_plan->helper_operand_homes.size() != 6) {
     std::cerr << "[FAIL] AAPCS64 variadic helper-family carrier lost named counts, helpers, or scratch facts\n";
     return EXIT_FAILURE;
   }
@@ -2592,6 +2615,9 @@ int main() {
   const auto* aggregate_homes =
       prepare::find_prepared_variadic_entry_helper_operand_homes(
           *aapcs64_helper_family_entry_plan, 0, 3);
+  const auto* missing_aggregate_homes =
+      prepare::find_prepared_variadic_entry_helper_operand_homes(
+          *aapcs64_helper_family_entry_plan, 0, 4);
   if (scalar_i32_homes == nullptr || scalar_f64_homes == nullptr ||
       !scalar_i32_homes->scalar_access_plan.has_value() ||
       scalar_i32_homes->scalar_access_plan->source_class !=
@@ -2675,7 +2701,37 @@ int main() {
     return EXIT_FAILURE;
   }
   if (aggregate_homes == nullptr ||
-      aggregate_homes->aggregate_access_plan.has_value() ||
+      !aggregate_homes->aggregate_access_plan.has_value() ||
+      aggregate_homes->aggregate_access_plan->source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea ||
+      aggregate_homes->aggregate_access_plan->payload_size_bytes != 8 ||
+      aggregate_homes->aggregate_access_plan->payload_align_bytes != 4 ||
+      !aggregate_homes->aggregate_access_plan->destination_payload_home.has_value() ||
+      aggregate_homes->aggregate_access_plan->source_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->source_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_payload_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->source_slot_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_size_bytes !=
+          std::optional<std::size_t>{8} ||
+      aggregate_homes->aggregate_access_plan->copy_align_bytes !=
+          std::optional<std::size_t>{4} ||
+      aggregate_homes->aggregate_access_plan->progression_field !=
+          std::optional<prepare::PreparedVariadicVaListFieldKind>{
+              prepare::PreparedVariadicVaListFieldKind::OverflowArgArea} ||
+      aggregate_homes->aggregate_access_plan->progression_field_offset_bytes !=
+          std::optional<std::size_t>{0} ||
+      aggregate_homes->aggregate_access_plan->progression_stride_bytes !=
+          std::optional<std::size_t>{8}) {
+    std::cerr << "[FAIL] AAPCS64 variadic aggregate va_arg carrier missed prepared access-plan facts\n";
+    return EXIT_FAILURE;
+  }
+  if (missing_aggregate_homes == nullptr ||
+      missing_aggregate_homes->aggregate_access_plan.has_value() ||
       std::find(aapcs64_helper_family_entry_plan->missing_required_facts.begin(),
                 aapcs64_helper_family_entry_plan->missing_required_facts.end(),
                 "helper_operand_homes.va_arg_aggregate.aggregate_access_plan") ==
@@ -2733,6 +2789,23 @@ int main() {
                        "AAPCS64 variadic aggregate va_arg operand homes")) {
     return EXIT_FAILURE;
   }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "aggregate_access_plan=source_class=overflow_arg_area:payload_size=8:payload_align=4",
+          "AAPCS64 variadic aggregate va_arg access plan")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(
+          aapcs64_helper_family_dump,
+          "source_field=overflow_arg_area@0:source_payload_offset=0:source_slot=8:copy_size=8:copy_align=4:progression_field=overflow_arg_area@0:progression_stride=8",
+          "AAPCS64 variadic aggregate va_arg source and progression coordinates")) {
+    return EXIT_FAILURE;
+  }
+  if (!expect_contains(aapcs64_helper_family_dump,
+                       "helper_operand kind=va_arg_aggregate block=0 inst=4",
+                       "AAPCS64 variadic aggregate va_arg missing operand homes")) {
+    return EXIT_FAILURE;
+  }
   if (!expect_contains(aapcs64_helper_family_dump,
                        "aggregate_access_plan=<none>",
                        "AAPCS64 variadic aggregate va_arg explicit missing access plan")) {
@@ -2745,7 +2818,7 @@ int main() {
     return EXIT_FAILURE;
   }
   if (!expect_contains(aapcs64_helper_family_dump,
-                       "helper_operand kind=va_copy block=0 inst=4",
+                       "helper_operand kind=va_copy block=0 inst=5",
                        "AAPCS64 variadic va_copy operand homes")) {
     return EXIT_FAILURE;
   }

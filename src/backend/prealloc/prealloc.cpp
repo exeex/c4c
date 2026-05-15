@@ -535,6 +535,52 @@ make_aapcs64_scalar_va_arg_access_plan(
   return plan;
 }
 
+[[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
+make_aapcs64_aggregate_va_arg_access_plan(
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedVariadicEntryHelperOperandHomes& homes,
+    const bir::CallInst& call) {
+  if (!homes.aggregate_destination_payload.has_value() ||
+      !homes.source_va_list.has_value() ||
+      call.arg_abi.empty()) {
+    return std::nullopt;
+  }
+
+  const auto& payload_abi = call.arg_abi.front();
+  if (payload_abi.type != bir::TypeKind::Ptr ||
+      !payload_abi.sret_pointer ||
+      payload_abi.primary_class != bir::AbiValueClass::Memory ||
+      payload_abi.size_bytes == 0 ||
+      payload_abi.align_bytes == 0) {
+    return std::nullopt;
+  }
+
+  const std::size_t payload_stride_bytes =
+      align_prepared_offset(payload_abi.size_bytes, payload_abi.align_bytes);
+  PreparedVariadicAggregateVaArgAccessPlan plan{
+      .source_class = PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea,
+      .payload_size_bytes = payload_abi.size_bytes,
+      .payload_align_bytes = payload_abi.align_bytes,
+      .destination_payload_home = homes.aggregate_destination_payload,
+      .source_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .source_payload_offset_bytes = std::size_t{0},
+      .source_slot_size_bytes = payload_stride_bytes,
+      .copy_size_bytes = payload_abi.size_bytes,
+      .copy_align_bytes = payload_abi.align_bytes,
+      .progression_field = PreparedVariadicVaListFieldKind::OverflowArgArea,
+      .progression_stride_bytes = payload_stride_bytes,
+  };
+
+  if (const auto overflow_field = find_variadic_va_list_field(
+          function_plan.va_list_layout, PreparedVariadicVaListFieldKind::OverflowArgArea);
+      overflow_field.has_value()) {
+    plan.source_field_offset_bytes = overflow_field->offset_bytes;
+    plan.progression_field_offset_bytes = overflow_field->offset_bytes;
+  }
+
+  return plan;
+}
+
 void require_variadic_helper_operand_home(
     PreparedVariadicEntryPlanFunction& function_plan,
     const PreparedVariadicEntryHelperOperandHomes& homes,
@@ -630,6 +676,8 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
                                                "aggregate_destination_payload");
           require_variadic_helper_operand_home(
               function_plan, homes, homes.source_va_list, "source_va_list");
+          homes.aggregate_access_plan =
+              make_aapcs64_aggregate_va_arg_access_plan(function_plan, homes, *call);
           if (!has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
             append_missing_variadic_entry_fact(
                 function_plan,
