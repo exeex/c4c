@@ -27,12 +27,14 @@ text.
 
 ## Current Targets
 
-- Structured carriers for direct global addresses, label addresses, GOT-backed
-  globals, and TLS-relative globals.
-- AArch64 selected machine nodes that materialize those addresses into prepared
-  result homes.
-- Printer support for explicit relocation operands once machine-node facts are
-  present.
+- Completed direct page+low12 carriers, selected records, and printer output
+  for direct globals and string constants.
+- Remaining structured carriers and selected/printer paths for label
+  addresses, GOT-backed globals, and TLS-relative globals.
+- AArch64 selected machine nodes that materialize remaining address kinds into
+  prepared result homes.
+- Printer support for remaining explicit relocation operands once machine-node
+  facts are present.
 - Focused backend tests that prove semantic address lowering, not
   name-shaped shortcuts.
 
@@ -54,6 +56,9 @@ text.
   relocation semantics from textual assembly.
 - Unsupported or incomplete address states should produce explicit diagnostics
   rather than fabricated assembly.
+- Direct page+low12 global and string-constant materialization is the completed
+  milestone as of commit `90640a317`; do not reopen it except to keep shared
+  abstractions coherent while implementing remaining kinds.
 
 ## Execution Rules
 
@@ -127,25 +132,119 @@ Completion Check: selected-node dumps or focused backend tests show structured
 address nodes for at least one direct global/label path and one policy-specific
 path when the required facts exist.
 
-### Step 4: Print Relocation-Aware AArch64 Sequences
+### Step 4: Print Direct Page+Low12 AArch64 Sequences
 
-Goal: print valid AArch64 assembly from selected address-materialization nodes.
+Status: Completed by commit `90640a317`.
 
-Primary Target: AArch64 terminal printer paths for selected machine records.
+Goal: print valid AArch64 assembly for selected direct global and string
+constant address-materialization nodes.
+
+Primary Target: AArch64 terminal printer paths for selected direct page+low12
+machine records.
+
+Completed Actions:
+
+- Printed selected `DirectPageLow12` direct-global records as structured `adrp`
+  plus low-12 `add` sequences.
+- Printed selected string-constant address records through the same structured
+  page+low12 sequence.
+- Preserved fail-closed terminal diagnostics for TLS and deferred diagnostics
+  for GOT/label paths.
+
+Completion Check: direct global and string constant printer tests pass through
+structured record fields, not symbol-name inference.
+
+### Step 5: Populate Label Address Materialization
+
+Goal: make label address materialization reach selected AArch64 records with
+all relocation operands required for terminal printing.
+
+Primary Target: the existing prepared address-materialization carrier and
+AArch64 selection path.
 
 Actions:
 
-- Print direct global and label materialization using page and low-12
-  relocation steps from structured operands.
-- Print GOT-required globals as explicit GOT loads from structured policy.
-- Print TLS materialization only when thread-pointer-relative facts are
-  available.
-- Avoid fallback text templates that infer policy from symbol spelling.
+- Identify why label address facts remain unpopulated or deferred after the
+  direct milestone.
+- Reuse the direct page+low12 relocation carrier shape when label semantics
+  require the same `adrp` plus low-12 sequence.
+- Preserve prepared result-home authority and label identity as structured
+  fields.
+- Keep label memory-reference behavior separate from address-producing label
+  materialization.
 
-Completion Check: printer output is driven by machine-node fields and fails
-explicitly when required relocation operands are absent.
+Completion Check: focused tests show label address materialization selected
+with structured label/page/low12 facts, or fail with a diagnostic naming the
+missing prepared label fact.
 
-### Step 5: Validate Semantic Coverage
+### Step 6: Populate GOT-Backed Global Materialization
+
+Goal: make GOT-required global address materialization explicit before terminal
+printing.
+
+Primary Target: prepared address-kind policy and AArch64 selected machine
+records for GOT loads.
+
+Actions:
+
+- Locate the policy input that distinguishes GOT-required globals from direct
+  page+low12 globals.
+- Add or complete structured GOT relocation operands without deriving policy
+  from symbol spelling.
+- Select a GOT materialization record only when the result home and relocation
+  facts are complete.
+- Preserve explicit deferred diagnostics when GOT policy or relocation operands
+  are unavailable.
+
+Completion Check: GOT-required globals either select a structured GOT record
+ready for printer consumption or fail with a precise missing-policy/missing-
+relocation diagnostic.
+
+### Step 7: Specify TLS Materialization Facts
+
+Goal: define and carry the TLS facts required before selected TLS records can
+print terminal AArch64 assembly.
+
+Primary Target: prepared TLS address-kind carrier, selected TLS record fields,
+and fail-closed printer diagnostics.
+
+Actions:
+
+- Identify the required thread-pointer-relative relocation facts for the
+  supported TLS model.
+- Keep TLS model selection explicit; do not infer TLS behavior from symbol
+  names or storage class text.
+- Ensure selected TLS records carry result-home authority, symbol identity,
+  TLS model, and thread-pointer-relative operands.
+- Leave terminal printing fail-closed until the record contains every field the
+  printer needs.
+
+Completion Check: selected TLS records expose structured TLS facts, and missing
+facts produce diagnostics that name the absent TLS policy or relocation input.
+
+### Step 8: Print Remaining Relocation-Aware AArch64 Sequences
+
+Goal: print valid AArch64 assembly for label, GOT, and TLS address-
+materialization records once their selected records are complete.
+
+Primary Target: AArch64 terminal printer paths for selected label, GOT, and TLS
+machine records.
+
+Actions:
+
+- Print label page+low12 materialization from structured label operands.
+- Print GOT-required globals as explicit GOT loads from structured relocation
+  fields.
+- Print TLS materialization only after Step 7 supplies the required
+  thread-pointer-relative facts.
+- Keep deferred printer diagnostics for any selected record missing required
+  relocation fields.
+
+Completion Check: printer output for label, GOT, and TLS is driven by selected
+record fields and fails explicitly when required relocation operands are
+absent.
+
+### Step 9: Validate Semantic Coverage
 
 Goal: prove the feature across nearby cases without overfitting one fixture.
 
