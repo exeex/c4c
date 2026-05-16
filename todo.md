@@ -3,27 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/254_aarch64_globals_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move Address-Materialization Record Construction
+Current Step ID: 4
+Current Step Title: Move Dispatch Lowering Body Behind Globals Owner
 
 ## Just Finished
 
-Step 3 - Move Address-Materialization Record Construction completed as a
+Step 4 - Move Dispatch Lowering Body Behind Globals Owner completed as a
 behavior-preserving globals redistribution packet.
 
-Moved globals-family address materialization kind selection, prepared-fact
-identity validation, address-record construction, and prepared materialization
-record wrappers from `instruction.cpp` into
-`src/backend/mir/aarch64/codegen/globals.cpp`, with owner declarations in
-`globals.hpp`. Generic instruction packaging, including
-`make_address_materialization_instruction`, remains in `instruction.cpp`.
+Moved the address-materialization lowering body and diagnostic message/append
+formatting from `dispatch.cpp` into
+`src/backend/mir/aarch64/codegen/globals.cpp`, with the lowering helper
+declared from `globals.hpp`. `dispatch.cpp` now includes `globals.hpp` and
+remains the router, preserving visited-operation behavior and scalar-register
+tracking after a returned address-materialization instruction.
 
 ## Suggested Next
 
-Delegate the next globals redistribution packet to move globals-owned lowering
-or dispatch-adjacent glue only if the source plan identifies it as part of the
-globals shard; otherwise send the active plan back for review before widening
-beyond record construction.
+Delegate the next globals redistribution packet only if the source plan has a
+remaining globals-owned codegen body or declaration cleanup; otherwise send the
+active plan back for lifecycle review instead of widening this shard.
 
 ## Watchouts
 
@@ -37,9 +36,10 @@ beyond record construction.
 - The moved construction code keeps local storage/register conversion helpers
   in `globals.cpp` to avoid touching memory, dispatch, or generic instruction
   packaging in this packet.
-- Do not pull in generic instruction packaging, dispatch loop control,
-  scalar-register tracking, or generic printer dispatch without a separate
-  supervisor packet.
+- Generic instruction packaging remains in `instruction.cpp`; dispatch loop
+  control and scalar-register tracking remain in `dispatch.cpp`.
+- Do not pull in generic printer dispatch, `instruction.cpp/hpp`, tests, or
+  expectation rewrites without a separate supervisor packet.
 - Existing focused coverage for this family is concentrated in
   `backend_aarch64_prepared_memory_operand_records`,
   `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`.
