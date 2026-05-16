@@ -8,30 +8,31 @@ Current Step Title: Implement Accepted Unary And Bit-Operation Routes
 
 ## Just Finished
 
-Step 2 - Implement Accepted Unary And Bit-Operation Routes completed for the
-first unary slice: integer negation, bitwise not, and count-leading-zero over
-32-bit and 64-bit GPR views.
+Step 2 - Implement Accepted Unary And Bit-Operation Routes continued with the
+second unary slice: count-trailing-zero and byte-swap through the existing
+structured scalar unary surface.
 
-Added typed `ScalarUnaryRecord` support with `ScalarUnaryOperationKind`,
-machine opcode identities for `neg`, `bit_not`, and `count_leading_zeros`,
-selection through `ScalarInstructionRecord`, ALU-owned prepared-record helpers,
-and printer spelling through allocation-backed result/source registers. The
-slice does not add legacy `x0` accumulator authority and does not add a
-named-case dispatch shortcut; current BIR has no unary instruction variant, so
-the new prepared scalar-unary helper is the structured surface a later dispatch
-route can call.
+Extended `ScalarUnaryOperationKind` and machine opcode identity with
+`count_trailing_zeros` and `byte_swap`, using the existing
+`ScalarUnaryRecord`, `ScalarInstructionRecord`, ALU-owned prepared-record
+helpers, and allocation-backed result/source registers. CTZ now prints as the
+structured AArch64 `rbit` then `clz` sequence. Byte-swap prints width-specific
+`rev` forms, including explicit 16-bit `rev w*, w*` followed by
+`lsr w*, w*, #16`.
 
 Focused tests now cover direct scalar unary records, prepared unary records
-using storage-plan/value-home register facts, and printer spelling for 32-bit
-and 64-bit `neg`, `mvn`, and `clz` forms.
+using storage-plan/value-home register facts, CTZ printer spelling for 32-bit
+and 64-bit forms, and byte-swap printer spelling for 16-bit, 32-bit, and
+64-bit forms. This remains structured record/prepared/printer progress, not an
+end-to-end dispatch route.
 
 ## Suggested Next
 
-Next implementation packet: continue Step 2 with CTZ and byte-swap as a second
-unary/bit-operation slice. Extend the same `ScalarUnaryRecord` family rather
-than adding a separate text-emitter path; model CTZ as structured `rbit` then
-`clz`, and preserve the 16-bit byte-swap `rev` plus right-shift behavior
-explicitly if 16-bit support is included. Suggested focused proof subset:
+Next implementation packet: either finish Step 2 with popcount only if a
+prepared SIMD/FPR temporary policy is available in the current surfaces, or
+move to Step 3 for unsigned power-of-two `UDiv`/`URem` reductions. Do not
+implement popcount by hard-coding legacy `v0`/`s0` scratch authority. Suggested
+focused proof subset for either route:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
@@ -61,6 +62,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
   current BIR has no unary instruction variant.
 - Keep `emit_float_neg_impl` separate-idea material unless the source idea is
   changed to include scalar FP unary intrinsic/helper work.
+- Popcount still needs explicit scratch/temporary authority before
+  implementation; do not revive the legacy fixed `v0`/`s0` sequence as
+  allocation authority.
 
 ## Proof
 

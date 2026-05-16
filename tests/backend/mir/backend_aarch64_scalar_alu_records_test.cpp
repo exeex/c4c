@@ -284,13 +284,31 @@ int unary_integer_records_preserve_typed_register_facts() {
       prepare::PreparedValueId{74},
       c4c::ValueNameId{34},
       source32);
+  const auto ctz = scalar_unary_record(
+      aarch64_codegen::ScalarUnaryOperationKind::CountTrailingZeros,
+      bir::TypeKind::I64,
+      prepare::PreparedValueId{75},
+      c4c::ValueNameId{35},
+      source64);
+  const auto bswap16 = scalar_unary_record(aarch64_codegen::ScalarUnaryOperationKind::ByteSwap,
+                                           bir::TypeKind::I16,
+                                           prepare::PreparedValueId{76},
+                                           c4c::ValueNameId{36},
+                                           prepared_register_operand(prepare::PreparedValueId{77},
+                                                                     c4c::ValueNameId{37},
+                                                                     bir::TypeKind::I16,
+                                                                     5));
 
   if (!neg.supported_integer_operation || !bit_not.supported_integer_operation ||
-      !clz.supported_integer_operation ||
+      !clz.supported_integer_operation || !ctz.supported_integer_operation ||
+      !bswap16.supported_integer_operation ||
       aarch64_codegen::scalar_unary_operation_kind_name(neg.operation) != "neg" ||
       aarch64_codegen::scalar_unary_operation_kind_name(bit_not.operation) != "bit_not" ||
       aarch64_codegen::scalar_unary_operation_kind_name(clz.operation) !=
-          "count_leading_zeros") {
+          "count_leading_zeros" ||
+      aarch64_codegen::scalar_unary_operation_kind_name(ctz.operation) !=
+          "count_trailing_zeros" ||
+      aarch64_codegen::scalar_unary_operation_kind_name(bswap16.operation) != "byte_swap") {
     return fail("expected selected unary integer operations to have typed diagnostic names");
   }
   if (aarch64_codegen::is_scalar_unary_integer_operation(
@@ -308,15 +326,25 @@ int unary_integer_records_preserve_typed_register_facts() {
       aarch64_codegen::make_scalar_unary_instruction_record(bit_not));
   const auto clz_instruction = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_unary_instruction_record(clz));
+  const auto ctz_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(ctz));
+  const auto bswap16_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(bswap16));
   if (neg_instruction.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       bit_not_instruction.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       clz_instruction.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      ctz_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      bswap16_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       neg_instruction.opcode != aarch64_codegen::MachineOpcode::Neg ||
       bit_not_instruction.opcode != aarch64_codegen::MachineOpcode::BitNot ||
-      clz_instruction.opcode != aarch64_codegen::MachineOpcode::CountLeadingZeros) {
+      clz_instruction.opcode != aarch64_codegen::MachineOpcode::CountLeadingZeros ||
+      ctz_instruction.opcode != aarch64_codegen::MachineOpcode::CountTrailingZeros ||
+      bswap16_instruction.opcode != aarch64_codegen::MachineOpcode::ByteSwap) {
     return fail("expected unary integer records to select typed scalar machine opcodes");
   }
   const auto* scalar =

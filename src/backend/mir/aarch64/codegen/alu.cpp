@@ -549,6 +549,12 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       case ScalarUnaryOperationKind::CountLeadingZeros:
         mnemonic = "clz";
         break;
+      case ScalarUnaryOperationKind::CountTrailingZeros:
+        mnemonic = "rbit";
+        break;
+      case ScalarUnaryOperationKind::ByteSwap:
+        mnemonic = "rev";
+        break;
       case ScalarUnaryOperationKind::Deferred:
         break;
     }
@@ -562,9 +568,21 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       return {.lines = std::nullopt,
               .diagnostic = "scalar unary node has incomplete printable register facts"};
     }
+    std::vector<std::string> lines;
     std::ostringstream out;
     out << mnemonic << " " << *result << ", " << *operand;
-    return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+    lines.push_back(out.str());
+    if (unary.operation == ScalarUnaryOperationKind::CountTrailingZeros) {
+      std::ostringstream clz;
+      clz << "clz " << *result << ", " << *result;
+      lines.push_back(clz.str());
+    } else if (unary.operation == ScalarUnaryOperationKind::ByteSwap &&
+               unary.result_type == bir::TypeKind::I16) {
+      std::ostringstream shift;
+      shift << "lsr " << *result << ", " << *result << ", #16";
+      lines.push_back(shift.str());
+    }
+    return {.lines = std::move(lines), .diagnostic = {}};
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
     const auto& alu = *scalar.scalar_alu;
@@ -745,14 +763,15 @@ bool is_scalar_alu_floating_type(bir::TypeKind type) {
 
 bool is_scalar_unary_integer_operation(ScalarUnaryOperationKind operation,
                                        bir::TypeKind type) {
-  if (type != bir::TypeKind::I32 && type != bir::TypeKind::I64) {
-    return false;
-  }
   switch (operation) {
     case ScalarUnaryOperationKind::Neg:
     case ScalarUnaryOperationKind::BitNot:
     case ScalarUnaryOperationKind::CountLeadingZeros:
-      return true;
+    case ScalarUnaryOperationKind::CountTrailingZeros:
+      return type == bir::TypeKind::I32 || type == bir::TypeKind::I64;
+    case ScalarUnaryOperationKind::ByteSwap:
+      return type == bir::TypeKind::I16 || type == bir::TypeKind::I32 ||
+             type == bir::TypeKind::I64;
     case ScalarUnaryOperationKind::Deferred:
       return false;
   }

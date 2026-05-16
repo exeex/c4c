@@ -1835,8 +1835,74 @@ int selected_scalar_unary_integer_ops_print_from_structured_operands() {
               .operand = aarch64_codegen::make_register_operand(xreg(7)),
               .supported_integer_operation = true,
           }));
+  const auto ctz32 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::CountTrailingZeros,
+              .operand_type = bir::TypeKind::I32,
+              .result_value_id = prepare::PreparedValueId{52},
+              .result_value_name = c4c::ValueNameId{53},
+              .result_type = bir::TypeKind::I32,
+              .result_register = wreg(8),
+              .operand = aarch64_codegen::make_register_operand(wreg(9)),
+              .supported_integer_operation = true,
+          }));
+  const auto ctz64 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::CountTrailingZeros,
+              .operand_type = bir::TypeKind::I64,
+              .result_value_id = prepare::PreparedValueId{54},
+              .result_value_name = c4c::ValueNameId{55},
+              .result_type = bir::TypeKind::I64,
+              .result_register = xreg(10),
+              .operand = aarch64_codegen::make_register_operand(xreg(11)),
+              .supported_integer_operation = true,
+          }));
+  const auto bswap16 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::ByteSwap,
+              .operand_type = bir::TypeKind::I16,
+              .result_value_id = prepare::PreparedValueId{56},
+              .result_value_name = c4c::ValueNameId{57},
+              .result_type = bir::TypeKind::I16,
+              .result_register = wreg(12),
+              .operand = aarch64_codegen::make_register_operand(wreg(13)),
+              .supported_integer_operation = true,
+          }));
+  const auto bswap32 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::ByteSwap,
+              .operand_type = bir::TypeKind::I32,
+              .result_value_id = prepare::PreparedValueId{58},
+              .result_value_name = c4c::ValueNameId{59},
+              .result_type = bir::TypeKind::I32,
+              .result_register = wreg(14),
+              .operand = aarch64_codegen::make_register_operand(wreg(15)),
+              .supported_integer_operation = true,
+          }));
+  const auto bswap64 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::ByteSwap,
+              .operand_type = bir::TypeKind::I64,
+              .result_value_id = prepare::PreparedValueId{60},
+              .result_value_name = c4c::ValueNameId{61},
+              .result_type = bir::TypeKind::I64,
+              .result_register = xreg(16),
+              .operand = aarch64_codegen::make_register_operand(xreg(17)),
+              .supported_integer_operation = true,
+          }));
 
-  const auto result = print_common_instruction_nodes({neg32, not64, clz32, clz64});
+  const auto result = print_common_instruction_nodes(
+      {neg32, not64, clz32, clz64, ctz32, ctz64, bswap16, bswap32, bswap64});
   if (!result.ok) {
     return fail("expected scalar unary integer operations to print: " + result.diagnostic);
   }
@@ -1844,7 +1910,15 @@ int selected_scalar_unary_integer_ops_print_from_structured_operands() {
       "    neg w0, w1\n"
       "    mvn x2, x3\n"
       "    clz w4, w5\n"
-      "    clz x6, x7\n";
+      "    clz x6, x7\n"
+      "    rbit w8, w9\n"
+      "    clz w8, w8\n"
+      "    rbit x10, x11\n"
+      "    clz x10, x10\n"
+      "    rev w12, w13\n"
+      "    lsr w12, w12, #16\n"
+      "    rev w14, w15\n"
+      "    rev x16, x17\n";
   return expect_assembly(result.assembly,
                          expected,
                          expected,

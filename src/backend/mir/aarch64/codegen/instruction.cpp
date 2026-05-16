@@ -190,6 +190,10 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "bit_not";
     case MachineOpcode::CountLeadingZeros:
       return "count_leading_zeros";
+    case MachineOpcode::CountTrailingZeros:
+      return "count_trailing_zeros";
+    case MachineOpcode::ByteSwap:
+      return "byte_swap";
     case MachineOpcode::SignExtend:
       return "sign_extend";
     case MachineOpcode::ZeroExtend:
@@ -342,6 +346,8 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::Neg:
     case MachineOpcode::BitNot:
     case MachineOpcode::CountLeadingZeros:
+    case MachineOpcode::CountTrailingZeros:
+    case MachineOpcode::ByteSwap:
     case MachineOpcode::SignExtend:
     case MachineOpcode::ZeroExtend:
     case MachineOpcode::Truncate:
@@ -502,6 +508,10 @@ std::string_view scalar_unary_operation_kind_name(ScalarUnaryOperationKind kind)
       return "bit_not";
     case ScalarUnaryOperationKind::CountLeadingZeros:
       return "count_leading_zeros";
+    case ScalarUnaryOperationKind::CountTrailingZeros:
+      return "count_trailing_zeros";
+    case ScalarUnaryOperationKind::ByteSwap:
+      return "byte_swap";
     case ScalarUnaryOperationKind::Deferred:
       return "deferred";
   }
@@ -1532,6 +1542,10 @@ MachineOpcode machine_opcode_from_scalar_unary(ScalarUnaryOperationKind operatio
       return MachineOpcode::BitNot;
     case ScalarUnaryOperationKind::CountLeadingZeros:
       return MachineOpcode::CountLeadingZeros;
+    case ScalarUnaryOperationKind::CountTrailingZeros:
+      return MachineOpcode::CountTrailingZeros;
+    case ScalarUnaryOperationKind::ByteSwap:
+      return MachineOpcode::ByteSwap;
     case ScalarUnaryOperationKind::Deferred:
       return MachineOpcode::Unspecified;
   }

@@ -135,6 +135,8 @@ enum class MachineOpcode {
   Neg,
   BitNot,
   CountLeadingZeros,
+  CountTrailingZeros,
+  ByteSwap,
   SignExtend,
   ZeroExtend,
   Truncate,
@@ -226,6 +228,8 @@ enum class ScalarUnaryOperationKind {
   Neg,
   BitNot,
   CountLeadingZeros,
+  CountTrailingZeros,
+  ByteSwap,
   Deferred,
 };
 

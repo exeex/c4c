@@ -380,7 +380,9 @@ int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
 
     for (const auto operation : {aarch64_codegen::ScalarUnaryOperationKind::Neg,
                                  aarch64_codegen::ScalarUnaryOperationKind::BitNot,
-                                 aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros}) {
+                                 aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros,
+                                 aarch64_codegen::ScalarUnaryOperationKind::CountTrailingZeros,
+                                 aarch64_codegen::ScalarUnaryOperationKind::ByteSwap}) {
       const auto result = aarch64_codegen::make_prepared_scalar_unary_instruction_record(
           fixture.names,
           fixture.locations,
@@ -428,6 +430,38 @@ int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
         return fail("expected prepared scalar unary machine node to carry one def/use");
       }
     }
+  }
+  return 0;
+}
+
+int prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts() {
+  auto fixture = make_i64_fixture();
+  fixture.locations.value_homes[0].register_name = "w1";
+  fixture.locations.value_homes[2].register_name = "w0";
+  fixture.storage.values[0] =
+      register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
+  fixture.storage.values[2] =
+      register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
+
+  const auto result = aarch64_codegen::make_prepared_scalar_unary_instruction_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      aarch64_codegen::ScalarUnaryOperationKind::ByteSwap,
+      named_value(bir::TypeKind::I16, "%sum"),
+      named_value(bir::TypeKind::I16, "%lhs"));
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
+    return fail("expected prepared I16 byte-swap unary conversion to succeed");
+  }
+  const auto& unary = *result.record->scalar_unary;
+  const auto* operand = std::get_if<aarch64_codegen::RegisterOperand>(&unary.operand.payload);
+  if (unary.operation != aarch64_codegen::ScalarUnaryOperationKind::ByteSwap ||
+      unary.operand_type != bir::TypeKind::I16 || unary.result_type != bir::TypeKind::I16 ||
+      !unary.result_register.has_value() ||
+      unary.result_register->expected_view != aarch64_abi::RegisterView::W ||
+      operand == nullptr || operand->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected prepared I16 byte-swap to use W-register views");
   }
   return 0;
 }
@@ -712,6 +746,10 @@ int main() {
     return status;
   }
   if (const int status = prepared_scalar_unary_records_preserve_i32_i64_register_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = prepared_scalar_unary_records_preserve_i16_byte_swap_register_facts();
       status != 0) {
     return status;
   }
