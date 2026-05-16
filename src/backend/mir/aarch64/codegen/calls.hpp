@@ -32,6 +32,15 @@ effects_from_prepared_call_preserved_values(
     const prepare::PreparedCallPlan& call_plan,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<module::MachineInstruction> lower_prepared_call_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call_inst,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    const prepare::PreparedVariadicEntryPlanFunction* variadic_entry_plan,
+    const prepare::PreparedVariadicEntryHelperOperandHomes* variadic_helper_operand_homes,
+    std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_helper,
+    module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] InstructionRecord make_call_boundary_move_instruction(
     CallBoundaryMoveInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_boundary_abi_binding_instruction(

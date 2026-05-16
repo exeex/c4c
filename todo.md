@@ -8,28 +8,32 @@ Current Step Title: Create Calls Owner And Move Construction Routes
 
 ## Just Finished
 
-Completed Step 2 second packet: moved the smallest call lowering route from
-`dispatch.cpp` into the compiled calls owner. `calls.cpp` / `calls.hpp` now own
-prepared call-plan lookup plus before/after call-boundary move lowering,
-including the prepared argument/result binding lookup, structured F128 carrier
-checks, prepared register conversion, call-boundary diagnostics, and
-call-boundary `MachineInstruction` construction. `dispatch.cpp` now routes to
-the calls-owned helpers and keeps block traversal, inline asm/intrinsic routing,
-the main call body, indirect callee lowering, memory-return storage, and
-non-call families.
+Completed Step 2 third packet: moved the normal-call prepared-plan body
+construction out of `dispatch.cpp` and into the compiled calls owner.
+`calls.cpp` / `calls.hpp` now own `lower_prepared_call_instruction`, including
+memory-return storage construction, indirect callee register conversion, and
+the direct/indirect `CallInstructionRecord` assembly that consumes
+`PreparedCallPlan`. `dispatch.cpp` now keeps call routing, prepared-plan lookup,
+missing-plan diagnostics, and variadic entry helper validation before routing
+the validated normal-call body to the calls-owned helper.
 
 ## Suggested Next
 
-Step 2 next packet: move one more narrow call route from `dispatch.cpp` into
-`calls.cpp`, preferably the call body pieces that directly consume the
-calls-owned prepared plan (`make_memory_return_storage`,
-`make_indirect_callee_register`, and/or direct-callee record assembly) while
-leaving variadic helper validation, inline asm, and intrinsic dispatch outside
-the packet unless explicitly owned.
+Step 2 next packet: move the remaining small call-routing surface that still
+belongs with calls ownership, such as the missing prepared-call-plan diagnostic
+or call-plan lookup route, only if it can be done without pulling inline asm,
+intrinsic lowering, or variadic entry helper validation into the packet.
 
 ## Watchouts
 
 - AST-backed ownership checks after this packet:
+  - `make_memory_return_storage` resolves to `calls.cpp` and is called by
+    calls-owned `lower_prepared_call_instruction`.
+  - `make_indirect_callee_register` resolves to `calls.cpp` and is called by
+    calls-owned `lower_prepared_call_instruction`.
+  - `lower_prepared_call_instruction` resolves to `calls.cpp`; `dispatch.cpp`
+    `lower_call_instruction` is its direct caller after retained-call routing,
+    prepared call-plan lookup, and variadic entry helper validation.
   - `lower_before_call_moves` resolves to `calls.cpp`.
   - `find_prepared_call_plan` resolves to `calls.cpp`.
   - `dispatch_prepared_block` is the direct caller of calls-owned
@@ -70,10 +74,9 @@ the packet unless explicitly owned.
   - Do not move variadic entry helper semantics wholesale into calls unless the
     packet explicitly owns that boundary; they are call-adjacent but also part
     of the variadic shard.
-  - `dispatch.cpp` still owns `lower_call_instruction`,
-    `make_memory_return_storage`, `make_indirect_callee_register`, inline asm
-    lowering, intrinsic lowering, variadic entry helper validation, and the
-    top-level prepared-block routing.
+  - `dispatch.cpp` still owns `lower_call_instruction`, inline asm lowering,
+    intrinsic lowering, variadic entry helper validation, and the top-level
+    prepared-block routing.
 
 ## Proof
 
