@@ -3408,6 +3408,60 @@ prepare::PreparedBirModule prepared_with_i128_pair_operation(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_i128_copy_operation(bool include_source_carrier = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.i128.copy");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.i128.copy.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.i128.copy.entry");
+  const auto result_name = prepared.names.value_names.intern("%copy.i128");
+  const auto source_name = prepared.names.value_names.intern("%source.i128");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.i128.copy",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.i128.copy.entry",
+              .insts =
+                  {bir::CastInst{
+                      .opcode = bir::CastOpcode::Bitcast,
+                      .result = bir::Value::named(bir::TypeKind::I128, "%copy.i128"),
+                      .operand = bir::Value::named(bir::TypeKind::I128, "%source.i128"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  std::vector<prepare::PreparedI128Carrier> carriers = {
+      dispatch_i128_register_pair_carrier(function_name,
+                                          prepare::PreparedValueId{130},
+                                          result_name,
+                                          12),
+  };
+  if (include_source_carrier) {
+    carriers.push_back(dispatch_i128_register_pair_carrier(function_name,
+                                                          prepare::PreparedValueId{131},
+                                                          source_name,
+                                                          14));
+  }
+  prepared.i128_carriers.functions.push_back(prepare::PreparedI128CarrierFunction{
+      .function_name = function_name,
+      .carriers = std::move(carriers),
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_i128_runtime_helper_operation(
     bool include_helper = true,
     bool include_clobber_policy = true) {
@@ -8032,6 +8086,57 @@ int block_dispatch_lowers_i128_pair_bitwise_from_prepared_carriers() {
   return 0;
 }
 
+int block_dispatch_lowers_i128_copy_from_prepared_carriers() {
+  auto prepared = prepared_with_i128_copy_operation();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  const auto* copy =
+      !block.instructions.empty()
+          ? std::get_if<aarch64_codegen::I128TransportRecord>(
+                &block.instructions.front().target.payload)
+          : nullptr;
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      copy == nullptr ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::I128Transport ||
+      copy->transport_kind != aarch64_codegen::I128TransportKind::CopyRegisterPair ||
+      copy->value_id != prepare::PreparedValueId{130} ||
+      copy->source_value_id != prepare::PreparedValueId{131} ||
+      !copy->low_lane.reg.has_value() ||
+      !copy->high_lane.reg.has_value() ||
+      !copy->source_low_lane.reg.has_value() ||
+      !copy->source_high_lane.reg.has_value() ||
+      copy->low_lane.reg->reg != aarch64_abi::x_register(12) ||
+      copy->high_lane.reg->reg != aarch64_abi::x_register(13) ||
+      copy->source_low_lane.reg->reg != aarch64_abi::x_register(14) ||
+      copy->source_high_lane.reg->reg != aarch64_abi::x_register(15) ||
+      block.instructions.front().target.defs.size() != 2 ||
+      block.instructions.front().target.uses.size() != 2 ||
+      !block.instructions.front().target.side_effects.empty()) {
+    return fail("expected i128 copy dispatch to preserve low/high source and result lanes");
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly !=
+          "    mov x12, x14\n"
+          "    mov x13, x15\n"
+          "    ret\n") {
+    return fail("expected i128 copy route to print low and high lane moves");
+  }
+  return 0;
+}
+
 int block_dispatch_reports_missing_i128_pair_carrier_authority() {
   auto prepared = prepared_with_i128_pair_operation(bir::BinaryOpcode::Sub, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -9175,6 +9280,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_i128_pair_bitwise_from_prepared_carriers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_i128_copy_from_prepared_carriers();
       status != 0) {
     return status;
   }

@@ -8,27 +8,21 @@ Current Step Title: Implement Accepted i128 Copy Behavior
 
 ## Just Finished
 
-Step 4 route review completed. The behavior-consuming zero-extension and
-sign-extension subroutes remain valid Step 4 progress: their structured facts
-are consumed by printer behavior and have fail-closed coverage for unsupported
-extension facts.
-
-The remaining scratch/overlap/fallback scope is parked before more execution.
-Register-direct scratch handling, right-side result-register overlap, and
-accumulator fallback division/remainder/variable-shift behavior must not
-continue as Step 4 metadata-only classification work. Any future packet in that
-area needs a lifecycle-reviewed split that first defines prepared scratch and
-allocation authority, then proves a concrete backend behavior consumes that
-authority.
+Step 5 implemented accepted i128 copy behavior as structured AArch64 MIR
+transport. `bitcast i128 -> i128` now lowers through a
+`CopyRegisterPair` i128 transport record carrying separate prepared destination
+and source low/high lane facts. The printer emits low-lane and high-lane moves
+from those record fields, and the selection/effect records expose two lane
+defs and two lane uses without memory side effects.
 
 ## Suggested Next
 
-Next implementation packet: proceed to Step 5, `Implement Accepted i128 Copy
-Behavior`, unless the supervisor chooses to activate a separate
-scratch/allocation authority initiative first.
+Next packet: start Step 6 acceptance review and broader proof for the accepted
+ALU semantic routes, unless the supervisor wants an independent route review
+of the Step 5 i128 copy transport first.
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch|target_record_core_contract)$'
 ```
 
 ## Watchouts
@@ -71,13 +65,17 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 - Popcount still needs explicit scratch/temporary authority before
   implementation; do not revive the legacy fixed `v0`/`s0` sequence as
   allocation authority.
+- Step 5 treats i128 copy as same-width `Bitcast` only. Other i128-producing
+  casts remain outside this packet and should stay fail-closed unless a later
+  plan step accepts them.
+- The i128 copy printer deliberately emits independent low/high register moves.
+  If overlap-sensitive parallel-copy behavior is needed later, route it through
+  the parked scratch/allocation authority work instead of weakening this record.
 
 ## Proof
 
-Lifecycle-only rewrite. No implementation files changed and no new build was
-run by the plan owner. The supervisor refreshed `test_after.log` before this
-rewrite after the route review noted it missing.
+The supervisor-selected Step 5 proof passed and was written to `test_after.log`.
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch|target_record_core_contract)$'
 ```

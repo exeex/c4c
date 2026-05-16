@@ -3850,6 +3850,42 @@ int i128_pair_records_preserve_sources_result_and_lane_semantics() {
     return fail("expected i128 pair operation to preserve result/source lane registers");
   }
 
+  const bir::CastInst copy{
+      .opcode = bir::CastOpcode::Bitcast,
+      .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),
+      .operand = bir::Value::named(bir::TypeKind::I128, "%lhs"),
+  };
+  const auto copy_record =
+      aarch64_codegen::make_prepared_i128_copy_transport_record(names, carriers, copy);
+  if (!copy_record.record.has_value() ||
+      copy_record.error != aarch64_codegen::PreparedI128TransportRecordError::None ||
+      copy_record.record->transport_kind !=
+          aarch64_codegen::I128TransportKind::CopyRegisterPair ||
+      copy_record.record->value_id != prepare::PreparedValueId{70} ||
+      copy_record.record->source_value_id != prepare::PreparedValueId{71} ||
+      !copy_record.record->low_lane.reg.has_value() ||
+      !copy_record.record->high_lane.reg.has_value() ||
+      !copy_record.record->source_low_lane.reg.has_value() ||
+      !copy_record.record->source_high_lane.reg.has_value() ||
+      copy_record.record->low_lane.reg->reg != aarch64_abi::x_register(8) ||
+      copy_record.record->high_lane.reg->reg != aarch64_abi::x_register(9) ||
+      copy_record.record->source_low_lane.reg->reg != aarch64_abi::x_register(10) ||
+      copy_record.record->source_high_lane.reg->reg != aarch64_abi::x_register(11)) {
+    return fail("expected i128 copy transport to preserve source and result lanes");
+  }
+  const auto copy_instruction =
+      aarch64_codegen::make_i128_transport_instruction(*copy_record.record);
+  if (copy_instruction.family != aarch64_codegen::InstructionFamily::I128Transport ||
+      copy_instruction.opcode != aarch64_codegen::MachineOpcode::I128Transport ||
+      copy_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      copy_instruction.operands.size() != 4 ||
+      copy_instruction.defs.size() != 2 ||
+      copy_instruction.uses.size() != 2 ||
+      !copy_instruction.side_effects.empty()) {
+    return fail("expected i128 copy transport to expose lane defs and uses only");
+  }
+
   const bir::BinaryInst bitwise{
       .opcode = bir::BinaryOpcode::Xor,
       .result = bir::Value::named(bir::TypeKind::I128, "%wide.sum"),

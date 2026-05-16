@@ -714,6 +714,8 @@ std::string_view i128_transport_kind_name(I128TransportKind kind) {
       return "load_from_memory";
     case I128TransportKind::StoreToMemory:
       return "store_to_memory";
+    case I128TransportKind::CopyRegisterPair:
+      return "copy_register_pair";
   }
   return "unknown";
 }
@@ -2429,6 +2431,19 @@ MachineNodeStatusRecord i128_transport_selection_status(
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "i128 register-pair transport is missing low/high registers"};
   }
+  if (instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
+    if (instruction.carrier_kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+        instruction.copy_source_carrier == nullptr ||
+        !instruction.source_value_id.has_value() ||
+        instruction.source_value_name == c4c::kInvalidValueName ||
+        !instruction.source_low_lane.reg.has_value() ||
+        !instruction.source_high_lane.reg.has_value()) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic =
+              "i128 copy transport is missing structured source low/high registers"};
+    }
+  }
   if (instruction.carrier_kind == prepare::PreparedI128CarrierKind::MemoryBacked &&
       (!instruction.low_lane.slot_id.has_value() ||
        !instruction.low_lane.stack_offset_bytes.has_value() ||
@@ -2459,11 +2474,20 @@ InstructionRecord make_i128_transport_instruction(I128TransportRecord instructio
   if (instruction.high_lane.reg.has_value()) {
     operands.push_back(make_register_operand(*instruction.high_lane.reg));
   }
+  if (instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
+    if (instruction.source_low_lane.reg.has_value()) {
+      operands.push_back(make_register_operand(*instruction.source_low_lane.reg));
+    }
+    if (instruction.source_high_lane.reg.has_value()) {
+      operands.push_back(make_register_operand(*instruction.source_high_lane.reg));
+    }
+  }
 
   std::vector<MachineEffectResource> defs;
   std::vector<MachineEffectResource> uses;
   if (instruction.transport_kind == I128TransportKind::LoadFromMemory ||
-      instruction.transport_kind == I128TransportKind::CarrierSnapshot) {
+      instruction.transport_kind == I128TransportKind::CarrierSnapshot ||
+      instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
     if (instruction.low_lane.reg.has_value()) {
       defs.push_back(effect_from_operand(make_register_operand(*instruction.low_lane.reg)));
     }
@@ -2481,6 +2505,14 @@ InstructionRecord make_i128_transport_instruction(I128TransportRecord instructio
     }
     if (instruction.high_lane.reg.has_value()) {
       uses.push_back(effect_from_operand(make_register_operand(*instruction.high_lane.reg)));
+    }
+  }
+  if (instruction.transport_kind == I128TransportKind::CopyRegisterPair) {
+    if (instruction.source_low_lane.reg.has_value()) {
+      uses.push_back(effect_from_operand(make_register_operand(*instruction.source_low_lane.reg)));
+    }
+    if (instruction.source_high_lane.reg.has_value()) {
+      uses.push_back(effect_from_operand(make_register_operand(*instruction.source_high_lane.reg)));
     }
   }
   if (instruction.memory.has_value()) {
@@ -3959,7 +3991,8 @@ PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
     return i128_transport_record_error(
         PreparedI128TransportRecordError::IncompletePreparedI128Carrier);
   }
-  if (transport_kind != I128TransportKind::CarrierSnapshot) {
+  if (transport_kind != I128TransportKind::CarrierSnapshot &&
+      transport_kind != I128TransportKind::CopyRegisterPair) {
     if (!memory.has_value()) {
       return i128_transport_record_error(PreparedI128TransportRecordError::MissingMemoryOperand);
     }
@@ -4037,6 +4070,76 @@ PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
       .record = std::move(record),
       .error = PreparedI128TransportRecordError::None,
   };
+}
+
+PreparedI128TransportRecordResult make_prepared_i128_copy_transport_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::CastInst& cast) {
+  if (i128_carriers.function_name == c4c::kInvalidFunctionName) {
+    return i128_transport_record_error(PreparedI128TransportRecordError::InvalidFunction);
+  }
+  if (cast.opcode != bir::CastOpcode::Bitcast ||
+      cast.result.type != bir::TypeKind::I128 ||
+      cast.operand.type != bir::TypeKind::I128 ||
+      cast.result.kind != bir::Value::Kind::Named ||
+      cast.operand.kind != bir::Value::Kind::Named ||
+      cast.result.name.empty() ||
+      cast.operand.name.empty()) {
+    return i128_transport_record_error(
+        PreparedI128TransportRecordError::MissingPreparedI128Carrier);
+  }
+
+  const auto result_name = names.value_names.find(cast.result.name);
+  const auto source_name = names.value_names.find(cast.operand.name);
+  if (result_name == c4c::kInvalidValueName ||
+      source_name == c4c::kInvalidValueName) {
+    return i128_transport_record_error(
+        PreparedI128TransportRecordError::MissingPreparedI128Carrier);
+  }
+
+  auto prepared = make_prepared_i128_carrier_transport_record(
+      i128_carriers, result_name, I128TransportKind::CopyRegisterPair, std::nullopt);
+  if (!prepared.record.has_value()) {
+    return prepared;
+  }
+
+  const auto* source = prepare::find_prepared_i128_carrier(i128_carriers, source_name);
+  if (source == nullptr) {
+    return i128_transport_record_error(
+        PreparedI128TransportRecordError::MissingPreparedI128Carrier);
+  }
+  if (!source->missing_required_facts.empty() ||
+      source->kind != prepare::PreparedI128CarrierKind::RegisterPair ||
+      source->total_size_bytes != 16 ||
+      source->lane_width_bytes != 8) {
+    return i128_transport_record_error(
+        PreparedI128TransportRecordError::IncompletePreparedI128Carrier);
+  }
+
+  prepared.record->source_value_id = source->value_id;
+  prepared.record->source_value_name = source->value_name;
+  prepared.record->source_low_lane = I128LaneTransportRecord{
+      .role = source->low_lane.role,
+      .lane_index = source->low_lane.lane_index,
+      .width_bytes = source->low_lane.width_bytes,
+  };
+  prepared.record->source_high_lane = I128LaneTransportRecord{
+      .role = source->high_lane.role,
+      .lane_index = source->high_lane.lane_index,
+      .width_bytes = source->high_lane.width_bytes,
+  };
+  prepared.record->source_low_lane.reg =
+      make_i128_lane_register_operand(*source, source->low_lane);
+  prepared.record->source_high_lane.reg =
+      make_i128_lane_register_operand(*source, source->high_lane);
+  prepared.record->copy_source_carrier = source;
+  if (!prepared.record->source_low_lane.reg.has_value() ||
+      !prepared.record->source_high_lane.reg.has_value()) {
+    return i128_transport_record_error(
+        PreparedI128TransportRecordError::RegisterConversionFailed);
+  }
+  return prepared;
 }
 
 PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(

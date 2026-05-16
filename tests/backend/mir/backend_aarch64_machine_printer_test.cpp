@@ -2789,6 +2789,38 @@ int selected_i128_records_print_from_structured_fields() {
           .memory = load_memory,
           .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
       });
+  auto copy_record = aarch64_codegen::I128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::I128TransportKind::CopyRegisterPair,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .value_id = prepare::PreparedValueId{73},
+      .value_name = c4c::ValueNameId{73},
+      .carrier_kind = prepare::PreparedI128CarrierKind::RegisterPair,
+      .lane_width_bytes = 8,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .register_bank = prepare::PreparedRegisterBank::Gpr,
+      .register_class = prepare::PreparedRegisterClass::General,
+      .low_lane =
+          i128_pair_operand(prepare::PreparedValueId{73}, c4c::ValueNameId{73}, 26)
+              .low_lane,
+      .high_lane =
+          i128_pair_operand(prepare::PreparedValueId{73}, c4c::ValueNameId{73}, 26)
+              .high_lane,
+      .source_value_id = prepare::PreparedValueId{74},
+      .source_value_name = c4c::ValueNameId{74},
+      .source_low_lane =
+          i128_pair_operand(prepare::PreparedValueId{74}, c4c::ValueNameId{74}, 28)
+              .low_lane,
+      .source_high_lane =
+          i128_pair_operand(prepare::PreparedValueId{74}, c4c::ValueNameId{74}, 28)
+              .high_lane,
+      .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
+      .copy_source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x2),
+  };
+  const auto transport_copy =
+      aarch64_codegen::make_i128_transport_instruction(copy_record);
   const auto pair_add = aarch64_codegen::make_i128_pair_operation_instruction(
       aarch64_codegen::I128PairOperationRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -2848,13 +2880,15 @@ int selected_i128_records_print_from_structured_fields() {
           .rhs = i128_pair_operand(prepare::PreparedValueId{71}, c4c::ValueNameId{71}, 24),
       });
   const auto result = print_common_instruction_nodes(
-      {transport_load, pair_add, shift, compare, unsigned_compare});
+      {transport_load, transport_copy, pair_add, shift, compare, unsigned_compare});
   if (!result.ok) {
     return fail("expected selected i128 nodes to print from structured fields: " +
                 result.diagnostic);
   }
   const std::string expected =
       "    ldp x6, x7, [sp, #32]\n"
+      "    mov x26, x28\n"
+      "    mov x27, x29\n"
       "    adds x8, x10, x12\n"
       "    adc x9, x11, x13\n"
       "    extr x14, x16, x17, #12\n"
@@ -3221,6 +3255,36 @@ int selected_i128_records_reject_incomplete_structured_fields() {
       pair_result.diagnostic.find("missing_required_facts") == std::string::npos ||
       pair_result.diagnostic.find("source register-pair carriers") == std::string::npos) {
     return fail("expected incomplete i128 pair operation to fail closed");
+  }
+  auto copy_record = aarch64_codegen::I128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::I128TransportKind::CopyRegisterPair,
+      .value_id = prepare::PreparedValueId{83},
+      .value_name = c4c::ValueNameId{83},
+      .carrier_kind = prepare::PreparedI128CarrierKind::RegisterPair,
+      .low_lane =
+          i128_pair_operand(prepare::PreparedValueId{83}, c4c::ValueNameId{83}, 8)
+              .low_lane,
+      .high_lane =
+          i128_pair_operand(prepare::PreparedValueId{83}, c4c::ValueNameId{83}, 8)
+              .high_lane,
+      .source_value_id = prepare::PreparedValueId{84},
+      .source_value_name = c4c::ValueNameId{84},
+      .source_low_lane =
+          i128_pair_operand(prepare::PreparedValueId{84}, c4c::ValueNameId{84}, 10)
+              .low_lane,
+      .source_high_lane =
+          i128_pair_operand(prepare::PreparedValueId{84}, c4c::ValueNameId{84}, 10)
+              .high_lane,
+      .source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x1),
+      .copy_source_carrier = reinterpret_cast<const prepare::PreparedI128Carrier*>(0x2),
+  };
+  copy_record.source_high_lane.reg.reset();
+  const auto copy = aarch64_codegen::make_i128_transport_instruction(copy_record);
+  const auto copy_result = aarch64_codegen::print_machine_instruction_line_payloads(copy);
+  if (copy_result.ok ||
+      copy_result.diagnostic.find("source low/high registers") == std::string::npos) {
+    return fail("expected incomplete i128 copy transport to fail closed");
   }
   return 0;
 }

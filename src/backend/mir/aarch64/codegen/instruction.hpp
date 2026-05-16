@@ -339,6 +339,7 @@ enum class I128TransportKind {
   CarrierSnapshot,
   LoadFromMemory,
   StoreToMemory,
+  CopyRegisterPair,
 };
 
 enum class F128TransportKind {
@@ -1055,8 +1056,14 @@ struct I128TransportRecord {
   std::optional<std::size_t> stack_offset_bytes;
   I128LaneTransportRecord low_lane;
   I128LaneTransportRecord high_lane{.role = prepare::PreparedI128LaneRole::High, .lane_index = 1};
+  std::optional<prepare::PreparedValueId> source_value_id;
+  c4c::ValueNameId source_value_name = c4c::kInvalidValueName;
+  I128LaneTransportRecord source_low_lane;
+  I128LaneTransportRecord source_high_lane{.role = prepare::PreparedI128LaneRole::High,
+                                           .lane_index = 1};
   std::optional<MemoryOperand> memory;
   const prepare::PreparedI128Carrier* source_carrier = nullptr;
+  const prepare::PreparedI128Carrier* copy_source_carrier = nullptr;
 };
 
 struct PreparedI128TransportRecordResult {
@@ -1914,6 +1921,10 @@ make_prepared_store_memory_instruction_record(
     c4c::ValueNameId value_name,
     I128TransportKind transport_kind,
     std::optional<MemoryOperand> memory = std::nullopt);
+[[nodiscard]] PreparedI128TransportRecordResult make_prepared_i128_copy_transport_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedI128CarrierFunction& i128_carriers,
+    const bir::CastInst& cast);
 [[nodiscard]] PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
     c4c::ValueNameId value_name,

@@ -1057,6 +1057,15 @@ find_inline_asm_prepared_output_operand(
   return message;
 }
 
+[[nodiscard]] std::string i128_transport_error_message(
+    PreparedI128TransportRecordError error) {
+  std::string message =
+      "AArch64 i128 transport lowering requires prepared i128 carrier facts";
+  message += "; error=";
+  message += prepared_i128_transport_record_error_name(error);
+  return message;
+}
+
 [[nodiscard]] std::string i128_runtime_helper_error_message(
     PreparedI128RuntimeHelperRecordError error) {
   std::string message =
@@ -1404,6 +1413,80 @@ struct LowerMemoryInstructionResult {
   } else if (auto* record = std::get_if<I128RuntimeHelperBoundaryRecord>(&target.payload)) {
     record->block_label = context.control_flow_block->block_label;
     record->block_index = context.block_index;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_i128_pair_diagnostic(diagnostics,
+                                module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                                context,
+                                instruction_index,
+                                std::string{target.selection.diagnostic});
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  return LowerMemoryInstructionResult{
+      .handled = true,
+      .instruction = make_bir_machine_instruction(context, instruction_index, std::move(target)),
+  };
+}
+
+[[nodiscard]] LowerMemoryInstructionResult lower_i128_copy_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  if (cast == nullptr ||
+      cast->opcode != bir::CastOpcode::Bitcast ||
+      cast->result.type != bir::TypeKind::I128 ||
+      cast->operand.type != bir::TypeKind::I128) {
+    return LowerMemoryInstructionResult{.handled = false};
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  const auto* i128_carriers =
+      prepare::find_prepared_i128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (i128_carriers == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  auto prepared = make_prepared_i128_copy_transport_record(
+      context.function.prepared->names, *i128_carriers, *cast);
+  if (!prepared.record.has_value()) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_transport_error_message(prepared.error));
+    return LowerMemoryInstructionResult{.handled = true};
+  }
+
+  InstructionRecord target = make_i128_transport_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<I128TransportRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
     record->instruction_index = instruction_index;
   }
   if (target.selection.status != MachineNodeSelectionStatus::Selected) {
@@ -1942,6 +2025,14 @@ InstructionDispatchResult dispatch_prepared_block(
                  lowered_i128_pair.handled) {
         if (lowered_i128_pair.instruction.has_value()) {
           block.instructions.push_back(std::move(*lowered_i128_pair.instruction));
+        }
+        ++result.visited_operations;
+        continue;
+      } else if (auto lowered_i128_copy =
+                     lower_i128_copy_instruction(context, inst, instruction_index, diagnostics);
+                 lowered_i128_copy.handled) {
+        if (lowered_i128_copy.instruction.has_value()) {
+          block.instructions.push_back(std::move(*lowered_i128_copy.instruction));
         }
         ++result.visited_operations;
         continue;

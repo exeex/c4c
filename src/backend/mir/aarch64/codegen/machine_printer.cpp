@@ -1353,6 +1353,32 @@ mir::TargetInstructionPrintResult print_i128_transport(
     out << "// i128 carrier " << *low << ", " << *high;
     return target_printed({out.str()});
   }
+  if (transport.transport_kind == I128TransportKind::CopyRegisterPair) {
+    const auto source_low = lane_register_name(transport.source_low_lane);
+    const auto source_high = lane_register_name(transport.source_high_lane);
+    if (!source_low.has_value() || !source_high.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "i128 copy transport is missing structured source low/high registers");
+    }
+    std::vector<std::string> lines;
+    if (*low != *source_low) {
+      std::ostringstream low_move;
+      low_move << "mov " << *low << ", " << *source_low;
+      lines.push_back(low_move.str());
+    }
+    if (*high != *source_high) {
+      std::ostringstream high_move;
+      high_move << "mov " << *high << ", " << *source_high;
+      lines.push_back(high_move.str());
+    }
+    if (lines.empty()) {
+      std::ostringstream out;
+      out << "// i128 copy preserved " << *low << ", " << *high;
+      lines.push_back(out.str());
+    }
+    return target_printed(std::move(lines));
+  }
   if (!transport.memory.has_value()) {
     return target_unsupported(bad_header(instruction) +
                               "i128 memory transport is missing structured memory operand");
