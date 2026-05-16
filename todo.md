@@ -1,56 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/252_aarch64_calls_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create Calls Owner And Move Construction Routes
+Current Step ID: 3
+Current Step Title: Move Call Lowering And ABI-Binding Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 remaining small call-routing packet: moved the normal-call
-required prepared-plan lookup and missing `PreparedCallPlan` diagnostic helper
-into the calls owner. `calls.cpp` / `calls.hpp` now own
-`require_prepared_call_plan`, which wraps the calls-owned
-`find_prepared_call_plan` and emits the normal-call missing-plan diagnostic.
-`dispatch.cpp` keeps top-level block dispatch, the explicit variadic entry
-helper validation, and the separate `find_prepared_call_plan` route used to
-surround lowered calls with before/after call-boundary moves. Step 2 is
-complete for the clean call-owned construction-route surface in this packet.
+Completed Step 3 call lowering and ABI-binding ownership audit. AST-backed
+checks show the valid normal-call lowering bodies now live in `calls.cpp`:
+prepared call-plan lookup/requirement, before/after call-boundary move
+lowering, prepared argument/result ABI-binding lookup, prepared register
+conversion for call-boundary moves, direct/indirect call materialization,
+memory-return storage from prepared frame facts, clobber/preserved-value effect
+construction, and call machine-node construction. No additional Step 3-valid
+helper body was moved in this packet because the remaining call-shaped
+`dispatch.cpp` body is the retained-call dispatcher wrapper plus variadic entry
+helper validation, which is a routing/variadic boundary rather than ABI
+authority.
 
 ## Suggested Next
 
-Supervisor should review Step 2 completion and choose the next plan step or
-lifecycle action.
+Supervisor should choose Step 4 printer/spelling redistribution, keeping direct,
+indirect, helper-call, relocation, and call-result spelling movement separate
+from generic machine-printer primitives.
 
 ## Watchouts
 
-- Prior ownership checks still valid:
-  - `require_prepared_call_plan` resolves to `calls.cpp` and is called by
-    `dispatch.cpp` `lower_call_instruction`.
-  - `find_prepared_call_plan` remains calls-owned; its remaining direct
-    `dispatch.cpp` caller is `dispatch_prepared_block`, where it gates
-    top-level before/after call-boundary move routing.
-  - `lower_call_instruction` still directly calls dispatch-local variadic entry
-    helpers and dispatch-local call diagnostics for variadic helper validation;
-    that boundary was intentionally not moved.
-- AST-backed ownership checks after this packet:
-  - `make_memory_return_storage` resolves to `calls.cpp` and is called by
-    calls-owned `lower_prepared_call_instruction`.
-  - `make_indirect_callee_register` resolves to `calls.cpp` and is called by
-    calls-owned `lower_prepared_call_instruction`.
-  - `lower_prepared_call_instruction` resolves to `calls.cpp`; `dispatch.cpp`
-    `lower_call_instruction` is its direct caller after retained-call routing,
-    calls-owned required prepared-plan validation, and variadic entry helper
-    validation.
-  - `lower_before_call_moves` resolves to `calls.cpp`.
-  - `find_prepared_call_plan` resolves to `calls.cpp`.
-  - `dispatch_prepared_block` is the direct caller of calls-owned
-    `lower_before_call_moves`; `lower_after_call_moves` follows the same route.
-  - `lower_before_call_move` callees now resolve to calls-owned local helpers
-    for prepared argument lookup, ABI binding lookup, F128 carrier validation,
-    call-boundary diagnostics, prepared register conversion, and boundary
+- Step 3 ownership checks:
+  - `lower_prepared_call_instruction`, `make_memory_return_storage`,
+    `make_indirect_callee_register`, `lower_before_call_moves`,
+    `lower_after_call_moves`, `find_prepared_call_plan`, and
+    `require_prepared_call_plan` resolve to `calls.cpp`.
+  - `lower_before_call_move` / `lower_after_call_move` stay calls-local and use
+    calls-local prepared argument/result lookup, ABI binding lookup, F128
+    carrier validation, prepared register conversion, and boundary
     machine-instruction construction.
+  - `lower_prepared_call_instruction` consumes `PreparedCallPlan` facts for
+    direct/indirect callee identity, memory-return storage, prepared arguments,
+    prepared result, preserved values, and clobbered registers; it does not
+    reclassify ABI locally or recover facts from assembly text.
+  - `make_call_instruction` builds call defs/uses/clobbers/preserves from the
+    structured call record and prepared clobber/preserved-value carriers.
+- Remaining `dispatch.cpp` boundaries after Step 3:
+  - `lower_call_instruction` remains dispatch-local because it is the retained
+    BIR-call route that sequences variadic entry validation, calls-owned
+    `require_prepared_call_plan`, and calls-owned
+    `lower_prepared_call_instruction`.
+  - `variadic_entry_helper_kind`, `require_prepared_variadic_entry_plan`,
+    `variadic_helper_operand_homes_complete`, and related missing-fact message
+    helpers remain dispatch-local because moving them would widen Step 3 into
+    variadic shard ownership and helper semantics.
+  - `append_call_diagnostic` remains duplicated in `dispatch.cpp` for
+    dispatch-owned inline asm, intrinsic, and variadic route diagnostics;
+    calls-owned normal-call diagnostics use the separate calls-local helper.
+  - `dispatch_prepared_block` remains the top-level owner for prepared-block
+    traversal, retained-call filtering, and sequencing before-call moves, the
+    lowered call, and after-call moves.
 - Family-neutral boundaries to keep outside calls ownership:
   - `instruction.hpp` must keep shared enums, variant payload declarations,
     operand records, `InstructionRecord`, and public factory declarations until
