@@ -1,6 +1,7 @@
 #include "machine_printer.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "comparison.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 
@@ -428,27 +429,6 @@ std::optional<std::string> validate_f128_cmp_scalar_result(
            .has_value()) {
     return std::string{
         "f128 comparison helper has incomplete printable scalar GPR register facts"};
-  }
-  return std::nullopt;
-}
-
-std::optional<std::string> f128_cmp_condition(
-    prepare::PreparedF128CmpResultZeroTest zero_test) {
-  switch (zero_test) {
-    case prepare::PreparedF128CmpResultZeroTest::EqualZero:
-      return std::string{"eq"};
-    case prepare::PreparedF128CmpResultZeroTest::NotEqualZero:
-      return std::string{"ne"};
-    case prepare::PreparedF128CmpResultZeroTest::LessThanZero:
-      return std::string{"lt"};
-    case prepare::PreparedF128CmpResultZeroTest::LessOrEqualZero:
-      return std::string{"le"};
-    case prepare::PreparedF128CmpResultZeroTest::GreaterThanZero:
-      return std::string{"gt"};
-    case prepare::PreparedF128CmpResultZeroTest::GreaterOrEqualZero:
-      return std::string{"ge"};
-    case prepare::PreparedF128CmpResultZeroTest::Missing:
-      return std::nullopt;
   }
   return std::nullopt;
 }
@@ -1012,10 +992,6 @@ std::string_view required_auxiliary_mnemonic(const InstructionRecord& instructio
   return machine_instruction_auxiliary_printer_mnemonic(instruction);
 }
 
-std::string_view required_branch_mnemonic() {
-  return machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Branch);
-}
-
 std::optional<std::string> validate_selected_machine_node(const InstructionRecord& instruction) {
   if (instruction.surface != RecordSurfaceKind::MachineInstructionNode) {
     return std::string("printer requires surface machine_instruction_node, got ") +
@@ -1090,7 +1066,7 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
     return target_unsupported(bad_header(instruction) + "branch target identity is missing");
   }
   if (!branch.conditional) {
-    const auto mnemonic = required_primary_mnemonic(instruction);
+    const auto mnemonic = comparison_unconditional_branch_mnemonic(instruction);
     if (mnemonic.empty()) {
       return target_unsupported(bad_header(instruction) + "branch mnemonic is not printable");
     }
@@ -1122,18 +1098,17 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
                               "conditional branch target identity is missing");
   }
 
-  const auto condition_mnemonic = required_primary_mnemonic(instruction);
-  const auto branch_mnemonic = required_branch_mnemonic();
-  if (condition_mnemonic.empty() || branch_mnemonic.empty()) {
+  const auto spelling = comparison_materialized_bool_branch_spelling(instruction);
+  if (!spelling.has_value()) {
     return target_unsupported(bad_header(instruction) + "branch mnemonic is not printable");
   }
 
   std::ostringstream condition_line;
-  condition_line << condition_mnemonic << " " << register_name(*condition) << ", "
+  condition_line << spelling->condition_mnemonic << " " << register_name(*condition) << ", "
                  << block_label(targets.true_target.function_name,
                                 targets.true_target.block_label);
   std::ostringstream branch_line;
-  branch_line << branch_mnemonic << " "
+  branch_line << spelling->branch_mnemonic << " "
               << block_label(targets.false_target.function_name,
                              targets.false_target.block_label);
   return target_printed({condition_line.str(), branch_line.str()});
@@ -1596,64 +1571,33 @@ mir::TargetInstructionPrintResult print_i128_compare(const InstructionRecord& in
   }
 
   std::vector<std::string> lines;
-  switch (compare.predicate) {
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne: {
-      const auto condition = compare.predicate == bir::BinaryOpcode::Eq ? "eq" : "ne";
-      {
-        std::ostringstream high;
-        high << "cmp " << *lhs_high << ", " << *rhs_high;
-        lines.push_back(high.str());
-      }
-      {
-        std::ostringstream low;
-        low << "ccmp " << *lhs_low << ", " << *rhs_low << ", #0, eq";
-        lines.push_back(low.str());
-      }
-      {
-        std::ostringstream cset;
-        cset << "cset " << result << ", " << condition;
-        lines.push_back(cset.str());
-      }
-      return target_printed(std::move(lines));
+  if (const auto condition = i128_equality_compare_condition(compare.predicate);
+      condition.has_value()) {
+    {
+      std::ostringstream high;
+      high << "cmp " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
     }
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      break;
-    default:
+    {
+      std::ostringstream low;
+      low << "ccmp " << *lhs_low << ", " << *rhs_low << ", #0, eq";
+      lines.push_back(low.str());
+    }
+    {
+      std::ostringstream cset;
+      cset << "cset " << result << ", " << *condition;
+      lines.push_back(cset.str());
+    }
+    return target_printed(std::move(lines));
+  }
+
+  const auto relational_spelling = i128_relational_compare_spelling(compare.predicate);
+  if (!relational_spelling.has_value()) {
       return target_unsupported(
           bad_header(instruction) +
           "i128 compare printer supports equality and relational predicates only");
   }
 
-  const auto signed_high =
-      compare.predicate == bir::BinaryOpcode::Slt ||
-      compare.predicate == bir::BinaryOpcode::Sle ||
-      compare.predicate == bir::BinaryOpcode::Sgt ||
-      compare.predicate == bir::BinaryOpcode::Sge;
-  const auto greater_predicate =
-      compare.predicate == bir::BinaryOpcode::Sgt ||
-      compare.predicate == bir::BinaryOpcode::Sge ||
-      compare.predicate == bir::BinaryOpcode::Ugt ||
-      compare.predicate == bir::BinaryOpcode::Uge;
-  const auto inclusive_predicate =
-      compare.predicate == bir::BinaryOpcode::Sle ||
-      compare.predicate == bir::BinaryOpcode::Sge ||
-      compare.predicate == bir::BinaryOpcode::Ule ||
-      compare.predicate == bir::BinaryOpcode::Uge;
-  const auto high_true = greater_predicate ? "gt" : "lt";
-  const auto high_false = greater_predicate ? "lt" : "gt";
-  const auto unsigned_high_true = greater_predicate ? "hi" : "lo";
-  const auto unsigned_high_false = greater_predicate ? "lo" : "hi";
-  const auto low_true =
-      greater_predicate ? (inclusive_predicate ? "hs" : "hi")
-                        : (inclusive_predicate ? "ls" : "lo");
   const auto true_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
                           std::to_string(compare.block_label) + "_" +
                           std::to_string(compare.instruction_index) + "_true";
@@ -1670,13 +1614,12 @@ mir::TargetInstructionPrintResult print_i128_compare(const InstructionRecord& in
   }
   {
     std::ostringstream high_true_branch;
-    high_true_branch << "b." << (signed_high ? high_true : unsigned_high_true) << " "
-                     << true_label;
+    high_true_branch << "b." << relational_spelling->high_true_condition << " " << true_label;
     lines.push_back(high_true_branch.str());
   }
   {
     std::ostringstream high_false_branch;
-    high_false_branch << "b." << (signed_high ? high_false : unsigned_high_false) << " "
+    high_false_branch << "b." << relational_spelling->high_false_condition << " "
                       << false_label;
     lines.push_back(high_false_branch.str());
   }
@@ -1687,7 +1630,7 @@ mir::TargetInstructionPrintResult print_i128_compare(const InstructionRecord& in
   }
   {
     std::ostringstream low_true_branch;
-    low_true_branch << "b." << low_true << " " << true_label;
+    low_true_branch << "b." << relational_spelling->low_true_condition << " " << true_label;
     lines.push_back(low_true_branch.str());
   }
   {
@@ -1945,7 +1888,7 @@ mir::TargetInstructionPrintResult print_f128_runtime_helper(
         error.has_value()) {
       return target_unsupported(bad_header(instruction) + *error);
     }
-    const auto condition = f128_cmp_condition(
+    const auto condition = f128_compare_result_condition(
         helper.scalar_result.cmp_result_consumption->zero_test);
     if (!condition.has_value()) {
       return target_unsupported(bad_header(instruction) +

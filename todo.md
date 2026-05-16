@@ -1,58 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/256_aarch64_comparison_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Dispatch Through The Comparison Owner
+Current Step ID: 4
+Current Step Title: Reconcile Comparison Spelling Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 routed the remaining comparison-family dispatch body through the
-comparison owner.
+Step 4 moved clear comparison-specific printer spelling decisions into the
+comparison owner while preserving machine-printer line assembly mechanics.
 
-`dispatch.cpp` already routed unconditional branch, conditional branch,
-compare-branch, and materialized-bool branch behavior through `comparison.cpp`.
-The remaining embedded comparison-family lowering was the I128 compare arm
-inside `lower_i128_pair_operation_instruction`; that arm now delegates to
-`lower_prepared_i128_compare_instruction` in `comparison.cpp`, with the public
-declaration in `comparison.hpp`.
+`comparison.cpp` now owns helper APIs for unconditional/materialized-bool
+branch mnemonic spelling, F128 comparison zero-test condition spelling, and
+I128 equality/relational compare condition spelling. `machine_printer.cpp`
+still validates printable operands, builds labels, and emits the concrete
+assembly lines.
 
 ## Suggested Next
 
-Supervisor can review the Step 3 routing slice for acceptance or delegate the
+Supervisor can review the Step 4 ownership slice for acceptance or delegate the
 next plan-step packet.
 
 ## Watchouts
 
-- No tests, expectations, printer code, `comparison.md`, `plan.md`, source
-  idea, or `test_before.log` were changed.
-- The generic I128 shift/runtime/helper paths remain in `dispatch.cpp`; only
-  the I128 compare case moved because it is the comparison-family body in this
-  packet.
+- No tests, expectations, `comparison.md`, `plan.md`, source idea,
+  `instruction.cpp`, `instruction.hpp`, `dispatch.cpp`, or `test_before.log`
+  were changed.
+- Broad assembly emission mechanics remain in `machine_printer.cpp`; the move
+  is limited to comparison-owned spelling helpers and their printer call sites.
+- `clang-format` was not available in this environment.
 
 ## Proof
 
 Supervisor-selected proof command was run exactly and wrote `test_after.log`:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(branch_compare_contract|branch_compare_records|compare_branch_candidate_records|prepared_branch_records|machine_printer)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_' > test_after.log 2>&1
 ```
 
-Build completed and CTest passed 5/5 tests:
-
-- `backend_aarch64_branch_compare_contract`
-- `backend_aarch64_branch_compare_records`
-- `backend_aarch64_compare_branch_candidate_records`
-- `backend_aarch64_prepared_branch_records`
-- `backend_aarch64_machine_printer`
-
-Supervisor also ran the broader AArch64 backend regression guard before and
-after this slice:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'
-```
-
-`check_monotonic_regression.py --allow-non-decreasing-passed` accepted the
-before/after comparison with before=27/27 PASS and after=27/27 PASS.
+Build completed and CTest passed 27/27 backend AArch64 tests.

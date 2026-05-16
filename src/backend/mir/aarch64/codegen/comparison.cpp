@@ -2,6 +2,7 @@
 #include "operands.hpp"
 
 #include <optional>
+#include <string_view>
 #include <string>
 #include <utility>
 #include <variant>
@@ -170,6 +171,108 @@ void append_i128_compare_diagnostic(
 }
 
 }  // namespace
+
+std::string_view comparison_unconditional_branch_mnemonic(
+    const InstructionRecord& instruction) {
+  return machine_instruction_primary_printer_mnemonic(instruction);
+}
+
+std::optional<ComparisonBranchPrintSpelling> comparison_materialized_bool_branch_spelling(
+    const InstructionRecord& instruction) {
+  const auto condition_mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
+  const auto branch_mnemonic =
+      machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Branch);
+  if (condition_mnemonic.empty() || branch_mnemonic.empty()) {
+    return std::nullopt;
+  }
+  return ComparisonBranchPrintSpelling{
+      .condition_mnemonic = condition_mnemonic,
+      .branch_mnemonic = branch_mnemonic,
+  };
+}
+
+std::optional<std::string_view> f128_compare_result_condition(
+    prepare::PreparedF128CmpResultZeroTest zero_test) {
+  switch (zero_test) {
+    case prepare::PreparedF128CmpResultZeroTest::EqualZero:
+      return std::string_view{"eq"};
+    case prepare::PreparedF128CmpResultZeroTest::NotEqualZero:
+      return std::string_view{"ne"};
+    case prepare::PreparedF128CmpResultZeroTest::LessThanZero:
+      return std::string_view{"lt"};
+    case prepare::PreparedF128CmpResultZeroTest::LessOrEqualZero:
+      return std::string_view{"le"};
+    case prepare::PreparedF128CmpResultZeroTest::GreaterThanZero:
+      return std::string_view{"gt"};
+    case prepare::PreparedF128CmpResultZeroTest::GreaterOrEqualZero:
+      return std::string_view{"ge"};
+    case prepare::PreparedF128CmpResultZeroTest::Missing:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string_view> i128_equality_compare_condition(
+    bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case bir::BinaryOpcode::Eq:
+      return std::string_view{"eq"};
+    case bir::BinaryOpcode::Ne:
+      return std::string_view{"ne"};
+    default:
+      return std::nullopt;
+  }
+}
+
+bool is_i128_relational_compare_predicate(bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::optional<I128RelationalComparePrintSpelling> i128_relational_compare_spelling(
+    bir::BinaryOpcode predicate) {
+  if (!is_i128_relational_compare_predicate(predicate)) {
+    return std::nullopt;
+  }
+  const auto signed_high =
+      predicate == bir::BinaryOpcode::Slt ||
+      predicate == bir::BinaryOpcode::Sle ||
+      predicate == bir::BinaryOpcode::Sgt ||
+      predicate == bir::BinaryOpcode::Sge;
+  const auto greater_predicate =
+      predicate == bir::BinaryOpcode::Sgt ||
+      predicate == bir::BinaryOpcode::Sge ||
+      predicate == bir::BinaryOpcode::Ugt ||
+      predicate == bir::BinaryOpcode::Uge;
+  const auto inclusive_predicate =
+      predicate == bir::BinaryOpcode::Sle ||
+      predicate == bir::BinaryOpcode::Sge ||
+      predicate == bir::BinaryOpcode::Ule ||
+      predicate == bir::BinaryOpcode::Uge;
+  return I128RelationalComparePrintSpelling{
+      .high_true_condition =
+          signed_high ? (greater_predicate ? std::string_view{"gt"} : std::string_view{"lt"})
+                      : (greater_predicate ? std::string_view{"hi"} : std::string_view{"lo"}),
+      .high_false_condition =
+          signed_high ? (greater_predicate ? std::string_view{"lt"} : std::string_view{"gt"})
+                      : (greater_predicate ? std::string_view{"lo"} : std::string_view{"hi"}),
+      .low_true_condition =
+          greater_predicate
+              ? (inclusive_predicate ? std::string_view{"hs"} : std::string_view{"hi"})
+              : (inclusive_predicate ? std::string_view{"ls"} : std::string_view{"lo"}),
+  };
+}
 
 PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
     c4c::FunctionNameId function_name,
