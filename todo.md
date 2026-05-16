@@ -1,58 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/252_aarch64_calls_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Calls Ownership Surfaces
+Current Step ID: 2
+Current Step Title: Create Calls Owner And Move Construction Routes
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1: inspected the current AArch64 call ownership surfaces and
-mapped behavior-preserving extraction targets for future `calls.cpp` /
-`calls.hpp` work. The repo currently has `calls.md` only; there is no compiled
-`src/backend/mir/aarch64/codegen/calls.cpp` or `calls.hpp` yet.
+Completed Step 2 first packet: created compiled
+`src/backend/mir/aarch64/codegen/calls.cpp` / `calls.hpp`, added `calls.cpp` to
+`src/backend/CMakeLists.txt`, and moved the call construction/status surface
+out of `instruction.cpp`: `call_selection_status`,
+`make_call_boundary_move_instruction`,
+`make_call_boundary_abi_binding_instruction`, `make_call_instruction`,
+`effect_from_prepared_call_clobber`,
+`effects_from_prepared_call_clobbers`,
+`effect_from_prepared_call_preserved_value`, and
+`effects_from_prepared_call_preserved_values`.
 
 ## Suggested Next
 
-Step 2 first packet: create `src/backend/mir/aarch64/codegen/calls.hpp` and
-`calls.cpp`, add `calls.cpp` to `src/backend/CMakeLists.txt`, and move only the
-smallest construction/status surface first:
-`call_selection_status`, `make_call_boundary_move_instruction`,
-`make_call_boundary_abi_binding_instruction`, `make_call_instruction`, and the
-call clobber/preserved-value effect helpers needed by `make_call_instruction`.
+Step 2 next packet: move the smallest call lowering route from `dispatch.cpp`
+into the compiled calls owner, starting with prepared call-plan lookup and
+boundary move lowering only if the supervisor explicitly owns `dispatch.cpp`
+for that packet.
 
 ## Watchouts
 
-- Concrete extraction targets found by AST-backed inventory:
-  - `instruction.cpp`: move call-family construction/status bodies from the
-    broad instruction owner, including `call_selection_status`,
-    `make_call_boundary_move_instruction`,
-    `make_call_boundary_abi_binding_instruction`, `make_call_instruction`,
-    `effect_from_prepared_call_clobber`,
-    `effects_from_prepared_call_clobbers`,
-    `effect_from_prepared_call_preserved_value`, and
-    `effects_from_prepared_call_preserved_values`.
-  - `dispatch.cpp`: move call-family lowering and prepared-fact lookup bodies
-    into the calls owner, including `append_call_diagnostic`,
-    `find_prepared_call_plan`, `find_prepared_argument_plan`,
-    `find_prepared_argument_binding`, `find_prepared_result_binding`,
-    `make_register_operand_from_prepared_authority`,
-    `complete_full_width_f128_carrier`, `complete_f128_constant_carrier`,
-    `lower_before_call_move`, `lower_after_call_move`,
-    `lower_before_call_moves`, `lower_after_call_moves`,
-    `make_indirect_callee_register`, `make_memory_return_storage`, and
-    `lower_call_instruction`.
-  - `machine_printer.cpp`: move call spelling bodies to calls ownership,
-    including `print_call`, `print_call_boundary_move`,
-    `print_call_boundary_abi_binding`, and the direct `bl` / indirect `blr`
-    structured spelling that `print_call` owns. Keep helper-call spelling as a
-    later boundary decision because `print_i128_runtime_helper`,
-    `print_f128_runtime_helper`, `append_i128_helper_move_line`, and
-    `append_f128_helper_move_line` currently belong to runtime-helper families
-    but emit terminal helper calls.
-  - `src/backend/CMakeLists.txt`: when Step 2 creates `calls.cpp`, add it next
-    to nearby AArch64 codegen shard sources.
+- AST-backed ownership checks after this packet:
+  - `make_call_instruction` resolves to `calls.cpp`; the same definition query
+    against `instruction.cpp` reports the symbol absent from that translation
+    unit.
+  - `make_call_instruction` callees now include calls-owned
+    `call_selection_status`,
+    `effects_from_prepared_call_clobbers`, and
+    `effects_from_prepared_call_preserved_values` in `calls.cpp`.
+  - `instruction.cpp` still calls the public calls-owned
+    `effects_from_prepared_call_clobbers` for existing F128/i128 runtime helper
+    boundary records; do not move helper-call ownership unless a later packet
+    explicitly owns that boundary.
 - Family-neutral boundaries to keep outside calls ownership:
   - `instruction.hpp` must keep shared enums, variant payload declarations,
     operand records, `InstructionRecord`, and public factory declarations until
@@ -67,8 +54,6 @@ call clobber/preserved-value effect helpers needed by `make_call_instruction`.
     and memory spelling primitives, relocation helpers, and the variant routing
     switch; after extraction it should route call payloads to calls-owned
     printer helpers.
-  - Existing `alu.*`, `returns.*`, `comparison.*`, and `operands.*` shard
-    patterns are the nearest local convention for `calls.hpp` / `calls.cpp`.
 - Carrier gaps and blockers to preserve, not patch locally:
   - `calls.md` says outgoing stack snapshots, indirect-callee spill/materialize
     offsets, call-time alignment, F128/i128/aggregate/variadic classification,
@@ -90,6 +75,6 @@ call clobber/preserved-value effect helpers needed by `make_call_instruction`.
 
 ## Proof
 
-Read-only inspection packet; no build or tests were run and `test_after.log`
-was not modified. Supervisor-selected future code proof command:
+Proof passed with log at `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+The final run built `calls.cpp` and passed 139/139 `backend_` tests.
