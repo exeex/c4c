@@ -3,27 +3,27 @@
 Status: Active
 Source Idea Path: ideas/open/254_aarch64_globals_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create Globals Owner Shell
+Current Step ID: 3
+Current Step Title: Move Address-Materialization Record Construction
 
 ## Just Finished
 
-Step 2 - Create Globals Owner Shell completed as a behavior-preserving owner
-shell packet.
+Step 3 - Move Address-Materialization Record Construction completed as a
+behavior-preserving globals redistribution packet.
 
-Created `src/backend/mir/aarch64/codegen/globals.hpp` and
-`src/backend/mir/aarch64/codegen/globals.cpp` with the local AArch64 codegen
-namespace/include style and no declarations or behavior moved yet.
-
-Added `src/backend/mir/aarch64/codegen/globals.cpp` to the explicit
-`C4C_BACKEND_SOURCES` AArch64 codegen source list in `src/backend/CMakeLists.txt`.
+Moved globals-family address materialization kind selection, prepared-fact
+identity validation, address-record construction, and prepared materialization
+record wrappers from `instruction.cpp` into
+`src/backend/mir/aarch64/codegen/globals.cpp`, with owner declarations in
+`globals.hpp`. Generic instruction packaging, including
+`make_address_materialization_instruction`, remains in `instruction.cpp`.
 
 ## Suggested Next
 
-Delegate the next globals redistribution packet to move globals-family record
-construction from `instruction.cpp` into `globals.cpp` behind minimal
-`globals.hpp` declarations, while keeping generic instruction packaging in
-`instruction.*` unless the compile boundary proves otherwise.
+Delegate the next globals redistribution packet to move globals-owned lowering
+or dispatch-adjacent glue only if the source plan identifies it as part of the
+globals shard; otherwise send the active plan back for review before widening
+beyond record construction.
 
 ## Watchouts
 
@@ -32,10 +32,14 @@ construction from `instruction.cpp` into `globals.cpp` behind minimal
   expectations to claim progress.
 - Preserve direct, GOT, label, string-constant, and TLS address materialization
   behavior through structured prepared facts and machine instruction records.
-- The first real movement should not pull in generic instruction packaging,
-  dispatch loop control, scalar-register tracking, or generic printer dispatch.
-- `globals.cpp` now compiles as an empty owner shell; preserve the no-behavior
-  baseline when moving the first globals-only helpers.
+- `instruction.hpp` still carries compatibility declarations for existing
+  include sites; `globals.hpp` now owns the globals-facing declarations.
+- The moved construction code keeps local storage/register conversion helpers
+  in `globals.cpp` to avoid touching memory, dispatch, or generic instruction
+  packaging in this packet.
+- Do not pull in generic instruction packaging, dispatch loop control,
+  scalar-register tracking, or generic printer dispatch without a separate
+  supervisor packet.
 - Existing focused coverage for this family is concentrated in
   `backend_aarch64_prepared_memory_operand_records`,
   `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`.
