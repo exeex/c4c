@@ -1,7 +1,8 @@
 # AArch64 `globals.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
 
 ## Intent
 
@@ -67,6 +68,21 @@ owners.
   that spelling can be owned through globals shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Notes
+
+The globals markdown shard was reconciled into compiled `globals.cpp` and
+`globals.hpp` owners, then `src/backend/mir/aarch64/codegen/globals.md` was
+deleted. Address-materialization construction, lowering, and globals-specific
+printer spelling now live behind the globals owner while `instruction.cpp`,
+`dispatch.cpp`, and `machine_printer.cpp` retain their generic responsibilities.
+
+Focused close guard passed for
+`backend_aarch64_prepared_memory_operand_records`,
+`backend_aarch64_machine_printer`, and
+`backend_aarch64_instruction_dispatch`. Supervisor acceptance context reported
+full `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+passed 3167/3167 before commit `f228c11a6`.
 
 ## Reviewer Reject Signals
 
