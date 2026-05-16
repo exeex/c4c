@@ -16,6 +16,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/emit.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/machine_printer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/instruction.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/operands.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/returns.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/traversal.cpp"
