@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/256_aarch64_comparison_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Reconcile Comparison Spelling Ownership
+Current Step ID: 5
+Current Step Title: Reconcile `comparison.md` And Validate
 
 # Current Packet
 
@@ -19,7 +19,7 @@ assembly lines.
 
 ## Suggested Next
 
-Supervisor can review the Step 4 ownership slice for acceptance or delegate the
+Supervisor can delegate Step 5, `Reconcile comparison.md And Validate`, as the
 next plan-step packet.
 
 ## Watchouts
