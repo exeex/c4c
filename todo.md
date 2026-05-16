@@ -3,26 +3,26 @@
 Status: Active
 Source Idea Path: ideas/open/254_aarch64_globals_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move Dispatch Lowering Body Behind Globals Owner
+Current Step ID: 5
+Current Step Title: Move Globals Printer Spelling
 
 ## Just Finished
 
-Step 4 - Move Dispatch Lowering Body Behind Globals Owner completed as a
-behavior-preserving globals redistribution packet.
+Step 5 - Move Globals Printer Spelling completed as a behavior-preserving
+globals redistribution packet.
 
-Moved the address-materialization lowering body and diagnostic message/append
-formatting from `dispatch.cpp` into
-`src/backend/mir/aarch64/codegen/globals.cpp`, with the lowering helper
-declared from `globals.hpp`. `dispatch.cpp` now includes `globals.hpp` and
-remains the router, preserving visited-operation behavior and scalar-register
-tracking after a returned address-materialization instruction.
+Moved direct, GOT, label, string-constant, and TLS address-materialization
+printer spelling from `machine_printer.cpp` into
+`src/backend/mir/aarch64/codegen/globals.cpp`, with the globals-owned printer
+helper declared from `globals.hpp`. `machine_printer.cpp` now keeps the generic
+payload dispatch and calls the globals-owned helper for
+`AddressMaterializationRecord` payloads.
 
 ## Suggested Next
 
-Delegate the next globals redistribution packet only if the source plan has a
-remaining globals-owned codegen body or declaration cleanup; otherwise send the
-active plan back for lifecycle review instead of widening this shard.
+Send the active plan back for lifecycle review if Step 5 exhausts the current
+globals shard runbook; otherwise delegate only the next explicitly remaining
+globals-owned redistribution or declaration-cleanup packet.
 
 ## Watchouts
 
@@ -38,7 +38,10 @@ active plan back for lifecycle review instead of widening this shard.
   packaging in this packet.
 - Generic instruction packaging remains in `instruction.cpp`; dispatch loop
   control and scalar-register tracking remain in `dispatch.cpp`.
-- Do not pull in generic printer dispatch, `instruction.cpp/hpp`, tests, or
+- Machine-printer generic payload dispatch remains in `machine_printer.cpp`;
+  globals-specific address-materialization spelling now lives behind
+  `print_address_materialization_instruction`.
+- Do not pull in non-globals printer bodies, `instruction.cpp/hpp`, tests, or
   expectation rewrites without a separate supervisor packet.
 - Existing focused coverage for this family is concentrated in
   `backend_aarch64_prepared_memory_operand_records`,

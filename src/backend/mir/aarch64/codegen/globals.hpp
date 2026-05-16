@@ -2,6 +2,7 @@
 
 #include "instruction.hpp"
 #include "../module/module.hpp"
+#include "mir/printer.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -28,5 +29,8 @@ make_prepared_address_materialization_instruction_record(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] mir::TargetInstructionPrintResult print_address_materialization_instruction(
+    const InstructionRecord& instruction,
+    const AddressMaterializationRecord& address);
 
 }  // namespace c4c::backend::aarch64::codegen
