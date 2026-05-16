@@ -1106,15 +1106,6 @@ find_inline_asm_prepared_output_operand(
   });
 }
 
-[[nodiscard]] std::string atomic_operation_error_message(
-    PreparedAtomicOperationRecordError error) {
-  std::string message =
-      "AArch64 atomic lowering requires complete prepared atomic operation facts";
-  message += "; error=";
-  message += prepared_atomic_operation_record_error_name(error);
-  return message;
-}
-
 [[nodiscard]] std::string i128_transport_error_message(
     PreparedI128TransportRecordError error) {
   std::string message =
@@ -1850,67 +1841,6 @@ struct LowerMemoryInstructionResult {
   };
 }
 
-[[nodiscard]] std::vector<module::MachineInstruction> lower_atomic_operations_for_block(
-    const module::BlockLoweringContext& context,
-    module::ModuleLoweringDiagnostics& diagnostics) {
-  std::vector<module::MachineInstruction> instructions;
-  if (context.function.prepared == nullptr ||
-      context.function.value_locations == nullptr ||
-      context.function.storage_plan == nullptr ||
-      context.function.control_flow == nullptr ||
-      context.control_flow_block == nullptr) {
-    return instructions;
-  }
-
-  const auto* atomic_operations =
-      prepare::find_prepared_atomic_operations(
-          *context.function.prepared, context.function.control_flow->function_name);
-  if (atomic_operations == nullptr) {
-    return instructions;
-  }
-
-  for (const auto& operation : atomic_operations->operations) {
-    if (operation.block_label != context.control_flow_block->block_label) {
-      continue;
-    }
-
-    auto prepared = make_prepared_atomic_operation_instruction_record(
-        *context.function.value_locations,
-        *context.function.storage_plan,
-        operation);
-    if (!prepared.record.has_value()) {
-      append_memory_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-          context,
-          operation.inst_index,
-          atomic_operation_error_message(prepared.error));
-      continue;
-    }
-
-    InstructionRecord target = make_atomic_memory_instruction(*prepared.record);
-    target.function_name = context.function.control_flow->function_name;
-    target.block_label = context.control_flow_block->block_label;
-    target.block_index = context.block_index;
-    target.instruction_index = operation.inst_index;
-    if (auto* record = std::get_if<AtomicMemoryInstructionRecord>(&target.payload)) {
-      record->block_index = context.block_index;
-    }
-    if (target.selection.status != MachineNodeSelectionStatus::Selected) {
-      append_memory_diagnostic(diagnostics,
-                               module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
-                               context,
-                               operation.inst_index,
-                               std::string{target.selection.diagnostic});
-      continue;
-    }
-
-    instructions.push_back(make_bir_machine_instruction(
-        context, operation.inst_index, std::move(target)));
-  }
-  return instructions;
-}
-
 [[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,
@@ -2495,7 +2425,7 @@ InstructionDispatchResult dispatch_prepared_block(
   }
 
   auto lowered_atomic_operations =
-      lower_atomic_operations_for_block(context, diagnostics);
+      lower_atomic_memory_operations_for_block(context, diagnostics);
   result.visited_operations += lowered_atomic_operations.size();
   for (auto& atomic_instruction : lowered_atomic_operations) {
     block.instructions.push_back(std::move(atomic_instruction));
