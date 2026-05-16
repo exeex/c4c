@@ -8,38 +8,36 @@ Current Step Title: Create Memory Owner And Move Operand Construction Routes
 
 ## Just Finished
 
-Step 2 moved the dispatch-side ordinary memory lowering path into
-`src/backend/mir/aarch64/codegen/memory.cpp` behind the memory-owned
-`lower_memory_instruction` helper declared in `memory.hpp`. The moved body now
-owns the prepared addressing lookup, ordinary load/store prepared-record
-selection, memory-specific diagnostic append path, `make_memory_instruction`
-node creation, and BIR machine-instruction wrapping for ordinary memory.
+Step 2 moved the atomic-memory selected-node construction helpers from
+`src/backend/mir/aarch64/codegen/instruction.cpp` into
+`src/backend/mir/aarch64/codegen/memory.cpp`. The memory owner now holds atomic
+operation error/kind naming, atomic opcode/status/side-effect helpers,
+scratch-register selection for atomic loops, `make_atomic_memory_instruction`,
+and `make_prepared_atomic_operation_instruction_record`.
 
-`memory_error_message` also moved from `dispatch.cpp` into the memory owner.
-`dispatch.cpp` now includes `memory.hpp` and remains the route selector: it
-tries F128 transport first, then routes unhandled memory-shaped BIR
-instructions to the memory-owned ordinary helper while preserving the existing
-scalar-state update for emitted memory loads.
+`memory.hpp` now declares the atomic-memory helper surface alongside the
+ordinary memory helper surface. `instruction.cpp` no longer defines the moved
+atomic-memory helpers; `instruction.hpp` retains compatibility declarations for
+existing broad include users.
 
 ## Suggested Next
 
-Continue Step 2 by selecting the next clean memory-owned dispatch surface, with
-atomic-memory block lowering as the likely candidate if its diagnostics and
-record construction can move without crossing into printer, traversal, or
-unsupported route expansion.
+Continue Step 2 with the next memory-family extraction candidate, likely the
+remaining dispatch-side atomic-memory block route if the supervisor wants the
+route selector body moved after this helper ownership slice.
 
 ## Watchouts
 
-`memory.cpp` currently has local copies of small register/effect helpers needed
-to avoid widening broad instruction interfaces during this extraction. A future
-shared-helper cleanup can normalize that duplication, but it was not required
-for this packet.
+`memory.cpp` now owns local memory-family copies of the small effect and
+scratch-register helpers needed by ordinary and atomic memory construction.
+This preserves behavior without widening instruction-owned helper interfaces;
+a future shared-helper cleanup can normalize duplication if desired.
 
 Do not expand behavior while moving ownership: local pointer loads, global
 loads, over-aligned alloca, dynamic stack, memcpy, and F128 memory-backed carrier
 gaps remain unsupported route boundaries unless prepared carriers are added.
-This packet did not invent support for those gaps; it only moved the existing
-ordinary load/local-store/global-store lowering path.
+This packet did not invent support for those gaps or change atomic semantics; it
+only moved the existing atomic-memory record/node construction bodies.
 
 `dispatch.cpp` still calls `memory_error_message` for I128/F128 transport
 memory-operand diagnostics. The message body is memory-owned, but those
@@ -53,6 +51,6 @@ Ran exact delegated proof:
 Result: green. `test_after.log` contains the combined build and backend CTest
 output, ending with 139/139 backend tests passed.
 
-Requested clang-tool checks also confirmed `lower_memory_instruction` and
-`memory_error_message` definitions are in `memory.cpp`, and the ordinary memory
-route caller is `dispatch_prepared_block` in `dispatch.cpp`.
+Requested clang-tool checks also confirmed
+`make_prepared_atomic_operation_instruction_record` and
+`make_atomic_memory_instruction` definitions are in `memory.cpp`.
