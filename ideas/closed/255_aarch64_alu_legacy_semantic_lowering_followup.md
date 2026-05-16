@@ -1,6 +1,6 @@
 # AArch64 ALU Legacy Semantic Lowering Follow-Up
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
 Source: Closure follow-up from
 `ideas/closed/251_aarch64_alu_markdown_shard_implementation_redistribution.md`
@@ -78,3 +78,17 @@ Reject the route or slice if it:
   routes are in scope;
 - broadens into other AArch64 shard redistribution work or unrelated backend
   cleanup.
+
+## Closure Note
+
+Closed after Step 6 acceptance review. The accepted semantic routes from this
+follow-up were classified, implemented, and proved through structured AArch64
+MIR records, allocation facts, and ALU-owned helpers. The close-time regression
+guard passed against the canonical `test_before.log` and `test_after.log`
+pair.
+
+Scratch/overlap/fallback authority work and popcount-style temporary authority
+questions remain out of scope for this closed idea. They should not resume as
+ALU legacy follow-up work unless a later lifecycle-reviewed idea first defines
+prepared scratch and allocation authority, then proves a concrete backend
+behavior consumes that authority.
