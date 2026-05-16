@@ -2,6 +2,8 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace {
 
@@ -10,20 +12,62 @@ int fail(const char* message) {
   return 1;
 }
 
-std::string read_emit_artifact() {
-  std::ifstream input(std::string(C4C_SOURCE_DIR) +
-                      "/src/backend/mir/aarch64/codegen/emit.md");
+std::string read_source(std::string_view relative_path) {
+  std::ifstream input(std::string(C4C_SOURCE_DIR) + "/" + std::string(relative_path));
   std::ostringstream out;
   out << input.rdbuf();
   return out.str();
 }
 
-std::string read_call_abi_source() {
-  std::ifstream input(std::string(C4C_SOURCE_DIR) +
-                      "/src/backend/bir/lir_to_bir/call_abi.cpp");
+std::string read_aarch64_compiled_sources() {
+  const std::vector<std::string_view> sources = {
+      "src/backend/mir/aarch64/abi/abi.cpp",
+      "src/backend/mir/aarch64/abi/abi.hpp",
+      "src/backend/mir/aarch64/api/api.cpp",
+      "src/backend/mir/aarch64/api/api.hpp",
+      "src/backend/mir/aarch64/codegen/alu.cpp",
+      "src/backend/mir/aarch64/codegen/alu.hpp",
+      "src/backend/mir/aarch64/codegen/calls.cpp",
+      "src/backend/mir/aarch64/codegen/calls.hpp",
+      "src/backend/mir/aarch64/codegen/comparison.cpp",
+      "src/backend/mir/aarch64/codegen/comparison.hpp",
+      "src/backend/mir/aarch64/codegen/compatibility_projection.cpp",
+      "src/backend/mir/aarch64/codegen/compatibility_projection.hpp",
+      "src/backend/mir/aarch64/codegen/dispatch.cpp",
+      "src/backend/mir/aarch64/codegen/dispatch.hpp",
+      "src/backend/mir/aarch64/codegen/emit.cpp",
+      "src/backend/mir/aarch64/codegen/emit.hpp",
+      "src/backend/mir/aarch64/codegen/globals.cpp",
+      "src/backend/mir/aarch64/codegen/globals.hpp",
+      "src/backend/mir/aarch64/codegen/instruction.cpp",
+      "src/backend/mir/aarch64/codegen/instruction.hpp",
+      "src/backend/mir/aarch64/codegen/machine_printer.cpp",
+      "src/backend/mir/aarch64/codegen/machine_printer.hpp",
+      "src/backend/mir/aarch64/codegen/memory.cpp",
+      "src/backend/mir/aarch64/codegen/memory.hpp",
+      "src/backend/mir/aarch64/codegen/operands.cpp",
+      "src/backend/mir/aarch64/codegen/operands.hpp",
+      "src/backend/mir/aarch64/codegen/returns.cpp",
+      "src/backend/mir/aarch64/codegen/returns.hpp",
+      "src/backend/mir/aarch64/codegen/traversal.cpp",
+      "src/backend/mir/aarch64/codegen/traversal.hpp",
+      "src/backend/mir/aarch64/module/module.cpp",
+      "src/backend/mir/aarch64/module/module.hpp",
+  };
+
   std::ostringstream out;
-  out << input.rdbuf();
+  for (const auto source_path : sources) {
+    const std::string source = read_source(source_path);
+    if (source.empty()) {
+      return {};
+    }
+    out << "\n// " << source_path << "\n" << source;
+  }
   return out.str();
+}
+
+std::string read_call_abi_source() {
+  return read_source("src/backend/bir/lir_to_bir/call_abi.cpp");
 }
 
 bool contains(const std::string& text, const std::string& needle) {
@@ -31,37 +75,49 @@ bool contains(const std::string& text, const std::string& needle) {
 }
 
 int check_fast_paths_no_longer_parse_signature_text() {
-  const std::string source = read_emit_artifact();
+  const std::string source = read_aarch64_compiled_sources();
   if (source.empty()) {
-    return fail("could not read aarch64 emit.md");
+    return fail("could not read aarch64 compiled sources");
   }
 
   if (contains(source, "function.signature_text") ||
-      contains(source, "backend_lir_is_zero_arg_i32_definition(function.signature_text)") ||
-      contains(source, "backend_lir_is_i32_definition(function.signature_text)") ||
-      contains(source,
-               "backend_lir_function_signature_uses_nonminimal_types(function.signature_text)")) {
-    return fail("aarch64 fast-path predicates still parse function.signature_text");
+      contains(source, "parse_function_signature_params") ||
+      contains(source, "trim_lir_arg_text(function.signature_text)") ||
+      contains(source, "signature_text.find(")) {
+    return fail("aarch64 compiled routes still parse rendered signature text");
   }
 
-  if (!contains(source, "lir_function_is_zero_arg_i32_definition(function)") ||
-      !contains(source, "lir_function_is_i32_definition(function)") ||
-      !contains(source, "lir_function_signature_uses_nonminimal_types(function)")) {
-    return fail("aarch64 fast paths are not guarded by structured signature helpers");
+  if (!contains(source, "PreparedBirModule") ||
+      !contains(source, "PreparedCallPlan") ||
+      !contains(source, "PreparedMemoryReturnPlan") ||
+      !contains(source, "PreparedValueHome") ||
+      !contains(source, "build_module(\n"
+                        "    const c4c::backend::prepare::PreparedBirModule& prepared)")) {
+    return fail("aarch64 compiled routes are not auditing the prepared-record owners");
   }
 
   return 0;
 }
 
 int check_structured_helpers_cover_signature_authorities() {
-  const std::string source = read_emit_artifact();
-  if (!contains(source, "function.signature_return_type_ref.has_value()") ||
-      !contains(source, "function.signature_params.size() == expected_count") ||
-      !contains(source, "function.signature_param_type_refs.size() ==") ||
-      !contains(source, "function.signature_is_variadic") ||
-      !contains(source, "function.signature_has_void_param_list") ||
-      !contains(source, "backend_lir_type_uses_nonminimal_types(type_ref.str())")) {
-    return fail("aarch64 structured signature helpers do not cover return, params, variadic, and nonminimal gates");
+  const std::string source = read_call_abi_source();
+  if (source.empty()) {
+    return fail("could not read call_abi.cpp");
+  }
+
+  if (!contains(source, "bool enforce_structured_signature_aggregate_layouts(") ||
+      !contains(source, "return target_profile.arch == c4c::TargetArch::Aarch64;") ||
+      !contains(source, "function_.signature_return_type_ref.has_value() &&\n"
+                        "      enforce_structured_signature_aggregate_layouts") ||
+      !contains(source, "function.signature_has_void_param_list || function.signature_is_variadic") ||
+      !contains(source, "!function.signature_params.empty() || "
+                        "!function.signature_param_type_refs.empty()") ||
+      !contains(source, "function.signature_params.size() != "
+                        "function.signature_param_type_refs.size()") ||
+      !contains(source, "? structured_signature_params(function)\n"
+                        "                                 : parse_function_signature_params("
+                        "function.signature_text)")) {
+    return fail("call ABI structured signature helpers do not cover return, params, variadic, and legacy fallback gates");
   }
   return 0;
 }
