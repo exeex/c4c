@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/256_aarch64_comparison_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Move Branch And Condition Record Construction
+Current Step ID: 3
+Current Step Title: Route Dispatch Through The Comparison Owner
 
 # Current Packet
 
