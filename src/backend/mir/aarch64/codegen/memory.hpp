@@ -1,21 +1,34 @@
 #pragma once
 
 #include "instruction.hpp"
+#include "../module/module.hpp"
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
+
+struct MemoryInstructionLoweringResult {
+  bool handled = false;
+  std::optional<module::MachineInstruction> instruction;
+};
 
 [[nodiscard]] std::string_view memory_base_kind_name(MemoryBaseKind kind);
 [[nodiscard]] std::string_view memory_operand_support_kind_name(MemoryOperandSupportKind kind);
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
+[[nodiscard]] std::string memory_error_message(PreparedMemoryOperandRecordError error);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] MemoryInstructionLoweringResult lower_memory_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
