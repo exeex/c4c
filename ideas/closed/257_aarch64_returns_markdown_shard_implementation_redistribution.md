@@ -1,7 +1,13 @@
 # AArch64 `returns.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
+
+Completion note: Active runbook Steps 1-5 completed. The returns markdown
+shard was reconciled into compiled AArch64 returns owners,
+`src/backend/mir/aarch64/codegen/returns.md` was deleted, and the broader
+`^backend_aarch64_` close gate passed 27/27 with no regressions.
 
 ## Intent
 
