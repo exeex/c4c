@@ -1,7 +1,8 @@
 # AArch64 `calls.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
 
 ## Intent
 
@@ -65,6 +66,31 @@ layout misleading and keeping family-specific code in family-neutral owners.
   that spelling can be owned through calls shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Notes
+
+Closed after the active runbook completed through Step 6. The implementation
+created `calls.cpp` and `calls.hpp`, moved valid call-family construction,
+lowering, helper, and spelling ownership into compiled calls owners, deleted
+`src/backend/mir/aarch64/codegen/calls.md`, and preserved the intended broad
+owner boundaries.
+
+Proof recorded in `todo.md` before closure:
+
+- focused backend proof passed 139/139 with
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`;
+- full-suite proof passed 3167/3167 with
+  `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`;
+- close-time regression guard on canonical full-suite logs passed with
+  non-decreasing pass policy: before 3167/3167, after 3167/3167, zero new
+  failures, zero new slow tests.
+
+Deferred carrier or runtime-helper boundary work remains separate from this
+source idea: complete outgoing call-area and call-time stack-alignment
+carriers, indirect-callee spill-area ownership, target ABI classification
+carriers for prepared-plan gaps such as HFA/F128/i128/aggregate splitting,
+explicit special register role records for `x8`/`x16`/`x17`, and
+runtime-helper call resource carriers for F128 or soft-float helper paths.
 
 ## Reviewer Reject Signals
 
