@@ -112,7 +112,215 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] PreparedBranchInstructionRecordResult branch_record_error(
+    PreparedBranchRecordError error) {
+  return PreparedBranchInstructionRecordResult{.record = std::nullopt, .error = error};
+}
+
 }  // namespace
+
+PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
+    c4c::FunctionNameId function_name,
+    const prepare::PreparedControlFlowBlock& block,
+    const bir::Terminator& terminator) {
+  if (function_name == c4c::kInvalidFunctionName) {
+    return branch_record_error(PreparedBranchRecordError::InvalidFunction);
+  }
+  if (block.block_label == c4c::kInvalidBlockLabel) {
+    return branch_record_error(PreparedBranchRecordError::InvalidSourceBlock);
+  }
+  if (block.terminator_kind != bir::TerminatorKind::Branch ||
+      terminator.kind != bir::TerminatorKind::Branch) {
+    return branch_record_error(PreparedBranchRecordError::TerminatorKindMismatch);
+  }
+  if (block.branch_target_label == c4c::kInvalidBlockLabel ||
+      terminator.target_label_id == c4c::kInvalidBlockLabel) {
+    return branch_record_error(PreparedBranchRecordError::MissingBranchTarget);
+  }
+  if (block.branch_target_label != terminator.target_label_id) {
+    return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
+  }
+
+  return PreparedBranchInstructionRecordResult{
+      .record =
+          BranchInstructionRecord{
+              .target =
+                  BranchTargetOperand{
+                      .surface = RecordSurfaceKind::RecordOnly,
+                      .block_label = block.branch_target_label,
+                      .function_name = function_name,
+                  },
+              .condition_record =
+                  BranchConditionRecord{
+                      .surface = RecordSurfaceKind::RecordOnly,
+                      .form = BranchConditionForm::Unconditional,
+                  },
+              .conditional = false,
+          },
+      .error = PreparedBranchRecordError::None,
+  };
+}
+
+PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedControlFlowBlock& block,
+    const prepare::PreparedBranchCondition& branch_condition,
+    const bir::Terminator& terminator) {
+  if (branch_condition.function_name == c4c::kInvalidFunctionName ||
+      value_locations.function_name != branch_condition.function_name) {
+    return branch_record_error(PreparedBranchRecordError::InvalidFunction);
+  }
+  if (block.block_label == c4c::kInvalidBlockLabel ||
+      branch_condition.block_label != block.block_label) {
+    return branch_record_error(PreparedBranchRecordError::InvalidSourceBlock);
+  }
+  if (block.terminator_kind != bir::TerminatorKind::CondBranch ||
+      terminator.kind != bir::TerminatorKind::CondBranch) {
+    return branch_record_error(PreparedBranchRecordError::TerminatorKindMismatch);
+  }
+  if (block.true_label == c4c::kInvalidBlockLabel ||
+      block.false_label == c4c::kInvalidBlockLabel ||
+      branch_condition.true_label == c4c::kInvalidBlockLabel ||
+      branch_condition.false_label == c4c::kInvalidBlockLabel ||
+      terminator.true_label_id == c4c::kInvalidBlockLabel ||
+      terminator.false_label_id == c4c::kInvalidBlockLabel) {
+    return branch_record_error(PreparedBranchRecordError::MissingBranchTarget);
+  }
+  if (block.true_label != branch_condition.true_label ||
+      block.false_label != branch_condition.false_label ||
+      terminator.true_label_id != branch_condition.true_label ||
+      terminator.false_label_id != branch_condition.false_label) {
+    return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
+  }
+  if (branch_condition.condition_value.type != bir::TypeKind::I1 ||
+      terminator.condition.type != bir::TypeKind::I1) {
+    return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
+  }
+  if (branch_condition.condition_value != terminator.condition) {
+    return branch_record_error(PreparedBranchRecordError::ConditionValueMismatch);
+  }
+
+  const auto* condition_home =
+      branch_condition.condition_value.kind == bir::Value::Kind::Named
+          ? prepare::find_prepared_value_home(
+                names, value_locations, branch_condition.condition_value.name)
+          : nullptr;
+  if (condition_home == nullptr || condition_home->value_name == c4c::kInvalidValueName) {
+    return branch_record_error(PreparedBranchRecordError::MissingConditionValueHome);
+  }
+
+  BranchConditionRecord condition{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .form = branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare
+                  ? BranchConditionForm::FusedCompare
+                  : BranchConditionForm::MaterializedBool,
+      .condition_value_id = condition_home->value_id,
+      .condition_value_name = condition_home->value_name,
+      .condition_type = branch_condition.condition_value.type,
+      .can_fuse_with_branch = branch_condition.can_fuse_with_branch,
+  };
+
+  if (branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare) {
+    if (!branch_condition.predicate.has_value() || !branch_condition.compare_type.has_value() ||
+        !branch_condition.lhs.has_value() || !branch_condition.rhs.has_value()) {
+      return branch_record_error(PreparedBranchRecordError::MissingCompareFacts);
+    }
+    if (!is_compare_predicate(*branch_condition.predicate)) {
+      return branch_record_error(PreparedBranchRecordError::UnsupportedComparePredicate);
+    }
+
+    const auto make_record = [&names, &value_locations](
+                                 const bir::Value& value)
+        -> std::optional<CompareValueRecord> {
+      CompareValueRecord record{
+          .surface = RecordSurfaceKind::RecordOnly,
+          .value_id = std::nullopt,
+          .value_name = c4c::kInvalidValueName,
+          .type = value.type,
+          .source_value = value,
+      };
+      if (value.kind == bir::Value::Kind::Immediate) {
+        return record;
+      }
+      if (value.kind != bir::Value::Kind::Named) {
+        return std::nullopt;
+      }
+      const auto* home =
+          prepare::find_prepared_value_home(names, value_locations, value.name);
+      if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+        return std::nullopt;
+      }
+      record.value_id = home->value_id;
+      record.value_name = home->value_name;
+      return record;
+    };
+
+    const auto lhs = make_record(*branch_condition.lhs);
+    const auto rhs = make_record(*branch_condition.rhs);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return branch_record_error(PreparedBranchRecordError::MissingCompareValueHome);
+    }
+
+    condition.predicate = ComparePredicateRecord{
+        .surface = RecordSurfaceKind::RecordOnly,
+        .source_predicate = *branch_condition.predicate,
+        .compare_type = *branch_condition.compare_type,
+    };
+    condition.compare_operands = CompareOperandPairRecord{
+        .surface = RecordSurfaceKind::RecordOnly,
+        .lhs = *lhs,
+        .rhs = *rhs,
+        .compare_type = *branch_condition.compare_type,
+    };
+  }
+
+  const auto condition_value_id = condition.condition_value_id;
+  const BranchTargetPairRecord target_pair{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .true_target =
+          BranchTargetOperand{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .block_label = branch_condition.true_label,
+              .function_name = branch_condition.function_name,
+              .condition_value_id = condition_value_id,
+          },
+      .false_target =
+          BranchTargetOperand{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .block_label = branch_condition.false_label,
+              .function_name = branch_condition.function_name,
+              .condition_value_id = condition_value_id,
+          },
+  };
+  condition.compare_branch_candidate = BranchCompareCandidateRecord{
+      .surface = RecordSurfaceKind::RecordOnly,
+      .kind =
+          branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare
+              ? (branch_condition.can_fuse_with_branch
+                     ? BranchCompareCandidateKind::FusedCompareAndBranch
+                     : BranchCompareCandidateKind::NonFusableCompare)
+              : BranchCompareCandidateKind::MaterializedBoolCondition,
+      .condition_value_id = condition.condition_value_id,
+      .condition_value_name = condition.condition_value_name,
+      .condition_type = condition.condition_type,
+      .predicate = condition.predicate,
+      .compare_operands = condition.compare_operands,
+      .target_pair = target_pair,
+      .can_fuse_with_branch = condition.can_fuse_with_branch,
+  };
+
+  return PreparedBranchInstructionRecordResult{
+      .record =
+          BranchInstructionRecord{
+              .target = target_pair.true_target,
+              .target_pair = target_pair,
+              .condition_record = condition,
+              .conditional = true,
+          },
+      .error = PreparedBranchRecordError::None,
+  };
+}
 
 std::optional<module::MachineInstruction> lower_prepared_branch_terminator(
     const module::BlockLoweringContext& context,

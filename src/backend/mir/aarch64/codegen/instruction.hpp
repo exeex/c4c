@@ -1804,16 +1804,6 @@ struct InstructionRecord {
     InstructionFamily family,
     MachineNodeSelectionStatus status,
     std::string_view diagnostic);
-[[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_unconditional_branch_record(
-    c4c::FunctionNameId function_name,
-    const prepare::PreparedControlFlowBlock& block,
-    const bir::Terminator& terminator);
-[[nodiscard]] PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedControlFlowBlock& block,
-    const prepare::PreparedBranchCondition& branch_condition,
-    const bir::Terminator& terminator);
 [[nodiscard]] PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
