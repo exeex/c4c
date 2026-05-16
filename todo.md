@@ -8,47 +8,22 @@ Current Step Title: Implement Accepted Scratch, Fallback, And Extension Routes
 
 ## Just Finished
 
-Step 3 - Implement Accepted Unsigned Power-Of-Two Reductions is complete for
-the current structured scalar ALU surface.
-
-The attempted Step 4 overlap slice was rejected by
-`review/aarch64_alu_step4_overlap_route_review.md` and restored before this
-repair. The rejected route computed RHS/result overlap metadata but no
-selection, emission, def/use, or unsupported-path behavior consumed that fact,
-so it was classification-only progress against a semantic-lowering step.
-
-Step 4 remains active, but its next packet must not reintroduce a standalone
-overlap flag as the accepted result. The next slice must either make a
-structured conflict or extension fact drive real behavior with fail-closed
-proof, or document that current structured facts are insufficient and return
-for a split/blocker decision.
+Step 4 - Implement Accepted Scratch, Fallback, And Extension Routes completed
+one extension-consuming subroute: narrow I8/I16 unsigned power-of-two
+reductions now carry an explicit post-zero-extension width, and the scalar ALU
+printer consumes that fact by emitting `ubfx` after the selected shift/mask.
+Invalid post-extension widths fail closed in the printer, and I32/I64 unsigned
+reductions remain plain shift/mask records without silently taking the narrow
+extension route.
 
 ## Suggested Next
 
-Next implementation packet: Step 4 scratch, fallback, and extension routes.
-Start with one accepted subroute that has explicit current structured facts and
-whose fact is consumed by backend behavior.
-
-Acceptable Step 4 packet shapes:
-- Conflict-consuming route: for RHS/result overlap, make selection, emission,
-  def/use modeling, or unsupported-path handling explicitly consume the
-  conflict/safety fact. Prove the positive accepted case and at least one
-  unsafe or unsupported overlap case that fails closed instead of becoming
-  implicit scratch authority.
-- Extension-consuming route: model signed 32-bit extension or unsigned
-  zero-extension as explicit post-operation behavior for a route that requires
-  it. Prove the extension instruction/record behavior and a negative case that
-  does not silently reuse plain I32/I64 ALU lowering.
-- Blocker/split route: if current allocation, scratch, or typed record facts
-  cannot express a safe conflict/extension decision, stop and record the exact
-  missing fact or abstraction needed so the supervisor can split or reroute the
-  source idea.
-
-Do not claim Step 4 progress for a helper, record field, or classification bit
-unless a backend decision consumes it. Keep accumulator fallback
+Next implementation packet: continue Step 4 only if the supervisor wants a
+second behavior-consuming subroute. The remaining viable Step 4 routes are a
+conflict-consuming scratch/overlap route, or a signed-extension route with
+printer/selection consumption and fail-closed proof. Keep accumulator fallback
 division/remainder/variable-shift behavior out unless current allocation and
 scratch authority are proven.
-Suggested focused proof subset:
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
@@ -67,9 +42,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
   happy-path printable register shape alone is insufficient.
 - Keep signed power-of-two division/remainder separate from unsigned reduction
   unless signed semantics are separately designed and proved.
-- Step 3 intentionally accepts only I32/I64 unsigned reductions with a concrete
-  immediate divisor greater than one. I8/I16 and divisor-one cases still need
-  explicit extension or zero-result semantics before being accepted.
+- Step 4 now accepts I8/I16 unsigned power-of-two reductions only through the
+  explicit post-zero-extension route. Divisor-one cases still need zero-result
+  or identity semantics before being accepted.
 - Preserve explicit 32-bit extension, scratch-conflict, and i128 high-half
   requirements when those routes are classified as accepted.
 - Current integer scalar ALU support is narrower than the operation enum:
@@ -77,9 +52,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
   the general bitwise printer path is still not accepted outside the Step 3
   unsigned-remainder mask route.
 - `Mul`, signed `SDiv`/`SRem`, non-power unsigned `UDiv`/`URem`, divisor-one
-  unsigned reductions, narrow I8/I16 reductions, and variable shifts currently
-  map to operation names or BIR opcodes but are not accepted integer scalar
-  ALU lowering/printer coverage.
+  unsigned reductions, and variable shifts currently map to operation names or
+  BIR opcodes but are not accepted integer scalar ALU lowering/printer
+  coverage.
 - Do not treat old register names (`x0`, `x1`, `x2`, `x3`, `s0`, `d0`, `v0`)
   as allocation authority; they are only valid if selected by prepared
   allocation or explicit scratch facts.
@@ -94,9 +69,7 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 ## Proof
 
-No code validation was run for this lifecycle-only route repair. The next
-executor packet should refresh `test_after.log` with the exact delegated proof
-command after implementing behavior-consuming Step 4 work.
+Passed. `test_after.log` contains the delegated proof output.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'

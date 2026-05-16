@@ -108,6 +108,10 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] std::optional<unsigned> integer_scalar_bit_width(bir::TypeKind type) {
   switch (type) {
+    case bir::TypeKind::I8:
+      return 8U;
+    case bir::TypeKind::I16:
+      return 16U;
     case bir::TypeKind::I32:
       return 32U;
     case bir::TypeKind::I64:
@@ -172,6 +176,18 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] bool is_unsigned_power_of_two_reduction_opcode(bir::BinaryOpcode opcode) {
   return opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
+}
+
+[[nodiscard]] std::optional<unsigned> unsigned_reduction_post_zero_extend_bits(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return 8U;
+    case bir::TypeKind::I16:
+      return 16U;
+    default:
+      return std::nullopt;
+  }
 }
 
 [[nodiscard]] std::optional<ScalarAluOperationKind> unsigned_reduction_operation(
@@ -721,7 +737,14 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
         !integer_scalar_bit_width(alu.result_type).has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar unsigned reduction node requires matching I32/I64 widths"};
+                  "scalar unsigned reduction node requires matching integer widths"};
+    }
+    if (alu.post_zero_extend_result_bits.has_value() &&
+        *alu.post_zero_extend_result_bits != 8U &&
+        *alu.post_zero_extend_result_bits != 16U) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unsigned reduction node has unsupported post-zero-extension width"};
     }
     const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
     const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
@@ -743,12 +766,26 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     if (alu.operation == ScalarAluOperationKind::LogicalShiftRight &&
         alu.source_binary_opcode == bir::BinaryOpcode::UDiv) {
       out << "lsr " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
-      return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+      std::vector<std::string> lines{out.str()};
+      if (alu.post_zero_extend_result_bits.has_value()) {
+        std::ostringstream extend;
+        extend << "ubfx " << *result << ", " << *result << ", #0, #"
+               << *alu.post_zero_extend_result_bits;
+        lines.push_back(extend.str());
+      }
+      return {.lines = std::move(lines), .diagnostic = {}};
     }
     if (alu.operation == ScalarAluOperationKind::And &&
         alu.source_binary_opcode == bir::BinaryOpcode::URem) {
       out << "and " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
-      return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+      std::vector<std::string> lines{out.str()};
+      if (alu.post_zero_extend_result_bits.has_value()) {
+        std::ostringstream extend;
+        extend << "ubfx " << *result << ", " << *result << ", #0, #"
+               << *alu.post_zero_extend_result_bits;
+        lines.push_back(extend.str());
+      }
+      return {.lines = std::move(lines), .diagnostic = {}};
     }
     return {.lines = std::nullopt,
             .diagnostic = "scalar unsigned reduction operation is not printable"};
@@ -1153,6 +1190,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
 
   ScalarAluOperationKind operation = scalar_alu_operation_from_binary_opcode(binary.opcode);
   bool supported_integer_operation = is_integer_operation;
+  std::optional<unsigned> post_zero_extend_result_bits;
   if (!supported_integer_operation &&
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
@@ -1169,6 +1207,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     rhs = make_immediate_operand(*replacement);
     operation = *reduction_operation;
     supported_integer_operation = true;
+    post_zero_extend_result_bits =
+        unsigned_reduction_post_zero_extend_bits(binary.result.type);
   }
 
   return PreparedScalarAluRecordResult{
@@ -1184,6 +1224,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .result_register = result_register,
               .lhs = lhs,
               .rhs = rhs,
+              .post_zero_extend_result_bits = post_zero_extend_result_bits,
               .supported_integer_operation = supported_integer_operation,
               .supported_floating_operation = is_floating_operation,
           },

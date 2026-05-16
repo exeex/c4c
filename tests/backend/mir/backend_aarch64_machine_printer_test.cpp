@@ -1836,6 +1836,122 @@ int selected_unsigned_power_of_two_reductions_print_from_structured_operands() {
                          "unsigned power-of-two reduction structured printer");
 }
 
+int narrow_unsigned_reductions_print_explicit_zero_extension() {
+  const auto udiv8 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+          .source_binary_opcode = bir::BinaryOpcode::UDiv,
+          .operand_type = bir::TypeKind::I8,
+          .result_value_id = prepare::PreparedValueId{150},
+          .result_value_name = c4c::ValueNameId{151},
+          .result_type = bir::TypeKind::I8,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I8,
+                  .signed_value = 2,
+                  .unsigned_value = 2,
+              }),
+          .post_zero_extend_result_bits = 8U,
+          .supported_integer_operation = true,
+      }));
+  const auto urem16 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::And,
+          .source_binary_opcode = bir::BinaryOpcode::URem,
+          .operand_type = bir::TypeKind::I16,
+          .result_value_id = prepare::PreparedValueId{152},
+          .result_value_name = c4c::ValueNameId{153},
+          .result_type = bir::TypeKind::I16,
+          .result_register = wreg(2),
+          .lhs = aarch64_codegen::make_register_operand(wreg(3)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I16,
+                  .signed_value = 15,
+                  .unsigned_value = 15,
+              }),
+          .post_zero_extend_result_bits = 16U,
+          .supported_integer_operation = true,
+      }));
+  const auto plain_i32 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+          .source_binary_opcode = bir::BinaryOpcode::UDiv,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{154},
+          .result_value_name = c4c::ValueNameId{155},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(4),
+          .lhs = aarch64_codegen::make_register_operand(wreg(5)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 3,
+                  .unsigned_value = 3,
+              }),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({udiv8, urem16, plain_i32});
+  if (!result.ok) {
+    return fail("expected narrow unsigned reductions to print with post zero-extension: " +
+                result.diagnostic);
+  }
+  if (const int check = expect_assembly(result.assembly,
+                                        "    lsr w0, w1, #2\n"
+                                        "    ubfx w0, w0, #0, #8\n"
+                                        "    and w2, w3, #15\n"
+                                        "    ubfx w2, w2, #0, #16\n"
+                                        "    lsr w4, w5, #3\n",
+                                        "    lsr w0, w1, #2\n"
+                                        "    ubfx w0, w0, #0, #8\n"
+                                        "    and w2, w3, #15\n"
+                                        "    ubfx w2, w2, #0, #16\n"
+                                        "    lsr w4, w5, #3\n",
+                                        "narrow unsigned reduction post-extension printer");
+      check != 0) {
+    return check;
+  }
+
+  const auto bad_extension = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+          .source_binary_opcode = bir::BinaryOpcode::UDiv,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{156},
+          .result_value_name = c4c::ValueNameId{157},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(6),
+          .lhs = aarch64_codegen::make_register_operand(wreg(7)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 1,
+                  .unsigned_value = 1,
+              }),
+          .post_zero_extend_result_bits = 32U,
+          .supported_integer_operation = true,
+      }));
+  const auto bad_result = aarch64_codegen::print_machine_instruction_line_payloads(bad_extension);
+  if (bad_result.ok ||
+      bad_result.diagnostic.find("unsupported post-zero-extension width") ==
+          std::string::npos) {
+    return fail("expected invalid unsigned reduction post-extension fact to fail closed");
+  }
+
+  return 0;
+}
+
 int selected_scalar_unary_integer_ops_print_from_structured_operands() {
   const auto neg32 = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_unary_instruction_record(
@@ -5043,6 +5159,10 @@ int main() {
   }
   if (const int result =
           selected_unsigned_power_of_two_reductions_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = narrow_unsigned_reductions_print_explicit_zero_extension();
       result != 0) {
     return result;
   }

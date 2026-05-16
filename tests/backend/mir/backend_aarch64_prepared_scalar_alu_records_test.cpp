@@ -726,6 +726,117 @@ int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
   return 0;
 }
 
+int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
+  {
+    auto fixture = make_i64_fixture();
+    fixture.locations.value_homes[0].register_name = "w1";
+    fixture.locations.value_homes[2].register_name = "w0";
+    fixture.storage.values[0] =
+        register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
+    fixture.storage.values[2] =
+        register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(bir::BinaryOpcode::UDiv,
+                        bir::TypeKind::I8,
+                        bir::Value::immediate_i32(4)));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected I8 unsigned division by power-of-two to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
+        alu.source_binary_opcode != bir::BinaryOpcode::UDiv ||
+        alu.result_type != bir::TypeKind::I8 ||
+        !alu.post_zero_extend_result_bits.has_value() ||
+        *alu.post_zero_extend_result_bits != 8U ||
+        rhs == nullptr ||
+        rhs->unsigned_value != 2 ||
+        !result.record->result_register.has_value() ||
+        result.record->result_register->expected_view != aarch64_abi::RegisterView::W) {
+      return fail("expected I8 UDiv reduction to require explicit post zero-extension");
+    }
+  }
+
+  {
+    auto fixture = make_i64_fixture();
+    fixture.locations.value_homes[0].register_name = "w1";
+    fixture.locations.value_homes[2].register_name = "w0";
+    fixture.storage.values[0] =
+        register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
+    fixture.storage.values[2] =
+        register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
+    fixture.locations.value_homes[1] =
+        immediate_home(prepare::PreparedValueId{11}, fixture.function_name, fixture.rhs_name, 16);
+    fixture.storage.values[1] =
+        immediate_storage(prepare::PreparedValueId{11}, fixture.rhs_name, 16);
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary(bir::BinaryOpcode::URem, bir::TypeKind::I16));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected I16 unsigned remainder by power-of-two to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::ScalarAluOperationKind::And ||
+        alu.source_binary_opcode != bir::BinaryOpcode::URem ||
+        alu.result_type != bir::TypeKind::I16 ||
+        !alu.post_zero_extend_result_bits.has_value() ||
+        *alu.post_zero_extend_result_bits != 16U ||
+        rhs == nullptr ||
+        rhs->unsigned_value != 15 ||
+        rhs->source_value_id != prepare::PreparedValueId{11}) {
+      return fail("expected I16 URem reduction to carry rematerialized mask and zero-extension");
+    }
+  }
+
+  {
+    auto fixture = make_i64_fixture();
+    fixture.locations.value_homes[0].register_name = "w1";
+    fixture.locations.value_homes[2].register_name = "w0";
+    fixture.storage.values[0] =
+        register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
+    fixture.storage.values[2] =
+        register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w0");
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(bir::BinaryOpcode::UDiv,
+                        bir::TypeKind::I8,
+                        bir::Value::immediate_i32(256)));
+    if (result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+      return fail("expected I8 unsigned reduction whose shift exceeds type width to fail closed");
+    }
+  }
+
+  {
+    auto fixture = make_i64_fixture();
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(bir::BinaryOpcode::UDiv,
+                        bir::TypeKind::I64,
+                        bir::Value::immediate_i64(8)));
+    if (!result.record.has_value() ||
+        result.record->post_zero_extend_result_bits.has_value()) {
+      return fail("expected I64 unsigned reductions to stay plain without post extension");
+    }
+  }
+
+  return 0;
+}
+
 int unsupported_and_incomplete_facts_fail_closed() {
   auto fixture = make_i64_fixture();
   const auto unsupported = aarch64_codegen::make_prepared_scalar_alu_record(
@@ -846,6 +957,10 @@ int main() {
     return status;
   }
   if (const int status = unsigned_power_of_two_reductions_prepare_as_shift_and_mask();
+      status != 0) {
+    return status;
+  }
+  if (const int status = narrow_unsigned_reductions_prepare_explicit_zero_extension();
       status != 0) {
     return status;
   }
