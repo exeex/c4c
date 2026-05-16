@@ -8,38 +8,36 @@ Current Step Title: Create Calls Owner And Move Construction Routes
 
 ## Just Finished
 
-Completed Step 2 first packet: created compiled
-`src/backend/mir/aarch64/codegen/calls.cpp` / `calls.hpp`, added `calls.cpp` to
-`src/backend/CMakeLists.txt`, and moved the call construction/status surface
-out of `instruction.cpp`: `call_selection_status`,
-`make_call_boundary_move_instruction`,
-`make_call_boundary_abi_binding_instruction`, `make_call_instruction`,
-`effect_from_prepared_call_clobber`,
-`effects_from_prepared_call_clobbers`,
-`effect_from_prepared_call_preserved_value`, and
-`effects_from_prepared_call_preserved_values`.
+Completed Step 2 second packet: moved the smallest call lowering route from
+`dispatch.cpp` into the compiled calls owner. `calls.cpp` / `calls.hpp` now own
+prepared call-plan lookup plus before/after call-boundary move lowering,
+including the prepared argument/result binding lookup, structured F128 carrier
+checks, prepared register conversion, call-boundary diagnostics, and
+call-boundary `MachineInstruction` construction. `dispatch.cpp` now routes to
+the calls-owned helpers and keeps block traversal, inline asm/intrinsic routing,
+the main call body, indirect callee lowering, memory-return storage, and
+non-call families.
 
 ## Suggested Next
 
-Step 2 next packet: move the smallest call lowering route from `dispatch.cpp`
-into the compiled calls owner, starting with prepared call-plan lookup and
-boundary move lowering only if the supervisor explicitly owns `dispatch.cpp`
-for that packet.
+Step 2 next packet: move one more narrow call route from `dispatch.cpp` into
+`calls.cpp`, preferably the call body pieces that directly consume the
+calls-owned prepared plan (`make_memory_return_storage`,
+`make_indirect_callee_register`, and/or direct-callee record assembly) while
+leaving variadic helper validation, inline asm, and intrinsic dispatch outside
+the packet unless explicitly owned.
 
 ## Watchouts
 
 - AST-backed ownership checks after this packet:
-  - `make_call_instruction` resolves to `calls.cpp`; the same definition query
-    against `instruction.cpp` reports the symbol absent from that translation
-    unit.
-  - `make_call_instruction` callees now include calls-owned
-    `call_selection_status`,
-    `effects_from_prepared_call_clobbers`, and
-    `effects_from_prepared_call_preserved_values` in `calls.cpp`.
-  - `instruction.cpp` still calls the public calls-owned
-    `effects_from_prepared_call_clobbers` for existing F128/i128 runtime helper
-    boundary records; do not move helper-call ownership unless a later packet
-    explicitly owns that boundary.
+  - `lower_before_call_moves` resolves to `calls.cpp`.
+  - `find_prepared_call_plan` resolves to `calls.cpp`.
+  - `dispatch_prepared_block` is the direct caller of calls-owned
+    `lower_before_call_moves`; `lower_after_call_moves` follows the same route.
+  - `lower_before_call_move` callees now resolve to calls-owned local helpers
+    for prepared argument lookup, ABI binding lookup, F128 carrier validation,
+    call-boundary diagnostics, prepared register conversion, and boundary
+    machine-instruction construction.
 - Family-neutral boundaries to keep outside calls ownership:
   - `instruction.hpp` must keep shared enums, variant payload declarations,
     operand records, `InstructionRecord`, and public factory declarations until
@@ -72,9 +70,13 @@ for that packet.
   - Do not move variadic entry helper semantics wholesale into calls unless the
     packet explicitly owns that boundary; they are call-adjacent but also part
     of the variadic shard.
+  - `dispatch.cpp` still owns `lower_call_instruction`,
+    `make_memory_return_storage`, `make_indirect_callee_register`, inline asm
+    lowering, intrinsic lowering, variadic entry helper validation, and the
+    top-level prepared-block routing.
 
 ## Proof
 
 Proof passed with log at `test_after.log`:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-The final run built `calls.cpp` and passed 139/139 `backend_` tests.
+The final run passed 139/139 `backend_` tests.
