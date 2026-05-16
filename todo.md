@@ -8,29 +8,28 @@ Current Step Title: Route Dispatch Through The Comparison Owner
 
 ## Just Finished
 
-Step 2 cleaned up the prepared branch record header ownership shape.
+Step 3 routed the remaining comparison-family dispatch body through the
+comparison owner.
 
-`comparison.hpp` now uses the repo-normal `#pragma once` header style and owns
-the prepared branch record builder declarations directly. `instruction.hpp` no
-longer includes `comparison.hpp` through the declaration-only macro path, so
-instruction-surface consumers do not inherit comparison-owned declarations.
-
-The direct tests that call `make_prepared_unconditional_branch_record` and
-`make_prepared_conditional_branch_record` now include `comparison.hpp`
-explicitly. Test expectations and assertions were unchanged.
+`dispatch.cpp` already routed unconditional branch, conditional branch,
+compare-branch, and materialized-bool branch behavior through `comparison.cpp`.
+The remaining embedded comparison-family lowering was the I128 compare arm
+inside `lower_i128_pair_operation_instruction`; that arm now delegates to
+`lower_prepared_i128_compare_instruction` in `comparison.cpp`, with the public
+declaration in `comparison.hpp`.
 
 ## Suggested Next
 
-Supervisor can review the Step 2 header cleanup slice for acceptance or
-delegate the next plan-step packet.
+Supervisor can review the Step 3 routing slice for acceptance or delegate the
+next plan-step packet.
 
 ## Watchouts
 
-- No behavior, tests, expectations, dispatch routing, printer code,
-  `comparison.md`, `plan.md`, source idea, or `test_before.log` were changed.
-- `comparison.hpp` still reaches instruction record types through
-  `module.hpp`'s existing include of `instruction.hpp`; the cleanup removed
-  the reverse custom include from `instruction.hpp`.
+- No tests, expectations, printer code, `comparison.md`, `plan.md`, source
+  idea, or `test_before.log` were changed.
+- The generic I128 shift/runtime/helper paths remain in `dispatch.cpp`; only
+  the I128 compare case moved because it is the comparison-family body in this
+  packet.
 
 ## Proof
 
@@ -47,3 +46,13 @@ Build completed and CTest passed 5/5 tests:
 - `backend_aarch64_compare_branch_candidate_records`
 - `backend_aarch64_prepared_branch_records`
 - `backend_aarch64_machine_printer`
+
+Supervisor also ran the broader AArch64 backend regression guard before and
+after this slice:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'
+```
+
+`check_monotonic_regression.py --allow-non-decreasing-passed` accepted the
+before/after comparison with before=27/27 PASS and after=27/27 PASS.

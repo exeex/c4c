@@ -1261,6 +1261,14 @@ struct LowerMemoryInstructionResult {
     return LowerMemoryInstructionResult{.handled = false};
   }
 
+  if (is_compare_predicate(binary->opcode)) {
+    return LowerMemoryInstructionResult{
+        .handled = true,
+        .instruction = lower_prepared_i128_compare_instruction(
+            context, *binary, instruction_index, diagnostics),
+    };
+  }
+
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr) {
@@ -1315,33 +1323,6 @@ struct LowerMemoryInstructionResult {
       return LowerMemoryInstructionResult{.handled = true};
     }
     target = make_i128_shift_instruction(*prepared.record);
-  } else if (is_compare_predicate(binary->opcode)) {
-    if (context.function.value_locations == nullptr ||
-        context.function.storage_plan == nullptr) {
-      append_i128_pair_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-          context,
-          instruction_index,
-          i128_pair_error_message(PreparedI128PairRecordError::MissingScalarResultStorage));
-      return LowerMemoryInstructionResult{.handled = true};
-    }
-    auto prepared = make_prepared_i128_compare_record(
-        context.function.prepared->names,
-        *context.function.value_locations,
-        *context.function.storage_plan,
-        *i128_carriers,
-        *binary);
-    if (!prepared.record.has_value()) {
-      append_i128_pair_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-          context,
-          instruction_index,
-          i128_pair_error_message(prepared.error));
-      return LowerMemoryInstructionResult{.handled = true};
-    }
-    target = make_i128_compare_instruction(*prepared.record);
   } else if (is_i128_div_rem_opcode(binary->opcode)) {
     const auto* helper_function =
         prepare::find_prepared_i128_runtime_helpers(*context.function.prepared,
@@ -1405,9 +1386,6 @@ struct LowerMemoryInstructionResult {
     record->block_label = context.control_flow_block->block_label;
     record->instruction_index = instruction_index;
   } else if (auto* record = std::get_if<I128ShiftRecord>(&target.payload)) {
-    record->block_label = context.control_flow_block->block_label;
-    record->instruction_index = instruction_index;
-  } else if (auto* record = std::get_if<I128CompareRecord>(&target.payload)) {
     record->block_label = context.control_flow_block->block_label;
     record->instruction_index = instruction_index;
   } else if (auto* record = std::get_if<I128RuntimeHelperBoundaryRecord>(&target.payload)) {

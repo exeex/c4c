@@ -4,6 +4,7 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <variant>
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
@@ -41,6 +42,35 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     default:
       return std::nullopt;
   }
+}
+
+void append_i128_compare_diagnostic(
+    module::ModuleLoweringDiagnostics& diagnostics,
+    module::ModuleLoweringDiagnosticKind kind,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Scalar,
+      .message = std::move(message),
+  });
+}
+
+[[nodiscard]] std::string i128_compare_error_message(
+    PreparedI128PairRecordError error) {
+  std::string message =
+      "AArch64 i128 comparison lowering requires prepared i128 carrier facts";
+  message += "; error=";
+  message += prepared_i128_pair_record_error_name(error);
+  return message;
 }
 
 [[nodiscard]] RegisterOperandRole register_role_from_authority(
@@ -108,6 +138,28 @@ void append_branch_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
               .reason = c4c::backend::mir::MachineOriginReason::BirTerminator,
               .function_name = context.function.control_flow->function_name,
               .block_label = context.control_flow_block->block_label,
+          },
+  };
+}
+
+[[nodiscard]] module::MachineInstruction make_bir_compare_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    InstructionRecord target) {
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
           },
   };
 }
@@ -456,6 +508,99 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
   return instruction;
+}
+
+std::optional<module::MachineInstruction> lower_prepared_i128_compare_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (binary.operand_type != bir::TypeKind::I128 ||
+      binary.result.type != bir::TypeKind::I1 ||
+      !is_compare_predicate(binary.opcode)) {
+    append_i128_compare_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 i128 comparison lowering only supports prepared i128 compare instructions");
+    return std::nullopt;
+  }
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_i128_compare_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_compare_error_message(
+            PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return std::nullopt;
+  }
+
+  const auto* i128_carriers =
+      prepare::find_prepared_i128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (i128_carriers == nullptr) {
+    append_i128_compare_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_compare_error_message(
+            PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return std::nullopt;
+  }
+
+  if (context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr) {
+    append_i128_compare_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_compare_error_message(
+            PreparedI128PairRecordError::MissingScalarResultStorage));
+    return std::nullopt;
+  }
+
+  auto prepared = make_prepared_i128_compare_record(
+      context.function.prepared->names,
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      *i128_carriers,
+      binary);
+  if (!prepared.record.has_value()) {
+    append_i128_compare_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_compare_error_message(prepared.error));
+    return std::nullopt;
+  }
+
+  auto target = make_i128_compare_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<I128CompareRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_i128_compare_diagnostic(diagnostics,
+                                   module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                                   context,
+                                   instruction_index,
+                                   std::string{target.selection.diagnostic});
+    return std::nullopt;
+  }
+
+  return make_bir_compare_machine_instruction(
+      context, instruction_index, std::move(target));
 }
 
 mir::MachineBlockSuccessor make_unconditional_branch_successor(

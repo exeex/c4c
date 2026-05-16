@@ -2,6 +2,7 @@
 
 #include "../module/module.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
@@ -24,6 +25,12 @@ lower_prepared_branch_terminator(const module::BlockLoweringContext& context,
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_prepared_conditional_branch_terminator(
     const module::BlockLoweringContext& context,
+    module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_prepared_i128_compare_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] c4c::backend::mir::MachineBlockSuccessor
 make_unconditional_branch_successor(const module::BlockLoweringContext& context);
