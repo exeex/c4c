@@ -290,6 +290,44 @@ InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
   };
 }
 
+ReturnValuePrintForm classify_return_value_print_form(
+    const ReturnInstructionRecord& instruction) {
+  if (!instruction.value.has_value()) {
+    return ReturnValuePrintForm::NoValue;
+  }
+  const auto& value = *instruction.value;
+  if (value.kind == OperandKind::Register &&
+      std::get_if<RegisterOperand>(&value.payload) != nullptr) {
+    return ReturnValuePrintForm::PrimaryReturn;
+  }
+  if (value.kind == OperandKind::Immediate &&
+      std::get_if<ImmediateOperand>(&value.payload) != nullptr) {
+    return ReturnValuePrintForm::ImmediateMaterialization;
+  }
+  return ReturnValuePrintForm::Unsupported;
+}
+
+bool is_printable_return_immediate_materialization_value(
+    const ImmediateOperand& immediate) {
+  return immediate.kind == ImmediateKind::SignedInteger &&
+         immediate.signed_value >= 0 && immediate.signed_value <= 65535;
+}
+
+std::optional<abi::RegisterReference> return_immediate_materialization_register(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return abi::w_register(0);
+    case bir::TypeKind::I64:
+      return abi::x_register(0);
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<module::MachineInstruction> lower_prepared_return_terminator(
     const module::BlockLoweringContext& context,
     const BlockScalarLoweringState& scalar_state,

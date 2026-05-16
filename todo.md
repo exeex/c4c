@@ -8,46 +8,45 @@ Current Step Title: Move Return-Specific Spelling Helpers
 
 ## Just Finished
 
-Step 2 completed the return selected-node ownership cleanup: the construction
-body and sole declaration surface now live under the returns owner.
+Step 3 completed the return-specific printer spelling helper move: the return
+owner now exposes the narrow spelling-policy decisions used by
+`machine_printer.cpp::print_return`, while the printer still validates operands,
+formats registers, and emits the concrete assembly lines.
 
 Concrete changes:
 
-- `returns.cpp` now owns `make_return_instruction`, including operand list
-  construction, selected-node status, `Return`/`ControlFlowTransfer` side
-  effects, and payload preservation.
-- `returns.cpp` keeps return-use effect construction local because the existing
-  broad `effects_from_operands` helper has anonymous-namespace linkage inside
-  `instruction.cpp`; publishing it caused unrelated owner name conflicts.
-- `instruction.cpp` no longer owns the return-family selected-node construction
-  body.
-- `instruction.hpp` still owns the `ReturnInstructionRecord` shape but no
-  longer declares `make_return_instruction`.
-- `returns.hpp` is the only header declaration surface for
-  `make_return_instruction`.
-- Direct test callers in target-record, target-instruction, machine-printer,
-  and prepared scalar ALU coverage now include `returns.hpp`; no test
-  expectations or assertions changed.
-- `dispatch.cpp`, `machine_printer.cpp`, `plan.md`, and the source idea were
-  not touched.
+- `returns.hpp` now declares `ReturnValuePrintForm`,
+  `classify_return_value_print_form`,
+  `is_printable_return_immediate_materialization_value`, and
+  `return_immediate_materialization_register`.
+- `returns.cpp` owns the return-only decisions that register-valued returns
+  print as the primary return, only small nonnegative signed immediates are in
+  the selected printable materialization subset, and immediate materialization
+  targets `w0` for I1/I8/I16/I32 or `x0` for I64.
+- `machine_printer.cpp::print_return` now consumes those helpers but keeps the
+  previous diagnostic text, mnemonic validation, `abi::register_name`
+  formatting, and final line emission.
+- No test expectations, diagnostics, emitted assembly contracts, `plan.md`, the
+  source idea, `returns.md`, `instruction.cpp`, `instruction.hpp`,
+  `dispatch.cpp`, or tests were changed.
 
 ## Suggested Next
 
-Next narrow code-moving packet: move return-specific printer spelling currently
-owned by `machine_printer.cpp::print_return` into the returns owner for Step 3,
-without changing the existing final assembly text or diagnostic behavior.
+Next narrow lifecycle/execution packet: start Step 4 by reconciling
+`src/backend/mir/aarch64/codegen/returns.md` against the compiled returns owner
+and current contracts, then delete the markdown shard only if every durable
+valid item is represented in code or explicitly stale/out-of-scope.
 
 ## Watchouts
 
-- `machine_printer.cpp` still owns return-specific final spelling: register
-  valued returns print `ret`, small signed integer immediates materialize into
-  `w0` or `x0` before `ret`, and unsupported return operands/types fail closed.
+- `machine_printer.cpp` still owns generic printer validation and emission for
+  returns; do not pull `bad_header`, mnemonic checks, `abi::register_name`, or
+  concrete line construction into `returns.cpp` without a new ownership
+  decision.
 - `instruction.cpp` still has return metadata classification in
   `machine_instruction_primary_printer_mnemonic_kind` and
-  `machine_instruction_auxiliary_printer_mnemonic_kind`; decide whether that is
-  a later ownership move or neutral metadata before changing it.
-- Do not move `ReturnInstructionRecord` out of `instruction.hpp`; this slice
-  preserved the record-definition boundary.
+  `machine_instruction_auxiliary_printer_mnemonic_kind`; this slice treated it
+  as neutral instruction metadata, not printer spelling.
 - Do not implement legacy F32/F64/F128 or second-component register moves from
   markdown text. They require structured carrier authority under
   `AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`.

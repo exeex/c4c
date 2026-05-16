@@ -4,6 +4,7 @@
 #include "comparison.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
+#include "returns.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -2435,49 +2436,49 @@ mir::TargetInstructionPrintResult print_vector_add_intrinsic(
 mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruction,
                                                const ReturnInstructionRecord& ret) {
   std::vector<std::string> lines;
-  if (ret.value.has_value()) {
-    const auto* immediate = std::get_if<ImmediateOperand>(&ret.value->payload);
-    const auto* reg = std::get_if<RegisterOperand>(&ret.value->payload);
-    if (ret.value->kind == OperandKind::Register && reg != nullptr) {
+  const auto print_form = classify_return_value_print_form(ret);
+  switch (print_form) {
+    case ReturnValuePrintForm::PrimaryReturn: {
       const auto return_mnemonic = required_primary_mnemonic(instruction);
       if (return_mnemonic.empty()) {
         return target_unsupported(bad_header(instruction) + "return mnemonic is not printable");
       }
       return target_printed({std::string(return_mnemonic)});
     }
-    if (ret.value->kind != OperandKind::Immediate || immediate == nullptr) {
+    case ReturnValuePrintForm::Unsupported:
       return target_unsupported(bad_header(instruction) +
                                 "return value is not a printable immediate operand");
-    }
-    if (immediate->kind != ImmediateKind::SignedInteger ||
-        immediate->signed_value < 0 || immediate->signed_value > 65535) {
-      return target_unsupported(bad_header(instruction) +
-                                "return immediate is outside the selected printable subset");
-    }
-
-    const char* result_register = nullptr;
-    switch (ret.value_type) {
-      case bir::TypeKind::I1:
-      case bir::TypeKind::I8:
-      case bir::TypeKind::I16:
-      case bir::TypeKind::I32:
-        result_register = "w0";
-        break;
-      case bir::TypeKind::I64:
-        result_register = "x0";
-        break;
-      default:
+    case ReturnValuePrintForm::ImmediateMaterialization: {
+      const auto* immediate = ret.value.has_value()
+                                  ? std::get_if<ImmediateOperand>(&ret.value->payload)
+                                  : nullptr;
+      if (immediate == nullptr) {
+        return target_unsupported(bad_header(instruction) +
+                                  "return value is not a printable immediate operand");
+      }
+      if (!is_printable_return_immediate_materialization_value(*immediate)) {
+        return target_unsupported(bad_header(instruction) +
+                                  "return immediate is outside the selected printable subset");
+      }
+      const auto result_register = return_immediate_materialization_register(ret.value_type);
+      if (!result_register.has_value()) {
         return target_unsupported(bad_header(instruction) +
                                   "return type is outside the selected printable subset");
+      }
+      const auto result_register_name = abi::register_name(*result_register);
+      const auto move_mnemonic = required_auxiliary_mnemonic(instruction);
+      if (move_mnemonic.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "return move mnemonic is not printable");
+      }
+      std::ostringstream move_line;
+      move_line << move_mnemonic << " " << result_register_name << ", #"
+                << immediate->signed_value;
+      lines.push_back(move_line.str());
+      break;
     }
-    const auto move_mnemonic = required_auxiliary_mnemonic(instruction);
-    if (move_mnemonic.empty()) {
-      return target_unsupported(bad_header(instruction) +
-                                "return move mnemonic is not printable");
-    }
-    std::ostringstream move_line;
-    move_line << move_mnemonic << " " << result_register << ", #" << immediate->signed_value;
-    lines.push_back(move_line.str());
+    case ReturnValuePrintForm::NoValue:
+      break;
   }
   const auto return_mnemonic = required_primary_mnemonic(instruction);
   if (return_mnemonic.empty()) {
