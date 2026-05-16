@@ -5,6 +5,7 @@
 #include <optional>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
@@ -179,7 +180,115 @@ namespace prepare = c4c::backend::prepare;
   };
 }
 
+[[nodiscard]] MachineEffectResource make_return_use_effect(
+    const OperandRecord& operand) {
+  MachineEffectResource resource;
+  resource.operand = operand;
+  switch (operand.kind) {
+    case OperandKind::Register: {
+      const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Register;
+      if (reg != nullptr) {
+        resource.value_id = reg->value_id;
+        resource.value_name = reg->value_name;
+        resource.reg = reg->reg;
+      }
+      break;
+    }
+    case OperandKind::Immediate: {
+      const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::PreparedValue;
+      if (immediate != nullptr) {
+        resource.value_id = immediate->source_value_id;
+        resource.value_name = immediate->source_value_name;
+      }
+      break;
+    }
+    case OperandKind::PreparedValue: {
+      const auto* value = std::get_if<PreparedValueOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::PreparedValue;
+      if (value != nullptr) {
+        resource.value_id = value->value_id;
+        resource.value_name = value->value_name;
+      }
+      break;
+    }
+    case OperandKind::FrameSlot: {
+      const auto* slot = std::get_if<FrameSlotOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::FrameSlot;
+      if (slot != nullptr) {
+        resource.frame_slot_id = slot->slot_id;
+        if (slot->value_name.has_value()) {
+          resource.value_name = *slot->value_name;
+        }
+      }
+      break;
+    }
+    case OperandKind::Symbol: {
+      const auto* symbol = std::get_if<SymbolOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Symbol;
+      if (symbol != nullptr) {
+        resource.symbol_name = symbol->link_name;
+      }
+      break;
+    }
+    case OperandKind::BranchTarget: {
+      const auto* target = std::get_if<BranchTargetOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::BranchTarget;
+      if (target != nullptr) {
+        resource.value_id = target->condition_value_id;
+        resource.block_label = target->block_label;
+      }
+      break;
+    }
+    case OperandKind::Memory: {
+      const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
+      resource.kind = MachineEffectResourceKind::Memory;
+      if (memory != nullptr) {
+        resource.value_id = memory->result_value_id.has_value() ? memory->result_value_id
+                                                                : memory->stored_value_id;
+        if (memory->result_value_name.has_value()) {
+          resource.value_name = *memory->result_value_name;
+        } else if (memory->stored_value_name.has_value()) {
+          resource.value_name = *memory->stored_value_name;
+        }
+        resource.frame_slot_id = memory->frame_slot_id;
+        resource.symbol_name = memory->symbol_name.has_value() ? memory->symbol_name
+                                                               : memory->string_symbol_name;
+      }
+      break;
+    }
+  }
+  return resource;
+}
+
+[[nodiscard]] std::vector<MachineEffectResource> make_return_use_effects(
+    const std::vector<OperandRecord>& operands) {
+  std::vector<MachineEffectResource> effects;
+  effects.reserve(operands.size());
+  for (const auto& operand : operands) {
+    effects.push_back(make_return_use_effect(operand));
+  }
+  return effects;
+}
+
 }  // namespace
+
+InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.value.has_value()) {
+    operands.push_back(*instruction.value);
+  }
+  return InstructionRecord{
+      .family = InstructionFamily::Return,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .operands = operands,
+      .uses = make_return_use_effects(operands),
+      .side_effects = {MachineSideEffectKind::Return, MachineSideEffectKind::ControlFlowTransfer},
+      .payload = instruction,
+  };
+}
 
 std::optional<module::MachineInstruction> lower_prepared_return_terminator(
     const module::BlockLoweringContext& context,

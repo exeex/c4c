@@ -3355,22 +3355,6 @@ InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
   };
 }
 
-InstructionRecord make_return_instruction(ReturnInstructionRecord instruction) {
-  std::vector<OperandRecord> operands;
-  if (instruction.value.has_value()) {
-    operands.push_back(*instruction.value);
-  }
-  return InstructionRecord{
-      .family = InstructionFamily::Return,
-      .surface = RecordSurfaceKind::MachineInstructionNode,
-      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
-      .operands = operands,
-      .uses = effects_from_operands(operands),
-      .side_effects = {MachineSideEffectKind::Return, MachineSideEffectKind::ControlFlowTransfer},
-      .payload = instruction,
-  };
-}
-
 InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction) {
   return InstructionRecord{
       .family = InstructionFamily::Assembler,

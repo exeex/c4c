@@ -1,4 +1,5 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
+#include "src/backend/mir/aarch64/codegen/returns.hpp"
 #include "src/backend/mir/printer.hpp"
 
 #include <iostream>

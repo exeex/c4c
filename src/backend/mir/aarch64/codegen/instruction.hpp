@@ -1797,7 +1797,6 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_call_boundary_abi_binding_instruction(
     CallBoundaryAbiBindingInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_call_instruction(CallInstructionRecord instruction);
-[[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_assembler_instruction(AssemblerInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_object_instruction(ObjectInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_unsupported_machine_instruction(

@@ -7,6 +7,8 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+[[nodiscard]] InstructionRecord make_return_instruction(ReturnInstructionRecord instruction);
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_prepared_return_terminator(const module::BlockLoweringContext& context,
                                  const BlockScalarLoweringState& scalar_state,
