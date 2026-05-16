@@ -1,7 +1,8 @@
 # AArch64 `comparison.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
 
 ## Intent
 
@@ -69,6 +70,24 @@ family-neutral owners.
   when that spelling can be owned through comparison shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Note
+
+The active runbook completed Steps 1-5. `comparison.cpp` and `comparison.hpp`
+now own the valid comparison shard behavior that survived reconciliation,
+`src/backend/mir/aarch64/codegen/comparison.md` has been deleted, and broad
+owners retain only the routing, neutral record, or generic printer
+responsibilities that belong there.
+
+Close-time proof used the focused AArch64 backend scope:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'
+```
+
+The regenerated canonical before/after logs both passed 27/27 tests, and the
+regression checker passed with non-decreasing pass-count mode for this
+lifecycle-only close.
 
 ## Reviewer Reject Signals
 
