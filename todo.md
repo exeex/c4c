@@ -8,24 +8,21 @@ Current Step Title: Move Call Spelling And Printer-Side Bodies
 
 ## Just Finished
 
-Completed Step 4 call spelling ownership start. AST-backed checks showed
-`print_call`, `print_call_boundary_move`, and
-`print_call_boundary_abi_binding` depended only on generic printer result
-construction, selected mnemonic lookup, register spelling, prepared value-home
-spelling, and structured call/variadic records. Those bodies now live in
-`calls.cpp` with declarations in `calls.hpp`; `machine_printer.cpp` keeps the
-generic selected-node validation and variant routing switch, and routes call,
-call-boundary move, and call-boundary ABI-binding payloads to the calls-owned
-helpers. Direct `bl` and indirect `blr` text still comes from structured
-`CallInstructionRecord` fields and the selected mnemonic, with no
-assembly-text matching or semantic change.
+Completed Step 4 remaining printer-side helper-call and call-result spelling
+audit. AST-backed caller/callee checks showed no additional clean pure
+call-owned body to move: `print_i128_runtime_helper` and
+`print_f128_runtime_helper` emit terminal `bl` lines, but their bodies also own
+runtime-helper-family validation, live-preservation and selected-call policy
+checks, marshal/unmarshal sequencing, f128 comparison result spelling, and
+runtime-helper-specific support helpers. No code was moved in this packet; the
+existing calls-owned `print_call`, `print_call_boundary_move`, and
+`print_call_boundary_abi_binding` boundary remains intact.
 
 ## Suggested Next
 
-Continue Step 4 by auditing whether any remaining printer-side helper-call or
-call-result spelling is pure call ownership, while keeping runtime-helper-family
-printers, generic register/memory spelling primitives, relocation helpers, and
-variant dispatch outside calls unless a later packet explicitly owns them.
+Have the supervisor decide whether Step 4 is exhausted and should move to the
+next plan step or receive a plan-owner/reviewer checkpoint before further
+redistribution.
 
 ## Watchouts
 
@@ -33,13 +30,14 @@ variant dispatch outside calls unless a later packet explicitly owns them.
   diagnostic header construction, selected-node validation, register/memory
   spelling primitives, relocation helpers, non-call family printers, runtime
   helper-family printers, and the top-level variant dispatch.
-- `calls.cpp` now has a calls-local copy of the generic diagnostic/result
-  helpers it needs for public call print functions; later movement should avoid
-  turning generic printer helpers into calls-owned API unless a broader printer
-  split is explicitly planned.
-- I did not move i128/f128 runtime-helper printers in this packet. They emit
-  call instructions internally, but their validation and surrounding emitted
-  lines are runtime-helper-family behavior, not proven pure call spelling.
+- Keep i128/f128 runtime-helper printers and their supporting helper move/result
+  functions in `machine_printer.cpp` for now. They are runtime-helper-family
+  behavior, not clean pure call spelling, even though they contain terminal
+  helper `bl` emission.
+- `calls.cpp` has the calls-local diagnostic/result helpers needed by its
+  public call print functions; later movement should avoid turning generic
+  printer helpers into calls-owned API unless a broader printer split is
+  explicitly planned.
 - Variadic `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy`
   spelling moved with `print_call` because those forms are encoded as
   `CallInstructionRecord` payload variants and share the calls-owned call
