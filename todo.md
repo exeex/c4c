@@ -1,39 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/251_aarch64_alu_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Reconcile `alu.md` And Close Shard Ownership
+Current Step ID: 5
+Current Step Title: Prove Behavior Preservation And Ownership Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 complete: reconciled `src/backend/mir/aarch64/codegen/alu.md` against
-the compiled ALU owner and deleted the markdown shard.
+Step 5 complete: ran the final validation pass for the AArch64 ALU shard
+redistribution after the compiled owner moves and `alu.md` deletion.
 
-`alu.cpp`/`alu.hpp` now hold the valid current ALU ownership surface: scalar
-ALU opcode classification, typed W/X and S/D register-view selection,
-prepared-result and prepared-operand record construction from allocation and
-storage-plan facts, scalar lowering state for already emitted registers,
-integer add/sub/and/or/xor scalar lowering, FP add/sub/mul/div scalar lowering,
-and ALU-specific add/sub plus FP printer line construction.
+Final ownership state:
 
-The old shard's durable rebuild warnings were checked before deletion. Its
-legacy text-emitter entry points for float negation, integer unary/bit-count
-operations, byte-swap, popcount, unsigned power-of-two div/rem reductions,
-accumulator fallback div/rem/shift paths, register-direct x0/x1/x2/x3 scratch
-conventions, and i128 copy are not live behavior in the current compiled ALU
-owner. Those items should remain deferred unless a later semantic-lowering
-plan introduces structured MIR support with proof. In particular, do not revive
-signed power-of-two div/rem shortcuts, omit signed 32-bit extension semantics
-when adding signed 32-bit operations, drop F32 raw-bit zero-extension for a
-future fneg route, replace 16-bit bswap with plain `rev w0, w0`, or treat i128
-copy as scalar x0-only storage.
+- `alu.cpp`/`alu.hpp` own scalar ALU opcode classification, typed W/X and S/D
+  register-view selection, prepared-result and prepared-operand record
+  construction from allocation and storage-plan facts, scalar lowering state
+  for already emitted registers, integer add/sub/and/or/xor scalar lowering,
+  FP add/sub/mul/div scalar lowering, and ALU-specific add/sub plus FP printer
+  line construction.
+- `instruction.cpp` keeps family-neutral record assembly and other non-ALU
+  record families.
+- `machine_printer.cpp` routes scalar ALU spelling to the ALU owner while
+  keeping family-neutral dispatch, cast printing, result wrapping, and
+  unsupported diagnostic prefixing.
+- `src/backend/mir/aarch64/codegen/alu.md` was deleted after reconciliation.
+
+Reviewer check: `review/aarch64_alu_step4_reconciliation_review.md` judged the
+Step 4 deletion on track. The old shard's unary/bit-count/bswap/popcount,
+unsigned div/rem reduction, accumulator fallback, register-direct scratch, and
+i128-copy text-emitter guidance is legacy-only and not live compiled ALU
+behavior. Before lifecycle closure, plan-owner should decide whether that
+legacy guidance needs a durable follow-up idea, because `todo.md` is not
+durable after close.
 
 ## Suggested Next
 
-Step 5 packet: run the plan's final validation/review pass for the ALU shard
-redistribution and decide whether lifecycle closure is ready.
+Hand lifecycle state to plan-owner to decide whether to close the active idea
+or create a durable follow-up idea for the deferred legacy-only ALU guidance
+before closing.
 
 ## Watchouts
 
@@ -66,8 +71,8 @@ redistribution and decide whether lifecycle closure is ready.
 
 ## Proof
 
-Ran supervisor-selected proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+Ran final supervisor validation:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure`.
 
 Result: passed. `test_after.log` contains the combined successful build and
-backend subset output: 139/139 backend tests passed.
+full-suite output: 3167/3167 tests passed.
