@@ -89,6 +89,39 @@ aarch64_codegen::ScalarAluRecord scalar_alu_record(
   };
 }
 
+aarch64_codegen::ScalarUnaryRecord scalar_unary_record(
+    aarch64_codegen::ScalarUnaryOperationKind operation,
+    bir::TypeKind type,
+    prepare::PreparedValueId result_id,
+    c4c::ValueNameId result_name,
+    aarch64_codegen::OperandRecord operand) {
+  return aarch64_codegen::ScalarUnaryRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .operation = operation,
+      .operand_type = type,
+      .result_value_id = result_id,
+      .result_value_name = result_name,
+      .result_type = type,
+      .result_register =
+          aarch64_codegen::RegisterOperand{
+              .reg = type == bir::TypeKind::I32 ? aarch64_abi::w_register(0)
+                                                : aarch64_abi::x_register(0),
+              .role = aarch64_codegen::RegisterOperandRole::StoragePlan,
+              .value_id = result_id,
+              .value_name = result_name,
+              .prepared_class = prepare::PreparedRegisterClass::General,
+              .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+              .expected_view = type == bir::TypeKind::I32 ? aarch64_abi::RegisterView::W
+                                                          : aarch64_abi::RegisterView::X,
+              .contiguous_width = 1,
+              .occupied_registers = {type == bir::TypeKind::I32 ? "w0" : "x0"},
+          },
+      .operand = operand,
+      .supported_integer_operation =
+          aarch64_codegen::is_scalar_unary_integer_operation(operation, type),
+  };
+}
+
 int add_and_sub_records_preserve_bir_and_prepared_value_facts() {
   const auto lhs = prepared_register_operand(prepare::PreparedValueId{10},
                                              c4c::ValueNameId{4},
@@ -226,6 +259,80 @@ int bitwise_records_have_distinct_generic_diagnostic_names() {
   return 0;
 }
 
+int unary_integer_records_preserve_typed_register_facts() {
+  const auto source32 = prepared_register_operand(prepare::PreparedValueId{70},
+                                                 c4c::ValueNameId{30},
+                                                 bir::TypeKind::I32,
+                                                 3);
+  const auto source64 = prepared_register_operand(prepare::PreparedValueId{71},
+                                                 c4c::ValueNameId{31},
+                                                 bir::TypeKind::I64,
+                                                 4);
+  const auto neg = scalar_unary_record(aarch64_codegen::ScalarUnaryOperationKind::Neg,
+                                       bir::TypeKind::I32,
+                                       prepare::PreparedValueId{72},
+                                       c4c::ValueNameId{32},
+                                       source32);
+  const auto bit_not = scalar_unary_record(aarch64_codegen::ScalarUnaryOperationKind::BitNot,
+                                           bir::TypeKind::I64,
+                                           prepare::PreparedValueId{73},
+                                           c4c::ValueNameId{33},
+                                           source64);
+  const auto clz = scalar_unary_record(
+      aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros,
+      bir::TypeKind::I32,
+      prepare::PreparedValueId{74},
+      c4c::ValueNameId{34},
+      source32);
+
+  if (!neg.supported_integer_operation || !bit_not.supported_integer_operation ||
+      !clz.supported_integer_operation ||
+      aarch64_codegen::scalar_unary_operation_kind_name(neg.operation) != "neg" ||
+      aarch64_codegen::scalar_unary_operation_kind_name(bit_not.operation) != "bit_not" ||
+      aarch64_codegen::scalar_unary_operation_kind_name(clz.operation) !=
+          "count_leading_zeros") {
+    return fail("expected selected unary integer operations to have typed diagnostic names");
+  }
+  if (aarch64_codegen::is_scalar_unary_integer_operation(
+          aarch64_codegen::ScalarUnaryOperationKind::Neg,
+          bir::TypeKind::I16) ||
+      aarch64_codegen::is_scalar_unary_integer_operation(
+          aarch64_codegen::ScalarUnaryOperationKind::Deferred,
+          bir::TypeKind::I64)) {
+    return fail("expected unary integer support to be limited to selected I32/I64 routes");
+  }
+
+  const auto neg_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(neg));
+  const auto bit_not_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(bit_not));
+  const auto clz_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(clz));
+  if (neg_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      bit_not_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      clz_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      neg_instruction.opcode != aarch64_codegen::MachineOpcode::Neg ||
+      bit_not_instruction.opcode != aarch64_codegen::MachineOpcode::BitNot ||
+      clz_instruction.opcode != aarch64_codegen::MachineOpcode::CountLeadingZeros) {
+    return fail("expected unary integer records to select typed scalar machine opcodes");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&neg_instruction.payload);
+  if (scalar == nullptr || !scalar->scalar_unary.has_value() ||
+      scalar->scalar_alu.has_value() || scalar->inputs.size() != 1 ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->expected_view != aarch64_abi::RegisterView::W ||
+      neg_instruction.defs.size() != 1 || neg_instruction.uses.size() != 1 ||
+      neg_instruction.defs.front().reg != aarch64_abi::w_register(0) ||
+      neg_instruction.uses.front().reg != aarch64_abi::x_register(3)) {
+    return fail("expected unary scalar instruction wrapper to preserve one input and result");
+  }
+  return 0;
+}
+
 int deferred_scalar_forms_are_explicit_records_not_generic_support() {
   if (aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Mul) ||
       aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Eq)) {
@@ -311,6 +418,10 @@ int main() {
     return status;
   }
   if (const int status = bitwise_records_have_distinct_generic_diagnostic_names();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unary_integer_records_preserve_typed_register_facts();
       status != 0) {
     return status;
   }

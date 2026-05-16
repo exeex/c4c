@@ -132,6 +132,9 @@ enum class MachineOpcode {
   And,
   Or,
   Xor,
+  Neg,
+  BitNot,
+  CountLeadingZeros,
   SignExtend,
   ZeroExtend,
   Truncate,
@@ -216,6 +219,13 @@ enum class ScalarAluOperationKind {
   And,
   Or,
   Xor,
+  Deferred,
+};
+
+enum class ScalarUnaryOperationKind {
+  Neg,
+  BitNot,
+  CountLeadingZeros,
   Deferred,
 };
 
@@ -754,6 +764,18 @@ struct ScalarCastRecord {
   bool supported_float_width_conversion = false;
 };
 
+struct ScalarUnaryRecord {
+  RecordSurfaceKind surface = RecordSurfaceKind::RecordOnly;
+  ScalarUnaryOperationKind operation = ScalarUnaryOperationKind::Deferred;
+  bir::TypeKind operand_type = bir::TypeKind::Void;
+  std::optional<prepare::PreparedValueId> result_value_id;
+  c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
+  bir::TypeKind result_type = bir::TypeKind::Void;
+  std::optional<RegisterOperand> result_register;
+  OperandRecord operand;
+  bool supported_integer_operation = false;
+};
+
 struct ScalarInstructionRecord {
   std::optional<prepare::PreparedValueId> result_value_id;
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
@@ -763,6 +785,7 @@ struct ScalarInstructionRecord {
   std::optional<bir::BinaryOpcode> source_binary_opcode;
   std::optional<bir::CastOpcode> source_cast_opcode;
   std::optional<ScalarAluRecord> scalar_alu;
+  std::optional<ScalarUnaryRecord> scalar_unary;
   std::optional<ScalarCastRecord> scalar_cast;
 };
 
@@ -869,6 +892,11 @@ struct VectorAddIntrinsicRecord {
 
 struct PreparedScalarAluRecordResult {
   std::optional<ScalarAluRecord> record;
+  PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
+};
+
+struct PreparedScalarUnaryRecordResult {
+  std::optional<ScalarUnaryRecord> record;
   PreparedScalarAluRecordError error = PreparedScalarAluRecordError::None;
 };
 
@@ -1646,6 +1674,8 @@ struct InstructionRecord {
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view frame_instruction_kind_name(FrameInstructionKind kind);
 [[nodiscard]] std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind);
+[[nodiscard]] std::string_view scalar_unary_operation_kind_name(
+    ScalarUnaryOperationKind kind);
 [[nodiscard]] std::string_view scalar_cast_operation_kind_name(ScalarCastOperationKind kind);
 [[nodiscard]] std::string_view branch_condition_form_name(BranchConditionForm form);
 [[nodiscard]] std::string_view branch_compare_candidate_kind_name(
@@ -1698,6 +1728,8 @@ struct InstructionRecord {
 [[nodiscard]] bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_floating_type(bir::TypeKind type);
+[[nodiscard]] bool is_scalar_unary_integer_operation(ScalarUnaryOperationKind operation,
+                                                     bir::TypeKind type);
 [[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
@@ -1714,6 +1746,8 @@ struct InstructionRecord {
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
+[[nodiscard]] ScalarInstructionRecord make_scalar_unary_instruction_record(
+    ScalarUnaryRecord unary);
 [[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_atomic_memory_instruction(
@@ -1775,6 +1809,21 @@ struct InstructionRecord {
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const bir::BinaryInst& binary);
+[[nodiscard]] PreparedScalarUnaryRecordResult make_prepared_scalar_unary_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    ScalarUnaryOperationKind operation,
+    const bir::Value& result,
+    const bir::Value& operand);
+[[nodiscard]] PreparedScalarInstructionRecordResult
+make_prepared_scalar_unary_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    ScalarUnaryOperationKind operation,
+    const bir::Value& result,
+    const bir::Value& operand);
 [[nodiscard]] PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,

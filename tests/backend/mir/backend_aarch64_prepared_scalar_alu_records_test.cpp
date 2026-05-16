@@ -366,6 +366,72 @@ int prepared_scalar_alu_registers_prefer_storage_register_placement() {
   return 0;
 }
 
+int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
+  for (const auto type : {bir::TypeKind::I32, bir::TypeKind::I64}) {
+    auto fixture = make_i64_fixture();
+    const char* lhs_register = type == bir::TypeKind::I32 ? "w1" : "x1";
+    const char* result_register = type == bir::TypeKind::I32 ? "w0" : "x0";
+    fixture.locations.value_homes[0].register_name = lhs_register;
+    fixture.locations.value_homes[2].register_name = result_register;
+    fixture.storage.values[0] = register_storage(
+        prepare::PreparedValueId{10}, fixture.lhs_name, lhs_register);
+    fixture.storage.values[2] = register_storage(
+        prepare::PreparedValueId{12}, fixture.result_name, result_register);
+
+    for (const auto operation : {aarch64_codegen::ScalarUnaryOperationKind::Neg,
+                                 aarch64_codegen::ScalarUnaryOperationKind::BitNot,
+                                 aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros}) {
+      const auto result = aarch64_codegen::make_prepared_scalar_unary_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          operation,
+          named_value(type, "%sum"),
+          named_value(type, "%lhs"));
+      if (!result.record.has_value() ||
+          result.error != aarch64_codegen::PreparedScalarAluRecordError::None) {
+        return fail("expected prepared scalar unary conversion to succeed");
+      }
+      const auto& instruction = *result.record;
+      if (!instruction.scalar_unary.has_value() || instruction.scalar_alu.has_value() ||
+          instruction.inputs.size() != 1 || instruction.result_type != type ||
+          instruction.result_value_id != prepare::PreparedValueId{12} ||
+          instruction.result_value_name != fixture.result_name ||
+          !instruction.result_register.has_value()) {
+        return fail("expected prepared scalar unary instruction wrapper to preserve result facts");
+      }
+      const auto& unary = *instruction.scalar_unary;
+      const auto* operand =
+          std::get_if<aarch64_codegen::RegisterOperand>(&unary.operand.payload);
+      const auto expected_view = type == bir::TypeKind::I32
+                                     ? aarch64_abi::RegisterView::W
+                                     : aarch64_abi::RegisterView::X;
+      if (unary.operation != operation || unary.operand_type != type ||
+          unary.result_type != type || !unary.supported_integer_operation ||
+          !unary.result_register.has_value() ||
+          unary.result_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
+          unary.result_register->expected_view != expected_view ||
+          unary.result_register->value_id != prepare::PreparedValueId{12} ||
+          unary.operand.kind != aarch64_codegen::OperandKind::Register ||
+          operand == nullptr || operand->value_id != prepare::PreparedValueId{10} ||
+          operand->value_name != fixture.lhs_name ||
+          operand->expected_view != expected_view ||
+          operand->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {
+        return fail("expected prepared scalar unary record to preserve typed register operands");
+      }
+      const auto machine = aarch64_codegen::make_scalar_instruction(instruction);
+      if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+          machine.operands.size() != 1 || machine.uses.size() != 1 ||
+          machine.defs.size() != 1 ||
+          machine.defs.front().value_id != prepare::PreparedValueId{12} ||
+          machine.uses.front().value_id != prepare::PreparedValueId{10}) {
+        return fail("expected prepared scalar unary machine node to carry one def/use");
+      }
+    }
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_operands() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -642,6 +708,10 @@ int main() {
     return status;
   }
   if (const int status = prepared_scalar_alu_registers_prefer_storage_register_placement();
+      status != 0) {
+    return status;
+  }
+  if (const int status = prepared_scalar_unary_records_preserve_i32_i64_register_facts();
       status != 0) {
     return status;
   }

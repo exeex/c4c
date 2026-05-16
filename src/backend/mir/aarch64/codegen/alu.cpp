@@ -19,6 +19,11 @@ namespace mir = c4c::backend::mir;
   return PreparedScalarAluRecordResult{.record = std::nullopt, .error = error};
 }
 
+[[nodiscard]] PreparedScalarUnaryRecordResult scalar_unary_record_error(
+    PreparedScalarAluRecordError error) {
+  return PreparedScalarUnaryRecordResult{.record = std::nullopt, .error = error};
+}
+
 [[nodiscard]] PreparedScalarInstructionRecordResult scalar_instruction_record_error(
     PreparedScalarAluRecordError error) {
   return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
@@ -52,6 +57,19 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
   const auto viewed = abi::fp_simd_register(operand.reg.index, view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(*viewed);
+}
+
+[[nodiscard]] std::optional<std::string> scalar_gp_register_name_with_view(
+    const RegisterOperand& operand,
+    abi::RegisterView view) {
+  if (!abi::is_gp_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::gp_register(operand.reg.index, view);
   if (!viewed.has_value()) {
     return std::nullopt;
   }
@@ -494,6 +512,60 @@ namespace mir = c4c::backend::mir;
 ScalarAluPrintResult make_scalar_alu_print_lines(
     const InstructionRecord& instruction,
     const ScalarInstructionRecord& scalar) {
+  if (scalar.scalar_unary.has_value() &&
+      scalar.scalar_unary->supported_integer_operation) {
+    const auto& unary = *scalar.scalar_unary;
+    if (scalar.inputs.size() != 1) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unary node requires exactly one structured register operand"};
+    }
+    const auto result_view = scalar_register_view(unary.result_type);
+    const auto operand_view = scalar_register_view(unary.operand_type);
+    if (!result_view.has_value() || !operand_view.has_value() ||
+        result_view != operand_view) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unary node requires matching I32/I64 operand and result widths"};
+    }
+    const auto* operand_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    if (scalar.inputs[0].kind != OperandKind::Register || operand_register == nullptr) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar unary node requires a structured register operand"};
+    }
+    if (!scalar.result_register.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar unary node requires a structured result register"};
+    }
+
+    std::string_view mnemonic;
+    switch (unary.operation) {
+      case ScalarUnaryOperationKind::Neg:
+        mnemonic = "neg";
+        break;
+      case ScalarUnaryOperationKind::BitNot:
+        mnemonic = "mvn";
+        break;
+      case ScalarUnaryOperationKind::CountLeadingZeros:
+        mnemonic = "clz";
+        break;
+      case ScalarUnaryOperationKind::Deferred:
+        break;
+    }
+    if (mnemonic.empty()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar unary operation is not printable"};
+    }
+    const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
+    const auto operand = scalar_gp_register_name_with_view(*operand_register, *operand_view);
+    if (!result.has_value() || !operand.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar unary node has incomplete printable register facts"};
+    }
+    std::ostringstream out;
+    out << mnemonic << " " << *result << ", " << *operand;
+    return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+  }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
     const auto& alu = *scalar.scalar_alu;
     if (scalar.inputs.size() != 2) {
@@ -669,6 +741,22 @@ bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode) {
 
 bool is_scalar_alu_floating_type(bir::TypeKind type) {
   return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
+}
+
+bool is_scalar_unary_integer_operation(ScalarUnaryOperationKind operation,
+                                       bir::TypeKind type) {
+  if (type != bir::TypeKind::I32 && type != bir::TypeKind::I64) {
+    return false;
+  }
+  switch (operation) {
+    case ScalarUnaryOperationKind::Neg:
+    case ScalarUnaryOperationKind::BitNot:
+    case ScalarUnaryOperationKind::CountLeadingZeros:
+      return true;
+    case ScalarUnaryOperationKind::Deferred:
+      return false;
+  }
+  return false;
 }
 
 ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
@@ -936,6 +1024,101 @@ PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_recor
   }
   return PreparedScalarInstructionRecordResult{
       .record = make_scalar_alu_instruction_record(*result.record),
+      .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+ScalarInstructionRecord make_scalar_unary_instruction_record(ScalarUnaryRecord unary) {
+  return ScalarInstructionRecord{
+      .result_value_id = unary.result_value_id,
+      .result_value_name = unary.result_value_name,
+      .result_type = unary.result_type,
+      .result_register = unary.result_register,
+      .inputs = {unary.operand},
+      .scalar_unary = unary,
+  };
+}
+
+PreparedScalarUnaryRecordResult make_prepared_scalar_unary_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    ScalarUnaryOperationKind operation,
+    const bir::Value& result,
+    const bir::Value& operand) {
+  if (value_locations.function_name == c4c::kInvalidFunctionName ||
+      storage_plan.function_name != value_locations.function_name) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::InvalidFunction);
+  }
+  if (result.kind != bir::Value::Kind::Named) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::UnsupportedResultValue);
+  }
+  if (result.type != operand.type ||
+      !is_scalar_unary_integer_operation(operation, operand.type)) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::UnsupportedOperandType);
+  }
+
+  const auto* result_home = find_prepared_scalar_value_home(names, value_locations, result);
+  if (result_home == nullptr) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::MissingResultValueHome);
+  }
+  const auto* result_storage =
+      find_prepared_scalar_storage(storage_plan, result_home->value_id);
+  if (result_storage == nullptr) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::MissingResultStorage);
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (!result_storage->register_placement.has_value() &&
+       (!result_home->register_name.has_value() ||
+        !result_storage->register_name.has_value() ||
+        *result_home->register_name != *result_storage->register_name))) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
+  }
+  const auto result_register = make_prepared_scalar_register_operand(
+      *result_home, *result_storage, result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return scalar_unary_record_error(PreparedScalarAluRecordError::RegisterConversionFailed);
+  }
+
+  OperandRecord source;
+  if (const auto error =
+          make_prepared_scalar_operand(names, value_locations, storage_plan, operand, source);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_unary_record_error(error);
+  }
+
+  return PreparedScalarUnaryRecordResult{
+      .record =
+          ScalarUnaryRecord{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .operation = operation,
+              .operand_type = operand.type,
+              .result_value_id = result_home->value_id,
+              .result_value_name = result_home->value_name,
+              .result_type = result.type,
+              .result_register = result_register,
+              .operand = source,
+              .supported_integer_operation = true,
+          },
+      .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+PreparedScalarInstructionRecordResult make_prepared_scalar_unary_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    ScalarUnaryOperationKind operation,
+    const bir::Value& result,
+    const bir::Value& operand) {
+  const auto prepared =
+      make_prepared_scalar_unary_record(names, value_locations, storage_plan, operation, result, operand);
+  if (!prepared.record.has_value()) {
+    return scalar_instruction_record_error(prepared.error);
+  }
+  return PreparedScalarInstructionRecordResult{
+      .record = make_scalar_unary_instruction_record(*prepared.record),
       .error = PreparedScalarAluRecordError::None,
   };
 }

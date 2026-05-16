@@ -1782,6 +1782,75 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
   return 0;
 }
 
+int selected_scalar_unary_integer_ops_print_from_structured_operands() {
+  const auto neg32 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::Neg,
+              .operand_type = bir::TypeKind::I32,
+              .result_value_id = prepare::PreparedValueId{44},
+              .result_value_name = c4c::ValueNameId{45},
+              .result_type = bir::TypeKind::I32,
+              .result_register = wreg(0),
+              .operand = aarch64_codegen::make_register_operand(wreg(1)),
+              .supported_integer_operation = true,
+          }));
+  const auto not64 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::BitNot,
+              .operand_type = bir::TypeKind::I64,
+              .result_value_id = prepare::PreparedValueId{46},
+              .result_value_name = c4c::ValueNameId{47},
+              .result_type = bir::TypeKind::I64,
+              .result_register = xreg(2),
+              .operand = aarch64_codegen::make_register_operand(xreg(3)),
+              .supported_integer_operation = true,
+          }));
+  const auto clz32 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros,
+              .operand_type = bir::TypeKind::I32,
+              .result_value_id = prepare::PreparedValueId{48},
+              .result_value_name = c4c::ValueNameId{49},
+              .result_type = bir::TypeKind::I32,
+              .result_register = wreg(4),
+              .operand = aarch64_codegen::make_register_operand(wreg(5)),
+              .supported_integer_operation = true,
+          }));
+  const auto clz64 = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_unary_instruction_record(
+          aarch64_codegen::ScalarUnaryRecord{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .operation = aarch64_codegen::ScalarUnaryOperationKind::CountLeadingZeros,
+              .operand_type = bir::TypeKind::I64,
+              .result_value_id = prepare::PreparedValueId{50},
+              .result_value_name = c4c::ValueNameId{51},
+              .result_type = bir::TypeKind::I64,
+              .result_register = xreg(6),
+              .operand = aarch64_codegen::make_register_operand(xreg(7)),
+              .supported_integer_operation = true,
+          }));
+
+  const auto result = print_common_instruction_nodes({neg32, not64, clz32, clz64});
+  if (!result.ok) {
+    return fail("expected scalar unary integer operations to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    neg w0, w1\n"
+      "    mvn x2, x3\n"
+      "    clz w4, w5\n"
+      "    clz x6, x7\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "scalar unary integer common-printer drift guard");
+}
+
 int selected_simple_integer_casts_print_from_structured_operands() {
   const auto sext = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
@@ -4841,6 +4910,10 @@ int main() {
   }
   if (const int result =
           selected_scalar_add_sub_and_register_return_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_scalar_unary_integer_ops_print_from_structured_operands();
       result != 0) {
     return result;
   }

@@ -184,6 +184,12 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "or";
     case MachineOpcode::Xor:
       return "xor";
+    case MachineOpcode::Neg:
+      return "neg";
+    case MachineOpcode::BitNot:
+      return "bit_not";
+    case MachineOpcode::CountLeadingZeros:
+      return "count_leading_zeros";
     case MachineOpcode::SignExtend:
       return "sign_extend";
     case MachineOpcode::ZeroExtend:
@@ -333,6 +339,9 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::Div:
     case MachineOpcode::Or:
     case MachineOpcode::Xor:
+    case MachineOpcode::Neg:
+    case MachineOpcode::BitNot:
+    case MachineOpcode::CountLeadingZeros:
     case MachineOpcode::SignExtend:
     case MachineOpcode::ZeroExtend:
     case MachineOpcode::Truncate:
@@ -480,6 +489,20 @@ std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
     case ScalarAluOperationKind::Xor:
       return "xor";
     case ScalarAluOperationKind::Deferred:
+      return "deferred";
+  }
+  return "unknown";
+}
+
+std::string_view scalar_unary_operation_kind_name(ScalarUnaryOperationKind kind) {
+  switch (kind) {
+    case ScalarUnaryOperationKind::Neg:
+      return "neg";
+    case ScalarUnaryOperationKind::BitNot:
+      return "bit_not";
+    case ScalarUnaryOperationKind::CountLeadingZeros:
+      return "count_leading_zeros";
+    case ScalarUnaryOperationKind::Deferred:
       return "deferred";
   }
   return "unknown";
@@ -1501,6 +1524,20 @@ MachineOpcode machine_opcode_from_scalar_alu(ScalarAluOperationKind operation) {
   return MachineOpcode::Unspecified;
 }
 
+MachineOpcode machine_opcode_from_scalar_unary(ScalarUnaryOperationKind operation) {
+  switch (operation) {
+    case ScalarUnaryOperationKind::Neg:
+      return MachineOpcode::Neg;
+    case ScalarUnaryOperationKind::BitNot:
+      return MachineOpcode::BitNot;
+    case ScalarUnaryOperationKind::CountLeadingZeros:
+      return MachineOpcode::CountLeadingZeros;
+    case ScalarUnaryOperationKind::Deferred:
+      return MachineOpcode::Unspecified;
+  }
+  return MachineOpcode::Unspecified;
+}
+
 MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation) {
   switch (operation) {
     case ScalarCastOperationKind::SignExtend:
@@ -1525,6 +1562,9 @@ MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation)
 MachineOpcode machine_opcode_from_scalar_instruction(const ScalarInstructionRecord& instruction) {
   if (instruction.scalar_alu.has_value()) {
     return machine_opcode_from_scalar_alu(instruction.scalar_alu->operation);
+  }
+  if (instruction.scalar_unary.has_value()) {
+    return machine_opcode_from_scalar_unary(instruction.scalar_unary->operation);
   }
   if (instruction.scalar_cast.has_value()) {
     return machine_opcode_from_scalar_cast(instruction.scalar_cast->operation);
@@ -1820,6 +1860,15 @@ MachineNodeStatusRecord scalar_selection_status(const ScalarInstructionRecord& i
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
                                    .diagnostic =
                                        "scalar ALU operation is outside the selected subset"};
+  }
+  if (instruction.scalar_unary.has_value()) {
+    if (instruction.scalar_unary->supported_integer_operation &&
+        instruction.scalar_unary->operation != ScalarUnaryOperationKind::Deferred) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "scalar unary operation is outside the selected subset"};
   }
   if (instruction.scalar_cast.has_value()) {
     if ((instruction.scalar_cast->supported_simple_integer_cast ||
