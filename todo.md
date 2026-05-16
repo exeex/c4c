@@ -8,33 +8,31 @@ Current Step Title: Move Memory Lowering And Address Helpers
 
 ## Just Finished
 
-Step 3 moved the existing F128 memory transport lowering route from
+Step 3 moved the existing I128 memory transport lowering route from
 `src/backend/mir/aarch64/codegen/dispatch.cpp` into
 `src/backend/mir/aarch64/codegen/memory.cpp` behind the memory-owned
-`lower_f128_transport_instruction` helper declared in `memory.hpp`.
+`lower_i128_transport_instruction` helper declared in `memory.hpp`.
 
-The F128 transport diagnostic formatter moved with the lowering route into
+The I128 transport diagnostic formatter moved with the lowering route into
 `memory.cpp`. `dispatch.cpp` now calls the memory-owned helper and keeps the
-existing scalar-state integration append logic around the returned instruction.
+existing instruction append/integration logic around the returned instruction.
 
 ## Suggested Next
 
-Continue Step 3 with the next memory-owner extraction candidate if the
-supervisor wants to keep moving memory/address helper ownership out of
-`dispatch.cpp`; leave I128 pair, runtime-helper, and unrelated dispatch routes
-in dispatch unless a separate packet says otherwise.
+Continue Step 3 with any remaining address-helper or memory-owner extraction
+candidate the supervisor wants to delegate, or move to plan review if the
+memory transport ownership split is sufficient for this step.
 
 ## Watchouts
 
-The F128 transport route still emits the same machine instruction and
+The I128 memory transport route still emits the same machine instruction and
 diagnostics; this packet only changed ownership. The dispatch integration point
-deliberately remains the append/scalar-state block that records a returned
-memory result register when present.
+deliberately remains the append block for the returned instruction.
 
-I128 transport, I128 pair operation lowering, F128 runtime-helper lowering, and
-runtime-helper/non-memory transport behavior remain in `dispatch.cpp`. This
-packet did not expand F128 semantics, invent carriers, or change unsupported
-route boundaries.
+I128 pair operation lowering, I128 runtime-helper handling, F128 runtime-helper
+handling, and unrelated dispatch logic remain in `dispatch.cpp`. This packet did
+not expand I128 semantics, invent carriers, or change unsupported route
+boundaries.
 
 ## Proof
 
@@ -44,6 +42,6 @@ Ran exact delegated proof:
 Result: green. `test_after.log` contains the combined build and backend CTest
 output, ending with 139/139 backend tests passed.
 
-Requested clang-tool checks confirmed the moved helper is now defined in
-`memory.cpp` and still has the expected dispatch caller in
+Requested clang-tool checks confirmed `lower_i128_transport_instruction` is now
+defined in `memory.cpp` and still has the expected dispatch caller in
 `dispatch_prepared_block`.

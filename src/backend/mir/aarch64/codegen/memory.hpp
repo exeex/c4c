@@ -44,6 +44,11 @@ struct MemoryInstructionLoweringResult {
     const bir::Inst& inst,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] MemoryInstructionLoweringResult lower_i128_transport_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
