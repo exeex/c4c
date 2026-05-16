@@ -1,47 +1,84 @@
 Status: Active
 Source Idea Path: ideas/open/258_aarch64_emit_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Tighten Adjacent Owner Boundaries
+Current Step ID: 4
+Current Step Title: Delete Reconciled Emit Markdown Shard
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Tighten Adjacent Owner Boundaries completed as an ownership
-classification pass for `instruction.*`, `dispatch.*`, and
-`machine_printer.*`.
+Step 4: Delete Reconciled Emit Markdown Shard completed the reconciliation
+ledger for `src/backend/mir/aarch64/codegen/emit.md` and deleted the shard.
 
-The adjacent owners already retain their proper responsibilities relative to
-the emit shard: `instruction.*` owns structured instruction records, prepared
-fact validation, record factories, surface/status names, and record-derived
-metadata; `dispatch.*` owns prepared block traversal, BIR/prepared-operation
-classification, diagnostics, and appending selected machine instructions to
-machine blocks; `machine_printer.*` owns target instruction printing and
-assembly line payload spelling. No narrow boundary defect required a code
-change, and no instruction family semantics, printer bodies, tests, markdown
-shards, plan files, or source ideas were moved into `emit.cpp`.
+Durable content covered by compiled owners:
+
+- Public prepared-module entry responsibility is covered by
+  `codegen/emit.hpp`, `codegen/emit.cpp`, `module/module.hpp`, and
+  `module/module.cpp`: `build_module(const PreparedBirModule&)` is the thin
+  accepted handoff and `module::build(...)` delegates to it.
+- Target-profile normalization and prepared-module handoff rejection are
+  covered by `abi::resolve_target_profile(...)` and
+  `abi::validate_prepared_module_handoff(...)`; these are invoked by
+  `codegen::build_module(...)` before lowering.
+- Prepared function/block traversal is covered by `codegen/traversal.*`:
+  `lower_prepared_functions(...)` constructs machine functions/blocks from
+  prepared control-flow facts and inserts simple fixed-frame nodes from
+  prepared frame facts.
+- Prepared instruction and terminator dispatch is covered by
+  `codegen/dispatch.*` and the family-specific codegen shards
+  (`alu.*`, `calls.*`, `comparison.*`, `globals.*`, `memory.*`,
+  `returns.*`): dispatch classifies BIR/prepared-operation families, appends
+  selected machine instructions, and records structured diagnostics for
+  unsupported or missing prepared facts.
+- Structured record ownership is covered by `codegen/instruction.*` and
+  `module/module.hpp`: target MIR records, machine instruction nodes, operand
+  roles, instruction families, selection status, effects, and compatibility
+  projections are typed records rather than raw assembly text.
+- Assembly spelling for selected target records is covered by
+  `codegen/machine_printer.*`; the compatibility projection comments keep
+  terminal assembly printing routed through the MIR/printer path, not the
+  legacy flat record projection.
+- The accepted rebuild direction from the markdown shard is covered by the
+  current compiled route: prepared-module target records feed MIR/module
+  records, while direct text emission and parsed text are not restored as the
+  semantic backend path.
+
+Stale or out-of-scope markdown content:
+
+- The old `emit.hpp` API inventory (`emit_direct_bir_module`,
+  `emit_module(...)`, `emit_prepared_lir_module`, `assemble_module(...)`) is
+  stale for this MIR AArch64 shard; the compiled owner exposes only the
+  prepared-module `build_module(...)` route.
+- Historical BIR/LIR direct shape recognizers, minimal assembly helpers,
+  general string-driven LIR rendering, direct dispatch-order fallback lists,
+  constant-folding fallbacks, and old unsupported direct-emitter error strings
+  describe removed transition-era direct assembly behavior. Reintroducing them
+  here would violate the current ownership direction and testcase-overfit
+  guardrails.
+- Notes about local parsing of LIR textual type strings, old stack/regalloc
+  helper dependencies, ad-hoc global/string rendering, Darwin/GNU text
+  directives, and object-assembly handoff are stale for the compiled
+  prepared-record path or belong to narrower future ABI/data/printer/assembler
+  work, not `emit.cpp`.
+- The future rebuild pressure notes are preserved as classification rather than
+  markdown: new work should extend typed prepared facts, machine records, and
+  family-specific codegen/printer owners, not recreate a monolithic direct text
+  emitter.
 
 ## Suggested Next
 
-Next coherent packet: Step 4 should reconcile the remaining durable `emit.md`
-content against the compiled emit/dispatch/instruction/printer boundaries and
-classify stale direct-text-emitter inventory without changing tests or moving
-semantics into `emit.cpp`.
+Next coherent packet: hand back to the supervisor for lifecycle/closure
+decision on the source idea now that the final markdown shard has been
+reconciled and removed.
 
 ## Watchouts
 
-- Preserve behavior; this idea is source ownership redistribution.
-- Do not use testcase-shaped shortcuts, expectation rewrites, or unsupported
-  downgrades as progress.
-- Keep `emit.cpp` thin; it should coordinate prepared-module build flow and
-  delegate to the adjacent owners instead of absorbing instruction spelling,
-  selected-node families, or backend semantics.
-- Do not delete `emit.md` until its durable valid content is reconciled or
-  classified as stale/out of scope for close.
-- The `emit.md` direct-text emitter inventory is mostly stale; Step 4 should
-  compare that markdown to the now-confirmed compiled boundaries instead of
-  reviving direct text emission in `emit.cpp`.
+- No implementation or test behavior changed in this packet.
+- `emit.cpp` remains thin and continues to coordinate only the prepared-module
+  build flow.
+- `emit.md` had no durable content left that was both current and uncovered by
+  compiled owners/current contracts.
 
 ## Proof
 
@@ -52,4 +89,4 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 ```
 
 `test_after.log` contains the canonical proof output. The selected subset ran
-5 tests and all passed.
+5 tests and all passed after this packet.
