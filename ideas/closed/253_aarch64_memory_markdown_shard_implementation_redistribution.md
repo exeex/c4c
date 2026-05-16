@@ -1,7 +1,8 @@
 # AArch64 `memory.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
 
 ## Intent
 
@@ -66,6 +67,26 @@ family-neutral owners.
   that spelling can be owned through memory shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Notes
+
+Closed after Step 5 deleted `src/backend/mir/aarch64/codegen/memory.md` and
+the closure review found no blockers. The valid durable memory-shard behavior
+is represented by compiled memory owners, existing shared contracts, or
+explicit deferred carrier-gap notes from `todo.md`.
+
+Deferred carrier gaps remain out of scope for this redistribution and should
+become separate ideas only when implementation is requested: missing prepared
+direct-load and pointer-value-load variants, stack-slot-vs-pointer-slot
+fallback behavior, unresolved-address handling, GEP and large signed-offset
+materialization, dynamic-stack operations, over-aligned alloca carriers, and
+bytewise memcpy lowering with explicit source, destination, size, scratch,
+loop-label, alignment, and overlap semantics.
+
+Closure proof: full build plus full CTest passed in `test_after.log`
+(`3167/3167` tests), and regression guard against `test_baseline.log` passed
+with no new failures using the non-decreasing pass-count mode appropriate for
+behavior-preserving redistribution.
 
 ## Reviewer Reject Signals
 
