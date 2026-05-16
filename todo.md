@@ -1,49 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/252_aarch64_calls_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move Call Spelling And Printer-Side Bodies
+Current Step ID: 5
+Current Step Title: Reconcile `calls.md` And Close Shard Ownership
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4 remaining printer-side helper-call and call-result spelling
-audit. AST-backed caller/callee checks showed no additional clean pure
-call-owned body to move: `print_i128_runtime_helper` and
-`print_f128_runtime_helper` emit terminal `bl` lines, but their bodies also own
-runtime-helper-family validation, live-preservation and selected-call policy
-checks, marshal/unmarshal sequencing, f128 comparison result spelling, and
-runtime-helper-specific support helpers. No code was moved in this packet; the
-existing calls-owned `print_call`, `print_call_boundary_move`, and
-`print_call_boundary_abi_binding` boundary remains intact.
+Completed Step 5 `calls.md` reconciliation. The compiled calls owner already
+accounts for the valid durable call shard content through prepared call-plan
+requirements, direct and indirect `CallInstructionRecord` lowering and
+printing, call-boundary move and ABI-binding records, memory-return snapshots,
+structured F128 register/constant carriers, preserved-value and clobber
+effects, and variadic entry helper records. Deleted
+`src/backend/mir/aarch64/codegen/calls.md` after reconciling the legacy entry
+points, ABI/stack/register/call/result notes, dependencies, hidden
+assumptions, known failure risks, and rebuild guidance.
 
 ## Suggested Next
 
-Have the supervisor decide whether Step 4 is exhausted and should move to the
-next plan step or receive a plan-owner/reviewer checkpoint before further
-redistribution.
+Proceed to Step 6 behavior-preservation and ownership-boundary proof for the
+completed redistribution.
 
 ## Watchouts
 
-- `machine_printer.cpp` still owns generic print-result wrappers, generic
-  diagnostic header construction, selected-node validation, register/memory
-  spelling primitives, relocation helpers, non-call family printers, runtime
-  helper-family printers, and the top-level variant dispatch.
-- Keep i128/f128 runtime-helper printers and their supporting helper move/result
-  functions in `machine_printer.cpp` for now. They are runtime-helper-family
-  behavior, not clean pure call spelling, even though they contain terminal
-  helper `bl` emission.
-- `calls.cpp` has the calls-local diagnostic/result helpers needed by its
-  public call print functions; later movement should avoid turning generic
-  printer helpers into calls-owned API unless a broader printer split is
-  explicitly planned.
-- Variadic `va_start`, scalar `va_arg`, aggregate `va_arg`, and `va_copy`
-  spelling moved with `print_call` because those forms are encoded as
-  `CallInstructionRecord` payload variants and share the calls-owned call
-  printer entry point.
-- `machine_printer.hpp` did not require a change for this packet; the generic
-  public machine-printer entry points stayed intact.
+- The former `calls.md` historical ABI configuration, stack-area computation,
+  stack-argument copy sequencing, local reclassification, and final cleanup
+  arithmetic are not current compiled calls ownership. The durable boundary is
+  that later lowering must consume prepared call plans and fail closed on
+  missing carriers instead of recovering policy from legacy text.
+- Remaining carrier/runtime-helper boundaries from the shard are explicitly
+  deferred outside this packet: complete outgoing call-area and call-time
+  stack-alignment carriers, indirect-callee spill-area ownership, target ABI
+  classification carriers for HFA/F128/i128/aggregate-splitting edge cases
+  where prepared plans are insufficient, explicit special-register role records
+  for `x8`/`x16`/`x17` when ABI helpers and prepared facts are insufficient,
+  and runtime-helper call resource carriers for F128 or soft-float helper paths.
+- Runtime-helper printers that emit helper `bl` lines remain
+  runtime-helper-family behavior, not calls-owned direct/indirect call
+  spelling, until a separate helper-call resource carrier makes that boundary
+  machine-verifiable.
+- `calls.cpp` now remains the compiled owner for call-boundary records and
+  call spelling; `calls.md` has no remaining durable ownership role.
 
 ## Proof
 
