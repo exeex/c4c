@@ -2046,14 +2046,9 @@ struct LowerMemoryInstructionResult {
     }
   }
 
-  const auto* call_plan = find_prepared_call_plan(context, instruction_index);
+  const auto* call_plan =
+      require_prepared_call_plan(context, instruction_index, diagnostics);
   if (call_plan == nullptr) {
-    append_call_diagnostic(
-        diagnostics,
-        module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan,
-        context,
-        instruction_index,
-        "AArch64 call lowering requires an authoritative PreparedCallPlan");
     return std::nullopt;
   }
 

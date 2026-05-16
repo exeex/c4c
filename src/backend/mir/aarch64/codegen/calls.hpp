@@ -22,6 +22,10 @@ effects_from_prepared_call_preserved_values(
 [[nodiscard]] const prepare::PreparedCallPlan* find_prepared_call_plan(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index);
+[[nodiscard]] const prepare::PreparedCallPlan* require_prepared_call_plan(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,

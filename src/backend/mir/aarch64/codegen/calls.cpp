@@ -139,6 +139,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                          ? context.control_flow_block->block_label
                          : c4c::kInvalidBlockLabel,
       .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Call,
       .message = std::move(message),
   });
 }
@@ -726,6 +727,22 @@ const prepare::PreparedCallPlan* find_prepared_call_plan(
     }
   }
   return nullptr;
+}
+
+const prepare::PreparedCallPlan* require_prepared_call_plan(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* call_plan = find_prepared_call_plan(context, instruction_index);
+  if (call_plan == nullptr) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingPreparedCallPlan,
+        context,
+        instruction_index,
+        "AArch64 call lowering requires an authoritative PreparedCallPlan");
+  }
+  return call_plan;
 }
 
 std::vector<module::MachineInstruction> lower_before_call_moves(
