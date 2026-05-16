@@ -184,6 +184,8 @@ std::string_view machine_opcode_name(MachineOpcode opcode) {
       return "or";
     case MachineOpcode::Xor:
       return "xor";
+    case MachineOpcode::LogicalShiftRight:
+      return "logical_shift_right";
     case MachineOpcode::Neg:
       return "neg";
     case MachineOpcode::BitNot:
@@ -339,6 +341,7 @@ MachinePrinterMnemonicKind machine_opcode_printer_mnemonic_kind(MachineOpcode op
     case MachineOpcode::AtomicRmw:
     case MachineOpcode::AtomicCompareExchange:
     case MachineOpcode::And:
+    case MachineOpcode::LogicalShiftRight:
     case MachineOpcode::Mul:
     case MachineOpcode::Div:
     case MachineOpcode::Or:
@@ -494,6 +497,8 @@ std::string_view scalar_alu_operation_kind_name(ScalarAluOperationKind kind) {
       return "or";
     case ScalarAluOperationKind::Xor:
       return "xor";
+    case ScalarAluOperationKind::LogicalShiftRight:
+      return "logical_shift_right";
     case ScalarAluOperationKind::Deferred:
       return "deferred";
   }
@@ -1528,6 +1533,8 @@ MachineOpcode machine_opcode_from_scalar_alu(ScalarAluOperationKind operation) {
       return MachineOpcode::Or;
     case ScalarAluOperationKind::Xor:
       return MachineOpcode::Xor;
+    case ScalarAluOperationKind::LogicalShiftRight:
+      return MachineOpcode::LogicalShiftRight;
     case ScalarAluOperationKind::Deferred:
       return MachineOpcode::Unspecified;
   }

@@ -376,6 +376,11 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
           aarch64_codegen::ScalarAluOperationKind::Mul) != "mul" ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Div) != "div" ||
+      aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::LShr) !=
+          aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
+      aarch64_codegen::scalar_alu_operation_kind_name(
+          aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight) !=
+          "logical_shift_right" ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Deferred) != "deferred") {
     return fail("expected deferred scalar forms to be named explicitly");
@@ -400,6 +405,55 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
     return fail("expected deferred record to preserve source opcode without claiming support");
   }
 
+  return 0;
+}
+
+int unsigned_power_of_two_reduction_records_select_structured_alu_nodes() {
+  auto shift = scalar_alu_record(
+      aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+      bir::BinaryOpcode::UDiv,
+      bir::TypeKind::I64,
+      prepare::PreparedValueId{90},
+      c4c::ValueNameId{90},
+      prepared_register_operand(prepare::PreparedValueId{91},
+                                c4c::ValueNameId{91},
+                                bir::TypeKind::I64,
+                                1),
+      aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+          .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+          .type = bir::TypeKind::I64,
+          .signed_value = 3,
+          .unsigned_value = 3,
+      }));
+  shift.supported_integer_operation = true;
+  auto mask = scalar_alu_record(
+      aarch64_codegen::ScalarAluOperationKind::And,
+      bir::BinaryOpcode::URem,
+      bir::TypeKind::I32,
+      prepare::PreparedValueId{92},
+      c4c::ValueNameId{92},
+      prepared_register_operand(prepare::PreparedValueId{93},
+                                c4c::ValueNameId{93},
+                                bir::TypeKind::I32,
+                                2),
+      aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+          .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+          .type = bir::TypeKind::I32,
+          .signed_value = 15,
+          .unsigned_value = 15,
+      }));
+  mask.supported_integer_operation = true;
+
+  const auto shift_node = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(shift));
+  const auto mask_node = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(mask));
+  if (shift_node.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      mask_node.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      shift_node.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
+      mask_node.opcode != aarch64_codegen::MachineOpcode::And) {
+    return fail("expected unsigned reduction records to select structured ALU opcodes");
+  }
   return 0;
 }
 
@@ -454,6 +508,10 @@ int main() {
     return status;
   }
   if (const int status = deferred_scalar_forms_are_explicit_records_not_generic_support();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unsigned_power_of_two_reduction_records_select_structured_alu_nodes();
       status != 0) {
     return status;
   }

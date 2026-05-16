@@ -99,10 +99,97 @@ namespace mir = c4c::backend::mir;
     case ScalarAluOperationKind::And:
     case ScalarAluOperationKind::Or:
     case ScalarAluOperationKind::Xor:
+    case ScalarAluOperationKind::LogicalShiftRight:
     case ScalarAluOperationKind::Deferred:
       return {};
   }
   return {};
+}
+
+[[nodiscard]] std::optional<unsigned> integer_scalar_bit_width(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+      return 64U;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<unsigned> unsigned_power_of_two_log2(
+    const ImmediateOperand& immediate,
+    bir::TypeKind type) {
+  const auto width = integer_scalar_bit_width(type);
+  if (!width.has_value()) {
+    return std::nullopt;
+  }
+  const auto value = immediate.unsigned_value;
+  if (value <= 1U || (value & (value - 1U)) != 0U) {
+    return std::nullopt;
+  }
+  unsigned shift = 0U;
+  for (std::uint64_t cursor = value; cursor > 1U; cursor >>= 1U) {
+    ++shift;
+  }
+  if (shift >= *width) {
+    return std::nullopt;
+  }
+  return shift;
+}
+
+[[nodiscard]] std::optional<ImmediateOperand> unsigned_reduction_replacement_immediate(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind type,
+    const ImmediateOperand& divisor) {
+  const auto shift = unsigned_power_of_two_log2(divisor, type);
+  if (!shift.has_value()) {
+    return std::nullopt;
+  }
+  if (opcode == bir::BinaryOpcode::UDiv) {
+    return ImmediateOperand{
+        .kind = ImmediateKind::UnsignedInteger,
+        .type = type,
+        .signed_value = static_cast<std::int64_t>(*shift),
+        .unsigned_value = *shift,
+        .source_value_id = divisor.source_value_id,
+        .source_value_name = divisor.source_value_name,
+    };
+  }
+  if (opcode == bir::BinaryOpcode::URem) {
+    const auto mask = divisor.unsigned_value - 1U;
+    return ImmediateOperand{
+        .kind = ImmediateKind::UnsignedInteger,
+        .type = type,
+        .signed_value = static_cast<std::int64_t>(mask),
+        .unsigned_value = mask,
+        .source_value_id = divisor.source_value_id,
+        .source_value_name = divisor.source_value_name,
+    };
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool is_unsigned_power_of_two_reduction_opcode(bir::BinaryOpcode opcode) {
+  return opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
+}
+
+[[nodiscard]] std::optional<ScalarAluOperationKind> unsigned_reduction_operation(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind type,
+    const OperandRecord& rhs) {
+  const auto* immediate = std::get_if<ImmediateOperand>(&rhs.payload);
+  if (rhs.kind != OperandKind::Immediate || immediate == nullptr ||
+      !unsigned_reduction_replacement_immediate(opcode, type, *immediate).has_value()) {
+    return std::nullopt;
+  }
+  if (opcode == bir::BinaryOpcode::UDiv) {
+    return ScalarAluOperationKind::LogicalShiftRight;
+  }
+  if (opcode == bir::BinaryOpcode::URem) {
+    return ScalarAluOperationKind::And;
+  }
+  return std::nullopt;
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
@@ -620,6 +707,52 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
     return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
   }
+  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
+      (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::UDiv ||
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::URem)) {
+    const auto& alu = *scalar.scalar_alu;
+    if (scalar.inputs.size() != 2) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar unsigned reduction node requires two structured operands"};
+    }
+    const auto result_view = scalar_register_view(alu.result_type);
+    const auto operand_view = scalar_register_view(alu.operand_type);
+    if (!result_view.has_value() || result_view != operand_view ||
+        !integer_scalar_bit_width(alu.result_type).has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unsigned reduction node requires matching I32/I64 widths"};
+    }
+    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+    if (scalar.inputs[0].kind != OperandKind::Register ||
+        scalar.inputs[1].kind != OperandKind::Immediate || lhs_register == nullptr ||
+        rhs_immediate == nullptr || !scalar.result_register.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unsigned reduction node requires register lhs, immediate reduction, and result register"};
+    }
+    const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
+    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
+    if (!result.has_value() || !lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unsigned reduction node has incomplete printable register facts"};
+    }
+    std::ostringstream out;
+    if (alu.operation == ScalarAluOperationKind::LogicalShiftRight &&
+        alu.source_binary_opcode == bir::BinaryOpcode::UDiv) {
+      out << "lsr " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
+      return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+    }
+    if (alu.operation == ScalarAluOperationKind::And &&
+        alu.source_binary_opcode == bir::BinaryOpcode::URem) {
+      out << "and " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
+      return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+    }
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar unsigned reduction operation is not printable"};
+  }
   if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
     return {.lines = std::nullopt,
             .diagnostic = "scalar node opcode is outside the printable add/sub subset"};
@@ -796,8 +929,9 @@ ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
       return ScalarAluOperationKind::Or;
     case bir::BinaryOpcode::Xor:
       return ScalarAluOperationKind::Xor;
-    case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
+      return ScalarAluOperationKind::LogicalShiftRight;
+    case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
@@ -965,7 +1099,12 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   const bool is_floating_operation = is_scalar_alu_floating_type(binary.operand_type) &&
                                      is_scalar_alu_floating_type(binary.result.type) &&
                                      is_scalar_alu_floating_opcode(binary.opcode);
-  if (!is_integer_operation && !is_floating_operation) {
+  const bool may_be_unsigned_reduction =
+      is_unsigned_power_of_two_reduction_opcode(binary.opcode) &&
+      scalar_register_view(binary.operand_type).has_value() &&
+      scalar_register_view(binary.result.type).has_value() &&
+      binary.operand_type == binary.result.type;
+  if (!is_integer_operation && !is_floating_operation && !may_be_unsigned_reduction) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
   if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
@@ -1012,11 +1151,31 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     return scalar_alu_record_error(error);
   }
 
+  ScalarAluOperationKind operation = scalar_alu_operation_from_binary_opcode(binary.opcode);
+  bool supported_integer_operation = is_integer_operation;
+  if (!supported_integer_operation &&
+      scalar_register_view(binary.operand_type).has_value() &&
+      scalar_register_view(binary.result.type).has_value() &&
+      binary.operand_type == binary.result.type &&
+      is_unsigned_power_of_two_reduction_opcode(binary.opcode)) {
+    const auto reduction_operation =
+        unsigned_reduction_operation(binary.opcode, binary.operand_type, rhs);
+    if (!reduction_operation.has_value()) {
+      return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
+    }
+    const auto* divisor = std::get_if<ImmediateOperand>(&rhs.payload);
+    const auto replacement =
+        unsigned_reduction_replacement_immediate(binary.opcode, binary.operand_type, *divisor);
+    rhs = make_immediate_operand(*replacement);
+    operation = *reduction_operation;
+    supported_integer_operation = true;
+  }
+
   return PreparedScalarAluRecordResult{
       .record =
           ScalarAluRecord{
               .surface = RecordSurfaceKind::RecordOnly,
-              .operation = scalar_alu_operation_from_binary_opcode(binary.opcode),
+              .operation = operation,
               .source_binary_opcode = binary.opcode,
               .operand_type = binary.operand_type,
               .result_value_id = result_home->value_id,
@@ -1025,7 +1184,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .result_register = result_register,
               .lhs = lhs,
               .rhs = rhs,
-              .supported_integer_operation = is_integer_operation,
+              .supported_integer_operation = supported_integer_operation,
               .supported_floating_operation = is_floating_operation,
           },
       .error = PreparedScalarAluRecordError::None,

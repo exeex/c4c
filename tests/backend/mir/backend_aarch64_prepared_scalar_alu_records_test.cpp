@@ -178,6 +178,14 @@ bir::BinaryInst binary(bir::BinaryOpcode opcode, bir::TypeKind type) {
   };
 }
 
+bir::BinaryInst binary_with_rhs(bir::BinaryOpcode opcode,
+                                bir::TypeKind type,
+                                bir::Value rhs) {
+  auto inst = binary(opcode, type);
+  inst.rhs = std::move(rhs);
+  return inst;
+}
+
 int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
   for (const auto opcode : {bir::BinaryOpcode::Add,
                             bir::BinaryOpcode::Sub,
@@ -642,6 +650,82 @@ int named_rematerialized_immediate_operands_preserve_source_identity() {
   return 0;
 }
 
+int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
+  {
+    auto fixture = make_i64_fixture();
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(bir::BinaryOpcode::UDiv,
+                        bir::TypeKind::I64,
+                        bir::Value::immediate_i64(8)));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected unsigned division by immediate power-of-two to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
+        alu.source_binary_opcode != bir::BinaryOpcode::UDiv ||
+        !alu.supported_integer_operation ||
+        result.record->result_register->reg != aarch64_abi::x_register(0) ||
+        rhs == nullptr || rhs->unsigned_value != 3 || rhs->type != bir::TypeKind::I64) {
+      return fail("expected UDiv power-of-two to rewrite rhs as structured shift count");
+    }
+  }
+
+  {
+    auto fixture = make_i64_fixture();
+    fixture.locations.value_homes[1] =
+        immediate_home(prepare::PreparedValueId{11}, fixture.function_name, fixture.rhs_name, 16);
+    fixture.storage.values[1] =
+        immediate_storage(prepare::PreparedValueId{11}, fixture.rhs_name, 16);
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary(bir::BinaryOpcode::URem, bir::TypeKind::I64));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected unsigned remainder by rematerialized power-of-two to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::ScalarAluOperationKind::And ||
+        alu.source_binary_opcode != bir::BinaryOpcode::URem ||
+        !alu.supported_integer_operation || rhs == nullptr || rhs->unsigned_value != 15 ||
+        rhs->source_value_id != prepare::PreparedValueId{11} ||
+        rhs->source_value_name != fixture.rhs_name) {
+      return fail("expected URem power-of-two to rewrite rhs as structured mask");
+    }
+  }
+
+  for (const auto opcode : {bir::BinaryOpcode::SDiv,
+                            bir::BinaryOpcode::SRem,
+                            bir::BinaryOpcode::UDiv,
+                            bir::BinaryOpcode::URem}) {
+    auto fixture = make_i64_fixture();
+    const auto rhs = opcode == bir::BinaryOpcode::UDiv ||
+                             opcode == bir::BinaryOpcode::URem
+                         ? bir::Value::immediate_i64(12)
+                         : bir::Value::immediate_i64(8);
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(opcode, bir::TypeKind::I64, rhs));
+    if (result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+      return fail("expected signed reductions and non-power unsigned reductions to fail closed");
+    }
+  }
+
+  return 0;
+}
+
 int unsupported_and_incomplete_facts_fail_closed() {
   auto fixture = make_i64_fixture();
   const auto unsupported = aarch64_codegen::make_prepared_scalar_alu_record(
@@ -758,6 +842,10 @@ int main() {
     return status;
   }
   if (const int status = named_rematerialized_immediate_operands_preserve_source_identity();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unsigned_power_of_two_reductions_prepare_as_shift_and_mask();
       status != 0) {
     return status;
   }

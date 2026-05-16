@@ -132,6 +132,7 @@ enum class MachineOpcode {
   And,
   Or,
   Xor,
+  LogicalShiftRight,
   Neg,
   BitNot,
   CountLeadingZeros,
@@ -221,6 +222,7 @@ enum class ScalarAluOperationKind {
   And,
   Or,
   Xor,
+  LogicalShiftRight,
   Deferred,
 };
 
