@@ -39,6 +39,11 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::vector<module::MachineInstruction> lower_atomic_memory_operations_for_block(
     const module::BlockLoweringContext& context,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] MemoryInstructionLoweringResult lower_f128_transport_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,

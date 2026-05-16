@@ -1,44 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/253_aarch64_memory_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create Memory Owner And Move Operand Construction Routes
+Current Step ID: 3
+Current Step Title: Move Memory Lowering And Address Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 moved the remaining dispatch-side atomic-memory block lowering route
-from `src/backend/mir/aarch64/codegen/dispatch.cpp` into
+Step 3 moved the existing F128 memory transport lowering route from
+`src/backend/mir/aarch64/codegen/dispatch.cpp` into
 `src/backend/mir/aarch64/codegen/memory.cpp` behind the memory-owned
-`lower_atomic_memory_operations_for_block` helper.
+`lower_f128_transport_instruction` helper declared in `memory.hpp`.
 
-`dispatch.cpp` now only selects the route, counts the returned atomic machine
-instructions, and appends them to the block. The atomic prepared-operation
-diagnostic formatter moved with the lowering route into `memory.cpp`, and
-`memory.hpp` declares the new helper surface.
+The F128 transport diagnostic formatter moved with the lowering route into
+`memory.cpp`. `dispatch.cpp` now calls the memory-owned helper and keeps the
+existing scalar-state integration append logic around the returned instruction.
 
 ## Suggested Next
 
-Continue Step 2 with the next memory-family extraction candidate, likely one of
-the remaining dispatch-owned memory transport routes if the supervisor wants to
-keep reducing dispatch-side memory ownership.
+Continue Step 3 with the next memory-owner extraction candidate if the
+supervisor wants to keep moving memory/address helper ownership out of
+`dispatch.cpp`; leave I128 pair, runtime-helper, and unrelated dispatch routes
+in dispatch unless a separate packet says otherwise.
 
 ## Watchouts
 
-The atomic route still emits the same machine instructions and diagnostics; the
-dispatch integration point deliberately remains an append loop over the returned
-instructions.
+The F128 transport route still emits the same machine instruction and
+diagnostics; this packet only changed ownership. The dispatch integration point
+deliberately remains the append/scalar-state block that records a returned
+memory result register when present.
 
-Do not expand behavior while moving ownership: local pointer loads, global
-loads, over-aligned alloca, dynamic stack, memcpy, and F128 memory-backed carrier
-gaps remain unsupported route boundaries unless prepared carriers are added.
-This packet did not invent support for those gaps or change atomic semantics; it
-only moved the existing atomic-memory block-lowering body.
-
-`dispatch.cpp` still calls `memory_error_message` for I128/F128 transport
-memory-operand diagnostics. The message body is memory-owned, but those
-transport routes remain in dispatch for now.
+I128 transport, I128 pair operation lowering, F128 runtime-helper lowering, and
+runtime-helper/non-memory transport behavior remain in `dispatch.cpp`. This
+packet did not expand F128 semantics, invent carriers, or change unsupported
+route boundaries.
 
 ## Proof
 
@@ -48,6 +44,6 @@ Ran exact delegated proof:
 Result: green. `test_after.log` contains the combined build and backend CTest
 output, ending with 139/139 backend tests passed.
 
-Requested clang-tool checks confirmed the removed dispatch helper had one
-caller in `dispatch_prepared_block`; the new helper is declared in `memory.hpp`,
-defined in `memory.cpp`, and called from dispatch.
+Requested clang-tool checks confirmed the moved helper is now defined in
+`memory.cpp` and still has the expected dispatch caller in
+`dispatch_prepared_block`.
