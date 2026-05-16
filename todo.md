@@ -3,37 +3,51 @@
 Status: Active
 Source Idea Path: ideas/open/255_aarch64_alu_legacy_semantic_lowering_followup.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Implement Accepted Unsigned Power-Of-Two Reductions
+Current Step ID: 4
+Current Step Title: Implement Accepted Scratch, Fallback, And Extension Routes
 
 ## Just Finished
 
 Step 3 - Implement Accepted Unsigned Power-Of-Two Reductions is complete for
 the current structured scalar ALU surface.
 
-Unsigned `UDiv` by a concrete immediate power-of-two greater than one now
-prepares as a structured logical shift-right ALU record using allocation-backed
-result/source registers and a rewritten shift-count immediate. Unsigned `URem`
-by a concrete immediate power-of-two greater than one now prepares as a
-structured mask through the existing `And` ALU record with a rewritten mask
-immediate. The reduction path accepts direct BIR immediates and prepared
-rematerialized immediates while preserving source value identity on the
-rewritten immediate.
+The attempted Step 4 overlap slice was rejected by
+`review/aarch64_alu_step4_overlap_route_review.md` and restored before this
+repair. The rejected route computed RHS/result overlap metadata but no
+selection, emission, def/use, or unsupported-path behavior consumed that fact,
+so it was classification-only progress against a semantic-lowering step.
 
-Focused tests cover direct record identity, prepared `UDiv` shift reduction,
-prepared `URem` mask reduction, printer spelling for `lsr` and `and`, and
-fail-closed behavior for signed `SDiv`/`SRem` and non-power unsigned
-divisors. Narrow I8/I16 reduction and divisor-one behavior remain outside this
-slice because they require explicit extension/zero-result semantics rather
-than a plain I32/I64 ALU rewrite.
+Step 4 remains active, but its next packet must not reintroduce a standalone
+overlap flag as the accepted result. The next slice must either make a
+structured conflict or extension fact drive real behavior with fail-closed
+proof, or document that current structured facts are insufficient and return
+for a split/blocker decision.
 
 ## Suggested Next
 
-Next implementation packet: move to Step 4 scratch, fallback, and extension
-routes. Start with one accepted subroute that has explicit current structured
-facts, such as register-direct scratch handling or explicit post-operation
-extension, and keep accumulator fallback division/remainder/variable-shift
-behavior out unless current allocation and scratch authority are proven.
+Next implementation packet: Step 4 scratch, fallback, and extension routes.
+Start with one accepted subroute that has explicit current structured facts and
+whose fact is consumed by backend behavior.
+
+Acceptable Step 4 packet shapes:
+- Conflict-consuming route: for RHS/result overlap, make selection, emission,
+  def/use modeling, or unsupported-path handling explicitly consume the
+  conflict/safety fact. Prove the positive accepted case and at least one
+  unsafe or unsupported overlap case that fails closed instead of becoming
+  implicit scratch authority.
+- Extension-consuming route: model signed 32-bit extension or unsigned
+  zero-extension as explicit post-operation behavior for a route that requires
+  it. Prove the extension instruction/record behavior and a negative case that
+  does not silently reuse plain I32/I64 ALU lowering.
+- Blocker/split route: if current allocation, scratch, or typed record facts
+  cannot express a safe conflict/extension decision, stop and record the exact
+  missing fact or abstraction needed so the supervisor can split or reroute the
+  source idea.
+
+Do not claim Step 4 progress for a helper, record field, or classification bit
+unless a backend decision consumes it. Keep accumulator fallback
+division/remainder/variable-shift behavior out unless current allocation and
+scratch authority are proven.
 Suggested focused proof subset:
 
 ```bash
@@ -46,6 +60,11 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 - Do not revive text-emitter accumulator conventions as semantic authority.
 - Do not use named-case shortcuts, final assembly string matching, expectation
   rewrites, or unsupported downgrades to claim progress.
+- Do not accept metadata-only overlap classification as Step 4 progress. A
+  conflict or extension fact must gate, reject, repair, select, emit, or model
+  a concrete backend behavior.
+- Add fail-closed proof for unsafe or unsupported overlap/extension cases; a
+  happy-path printable register shape alone is insufficient.
 - Keep signed power-of-two division/remainder separate from unsigned reduction
   unless signed semantics are separately designed and proved.
 - Step 3 intentionally accepts only I32/I64 unsigned reductions with a concrete
@@ -75,8 +94,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 ## Proof
 
-Proof passed and `test_after.log` was refreshed with the exact delegated proof
-output.
+No code validation was run for this lifecycle-only route repair. The next
+executor packet should refresh `test_after.log` with the exact delegated proof
+command after implementing behavior-consuming Step 4 work.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
