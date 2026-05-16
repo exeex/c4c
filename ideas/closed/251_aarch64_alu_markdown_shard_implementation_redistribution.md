@@ -1,7 +1,8 @@
 # AArch64 `alu.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
+Closed: 2026-05-16
 
 ## Intent
 
@@ -58,6 +59,20 @@ layout misleading and keeping family-specific code in family-neutral owners.
   spelling can be owned through ALU shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Notes
+
+The ALU markdown shard was reconciled into compiled AArch64 ALU owners and
+`src/backend/mir/aarch64/codegen/alu.md` was deleted. The compiled owner route
+preserves current live ALU behavior without reviving non-live text-emitter
+semantics from the old commented Rust mirror.
+
+Legacy-only guidance for unary integer helpers, bit-count operations,
+byte-swap, popcount, unsigned division/remainder reductions, accumulator
+fallbacks, register-direct scratch conventions, and i128 copy was intentionally
+not treated as required behavior for this redistribution. Follow-up source
+intent for any future semantic rebuild lives in
+`ideas/open/255_aarch64_alu_legacy_semantic_lowering_followup.md`.
 
 ## Reviewer Reject Signals
 
