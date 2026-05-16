@@ -1,4 +1,5 @@
 #include "machine_printer.hpp"
+#include "alu.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -173,29 +174,6 @@ std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
       return std::nullopt;
   }
   return std::nullopt;
-}
-
-std::string_view floating_alu_mnemonic(ScalarAluOperationKind operation) {
-  switch (operation) {
-    case ScalarAluOperationKind::Add:
-      return "fadd";
-    case ScalarAluOperationKind::Sub:
-      return "fsub";
-    case ScalarAluOperationKind::Mul:
-      return "fmul";
-    case ScalarAluOperationKind::Div:
-      return "fdiv";
-    case ScalarAluOperationKind::And:
-    case ScalarAluOperationKind::Or:
-    case ScalarAluOperationKind::Xor:
-    case ScalarAluOperationKind::Deferred:
-      return {};
-  }
-  return {};
-}
-
-std::string immediate_name(const ImmediateOperand& operand) {
-  return "#" + std::to_string(operand.signed_value);
 }
 
 bool decimal_digits_only(std::string_view text) {
@@ -486,11 +464,6 @@ std::optional<std::string> f128_cmp_condition(
       return std::nullopt;
   }
   return std::nullopt;
-}
-
-bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
-  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
-         operand.signed_value <= 4095;
 }
 
 std::string memory_address(const MemoryOperand& address) {
@@ -2722,113 +2695,11 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
     return target_unsupported(bad_header(instruction) +
                               "scalar cast node is outside the printable simple integer subset");
   }
-  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
-    const auto& alu = *scalar.scalar_alu;
-    if (scalar.inputs.size() != 2) {
-      return target_unsupported(
-          bad_header(instruction) +
-          "scalar FP node requires exactly two structured register operands");
-    }
-    const auto result_view = floating_register_view(alu.result_type);
-    const auto operand_view = floating_register_view(alu.operand_type);
-    if (!result_view.has_value() || !operand_view.has_value() ||
-        result_view != operand_view) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar FP node requires matching F32/F64 operand and result widths");
-    }
-    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
-    const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
-    if (scalar.inputs[0].kind != OperandKind::Register ||
-        scalar.inputs[1].kind != OperandKind::Register ||
-        lhs_register == nullptr || rhs_register == nullptr) {
-      return target_unsupported(
-          bad_header(instruction) +
-          "scalar FP node requires structured FP/SIMD register operands");
-    }
-    const auto mnemonic = floating_alu_mnemonic(alu.operation);
-    const auto result = fp_register_name_with_view(*scalar.result_register, *result_view);
-    const auto lhs = fp_register_name_with_view(*lhs_register, *operand_view);
-    const auto rhs = fp_register_name_with_view(*rhs_register, *operand_view);
-    if (mnemonic.empty() || !result.has_value() || !lhs.has_value() || !rhs.has_value()) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar FP node has incomplete printable register facts");
-    }
-    std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
-    return target_printed({out.str()});
+  auto alu = make_scalar_alu_print_lines(instruction, scalar);
+  if (alu.lines.has_value()) {
+    return target_printed(std::move(*alu.lines));
   }
-  if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
-    return target_unsupported(bad_header(instruction) +
-                              "scalar node opcode is outside the printable add/sub subset");
-  }
-  if (scalar.inputs.size() != 2) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar add/sub node requires exactly two register or immediate operands");
-  }
-
-  const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
-  const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
-  const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
-  const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
-  const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
-                               lhs_register != nullptr;
-  const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
-                               rhs_register != nullptr;
-  const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
-                                lhs_immediate != nullptr;
-  const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
-                                rhs_immediate != nullptr;
-  if ((!lhs_is_register && !lhs_is_immediate) || (!rhs_is_register && !rhs_is_immediate)) {
-    return target_unsupported(bad_header(instruction) +
-                              "scalar add/sub node requires register or immediate operands");
-  }
-  if ((lhs_is_immediate && !is_plain_add_sub_immediate(*lhs_immediate)) ||
-      (rhs_is_immediate && !is_plain_add_sub_immediate(*rhs_immediate))) {
-    return target_unsupported(bad_header(instruction) +
-                              "scalar add/sub immediate operand is outside the plain #imm "
-                              "encoding range 0..4095");
-  }
-
-  const auto mnemonic = required_primary_mnemonic(instruction);
-  if (mnemonic.empty()) {
-    return target_unsupported(bad_header(instruction) +
-                              "scalar add/sub mnemonic is not printable");
-  }
-
-  std::vector<std::string> lines;
-  const auto result = register_name(*scalar.result_register);
-  if (lhs_is_register && rhs_is_register) {
-    std::ostringstream out;
-    out << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
-        << register_name(*rhs_register);
-    lines.push_back(out.str());
-  } else if (lhs_is_register && rhs_is_immediate) {
-    std::ostringstream out;
-    out << mnemonic << " " << result << ", " << register_name(*lhs_register) << ", "
-        << immediate_name(*rhs_immediate);
-    lines.push_back(out.str());
-  } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
-    std::ostringstream out;
-    out << mnemonic << " " << result << ", " << register_name(*rhs_register) << ", "
-        << immediate_name(*lhs_immediate);
-    lines.push_back(out.str());
-  } else if (lhs_is_immediate && rhs_is_immediate) {
-    const auto move_mnemonic =
-        machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
-    std::ostringstream move_line;
-    move_line << move_mnemonic << " " << result << ", " << immediate_name(*lhs_immediate);
-    lines.push_back(move_line.str());
-    std::ostringstream add_line;
-    add_line << mnemonic << " " << result << ", " << result << ", "
-             << immediate_name(*rhs_immediate);
-    lines.push_back(add_line.str());
-  } else {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar sub with an immediate lhs and register rhs is not printable");
-  }
-  return target_printed(std::move(lines));
+  return target_unsupported(bad_header(instruction) + alu.diagnostic);
 }
 
 mir::TargetInstructionPrintResult print_scalar_fp_unary_intrinsic(

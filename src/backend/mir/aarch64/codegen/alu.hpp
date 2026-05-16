@@ -4,7 +4,9 @@
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <unordered_map>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -12,8 +14,16 @@ struct BlockScalarLoweringState {
   std::unordered_map<c4c::ValueNameId, RegisterOperand> emitted_registers;
 };
 
+struct ScalarAluPrintResult {
+  std::optional<std::vector<std::string>> lines;
+  std::string diagnostic;
+};
+
 [[nodiscard]] std::optional<abi::RegisterView> scalar_register_view(
     bir::TypeKind type);
+[[nodiscard]] ScalarAluPrintResult make_scalar_alu_print_lines(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar);
 [[nodiscard]] bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode);
 [[nodiscard]] bool is_scalar_alu_floating_type(bir::TypeKind type);

@@ -8,25 +8,20 @@ Current Step Title: Move ALU Spelling And Printer-Side Bodies
 
 ## Just Finished
 
-Step 2 complete: moved scalar ALU classification, construction, and prepared
-operand bodies into `alu.cpp`/`alu.hpp` without changing behavior.
+Step 3 complete: moved ALU-specific scalar printer spelling and line-building
+out of `machine_printer.cpp` into `alu.cpp`/`alu.hpp` without changing printed
+assembly.
 
-Moved bodies: `is_scalar_alu_integer_opcode`, `is_scalar_alu_floating_opcode`,
-`is_scalar_alu_floating_type`, `scalar_alu_operation_from_binary_opcode`,
-`make_scalar_immediate_operand`, `make_prepared_scalar_operand`,
-`make_scalar_alu_instruction_record`, `make_prepared_scalar_alu_record`, and
-`make_prepared_scalar_alu_instruction_record`.
-
-`instruction.cpp` now consumes the ALU-owned helpers for scalar cast, compare,
-and i128 shift operand preparation while retaining family-neutral record
-assembly. `instruction.hpp` keeps compatibility declarations for existing
-public include users, with implementation ownership in `alu.cpp`.
+`alu.cpp` now owns the scalar FP mnemonic spellings, add/sub immediate
+spellings, and scalar ALU print line construction through
+`make_scalar_alu_print_lines`. `machine_printer.cpp` keeps the family-neutral
+scalar dispatch, cast printing, result wrapping, and unsupported diagnostic
+prefixing.
 
 ## Suggested Next
 
-Step 3 packet: move ALU-specific scalar printer spelling helpers out of
-`machine_printer.cpp` into the ALU owner, limited to mnemonic/spelling
-ownership and without changing printed output.
+Step 4 packet: reconcile remaining `alu.md` durable behavior/risk notes against
+the compiled ALU owner before any shard deletion or broader redistribution.
 
 ## Watchouts
 

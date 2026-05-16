@@ -2,6 +2,7 @@
 #include "operands.hpp"
 
 #include <cstdint>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -42,6 +43,48 @@ namespace mir = c4c::backend::mir;
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> scalar_fp_register_name_with_view(
+    const RegisterOperand& operand,
+    abi::RegisterView view) {
+  if (!abi::is_fp_simd_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(operand.reg.index, view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(*viewed);
+}
+
+[[nodiscard]] std::string scalar_immediate_name(const ImmediateOperand& operand) {
+  return "#" + std::to_string(operand.signed_value);
+}
+
+[[nodiscard]] bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
+  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
+         operand.signed_value <= 4095;
+}
+
+[[nodiscard]] std::string_view scalar_floating_alu_mnemonic(
+    ScalarAluOperationKind operation) {
+  switch (operation) {
+    case ScalarAluOperationKind::Add:
+      return "fadd";
+    case ScalarAluOperationKind::Sub:
+      return "fsub";
+    case ScalarAluOperationKind::Mul:
+      return "fmul";
+    case ScalarAluOperationKind::Div:
+      return "fdiv";
+    case ScalarAluOperationKind::And:
+    case ScalarAluOperationKind::Or:
+    case ScalarAluOperationKind::Xor:
+    case ScalarAluOperationKind::Deferred:
+      return {};
+  }
+  return {};
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
@@ -447,6 +490,120 @@ namespace mir = c4c::backend::mir;
 }
 
 }  // namespace
+
+ScalarAluPrintResult make_scalar_alu_print_lines(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar) {
+  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
+    const auto& alu = *scalar.scalar_alu;
+    if (scalar.inputs.size() != 2) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar FP node requires exactly two structured register operands"};
+    }
+    const auto result_view = scalar_fp_register_view(alu.result_type);
+    const auto operand_view = scalar_fp_register_view(alu.operand_type);
+    if (!result_view.has_value() || !operand_view.has_value() ||
+        result_view != operand_view) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar FP node requires matching F32/F64 operand and result widths"};
+    }
+    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+    if (scalar.inputs[0].kind != OperandKind::Register ||
+        scalar.inputs[1].kind != OperandKind::Register ||
+        lhs_register == nullptr || rhs_register == nullptr) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar FP node requires structured FP/SIMD register operands"};
+    }
+    const auto mnemonic = scalar_floating_alu_mnemonic(alu.operation);
+    const auto result = scalar_fp_register_name_with_view(*scalar.result_register, *result_view);
+    const auto lhs = scalar_fp_register_name_with_view(*lhs_register, *operand_view);
+    const auto rhs = scalar_fp_register_name_with_view(*rhs_register, *operand_view);
+    if (mnemonic.empty() || !result.has_value() || !lhs.has_value() || !rhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar FP node has incomplete printable register facts"};
+    }
+    std::ostringstream out;
+    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
+    return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+  }
+  if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar node opcode is outside the printable add/sub subset"};
+  }
+  if (scalar.inputs.size() != 2) {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar add/sub node requires exactly two register or immediate operands"};
+  }
+
+  const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+  const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+  const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
+  const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+  const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
+                               lhs_register != nullptr;
+  const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
+                               rhs_register != nullptr;
+  const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
+                                lhs_immediate != nullptr;
+  const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
+                                rhs_immediate != nullptr;
+  if ((!lhs_is_register && !lhs_is_immediate) || (!rhs_is_register && !rhs_is_immediate)) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar add/sub node requires register or immediate operands"};
+  }
+  if ((lhs_is_immediate && !is_plain_add_sub_immediate(*lhs_immediate)) ||
+      (rhs_is_immediate && !is_plain_add_sub_immediate(*rhs_immediate))) {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar add/sub immediate operand is outside the plain #imm encoding range 0..4095"};
+  }
+
+  const auto mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar add/sub mnemonic is not printable"};
+  }
+
+  std::vector<std::string> lines;
+  const auto result = abi::register_name(scalar.result_register->reg);
+  if (lhs_is_register && rhs_is_register) {
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << abi::register_name(lhs_register->reg) << ", "
+        << abi::register_name(rhs_register->reg);
+    lines.push_back(out.str());
+  } else if (lhs_is_register && rhs_is_immediate) {
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << abi::register_name(lhs_register->reg) << ", "
+        << scalar_immediate_name(*rhs_immediate);
+    lines.push_back(out.str());
+  } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
+    std::ostringstream out;
+    out << mnemonic << " " << result << ", " << abi::register_name(rhs_register->reg) << ", "
+        << scalar_immediate_name(*lhs_immediate);
+    lines.push_back(out.str());
+  } else if (lhs_is_immediate && rhs_is_immediate) {
+    const auto move_mnemonic =
+        machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
+    std::ostringstream move_line;
+    move_line << move_mnemonic << " " << result << ", "
+              << scalar_immediate_name(*lhs_immediate);
+    lines.push_back(move_line.str());
+    std::ostringstream add_line;
+    add_line << mnemonic << " " << result << ", " << result << ", "
+             << scalar_immediate_name(*rhs_immediate);
+    lines.push_back(add_line.str());
+  } else {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar sub with an immediate lhs and register rhs is not printable"};
+  }
+  return {.lines = std::move(lines), .diagnostic = {}};
+}
 
 bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
   switch (opcode) {
