@@ -3,26 +3,29 @@
 Status: Active
 Source Idea Path: ideas/open/255_aarch64_alu_legacy_semantic_lowering_followup.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Implement Accepted Scratch, Fallback, And Extension Routes
+Current Step ID: 5
+Current Step Title: Implement Accepted i128 Copy Behavior
 
 ## Just Finished
 
-Step 4 - Implement Accepted Scratch, Fallback, And Extension Routes completed
-one additional extension-consuming subroute: prepared I32 Add/Sub records with
-I64 results now carry an explicit post-sign-extension width, and the scalar ALU
-printer consumes that fact by emitting the arithmetic operation in W view
-followed by `sxtw` into the structured X-result register. Invalid or
-non-32-bit sign-extension facts fail closed in the printer, and bitwise
-I32-to-I64 ALU records do not silently claim signed-extension semantics.
+Step 4 route review completed. The behavior-consuming zero-extension and
+sign-extension subroutes remain valid Step 4 progress: their structured facts
+are consumed by printer behavior and have fail-closed coverage for unsupported
+extension facts.
+
+The remaining scratch/overlap/fallback scope is parked before more execution.
+Register-direct scratch handling, right-side result-register overlap, and
+accumulator fallback division/remainder/variable-shift behavior must not
+continue as Step 4 metadata-only classification work. Any future packet in that
+area needs a lifecycle-reviewed split that first defines prepared scratch and
+allocation authority, then proves a concrete backend behavior consumes that
+authority.
 
 ## Suggested Next
 
-Next implementation packet: continue Step 4 only if the supervisor wants to
-attempt the remaining conflict-consuming scratch/overlap route, or send the
-plan to review if two extension-consuming subroutes are enough for this step.
-Keep accumulator fallback division/remainder/variable-shift behavior out unless
-current allocation and scratch authority are proven.
+Next implementation packet: proceed to Step 5, `Implement Accepted i128 Copy
+Behavior`, unless the supervisor chooses to activate a separate
+scratch/allocation authority initiative first.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
@@ -37,6 +40,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 - Do not accept metadata-only overlap classification as Step 4 progress. A
   conflict or extension fact must gate, reject, repair, select, emit, or model
   a concrete backend behavior.
+- Do not resume Step 4 scratch/overlap/fallback work without a
+  lifecycle-reviewed split that grants or designs prepared scratch/allocation
+  authority first.
 - Add fail-closed proof for unsafe or unsupported overlap/extension cases; a
   happy-path printable register shape alone is insufficient.
 - Keep signed power-of-two division/remainder separate from unsigned reduction
@@ -68,8 +74,9 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 ## Proof
 
-Passed. `test_after.log` contains the delegated proof output for the signed
-I32 post-operation extension subroute.
+Lifecycle-only rewrite. No implementation files changed and no new build was
+run by the plan owner. The supervisor refreshed `test_after.log` before this
+rewrite after the route review noted it missing.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'

@@ -151,10 +151,11 @@ Completion check:
   equivalence.
 - Existing division/remainder behavior is not downgraded.
 
-### Step 4: Implement Accepted Scratch, Fallback, And Extension Routes
+### Step 4: Finalize Accepted Extension Routes And Park Scratch/Fallback Authority Work
 
-Goal: handle accepted register-conflict, fallback, and width-extension
-semantics through allocation-aware ALU lowering.
+Goal: keep the accepted width-extension semantics and stop the remaining
+scratch/overlap/fallback route until current prepared scratch and allocation
+authority can express it.
 
 Primary targets:
 - `src/backend/mir/aarch64/codegen/alu.cpp`
@@ -162,17 +163,28 @@ Primary targets:
 - focused dispatch, ALU, and printer tests
 
 Actions:
-- Implement accepted register-direct scratch handling for right-side
-  destination-register conflicts.
-- Implement accepted accumulator fallback division/remainder/variable-shift
-  behavior only when it can be represented with current structured facts.
-- Model signed 32-bit extension and unsigned zero-extension as explicit
-  post-operation behavior for routes that require it.
+- Treat unsigned post-zero-extension and signed 32-bit post-sign-extension as
+  accepted Step 4 progress only when the facts are consumed by backend behavior
+  and fail closed for unsupported widths.
+- Do not continue register-direct scratch handling, right-side result-register
+  overlap, or accumulator fallback division/remainder/variable-shift behavior
+  under this step as metadata-only classification work.
+- Require a lifecycle-reviewed split before any remaining scratch/overlap or
+  fallback packet proceeds. That split must first define prepared scratch and
+  allocation authority, and must prove a behavior consumes the authority by
+  gating, rejecting, repairing, selecting, emitting, or modeling a concrete
+  backend route.
+- Record the parked scope in `todo.md`, then proceed to Step 5 unless the
+  supervisor explicitly activates a separate scratch/allocation authority
+  initiative.
 
 Completion check:
-- Focused tests prove scratch, fallback, and extension behavior for accepted
-  routes.
-- The implementation does not revive text-emitter accumulator authority.
+- Focused tests prove the accepted extension routes, including fail-closed
+  unsupported extension facts.
+- `todo.md` records that remaining scratch/overlap/fallback work is blocked
+  from further Step 4 execution pending a lifecycle-reviewed authority split.
+- No metadata-only overlap classification, text-emitter accumulator authority,
+  or testcase-shaped scratch shortcut is accepted as Step 4 progress.
 
 ### Step 5: Implement Accepted i128 Copy Behavior
 
