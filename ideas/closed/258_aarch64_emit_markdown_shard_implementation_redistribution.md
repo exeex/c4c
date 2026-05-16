@@ -1,6 +1,6 @@
 # AArch64 `emit.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-16
 
 ## Intent
@@ -97,3 +97,20 @@ Reject the route or slice if it:
 - restores the legacy centralized record pile behind a new abstraction name;
 - changes emit/build semantics except where strictly required for
   behavior-preserving relocation.
+
+## Close Ledger
+
+Closed: 2026-05-16
+
+The active runbook reconciled the durable valid `emit.md` material into compiled
+AArch64 MIR codegen owners and deleted
+`src/backend/mir/aarch64/codegen/emit.md`. `emit.cpp`/`emit.hpp` now own the
+thin prepared-module emit/build orchestration, adjacent instruction, dispatch,
+and printer owners retained their narrower responsibilities, and stale legacy
+direct-text emitter details were left out of the compiled surface.
+
+Close proof used the focused AArch64 backend scope selected for the completed
+slice: `ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'`.
+The Step 5 repair passed 27/27 after removing the stale source-text audit of the
+deleted markdown shard. The supervisor-reported full-suite hook baseline after
+Step 5 passed 3167/3167.
