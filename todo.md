@@ -3,79 +3,48 @@
 Status: Active
 Source Idea Path: ideas/open/255_aarch64_alu_legacy_semantic_lowering_followup.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Implement Accepted i128 Copy Behavior
+Current Step ID: 6
+Current Step Title: Acceptance Review And Broader Proof
 
 ## Just Finished
 
-Step 5 implemented accepted i128 copy behavior as structured AArch64 MIR
-transport. `bitcast i128 -> i128` now lowers through a
-`CopyRegisterPair` i128 transport record carrying separate prepared destination
-and source low/high lane facts. The printer emits low-lane and high-lane moves
-from those record fields, and the selection/effect records expose two lane
-defs and two lane uses without memory side effects.
+Step 6 completed the acceptance review scratchpad state for the AArch64 ALU
+legacy semantic follow-up without implementation changes. Final
+classification: all accepted routes from this runbook have been implemented;
+remaining scratch/overlap/fallback authority work and popcount-style temporary
+authority work are parked or split material, not unfinished Step 6
+implementation work.
 
 ## Suggested Next
 
-Next packet: start Step 6 acceptance review and broader proof for the accepted
-ALU semantic routes, unless the supervisor wants an independent route review
-of the Step 5 i128 copy transport first.
-
-```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch|target_record_core_contract)$'
-```
+Next packet: send the active plan to `c4c-plan-owner` for lifecycle review and
+closure or split decision. The executor recommendation is closure of the
+accepted AArch64 ALU legacy semantic follow-up, with parked
+scratch/overlap/fallback/popcount-style authority work handled only through a
+separate lifecycle-reviewed initiative if still desired.
 
 ## Watchouts
 
 - Do not reopen ALU markdown redistribution or recreate `alu.md`.
-- Do not revive text-emitter accumulator conventions as semantic authority.
-- Do not use named-case shortcuts, final assembly string matching, expectation
-  rewrites, or unsupported downgrades to claim progress.
-- Do not accept metadata-only overlap classification as Step 4 progress. A
-  conflict or extension fact must gate, reject, repair, select, emit, or model
-  a concrete backend behavior.
-- Do not resume Step 4 scratch/overlap/fallback work without a
-  lifecycle-reviewed split that grants or designs prepared scratch/allocation
-  authority first.
-- Add fail-closed proof for unsafe or unsupported overlap/extension cases; a
-  happy-path printable register shape alone is insufficient.
-- Keep signed power-of-two division/remainder separate from unsigned reduction
-  unless signed semantics are separately designed and proved.
-- Step 4 now accepts I8/I16 unsigned power-of-two reductions only through the
-  explicit post-zero-extension route. Divisor-one cases still need zero-result
-  or identity semantics before being accepted.
-- Preserve explicit 32-bit extension, scratch-conflict, and i128 high-half
-  requirements when those routes are classified as accepted.
-- Current integer scalar ALU support is narrower than the operation enum:
-  `Add`, `Sub`, `And`, `Or`, and `Xor` are selected as integer operations, but
-  the general bitwise printer path is still not accepted outside the Step 3
-  unsigned-remainder mask route.
-- `Mul`, signed `SDiv`/`SRem`, non-power unsigned `UDiv`/`URem`, divisor-one
-  unsigned reductions, and variable shifts currently map to operation names or
-  BIR opcodes but are not accepted integer scalar ALU lowering/printer
-  coverage.
-- Do not treat old register names (`x0`, `x1`, `x2`, `x3`, `s0`, `d0`, `v0`)
-  as allocation authority; they are only valid if selected by prepared
-  allocation or explicit scratch facts.
-- The current slice deliberately exposes an ALU-owned prepared unary helper
-  without changing `dispatch.cpp`, because this packet did not own dispatch and
-  current BIR has no unary instruction variant.
-- Keep `emit_float_neg_impl` separate-idea material unless the source idea is
-  changed to include scalar FP unary intrinsic/helper work.
-- Popcount still needs explicit scratch/temporary authority before
-  implementation; do not revive the legacy fixed `v0`/`s0` sequence as
-  allocation authority.
-- Step 5 treats i128 copy as same-width `Bitcast` only. Other i128-producing
-  casts remain outside this packet and should stay fail-closed unless a later
-  plan step accepts them.
-- The i128 copy printer deliberately emits independent low/high register moves.
-  If overlap-sensitive parallel-copy behavior is needed later, route it through
-  the parked scratch/allocation authority work instead of weakening this record.
+- Do not revive text-emitter accumulator conventions, fixed legacy register
+  names, or final assembly strings as semantic authority.
+- Do not treat parked scratch/overlap/fallback/popcount-style work as accepted
+  implementation without a lifecycle-reviewed split that first defines
+  prepared scratch/allocation authority and proves behavior that consumes it.
+- Keep signed power-of-two division/remainder, non-power unsigned reductions,
+  divisor-one unsigned reductions, variable shifts, and other unsupported ALU
+  enum spellings outside this closed acceptance unless separately designed and
+  proved.
+- Step 5 accepted i128 copy only for same-width `Bitcast` transport with
+  explicit low/high lane preservation; other i128-producing casts remain
+  fail-closed or future-scope material.
 
 ## Proof
 
-The supervisor-selected Step 5 proof passed and was written to `test_after.log`.
+The supervisor-selected Step 6 proof passed and was written to `test_after.log`.
+The command rebuilt the default preset and ran 27 matching backend AArch64
+tests with 27 passed, 0 failed.
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch|target_record_core_contract)$'
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'
 ```
