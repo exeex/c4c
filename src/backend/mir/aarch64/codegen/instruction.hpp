@@ -747,6 +747,7 @@ struct ScalarAluRecord {
   OperandRecord lhs;
   OperandRecord rhs;
   std::optional<unsigned> post_zero_extend_result_bits;
+  std::optional<unsigned> post_sign_extend_result_bits;
   bool supported_integer_operation = false;
   bool supported_floating_operation = false;
 };

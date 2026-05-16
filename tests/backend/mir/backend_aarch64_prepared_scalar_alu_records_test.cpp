@@ -837,6 +837,66 @@ int narrow_unsigned_reductions_prepare_explicit_zero_extension() {
   return 0;
 }
 
+int signed_i32_alu_results_prepare_explicit_sign_extension() {
+  auto fixture = make_i64_fixture();
+  fixture.locations.value_homes[0].register_name = "w1";
+  fixture.locations.value_homes[1].register_name = "w2";
+  fixture.storage.values[0] =
+      register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w1");
+  fixture.storage.values[1] =
+      register_storage(prepare::PreparedValueId{11}, fixture.rhs_name, "w2");
+
+  for (const auto opcode : {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub}) {
+    bir::BinaryInst inst{
+        .opcode = opcode,
+        .result = named_value(bir::TypeKind::I64, "%sum"),
+        .operand_type = bir::TypeKind::I32,
+        .lhs = named_value(bir::TypeKind::I32, "%lhs"),
+        .rhs = named_value(bir::TypeKind::I32, "%rhs"),
+    };
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names, fixture.locations, fixture.storage, inst);
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected signed I32 add/sub with I64 result to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
+    const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::scalar_alu_operation_from_binary_opcode(opcode) ||
+        alu.operand_type != bir::TypeKind::I32 ||
+        alu.result_type != bir::TypeKind::I64 ||
+        !alu.post_sign_extend_result_bits.has_value() ||
+        *alu.post_sign_extend_result_bits != 32U ||
+        alu.post_zero_extend_result_bits.has_value() ||
+        lhs == nullptr ||
+        rhs == nullptr ||
+        lhs->expected_view != aarch64_abi::RegisterView::W ||
+        rhs->expected_view != aarch64_abi::RegisterView::W ||
+        !result.record->result_register.has_value() ||
+        result.record->result_register->expected_view != aarch64_abi::RegisterView::X) {
+      return fail("expected signed I32-to-I64 ALU route to carry post sign-extension facts");
+    }
+  }
+
+  bir::BinaryInst bitwise{
+      .opcode = bir::BinaryOpcode::And,
+      .result = named_value(bir::TypeKind::I64, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = named_value(bir::TypeKind::I32, "%lhs"),
+      .rhs = named_value(bir::TypeKind::I32, "%rhs"),
+  };
+  const auto bitwise_result = aarch64_codegen::make_prepared_scalar_alu_record(
+      fixture.names, fixture.locations, fixture.storage, bitwise);
+  if (!bitwise_result.record.has_value() ||
+      bitwise_result.record->post_sign_extend_result_bits.has_value()) {
+    return fail("expected bitwise I32-to-I64 ALU route not to claim signed extension");
+  }
+
+  return 0;
+}
+
 int unsupported_and_incomplete_facts_fail_closed() {
   auto fixture = make_i64_fixture();
   const auto unsupported = aarch64_codegen::make_prepared_scalar_alu_record(
@@ -961,6 +1021,10 @@ int main() {
     return status;
   }
   if (const int status = narrow_unsigned_reductions_prepare_explicit_zero_extension();
+      status != 0) {
+    return status;
+  }
+  if (const int status = signed_i32_alu_results_prepare_explicit_sign_extension();
       status != 0) {
     return status;
   }

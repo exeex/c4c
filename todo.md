@@ -9,21 +9,20 @@ Current Step Title: Implement Accepted Scratch, Fallback, And Extension Routes
 ## Just Finished
 
 Step 4 - Implement Accepted Scratch, Fallback, And Extension Routes completed
-one extension-consuming subroute: narrow I8/I16 unsigned power-of-two
-reductions now carry an explicit post-zero-extension width, and the scalar ALU
-printer consumes that fact by emitting `ubfx` after the selected shift/mask.
-Invalid post-extension widths fail closed in the printer, and I32/I64 unsigned
-reductions remain plain shift/mask records without silently taking the narrow
-extension route.
+one additional extension-consuming subroute: prepared I32 Add/Sub records with
+I64 results now carry an explicit post-sign-extension width, and the scalar ALU
+printer consumes that fact by emitting the arithmetic operation in W view
+followed by `sxtw` into the structured X-result register. Invalid or
+non-32-bit sign-extension facts fail closed in the printer, and bitwise
+I32-to-I64 ALU records do not silently claim signed-extension semantics.
 
 ## Suggested Next
 
-Next implementation packet: continue Step 4 only if the supervisor wants a
-second behavior-consuming subroute. The remaining viable Step 4 routes are a
-conflict-consuming scratch/overlap route, or a signed-extension route with
-printer/selection consumption and fail-closed proof. Keep accumulator fallback
-division/remainder/variable-shift behavior out unless current allocation and
-scratch authority are proven.
+Next implementation packet: continue Step 4 only if the supervisor wants to
+attempt the remaining conflict-consuming scratch/overlap route, or send the
+plan to review if two extension-consuming subroutes are enough for this step.
+Keep accumulator fallback division/remainder/variable-shift behavior out unless
+current allocation and scratch authority are proven.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'
@@ -69,7 +68,8 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 ## Proof
 
-Passed. `test_after.log` contains the delegated proof output.
+Passed. `test_after.log` contains the delegated proof output for the signed
+I32 post-operation extension subroute.
 
 ```bash
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|machine_printer|instruction_dispatch|scalar_record_contract)$'

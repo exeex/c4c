@@ -190,6 +190,17 @@ namespace mir = c4c::backend::mir;
   }
 }
 
+[[nodiscard]] std::optional<unsigned> scalar_alu_post_sign_extend_bits(
+    bir::BinaryOpcode opcode,
+    bir::TypeKind operand_type,
+    bir::TypeKind result_type) {
+  if ((opcode == bir::BinaryOpcode::Add || opcode == bir::BinaryOpcode::Sub) &&
+      operand_type == bir::TypeKind::I32 && result_type == bir::TypeKind::I64) {
+    return 32U;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<ScalarAluOperationKind> unsigned_reduction_operation(
     bir::BinaryOpcode opcode,
     bir::TypeKind type,
@@ -828,39 +839,94 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     return {.lines = std::nullopt,
             .diagnostic = "scalar add/sub mnemonic is not printable"};
   }
+  const auto& alu = *scalar.scalar_alu;
+  if (alu.post_zero_extend_result_bits.has_value()) {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar add/sub node does not support post-zero-extension facts"};
+  }
+  if (alu.post_sign_extend_result_bits.has_value() &&
+      (*alu.post_sign_extend_result_bits != 32U ||
+       alu.operand_type != bir::TypeKind::I32 ||
+       alu.result_type != bir::TypeKind::I64)) {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar add/sub node has unsupported post-sign-extension width"};
+  }
 
   std::vector<std::string> lines;
-  const auto result = abi::register_name(scalar.result_register->reg);
+  const auto result_view =
+      alu.post_sign_extend_result_bits.has_value() ? scalar_register_view(alu.operand_type)
+                                                   : scalar_register_view(alu.result_type);
+  if (!result_view.has_value()) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar add/sub node has unsupported printable result width"};
+  }
+  const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
+  if (!result.has_value()) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar add/sub node has incomplete printable result register fact"};
+  }
   if (lhs_is_register && rhs_is_register) {
+    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
+    const auto rhs = scalar_gp_register_name_with_view(*rhs_register, *result_view);
+    if (!lhs.has_value() || !rhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub node has incomplete printable operand register facts"};
+    }
     std::ostringstream out;
-    out << mnemonic << " " << result << ", " << abi::register_name(lhs_register->reg) << ", "
-        << abi::register_name(rhs_register->reg);
+    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
     lines.push_back(out.str());
   } else if (lhs_is_register && rhs_is_immediate) {
+    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
+    if (!lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub node has incomplete printable operand register facts"};
+    }
     std::ostringstream out;
-    out << mnemonic << " " << result << ", " << abi::register_name(lhs_register->reg) << ", "
+    out << mnemonic << " " << *result << ", " << *lhs << ", "
         << scalar_immediate_name(*rhs_immediate);
     lines.push_back(out.str());
   } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
+    const auto rhs = scalar_gp_register_name_with_view(*rhs_register, *result_view);
+    if (!rhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub node has incomplete printable operand register facts"};
+    }
     std::ostringstream out;
-    out << mnemonic << " " << result << ", " << abi::register_name(rhs_register->reg) << ", "
+    out << mnemonic << " " << *result << ", " << *rhs << ", "
         << scalar_immediate_name(*lhs_immediate);
     lines.push_back(out.str());
   } else if (lhs_is_immediate && rhs_is_immediate) {
     const auto move_mnemonic =
         machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
     std::ostringstream move_line;
-    move_line << move_mnemonic << " " << result << ", "
+    move_line << move_mnemonic << " " << *result << ", "
               << scalar_immediate_name(*lhs_immediate);
     lines.push_back(move_line.str());
     std::ostringstream add_line;
-    add_line << mnemonic << " " << result << ", " << result << ", "
+    add_line << mnemonic << " " << *result << ", " << *result << ", "
              << scalar_immediate_name(*rhs_immediate);
     lines.push_back(add_line.str());
   } else {
     return {.lines = std::nullopt,
             .diagnostic =
                 "scalar sub with an immediate lhs and register rhs is not printable"};
+  }
+  if (alu.post_sign_extend_result_bits.has_value()) {
+    const auto extended_result =
+        scalar_gp_register_name_with_view(*scalar.result_register, abi::RegisterView::X);
+    if (!extended_result.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub node has incomplete printable post-sign-extension result fact"};
+    }
+    std::ostringstream extend;
+    extend << "sxtw " << *extended_result << ", " << *result;
+    lines.push_back(extend.str());
   }
   return {.lines = std::move(lines), .diagnostic = {}};
 }
@@ -1191,6 +1257,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   ScalarAluOperationKind operation = scalar_alu_operation_from_binary_opcode(binary.opcode);
   bool supported_integer_operation = is_integer_operation;
   std::optional<unsigned> post_zero_extend_result_bits;
+  std::optional<unsigned> post_sign_extend_result_bits =
+      scalar_alu_post_sign_extend_bits(binary.opcode, binary.operand_type, binary.result.type);
   if (!supported_integer_operation &&
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
@@ -1225,6 +1293,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .lhs = lhs,
               .rhs = rhs,
               .post_zero_extend_result_bits = post_zero_extend_result_bits,
+              .post_sign_extend_result_bits = post_sign_extend_result_bits,
               .supported_integer_operation = supported_integer_operation,
               .supported_floating_operation = is_floating_operation,
           },

@@ -1952,6 +1952,89 @@ int narrow_unsigned_reductions_print_explicit_zero_extension() {
   return 0;
 }
 
+int signed_i32_add_sub_results_print_explicit_sign_extension() {
+  const auto add = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{158},
+          .result_value_name = c4c::ValueNameId{159},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(wreg(2)),
+          .post_sign_extend_result_bits = 32U,
+          .supported_integer_operation = true,
+      }));
+  const auto sub = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
+          .source_binary_opcode = bir::BinaryOpcode::Sub,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{160},
+          .result_value_name = c4c::ValueNameId{161},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(3),
+          .lhs = aarch64_codegen::make_register_operand(wreg(4)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 7,
+                  .unsigned_value = 7,
+              }),
+          .post_sign_extend_result_bits = 32U,
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({add, sub});
+  if (!result.ok) {
+    return fail("expected signed I32 add/sub results to print with post sign-extension: " +
+                result.diagnostic);
+  }
+  if (const int check = expect_assembly(result.assembly,
+                                        "    add w0, w1, w2\n"
+                                        "    sxtw x0, w0\n"
+                                        "    sub w3, w4, #7\n"
+                                        "    sxtw x3, w3\n",
+                                        "    add w0, w1, w2\n"
+                                        "    sxtw x0, w0\n"
+                                        "    sub w3, w4, #7\n"
+                                        "    sxtw x3, w3\n",
+                                        "signed I32 ALU post-extension printer");
+      check != 0) {
+    return check;
+  }
+
+  const auto bad_extension = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I16,
+          .result_value_id = prepare::PreparedValueId{162},
+          .result_value_name = c4c::ValueNameId{163},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(5),
+          .lhs = aarch64_codegen::make_register_operand(wreg(6)),
+          .rhs = aarch64_codegen::make_register_operand(wreg(7)),
+          .post_sign_extend_result_bits = 16U,
+          .supported_integer_operation = true,
+      }));
+  const auto bad_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(bad_extension);
+  if (bad_result.ok ||
+      bad_result.diagnostic.find("unsupported post-sign-extension width") ==
+          std::string::npos) {
+    return fail("expected invalid signed ALU post-extension fact to fail closed");
+  }
+
+  return 0;
+}
+
 int selected_scalar_unary_integer_ops_print_from_structured_operands() {
   const auto neg32 = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_unary_instruction_record(
@@ -5163,6 +5246,10 @@ int main() {
     return result;
   }
   if (const int result = narrow_unsigned_reductions_print_explicit_zero_extension();
+      result != 0) {
+    return result;
+  }
+  if (const int result = signed_i32_add_sub_results_print_explicit_sign_extension();
       result != 0) {
     return result;
   }
