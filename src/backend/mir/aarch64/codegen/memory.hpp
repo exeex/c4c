@@ -25,6 +25,7 @@ struct MemoryInstructionLoweringResult {
     PreparedAtomicOperationRecordError error);
 [[nodiscard]] std::string_view atomic_memory_instruction_kind_name(
     AtomicMemoryInstructionKind kind);
+[[nodiscard]] std::string memory_address(const MemoryOperand& address);
 [[nodiscard]] std::string memory_error_message(PreparedMemoryOperandRecordError error);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);

@@ -1,6 +1,7 @@
 #include "machine_printer.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "memory.hpp"
 
 #include <algorithm>
 #include <cstdint>
@@ -449,22 +450,6 @@ std::optional<std::string> f128_cmp_condition(
       return std::nullopt;
   }
   return std::nullopt;
-}
-
-std::string memory_address(const MemoryOperand& address) {
-  std::ostringstream out;
-  if (address.base_kind == MemoryBaseKind::FrameSlot) {
-    out << "[sp";
-  } else if (address.base_kind == MemoryBaseKind::PointerValue && address.base_register.has_value()) {
-    out << "[" << register_name(*address.base_register);
-  } else {
-    return {};
-  }
-  if (address.byte_offset != 0) {
-    out << ", #" << address.byte_offset;
-  }
-  out << "]";
-  return out.str();
 }
 
 std::optional<std::string> lane_register_name(const I128LaneTransportRecord& lane) {

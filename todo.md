@@ -1,38 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/253_aarch64_memory_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move Memory Lowering And Address Helpers
+Current Step ID: 4
+Current Step Title: Move Memory Spelling And Printer-Side Bodies
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 moved the existing I128 memory transport lowering route from
-`src/backend/mir/aarch64/codegen/dispatch.cpp` into
+Step 4 moved the shared `MemoryOperand` address spelling helper from
+`src/backend/mir/aarch64/codegen/machine_printer.cpp` into
 `src/backend/mir/aarch64/codegen/memory.cpp` behind the memory-owned
-`lower_i128_transport_instruction` helper declared in `memory.hpp`.
+`memory_address` declaration in `memory.hpp`.
 
-The I128 transport diagnostic formatter moved with the lowering route into
-`memory.cpp`. `dispatch.cpp` now calls the memory-owned helper and keeps the
-existing instruction append/integration logic around the returned instruction.
+`machine_printer.cpp` now includes `memory.hpp` and continues to use the helper
+for inline-asm memory operands, spill/reload addresses, ordinary memory
+instructions, I128 memory transport, and F128 memory transport without changing
+the printer dispatch bodies or assembly spelling.
 
 ## Suggested Next
 
-Continue Step 3 with any remaining address-helper or memory-owner extraction
-candidate the supervisor wants to delegate, or move to plan review if the
-memory transport ownership split is sufficient for this step.
+Continue Step 4 with the next printer-side memory body move the supervisor
+wants to delegate, or route to review if the memory-owned spelling extraction
+is sufficient for this step.
 
 ## Watchouts
 
-The I128 memory transport route still emits the same machine instruction and
-diagnostics; this packet only changed ownership. The dispatch integration point
-deliberately remains the append block for the returned instruction.
+The moved helper preserves the prior frame-slot and pointer-register
+base+offset spelling. It now calls `abi::register_name(address.base_register->reg)`
+directly because the printer-local `register_name(RegisterOperand)` wrapper did
+not move with this packet.
 
-I128 pair operation lowering, I128 runtime-helper handling, F128 runtime-helper
-handling, and unrelated dispatch logic remain in `dispatch.cpp`. This packet did
-not expand I128 semantics, invent carriers, or change unsupported route
-boundaries.
+Broad printer dispatch, non-memory printer bodies, I128/F128 transport printer
+bodies, and atomic printer bodies remain in `machine_printer.cpp`.
 
 ## Proof
 
@@ -42,6 +42,7 @@ Ran exact delegated proof:
 Result: green. `test_after.log` contains the combined build and backend CTest
 output, ending with 139/139 backend tests passed.
 
-Requested clang-tool checks confirmed `lower_i128_transport_instruction` is now
-defined in `memory.cpp` and still has the expected dispatch caller in
-`dispatch_prepared_block`.
+Requested clang-tool checks confirmed `memory_address` is now defined in
+`memory.cpp` and that `machine_printer.cpp` still has the expected callers:
+inline-asm operand text, spill/reload printing, ordinary memory printing, I128
+transport printing, and F128 transport printing.

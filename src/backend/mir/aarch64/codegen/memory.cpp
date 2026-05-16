@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -1072,6 +1073,23 @@ std::string_view atomic_memory_instruction_kind_name(
       return "compare_exchange_loop";
   }
   return "unknown";
+}
+
+std::string memory_address(const MemoryOperand& address) {
+  std::ostringstream out;
+  if (address.base_kind == MemoryBaseKind::FrameSlot) {
+    out << "[sp";
+  } else if (address.base_kind == MemoryBaseKind::PointerValue &&
+             address.base_register.has_value()) {
+    out << "[" << abi::register_name(address.base_register->reg);
+  } else {
+    return {};
+  }
+  if (address.byte_offset != 0) {
+    out << ", #" << address.byte_offset;
+  }
+  out << "]";
+  return out.str();
 }
 
 std::string_view prepared_memory_operand_record_error_name(
