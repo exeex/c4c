@@ -6,11 +6,201 @@
 #include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
 
 namespace mir = c4c::backend::mir;
+
+[[nodiscard]] PreparedScalarAluRecordResult scalar_alu_record_error(
+    PreparedScalarAluRecordError error) {
+  return PreparedScalarAluRecordResult{.record = std::nullopt, .error = error};
+}
+
+[[nodiscard]] PreparedScalarInstructionRecordResult scalar_instruction_record_error(
+    PreparedScalarAluRecordError error) {
+  return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> scalar_fp_register_view(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
+    bir::TypeKind type) {
+  if (const auto integer_view = scalar_register_view(type)) {
+    return integer_view;
+  }
+  return scalar_fp_register_view(type);
+}
+
+[[nodiscard]] const prepare::PreparedValueHome* find_prepared_scalar_value_home(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named) {
+    return nullptr;
+  }
+  return prepare::find_prepared_value_home(names, value_locations, value.name);
+}
+
+[[nodiscard]] const prepare::PreparedStoragePlanValue* find_prepared_scalar_storage(
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    prepare::PreparedValueId value_id) {
+  for (const auto& value : storage_plan.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
+    prepare::PreparedRegisterBank bank) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+      return prepare::PreparedRegisterClass::General;
+    case prepare::PreparedRegisterBank::Fpr:
+      return prepare::PreparedRegisterClass::Float;
+    case prepare::PreparedRegisterBank::Vreg:
+      return prepare::PreparedRegisterClass::Vector;
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return prepare::PreparedRegisterClass::AggregateAddress;
+    case prepare::PreparedRegisterBank::None:
+      return prepare::PreparedRegisterClass::None;
+  }
+  return prepare::PreparedRegisterClass::None;
+}
+
+[[nodiscard]] std::string_view register_display_name(abi::RegisterReference reg) {
+  static constexpr std::string_view x_names[] = {
+      "x0",  "x1",  "x2",  "x3",  "x4",  "x5",  "x6",  "x7",
+      "x8",  "x9",  "x10", "x11", "x12", "x13", "x14", "x15",
+      "x16", "x17", "x18", "x19", "x20", "x21", "x22", "x23",
+      "x24", "x25", "x26", "x27", "x28", "x29", "x30", "x31"};
+  static constexpr std::string_view w_names[] = {
+      "w0",  "w1",  "w2",  "w3",  "w4",  "w5",  "w6",  "w7",
+      "w8",  "w9",  "w10", "w11", "w12", "w13", "w14", "w15",
+      "w16", "w17", "w18", "w19", "w20", "w21", "w22", "w23",
+      "w24", "w25", "w26", "w27", "w28", "w29", "w30", "w31"};
+  static constexpr std::string_view v_names[] = {
+      "v0",  "v1",  "v2",  "v3",  "v4",  "v5",  "v6",  "v7",
+      "v8",  "v9",  "v10", "v11", "v12", "v13", "v14", "v15",
+      "v16", "v17", "v18", "v19", "v20", "v21", "v22", "v23",
+      "v24", "v25", "v26", "v27", "v28", "v29", "v30", "v31"};
+  static constexpr std::string_view s_names[] = {
+      "s0",  "s1",  "s2",  "s3",  "s4",  "s5",  "s6",  "s7",
+      "s8",  "s9",  "s10", "s11", "s12", "s13", "s14", "s15",
+      "s16", "s17", "s18", "s19", "s20", "s21", "s22", "s23",
+      "s24", "s25", "s26", "s27", "s28", "s29", "s30", "s31"};
+  static constexpr std::string_view d_names[] = {
+      "d0",  "d1",  "d2",  "d3",  "d4",  "d5",  "d6",  "d7",
+      "d8",  "d9",  "d10", "d11", "d12", "d13", "d14", "d15",
+      "d16", "d17", "d18", "d19", "d20", "d21", "d22", "d23",
+      "d24", "d25", "d26", "d27", "d28", "d29", "d30", "d31"};
+  static constexpr std::string_view q_names[] = {
+      "q0",  "q1",  "q2",  "q3",  "q4",  "q5",  "q6",  "q7",
+      "q8",  "q9",  "q10", "q11", "q12", "q13", "q14", "q15",
+      "q16", "q17", "q18", "q19", "q20", "q21", "q22", "q23",
+      "q24", "q25", "q26", "q27", "q28", "q29", "q30", "q31"};
+  if (reg.index >= 32U) {
+    return {};
+  }
+  switch (reg.view) {
+    case abi::RegisterView::X:
+      return x_names[reg.index];
+    case abi::RegisterView::W:
+      return w_names[reg.index];
+    case abi::RegisterView::V:
+      return v_names[reg.index];
+    case abi::RegisterView::S:
+      return s_names[reg.index];
+    case abi::RegisterView::D:
+      return d_names[reg.index];
+    case abi::RegisterView::Q:
+      return q_names[reg.index];
+    case abi::RegisterView::Sp:
+      return "sp";
+  }
+  return {};
+}
+
+[[nodiscard]] std::vector<std::string_view> occupied_register_views(
+    abi::RegisterReference reg) {
+  const auto display_name = register_display_name(reg);
+  if (display_name.empty()) {
+    return {};
+  }
+  return {display_name};
+}
+
+[[nodiscard]] std::vector<abi::RegisterReference> occupied_register_references(
+    abi::RegisterReference reg) {
+  return {reg};
+}
+
+[[nodiscard]] std::optional<RegisterOperand> make_prepared_scalar_register_operand(
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedStoragePlanValue& storage,
+    bir::TypeKind type,
+    RegisterOperandRole role) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      storage.encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return std::nullopt;
+  }
+
+  const auto expected_view = scalar_storage_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto prepared_class = register_class_from_bank(storage.bank);
+  abi::PreparedRegisterConversionResult converted;
+  if (storage.register_placement.has_value()) {
+    converted = abi::convert_prepared_register(
+        *storage.register_placement, prepared_class, expected_view);
+  } else {
+    if (!home.register_name.has_value() || !storage.register_name.has_value() ||
+        *home.register_name != *storage.register_name) {
+      return std::nullopt;
+    }
+    converted = abi::convert_prepared_register(
+        *storage.register_name, storage.bank, prepared_class, expected_view);
+  }
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = role,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = prepared_class,
+      .prepared_bank = storage.bank,
+      .expected_view = expected_view,
+      .contiguous_width = storage.contiguous_width,
+      .occupied_register_references = occupied_register_references(*converted.reg),
+      .occupied_registers = occupied_register_views(*converted.reg),
+  };
+}
 
 [[nodiscard]] std::optional<OperandRecord> make_immediate_scalar_operand(
     const bir::Value& value) {
@@ -258,6 +448,110 @@ namespace mir = c4c::backend::mir;
 
 }  // namespace
 
+bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+      return true;
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+      return true;
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+bool is_scalar_alu_floating_type(bir::TypeKind type) {
+  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
+}
+
+ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+      return ScalarAluOperationKind::Add;
+    case bir::BinaryOpcode::Sub:
+      return ScalarAluOperationKind::Sub;
+    case bir::BinaryOpcode::Mul:
+      return ScalarAluOperationKind::Mul;
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::UDiv:
+      return ScalarAluOperationKind::Div;
+    case bir::BinaryOpcode::And:
+      return ScalarAluOperationKind::And;
+    case bir::BinaryOpcode::Or:
+      return ScalarAluOperationKind::Or;
+    case bir::BinaryOpcode::Xor:
+      return ScalarAluOperationKind::Xor;
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return ScalarAluOperationKind::Deferred;
+  }
+  return ScalarAluOperationKind::Deferred;
+}
+
 std::optional<abi::RegisterView> scalar_register_view(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -290,6 +584,203 @@ void record_emitted_scalar_register(BlockScalarLoweringState& state,
     return;
   }
   state.emitted_registers[value_name] = std::move(reg);
+}
+
+std::optional<ImmediateOperand> make_scalar_immediate_operand(
+    const bir::Value& value,
+    std::optional<prepare::PreparedValueId> source_value_id,
+    c4c::ValueNameId source_value_name) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+
+  ImmediateKind kind = ImmediateKind::SignedInteger;
+  if (value.type == bir::TypeKind::I1) {
+    kind = ImmediateKind::Boolean;
+  } else if (!scalar_register_view(value.type).has_value()) {
+    return std::nullopt;
+  }
+
+  return ImmediateOperand{
+      .kind = kind,
+      .type = value.type,
+      .signed_value = value.immediate,
+      .unsigned_value = value.immediate_bits != 0U ? value.immediate_bits
+                                                   : static_cast<std::uint64_t>(value.immediate),
+      .source_value_id = source_value_id,
+      .source_value_name = source_value_name,
+  };
+}
+
+PreparedScalarAluRecordError make_prepared_scalar_operand(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& value,
+    OperandRecord& out) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    const auto immediate = make_scalar_immediate_operand(value);
+    if (!immediate.has_value()) {
+      return PreparedScalarAluRecordError::UnsupportedOperandType;
+    }
+    out = make_immediate_operand(*immediate);
+    return PreparedScalarAluRecordError::None;
+  }
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return PreparedScalarAluRecordError::UnsupportedOperandValue;
+  }
+
+  const auto* home = find_prepared_scalar_value_home(names, value_locations, value);
+  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+    return PreparedScalarAluRecordError::MissingOperandValueHome;
+  }
+  const auto* storage = find_prepared_scalar_storage(storage_plan, home->value_id);
+  if (storage == nullptr || storage->value_name != home->value_name) {
+    return PreparedScalarAluRecordError::MissingOperandStorage;
+  }
+
+  if (storage->encoding == prepare::PreparedStorageEncodingKind::Immediate) {
+    if (home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
+        !home->immediate_i32.has_value() || !storage->immediate_i32.has_value() ||
+        *home->immediate_i32 != *storage->immediate_i32) {
+      return PreparedScalarAluRecordError::UnsupportedOperandStorage;
+    }
+    const auto immediate = make_scalar_immediate_operand(
+        bir::Value::immediate_i32(static_cast<std::int32_t>(*storage->immediate_i32)),
+        home->value_id,
+        home->value_name);
+    if (!immediate.has_value()) {
+      return PreparedScalarAluRecordError::UnsupportedOperandType;
+    }
+    out = make_immediate_operand(*immediate);
+    return PreparedScalarAluRecordError::None;
+  }
+
+  if (home->kind != prepare::PreparedValueHomeKind::Register ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (!storage->register_placement.has_value() &&
+       (!home->register_name.has_value() || !storage->register_name.has_value() ||
+        *home->register_name != *storage->register_name))) {
+    return PreparedScalarAluRecordError::UnsupportedOperandStorage;
+  }
+
+  const auto reg = make_prepared_scalar_register_operand(
+      *home, *storage, value.type, RegisterOperandRole::StoragePlan);
+  if (!reg.has_value()) {
+    return PreparedScalarAluRecordError::RegisterConversionFailed;
+  }
+  out = make_register_operand(*reg);
+  return PreparedScalarAluRecordError::None;
+}
+
+ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) {
+  return ScalarInstructionRecord{
+      .result_value_id = alu.result_value_id,
+      .result_value_name = alu.result_value_name,
+      .result_type = alu.result_type,
+      .result_register = alu.result_register,
+      .inputs = {alu.lhs, alu.rhs},
+      .source_binary_opcode = alu.source_binary_opcode,
+      .scalar_alu = alu,
+  };
+}
+
+PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary) {
+  if (value_locations.function_name == c4c::kInvalidFunctionName ||
+      storage_plan.function_name != value_locations.function_name) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::InvalidFunction);
+  }
+  const bool is_integer_operation =
+      scalar_register_view(binary.operand_type).has_value() &&
+      scalar_register_view(binary.result.type).has_value() &&
+      is_scalar_alu_integer_opcode(binary.opcode);
+  const bool is_floating_operation = is_scalar_alu_floating_type(binary.operand_type) &&
+                                     is_scalar_alu_floating_type(binary.result.type) &&
+                                     is_scalar_alu_floating_opcode(binary.opcode);
+  if (!is_integer_operation && !is_floating_operation) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
+  }
+  if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultValue);
+  }
+  if (!scalar_storage_register_view(binary.result.type).has_value() ||
+      !scalar_storage_register_view(binary.operand_type).has_value()) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOperandType);
+  }
+
+  const auto* result_home =
+      find_prepared_scalar_value_home(names, value_locations, binary.result);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultValueHome);
+  }
+  const auto* result_storage = find_prepared_scalar_storage(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultStorage);
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (!result_storage->register_placement.has_value() &&
+       (!result_home->register_name.has_value() ||
+        !result_storage->register_name.has_value() ||
+        *result_home->register_name != *result_storage->register_name))) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
+  }
+  const auto result_register = make_prepared_scalar_register_operand(
+      *result_home, *result_storage, binary.result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return scalar_alu_record_error(PreparedScalarAluRecordError::RegisterConversionFailed);
+  }
+
+  OperandRecord lhs;
+  OperandRecord rhs;
+  if (const auto error =
+          make_prepared_scalar_operand(names, value_locations, storage_plan, binary.lhs, lhs);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_alu_record_error(error);
+  }
+  if (const auto error =
+          make_prepared_scalar_operand(names, value_locations, storage_plan, binary.rhs, rhs);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_alu_record_error(error);
+  }
+
+  return PreparedScalarAluRecordResult{
+      .record =
+          ScalarAluRecord{
+              .surface = RecordSurfaceKind::RecordOnly,
+              .operation = scalar_alu_operation_from_binary_opcode(binary.opcode),
+              .source_binary_opcode = binary.opcode,
+              .operand_type = binary.operand_type,
+              .result_value_id = result_home->value_id,
+              .result_value_name = result_home->value_name,
+              .result_type = binary.result.type,
+              .result_register = result_register,
+              .lhs = lhs,
+              .rhs = rhs,
+              .supported_integer_operation = is_integer_operation,
+              .supported_floating_operation = is_floating_operation,
+          },
+      .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::BinaryInst& binary) {
+  const auto result = make_prepared_scalar_alu_record(names, value_locations, storage_plan, binary);
+  if (!result.record.has_value()) {
+    return scalar_instruction_record_error(result.error);
+  }
+  return PreparedScalarInstructionRecordResult{
+      .record = make_scalar_alu_instruction_record(*result.record),
+      .error = PreparedScalarAluRecordError::None,
+  };
 }
 
 std::optional<module::MachineInstruction> lower_scalar_instruction(

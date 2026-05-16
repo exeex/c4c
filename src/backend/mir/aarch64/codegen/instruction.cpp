@@ -1,4 +1,5 @@
 #include "instruction.hpp"
+#include "alu.hpp"
 
 #include <algorithm>
 
@@ -1239,72 +1240,6 @@ bool is_compare_predicate(bir::BinaryOpcode opcode) {
   return false;
 }
 
-bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
-  switch (opcode) {
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-      return true;
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      return false;
-  }
-  return false;
-}
-
-bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode) {
-  switch (opcode) {
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
-      return true;
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      return false;
-  }
-  return false;
-}
-
-bool is_scalar_alu_floating_type(bir::TypeKind type) {
-  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
-}
-
 bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
   switch (opcode) {
     case bir::CastOpcode::SExt:
@@ -1345,44 +1280,6 @@ bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode) {
   return false;
 }
 
-ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
-    bir::BinaryOpcode opcode) {
-  switch (opcode) {
-    case bir::BinaryOpcode::Add:
-      return ScalarAluOperationKind::Add;
-    case bir::BinaryOpcode::Sub:
-      return ScalarAluOperationKind::Sub;
-    case bir::BinaryOpcode::Mul:
-      return ScalarAluOperationKind::Mul;
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
-      return ScalarAluOperationKind::Div;
-    case bir::BinaryOpcode::And:
-      return ScalarAluOperationKind::And;
-    case bir::BinaryOpcode::Or:
-      return ScalarAluOperationKind::Or;
-    case bir::BinaryOpcode::Xor:
-      return ScalarAluOperationKind::Xor;
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      return ScalarAluOperationKind::Deferred;
-  }
-  return ScalarAluOperationKind::Deferred;
-}
-
 ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
     bir::CastOpcode opcode) {
   switch (opcode) {
@@ -1418,10 +1315,6 @@ PreparedBranchInstructionRecordResult branch_record_error(PreparedBranchRecordEr
   return PreparedBranchInstructionRecordResult{.record = std::nullopt, .error = error};
 }
 
-PreparedScalarAluRecordResult scalar_alu_record_error(PreparedScalarAluRecordError error) {
-  return PreparedScalarAluRecordResult{.record = std::nullopt, .error = error};
-}
-
 PreparedScalarCastRecordResult scalar_cast_record_error(PreparedScalarCastRecordError error) {
   return PreparedScalarCastRecordResult{.record = std::nullopt, .error = error};
 }
@@ -1439,11 +1332,6 @@ PreparedMemoryInstructionRecordResult memory_instruction_record_error(
 PreparedAddressMaterializationRecordResult address_materialization_record_error(
     PreparedAddressMaterializationRecordError error) {
   return PreparedAddressMaterializationRecordResult{.record = std::nullopt, .error = error};
-}
-
-PreparedScalarInstructionRecordResult scalar_instruction_record_error(
-    PreparedScalarAluRecordError error) {
-  return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
 }
 
 PreparedScalarCastInstructionRecordResult scalar_cast_instruction_record_error(
@@ -1868,27 +1756,6 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
       .record = memory,
       .error = PreparedMemoryOperandRecordError::None,
   };
-}
-
-std::optional<abi::RegisterView> scalar_register_view(
-    bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-      return abi::RegisterView::W;
-    case bir::TypeKind::I64:
-    case bir::TypeKind::Ptr:
-      return abi::RegisterView::X;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::F32:
-    case bir::TypeKind::F64:
-    case bir::TypeKind::F128:
-      return std::nullopt;
-  }
-  return std::nullopt;
 }
 
 std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type) {
@@ -2526,93 +2393,6 @@ PreparedAddressMaterializationRecordResult make_address_record_from_prepared_mat
       .record = record,
       .error = PreparedAddressMaterializationRecordError::None,
   };
-}
-
-std::optional<ImmediateOperand> make_scalar_immediate_operand(
-    const bir::Value& value,
-    std::optional<prepare::PreparedValueId> source_value_id = std::nullopt,
-    c4c::ValueNameId source_value_name = c4c::kInvalidValueName) {
-  if (value.kind != bir::Value::Kind::Immediate) {
-    return std::nullopt;
-  }
-
-  ImmediateKind kind = ImmediateKind::SignedInteger;
-  if (value.type == bir::TypeKind::I1) {
-    kind = ImmediateKind::Boolean;
-  } else if (!scalar_register_view(value.type).has_value()) {
-    return std::nullopt;
-  }
-
-  return ImmediateOperand{
-      .kind = kind,
-      .type = value.type,
-      .signed_value = value.immediate,
-      .unsigned_value = value.immediate_bits != 0U ? value.immediate_bits
-                                                   : static_cast<std::uint64_t>(value.immediate),
-      .source_value_id = source_value_id,
-      .source_value_name = source_value_name,
-  };
-}
-
-PreparedScalarAluRecordError make_prepared_scalar_operand(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::Value& value,
-    OperandRecord& out) {
-  if (value.kind == bir::Value::Kind::Immediate) {
-    const auto immediate = make_scalar_immediate_operand(value);
-    if (!immediate.has_value()) {
-      return PreparedScalarAluRecordError::UnsupportedOperandType;
-    }
-    out = make_immediate_operand(*immediate);
-    return PreparedScalarAluRecordError::None;
-  }
-  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
-    return PreparedScalarAluRecordError::UnsupportedOperandValue;
-  }
-
-  const auto* home = find_named_value_home(names, value_locations, value);
-  if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
-    return PreparedScalarAluRecordError::MissingOperandValueHome;
-  }
-  const auto* storage = find_storage_plan_value(storage_plan, home->value_id);
-  if (storage == nullptr || storage->value_name != home->value_name) {
-    return PreparedScalarAluRecordError::MissingOperandStorage;
-  }
-
-  if (storage->encoding == prepare::PreparedStorageEncodingKind::Immediate) {
-    if (home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
-        !home->immediate_i32.has_value() || !storage->immediate_i32.has_value() ||
-        *home->immediate_i32 != *storage->immediate_i32) {
-      return PreparedScalarAluRecordError::UnsupportedOperandStorage;
-    }
-    const auto immediate = make_scalar_immediate_operand(
-        bir::Value::immediate_i32(static_cast<std::int32_t>(*storage->immediate_i32)),
-        home->value_id,
-        home->value_name);
-    if (!immediate.has_value()) {
-      return PreparedScalarAluRecordError::UnsupportedOperandType;
-    }
-    out = make_immediate_operand(*immediate);
-    return PreparedScalarAluRecordError::None;
-  }
-
-  if (home->kind != prepare::PreparedValueHomeKind::Register ||
-      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      (!storage->register_placement.has_value() &&
-       (!home->register_name.has_value() || !storage->register_name.has_value() ||
-        *home->register_name != *storage->register_name))) {
-    return PreparedScalarAluRecordError::UnsupportedOperandStorage;
-  }
-
-  const auto reg =
-      make_prepared_register_operand(*home, *storage, value.type, RegisterOperandRole::StoragePlan);
-  if (!reg.has_value()) {
-    return PreparedScalarAluRecordError::RegisterConversionFailed;
-  }
-  out = make_register_operand(*reg);
-  return PreparedScalarAluRecordError::None;
 }
 
 std::optional<CompareValueRecord> make_compare_value_record(
@@ -3979,18 +3759,6 @@ InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
       .defs = defs,
       .uses = effects_from_operands(instruction.inputs),
       .payload = instruction,
-  };
-}
-
-ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) {
-  return ScalarInstructionRecord{
-      .result_value_id = alu.result_value_id,
-      .result_value_name = alu.result_value_name,
-      .result_type = alu.result_type,
-      .result_register = alu.result_register,
-      .inputs = {alu.lhs, alu.rhs},
-      .source_binary_opcode = alu.source_binary_opcode,
-      .scalar_alu = alu,
   };
 }
 
@@ -5510,102 +5278,6 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
               .conditional = true,
           },
       .error = PreparedBranchRecordError::None,
-  };
-}
-
-PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::BinaryInst& binary) {
-  if (value_locations.function_name == c4c::kInvalidFunctionName ||
-      storage_plan.function_name != value_locations.function_name) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::InvalidFunction);
-  }
-  const bool is_integer_operation =
-      scalar_register_view(binary.operand_type).has_value() &&
-      scalar_register_view(binary.result.type).has_value() &&
-      is_scalar_alu_integer_opcode(binary.opcode);
-  const bool is_floating_operation = is_scalar_alu_floating_type(binary.operand_type) &&
-                                     is_scalar_alu_floating_type(binary.result.type) &&
-                                     is_scalar_alu_floating_opcode(binary.opcode);
-  if (!is_integer_operation && !is_floating_operation) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
-  }
-  if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultValue);
-  }
-  if (!scalar_storage_register_view(binary.result.type).has_value() ||
-      !scalar_storage_register_view(binary.operand_type).has_value()) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOperandType);
-  }
-
-  const auto* result_home = find_named_value_home(names, value_locations, binary.result);
-  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultValueHome);
-  }
-  const auto* result_storage = find_storage_plan_value(storage_plan, result_home->value_id);
-  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultStorage);
-  }
-  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
-      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      (!result_storage->register_placement.has_value() &&
-       (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
-        *result_home->register_name != *result_storage->register_name))) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
-  }
-  const auto result_register = make_prepared_register_operand(
-      *result_home, *result_storage, binary.result.type, RegisterOperandRole::StoragePlan);
-  if (!result_register.has_value()) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::RegisterConversionFailed);
-  }
-
-  OperandRecord lhs;
-  OperandRecord rhs;
-  if (const auto error =
-          make_prepared_scalar_operand(names, value_locations, storage_plan, binary.lhs, lhs);
-      error != PreparedScalarAluRecordError::None) {
-    return scalar_alu_record_error(error);
-  }
-  if (const auto error =
-          make_prepared_scalar_operand(names, value_locations, storage_plan, binary.rhs, rhs);
-      error != PreparedScalarAluRecordError::None) {
-    return scalar_alu_record_error(error);
-  }
-
-  return PreparedScalarAluRecordResult{
-      .record =
-          ScalarAluRecord{
-              .surface = RecordSurfaceKind::RecordOnly,
-              .operation = scalar_alu_operation_from_binary_opcode(binary.opcode),
-              .source_binary_opcode = binary.opcode,
-              .operand_type = binary.operand_type,
-              .result_value_id = result_home->value_id,
-              .result_value_name = result_home->value_name,
-              .result_type = binary.result.type,
-              .result_register = result_register,
-              .lhs = lhs,
-              .rhs = rhs,
-              .supported_integer_operation = is_integer_operation,
-              .supported_floating_operation = is_floating_operation,
-          },
-      .error = PreparedScalarAluRecordError::None,
-  };
-}
-
-PreparedScalarInstructionRecordResult make_prepared_scalar_alu_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::BinaryInst& binary) {
-  const auto result = make_prepared_scalar_alu_record(names, value_locations, storage_plan, binary);
-  if (!result.record.has_value()) {
-    return scalar_instruction_record_error(result.error);
-  }
-  return PreparedScalarInstructionRecordResult{
-      .record = make_scalar_alu_instruction_record(*result.record),
-      .error = PreparedScalarAluRecordError::None,
   };
 }
 
