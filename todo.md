@@ -8,22 +8,22 @@ Current Step Title: Extract Core, Function, Frame, Call, and Variadic Printers
 
 ## Just Finished
 
-Completed `plan.md` Step 2 corrected first core/functions extraction wiring:
-`append_function_summaries` still lives under the private
-`src/backend/prealloc/prepared_printer/` boundary, `prepared_printer.cpp` now
-includes only `prepared_printer/private.hpp`, and the direct-source
-`backend_prepare_phi_materialize_test` target explicitly lists
-`prepared_printer/functions.cpp` instead of relying on a production `.cpp`
-include.
+Completed `plan.md` Step 2 frame/dynamic-stack extraction:
+`append_stack_layout`, `append_frame_plan`, `append_dynamic_stack_plan`, and
+their directly owned private helpers now live in
+`src/backend/prealloc/prepared_printer/frame.cpp`. `prepared_printer.cpp` still
+calls the same private printer declarations in the same prepared dump order,
+and the direct-source `backend_prepare_phi_materialize_test` target now lists
+`prepared_printer/frame.cpp` alongside `prepared_printer/functions.cpp`.
 
 ## Suggested Next
 
 Extract the next behavior-preserving Step 2 unit from the same neighborhood:
-move either the detailed call-plan printer or the frame/dynamic-stack printers
-once their helper surface can be kept private and narrow. For any direct-source
-test target that names `prepared_printer.cpp`, add the corresponding private
-implementation `.cpp` to that test target rather than including implementation
-files from production code.
+move either the detailed call-plan printer or variadic-entry printer once its
+helper surface can be kept private and narrow. For any direct-source test target
+that names `prepared_printer.cpp`, add the corresponding private implementation
+`.cpp` to that test target rather than including implementation files from
+production code.
 
 ## Watchouts
 
@@ -33,7 +33,7 @@ files from production code.
 - Production `.cpp` files must not include implementation `.cpp` files.
 - One existing backend test links `prepared_printer.cpp` directly instead of
   the backend library; its CMake source list now also includes
-  `prepared_printer/functions.cpp`.
+  `prepared_printer/functions.cpp` and `prepared_printer/frame.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
 
