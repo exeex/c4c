@@ -1,29 +1,23 @@
 Status: Active
 Source Idea Path: ideas/open/269_aarch64_peephole_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Or Record Integration
+Current Step ID: 4
+Current Step Title: Delete The Markdown Shard
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3, "Route Or Record Integration", by recording the current
-integration decision for the deferred AArch64 peephole boundary without changing
-output behavior.
-
-Current integration is intentionally not wired into the assembly output path
-because there is no active AArch64 peephole pass and no accepted
-printer-output cleanup policy hook. The compiled `peephole.{hpp,cpp}` pair is
-the discoverable owner boundary for this deferred behavior; broader owners such
-as emitters, printers, module compilation, or backend driver code must not hide
-peephole behavior.
+Completed plan Step 4, "Delete The Markdown Shard", by deleting the obsolete
+`src/backend/mir/aarch64/codegen/peephole.md` shard and cleaning active
+references in the AArch64 codegen classification/README docs so the deferred
+boundary now points at `peephole.hpp` / `peephole.cpp`.
 
 ## Suggested Next
 
-Execute the next supervisor-selected packet for plan Step 4, likely deleting
-the obsolete `src/backend/mir/aarch64/codegen/peephole.md` shard after the
-compiled deferred boundary has been preserved.
+Supervisor should review and decide whether the active runbook is exhausted or
+needs lifecycle closure now that the markdown shard deletion packet is
+complete.
 
 ## Watchouts
 
@@ -31,9 +25,10 @@ Do not wire `apply_deferred_peephole_boundary` just to exercise the boundary.
 Any future integration needs an explicit accepted output-policy hook or a real
 AArch64 peephole pass. Do not reintroduce the legacy text optimizer,
 RISC-V-style `peephole_optimize` surface, string classifier, global copy
-propagation, or dead stack-store passes.
+propagation, dead stack-store passes, or the deleted markdown shard as an
+active artifact.
 
 ## Proof
 
-No build required for this todo-only packet. No proof command was run, and
-`test_after.log` was intentionally not changed.
+No build required for this docs/lifecycle-only packet. No proof command was
+run, and `test_after.log` was intentionally not changed.

@@ -53,7 +53,8 @@ surface whose behavior must be archived or rebuilt independently.
 The removed module listed these codegen shards:
 
 - `emit`
-- `peephole`
+- `peephole` (historical module entry; the current deferred boundary is
+  `peephole.hpp` / `peephole.cpp`)
 - `asm_emitter`
 - `f128`
 - `inline_asm`
@@ -71,9 +72,11 @@ The removed module listed these codegen shards:
 - `i128_ops`
 - `float_ops`
 
-Only `emit` and `peephole` were marked as public-to-the-crate in the old
-Rust-style comments. The rest were private module entries. That visibility
-distinction is a historical module-boundary note, not live C++ visibility.
+Only `emit` and historical `peephole` were marked as public-to-the-crate in
+the old Rust-style comments. The rest were private module entries. That
+visibility distinction is a historical module-boundary note, not live C++
+visibility. The live deferred peephole ownership boundary is
+`peephole.hpp` / `peephole.cpp`, not a markdown shard.
 
 ## Dependencies And Ordering
 
@@ -95,7 +98,8 @@ The listed shards imply the old backend layering:
    `inline_asm`)
 
 The module list alone did not define pass order or call direction. Those
-relationships belong in the extracted shard artifacts and any later rebuilt
+relationships belong in the remaining extracted shard artifacts, compiled
+owner boundaries such as `peephole.hpp` / `peephole.cpp`, and any later rebuilt
 implementation.
 
 ## Hidden Assumptions
@@ -126,7 +130,8 @@ implementation.
 ## Rebuild Guidance
 
 Use this artifact as a directory map only. Rebuild decisions should come from
-the detailed markdown artifacts for each shard plus the later top-level
+the detailed markdown artifacts for remaining shards, compiled owner
+boundaries such as `peephole.hpp` / `peephole.cpp`, plus the later top-level
 AArch64 module-entry surface, not from this commented module file by itself.
 The accepted rebuild route is structured target MIR records followed by
 machine instruction nodes. Assembly-text emission is a printer consumer of
