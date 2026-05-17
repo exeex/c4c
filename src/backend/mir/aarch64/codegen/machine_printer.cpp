@@ -3,6 +3,7 @@
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
+#include "f128.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 #include "returns.hpp"
@@ -83,31 +84,6 @@ std::optional<std::string> fp_register_name_with_view(const RegisterOperand& ope
   return abi::register_name(*viewed);
 }
 
-std::optional<std::string> f128_q_register_name(const RegisterOperand& operand) {
-  if (operand.expected_view != abi::RegisterView::Q ||
-      operand.prepared_bank != prepare::PreparedRegisterBank::Vreg ||
-      operand.prepared_class != prepare::PreparedRegisterClass::Vector ||
-      operand.contiguous_width != 1) {
-    return std::nullopt;
-  }
-  return fp_register_name_with_view(operand, abi::RegisterView::Q);
-}
-
-std::optional<std::string> f128_vector_register_name(const RegisterOperand& operand) {
-  if (operand.expected_view != abi::RegisterView::Q ||
-      operand.prepared_bank != prepare::PreparedRegisterBank::Vreg ||
-      operand.prepared_class != prepare::PreparedRegisterClass::Vector ||
-      operand.contiguous_width != 1) {
-    return std::nullopt;
-  }
-  auto name = fp_register_name_with_view(operand, abi::RegisterView::V);
-  if (!name.has_value()) {
-    return std::nullopt;
-  }
-  *name += ".16b";
-  return name;
-}
-
 bool has_complete_intrinsic_source(const prepare::PreparedIntrinsicCarrier* source) {
   return source != nullptr &&
          source->carrier_kind == prepare::PreparedIntrinsicCarrierKind::Complete;
@@ -127,29 +103,6 @@ bool has_v16i8_unsigned_shape(bir::TypeKind element_type,
   return element_type == bir::TypeKind::I8 && element_width_bytes == 1 &&
          lane_count == 16 && total_width_bytes == 16 &&
          signedness == bir::IntrinsicSignedness::Unsigned;
-}
-
-std::optional<std::string> f128_scalar_fp_register_name(
-    const RegisterOperand& operand,
-    std::size_t width_bytes) {
-  if (operand.prepared_bank != prepare::PreparedRegisterBank::Fpr ||
-      operand.prepared_class != prepare::PreparedRegisterClass::Float ||
-      operand.contiguous_width != 1) {
-    return std::nullopt;
-  }
-  if (width_bytes == 4) {
-    if (operand.expected_view != abi::RegisterView::S) {
-      return std::nullopt;
-    }
-    return fp_register_name_with_view(operand, abi::RegisterView::S);
-  }
-  if (width_bytes == 8) {
-    if (operand.expected_view != abi::RegisterView::D) {
-      return std::nullopt;
-    }
-    return fp_register_name_with_view(operand, abi::RegisterView::D);
-  }
-  return std::nullopt;
 }
 
 std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
@@ -327,111 +280,6 @@ std::optional<std::string> append_i128_helper_move_line(
          << move->abi_register.register_name;
   }
   lines.push_back(line.str());
-  return std::nullopt;
-}
-
-std::optional<std::string> append_f128_helper_move_line(
-    std::vector<std::string>& lines,
-    const F128RuntimeHelperOperandRecord& operand,
-    prepare::PreparedF128RuntimeHelperMarshalDirection direction) {
-  if (operand.marshaling_move.direction != direction ||
-      operand.carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
-      operand.width_bytes != 16 ||
-      operand.align_bytes != 16 ||
-      operand.register_bank != prepare::PreparedRegisterBank::Vreg ||
-      operand.register_class != prepare::PreparedRegisterClass::Vector ||
-      !operand.carrier_register.has_value() ||
-      !operand.abi_register.has_value()) {
-    return std::string{
-        "f128 helper boundary requires structured full-width q-register moves"};
-  }
-  const auto carrier = f128_vector_register_name(*operand.carrier_register);
-  const auto abi = f128_vector_register_name(*operand.abi_register);
-  if (!carrier.has_value() || !abi.has_value()) {
-    return std::string{
-        "f128 helper boundary has incomplete printable q-register facts"};
-  }
-
-  std::ostringstream line;
-  if (direction ==
-      prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument) {
-    line << "mov " << *abi << ", " << *carrier;
-  } else if (direction ==
-             prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier) {
-    line << "mov " << *carrier << ", " << *abi;
-  } else {
-    return std::string{"f128 helper boundary has unsupported full-width move direction"};
-  }
-  lines.push_back(line.str());
-  return std::nullopt;
-}
-
-std::optional<std::string> append_f128_scalar_move_line(
-    std::vector<std::string>& lines,
-    const F128RuntimeHelperScalarResultRecord& scalar,
-    prepare::PreparedF128RuntimeHelperMarshalDirection direction) {
-  if (!scalar.marshaling_move.has_value() ||
-      scalar.marshaling_move->direction != direction ||
-      !scalar.materialized_i1_register.has_value() ||
-      !scalar.abi_register.has_value()) {
-    return std::string{
-        "f128 helper boundary requires structured scalar marshal/unmarshal moves"};
-  }
-
-  const auto materialized =
-      f128_scalar_fp_register_name(*scalar.materialized_i1_register, scalar.width_bytes);
-  const auto abi = f128_scalar_fp_register_name(*scalar.abi_register, scalar.width_bytes);
-  if (!materialized.has_value() || !abi.has_value()) {
-    return std::string{
-        "f128 helper boundary has incomplete printable scalar FP register facts"};
-  }
-
-  std::ostringstream line;
-  if (direction == prepare::PreparedF128RuntimeHelperMarshalDirection::ScalarToAbiArgument) {
-    line << "fmov " << *abi << ", " << *materialized;
-  } else if (direction ==
-             prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToScalar) {
-    line << "fmov " << *materialized << ", " << *abi;
-  } else {
-    return std::string{"f128 helper boundary has unsupported scalar FP move direction"};
-  }
-  lines.push_back(line.str());
-  return std::nullopt;
-}
-
-std::optional<std::string> validate_f128_cmp_scalar_result(
-    const F128RuntimeHelperScalarResultRecord& scalar) {
-  if (!scalar.marshaling_move.has_value() ||
-      scalar.marshaling_move->direction !=
-          prepare::PreparedF128RuntimeHelperMarshalDirection::AbiCmpResultToScalar ||
-      !scalar.abi_register.has_value() ||
-      !scalar.materialized_i1_register.has_value()) {
-    return std::string{
-        "f128 comparison helper requires structured scalar cmp-result marshal facts"};
-  }
-  if (scalar.type != bir::TypeKind::I32 ||
-      scalar.width_bytes != 4 ||
-      scalar.register_bank != prepare::PreparedRegisterBank::Gpr ||
-      scalar.scalar_ownership.type != bir::TypeKind::I32 ||
-      scalar.scalar_ownership.width_bytes != 4 ||
-      scalar.scalar_ownership.register_bank != prepare::PreparedRegisterBank::Gpr ||
-      scalar.marshaling_move->scalar_result.type != bir::TypeKind::I32 ||
-      scalar.marshaling_move->scalar_result.width_bytes != 4 ||
-      scalar.marshaling_move->scalar_result.register_bank !=
-          prepare::PreparedRegisterBank::Gpr ||
-      scalar.marshaling_move->abi_register.register_bank !=
-          prepare::PreparedRegisterBank::Gpr ||
-      scalar.marshaling_move->abi_register.width_bytes != 4) {
-    return std::string{
-        "f128 comparison helper requires structured i32 GPR cmp-result facts"};
-  }
-  if (!register_name_with_view(*scalar.abi_register, abi::RegisterView::W).has_value() ||
-      !register_name_with_view(*scalar.materialized_i1_register,
-                               abi::RegisterView::W)
-           .has_value()) {
-    return std::string{
-        "f128 comparison helper has incomplete printable scalar GPR register facts"};
-  }
   return std::nullopt;
 }
 
@@ -1378,51 +1226,6 @@ mir::TargetInstructionPrintResult print_i128_transport(
                             "i128 transport kind is outside the printable subset");
 }
 
-mir::TargetInstructionPrintResult print_f128_transport(
-    const InstructionRecord& instruction,
-    const F128TransportRecord& transport) {
-  if (transport.carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
-      !transport.reg.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "f128 transport printer requires structured full-width q-register authority");
-  }
-  const auto reg = f128_q_register_name(*transport.reg);
-  if (!reg.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 transport q-register is not printable");
-  }
-  if (transport.transport_kind == F128TransportKind::CarrierSnapshot) {
-    std::ostringstream out;
-    out << "// f128 carrier " << *reg;
-    return target_printed({out.str()});
-  }
-  if (!transport.memory.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 memory transport is missing structured memory operand");
-  }
-  if (transport.memory->size_bytes != 16 || transport.memory->align_bytes != 16) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 memory transport requires 16-byte memory facts");
-  }
-  const auto address = memory_address(*transport.memory);
-  if (address.empty()) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 memory transport address is not printable");
-  }
-  std::ostringstream out;
-  if (transport.transport_kind == F128TransportKind::LoadFromMemory) {
-    out << "ldr " << *reg << ", " << address;
-    return target_printed({out.str()});
-  }
-  if (transport.transport_kind == F128TransportKind::StoreToMemory) {
-    out << "str " << *reg << ", " << address;
-    return target_printed({out.str()});
-  }
-  return target_unsupported(bad_header(instruction) +
-                            "f128 transport kind is outside the printable subset");
-}
-
 mir::TargetInstructionPrintResult print_i128_pair_operation(
     const InstructionRecord& instruction,
     const I128PairOperationRecord& pair) {
@@ -1775,182 +1578,6 @@ mir::TargetInstructionPrintResult print_i128_runtime_helper(
   }
 
   return target_printed(std::move(lines));
-}
-
-mir::TargetInstructionPrintResult print_f128_runtime_helper(
-    const InstructionRecord& instruction,
-    const F128RuntimeHelperBoundaryRecord& helper) {
-  if (helper.source_helper == nullptr) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 helper boundary is missing prepared helper provenance");
-  }
-  if (helper.callee_name.empty()) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 helper boundary is missing callee identity");
-  }
-  if (!helper.resource_policy.call_boundary ||
-      !helper.resource_policy.runtime_helper_callee ||
-      !helper.resource_policy.caller_saved_clobbers ||
-      !helper.resource_policy.preserves_source_operation_identity ||
-      helper.clobbered_registers.empty()) {
-    return target_unsupported(bad_header(instruction) +
-                              "f128 helper boundary is missing resource or clobber policy");
-  }
-  if (!helper.live_preservation_policy.evaluated ||
-      !helper.live_preservation_policy.caller_saved_clobbers_modeled ||
-      !helper.live_preservation_policy.no_additional_live_preservation_required ||
-      !helper.selected_call_ownership.owns_terminal_call ||
-      !helper.selected_call_ownership.has_callee_identity ||
-      !helper.selected_call_ownership.has_resource_policy ||
-      !helper.selected_call_ownership.has_clobber_policy ||
-      !helper.selected_call_ownership.has_abi_bindings ||
-      !helper.selected_call_ownership.has_marshaling ||
-      !helper.selected_call_ownership.has_live_preservation) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "f128 helper boundary printing requires complete selected-call ownership facts");
-  }
-
-  std::vector<std::string> lines;
-  auto append_full_width =
-      [&](const F128RuntimeHelperOperandRecord& operand,
-          prepare::PreparedF128RuntimeHelperMarshalDirection direction)
-      -> std::optional<std::string> {
-    return append_f128_helper_move_line(lines, operand, direction);
-  };
-  auto append_scalar =
-      [&](const F128RuntimeHelperScalarResultRecord& scalar,
-          prepare::PreparedF128RuntimeHelperMarshalDirection direction)
-      -> std::optional<std::string> {
-    return append_f128_scalar_move_line(lines, scalar, direction);
-  };
-  const auto emit_call = [&]() {
-    std::ostringstream call;
-    call << "bl " << helper.callee_name;
-    lines.push_back(call.str());
-  };
-
-  const auto carrier_to_abi =
-      prepare::PreparedF128RuntimeHelperMarshalDirection::CarrierToAbiArgument;
-  const auto abi_to_carrier =
-      prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToCarrier;
-  const auto scalar_to_abi =
-      prepare::PreparedF128RuntimeHelperMarshalDirection::ScalarToAbiArgument;
-  const auto abi_to_scalar =
-      prepare::PreparedF128RuntimeHelperMarshalDirection::AbiResultToScalar;
-
-  if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Arithmetic) {
-    if (helper.result_ownership !=
-            prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
-        helper.source_type != bir::TypeKind::F128 ||
-        helper.result_type != bir::TypeKind::F128 ||
-        helper.abi_policy.transition !=
-            prepare::PreparedF128RuntimeHelperAbiTransition::DirectF128ArgumentsAndResult) {
-      return target_unsupported(bad_header(instruction) +
-                                "f128 arithmetic helper has unsupported ownership or ABI facts");
-    }
-    if (const auto error = append_full_width(helper.lhs, carrier_to_abi);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    if (const auto error = append_full_width(helper.rhs, carrier_to_abi);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    emit_call();
-    if (const auto error = append_full_width(helper.result, abi_to_carrier);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    return target_printed(std::move(lines));
-  }
-
-  if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Comparison) {
-    if (helper.result_ownership !=
-            prepare::PreparedF128RuntimeHelperResultOwnership::ScalarCmpResult ||
-        helper.source_type != bir::TypeKind::F128 ||
-        helper.result_type != bir::TypeKind::I32 ||
-        helper.abi_policy.transition !=
-            prepare::PreparedF128RuntimeHelperAbiTransition::
-                DirectF128ArgumentsAndCmpResult ||
-        !helper.scalar_result.cmp_result_consumption.has_value()) {
-      return target_unsupported(bad_header(instruction) +
-                                "f128 comparison helper has unsupported ownership or ABI facts");
-    }
-    if (const auto error = append_full_width(helper.lhs, carrier_to_abi);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    if (const auto error = append_full_width(helper.rhs, carrier_to_abi);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    emit_call();
-    if (const auto error = validate_f128_cmp_scalar_result(helper.scalar_result);
-        error.has_value()) {
-      return target_unsupported(bad_header(instruction) + *error);
-    }
-    const auto condition = f128_compare_result_condition(
-        helper.scalar_result.cmp_result_consumption->zero_test);
-    if (!condition.has_value()) {
-      return target_unsupported(bad_header(instruction) +
-                                "f128 comparison helper has unsupported zero-test facts");
-    }
-    std::ostringstream cmp;
-    cmp << "cmp " << register_name(*helper.scalar_result.abi_register) << ", #0";
-    lines.push_back(cmp.str());
-    std::ostringstream cset;
-    cset << "cset " << register_name(*helper.scalar_result.materialized_i1_register)
-         << ", " << *condition;
-    lines.push_back(cset.str());
-    return target_printed(std::move(lines));
-  }
-
-  if (helper.helper_family == prepare::PreparedF128RuntimeHelperFamily::Cast) {
-    if (helper.result_type == bir::TypeKind::F128) {
-      if (helper.result_ownership !=
-              prepare::PreparedF128RuntimeHelperResultOwnership::FullWidthCarrier ||
-          helper.abi_policy.transition !=
-              prepare::PreparedF128RuntimeHelperAbiTransition::
-                  DirectScalarArgumentAndF128Result) {
-        return target_unsupported(bad_header(instruction) +
-                                  "f128 cast helper has unsupported scalar-to-f128 ABI facts");
-      }
-      if (const auto error = append_scalar(helper.scalar_operand, scalar_to_abi);
-          error.has_value()) {
-        return target_unsupported(bad_header(instruction) + *error);
-      }
-      emit_call();
-      if (const auto error = append_full_width(helper.result, abi_to_carrier);
-          error.has_value()) {
-        return target_unsupported(bad_header(instruction) + *error);
-      }
-      return target_printed(std::move(lines));
-    }
-    if (helper.source_type == bir::TypeKind::F128) {
-      if (helper.result_ownership !=
-              prepare::PreparedF128RuntimeHelperResultOwnership::ScalarValue ||
-          helper.abi_policy.transition !=
-              prepare::PreparedF128RuntimeHelperAbiTransition::
-                  DirectF128ArgumentAndScalarResult) {
-        return target_unsupported(bad_header(instruction) +
-                                  "f128 cast helper has unsupported f128-to-scalar ABI facts");
-      }
-      if (const auto error = append_full_width(helper.lhs, carrier_to_abi);
-          error.has_value()) {
-        return target_unsupported(bad_header(instruction) + *error);
-      }
-      emit_call();
-      if (const auto error = append_scalar(helper.scalar_result, abi_to_scalar);
-          error.has_value()) {
-        return target_unsupported(bad_header(instruction) + *error);
-      }
-      return target_printed(std::move(lines));
-    }
-  }
-
-  return target_unsupported(bad_header(instruction) +
-                            "f128 helper family is outside the printable subset");
 }
 
 mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instruction,

@@ -1,24 +1,25 @@
 Status: Active
 Source Idea Path: ideas/open/261_aarch64_f128_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move F128 Construction, Transport, And Lowering Bodies
+Current Step ID: 4
+Current Step Title: Move F128 Spelling And Printer Helpers
 
 # Current Packet
 
 ## Just Finished
 
-Step 3: Move F128 Construction, Transport, And Lowering Bodies moved the
-f128-specific naming and prepared-record error helper implementations out of
-`instruction.cpp` and into `f128.cpp`. `f128.hpp` continues to expose the
-existing declarations, and the exact returned diagnostic/name strings were
-preserved.
+Step 4: Move F128 Spelling And Printer Helpers moved
+`print_f128_transport`, `print_f128_runtime_helper`, and their f128-only
+register/marshal spelling helpers from generic `machine_printer.cpp` into
+`f128.cpp`/`f128.hpp`. `machine_printer.cpp` keeps the generic payload
+traversal and dispatches f128 transport/helper payloads through the f128-owned
+printer entry points.
 
 ## Suggested Next
 
-Continue Step 3 by auditing the remaining broad instruction/printer ownership
-for the next f128-specific body that can move without changing include flow or
-forcing broader non-f128 helper seams.
+Continue Step 4 by auditing any remaining f128-specific printer spelling in
+`machine_printer.cpp` that can move into the f128 owner without dragging broad
+generic traversal or non-f128 printer helpers with it.
 
 ## Watchouts
 
@@ -51,6 +52,9 @@ forcing broader non-f128 helper seams.
   duplicate default arguments remain intentionally avoided there. Remove or
   narrow corresponding declarations in `instruction.hpp` only if needed for
   clean ownership and include flow.
+- `f128_vector_register_name` is now f128-owned and declared in `f128.hpp`
+  because the existing vector intrinsic printers still need the same q/vector
+  spelling while remaining in generic printer dispatch.
 - `clang-format` is not installed in this environment; the touched C++ files
   were left in the existing local style after manual review.
 

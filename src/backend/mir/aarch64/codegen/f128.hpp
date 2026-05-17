@@ -2,9 +2,11 @@
 
 #include "../module/module.hpp"
 #include "instruction.hpp"
+#include "mir/printer.hpp"
 
 #include <cstddef>
 #include <optional>
+#include <string>
 #include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
@@ -21,11 +23,19 @@ struct LowerF128RuntimeHelperInstructionResult {
     PreparedF128TransportRecordError error);
 [[nodiscard]] std::string_view prepared_f128_runtime_helper_record_error_name(
     PreparedF128RuntimeHelperRecordError error);
+[[nodiscard]] std::optional<std::string> f128_vector_register_name(
+    const RegisterOperand& operand);
 
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
     F128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_runtime_helper_boundary_instruction(
     F128RuntimeHelperBoundaryRecord instruction);
+[[nodiscard]] mir::TargetInstructionPrintResult print_f128_transport(
+    const InstructionRecord& instruction,
+    const F128TransportRecord& transport);
+[[nodiscard]] mir::TargetInstructionPrintResult print_f128_runtime_helper(
+    const InstructionRecord& instruction,
+    const F128RuntimeHelperBoundaryRecord& helper);
 
 [[nodiscard]] PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
