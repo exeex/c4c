@@ -1,18 +1,18 @@
 Status: Active
 Source Idea Path: ideas/open/273_prealloc_coordinator_and_fact_publishers_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract low-risk standalone fact publishers
+Current Step ID: 3
+Current Step Title: Extract storage, call, and variadic publishers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 2 storage-plan fact publisher extraction. `populate_storage_plans()` now lives in `src/backend/prealloc/storage_plans.cpp`, with `src/backend/prealloc/storage_plans.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_storage_plans(prepared_)` in the same phase order after the second frame-plan publish and before carrier/runtime-helper publishers.
+Completed Step 3 call-plan fact publisher extraction. `populate_call_plans()` now lives in `src/backend/prealloc/call_plans.cpp`, with `src/backend/prealloc/call_plans.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_call_plans(prepared_)` in the same phase order after dynamic-stack publication and before variadic-entry publication. Direct/indirect callee resolution, memory-return planning, call clobber construction, preserved-value construction, and ABI/register placement logic were moved mechanically into the call-plan publisher. The existing recursive prealloc source glob picked up `call_plans.cpp`; no build registration edit was needed.
 
 ## Suggested Next
 
-Extract another low-risk standalone fact publisher from `src/backend/prealloc/prealloc.cpp`; the special-carrier or runtime-helper families should be dependency-checked first because several of them share call, regalloc, and storage-plan lookup helpers.
+Extract the variadic-entry publisher into narrow `variadic_entry_plans.cpp/.hpp` files. Dependency-check `populate_variadic_entry_plans()` first because it shares early variadic helper predicates and AAPCS64 storage-authority helpers with frame/dynamic-stack logic.
 
 ## Watchouts
 
@@ -27,6 +27,8 @@ Extract another low-risk standalone fact publisher from `src/backend/prealloc/pr
 - `find_preferred_block_label_id()` remains duplicated narrowly in `dynamic_stack.cpp` and `label_identity.cpp`; do not introduce a broad shared helper header unless more extracted publishers need it.
 - Regalloc placement identity keeps a narrow local copy of its placement/spill-slot/value-id helpers in `regalloc_placement_identity.cpp`; the original anonymous-namespace helpers remain in `prealloc.cpp` for other publisher families, so avoid broadening this into a shared helper header unless multiple extracted families prove they need the same seam.
 - Storage plans keep narrow local copies of register-bank, register-placement, regalloc lookup, and storage-encoding helpers; `prealloc.cpp` keeps its own versions where other publisher families still need them.
+- Call plans keep narrow local copies of call wrapper classification, symbol/callee resolution, memory-return planning, ABI binding lookup, call clobber construction, preserved-value construction, and register/storage helper logic. `prealloc.cpp` keeps its own copies of still-shared frame/runtime-helper helpers rather than growing a broad private helper header.
+- AST dependency checks showed `build_call_clobber_set()` and `build_call_preserved_values()` are still used by runtime-helper publishers, so the extraction intentionally duplicated those helpers locally in `call_plans.cpp` while preserving the `prealloc.cpp` copies for current users.
 - Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
 
 ## Proof
