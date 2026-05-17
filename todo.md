@@ -1,25 +1,26 @@
 Status: Active
 Source Idea Path: ideas/open/261_aarch64_f128_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move F128 Spelling And Printer Helpers
+Current Step ID: 5
+Current Step Title: Retire The F128 Markdown Shard
 
 # Current Packet
 
 ## Just Finished
 
-Step 4: Move F128 Spelling And Printer Helpers moved
-`print_f128_transport`, `print_f128_runtime_helper`, and their f128-only
-register/marshal spelling helpers from generic `machine_printer.cpp` into
-`f128.cpp`/`f128.hpp`. `machine_printer.cpp` keeps the generic payload
-traversal and dispatches f128 transport/helper payloads through the f128-owned
-printer entry points.
+Step 5: Retire The F128 Markdown Shard reconciled the legacy
+`src/backend/mir/aarch64/codegen/f128.md` notes against the compiled f128
+owners and deleted the markdown shard. Durable live behavior is represented in
+`f128.cpp`/`f128.hpp` by prepared f128 carrier transport records, 16-byte
+size/alignment checks, q-register and scalar bridge spelling, runtime helper
+boundary records for arithmetic/comparison/F32/F64 casts, clobber/resource/live
+preservation validation, selected-call ownership checks, and target-unsupported
+printer diagnostics for incomplete facts.
 
 ## Suggested Next
 
-Continue Step 4 by auditing any remaining f128-specific printer spelling in
-`machine_printer.cpp` that can move into the f128 owner without dragging broad
-generic traversal or non-f128 printer helpers with it.
+Proceed to Step 6 validation and close-review preparation for the f128 shard
+redistribution.
 
 ## Watchouts
 
@@ -34,9 +35,15 @@ generic traversal or non-f128 printer helpers with it.
   selected-call ownership, unsupported scalar bridge widths, and unprintable
   memory/register facts all become diagnostics or target-unsupported output.
   Do not convert these checks into fallback scalar F64 behavior.
-- `f128.md` describes legacy address/temp/constant/source hooks that are not
-  currently implemented as live C++ selected nodes. Moving code must not
-  synthesize those old hooks or claim semantic completion by recreating names.
+- Retired `f128.md` described legacy address/temp/constant/source hooks that are
+  not currently implemented as live C++ selected nodes. Those old hook names,
+  x16/x17 scratch/address choreography, q0 stack temp reservation, constant-half
+  store helpers, and scalar-accumulator compatibility shims are non-live legacy
+  or deferred implementation content unless future prepared facts and selected
+  nodes model them explicitly.
+- `src/backend/mir/aarch64/codegen/README.md` did not index `f128.md` as an
+  active shard; it only preserves the historical `f128` module-list entry, so no
+  README edit was needed for this packet.
 - Transport, runtime-helper boundary instruction construction, and prepared
   runtime-helper boundary record construction are now owned by `f128.cpp`.
 - `memory.cpp` should continue to own `lower_f128_transport_instruction`; it is
@@ -60,6 +67,7 @@ generic traversal or non-f128 printer helpers with it.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-The build completed and all 139 selected backend tests passed. Full output is
-in `test_after.log`.
+Ran `git diff --check && test ! -e src/backend/mir/aarch64/codegen/f128.md && rg -n 'f128\.md' src/backend/mir/aarch64/codegen README.md docs ideas/open plan.md todo.md || true`.
+The command completed successfully. `test_after.log` records that `f128.md` is
+deleted and that remaining textual references are lifecycle/source-plan
+references plus this Step 5 retirement note, not an active codegen shard index.
