@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/259_aarch64_cast_ops_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Introduce compiled cast_ops owner shell
+Current Step ID: 3
+Current Step Title: Move cast construction and lowering behavior
 
 # Current Packet
 
@@ -61,4 +61,5 @@ Proof command run for this packet:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_.*cast'
 ```
 
-Result: passed. The canonical proof output is preserved in `test_after.log`.
+Result: passed. The packet proof was reviewed with the owner-shell slice; the
+accepted full-suite baseline has been rolled forward into `test_baseline.log`.
