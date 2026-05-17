@@ -1,7 +1,18 @@
 # AArch64 `f128.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
+
+## Closure Summary
+
+Closed after the active runbook completed Step 6 close validation. The f128
+markdown shard was deleted, `f128.cpp` and `f128.hpp` became the compiled f128
+owners, and broad AArch64 codegen files retained neutral instruction, routing,
+or printer responsibilities while calling into f128-owned helpers for f128
+behavior. Existing fail-closed and deferred-helper boundaries were preserved,
+and the recorded full-suite proof passed 3167/3167 tests with a non-regressive
+full-suite baseline comparison.
 
 ## Intent
 
