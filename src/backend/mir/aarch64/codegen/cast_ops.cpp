@@ -1,7 +1,12 @@
 #include "cast_ops.hpp"
 
+#include <cstdint>
+#include <sstream>
+#include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -9,6 +14,101 @@ namespace mir = c4c::backend::mir;
 namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
+
+[[nodiscard]] mir::TargetInstructionPrintResult target_unsupported(std::string diagnostic) {
+  return mir::target_instruction_unsupported(std::move(diagnostic));
+}
+
+[[nodiscard]] mir::TargetInstructionPrintResult target_printed(
+    std::vector<std::string> lines) {
+  return mir::target_instruction_lines_printed(std::move(lines));
+}
+
+[[nodiscard]] std::string diagnostic(std::string_view prefix, std::string_view message) {
+  std::string out{prefix};
+  out += message;
+  return out;
+}
+
+[[nodiscard]] std::optional<unsigned> integer_type_bit_width(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return 1U;
+    case bir::TypeKind::I8:
+      return 8U;
+    case bir::TypeKind::I16:
+      return 16U;
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+      return 64U;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> register_name_with_view(
+    const RegisterOperand& operand,
+    abi::RegisterView view) {
+  if (!abi::is_gp_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::gp_register(operand.reg.index, view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(*viewed);
+}
+
+[[nodiscard]] std::optional<std::string> fp_register_name_with_view(
+    const RegisterOperand& operand,
+    abi::RegisterView view) {
+  if (!abi::is_fp_simd_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(operand.reg.index, view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(*viewed);
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
+  if (bit_width <= 32U) {
+    return abi::RegisterView::W;
+  }
+  if (bit_width == 64U) {
+    return abi::RegisterView::X;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> floating_register_view(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
 
 [[nodiscard]] const prepare::PreparedValueHome* find_named_value_home(
     const prepare::PreparedNameTables& names,
@@ -424,6 +524,238 @@ PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_
       .record = make_scalar_cast_instruction_record(*result.record),
       .error = PreparedScalarCastRecordError::None,
   };
+}
+
+mir::TargetInstructionPrintResult print_scalar_conversion_instruction(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar,
+    const ScalarCastRecord& cast,
+    std::string_view diagnostic_prefix) {
+  (void)instruction;
+  if ((!cast.supported_float_integer_conversion &&
+       !cast.supported_float_width_conversion) ||
+      cast.operation == ScalarCastOperationKind::Deferred) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar conversion node is outside the printable subset"));
+  }
+  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
+  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar conversion node requires a structured register source operand"));
+  }
+
+  std::string_view mnemonic;
+  std::optional<std::string> result;
+  std::optional<std::string> source;
+  switch (cast.operation) {
+    case ScalarCastOperationKind::FloatExtend:
+      mnemonic = "fcvt";
+      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::D);
+      source = fp_register_name_with_view(*source_register, abi::RegisterView::S);
+      break;
+    case ScalarCastOperationKind::FloatTruncate:
+      mnemonic = "fcvt";
+      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::S);
+      source = fp_register_name_with_view(*source_register, abi::RegisterView::D);
+      break;
+    case ScalarCastOperationKind::SignedIntToFloat:
+    case ScalarCastOperationKind::UnsignedIntToFloat: {
+      const auto result_view = floating_register_view(cast.result_type);
+      const auto source_bits = integer_type_bit_width(cast.source_type);
+      if (!result_view.has_value() || !source_bits.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar int-to-float conversion has unsupported type width"));
+      }
+      const auto source_view = integer_register_view(*source_bits);
+      if (!source_view.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar int-to-float conversion has unsupported integer width"));
+      }
+      mnemonic = cast.operation == ScalarCastOperationKind::SignedIntToFloat ? "scvtf" : "ucvtf";
+      result = fp_register_name_with_view(*scalar.result_register, *result_view);
+      source = register_name_with_view(*source_register, *source_view);
+      break;
+    }
+    case ScalarCastOperationKind::FloatToSignedInt:
+    case ScalarCastOperationKind::FloatToUnsignedInt: {
+      const auto result_bits = integer_type_bit_width(cast.result_type);
+      const auto source_view = floating_register_view(cast.source_type);
+      if (!result_bits.has_value() || !source_view.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar float-to-int conversion has unsupported type width"));
+      }
+      const auto result_view = integer_register_view(*result_bits);
+      if (!result_view.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar float-to-int conversion has unsupported integer width"));
+      }
+      mnemonic = cast.operation == ScalarCastOperationKind::FloatToSignedInt ? "fcvtzs"
+                                                                             : "fcvtzu";
+      result = register_name_with_view(*scalar.result_register, *result_view);
+      source = fp_register_name_with_view(*source_register, *source_view);
+      break;
+    }
+    case ScalarCastOperationKind::SignExtend:
+    case ScalarCastOperationKind::ZeroExtend:
+    case ScalarCastOperationKind::Truncate:
+    case ScalarCastOperationKind::Deferred:
+      return target_unsupported(diagnostic(
+          diagnostic_prefix,
+          "scalar conversion node is outside the printable subset"));
+  }
+  if (mnemonic.empty() || !result.has_value() || !source.has_value()) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar conversion node has incomplete printable register facts"));
+  }
+  std::ostringstream out;
+  out << mnemonic << " " << *result << ", " << *source;
+  return target_printed({out.str()});
+}
+
+mir::TargetInstructionPrintResult print_scalar_cast_instruction(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar,
+    std::string_view diagnostic_prefix) {
+  (void)instruction;
+  if (!scalar.result_register.has_value()) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar node is missing a structured destination register operand"));
+  }
+  if (!scalar.scalar_cast.has_value()) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar node is missing scalar cast metadata"));
+  }
+
+  const auto& cast = *scalar.scalar_cast;
+  if (cast.supported_float_integer_conversion || cast.supported_float_width_conversion) {
+    return print_scalar_conversion_instruction(
+        instruction, scalar, cast, diagnostic_prefix);
+  }
+  if (!cast.supported_simple_integer_cast ||
+      cast.operation == ScalarCastOperationKind::Deferred) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar cast node is outside the printable simple integer subset"));
+  }
+  const auto source_bits = integer_type_bit_width(cast.source_type);
+  const auto result_bits = integer_type_bit_width(cast.result_type);
+  if (!source_bits.has_value() || !result_bits.has_value() ||
+      ((*source_bits >= *result_bits) &&
+       cast.operation != ScalarCastOperationKind::Truncate) ||
+      ((*source_bits <= *result_bits) &&
+       cast.operation == ScalarCastOperationKind::Truncate)) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar cast node requires a supported integer source/result width"));
+  }
+  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
+  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar cast node requires a structured register source operand"));
+  }
+  const auto result_view = integer_register_view(*result_bits);
+  if (!result_view.has_value()) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar cast node has an unsupported result register width"));
+  }
+  const auto result = register_name_with_view(*scalar.result_register, *result_view);
+  if (!result.has_value()) {
+    return target_unsupported(diagnostic(
+        diagnostic_prefix,
+        "scalar cast node destination is not a printable GPR register"));
+  }
+
+  std::ostringstream out;
+  switch (cast.operation) {
+    case ScalarCastOperationKind::SignExtend: {
+      if (*source_bits == 1U) {
+        const auto source = register_name_with_view(
+            *source_register,
+            *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X);
+        if (!source.has_value()) {
+          return target_unsupported(diagnostic(
+              diagnostic_prefix,
+              "scalar sign-extend node source is not a printable GPR register"));
+        }
+        out << "sbfx " << *result << ", " << *source << ", #0, #1";
+      } else {
+        std::string_view mnemonic;
+        if (*source_bits == 8U) {
+          mnemonic = "sxtb";
+        } else if (*source_bits == 16U) {
+          mnemonic = "sxth";
+        } else if (*source_bits == 32U && *result_bits == 64U) {
+          mnemonic = "sxtw";
+        } else {
+          return target_unsupported(diagnostic(
+              diagnostic_prefix,
+              "scalar sign-extend node has no printable width form"));
+        }
+        const auto source = register_name_with_view(*source_register, abi::RegisterView::W);
+        if (!source.has_value()) {
+          return target_unsupported(diagnostic(
+              diagnostic_prefix,
+              "scalar sign-extend node source is not a printable GPR register"));
+        }
+        out << mnemonic << " " << *result << ", " << *source;
+      }
+      return target_printed({out.str()});
+    }
+    case ScalarCastOperationKind::ZeroExtend: {
+      const auto source = register_name_with_view(
+          *source_register,
+          *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X);
+      if (!source.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar zero-extend node source is not a printable GPR register"));
+      }
+      out << "ubfx " << *result << ", " << *source << ", #0, #" << *source_bits;
+      return target_printed({out.str()});
+    }
+    case ScalarCastOperationKind::Truncate: {
+      if (*result_bits > 32U) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar truncate node has no printable width form"));
+      }
+      const auto source = register_name_with_view(*source_register, abi::RegisterView::W);
+      if (!source.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar truncate node source is not a printable GPR register"));
+      }
+      if (*result_bits == 32U) {
+        out << "mov " << *result << ", " << *source;
+      } else {
+        const std::uint64_t mask = (std::uint64_t{1} << *result_bits) - 1U;
+        out << "and " << *result << ", " << *source << ", #" << mask;
+      }
+      return target_printed({out.str()});
+    }
+    case ScalarCastOperationKind::FloatExtend:
+    case ScalarCastOperationKind::FloatTruncate:
+    case ScalarCastOperationKind::SignedIntToFloat:
+    case ScalarCastOperationKind::UnsignedIntToFloat:
+    case ScalarCastOperationKind::FloatToSignedInt:
+    case ScalarCastOperationKind::FloatToUnsignedInt:
+    case ScalarCastOperationKind::Deferred:
+      break;
+  }
+  return target_unsupported(diagnostic(
+      diagnostic_prefix,
+      "scalar cast node is outside the printable simple integer subset"));
 }
 
 std::optional<module::MachineInstruction> lower_scalar_cast_instruction(

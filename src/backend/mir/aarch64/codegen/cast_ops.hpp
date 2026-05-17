@@ -3,6 +3,9 @@
 #include "alu.hpp"
 #include "instruction.hpp"
 #include "../module/module.hpp"
+#include "mir/printer.hpp"
+
+#include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -30,5 +33,9 @@ make_prepared_scalar_cast_instruction_record(
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state);
+[[nodiscard]] mir::TargetInstructionPrintResult print_scalar_cast_instruction(
+    const InstructionRecord& instruction,
+    const ScalarInstructionRecord& scalar,
+    std::string_view diagnostic_prefix);
 
 }  // namespace c4c::backend::aarch64::codegen

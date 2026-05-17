@@ -1,6 +1,7 @@
 #include "machine_printer.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "cast_ops.hpp"
 #include "comparison.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
@@ -1999,91 +2000,6 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
   return target_printed({out.str()});
 }
 
-mir::TargetInstructionPrintResult print_scalar_conversion(
-    const InstructionRecord& instruction,
-    const ScalarInstructionRecord& scalar,
-    const ScalarCastRecord& cast) {
-  if ((!cast.supported_float_integer_conversion &&
-       !cast.supported_float_width_conversion) ||
-      cast.operation == ScalarCastOperationKind::Deferred) {
-    return target_unsupported(bad_header(instruction) +
-                              "scalar conversion node is outside the printable subset");
-  }
-  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
-  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar conversion node requires a structured register source operand");
-  }
-
-  std::string_view mnemonic;
-  std::optional<std::string> result;
-  std::optional<std::string> source;
-  switch (cast.operation) {
-    case ScalarCastOperationKind::FloatExtend:
-      mnemonic = "fcvt";
-      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::D);
-      source = fp_register_name_with_view(*source_register, abi::RegisterView::S);
-      break;
-    case ScalarCastOperationKind::FloatTruncate:
-      mnemonic = "fcvt";
-      result = fp_register_name_with_view(*scalar.result_register, abi::RegisterView::S);
-      source = fp_register_name_with_view(*source_register, abi::RegisterView::D);
-      break;
-    case ScalarCastOperationKind::SignedIntToFloat:
-    case ScalarCastOperationKind::UnsignedIntToFloat: {
-      const auto result_view = floating_register_view(cast.result_type);
-      const auto source_bits = integer_type_bit_width(cast.source_type);
-      if (!result_view.has_value() || !source_bits.has_value()) {
-        return target_unsupported(bad_header(instruction) +
-                                  "scalar int-to-float conversion has unsupported type width");
-      }
-      const auto source_view = integer_register_view(*source_bits);
-      if (!source_view.has_value()) {
-        return target_unsupported(bad_header(instruction) +
-                                  "scalar int-to-float conversion has unsupported integer width");
-      }
-      mnemonic = cast.operation == ScalarCastOperationKind::SignedIntToFloat ? "scvtf" : "ucvtf";
-      result = fp_register_name_with_view(*scalar.result_register, *result_view);
-      source = register_name_with_view(*source_register, *source_view);
-      break;
-    }
-    case ScalarCastOperationKind::FloatToSignedInt:
-    case ScalarCastOperationKind::FloatToUnsignedInt: {
-      const auto result_bits = integer_type_bit_width(cast.result_type);
-      const auto source_view = floating_register_view(cast.source_type);
-      if (!result_bits.has_value() || !source_view.has_value()) {
-        return target_unsupported(bad_header(instruction) +
-                                  "scalar float-to-int conversion has unsupported type width");
-      }
-      const auto result_view = integer_register_view(*result_bits);
-      if (!result_view.has_value()) {
-        return target_unsupported(bad_header(instruction) +
-                                  "scalar float-to-int conversion has unsupported integer width");
-      }
-      mnemonic = cast.operation == ScalarCastOperationKind::FloatToSignedInt ? "fcvtzs"
-                                                                             : "fcvtzu";
-      result = register_name_with_view(*scalar.result_register, *result_view);
-      source = fp_register_name_with_view(*source_register, *source_view);
-      break;
-    }
-    case ScalarCastOperationKind::SignExtend:
-    case ScalarCastOperationKind::ZeroExtend:
-    case ScalarCastOperationKind::Truncate:
-    case ScalarCastOperationKind::Deferred:
-      return target_unsupported(bad_header(instruction) +
-                                "scalar conversion node is outside the printable subset");
-  }
-  if (mnemonic.empty() || !result.has_value() || !source.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar conversion node has incomplete printable register facts");
-  }
-  std::ostringstream out;
-  out << mnemonic << " " << *result << ", " << *source;
-  return target_printed({out.str()});
-}
-
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
                                                const ScalarInstructionRecord& scalar) {
   if (!scalar.result_register.has_value()) {
@@ -2092,110 +2008,7 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
         "scalar node is missing a structured destination register operand");
   }
   if (scalar.scalar_cast.has_value()) {
-    const auto& cast = *scalar.scalar_cast;
-    if (cast.supported_float_integer_conversion || cast.supported_float_width_conversion) {
-      return print_scalar_conversion(instruction, scalar, cast);
-    }
-    if (!cast.supported_simple_integer_cast ||
-        cast.operation == ScalarCastOperationKind::Deferred) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar cast node is outside the printable simple integer subset");
-    }
-    const auto source_bits = integer_type_bit_width(cast.source_type);
-    const auto result_bits = integer_type_bit_width(cast.result_type);
-    if (!source_bits.has_value() || !result_bits.has_value() ||
-        ((*source_bits >= *result_bits) &&
-         cast.operation != ScalarCastOperationKind::Truncate) ||
-        ((*source_bits <= *result_bits) &&
-         cast.operation == ScalarCastOperationKind::Truncate)) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar cast node requires a supported integer source/result width");
-    }
-    const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
-    if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar cast node requires a structured register source operand");
-    }
-    const auto result_view = integer_register_view(*result_bits);
-    if (!result_view.has_value()) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar cast node has an unsupported result register width");
-    }
-    const auto result = register_name_with_view(*scalar.result_register, *result_view);
-    if (!result.has_value()) {
-      return target_unsupported(bad_header(instruction) +
-                                "scalar cast node destination is not a printable GPR register");
-    }
-
-    std::ostringstream out;
-    switch (cast.operation) {
-      case ScalarCastOperationKind::SignExtend: {
-        if (*source_bits == 1U) {
-          const auto source = register_name_with_view(
-              *source_register,
-              *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X);
-          if (!source.has_value()) {
-            return target_unsupported(
-                bad_header(instruction) +
-                "scalar sign-extend node source is not a printable GPR register");
-          }
-          out << "sbfx " << *result << ", " << *source << ", #0, #1";
-        } else {
-          std::string_view mnemonic;
-          if (*source_bits == 8U) {
-            mnemonic = "sxtb";
-          } else if (*source_bits == 16U) {
-            mnemonic = "sxth";
-          } else if (*source_bits == 32U && *result_bits == 64U) {
-            mnemonic = "sxtw";
-          } else {
-            return target_unsupported(bad_header(instruction) +
-                                      "scalar sign-extend node has no printable width form");
-          }
-          const auto source = register_name_with_view(*source_register, abi::RegisterView::W);
-          if (!source.has_value()) {
-            return target_unsupported(
-                bad_header(instruction) +
-                "scalar sign-extend node source is not a printable GPR register");
-          }
-          out << mnemonic << " " << *result << ", " << *source;
-        }
-        return target_printed({out.str()});
-      }
-      case ScalarCastOperationKind::ZeroExtend: {
-        const auto source = register_name_with_view(
-            *source_register,
-            *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X);
-        if (!source.has_value()) {
-          return target_unsupported(bad_header(instruction) +
-                                    "scalar zero-extend node source is not a printable GPR register");
-        }
-        out << "ubfx " << *result << ", " << *source << ", #0, #" << *source_bits;
-        return target_printed({out.str()});
-      }
-      case ScalarCastOperationKind::Truncate: {
-        if (*result_bits > 32U) {
-          return target_unsupported(bad_header(instruction) +
-                                    "scalar truncate node has no printable width form");
-        }
-        const auto source = register_name_with_view(*source_register, abi::RegisterView::W);
-        if (!source.has_value()) {
-          return target_unsupported(bad_header(instruction) +
-                                    "scalar truncate node source is not a printable GPR register");
-        }
-        if (*result_bits == 32U) {
-          out << "mov " << *result << ", " << *source;
-        } else {
-          const std::uint64_t mask = (std::uint64_t{1} << *result_bits) - 1U;
-          out << "and " << *result << ", " << *source << ", #" << mask;
-        }
-        return target_printed({out.str()});
-      }
-      case ScalarCastOperationKind::Deferred:
-        break;
-    }
-    return target_unsupported(bad_header(instruction) +
-                              "scalar cast node is outside the printable simple integer subset");
+    return print_scalar_cast_instruction(instruction, scalar, bad_header(instruction));
   }
   auto alu = make_scalar_alu_print_lines(instruction, scalar);
   if (alu.lines.has_value()) {
