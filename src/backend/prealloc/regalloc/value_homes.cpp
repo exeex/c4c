@@ -10,6 +10,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <variant>
+#include <vector>
 
 namespace c4c::backend::prepare::regalloc_detail {
 
@@ -162,6 +163,24 @@ PreparedValueHome classify_prepared_value_home(
     return home;
   }
   return home;
+}
+
+std::vector<PreparedValueHome> build_prepared_value_homes(
+    PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Function* function,
+    const PreparedAddressingFunction* function_addressing,
+    const PreparedRegallocFunction& regalloc_function) {
+  const auto pointer_carriers =
+      function == nullptr ? PreparedPointerCarrierMap{}
+                          : build_pointer_carrier_map(names, *function, function_addressing);
+  std::vector<PreparedValueHome> value_homes;
+  value_homes.reserve(regalloc_function.values.size());
+  for (const auto& value : regalloc_function.values) {
+    value_homes.push_back(
+        classify_prepared_value_home(names, target_profile, function, pointer_carriers, value));
+  }
+  return value_homes;
 }
 
 }  // namespace c4c::backend::prepare::regalloc_detail

@@ -5,6 +5,8 @@
 #include "../regalloc.hpp"
 #include "../value_locations.hpp"
 
+#include <vector>
+
 namespace c4c::backend::prepare {
 
 namespace regalloc_detail {
@@ -15,6 +17,13 @@ namespace regalloc_detail {
     const c4c::backend::bir::Function* function,
     const PreparedPointerCarrierMap& pointer_carriers,
     const PreparedRegallocValue& value);
+
+[[nodiscard]] std::vector<PreparedValueHome> build_prepared_value_homes(
+    PreparedNameTables& names,
+    const c4c::TargetProfile& target_profile,
+    const c4c::backend::bir::Function* function,
+    const PreparedAddressingFunction* function_addressing,
+    const PreparedRegallocFunction& regalloc_function);
 
 }  // namespace regalloc_detail
 

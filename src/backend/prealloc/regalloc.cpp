@@ -2,7 +2,6 @@
 #include "regalloc/assignment.hpp"
 #include "regalloc/classification.hpp"
 #include "regalloc/intervals.hpp"
-#include "regalloc/pointer_carriers.hpp"
 #include "regalloc/stack_slots.hpp"
 #include "regalloc/storage.hpp"
 #include "regalloc/value_homes.hpp"
@@ -32,7 +31,7 @@ using regalloc_detail::assigned_storage_kind;
 using regalloc_detail::assigned_storage_matches;
 using regalloc_detail::choose_eviction_candidate;
 using regalloc_detail::choose_register_span;
-using regalloc_detail::classify_prepared_value_home;
+using regalloc_detail::build_prepared_value_homes;
 using regalloc_detail::find_regalloc_value;
 using regalloc_detail::find_f128_constant_regalloc_value;
 using regalloc_detail::interval_start_sort_key;
@@ -43,8 +42,6 @@ using regalloc_detail::materialize_register_names;
 using regalloc_detail::materialize_register_placements;
 using regalloc_detail::allocate_stack_slot;
 using regalloc_detail::normalized_value_size;
-using regalloc_detail::PreparedPointerCarrierMap;
-using regalloc_detail::build_pointer_carrier_map;
 using regalloc_detail::published_register_group_width;
 using regalloc_detail::register_bank_from_class;
 using regalloc_detail::resolve_register_class;
@@ -1363,14 +1360,11 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
       .value_homes = {},
       .move_bundles = {},
   };
-  const auto pointer_carriers =
-      function == nullptr ? PreparedPointerCarrierMap{}
-                          : build_pointer_carrier_map(names, *function, function_addressing);
-  function_locations.value_homes.reserve(regalloc_function.values.size());
-  for (const auto& value : regalloc_function.values) {
-    function_locations.value_homes.push_back(
-        classify_prepared_value_home(names, target_profile, function, pointer_carriers, value));
-  }
+  function_locations.value_homes = build_prepared_value_homes(names,
+                                                             target_profile,
+                                                             function,
+                                                             function_addressing,
+                                                             regalloc_function);
   for (const auto& move : regalloc_function.move_resolution) {
     append_prepared_move_bundle(function_locations, move);
   }

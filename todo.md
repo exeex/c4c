@@ -8,30 +8,30 @@ Current Step Title: Extract Value-Home Publication
 
 ## Just Finished
 
-Step 4 follow-up extracted behavior-preserving pointer-carrier map construction
-out of `src/backend/prealloc/regalloc.cpp` into
-`src/backend/prealloc/regalloc/pointer_carriers.cpp` with declarations in
-`src/backend/prealloc/regalloc/pointer_carriers.hpp`.
+Step 4 follow-up extracted behavior-preserving value-home publication out of
+`src/backend/prealloc/regalloc.cpp` into
+`src/backend/prealloc/regalloc/value_homes.cpp` with declarations in
+`src/backend/prealloc/regalloc/value_homes.hpp`.
 
 Moved ownership:
 
-- `PreparedPointerCarrierState`
-- `PreparedPointerCarrierMap`
-- `build_pointer_carrier_map`
-- pointer-carrier construction helpers used only by that builder
+- `build_prepared_value_homes`
+- ordered construction of `PreparedValueHome` entries from regalloc values
+- pointer-carrier map consumption for value-home publication
 
-`src/backend/prealloc/regalloc.cpp` still owns value-location publication order,
-move bundle publication, ABI binding publication, runtime-helper mapping,
-allocation decisions, and prepared dump sequencing. The extracted builder still
-returns the same completed pointer-carrier map consumed by
-`classify_prepared_value_home`.
+`src/backend/prealloc/regalloc.cpp` still owns the value-location function
+coordinator and preserves publication order: value homes first, then move
+bundles, then call ABI bindings. Move bundle publication, ABI binding
+publication, runtime-helper mapping, allocation decisions, and prepared dump
+sequencing were not moved.
 
 ## Suggested Next
 
-Next coherent packet: inspect the remaining value-location publication helpers
-for a narrow pure boundary that does not cross move bundle publication, ABI
-binding publication, runtime-helper mapping, allocation decisions, or prepared
-dump ordering.
+Next coherent packet: inspect move-bundle publication only if the supervisor
+wants a separate Step 4 follow-up; otherwise ask the plan owner/reviewer whether
+Step 4 is exhausted enough to move on, because the remaining
+`build_prepared_value_location_function` body is now mostly coordination across
+value homes, move bundles, and call ABI bindings.
 
 ## Watchouts
 
@@ -56,10 +56,10 @@ dump ordering.
   in `run_regalloc()` keep their existing call shape.
 - `expire_completed_assignments` still mutates the active assignment vectors in
   `regalloc.cpp`; do not move it without a broader allocator mutation packet.
-- `value_homes.cpp` owns classification only. Pointer-carrier discovery still
-  lives in `pointer_carriers.cpp`; do not merge pointer-carrier construction
-  with value-location publication or runtime-helper mapping in a follow-on
-  packet.
+- `value_homes.cpp` owns classification plus ordered value-home publication.
+  Pointer-carrier discovery still lives in `pointer_carriers.cpp`; do not merge
+  pointer-carrier construction with move-bundle publication, ABI binding
+  publication, or runtime-helper mapping in a follow-on packet.
 - `PreparedPointerCarrierMap` is declared in `pointer_carriers.hpp` so the
   classifier and publication call site can share the carrier result type.
 - New `pointer_carriers.cpp` was picked up by the recursive prealloc source glob
@@ -84,6 +84,12 @@ dump ordering.
   after CMake regenerated during the delegated build.
 - New `storage.cpp` was picked up by the recursive prealloc source glob after
   CMake regenerated during the delegated build.
+- `build_prepared_value_location_function` was intentionally left in
+  `regalloc.cpp`; moving it would require either moving/exposing move-bundle
+  publication and call ABI binding publication or introducing callback plumbing
+  around those adjacent families.
+- `clang-format` is not installed in this environment; the touched declarations
+  and call sites were kept manually wrapped.
 
 ## Proof
 
