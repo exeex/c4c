@@ -15,6 +15,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/comparison.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/compatibility_projection.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/dispatch.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/f128.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/float_ops.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/globals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/machine_printer.cpp"
