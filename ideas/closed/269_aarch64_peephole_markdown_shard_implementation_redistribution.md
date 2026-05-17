@@ -1,7 +1,8 @@
 # AArch64 `peephole.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -47,6 +48,12 @@ must be explicit and must not obscure the compiled-module boundary.
 - `peephole.md` is deleted.
 - The current compiled-module and shared-printer route remains clear.
 - Focused backend proof confirms no unintended output changes.
+
+## Closure Note
+
+Closed after the active runbook completed the redistribution: the compiled
+`peephole.cpp` / `peephole.hpp` owner exists, the markdown shard was removed,
+and focused backend proof passed without weakened tests or expectation changes.
 
 ## Reviewer Reject Signals
 
