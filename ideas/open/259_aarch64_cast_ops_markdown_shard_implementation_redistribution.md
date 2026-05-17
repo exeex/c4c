@@ -70,6 +70,21 @@ family-specific code in family-neutral owners.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
 
+## Paused State
+
+Paused on 2026-05-17 to prioritize
+`ideas/open/263_aarch64_codegen_public_compiled_module_interface.md`.
+
+Resume from the active runbook's former Step 3: move scalar cast record
+construction into the cast-ops owner without changing behavior. Step 2 had
+introduced `src/backend/mir/aarch64/codegen/cast_ops.cpp`,
+`src/backend/mir/aarch64/codegen/cast_ops.hpp`, and build registration, with
+focused cast proof passing:
+
+```sh
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_.*cast'
+```
+
 ## Reviewer Reject Signals
 
 Reject the route or slice if it:

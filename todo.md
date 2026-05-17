@@ -1,65 +1,40 @@
 Status: Active
-Source Idea Path: ideas/open/259_aarch64_cast_ops_markdown_shard_implementation_redistribution.md
+Source Idea Path: ideas/open/263_aarch64_codegen_public_compiled_module_interface.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Move cast construction and lowering behavior
+Current Step ID: 1
+Current Step Title: Inventory the current compiled-module public surface
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 of `plan.md` introduced the compiled AArch64 cast-ops owner shell.
-
-Completed work:
-- added `src/backend/mir/aarch64/codegen/cast_ops.hpp` with the AArch64
-  codegen namespace and nearby shard includes;
-- added `src/backend/mir/aarch64/codegen/cast_ops.cpp` as the compiled owner
-  translation unit;
-- registered `cast_ops.cpp` in `src/backend/CMakeLists.txt`;
-- moved no cast behavior and changed no lowering, record, or printer logic.
+Lifecycle switched from the paused 259 cast-ops redistribution idea to
+`ideas/open/263_aarch64_codegen_public_compiled_module_interface.md`.
 
 ## Suggested Next
 
-Next movement packet: move scalar cast record construction into the cast-ops
-owner without changing behavior.
+Execute Step 1 of `plan.md`: inventory the current compiled-module public
+surface before editing implementation code.
 
-Owned files for that packet:
-- `src/backend/mir/aarch64/codegen/cast_ops.cpp`
-- `src/backend/mir/aarch64/codegen/cast_ops.hpp`
-- `src/backend/mir/aarch64/codegen/instruction.cpp`
-- `src/backend/mir/aarch64/codegen/instruction.hpp`
-- `src/backend/CMakeLists.txt`
-- `todo.md`
-
-Work:
-- move `machine_opcode_from_scalar_cast`,
-  `make_scalar_cast_instruction_record`, `make_prepared_scalar_cast_record`,
-  and `make_prepared_scalar_cast_instruction_record` from `instruction.cpp`
-  into `cast_ops.cpp`;
-- keep their declarations exported from the new shard header and include that
-  header from existing callers as needed;
-- preserve all scalar cast selection behavior and diagnostics byte-for-byte
-  where practical.
+Expected first packet:
+- find the definitions and callers of `aarch64::module::Module` and
+  `aarch64::module::BuildResult`;
+- separate public handoff usage from internal implementation details that can
+  remain in place;
+- identify the minimal Step 2 edit set for adding `codegen.hpp` and public
+  codegen-owned names;
+- choose the focused build/test proof command for the first code slice.
 
 ## Watchouts
 
-- Keep this as behavior-preserving cast-ops ownership redistribution.
-- Do not expand scalar cast semantics or weaken test expectations.
-- Do not touch other AArch64 markdown shards for this active plan.
-- Preserve the F128 helper delegation and I128 bitcast transport routes; they
-  are cast-shaped routing today but not the first scalar cast shell move.
-- The cast printer currently has both conversion spelling and simple integer
-  spelling; move those later as spelling helpers, not in the shell packet.
-- `cast_ops.hpp` currently exports no behavior; the next packet should be the
-  first actual ownership movement.
+- Keep this behavior-preserving; no lowering, emitted assembly, or diagnostics
+  changes.
+- Do not broaden into a full namespace purge of lower-level module,
+  diagnostic, or lowering internals.
+- Compatibility wrappers are allowed only as staged migration support; the
+  public route should advertise `aarch64::codegen` names.
+- Include public asm smoke in proof once code changes begin.
 
 ## Proof
 
-Proof command run for this packet:
-
-```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_.*cast'
-```
-
-Result: passed. The packet proof was reviewed with the owner-shell slice; the
-accepted full-suite baseline has been rolled forward into `test_baseline.log`.
+Lifecycle-only switch. No build or test proof was required for this packet.
