@@ -1,4 +1,5 @@
 #include "prealloc.hpp"
+#include "regalloc/assignment.hpp"
 #include "regalloc/classification.hpp"
 #include "regalloc/intervals.hpp"
 #include "regalloc/values.hpp"
@@ -23,6 +24,9 @@ namespace {
 
 using regalloc_detail::assigned_register_placement;
 using regalloc_detail::append_f128_constant_values_for_function;
+using regalloc_detail::ActiveRegisterAssignment;
+using regalloc_detail::choose_eviction_candidate;
+using regalloc_detail::choose_register_span;
 using regalloc_detail::find_f128_constant_regalloc_value;
 using regalloc_detail::interval_start_sort_key;
 using regalloc_detail::intervals_overlap;
@@ -36,13 +40,6 @@ using regalloc_detail::resolve_register_class;
 using regalloc_detail::resolve_register_group_width;
 using regalloc_detail::value_priority;
 using regalloc_detail::weighted_use_score;
-
-struct ActiveRegisterAssignment {
-  std::size_t value_index = 0;
-  std::size_t end_point = 0;
-  std::string register_name;
-  std::vector<std::string> occupied_register_names;
-};
 
 struct PreparedPointerCarrierState {
   ValueNameId base_value_name = kInvalidValueName;
@@ -1104,87 +1101,6 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
                                 return assignment.end_point < start_point;
                               }),
                active.end());
-}
-
-[[nodiscard]] bool assignments_overlap(const ActiveRegisterAssignment& active_assignment,
-                                       const PreparedRegisterCandidateSpan& candidate) {
-  for (const auto& active_register : active_assignment.occupied_register_names) {
-    for (const auto& candidate_register : candidate.occupied_register_names) {
-      if (active_register == candidate_register) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-[[nodiscard]] std::optional<PreparedRegisterCandidateSpan> choose_register_span(
-    const std::vector<ActiveRegisterAssignment>& active,
-    const std::vector<PreparedRegisterCandidateSpan>& candidate_spans) {
-  for (const auto& candidate : candidate_spans) {
-    bool overlap = false;
-    for (const auto& assignment : active) {
-      if (assignments_overlap(assignment, candidate)) {
-        overlap = true;
-        break;
-      }
-    }
-    if (!overlap) {
-      return candidate;
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] bool has_lower_allocation_rank(const PreparedRegallocValue& lhs,
-                                             const PreparedRegallocValue& rhs) {
-  if (lhs.spill_weight != rhs.spill_weight) {
-    return lhs.spill_weight < rhs.spill_weight;
-  }
-  if (lhs.priority != rhs.priority) {
-    return lhs.priority < rhs.priority;
-  }
-  if (lhs.live_interval.has_value() != rhs.live_interval.has_value()) {
-    return !lhs.live_interval.has_value();
-  }
-  if (lhs.live_interval.has_value() && rhs.live_interval.has_value() &&
-      lhs.live_interval->start_point != rhs.live_interval->start_point) {
-    return lhs.live_interval->start_point > rhs.live_interval->start_point;
-  }
-  return lhs.value_id > rhs.value_id;
-}
-
-template <typename CanEvict>
-[[nodiscard]] std::optional<std::size_t> choose_eviction_candidate(
-    const PreparedRegallocFunction& function,
-    const std::vector<ActiveRegisterAssignment>& active,
-    const std::vector<PreparedRegisterCandidateSpan>& candidate_spans,
-    const PreparedRegallocValue& value,
-    CanEvict can_evict) {
-  std::optional<std::size_t> weakest_active_index;
-  for (std::size_t active_index = 0; active_index < active.size(); ++active_index) {
-    const auto& assignment = active[active_index];
-    const bool overlaps_any_candidate =
-        std::any_of(candidate_spans.begin(),
-                    candidate_spans.end(),
-                    [&](const PreparedRegisterCandidateSpan& candidate) {
-                      return assignments_overlap(assignment, candidate);
-                    });
-    if (!overlaps_any_candidate || !can_evict(assignment)) {
-      continue;
-    }
-
-    const auto& active_value = function.values[assignment.value_index];
-    if (!has_lower_allocation_rank(active_value, value)) {
-      continue;
-    }
-    if (!weakest_active_index.has_value() ||
-        has_lower_allocation_rank(active_value,
-                                  function.values[active[*weakest_active_index].value_index])) {
-      weakest_active_index = active_index;
-    }
-  }
-  return weakest_active_index;
 }
 
 [[nodiscard]] std::optional<PreparedStackSlotAssignment> existing_stack_slot_assignment(

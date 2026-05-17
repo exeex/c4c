@@ -8,32 +8,31 @@ Current Step Title: Isolate Interval Ranking and Physical Assignment
 
 ## Just Finished
 
-Step 3 extracted the pure interval ranking, program-point location, and
-weighted-use scoring helpers into `src/backend/prealloc/regalloc/intervals.cpp`
-with narrow declarations in `src/backend/prealloc/regalloc/intervals.hpp`.
+Step 3 second extraction moved the read-only physical-assignment candidate
+helpers into `src/backend/prealloc/regalloc/assignment.cpp` with a narrow
+private header in `src/backend/prealloc/regalloc/assignment.hpp`.
 
-Moved helpers:
+Moved ownership:
 
-- `ProgramPointLocation`
-- `intervals_overlap`
-- `value_priority`
-- `loop_depth_weight`
-- `locate_program_point`
-- `weighted_use_score`
-- `interval_start_sort_key`
+- `ActiveRegisterAssignment`
+- `assignments_overlap`
+- `choose_register_span`
+- `has_lower_allocation_rank`
+- `choose_eviction_candidate`
 
-`src/backend/prealloc/regalloc.cpp` now includes the private interval helper
-header and imports only the read-only ranking/scoring helpers it still calls.
-Allocation loops, active assignment mutation, stack-slot fallback mutation,
-move resolution, pointer carriers, runtime-helper mapping, value-location
-publication, and prepared dump semantics remain in `regalloc.cpp`.
+`src/backend/prealloc/regalloc.cpp` now includes the private assignment helper
+header and imports the active-assignment record plus read-only candidate/span
+selection helpers. Active-list expiry, physical assignment mutation, eviction
+mutation, stack-slot fallback, move resolution, pointer carriers,
+runtime-helper mapping, value-location publication, and prepared dump semantics
+remain in `regalloc.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: inspect physical assignment selection helpers in
-`regalloc.cpp` and extract only read-only candidate/ranking helpers if there is
-a clean owner; keep assignment mutation and stack-slot fallback in
-`regalloc.cpp`.
+Next coherent packet: inspect whether the remaining stack-slot fallback helpers
+can move behind a focused allocator/stack-fallback owner without taking
+prepared value-home publication, move resolution, pointer carriers, or runtime
+helper mapping with them.
 
 ## Watchouts
 
@@ -43,6 +42,8 @@ a clean owner; keep assignment mutation and stack-slot fallback in
 - Keep implementation progress in this file unless runbook scope changes.
 - New `intervals.cpp` was picked up by the recursive prealloc source glob after
   CMake regenerated during the delegated build.
+- New `assignment.cpp` was also picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
 - `locate_program_point` is intentionally shared by weighted-use scoring and
   spill/reload publication through `regalloc_detail::ProgramPointLocation`.
 - The allocation-order comparator remains inline in `run_regalloc()` to
@@ -51,6 +52,11 @@ a clean owner; keep assignment mutation and stack-slot fallback in
 - `intervals.cpp` is read-only and must not grow into allocator mutation,
   stack-slot fallback, move resolution, runtime-helper mapping, or publication
   ownership.
+- `assignment.cpp` owns read-only candidate/rank helpers only. The templated
+  eviction-candidate helper remains header-defined so lambda eviction policies
+  in `run_regalloc()` keep their existing call shape.
+- `expire_completed_assignments` still mutates the active assignment vectors in
+  `regalloc.cpp`; do not move it without a broader allocator mutation packet.
 - `PreparedPointerCarrierMap` and `build_pointer_carrier_map` are pointer
   carrier owners, but `classify_prepared_value_home` consumes their result; do
   not move pointer carriers with value-home publication in the same first
