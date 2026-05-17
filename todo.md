@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/262_aarch64_i128_ops_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Create the compiled i128-ops owner boundary
+Current Step ID: 3
+Current Step Title: Move i128 construction and lowering bodies
 
 # Current Packet
 
