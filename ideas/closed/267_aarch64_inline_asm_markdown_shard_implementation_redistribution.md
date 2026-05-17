@@ -1,7 +1,15 @@
 # AArch64 `inline_asm.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
+
+## Closure Summary
+
+Closed after `inline_asm.cpp` and `inline_asm.hpp` became the compiled
+AArch64 inline-asm owner, the stale `inline_asm.md` shard was deleted, and
+backend proof preserved current supported behavior while keeping public
+inline-asm cases blocked and unsupported handling fail-closed.
 
 ## Intent
 
