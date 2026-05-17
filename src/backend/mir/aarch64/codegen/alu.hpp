@@ -41,6 +41,12 @@ struct ScalarAluPrintResult {
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const bir::Value& value,
     OperandRecord& out);
+[[nodiscard]] PreparedScalarAluRecordError make_prepared_scalar_result_register_operand(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& result,
+    RegisterOperand& out);
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(
     ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_unary_instruction_record(

@@ -1,5 +1,6 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
+#include "float_ops.hpp"
 #include "operands.hpp"
 
 #include <cstdint>
@@ -30,40 +31,6 @@ namespace mir = c4c::backend::mir;
   return PreparedScalarInstructionRecordResult{.record = std::nullopt, .error = error};
 }
 
-[[nodiscard]] std::optional<abi::RegisterView> scalar_fp_register_view(
-    bir::TypeKind type) {
-  switch (type) {
-    case bir::TypeKind::F32:
-      return abi::RegisterView::S;
-    case bir::TypeKind::F64:
-      return abi::RegisterView::D;
-    case bir::TypeKind::Void:
-    case bir::TypeKind::I1:
-    case bir::TypeKind::I8:
-    case bir::TypeKind::I16:
-    case bir::TypeKind::I32:
-    case bir::TypeKind::I64:
-    case bir::TypeKind::I128:
-    case bir::TypeKind::Ptr:
-    case bir::TypeKind::F128:
-      return std::nullopt;
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<std::string> scalar_fp_register_name_with_view(
-    const RegisterOperand& operand,
-    abi::RegisterView view) {
-  if (!abi::is_fp_simd_register(operand.reg)) {
-    return std::nullopt;
-  }
-  const auto viewed = abi::fp_simd_register(operand.reg.index, view);
-  if (!viewed.has_value()) {
-    return std::nullopt;
-  }
-  return abi::register_name(*viewed);
-}
-
 [[nodiscard]] std::optional<std::string> scalar_gp_register_name_with_view(
     const RegisterOperand& operand,
     abi::RegisterView view) {
@@ -84,27 +51,6 @@ namespace mir = c4c::backend::mir;
 [[nodiscard]] bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
   return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
          operand.signed_value <= 4095;
-}
-
-[[nodiscard]] std::string_view scalar_floating_alu_mnemonic(
-    ScalarAluOperationKind operation) {
-  switch (operation) {
-    case ScalarAluOperationKind::Add:
-      return "fadd";
-    case ScalarAluOperationKind::Sub:
-      return "fsub";
-    case ScalarAluOperationKind::Mul:
-      return "fmul";
-    case ScalarAluOperationKind::Div:
-      return "fdiv";
-    case ScalarAluOperationKind::And:
-    case ScalarAluOperationKind::Or:
-    case ScalarAluOperationKind::Xor:
-    case ScalarAluOperationKind::LogicalShiftRight:
-    case ScalarAluOperationKind::Deferred:
-      return {};
-  }
-  return {};
 }
 
 [[nodiscard]] std::optional<unsigned> integer_scalar_bit_width(bir::TypeKind type) {
@@ -700,40 +646,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     return {.lines = std::move(lines), .diagnostic = {}};
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
-    const auto& alu = *scalar.scalar_alu;
-    if (scalar.inputs.size() != 2) {
-      return {.lines = std::nullopt,
-              .diagnostic =
-                  "scalar FP node requires exactly two structured register operands"};
-    }
-    const auto result_view = scalar_fp_register_view(alu.result_type);
-    const auto operand_view = scalar_fp_register_view(alu.operand_type);
-    if (!result_view.has_value() || !operand_view.has_value() ||
-        result_view != operand_view) {
-      return {.lines = std::nullopt,
-              .diagnostic =
-                  "scalar FP node requires matching F32/F64 operand and result widths"};
-    }
-    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
-    const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
-    if (scalar.inputs[0].kind != OperandKind::Register ||
-        scalar.inputs[1].kind != OperandKind::Register ||
-        lhs_register == nullptr || rhs_register == nullptr) {
-      return {.lines = std::nullopt,
-              .diagnostic =
-                  "scalar FP node requires structured FP/SIMD register operands"};
-    }
-    const auto mnemonic = scalar_floating_alu_mnemonic(alu.operation);
-    const auto result = scalar_fp_register_name_with_view(*scalar.result_register, *result_view);
-    const auto lhs = scalar_fp_register_name_with_view(*lhs_register, *operand_view);
-    const auto rhs = scalar_fp_register_name_with_view(*rhs_register, *operand_view);
-    if (mnemonic.empty() || !result.has_value() || !lhs.has_value() || !rhs.has_value()) {
-      return {.lines = std::nullopt,
-              .diagnostic = "scalar FP node has incomplete printable register facts"};
-    }
-    std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
-    return {.lines = std::vector<std::string>{out.str()}, .diagnostic = {}};
+    return make_scalar_float_alu_print_lines(scalar);
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
       (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::UDiv ||
@@ -963,41 +876,6 @@ bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
   return false;
 }
 
-bool is_scalar_alu_floating_opcode(bir::BinaryOpcode opcode) {
-  switch (opcode) {
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::SDiv:
-    case bir::BinaryOpcode::UDiv:
-      return true;
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
-    case bir::BinaryOpcode::SRem:
-    case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Eq:
-    case bir::BinaryOpcode::Ne:
-    case bir::BinaryOpcode::Slt:
-    case bir::BinaryOpcode::Sle:
-    case bir::BinaryOpcode::Sgt:
-    case bir::BinaryOpcode::Sge:
-    case bir::BinaryOpcode::Ult:
-    case bir::BinaryOpcode::Ule:
-    case bir::BinaryOpcode::Ugt:
-    case bir::BinaryOpcode::Uge:
-      return false;
-  }
-  return false;
-}
-
-bool is_scalar_alu_floating_type(bir::TypeKind type) {
-  return type == bir::TypeKind::F32 || type == bir::TypeKind::F64;
-}
-
 bool is_scalar_unary_integer_operation(ScalarUnaryOperationKind operation,
                                        bir::TypeKind type) {
   switch (operation) {
@@ -1175,6 +1053,41 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
   return PreparedScalarAluRecordError::None;
 }
 
+PreparedScalarAluRecordError make_prepared_scalar_result_register_operand(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& result,
+    RegisterOperand& out) {
+  if (result.kind != bir::Value::Kind::Named || result.name.empty()) {
+    return PreparedScalarAluRecordError::UnsupportedResultValue;
+  }
+
+  const auto* result_home = find_prepared_scalar_value_home(names, value_locations, result);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return PreparedScalarAluRecordError::MissingResultValueHome;
+  }
+  const auto* result_storage = find_prepared_scalar_storage(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return PreparedScalarAluRecordError::MissingResultStorage;
+  }
+  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      (!result_storage->register_placement.has_value() &&
+       (!result_home->register_name.has_value() ||
+        !result_storage->register_name.has_value() ||
+        *result_home->register_name != *result_storage->register_name))) {
+    return PreparedScalarAluRecordError::UnsupportedResultStorage;
+  }
+  const auto result_register = make_prepared_scalar_register_operand(
+      *result_home, *result_storage, result.type, RegisterOperandRole::StoragePlan);
+  if (!result_register.has_value()) {
+    return PreparedScalarAluRecordError::RegisterConversionFailed;
+  }
+  out = *result_register;
+  return PreparedScalarAluRecordError::None;
+}
+
 ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) {
   return ScalarInstructionRecord{
       .result_value_id = alu.result_value_id,
@@ -1200,15 +1113,16 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
       is_scalar_alu_integer_opcode(binary.opcode);
-  const bool is_floating_operation = is_scalar_alu_floating_type(binary.operand_type) &&
-                                     is_scalar_alu_floating_type(binary.result.type) &&
-                                     is_scalar_alu_floating_opcode(binary.opcode);
+  if (!is_integer_operation && is_prepared_scalar_float_alu_operation(binary)) {
+    return make_prepared_scalar_float_alu_record(
+        names, value_locations, storage_plan, binary);
+  }
   const bool may_be_unsigned_reduction =
       is_unsigned_power_of_two_reduction_opcode(binary.opcode) &&
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
       binary.operand_type == binary.result.type;
-  if (!is_integer_operation && !is_floating_operation && !may_be_unsigned_reduction) {
+  if (!is_integer_operation && !may_be_unsigned_reduction) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
   if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
@@ -1219,27 +1133,11 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOperandType);
   }
 
-  const auto* result_home =
-      find_prepared_scalar_value_home(names, value_locations, binary.result);
-  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultValueHome);
-  }
-  const auto* result_storage = find_prepared_scalar_storage(storage_plan, result_home->value_id);
-  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::MissingResultStorage);
-  }
-  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
-      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      (!result_storage->register_placement.has_value() &&
-       (!result_home->register_name.has_value() ||
-        !result_storage->register_name.has_value() ||
-        *result_home->register_name != *result_storage->register_name))) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedResultStorage);
-  }
-  const auto result_register = make_prepared_scalar_register_operand(
-      *result_home, *result_storage, binary.result.type, RegisterOperandRole::StoragePlan);
-  if (!result_register.has_value()) {
-    return scalar_alu_record_error(PreparedScalarAluRecordError::RegisterConversionFailed);
+  RegisterOperand result_register;
+  if (const auto error = make_prepared_scalar_result_register_operand(
+          names, value_locations, storage_plan, binary.result, result_register);
+      error != PreparedScalarAluRecordError::None) {
+    return scalar_alu_record_error(error);
   }
 
   OperandRecord lhs;
@@ -1287,8 +1185,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .operation = operation,
               .source_binary_opcode = binary.opcode,
               .operand_type = binary.operand_type,
-              .result_value_id = result_home->value_id,
-              .result_value_name = result_home->value_name,
+              .result_value_id = result_register.value_id,
+              .result_value_name = result_register.value_name,
               .result_type = binary.result.type,
               .result_register = result_register,
               .lhs = lhs,
@@ -1296,7 +1194,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .post_zero_extend_result_bits = post_zero_extend_result_bits,
               .post_sign_extend_result_bits = post_sign_extend_result_bits,
               .supported_integer_operation = supported_integer_operation,
-              .supported_floating_operation = is_floating_operation,
+              .supported_floating_operation = false,
           },
       .error = PreparedScalarAluRecordError::None,
   };
