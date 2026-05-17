@@ -8,7 +8,7 @@ Current Step Title: Extract special carriers and runtime helper publishers
 
 ## Just Finished
 
-Completed Step 4 intrinsic prepared fact publisher extraction. `populate_intrinsic_carriers()` now lives in `src/backend/prealloc/intrinsics.cpp`, with `src/backend/prealloc/intrinsics.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_intrinsic_carriers(prepared_)` in the same phase order after atomic publication and before inline-asm publication. Intrinsic value-name/home lookup, prepared call-plan lookup, carrier construction, family validation, and missing-fact bookkeeping were moved into the focused publisher. Inline asm keeps a narrow local value-name helper in `prealloc.cpp`; no broad private helper header was added. The existing recursive prealloc source glob picked up `intrinsics.cpp`; no build registration edit was needed.
+Completed Step 4 inline-asm prepared fact publisher extraction. `populate_inline_asm_carriers()` now lives in `src/backend/prealloc/inline_asm.cpp`, with `src/backend/prealloc/inline_asm.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_inline_asm_carriers(prepared_)` in the same phase order after intrinsic publication and before runtime-helper publication. Inline-asm missing-fact handling, register identity parsing, operand construction, carrier validation, and carrier construction moved into the focused publisher file. The value-home lookup needed by inline asm is duplicated narrowly inside `inline_asm.cpp`; no broad private helper header was added. The existing recursive prealloc source glob picked up `inline_asm.cpp`; no build registration edit was needed.
 
 ## Suggested Next
 
@@ -32,10 +32,11 @@ Extract the next coherent Step 4 runtime-helper publisher family only after depe
 - Variadic entry plans keep narrow local copies of value-name lookup, offset alignment, frame-slot id allocation, and variadic storage-slot helpers; `prealloc.cpp` keeps its own copies where frame and runtime-helper publishers still need them.
 - AST dependency checks showed the atomic publisher chain is self-contained: `publish_contract_plans()` calls `populate_atomic_operations()`, which calls `build_atomic_operation_carrier()`, which depends only on name-table APIs and local atomic missing-fact/value-name helpers.
 - AST dependency checks showed the intrinsic publisher chain is self-contained after keeping inline asm on a local value-name helper: `publish_contract_plans()` calls `populate_intrinsic_carriers()`, which calls `find_call_plan_for_instruction()` and `build_intrinsic_carrier()`, and the carrier builder owns the intrinsic validation and missing-fact helpers in `intrinsics.cpp`.
+- AST dependency checks showed the inline-asm publisher chain is self-contained after keeping a narrow local value-home lookup in `inline_asm.cpp`: `populate_inline_asm_carriers()` calls `build_inline_asm_carrier()`, which owns inline-asm operand construction, register identity parsing, validation, and missing-fact helpers in the new file.
 - Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. A prior build reconfigured because the recursive prealloc source glob picked up `intrinsics.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. The build reconfigured because the recursive prealloc source glob picked up `inline_asm.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
 
 Post-commit baseline review follow-up: supervisor accepted `test_baseline.new.log` into `test_baseline.log`, so the baseline-review reminder has been handled.
