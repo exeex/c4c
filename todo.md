@@ -1,52 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 7
-Current Step Title: Extract Pointer Carrier and Runtime-Helper Mapping
+Current Step ID: 8
+Current Step Title: Extract Spill and Reload Publication
 
 # Current Packet
 
 ## Just Finished
 
-Step 7 extracted runtime-helper mapping construction out of
+Step 8 extracted spill/reload prepared-fact publication out of
 `src/backend/prealloc/regalloc.cpp` without changing behavior.
 
 Moved ownership:
 
-- i128 div/rem helper opcode, kind, and callee mapping helpers
-- i128 float/integer conversion cast support, width, kind, and callee helpers
-- f128 soft-float arithmetic/comparison opcode, kind, callee, and zero-test
-  helpers
-- f128 width-conversion cast detection, kind, and callee helpers
-- i128/f128 missing-required-fact append helpers
-- `append_i128_runtime_helper_mappings`
-- `append_f128_runtime_helper_mappings`
+- `append_spill_reload_ops`
 
 New files:
 
-- `src/backend/prealloc/regalloc/runtime_helpers.cpp`
-- `src/backend/prealloc/regalloc/runtime_helpers.hpp`
+- `src/backend/prealloc/regalloc/spill_reload.cpp`
+- `src/backend/prealloc/regalloc/spill_reload.hpp`
 
-The new runtime-helper owner depends only on BIR traversal, prepared
-runtime-helper contracts, regalloc value lookup, and f128 constant lookup. The
-`run_regalloc()` call sites stay in the same order after call/return move
-resolution and before frame/value-location publication, preserving runtime
-helper mapping order and the surrounding move/value publication order.
+The new spill/reload owner depends only on prepared liveness, allocator-chosen
+spill points, existing program-point lookup, register-bank classification, and
+the mutable `PreparedRegallocFunction` publication target. The `run_regalloc()`
+call remains in the same position after allocation and before phi/consumer/call
+move resolution, runtime-helper mapping, frame publication, and value-location
+publication.
 
 ## Suggested Next
 
-Next coherent packet: inspect whether spill/reload publication has a clean
-owner boundary separate from allocation decisions, runtime-helper mapping,
-value-location publication, and prepared move-bundle publication.
+Next coherent packet: Step 9 coordinator consolidation. Remove any dead
+includes/using declarations left by extraction and document the remaining
+ownership map only where the repo already carries prealloc ownership guidance.
 
 ## Watchouts
 
+- Preserve spill/reload publication order: value order, one spill at the
+  allocator-chosen spill point, then unique reload use points after that spill
+  point.
+- Keep the spill heuristic, spill point vector mutation, and allocation
+  decisions in `run_regalloc()` or a future allocator owner; `spill_reload.cpp`
+  should stay publication-only.
 - Preserve move-resolution ordering, duplicate-check behavior, ABI semantics,
-  allocation decisions, prepared dump output, and value-location publication
-  order.
+  runtime-helper mapping order, prepared dump output, and value-location
+  publication order.
 - Do not create testcase-shaped shortcuts or expectation downgrades.
 - Do not split prepared printer output in this plan.
 - Keep implementation progress in this file unless runbook scope changes.
+- New `spill_reload.cpp` was picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
 - New `intervals.cpp` was picked up by the recursive prealloc source glob after
   CMake regenerated during the delegated build.
 - New `assignment.cpp` was also picked up by the recursive prealloc source glob
@@ -124,6 +126,10 @@ value-location publication, and prepared move-bundle publication.
   do not grow it into call/phi/consumer move resolution, spill/reload
   publication, value-home publication, prepared move-bundle publication, or
   allocation policy.
+- `spill_reload.cpp` includes `classification.hpp` and `intervals.hpp` for
+  read-only helper calls only; do not grow it into register-class policy,
+  weighted-use scoring, stack-slot allocation, runtime-helper mapping, or
+  move-bundle publication.
 
 ## Proof
 

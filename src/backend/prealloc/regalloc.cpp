@@ -7,6 +7,7 @@
 #include "regalloc/intervals.hpp"
 #include "regalloc/phi_moves.hpp"
 #include "regalloc/runtime_helpers.hpp"
+#include "regalloc/spill_reload.hpp"
 #include "regalloc/stack_slots.hpp"
 #include "regalloc/storage.hpp"
 #include "regalloc/value_homes.hpp"
@@ -35,6 +36,7 @@ using regalloc_detail::append_f128_runtime_helper_mappings;
 using regalloc_detail::append_i128_runtime_helper_mappings;
 using regalloc_detail::append_phi_move_resolution;
 using regalloc_detail::append_return_move_resolution;
+using regalloc_detail::append_spill_reload_ops;
 using regalloc_detail::ActiveRegisterAssignment;
 using regalloc_detail::choose_eviction_candidate;
 using regalloc_detail::choose_register_span;
@@ -50,13 +52,11 @@ using regalloc_detail::function_return_storage_kind;
 using regalloc_detail::infer_scalar_function_return_abi;
 using regalloc_detail::interval_start_sort_key;
 using regalloc_detail::intervals_overlap;
-using regalloc_detail::locate_program_point;
 using regalloc_detail::materialize_register_names;
 using regalloc_detail::materialize_register_placements;
 using regalloc_detail::allocate_stack_slot;
 using regalloc_detail::normalized_value_size;
 using regalloc_detail::published_register_group_width;
-using regalloc_detail::register_bank_from_class;
 using regalloc_detail::resolve_call_arg_abi;
 using regalloc_detail::resolve_register_class;
 using regalloc_detail::resolve_register_group_width;
@@ -383,82 +383,6 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
     return nullptr;
   }
   return &*it;
-}
-
-void append_spill_reload_ops(const PreparedLivenessFunction& liveness_function,
-                             const std::vector<std::optional<std::size_t>>& spill_points,
-                             PreparedRegallocFunction& regalloc_function) {
-  for (std::size_t value_index = 0; value_index < regalloc_function.values.size(); ++value_index) {
-    const auto spill_point = spill_points[value_index];
-    const auto& value = regalloc_function.values[value_index];
-    if (!spill_point.has_value() || !value.assigned_stack_slot.has_value()) {
-      continue;
-    }
-    const auto& published_register = value.assigned_register.has_value()
-                                         ? value.assigned_register
-                                         : value.spill_register_authority;
-
-    if (const auto spill_location = locate_program_point(liveness_function, *spill_point);
-        spill_location.has_value()) {
-      regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
-          .value_id = value.value_id,
-          .op_kind = PreparedSpillReloadOpKind::Spill,
-          .block_index = spill_location->block_index,
-          .instruction_index = spill_location->instruction_index,
-          .register_bank = register_bank_from_class(value.register_class),
-          .register_name = published_register.has_value()
-                               ? std::optional<std::string>{published_register->register_name}
-                               : std::nullopt,
-          .contiguous_width = published_register.has_value()
-                                  ? published_register->contiguous_width
-                                  : std::max<std::size_t>(value.register_group_width, 1),
-          .occupied_register_names = published_register.has_value()
-                                         ? published_register->occupied_register_names
-                                         : std::vector<std::string>{},
-          .slot_id = value.assigned_stack_slot.has_value()
-                         ? std::optional<PreparedFrameSlotId>{value.assigned_stack_slot->slot_id}
-                         : std::nullopt,
-          .stack_offset_bytes = value.assigned_stack_slot.has_value()
-                                    ? std::optional<std::size_t>{
-                                          value.assigned_stack_slot->offset_bytes}
-                                    : std::nullopt,
-      });
-    }
-
-    std::optional<std::size_t> last_reload_point;
-    for (const std::size_t use_point : liveness_function.values[value_index].use_points) {
-      if (use_point <= *spill_point || last_reload_point == use_point) {
-        continue;
-      }
-      if (const auto reload_location = locate_program_point(liveness_function, use_point);
-          reload_location.has_value()) {
-        regalloc_function.spill_reload_ops.push_back(PreparedSpillReloadOp{
-            .value_id = value.value_id,
-            .op_kind = PreparedSpillReloadOpKind::Reload,
-            .block_index = reload_location->block_index,
-            .instruction_index = reload_location->instruction_index,
-            .register_bank = register_bank_from_class(value.register_class),
-            .register_name = published_register.has_value()
-                                 ? std::optional<std::string>{published_register->register_name}
-                                 : std::nullopt,
-            .contiguous_width = published_register.has_value()
-                                    ? published_register->contiguous_width
-                                    : std::max<std::size_t>(value.register_group_width, 1),
-            .occupied_register_names = published_register.has_value()
-                                           ? published_register->occupied_register_names
-                                           : std::vector<std::string>{},
-            .slot_id = value.assigned_stack_slot.has_value()
-                           ? std::optional<PreparedFrameSlotId>{value.assigned_stack_slot->slot_id}
-                           : std::nullopt,
-            .stack_offset_bytes = value.assigned_stack_slot.has_value()
-                                      ? std::optional<std::size_t>{
-                                            value.assigned_stack_slot->offset_bytes}
-                                      : std::nullopt,
-        });
-        last_reload_point = use_point;
-      }
-    }
-  }
 }
 
 }  // namespace
