@@ -3,6 +3,11 @@
 Stack frame layout for prealloc BIR: determines which function-local objects
 need frame slots and emits a provisional `PreparedStackLayout`.
 
+This subdirectory is active C++ implementation. Its `*.cpp` files are included
+in the backend build through the prealloc source glob, and
+`BirPreAlloc::run_stack_layout()` calls the helpers here during the normal
+prepared-BIR pipeline.
+
 ## Why this exists
 
 The prealloc pipeline needs a stable stack-layout phase between `legalize` and
