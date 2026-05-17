@@ -8,11 +8,11 @@ Current Step Title: Extract special carriers and runtime helper publishers
 
 ## Just Finished
 
-Completed Step 4 i128/f128 special carrier prepared fact publisher extraction. `populate_i128_carriers()` and `populate_f128_carriers()` now live in `src/backend/prealloc/special_carriers.cpp`, with `src/backend/prealloc/special_carriers.hpp` carrying the narrow publisher declarations alongside the carrier data types. `BirPreAlloc::publish_contract_plans()` includes that header and still calls the i128 publisher followed by the f128 publisher in the same phase order after storage-plan publication and before atomic publication and runtime-helper facts. The storage-plan lookup, register-bank mapping, missing-fact appenders, and carrier builders moved into the focused publisher file. The existing recursive prealloc source glob picked up `special_carriers.cpp`; no build registration edit was needed.
+Completed Step 4 f128 runtime-helper prepared fact publisher extraction. `populate_f128_runtime_helper_facts()` now lives in `src/backend/prealloc/f128_runtime_helpers.cpp`, with the narrow declaration in `src/backend/prealloc/f128_runtime_helpers.hpp`. `BirPreAlloc::publish_contract_plans()` includes that header and still calls the f128 runtime-helper publisher in the same phase order after inline-asm publication and before i128 runtime-helper facts. The f128-only carrier binding, ABI binding, marshaling, boundary policy, call ownership, selected ownership, clobber, preserved-value, liveness/regalloc lookup, storage route, and scalar ownership helper chain moved with local copies of still-shared helpers rather than broadening a private helper header. The existing recursive prealloc source glob picked up `f128_runtime_helpers.cpp`; no build registration edit was needed.
 
 ## Suggested Next
 
-Extract the next coherent Step 4 runtime-helper publisher family only after dependency-checking whether its helpers are still shared with adjacent runtime-helper publication; avoid growing a broad private helper header.
+Extract the i128 runtime-helper publisher family only after dependency-checking whether its helpers should move as a coherent unit or keep narrow local duplicates for frame/call shared helpers.
 
 ## Watchouts
 
@@ -34,10 +34,10 @@ Extract the next coherent Step 4 runtime-helper publisher family only after depe
 - AST dependency checks showed the intrinsic publisher chain is self-contained after keeping inline asm on a local value-name helper: `publish_contract_plans()` calls `populate_intrinsic_carriers()`, which calls `find_call_plan_for_instruction()` and `build_intrinsic_carrier()`, and the carrier builder owns the intrinsic validation and missing-fact helpers in `intrinsics.cpp`.
 - AST dependency checks showed the inline-asm publisher chain is self-contained after keeping a narrow local value-home lookup in `inline_asm.cpp`: `populate_inline_asm_carriers()` calls `build_inline_asm_carrier()`, which owns inline-asm operand construction, register identity parsing, validation, and missing-fact helpers in the new file.
 - AST dependency checks showed the special-carrier publisher chain is self-contained after keeping narrow local copies of `register_bank_from_class()` and `find_storage_plan_value()` in `special_carriers.cpp`: `populate_i128_carriers()` calls `build_i128_carrier()`, `populate_f128_carriers()` calls `build_f128_carrier()`, and the builders own their missing-fact helpers in the new file.
-- Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers.
+- AST dependency checks showed the f128 runtime-helper prepared fact publisher now has the expected focused dependency surface: `populate_f128_runtime_helper_facts()` calls the moved f128 carrier-binding, ABI-binding, marshaling, boundary-policy, call-ownership, and selected-ownership helpers in `f128_runtime_helpers.cpp`; it reaches prepared carrier/frame/liveness/value-location lookups through existing module APIs.
+- The f128 extraction intentionally keeps narrow local copies of `build_call_clobber_set()`, `build_call_preserved_values()`, `preserved_value_has_complete_route()`, `find_call_program_point()`, register placement, and scalar storage helpers because i128 runtime-helper and frame-plan code still use their `prealloc.cpp` copies.
+- Larger families to defer: frame plan shares callee-save and placement helpers; i128 runtime helpers still share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers inside `prealloc.cpp`.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. The build reconfigured during the pre-proof compile because the recursive prealloc source glob picked up `special_carriers.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
-
-Post-commit baseline review follow-up: supervisor accepted `test_baseline.new.log` into `test_baseline.log`, so the baseline-review reminder has been handled.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. The build reconfigured during the pre-proof compile because the recursive prealloc source glob picked up `f128_runtime_helpers.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
