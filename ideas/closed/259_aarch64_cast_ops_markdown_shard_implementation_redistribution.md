@@ -1,7 +1,8 @@
 # AArch64 `cast_ops.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -69,6 +70,19 @@ family-specific code in family-neutral owners.
   that spelling can be owned through cast-ops shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Note
+
+Closed after the active runbook completed the cast-ops redistribution:
+`cast_ops.cpp` and `cast_ops.hpp` own the scalar cast construction, lowering,
+and eligible printer spelling/diagnostic behavior; dispatch and printer code
+route through the cast owner where appropriate; the F128 helper printer branch
+remains with the shared F128 runtime-helper printer boundary; and
+`src/backend/mir/aarch64/codegen/cast_ops.md` has been deleted.
+
+Close-time backend validation passed with 139/139 `^backend_` tests, and the
+regression guard accepted the matching before/after backend scope with no new
+failures.
 
 ## Paused State
 
