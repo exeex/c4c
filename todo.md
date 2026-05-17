@@ -1,40 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/264_backend_and_aarch64_codegen_entrypoint_clarity.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Align Route Documentation And Contracts
+Current Step ID: 5
+Current Step Title: Validate And Prepare Close Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 aligned the AArch64 route documentation and contract text with the
-current ownership model: `backend.cpp` driver prepares BIR, public
-`codegen.hpp` exposes `compile_prepared_module(...)`, internal
-`module_compile.{hpp,cpp}` coordinates traversal/dispatch/family lowerers, and
-`asm_emitter` plus the shared MIR printer owns current `.s` rendering.
-
-Stale current-route references to live `codegen/emit.*` were updated or marked
-as legacy artifact names, and the contracts now state that `.s` text is one
-downstream consumer format rather than the only reusable AArch64 codegen
-product.
+Step 5 validated the active backend/AArch64 entrypoint clarity route with the
+supervisor-provided broader proof. The proof passed 8/8 in `test_after.log`,
+and the active plan appears ready for supervisor closure review.
 
 ## Suggested Next
 
-Step 5 should validate the active route and prepare close review. Suggested
-focus: compare `backend.cpp`, `codegen.hpp`, `module_compile.{hpp,cpp}`, and
-the updated docs/contracts against the source idea completion criteria, then
-run the supervisor-selected broader proof.
+Supervisor closure review should decide whether to close, deactivate, or split
+the active lifecycle state.
 
 ## Watchouts
 
-- This was a docs/contract-only packet. No implementation sources, CMake,
-  tests, `plan.md`, or source ideas were changed.
-- `codegen/README.md` still preserves historical module-surface notes by
-  design; its new front matter is the live-route authority for this packet.
+- This was a todo-only final validation recording packet. No implementation
+  sources, docs, tests, `plan.md`, or source ideas were changed.
+- The executor did not rerun proof; the delegated proof was already run by the
+  supervisor and preserved in `test_after.log`.
 
 ## Proof
 
-Supervisor-selected Step 4 proof passed and is preserved in `test_after.log`:
+Supervisor-selected Step 5 proof passed 8/8 and is preserved in
+`test_after.log`:
 
-`{ cmake --build build --target backend_aarch64_signature_metadata_test backend_aarch64_prepared_handoff_gate_test && ctest --test-dir build -R '^(backend_aarch64_signature_metadata|backend_aarch64_prepared_handoff_gate)$' --output-on-failure; } > test_after.log 2>&1`
+`{ cmake --build build --target c4cll backend_aarch64_signature_metadata_test backend_aarch64_prepared_handoff_gate_test backend_aarch64_module_skeleton_contract_test backend_aarch64_function_traversal_test backend_aarch64_machine_printer_test && ctest --test-dir build -R '^(backend_aarch64_signature_metadata|backend_aarch64_prepared_handoff_gate|backend_aarch64_module_skeleton_contract|backend_aarch64_function_traversal|backend_aarch64_machine_printer|backend_cli_aarch64_asm_external_return_zero_smoke|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke)$' --output-on-failure; } > test_after.log 2>&1`
