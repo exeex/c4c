@@ -1,7 +1,8 @@
 # Prealloc Regalloc Implementation Decomposition
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -68,6 +69,22 @@ The desired structure should separate:
   expected prepared output.
 - The resulting ownership map makes it clear where a future prepared fact
   should be added.
+
+## Closure Notes
+
+The active runbook completed Steps 1 through 10. Focused helper owners now live
+under `src/backend/prealloc/regalloc/` for classification, values, intervals,
+assignment, stack slots, storage, value homes, pointer carriers, call/return
+ABI, call moves, move records, phi moves, consumer moves, runtime helpers, and
+spill/reload. `regalloc.cpp` remains the coordinator for phase ordering,
+allocation ordering and mutation, and final prepared publication.
+
+`src/backend/prealloc/README.md` documents the coordinator/helper ownership map
+so future prepared facts have a clear owner.
+
+Close-time backend regression guard passed with equal-green results:
+`test_before.log` and `test_after.log` both reported 139/139 passing backend
+tests, and the checker passed in non-decreasing mode for this refactor slice.
 
 ## Reviewer Reject Signals
 
