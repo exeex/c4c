@@ -8,21 +8,21 @@ Current Step Title: Extract Storage, Addressing, Runtime, Intrinsics, and Specia
 
 ## Just Finished
 
-Completed `plan.md` Step 3 runtime helper printer extraction:
-`append_f128_runtime_helpers`, `append_i128_runtime_helpers`, and their direct
-printer-local helper functions now live in
-`src/backend/prealloc/prepared_printer/runtime_helpers.cpp`.
+Completed `plan.md` Step 3 addressing printer extraction:
+`append_addressing` and its directly owned helper functions now live in
+`src/backend/prealloc/prepared_printer/addressing.cpp`.
 `prepared_printer.cpp` still calls the private printer declaration in the same
 prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/runtime_helpers.cpp`.
+target now lists `prepared_printer/addressing.cpp`.
 
 ## Suggested Next
 
-Extract the next Step 3 prepared-printer family from `prepared_printer.cpp`
-into its own private implementation file, with addressing output being the
-next likely candidate. Keep the helper surface narrow and wire any
-direct-source test target that names `prepared_printer.cpp` to the new
-implementation file.
+Move into `plan.md` Step 4 by extracting one remaining dense printer family
+from `prepared_printer.cpp`, with `append_prepared_control_flow` and its
+directly owned helper logic being the next likely candidate before
+`append_value_locations` and `append_regalloc`. Keep the helper surface narrow
+and wire the direct-source test target that names `prepared_printer.cpp` to the
+new implementation file.
 
 ## Watchouts
 
@@ -32,13 +32,17 @@ implementation file.
 - Production `.cpp` files must not include implementation `.cpp` files.
 - One existing backend test links `prepared_printer.cpp` directly instead of
   the backend library; its CMake source list now also includes
-  `prepared_printer/atomics.cpp`, `prepared_printer/calls.cpp`,
-  `prepared_printer/frame.cpp`, `prepared_printer/functions.cpp`,
+  `prepared_printer/addressing.cpp`, `prepared_printer/atomics.cpp`,
+  `prepared_printer/calls.cpp`, `prepared_printer/frame.cpp`,
+  `prepared_printer/functions.cpp`,
   `prepared_printer/inline_asm.cpp`, `prepared_printer/intrinsics.cpp`,
+  `prepared_printer/runtime_helpers.cpp`,
   `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, and
   `prepared_printer/variadic.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
+- `prepared_printer.cpp` still owns `append_prepared_control_flow`,
+  `append_value_locations`, `append_regalloc`, and their helper cluster.
 
 ## Proof
 

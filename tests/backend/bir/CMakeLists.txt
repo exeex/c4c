@@ -5,6 +5,7 @@ add_executable(backend_prepare_phi_materialize_test
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/legalize.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/out_of_ssa.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/addressing.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/atomics.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/calls.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/frame.cpp"
