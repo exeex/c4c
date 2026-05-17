@@ -8,28 +8,28 @@ Current Step Title: Prove Behavior Preservation
 
 ## Just Finished
 
-Step 3 - Delete The Stale Markdown Shard completed.
+Step 4 - Prove Behavior Preservation completed.
 
-Deleted `src/backend/mir/aarch64/codegen/asm_emitter.md`. A reference search
-for `src/backend/mir/aarch64/codegen/asm_emitter.md` and
-`codegen/asm_emitter.md` found only active lifecycle/archive references in
-`plan.md`, `todo.md`, `ideas/open/265_aarch64_asm_emitter_markdown_shard_implementation_redistribution.md`,
-and `ideas/closed/229_aarch64_codegen_markdown_shards_to_cpp.md` after removing
-the stale AArch64 `CLASSIFICATION_INDEX.md` row that indexed the deleted shard.
-No neighboring AArch64 `codegen/*.md` shard was changed.
+Proved AArch64 asm emitter behavior preservation after the stale shard deletion
+with the supervisor-selected backend subset. The passing subset includes public
+AArch64 assembly smoke coverage for
+`backend_cli_aarch64_asm_external_return_add_sub_chain_smoke`,
+`backend_cli_aarch64_asm_external_return_add_smoke`, and
+`backend_cli_aarch64_asm_external_return_zero_smoke`, plus
+`backend_aarch64_machine_printer` coverage for instruction spelling.
 
 ## Suggested Next
 
-Start Step 4 by proving behavior preservation for the current AArch64 `.s`
-route with the supervisor-selected broader/focused backend proof.
+Return to the supervisor for lifecycle review/closure handling for the active
+plan.
 
 ## Watchouts
 
 - The active `plan.md` and source idea still mention the deleted shard as the
   plan target and completion criterion; those lifecycle references are expected.
 - The closed idea reference is archival and was not touched.
-- Preserve emitted `.s` behavior in Step 4; this packet was deletion plus
-  reference cleanup only.
+- No behavior or markdown-shard files were touched in this Step 4 proof-only
+  packet.
 
 ## Proof
 
@@ -38,4 +38,5 @@ Ran:
 `cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
 
 Result: passed. The build completed and the backend subset reported 139/139
-tests passing. Proof log: `test_after.log`.
+tests passing with `100% tests passed, 0 tests failed out of 139`. Proof log:
+`test_after.log`.
