@@ -1,8 +1,7 @@
 #include "backend.hpp"
 
 #include "bir/bir.hpp"
-#include "mir/aarch64/codegen/codegen.hpp"
-#include "mir/aarch64/codegen/machine_printer.hpp"
+#include "mir/aarch64/codegen/asm_emitter.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
 #include "prealloc/prepared_printer.hpp"
@@ -153,48 +152,6 @@ c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
     const c4c::backend::bir::Module& module,
     const c4c::TargetProfile& target_profile) {
   return c4c::backend::prepare::prepare_semantic_bir_module_with_options(module, target_profile);
-}
-
-std::string print_aarch64_prepared_machine_nodes(
-    const c4c::backend::prepare::PreparedBirModule& prepared) {
-  const auto built = c4c::backend::aarch64::codegen::compile_prepared_module(prepared);
-  if (!built.module.has_value()) {
-    std::string message = "AArch64 backend assembly route could not build a prepared module";
-    if (built.error.has_value() && !built.error->message.empty()) {
-      message += ": ";
-      message += built.error->message;
-    }
-    throw std::invalid_argument(message);
-  }
-
-  std::ostringstream assembly;
-  assembly << "    .text\n";
-  std::size_t machine_node_count = 0;
-  for (const auto& function : built.module->functions) {
-    if (c4c::backend::mir::empty(function.mir)) {
-      continue;
-    }
-    ++machine_node_count;
-    assembly << "    .globl " << function.label << "\n"
-             << "    .type " << function.label << ", %function\n"
-             << function.label << ":\n";
-    const c4c::backend::aarch64::codegen::MachineInstructionPrinter target_printer;
-    const auto printed = c4c::backend::mir::print_machine_function(function.mir,
-                                                                   target_printer);
-    if (!printed.ok) {
-      throw std::invalid_argument("AArch64 backend assembly route reached the machine-node printer, "
-                                  "but printing failed: " +
-                                  printed.diagnostic);
-    }
-    assembly << printed.assembly
-             << "    .size " << function.label << ", .-" << function.label << "\n";
-  }
-  if (machine_node_count == 0) {
-    throw std::invalid_argument(
-        "AArch64 backend assembly route reached the machine-node printer, but no selected printable machine nodes are available for this source input");
-  }
-  assembly << "    .section .note.GNU-stack,\"\",@progbits\n";
-  return assembly.str();
 }
 
 // Step 5 fence: route-debug focus options are public dump filters over rendered
@@ -1370,7 +1327,7 @@ std::string emit_aarch64_bir_module_entry(const bir::Module& module,
                                           const c4c::TargetProfile& target_profile) {
   require_aarch64_module_entry_target(target_profile, "emit_aarch64_bir_module_entry");
   const auto prepared = prepare_semantic_bir_pipeline(module, target_profile);
-  return print_aarch64_prepared_machine_nodes(prepared);
+  return c4c::backend::aarch64::codegen::print_prepared_machine_nodes(prepared);
 }
 
 std::string emit_target_bir_module(const bir::Module& module,
@@ -1406,7 +1363,7 @@ std::string emit_aarch64_lir_module_entry(const c4c::codegen::lir::LirModule& mo
   auto lowering = c4c::backend::try_lower_to_bir_with_options(module, lowering_options);
   if (lowering.module.has_value()) {
     const auto prepared_bir = prepare_semantic_bir_pipeline(*lowering.module, target_profile);
-    return print_aarch64_prepared_machine_nodes(prepared_bir);
+    return c4c::backend::aarch64::codegen::print_prepared_machine_nodes(prepared_bir);
   }
   throw std::invalid_argument(make_aarch64_lir_handoff_failure_message(lowering));
 }

@@ -9,6 +9,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/abi/abi.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/api/api.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/alu.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/asm_emitter.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/cast_ops.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/calls.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/comparison.cpp"
