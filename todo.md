@@ -8,20 +8,20 @@ Current Step Title: Extract calls, variadic, storage, carriers, helpers, control
 
 ## Just Finished
 
-Step 4 continued by extracting the storage-plan schema family from
+Step 4 continued by extracting the special carrier schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/storage.hpp`.
+`src/backend/prealloc/special_carriers.hpp`.
 
-`storage.hpp` now owns storage plan value, per-function storage plan, and
-storage plan container records. It includes `calls.hpp` for
-`PreparedStorageEncodingKind` and direct focused dependencies for prepared
-names, frame slots, register bank/placement, spill-slot placement, and BIR
-F128 payloads.
+`special_carriers.hpp` now owns i128/f128 carriers, atomic operation carriers,
+intrinsic carriers, inline asm carriers, their enum/name helpers, carrier
+function/container records, and inline asm tied-home carrier records. It
+includes direct focused dependencies for prepared names, frame/register
+placement, value homes, target register identities, and BIR payloads.
 `prealloc.hpp` includes it and remains the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 4 by extracting the special carrier schema into a focused header
+Continue Step 4 by extracting the runtime helper schema into a focused header
 while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
@@ -54,8 +54,10 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `variadic.hpp` includes `value_locations.hpp` directly for
   `PreparedValueHome`; dependent code should not rely on `prealloc.hpp` for
   that edge.
-- Remaining Step 4 families: carriers, helpers, control-flow, and
-  module schema.
+- `special_carriers.hpp` includes `value_locations.hpp`, which supplies
+  `PreparedValueHome` and `PreparedTargetRegisterIdentity` through the focused
+  value-location/regalloc dependency chain.
+- Remaining Step 4 families: helpers, control-flow, and module schema.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
   distributing tiny helpers across unrelated family headers.
