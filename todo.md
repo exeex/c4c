@@ -8,18 +8,17 @@ Current Step Title: Move F128 Construction, Transport, And Lowering Bodies
 
 ## Just Finished
 
-Step 3: Move F128 Construction, Transport, And Lowering Bodies moved the f128
-runtime-helper lowering body from broad dispatch ownership into the f128 codegen
-owner. `dispatch.cpp` now keeps only the routing call for f128 runtime-helper
-lowering, while `f128.cpp`/`f128.hpp` own the candidate checks, prepared helper
-lookup, fail-closed diagnostics, boundary instruction construction, selection
-check, and BIR-origin machine-instruction wrapping for that route.
+Step 3: Move F128 Construction, Transport, And Lowering Bodies moved the
+f128-specific naming and prepared-record error helper implementations out of
+`instruction.cpp` and into `f128.cpp`. `f128.hpp` continues to expose the
+existing declarations, and the exact returned diagnostic/name strings were
+preserved.
 
 ## Suggested Next
 
-Continue Step 3 by auditing the remaining broad-dispatch helper bodies for the
-next ownership boundary that can move without changing behavior or exposing new
-generic helper seams.
+Continue Step 3 by auditing the remaining broad instruction/printer ownership
+for the next f128-specific body that can move without changing include flow or
+forcing broader non-f128 helper seams.
 
 ## Watchouts
 
@@ -58,5 +57,5 @@ generic helper seams.
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
-The build completed and all 139 selected backend tests passed. Full output is in
-`test_after.log`.
+The build completed and all 139 selected backend tests passed. Full output is
+in `test_after.log`.

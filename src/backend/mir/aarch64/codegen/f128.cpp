@@ -10,6 +10,111 @@
 
 namespace c4c::backend::aarch64::codegen {
 
+std::string_view f128_transport_kind_name(F128TransportKind kind) {
+  switch (kind) {
+    case F128TransportKind::CarrierSnapshot:
+      return "carrier_snapshot";
+    case F128TransportKind::LoadFromMemory:
+      return "load_from_memory";
+    case F128TransportKind::StoreToMemory:
+      return "store_to_memory";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_f128_transport_record_error_name(
+    PreparedF128TransportRecordError error) {
+  switch (error) {
+    case PreparedF128TransportRecordError::None:
+      return "none";
+    case PreparedF128TransportRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedF128TransportRecordError::MissingPreparedF128Carrier:
+      return "missing_prepared_f128_carrier";
+    case PreparedF128TransportRecordError::IncompletePreparedF128Carrier:
+      return "incomplete_prepared_f128_carrier";
+    case PreparedF128TransportRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedF128TransportRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedF128TransportRecordError::MissingMemoryOperand:
+      return "missing_memory_operand";
+    case PreparedF128TransportRecordError::MemoryAccessSizeMismatch:
+      return "memory_access_size_mismatch";
+  }
+  return "unknown";
+}
+
+std::string_view f128_runtime_helper_boundary_kind_name(
+    F128RuntimeHelperBoundaryKind kind) {
+  switch (kind) {
+    case F128RuntimeHelperBoundaryKind::Add:
+      return "add";
+    case F128RuntimeHelperBoundaryKind::Sub:
+      return "sub";
+    case F128RuntimeHelperBoundaryKind::Mul:
+      return "mul";
+    case F128RuntimeHelperBoundaryKind::Div:
+      return "div";
+    case F128RuntimeHelperBoundaryKind::Eq:
+      return "eq";
+    case F128RuntimeHelperBoundaryKind::Ne:
+      return "ne";
+    case F128RuntimeHelperBoundaryKind::Lt:
+      return "lt";
+    case F128RuntimeHelperBoundaryKind::Le:
+      return "le";
+    case F128RuntimeHelperBoundaryKind::Gt:
+      return "gt";
+    case F128RuntimeHelperBoundaryKind::Ge:
+      return "ge";
+    case F128RuntimeHelperBoundaryKind::F32ToF128:
+      return "f32_to_f128";
+    case F128RuntimeHelperBoundaryKind::F64ToF128:
+      return "f64_to_f128";
+    case F128RuntimeHelperBoundaryKind::F128ToF32:
+      return "f128_to_f32";
+    case F128RuntimeHelperBoundaryKind::F128ToF64:
+      return "f128_to_f64";
+  }
+  return "unknown";
+}
+
+std::string_view prepared_f128_runtime_helper_record_error_name(
+    PreparedF128RuntimeHelperRecordError error) {
+  switch (error) {
+    case PreparedF128RuntimeHelperRecordError::None:
+      return "none";
+    case PreparedF128RuntimeHelperRecordError::InvalidFunction:
+      return "invalid_function";
+    case PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper:
+      return "missing_prepared_f128_runtime_helper";
+    case PreparedF128RuntimeHelperRecordError::IncompletePreparedF128RuntimeHelper:
+      return "incomplete_prepared_f128_runtime_helper";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedHelperFamily:
+      return "unsupported_helper_family";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedSourceOperation:
+      return "unsupported_source_operation";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedResultOwnership:
+      return "unsupported_result_ownership";
+    case PreparedF128RuntimeHelperRecordError::MissingPreparedF128Carrier:
+      return "missing_prepared_f128_carrier";
+    case PreparedF128RuntimeHelperRecordError::IncompletePreparedF128Carrier:
+      return "incomplete_prepared_f128_carrier";
+    case PreparedF128RuntimeHelperRecordError::UnsupportedCarrierKind:
+      return "unsupported_carrier_kind";
+    case PreparedF128RuntimeHelperRecordError::RegisterConversionFailed:
+      return "register_conversion_failed";
+    case PreparedF128RuntimeHelperRecordError::MissingBoundaryResourcePolicy:
+      return "missing_boundary_resource_policy";
+    case PreparedF128RuntimeHelperRecordError::MissingBoundaryAbiPolicy:
+      return "missing_boundary_abi_policy";
+    case PreparedF128RuntimeHelperRecordError::MissingClobberPolicy:
+      return "missing_clobber_policy";
+  }
+  return "unknown";
+}
+
 namespace {
 
 std::string_view f128_register_display_name(abi::RegisterReference reg) {
