@@ -1,7 +1,14 @@
 # Backend and AArch64 Codegen Entrypoint Clarity
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
+
+Closure Note: Completed via the backend/AArch64 entrypoint clarity runbook.
+`backend.cpp` now stays at the high-level route boundary, AArch64-owned code
+exposes the public prepared-module compile entry and assembly printer consumer,
+the route docs/contracts describe that ownership, and focused AArch64 backend
+proof plus public assembly smoke passed.
 
 ## Intent
 
