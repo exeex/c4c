@@ -1,7 +1,8 @@
 # AArch64 `prologue.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -48,6 +49,13 @@ owner is needed to keep frame-entry responsibilities reviewable.
 - `prologue.md` is deleted.
 - Frame-entry behavior is not hidden in broad or unrelated owners.
 - Focused AArch64 backend proof preserves existing ABI-visible behavior.
+
+## Closure Note
+
+Closed after the active runbook exhausted Step 5. The compiled prologue owner
+exists, the markdown shard has been removed, the backend build integrates the
+new translation unit, and matching focused backend before/after logs both pass
+139/139 tests with no new failures.
 
 ## Reviewer Reject Signals
 
