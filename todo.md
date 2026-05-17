@@ -1,39 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/264_backend_and_aarch64_codegen_entrypoint_clarity.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Clarify The Internal AArch64 Compile Coordinator
+Current Step ID: 4
+Current Step Title: Align Route Documentation And Contracts
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 clarified the internal AArch64 prepared-module compile coordinator by
-renaming `src/backend/mir/aarch64/codegen/emit.{hpp,cpp}` to
-`src/backend/mir/aarch64/codegen/module_compile.{hpp,cpp}`.
+Step 4 aligned the AArch64 route documentation and contract text with the
+current ownership model: `backend.cpp` driver prepares BIR, public
+`codegen.hpp` exposes `compile_prepared_module(...)`, internal
+`module_compile.{hpp,cpp}` coordinates traversal/dispatch/family lowerers, and
+`asm_emitter` plus the shared MIR printer owns current `.s` rendering.
 
-`codegen.hpp` remains the public API surface for
-`c4c::backend::aarch64::codegen::compile_prepared_module(...)`, while
-`module_compile.hpp` now names the internal `build_module(...)` coordinator.
-`module.cpp`, `src/backend/CMakeLists.txt`, and the signature metadata source
-inventory now include the clarified internal filename/header name.
+Stale current-route references to live `codegen/emit.*` were updated or marked
+as legacy artifact names, and the contracts now state that `.s` text is one
+downstream consumer format rather than the only reusable AArch64 codegen
+product.
 
 ## Suggested Next
 
-Step 4 should align AArch64 route documentation and contract text with the
-clarified ownership model: public entry in `codegen.hpp`, internal coordinator
-in `module_compile.{hpp,cpp}`, and downstream rendering/assembler ownership in
-the narrower helpers.
+Step 5 should validate the active route and prepare close review. Suggested
+focus: compare `backend.cpp`, `codegen.hpp`, `module_compile.{hpp,cpp}`, and
+the updated docs/contracts against the source idea completion criteria, then
+run the supervisor-selected broader proof.
 
 ## Watchouts
 
-- Some AArch64 docs still mention the old `codegen/emit.hpp` name and should
-  be handled by Step 4, not this code-only rename packet.
-- No instruction selection, lowering, printer line spelling, `backend.cpp`,
-  `plan.md`, or source ideas were changed in Step 3.
+- This was a docs/contract-only packet. No implementation sources, CMake,
+  tests, `plan.md`, or source ideas were changed.
+- `codegen/README.md` still preserves historical module-surface notes by
+  design; its new front matter is the live-route authority for this packet.
 
 ## Proof
 
-Supervisor-selected Step 3 proof passed and is preserved in `test_after.log`:
+Supervisor-selected Step 4 proof passed and is preserved in `test_after.log`:
 
-`{ cmake --build build --target c4cll backend_aarch64_signature_metadata_test backend_aarch64_prepared_handoff_gate_test backend_aarch64_module_skeleton_contract_test backend_aarch64_function_traversal_test && ctest --test-dir build -R '^(backend_aarch64_signature_metadata|backend_aarch64_prepared_handoff_gate|backend_aarch64_module_skeleton_contract|backend_aarch64_function_traversal)$' --output-on-failure; } > test_after.log 2>&1`
+`{ cmake --build build --target backend_aarch64_signature_metadata_test backend_aarch64_prepared_handoff_gate_test && ctest --test-dir build -R '^(backend_aarch64_signature_metadata|backend_aarch64_prepared_handoff_gate)$' --output-on-failure; } > test_after.log 2>&1`

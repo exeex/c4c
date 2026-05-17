@@ -7,8 +7,14 @@ Status: Active baseline for `ideas/open/04_backend_binary_utils_contract_plan.md
 The current C++ port has a narrower active boundary than the reference Rust backend:
 
 1. `src/codegen/llvm/llvm_codegen.cpp` lowers HIR to LIR and routes `--codegen asm` through `backend::emit_module`.
-2. `src/backend/backend.cpp` lowers LIR through semantic BIR, prepared BIR, the AArch64 prepared-module builder, and selected machine nodes for `aarch64-*` triples.
-3. The shared MIR printer walks the AArch64 target module and uses
+2. `src/backend/backend.cpp` lowers LIR through semantic BIR, prepares BIR,
+   and hands `PreparedBirModule` to the public AArch64
+   `codegen.hpp` `compile_prepared_module(...)` entry for `aarch64-*` triples.
+   That public entry delegates to the internal
+   `codegen/module_compile.{hpp,cpp}` coordinator, then traversal, dispatch,
+   and family lowerers build the target module and selected machine nodes.
+3. The AArch64 `asm_emitter` plus shared MIR printer walk the compiled AArch64
+   target module and use
    `MachineInstructionPrinter` plus
    `print_machine_instruction_line_payloads(...)` in
    `src/backend/mir/aarch64/codegen/machine_printer.cpp` as the target
@@ -18,7 +24,7 @@ The current C++ port has a narrower active boundary than the reference Rust back
 
 That means the repo's current executable contract is:
 
-- production CLI seam: `HIR -> LIR -> semantic BIR -> prepared BIR -> AArch64 target module -> shared MIR printer + AArch64 target spelling hook -> .s printer output`
+- production CLI seam: `HIR -> LIR -> semantic BIR -> prepared BIR -> codegen.hpp compile_prepared_module -> module_compile coordinator -> traversal/dispatch/family lowerers -> compiled AArch64 target module -> asm_emitter + shared MIR printer + AArch64 target spelling hook -> .s printer output`
 - validation seam: `.s printer output -> external AArch64 assembler/linker toolchain -> ELF object or executable`
 
 The in-tree AArch64 assembler and linker subtrees are present in the source
@@ -33,10 +39,13 @@ Current inventory of the staged assembler boundary shows a shared MIR printer
 surface plus deferred text-first assembler stubs, not a structured internal
 assembler IR:
 
-- backend handoff today: `src/backend/backend.cpp` invokes the AArch64
-  prepared-module builder and prints each `module::MachineFunction` through the
-  shared MIR printer.
+- backend handoff today: `src/backend/backend.cpp` invokes the public AArch64
+  `codegen.hpp` prepared-module entry, which delegates to the internal
+  `module_compile.{hpp,cpp}` coordinator before traversal, dispatch, and family
+  lowerers build the compiled module.
 - printer entry today:
+  `src/backend/mir/aarch64/codegen/asm_emitter.hpp` exposes the current
+  compiled-module-to-assembly-text helper, and
   `src/backend/mir/aarch64/codegen/machine_printer.hpp` exposes
   `MachineInstructionPrinter` and
   `print_machine_instruction_line_payloads(...)` as the AArch64 target spelling
@@ -53,14 +62,15 @@ assembler IR:
 
 This means the current compile-integrated contract is now:
 
-- `PreparedBirModule -> AArch64 target module -> shared MIR printer + AArch64 target spelling hook -> .s printer output`
+- `PreparedBirModule -> codegen.hpp compile_prepared_module -> module_compile coordinator -> traversal/dispatch/family lowerers -> compiled AArch64 target module -> asm_emitter + shared MIR printer + AArch64 target spelling hook -> .s printer output`
 - `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s`
 
 Later boundary work can narrow or replace that shape, but it should treat this
-printer path as the current public assembly baseline only. It is not an
-internal assembler, parser roundtrip, encoder, object writer, or linker:
-codegen-owned semantics must flow through structured target MIR records and
-AArch64 machine instruction nodes. Flat `machine_nodes` projections remain
+printer path as the current public assembly baseline only. It is not the only
+reusable codegen product, and it is not an internal assembler, parser
+roundtrip, encoder, object writer, or linker: codegen-owned semantics must flow
+through the compiled module, structured target MIR records, and AArch64 machine
+instruction nodes. Flat `machine_nodes` projections remain
 compatibility-only/non-authoritative. A future built-in encoder or object
 writer must consume the canonical MIR stream or a lower structured encoding
 record derived from it, while `parse_asm(...)` remains an external assembly

@@ -36,9 +36,10 @@ Status terms:
   `src/backend/mir/aarch64/codegen/codegen.hpp` as
   `compile_prepared_module(const PreparedBirModule&)`, returning
   `codegen::CompileResult` / `codegen::CompiledModule`; the lower
-  `codegen/emit.hpp` `build_module(const PreparedBirModule&)` route remains a
-  codegen-internal orchestration boundary, and `api::build_prepared_module(...)`
-  remains compatibility forwarding rather than the primary public route.
+  `codegen/module_compile.hpp` `build_module(const PreparedBirModule&)` route
+  is the codegen-internal prepared-module compile coordinator, and
+  `api::build_prepared_module(...)` remains compatibility forwarding rather
+  than the primary public route.
 - Current AArch64 assembler/linker headers expose staged text/object/link
   surfaces under `src/backend/mir/aarch64/assembler/` and
   `src/backend/mir/aarch64/linker/`.

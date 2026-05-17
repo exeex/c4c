@@ -1,4 +1,37 @@
-# AArch64 Codegen Module Legacy Surface
+# AArch64 Codegen Route And Legacy Module Surface
+
+## Current Live Route
+
+The current AArch64 backend route is:
+
+```text
+backend.cpp driver
+  -> prepared BIR
+  -> codegen.hpp compile_prepared_module(...)
+  -> module_compile.{hpp,cpp} internal coordinator
+  -> traversal/dispatch/family lowerers
+  -> compiled AArch64 target module and selected machine nodes
+  -> asm_emitter + shared MIR printer for .s output
+```
+
+`codegen.hpp` is the public AArch64 codegen entry. It returns a
+`codegen::CompileResult` / `codegen::CompiledModule` for prepared BIR, and that
+compiled module is the reusable product for downstream consumers. The
+GNU-style `.s` text path is the current CLI assembly-output consumer, not the
+only meaningful codegen result and not a parser/encoder/object-writer input
+contract.
+
+`module_compile.{hpp,cpp}` owns the internal prepared-module compile
+coordination. It calls traversal, dispatch, and family lowerers; those helpers
+own the narrower lowering decisions. `asm_emitter` owns the current assembly
+text helper by walking the compiled module through the shared MIR printer and
+AArch64 target spelling hooks.
+
+Historical references in this directory to `emit` or `codegen/emit.*` are
+legacy artifact names for the former internal coordinator/text-emission route.
+They should not be read as the live public entry or as permission to bypass
+prepared BIR, compiled target MIR, machine nodes, `asm_emitter`, or the shared
+MIR printer.
 
 This artifact preserves the useful module-surface shape from the removed
 `mod.cpp` translation surface. The old file was not active C++; it was a tiny

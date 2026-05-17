@@ -38,19 +38,23 @@ structured encoding record derived from those nodes.
   conversion and diagnostic helper, not an assembler parser that supplies
   codegen semantics.
 - The current split `codegen/` layer owns derived instruction records,
-  operands, dispatch, traversal, returns, integer ALU/comparison lowering, emit
-  orchestration, and compatibility projection through
+  operands, dispatch, traversal, returns, integer ALU/comparison lowering,
+  module compile orchestration, and compatibility projection through
   `instruction.*`, `operands.*`, `dispatch.*`, `traversal.*`, `returns.*`,
-  `alu.*`, `comparison.*`, `emit.*`, and `compatibility_projection.*`.
+  `alu.*`, `comparison.*`, `module_compile.*`, and
+  `compatibility_projection.*`. Historical references to `emit.*` describe the
+  former internal coordinator name, not the current live route.
   The accepted selected subset covers structured branch, integer scalar
   ALU/cast, memory load/store, and prepared spill/reload pseudo nodes. The live
   `.s` printer now walks the common MIR carrier and delegates target spelling to
   AArch64 printer hooks; this document still does not require encoding, object
   writing, or linking behavior.
-- `codegen/emit.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
+- `codegen/module_compile.hpp`, `assembler/mod.hpp`, `assembler/parser.hpp`,
   `assembler/types.hpp`, and `assembler/encoder/mod.hpp` remain compatibility,
-  external-assembler, or legacy text-first surfaces until a later contract
-  rebuilds them around structured machine nodes or encoding records.
+  internal-coordinator, external-assembler, or legacy text-first surfaces until
+  a later contract rebuilds them around structured machine nodes or encoding
+  records. Legacy `codegen/emit.*` artifact references are stale names for the
+  same internal coordinator role.
 
 ## Machine Instruction Node Identity
 
@@ -188,10 +192,15 @@ of assembly text.
 
 The `.s` printer is a consumer. The current public AArch64 route
 `c4cll --codegen asm --target aarch64-linux-gnu input.c -o out.s` lowers
-through prepared BIR, target MIR, selected machine nodes, and then prints a
-GNU-style assembly translation unit for the selected printable subset. The
-printer may choose final label spellings and print register names, but it must
-not become the authority for later codegen or encoding facts.
+through `backend.cpp` route selection, prepared BIR, the public
+`codegen.hpp` `compile_prepared_module(...)` entry, the internal
+`module_compile.{hpp,cpp}` coordinator, traversal/dispatch/family lowerers,
+target MIR, selected machine nodes, and then the AArch64 `asm_emitter` plus
+shared MIR printer produce a GNU-style assembly translation unit for the
+selected printable subset. The printer may choose final label spellings and
+print register names, but it must not become the authority for later codegen or
+encoding facts. The compiled module remains the reusable codegen product; `.s`
+text is one downstream consumer format.
 
 The encoder/object path is also a consumer. It may consume nodes directly or a
 lower structured encoding record derived from nodes. It must not consume
@@ -346,10 +355,11 @@ are added.
 The current live AArch64 `--codegen asm` route has no live route that feeds
 printed `.s` from the shared MIR printer into the in-tree
 parser/encoder/object/linker path. The backend builds the AArch64 target
-module, walks each `module::MachineFunction` through the shared MIR printer,
-and uses
-`MachineInstructionPrinter` / `print_machine_instruction_line_payloads(...)` as
-the target spelling hook before returning assembly text to the caller. Any
+module through the public `codegen.hpp` entry and internal
+`module_compile.{hpp,cpp}` coordinator, then the AArch64 `asm_emitter` walks
+each `module::MachineFunction` through the shared MIR printer and uses
+`MachineInstructionPrinter` / `print_machine_instruction_line_payloads(...)`
+as the target spelling hook before returning assembly text to the caller. Any
 `machine_nodes` flat views are compatibility-only projections and are not
 authoritative terminal printer input. The staged AArch64 `parse_asm`,
 `assemble`, `encode_instruction`, object, and linker surfaces remain
