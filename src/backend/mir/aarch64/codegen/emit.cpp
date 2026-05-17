@@ -45,7 +45,7 @@ void lower_module_body(
 
 }  // namespace
 
-module::BuildResult build_module(
+CompileResult build_module(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
   const c4c::TargetProfile target_profile = module::abi::resolve_target_profile(prepared);
   if (auto error = module::abi::validate_prepared_module_handoff(prepared)) {
@@ -55,6 +55,11 @@ module::BuildResult build_module(
   module::Module built_module = make_module_shell(prepared, target_profile);
   lower_module_body(built_module, prepared);
   return accepted_module_result(std::move(built_module));
+}
+
+CompileResult compile_prepared_module(
+    const c4c::backend::prepare::PreparedBirModule& prepared) {
+  return build_module(prepared);
 }
 
 }  // namespace c4c::backend::aarch64::codegen
