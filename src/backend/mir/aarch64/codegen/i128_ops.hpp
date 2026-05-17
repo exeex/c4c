@@ -1,20 +1,11 @@
 #pragma once
 
-#include "../module/module.hpp"
 #include "instruction.hpp"
-#include "mir/printer.hpp"
 
-#include <cstddef>
 #include <optional>
-#include <string>
 #include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
-
-struct LowerI128OpsInstructionResult {
-  bool handled = false;
-  std::optional<module::MachineInstruction> instruction;
-};
 
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
 [[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
@@ -50,7 +41,7 @@ struct LowerI128OpsInstructionResult {
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     c4c::ValueNameId value_name,
     I128TransportKind transport_kind,
-    std::optional<MemoryOperand> memory);
+    std::optional<MemoryOperand> memory = std::nullopt);
 [[nodiscard]] PreparedI128TransportRecordResult make_prepared_i128_copy_transport_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedI128CarrierFunction& i128_carriers,
@@ -75,32 +66,5 @@ struct LowerI128OpsInstructionResult {
 make_prepared_i128_runtime_helper_boundary_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     const prepare::PreparedI128RuntimeHelper& helper);
-
-[[nodiscard]] mir::TargetInstructionPrintResult print_i128_transport(
-    const InstructionRecord& instruction,
-    const I128TransportRecord& transport);
-[[nodiscard]] mir::TargetInstructionPrintResult print_i128_pair_operation(
-    const InstructionRecord& instruction,
-    const I128PairOperationRecord& pair);
-[[nodiscard]] mir::TargetInstructionPrintResult print_i128_shift(
-    const InstructionRecord& instruction,
-    const I128ShiftRecord& shift);
-[[nodiscard]] mir::TargetInstructionPrintResult print_i128_compare(
-    const InstructionRecord& instruction,
-    const I128CompareRecord& compare);
-[[nodiscard]] mir::TargetInstructionPrintResult print_i128_runtime_helper(
-    const InstructionRecord& instruction,
-    const I128RuntimeHelperBoundaryRecord& helper);
-
-[[nodiscard]] LowerI128OpsInstructionResult lower_i128_pair_operation_instruction(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] LowerI128OpsInstructionResult lower_i128_copy_instruction(
-    const module::BlockLoweringContext& context,
-    const bir::Inst& inst,
-    std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
 
 }  // namespace c4c::backend::aarch64::codegen

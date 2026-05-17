@@ -1708,31 +1708,11 @@ struct InstructionRecord {
     PreparedScalarFpUnaryIntrinsicRecordError error);
 [[nodiscard]] std::string_view atomic_memory_instruction_kind_name(
     AtomicMemoryInstructionKind kind);
-[[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
 [[nodiscard]] std::string_view f128_transport_kind_name(F128TransportKind kind);
-[[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
-    PreparedI128TransportRecordError error);
 [[nodiscard]] std::string_view prepared_f128_transport_record_error_name(
     PreparedF128TransportRecordError error);
-[[nodiscard]] std::string_view i128_pair_operation_kind_name(I128PairOperationKind kind);
-[[nodiscard]] std::string_view i128_pair_lane_semantics_name(
-    I128PairLaneSemantics semantics);
-[[nodiscard]] std::string_view i128_shift_kind_name(I128ShiftKind kind);
-[[nodiscard]] std::string_view i128_shift_lane_semantics_name(
-    I128ShiftLaneSemantics semantics);
-[[nodiscard]] std::string_view i128_shift_count_kind_name(I128ShiftCountKind kind);
-[[nodiscard]] std::string_view i128_compare_signedness_name(
-    I128CompareSignedness signedness);
-[[nodiscard]] std::string_view i128_compare_high_word_semantics_name(
-    I128CompareHighWordSemantics semantics);
-[[nodiscard]] std::string_view i128_runtime_helper_boundary_kind_name(
-    I128RuntimeHelperBoundaryKind kind);
 [[nodiscard]] std::string_view f128_runtime_helper_boundary_kind_name(
     F128RuntimeHelperBoundaryKind kind);
-[[nodiscard]] std::string_view prepared_i128_pair_record_error_name(
-    PreparedI128PairRecordError error);
-[[nodiscard]] std::string_view prepared_i128_runtime_helper_record_error_name(
-    PreparedI128RuntimeHelperRecordError error);
 [[nodiscard]] std::string_view prepared_f128_runtime_helper_record_error_name(
     PreparedF128RuntimeHelperRecordError error);
 [[nodiscard]] std::string_view address_materialization_kind_name(
@@ -1770,16 +1750,8 @@ struct InstructionRecord {
     VectorLoadIntrinsicRecord instruction);
 [[nodiscard]] InstructionRecord make_vector_add_intrinsic_instruction(
     VectorAddIntrinsicRecord instruction);
-[[nodiscard]] InstructionRecord make_i128_transport_instruction(
-    I128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
     F128TransportRecord instruction);
-[[nodiscard]] InstructionRecord make_i128_pair_operation_instruction(
-    I128PairOperationRecord instruction);
-[[nodiscard]] InstructionRecord make_i128_shift_instruction(I128ShiftRecord instruction);
-[[nodiscard]] InstructionRecord make_i128_compare_instruction(I128CompareRecord instruction);
-[[nodiscard]] InstructionRecord make_i128_runtime_helper_boundary_instruction(
-    I128RuntimeHelperBoundaryRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_runtime_helper_boundary_instruction(
     F128RuntimeHelperBoundaryRecord instruction);
 [[nodiscard]] InstructionRecord make_address_materialization_instruction(
@@ -1889,40 +1861,11 @@ make_prepared_store_memory_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreGlobalInst& store);
-[[nodiscard]] PreparedI128TransportRecordResult make_prepared_i128_carrier_transport_record(
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    c4c::ValueNameId value_name,
-    I128TransportKind transport_kind,
-    std::optional<MemoryOperand> memory = std::nullopt);
-[[nodiscard]] PreparedI128TransportRecordResult make_prepared_i128_copy_transport_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    const bir::CastInst& cast);
 [[nodiscard]] PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
     c4c::ValueNameId value_name,
     F128TransportKind transport_kind,
     std::optional<MemoryOperand> memory = std::nullopt);
-[[nodiscard]] PreparedI128PairRecordResult make_prepared_i128_pair_operation_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    const bir::BinaryInst& binary);
-[[nodiscard]] PreparedI128ShiftRecordResult make_prepared_i128_shift_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    const bir::BinaryInst& binary);
-[[nodiscard]] PreparedI128CompareRecordResult make_prepared_i128_compare_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    const bir::BinaryInst& binary);
-[[nodiscard]] PreparedI128RuntimeHelperRecordResult
-make_prepared_i128_runtime_helper_boundary_record(
-    const prepare::PreparedI128CarrierFunction& i128_carriers,
-    const prepare::PreparedI128RuntimeHelper& helper);
 [[nodiscard]] PreparedF128RuntimeHelperRecordResult
 make_prepared_f128_runtime_helper_boundary_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
@@ -1945,3 +1888,5 @@ make_prepared_address_materialization_instruction_record(
     std::size_t instruction_index);
 
 }  // namespace c4c::backend::aarch64::codegen
+
+#include "i128_ops.hpp"

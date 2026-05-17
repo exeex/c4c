@@ -8,31 +8,34 @@ Current Step Title: Move i128 construction and lowering bodies
 
 ## Just Finished
 
-Step 2 created the compiled AArch64 i128-ops owner boundary without moving
-behavior. `src/backend/mir/aarch64/codegen/i128_ops.hpp` now exposes the
-future owner surface for the i128 naming, selected-node construction,
-prepared-record builders, printer entry points, and lowering entry points from
-the Step 1 inventory. `src/backend/mir/aarch64/codegen/i128_ops.cpp` exists as
-the compiled owner translation unit and is wired into `src/backend/CMakeLists.txt`.
+Step 3 moved the behavior-preserving i128 naming/status and selected-node
+construction cluster from `instruction.cpp` into the new i128 owner.
+`i128_ops.cpp` now owns the i128 enum/string helpers, prepared i128 error-name
+helpers, i128 selection-status helpers, and the five `make_i128_*_instruction`
+selected-node constructors. `instruction.hpp` no longer duplicates those
+declarations; it includes `i128_ops.hpp` after the core instruction records so
+existing consumers keep the same public include surface.
 
-No i128 definitions were moved out of `instruction.cpp`, `dispatch.cpp`, or
-`machine_printer.cpp` in this packet.
+The prepared i128 record builders remain in `instruction.cpp` for the next
+Step 3 packet. The dispatch lowering bodies and printer helpers were not moved
+in this packet.
 
 ## Suggested Next
 
-Step 3 should move the i128 enum/string helpers and selected-node construction
-helpers from `instruction.cpp` into `i128_ops.cpp`, then include `i128_ops.hpp`
-from the consumers that need those declarations. Keep the move
-behavior-preserving and avoid changing the instruction hierarchy.
+Step 3 should move the prepared i128 record-builder cluster from
+`instruction.cpp` into `i128_ops.cpp`: `make_prepared_i128_*`, their local
+record-error adapters, lane/operand builder helpers, opcode classifiers, and
+opcode-to-i128-kind mapping helpers. Keep the move behavior-preserving and keep
+the existing prepared carrier/runtime-helper authority intact.
 
 ## Watchouts
 
 - Do not move or redesign the prepared authority in `src/backend/prealloc/*`;
   i128 relocation should consume `PreparedI128Carrier*` and
   `PreparedI128RuntimeHelper*` facts exactly as the current broad owners do.
-- `i128_ops.hpp` currently declares the future boundary API while the
-  definitions still live in their existing broad owners. Include it only when a
-  relocation packet makes a consumer depend on the new owner header.
+- `i128_ops.hpp` was trimmed to avoid exposing not-yet-moved anonymous printer
+  and lowering helpers; reintroduce printer/lowering declarations only in the
+  packet that actually moves those bodies.
 - Avoid treating `i128_ops.md` as a license to add missing semantics during the
   redistribution steps. Behavior-changing gaps such as unary neg/not,
   multiplication, variable shifts, and float/i128 conversion emission need
