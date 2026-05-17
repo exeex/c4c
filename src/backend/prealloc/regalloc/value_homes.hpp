@@ -1,23 +1,13 @@
 #pragma once
 
+#include "pointer_carriers.hpp"
+
 #include "../regalloc.hpp"
 #include "../value_locations.hpp"
-
-#include <cstddef>
-#include <cstdint>
-#include <unordered_map>
 
 namespace c4c::backend::prepare {
 
 namespace regalloc_detail {
-
-struct PreparedPointerCarrierState {
-  ValueNameId base_value_name = kInvalidValueName;
-  std::int64_t byte_delta = 0;
-  std::size_t step_bytes = 0;
-};
-
-using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointerCarrierState>;
 
 [[nodiscard]] PreparedValueHome classify_prepared_value_home(
     PreparedNameTables& names,

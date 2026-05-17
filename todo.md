@@ -8,26 +8,30 @@ Current Step Title: Extract Value-Home Publication
 
 ## Just Finished
 
-Step 4 value-home publication extraction moved the pure home classifier into
-`src/backend/prealloc/regalloc/value_homes.cpp` with declarations in
-`src/backend/prealloc/regalloc/value_homes.hpp`.
+Step 4 follow-up extracted behavior-preserving pointer-carrier map construction
+out of `src/backend/prealloc/regalloc.cpp` into
+`src/backend/prealloc/regalloc/pointer_carriers.cpp` with declarations in
+`src/backend/prealloc/regalloc/pointer_carriers.hpp`.
 
 Moved ownership:
 
 - `PreparedPointerCarrierState`
 - `PreparedPointerCarrierMap`
-- `classify_prepared_value_home`
+- `build_pointer_carrier_map`
+- pointer-carrier construction helpers used only by that builder
 
-`src/backend/prealloc/regalloc.cpp` still builds the pointer-carrier map,
-preserves value-location publication order, appends move bundles, appends call
-ABI bindings, and owns runtime-helper mapping. The extracted classifier only
-consumes the completed pointer-carrier map and the prepared regalloc value.
+`src/backend/prealloc/regalloc.cpp` still owns value-location publication order,
+move bundle publication, ABI binding publication, runtime-helper mapping,
+allocation decisions, and prepared dump sequencing. The extracted builder still
+returns the same completed pointer-carrier map consumed by
+`classify_prepared_value_home`.
 
 ## Suggested Next
 
-Next coherent packet: inspect whether pointer-carrier map construction has a
-separate clean owner, but keep it out of value-location publication unless the
-packet explicitly owns that wider boundary.
+Next coherent packet: inspect the remaining value-location publication helpers
+for a narrow pure boundary that does not cross move bundle publication, ABI
+binding publication, runtime-helper mapping, allocation decisions, or prepared
+dump ordering.
 
 ## Watchouts
 
@@ -53,10 +57,13 @@ packet explicitly owns that wider boundary.
 - `expire_completed_assignments` still mutates the active assignment vectors in
   `regalloc.cpp`; do not move it without a broader allocator mutation packet.
 - `value_homes.cpp` owns classification only. Pointer-carrier discovery still
-  lives in `regalloc.cpp`; do not merge pointer-carrier construction with
-  value-location publication or runtime-helper mapping in a follow-on packet.
-- `PreparedPointerCarrierMap` is declared in `value_homes.hpp` only so the
-  classifier and existing builder can share the carrier result type.
+  lives in `pointer_carriers.cpp`; do not merge pointer-carrier construction
+  with value-location publication or runtime-helper mapping in a follow-on
+  packet.
+- `PreparedPointerCarrierMap` is declared in `pointer_carriers.hpp` so the
+  classifier and publication call site can share the carrier result type.
+- New `pointer_carriers.cpp` was picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
 - `find_regalloc_value`, `assigned_storage_kind`,
   `assigned_storage_matches` now live in `regalloc_detail::storage`; keep that
   file read-only and do not grow it into move publication or allocator
