@@ -1,7 +1,8 @@
 # AArch64 `float_ops.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -71,6 +72,13 @@ family-specific code in family-neutral owners.
   that spelling can be owned through float-ops shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure Note
+
+Closed after the active runbook completed all six steps. The compiled
+`float_ops.cpp` and `float_ops.hpp` owners exist, the stale `float_ops.md`
+shard is deleted, and the final broad backend proof passed 139/139 backend
+tests in `test_after.log`.
 
 ## Reviewer Reject Signals
 
