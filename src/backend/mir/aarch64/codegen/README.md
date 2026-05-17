@@ -66,7 +66,8 @@ The removed module listed these codegen shards:
 - `calls`
 - `globals`
 - `cast_ops`
-- `variadic`
+- `variadic` (legacy markdown shard deleted; compiled ownership is
+  `variadic.hpp` / `variadic.cpp`)
 - `returns`
 - `atomics`
 - `i128_ops`
@@ -91,7 +92,8 @@ The listed shards imply the old backend layering:
 
 1. low-level assembly emission and string cleanup (`emit`, `asm_emitter`,
    `peephole`)
-2. ABI and frame concerns (`prologue`, `calls`, `returns`, `variadic`)
+2. ABI and frame concerns (`prologue`, `calls`, `returns`, compiled
+   `variadic.hpp` / `variadic.cpp`)
 3. scalar and memory instruction families (`alu`, `comparison`, `memory`,
    `globals`, `cast_ops`, `float_ops`)
 4. special feature surfaces (`f128`, `i128_ops`, `atomics`, `intrinsics`,

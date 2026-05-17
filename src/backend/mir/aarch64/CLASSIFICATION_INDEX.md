@@ -74,7 +74,6 @@ structured spill slots, reserved MIR scratch, and call resources.
 | `codegen/i128_ops.md` | delete/defer | Must not influence Step 4 except as a deferred support-risk note. | Owner: legacy i128 lowering. Limitation: special-width lowering lacks current backend proof. Removal condition: remove or replace when i128 lowering is designed. |
 | `codegen/memory.md` | salvageable design note | May inform load/store coverage, not legacy register ownership or text emission. | Owner: legacy memory lowering. Limitation: centered on `ArmCodegen` helpers. Removal condition: target MIR memory ops and addressing modes are specified. |
 | `codegen/returns.md` | target-ABI candidate | May inform return-value ABI facts after Step 4. | Owner: legacy return lowering. Limitation: old register behavior is not current proof. Removal condition: target ABI return ledger replaces it. |
-| `codegen/variadic.md` | target-ABI candidate | May inform AAPCS64 variadic handling; not needed to choose the entry type. | Owner: legacy variadic lowering. Limitation: support policy and current BIR facts are unresolved. Removal condition: variadic ABI contract is accepted or feature is deferred. |
 | `assembler/mod.md` | assembler/linker candidate | Must not make assembler text the backend contract; it is an external-input or printer-consumer lane only. | Owner: legacy assembler lane. Limitation: local parser/literal-pool route is removed. Removal condition: assembler layer is rebuilt or delegated to external tooling. |
 | `assembler/parser.md` | assembler/linker candidate | Must not substitute parsed assembly operands for structured BIR, target MIR, or machine-node facts. | Owner: legacy assembler parser. Limitation: incomplete local grammar. Removal condition: parser route is deleted or replaced by an explicit assembler contract. |
 | `assembler/elf_writer.md` | binary-utils candidate | May inform ELF object writing after structured nodes/encoding records exist, not backend entry type. | Owner: legacy assembler ELF writer. Limitation: object emission was tied to local assembler staging. Removal condition: shared ELF writer contract replaces it. |
@@ -103,8 +102,10 @@ For Step 4, the only positive inputs from this index should be:
 
 - Current structured backend interfaces and `PreparedBirModule` facts from live
   code.
-- Target-ABI candidate notes for calls, returns, frames, globals, atomics, and
-  variadic behavior, treated as hypotheses to verify.
+- Target-ABI candidate notes for calls, returns, frames, globals, and atomics,
+  treated as hypotheses to verify. Variadic ownership now lives in compiled
+  `codegen/variadic.{hpp,cpp}` helper classification plus the prepared-call
+  and AAPCS64 call/return/frame contracts, not in a markdown shard.
 - Binary-utils candidates only when deciding whether codegen output requires a
   later object/relocation boundary.
 - Shared prepared memory carrier fields `PreparedMemoryAccess::address_space`

@@ -1,74 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/271_aarch64_variadic_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Or Record Integration
+Current Step ID: 4
+Current Step Title: Delete The Markdown Shard
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 3, `Route Or Record Integration`.
+Completed Plan Step 4, `Delete The Markdown Shard`.
 
-Reviewed the compiled route after Step 2. The integration hooks that should be
-owned by `variadic.{hpp,cpp}` already route through that compiled boundary:
+Deleted `src/backend/mir/aarch64/codegen/variadic.md`. Cleaned active markdown
+references that still treated the deleted shard as an implementation or bring-up
+authority:
 
-- `dispatch.cpp` calls `variadic_entry_helper_kind`,
-  `require_prepared_variadic_entry_plan`,
-  `variadic_helper_operand_homes_complete`, and
-  `variadic_helper_missing_consumption_fact_message` for helper classification,
-  prepared entry gating, operand-home completeness, and helper-specific missing
-  fact diagnostics.
-- `calls.cpp` calls `complete_variadic_call_record`,
-  `variadic_call_selection_status`, and `print_variadic_call` for structured
-  helper record completion, machine-node selection status, and helper printer
-  branches.
-- `src/backend/CMakeLists.txt` compiles `variadic.cpp`, so the compiled owner is
-  discoverable by the backend build.
+- `CLASSIFICATION_INDEX.md` no longer lists `codegen/variadic.md` as a
+  target-ABI candidate and now points variadic ownership at compiled
+  `codegen/variadic.{hpp,cpp}` plus prepared-call and AAPCS64 contracts.
+- `BACKEND_CASE_BRINGUP_MATRIX.md` keeps the aggregate/variadic public cases
+  blocked, but routes future variadic ownership through compiled
+  `variadic.cpp` / `variadic.hpp`, `AAPCS64_CALL_RETURN_FRAME_CONTRACT.md`, and
+  prepared-call variadic fields instead of the deleted shard.
+- `codegen/README.md` preserves the historical module-surface note while
+  recording that the legacy variadic markdown shard is deleted and compiled
+  ownership is `variadic.hpp` / `variadic.cpp`.
 
-The remaining live facts are intentionally still records/carriers rather than
-new variadic policy owners: `PreparedCallPlan::wrapper_kind ==
-DirectExternVariadic` and `PreparedCallPlan::variadic_fpr_arg_register_count`
-stay in the prepared call plan, while `CallInstructionRecord` retains the
-direct call wrapper/FPR-count fields plus the structured variadic helper record
-payloads needed by generic instruction construction. `instruction.hpp` remains
-the shared record surface for opcodes, machine pseudo/mnemonic enums,
-`VariadicVaStartRecord`, scalar and aggregate `VariadicVaArgRecord`,
-`VariadicVaCopyRecord`, and `CallInstructionRecord`; it does not reconstruct
-legacy `va_list` behavior.
-
-`calls.cpp` remains scoped to call sequencing, generic machine-node effect
-assembly, and ordinary direct/indirect call printing. `dispatch.cpp` remains
-scoped to routing BIR calls through prepared call and helper provenance.
-`prologue`, `memory`, and `module_compile` have no live compiled variadic hooks
-after the Step 2 route, so they remain focused on frame, memory, and module
-driver responsibilities rather than variadic save-area or overflow-area policy.
-
-No additional code movement is needed before Step 4. Step 4 can delete
-`src/backend/mir/aarch64/codegen/variadic.md` as a historical shard without
-additional integration work, provided the deletion packet confirms no active
-references still treat that markdown file as implementation authority.
-This remains an ownership redistribution only: no new `va_start`, `va_arg`,
-`va_copy`, register-save-area, overflow-area, or `va_list` semantics were
-implemented or requested.
+This was a documentation/lifecycle deletion only. Public support statuses and
+test expectations were not weakened, and no implementation source files or
+tests were changed.
 
 ## Suggested Next
 
-Execute Step 4 by deleting `src/backend/mir/aarch64/codegen/variadic.md` and
-checking that remaining references do not name it as an active implementation
-artifact. Keep the packet deletion-only unless the supervisor explicitly
-authorizes another movement.
+Step 4 deletion is ready for supervisor review and commit. The next coherent
+packet should be chosen by the supervisor or plan owner after deciding whether
+the active runbook is exhausted by this shard deletion.
 
 ## Watchouts
 
-Preserve the explicit deferral of full variadic function-entry behavior. Do not
-turn the structured helper records or printer diagnostics into new AAPCS64
-`va_start`, `va_arg`, `va_copy`, register-save-area, overflow-area, or
-`va_list` semantics during the deletion packet. Direct extern variadic call
-metadata still belongs to prepared/call records.
+Preserve the explicit deferral of full variadic function-entry behavior. The
+deleted markdown shard is no longer an active implementation authority; future
+variadic work should use the compiled helper boundary and accepted ABI/prepared
+contracts instead of reviving the shard.
 
 ## Proof
 
-No build or test proof was run; the delegated packet was a todo-only
-integration decision and explicitly required no proof unless implementation
-changes became unavoidable. `test_after.log` was not touched.
+No build or test proof was run; the delegated packet was docs/lifecycle deletion
+only and explicitly required no build unless compiled files changed. No compiled
+files changed, so no build was required. `test_after.log` was not touched.
