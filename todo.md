@@ -1,23 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/269_aarch64_peephole_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Delete The Markdown Shard
+Current Step ID: 5
+Current Step Title: Focused Proof And Acceptance Check
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 4, "Delete The Markdown Shard", by deleting the obsolete
-`src/backend/mir/aarch64/codegen/peephole.md` shard and cleaning active
-references in the AArch64 codegen classification/README docs so the deferred
-boundary now points at `peephole.hpp` / `peephole.cpp`.
+Completed plan Step 5, "Focused Proof And Acceptance Check", by running the
+focused backend proof for the AArch64 peephole owner redistribution and
+accepting the slice. The emitted-output behavior remains preserved by the
+no-op/deferred peephole boundary: the active printer path is unchanged until an
+explicit output-policy hook or real AArch64 peephole pass exists. No tests or
+expectations were weakened.
 
 ## Suggested Next
 
-Supervisor should review and decide whether the active runbook is exhausted or
-needs lifecycle closure now that the markdown shard deletion packet is
-complete.
+Supervisor should review Step 5's acceptance result and decide whether the
+active runbook is exhausted or needs lifecycle closure.
 
 ## Watchouts
 
@@ -30,5 +31,8 @@ active artifact.
 
 ## Proof
 
-No build required for this docs/lifecycle-only packet. No proof command was
-run, and `test_after.log` was intentionally not changed.
+Ran the delegated proof command:
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`.
+
+Result: pass. `test_after.log` contains the fresh build output and focused
+backend test run, with 139/139 backend tests passed and 0 failures.
