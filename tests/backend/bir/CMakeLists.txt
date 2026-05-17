@@ -8,6 +8,7 @@ add_executable(backend_prepare_phi_materialize_test
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/addressing.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/atomics.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/calls.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/control_flow.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/frame.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/functions.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/inline_asm.cpp"
