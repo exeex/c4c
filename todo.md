@@ -1,41 +1,46 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Extract Value-Home Publication
+Current Step ID: 5
+Current Step Title: Extract ABI Call and Return Move Resolution
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 follow-up extracted behavior-preserving value-home publication out of
-`src/backend/prealloc/regalloc.cpp` into
-`src/backend/prealloc/regalloc/value_homes.cpp` with declarations in
-`src/backend/prealloc/regalloc/value_homes.hpp`.
+Step 5 first extraction moved behavior-preserving call/return ABI helper
+ownership out of `src/backend/prealloc/regalloc.cpp` into
+`src/backend/prealloc/regalloc/call_return_abi.cpp` with declarations in
+`src/backend/prealloc/regalloc/call_return_abi.hpp`.
 
 Moved ownership:
 
-- `build_prepared_value_homes`
-- ordered construction of `PreparedValueHome` entries from regalloc values
-- pointer-carrier map consumption for value-home publication
+- call argument/result occupied-register destination group helpers
+- f128 call-argument destination placement adjustment
+- call argument ABI fallback resolution and stack destination offset helpers
+- call argument and call result `PreparedMoveStorageKind` classification
+- scalar function return ABI inference and function return storage-kind
+  classification
 
-`src/backend/prealloc/regalloc.cpp` still owns the value-location function
-coordinator and preserves publication order: value homes first, then move
-bundles, then call ABI bindings. Move bundle publication, ABI binding
-publication, runtime-helper mapping, allocation decisions, and prepared dump
-sequencing were not moved.
+`src/backend/prealloc/regalloc.cpp` still owns the move-resolution appenders and
+their duplicate-check record construction. The appender bodies now consume the
+extracted ABI helper surface without changing call argument/result/return move
+ordering, ABI semantics, runtime-helper mapping order, allocation decisions, or
+prepared publication order.
 
 ## Suggested Next
 
-Next coherent packet: inspect move-bundle publication only if the supervisor
-wants a separate Step 4 follow-up; otherwise ask the plan owner/reviewer whether
-Step 4 is exhausted enough to move on, because the remaining
-`build_prepared_value_location_function` body is now mostly coordination across
-value homes, move bundles, and call ABI bindings.
+Next coherent packet: decide whether Step 5 should stop at this helper boundary
+or extract the call/return move-resolution appenders behind a shared
+move-record append interface. Do not move the appenders until the shared
+duplicate-check helper can be exposed without dragging phi/out-of-SSA,
+consumer, runtime-helper mapping, or value-location publication ownership.
 
 ## Watchouts
 
-- Preserve allocation decisions and prepared dump output.
+- Preserve move-resolution ordering, duplicate-check behavior, ABI semantics,
+  allocation decisions, prepared dump output, and value-location publication
+  order.
 - Do not create testcase-shaped shortcuts or expectation downgrades.
 - Do not split prepared printer output in this plan.
 - Keep implementation progress in this file unless runbook scope changes.
@@ -88,6 +93,12 @@ value homes, move bundles, and call ABI bindings.
   `regalloc.cpp`; moving it would require either moving/exposing move-bundle
   publication and call ABI binding publication or introducing callback plumbing
   around those adjacent families.
+- `append_call_arg_move_resolution`, `append_call_result_move_resolution`, and
+  `append_return_move_resolution` remain in `regalloc.cpp` because they call the
+  generic `append_move_resolution_record` duplicate-check helper shared with
+  phi/out-of-SSA and consumer move resolution. Moving those appenders cleanly
+  needs either a narrow exported move-record helper or a broader move-resolution
+  ownership packet.
 - `clang-format` is not installed in this environment; the touched declarations
   and call sites were kept manually wrapped.
 
