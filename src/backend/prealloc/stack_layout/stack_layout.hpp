@@ -1,6 +1,6 @@
 #pragma once
 
-#include "../prealloc.hpp"
+#include "../../bir/bir.hpp"
 
 #include <algorithm>
 #include <cstddef>

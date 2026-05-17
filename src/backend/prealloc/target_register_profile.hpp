@@ -1,9 +1,11 @@
 #pragma once
 
-#include "prealloc.hpp"
+#include "regalloc.hpp"
 
+#include "../bir/bir.hpp"
 #include "../../target_profile.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string>
 #include <string_view>

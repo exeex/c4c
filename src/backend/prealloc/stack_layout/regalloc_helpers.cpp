@@ -1,3 +1,4 @@
+#include "../module.hpp"
 #include "stack_layout.hpp"
 
 namespace c4c::backend::prepare::stack_layout {
