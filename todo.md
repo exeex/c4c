@@ -8,27 +8,18 @@ Current Step Title: Move F128 Construction, Transport, And Lowering Bodies
 
 ## Just Finished
 
-Step 3: Move F128 Construction, Transport, And Lowering Bodies resolved the
-f128 transport-lowering ownership handoff as a todo-only decision. The existing
-boundary should stay in place: `memory.cpp` keeps
-`lower_f128_transport_instruction` because that body is mostly load/store
-classification, structured `MemoryOperand` preparation, memory diagnostics, and
-`MachineInstruction` wrapping, while `f128.cpp` owns the f128-specific carrier
-transport record construction and `F128Transport` instruction construction that
-the memory lowering already calls.
-
-No code changed. Moving the lowering body itself would require pulling
-memory-owned operand preparation/diagnostic helpers into `f128.cpp` or exposing
-new memory helper seams just for this route, which would widen the Step 3 shard
-instead of clarifying f128 ownership.
+Step 3: Move F128 Construction, Transport, And Lowering Bodies moved the f128
+runtime-helper lowering body from broad dispatch ownership into the f128 codegen
+owner. `dispatch.cpp` now keeps only the routing call for f128 runtime-helper
+lowering, while `f128.cpp`/`f128.hpp` own the candidate checks, prepared helper
+lookup, fail-closed diagnostics, boundary instruction construction, selection
+check, and BIR-origin machine-instruction wrapping for that route.
 
 ## Suggested Next
 
-Continue Step 3 with the f128 runtime-helper lowering handoff. The live lowering
-body is in `dispatch.cpp`, so the next packet should either explicitly include
-that owned file for a narrow f128-owner route or record that dispatch-owned
-runtime-helper lowering remains the correct router while f128 construction stays
-in `f128.cpp`.
+Continue Step 3 by auditing the remaining broad-dispatch helper bodies for the
+next ownership boundary that can move without changing behavior or exposing new
+generic helper seams.
 
 ## Watchouts
 
@@ -61,8 +52,11 @@ in `f128.cpp`.
   duplicate default arguments remain intentionally avoided there. Remove or
   narrow corresponding declarations in `instruction.hpp` only if needed for
   clean ownership and include flow.
+- `clang-format` is not installed in this environment; the touched C++ files
+  were left in the existing local style after manual review.
 
 ## Proof
 
-Audit-only todo update; no code changed, so the delegated packet did not require
-a build or test run. No new `test_after.log` was created by this packet.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'`.
+The build completed and all 139 selected backend tests passed. Full output is in
+`test_after.log`.

@@ -1,8 +1,11 @@
 #include "f128.hpp"
 #include "calls.hpp"
 
+#include <cstddef>
+#include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
@@ -355,6 +358,71 @@ MachineNodeStatusRecord validate_f128_runtime_helper_boundary_instruction(
         .diagnostic = "f128 helper boundary is missing selected-call ownership policy"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
+[[nodiscard]] std::string f128_runtime_helper_error_message(
+    PreparedF128RuntimeHelperRecordError error) {
+  std::string message =
+      "AArch64 binary128 runtime helper-boundary lowering requires prepared f128 helper facts";
+  message += "; error=";
+  message += prepared_f128_runtime_helper_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] const prepare::PreparedF128RuntimeHelper*
+find_f128_runtime_helper_for_instruction(
+    const prepare::PreparedF128RuntimeHelperFunction& helpers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& helper : helpers.helpers) {
+    if (helper.block_index == block_index &&
+        helper.instruction_index == instruction_index) {
+      return &helper;
+    }
+  }
+  return nullptr;
+}
+
+void append_f128_runtime_helper_diagnostic(
+    module::ModuleLoweringDiagnostics& diagnostics,
+    module::ModuleLoweringDiagnosticKind kind,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Scalar,
+      .message = std::move(message),
+  });
+}
+
+[[nodiscard]] module::MachineInstruction make_f128_bir_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    InstructionRecord target) {
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
 }
 
 }  // namespace
@@ -1141,6 +1209,124 @@ InstructionRecord make_f128_runtime_helper_boundary_instruction(
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
       .side_effects = {MachineSideEffectKind::Call},
       .payload = instruction,
+  };
+}
+
+LowerF128RuntimeHelperInstructionResult lower_f128_runtime_helper_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  const bool f128_binary_helper_candidate =
+      binary != nullptr &&
+      binary->operand_type == bir::TypeKind::F128 &&
+      (binary->result.type == bir::TypeKind::F128 ||
+       binary->result.type == bir::TypeKind::I1);
+  const bool supported_f128_cast =
+      cast != nullptr &&
+      ((cast->opcode == bir::CastOpcode::FPExt &&
+        (cast->operand.type == bir::TypeKind::F32 ||
+         cast->operand.type == bir::TypeKind::F64) &&
+        cast->result.type == bir::TypeKind::F128) ||
+       (cast->opcode == bir::CastOpcode::FPTrunc &&
+        cast->operand.type == bir::TypeKind::F128 &&
+        (cast->result.type == bir::TypeKind::F32 ||
+         cast->result.type == bir::TypeKind::F64)));
+  if (!f128_binary_helper_candidate && !supported_f128_cast) {
+    return LowerF128RuntimeHelperInstructionResult{.handled = false};
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+  const auto* f128_carriers =
+      prepare::find_prepared_f128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (f128_carriers == nullptr) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128Carrier));
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+  const auto* helper_function =
+      prepare::find_prepared_f128_runtime_helpers(*context.function.prepared,
+                                                  context.function.control_flow->function_name);
+  if (helper_function == nullptr) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+  const auto* helper =
+      find_f128_runtime_helper_for_instruction(
+          *helper_function, context.block_index, instruction_index);
+  if (helper == nullptr) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(
+            PreparedF128RuntimeHelperRecordError::MissingPreparedF128RuntimeHelper));
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+
+  auto prepared =
+      make_prepared_f128_runtime_helper_boundary_record(*f128_carriers, *helper);
+  if (!prepared.record.has_value()) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        f128_runtime_helper_error_message(prepared.error));
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+
+  InstructionRecord target =
+      make_f128_runtime_helper_boundary_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<F128RuntimeHelperBoundaryRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->block_index = context.block_index;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_f128_runtime_helper_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        std::string{target.selection.diagnostic});
+    return LowerF128RuntimeHelperInstructionResult{.handled = true};
+  }
+
+  return LowerF128RuntimeHelperInstructionResult{
+      .handled = true,
+      .instruction =
+          make_f128_bir_machine_instruction(context, instruction_index, std::move(target)),
   };
 }
 

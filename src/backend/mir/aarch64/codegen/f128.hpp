@@ -1,11 +1,18 @@
 #pragma once
 
+#include "../module/module.hpp"
 #include "instruction.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
+
+struct LowerF128RuntimeHelperInstructionResult {
+  bool handled = false;
+  std::optional<module::MachineInstruction> instruction;
+};
 
 [[nodiscard]] std::string_view f128_transport_kind_name(F128TransportKind kind);
 [[nodiscard]] std::string_view f128_runtime_helper_boundary_kind_name(
@@ -29,5 +36,12 @@ namespace c4c::backend::aarch64::codegen {
 make_prepared_f128_runtime_helper_boundary_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
     const prepare::PreparedF128RuntimeHelper& helper);
+
+[[nodiscard]] LowerF128RuntimeHelperInstructionResult
+lower_f128_runtime_helper_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 }  // namespace c4c::backend::aarch64::codegen
