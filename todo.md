@@ -8,19 +8,19 @@ Current Step Title: Extract Storage, Addressing, Runtime, Intrinsics, and Specia
 
 ## Just Finished
 
-Completed `plan.md` Step 3 inline-asm carrier printer extraction:
-`append_inline_asm_carriers` and the helper functions it needs for
-inline-asm carrier output now live in
-`src/backend/prealloc/prepared_printer/inline_asm.cpp`.
+Completed `plan.md` Step 3 runtime helper printer extraction:
+`append_f128_runtime_helpers`, `append_i128_runtime_helpers`, and their direct
+printer-local helper functions now live in
+`src/backend/prealloc/prepared_printer/runtime_helpers.cpp`.
 `prepared_printer.cpp` still calls the private printer declaration in the same
 prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/inline_asm.cpp`.
+target now lists `prepared_printer/runtime_helpers.cpp`.
 
 ## Suggested Next
 
 Extract the next Step 3 prepared-printer family from `prepared_printer.cpp`
-into its own private implementation file, with likely candidates being runtime
-helper output or addressing output. Keep the helper surface narrow and wire any
+into its own private implementation file, with addressing output being the
+next likely candidate. Keep the helper surface narrow and wire any
 direct-source test target that names `prepared_printer.cpp` to the new
 implementation file.
 
