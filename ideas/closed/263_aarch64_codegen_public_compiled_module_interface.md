@@ -1,7 +1,17 @@
 # AArch64 Codegen Public Compiled-Module Interface
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
+
+## Completion Summary
+
+Closed after introducing `src/backend/mir/aarch64/codegen/codegen.hpp` as the
+public compiled-module interface, exposing codegen-owned compiled artifact
+names and `compile_prepared_module(...)`, migrating API-facing/backend callers
+and contract tests, and documenting remaining `module::` names as internal or
+compatibility surfaces. Closure proof covered the `^backend_` CTest bucket,
+including the public AArch64 asm smoke.
 
 ## Intent
 
