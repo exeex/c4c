@@ -8,11 +8,11 @@ Current Step Title: Extract special carriers and runtime helper publishers
 
 ## Just Finished
 
-Completed Step 4 inline-asm prepared fact publisher extraction. `populate_inline_asm_carriers()` now lives in `src/backend/prealloc/inline_asm.cpp`, with `src/backend/prealloc/inline_asm.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_inline_asm_carriers(prepared_)` in the same phase order after intrinsic publication and before runtime-helper publication. Inline-asm missing-fact handling, register identity parsing, operand construction, carrier validation, and carrier construction moved into the focused publisher file. The value-home lookup needed by inline asm is duplicated narrowly inside `inline_asm.cpp`; no broad private helper header was added. The existing recursive prealloc source glob picked up `inline_asm.cpp`; no build registration edit was needed.
+Completed Step 4 i128/f128 special carrier prepared fact publisher extraction. `populate_i128_carriers()` and `populate_f128_carriers()` now live in `src/backend/prealloc/special_carriers.cpp`, with `src/backend/prealloc/special_carriers.hpp` carrying the narrow publisher declarations alongside the carrier data types. `BirPreAlloc::publish_contract_plans()` includes that header and still calls the i128 publisher followed by the f128 publisher in the same phase order after storage-plan publication and before atomic publication and runtime-helper facts. The storage-plan lookup, register-bank mapping, missing-fact appenders, and carrier builders moved into the focused publisher file. The existing recursive prealloc source glob picked up `special_carriers.cpp`; no build registration edit was needed.
 
 ## Suggested Next
 
-Extract the next coherent Step 4 runtime-helper publisher family only after dependency-checking whether its helpers are still shared with adjacent carrier publication; avoid growing a broad private helper header.
+Extract the next coherent Step 4 runtime-helper publisher family only after dependency-checking whether its helpers are still shared with adjacent runtime-helper publication; avoid growing a broad private helper header.
 
 ## Watchouts
 
@@ -33,10 +33,11 @@ Extract the next coherent Step 4 runtime-helper publisher family only after depe
 - AST dependency checks showed the atomic publisher chain is self-contained: `publish_contract_plans()` calls `populate_atomic_operations()`, which calls `build_atomic_operation_carrier()`, which depends only on name-table APIs and local atomic missing-fact/value-name helpers.
 - AST dependency checks showed the intrinsic publisher chain is self-contained after keeping inline asm on a local value-name helper: `publish_contract_plans()` calls `populate_intrinsic_carriers()`, which calls `find_call_plan_for_instruction()` and `build_intrinsic_carrier()`, and the carrier builder owns the intrinsic validation and missing-fact helpers in `intrinsics.cpp`.
 - AST dependency checks showed the inline-asm publisher chain is self-contained after keeping a narrow local value-home lookup in `inline_asm.cpp`: `populate_inline_asm_carriers()` calls `build_inline_asm_carrier()`, which owns inline-asm operand construction, register identity parsing, validation, and missing-fact helpers in the new file.
-- Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
+- AST dependency checks showed the special-carrier publisher chain is self-contained after keeping narrow local copies of `register_bank_from_class()` and `find_storage_plan_value()` in `special_carriers.cpp`: `populate_i128_carriers()` calls `build_i128_carrier()`, `populate_f128_carriers()` calls `build_f128_carrier()`, and the builders own their missing-fact helpers in the new file.
+- Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers.
 
 ## Proof
 
-Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. The build reconfigured because the recursive prealloc source glob picked up `inline_asm.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
+Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. The build reconfigured during the pre-proof compile because the recursive prealloc source glob picked up `special_carriers.cpp`. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
 
 Post-commit baseline review follow-up: supervisor accepted `test_baseline.new.log` into `test_baseline.log`, so the baseline-review reminder has been handled.

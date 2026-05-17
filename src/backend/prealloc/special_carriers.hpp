@@ -15,6 +15,11 @@
 
 namespace c4c::backend::prepare {
 
+struct PreparedBirModule;
+
+void populate_i128_carriers(PreparedBirModule& prepared);
+void populate_f128_carriers(PreparedBirModule& prepared);
+
 enum class PreparedI128CarrierKind {
   Missing,
   RegisterPair,
