@@ -8,6 +8,7 @@ add_executable(backend_prepare_phi_materialize_test
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/calls.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/frame.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/functions.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/special_carriers.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/storage.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/variadic.cpp"
 )
