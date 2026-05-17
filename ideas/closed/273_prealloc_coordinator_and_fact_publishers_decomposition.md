@@ -1,7 +1,8 @@
 # Prealloc Coordinator And Fact Publishers Decomposition
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -72,6 +73,16 @@ coordinator.
 - Existing tests and prepared dumps are behavior-preserving.
 - No family-specific logic remains in the coordinator except for clear phase
   sequencing and shared error/note plumbing.
+
+## Closure Notes
+
+Closed after Step 5/Step 6 validation. `prealloc.cpp` now owns orchestration,
+note emission, public preparation entry points, and publication order only.
+Prepared fact construction lives in focused backend/prealloc publisher files,
+with narrow duplicated or private helper ownership where extraction required
+it. Final backend validation used a fresh build plus `ctest --test-dir build -j
+--output-on-failure -R '^backend_'`, and the regression guard accepted equal
+green before/after backend logs with 139/139 tests passing.
 
 ## Reviewer Reject Signals
 
