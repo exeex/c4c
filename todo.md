@@ -1,41 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 6
-Current Step Title: Extract Phi and Out-of-SSA Move Resolution
+Current Step ID: 7
+Current Step Title: Extract Pointer Carrier and Runtime-Helper Mapping
 
 # Current Packet
 
 ## Just Finished
 
-Step 6 follow-up extracted the remaining consumer move-resolution traversal out
-of `src/backend/prealloc/regalloc.cpp` without changing behavior.
+Step 7 extracted runtime-helper mapping construction out of
+`src/backend/prealloc/regalloc.cpp` without changing behavior.
 
 Moved ownership:
 
-- `append_consumer_move_resolution`
-- consumer block-label resolution for select-materialized join suppression
-- consumer Binary/Select/Cast operand traversal and move-record emission
+- i128 div/rem helper opcode, kind, and callee mapping helpers
+- i128 float/integer conversion cast support, width, kind, and callee helpers
+- f128 soft-float arithmetic/comparison opcode, kind, callee, and zero-test
+  helpers
+- f128 width-conversion cast detection, kind, and callee helpers
+- i128/f128 missing-required-fact append helpers
+- `append_i128_runtime_helper_mappings`
+- `append_f128_runtime_helper_mappings`
 
 New files:
 
-- `src/backend/prealloc/regalloc/consumer_moves.cpp`
-- `src/backend/prealloc/regalloc/consumer_moves.hpp`
+- `src/backend/prealloc/regalloc/runtime_helpers.cpp`
+- `src/backend/prealloc/regalloc/runtime_helpers.hpp`
 
-The new consumer owner depends only on BIR traversal, prepared control-flow
-metadata for select-materialized join filtering, regalloc value lookup, and the
-existing shared `move_records` append helpers. Runtime-helper mapping,
-spill/reload publication, value-location publication, allocation decisions, and
-prepared move-bundle publication remain in `src/backend/prealloc/regalloc.cpp`.
-An unused local `find_instruction_index_for_named_result` helper was removed
-while moving the adjacent consumer block.
+The new runtime-helper owner depends only on BIR traversal, prepared
+runtime-helper contracts, regalloc value lookup, and f128 constant lookup. The
+`run_regalloc()` call sites stay in the same order after call/return move
+resolution and before frame/value-location publication, preserving runtime
+helper mapping order and the surrounding move/value publication order.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 6 by inspecting whether spill/reload
-publication has a clean owner boundary separate from allocation decisions,
-runtime-helper mapping, value-location publication, and prepared move-bundle
-publication.
+Next coherent packet: inspect whether spill/reload publication has a clean
+owner boundary separate from allocation decisions, runtime-helper mapping,
+value-location publication, and prepared move-bundle publication.
 
 ## Watchouts
 
@@ -115,6 +117,13 @@ publication.
   after CMake regenerated during the delegated build.
 - `clang-format` is not installed in this environment; the touched declarations
   and call sites were kept manually wrapped.
+- New `runtime_helpers.cpp` was picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
+- `runtime_helpers.hpp` includes both regalloc value contracts and prepared
+  runtime-helper contracts; keep this owner to helper mapping construction and
+  do not grow it into call/phi/consumer move resolution, spill/reload
+  publication, value-home publication, prepared move-bundle publication, or
+  allocation policy.
 
 ## Proof
 
