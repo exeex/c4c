@@ -1,6 +1,7 @@
 #include "prealloc.hpp"
 #include "dynamic_stack.hpp"
 #include "label_identity.hpp"
+#include "regalloc_placement_identity.hpp"
 #include "target_register_profile.hpp"
 
 #include <algorithm>
@@ -4922,41 +4923,6 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         plan.has_dynamic_stack && !plan.frame_slot_order.empty();
 
     prepared.frame_plan.functions.push_back(std::move(plan));
-  }
-}
-
-void populate_regalloc_placement_identity(PreparedBirModule& prepared) {
-  for (auto& function : prepared.regalloc.functions) {
-    for (auto& value : function.values) {
-      if (value.assigned_register.has_value()) {
-        value.assigned_register->placement =
-            assignment_register_placement(prepared.target_profile, *value.assigned_register);
-      }
-      if (value.spill_register_authority.has_value()) {
-        value.spill_register_authority->placement =
-            assignment_register_placement(prepared.target_profile, *value.spill_register_authority);
-      }
-      if (value.assigned_stack_slot.has_value()) {
-        value.assigned_stack_slot->placement = PreparedSpillSlotPlacement{
-            .slot_id = value.assigned_stack_slot->slot_id,
-            .offset_bytes = value.assigned_stack_slot->offset_bytes,
-        };
-      }
-    }
-
-    for (auto& op : function.spill_reload_ops) {
-      const auto* value = find_regalloc_value_by_id(function, op.value_id);
-      if (value != nullptr) {
-        const auto& published_register = value->assigned_register.has_value()
-                                             ? value->assigned_register
-                                             : value->spill_register_authority;
-        if (published_register.has_value()) {
-          op.register_placement =
-              assignment_register_placement(prepared.target_profile, *published_register);
-        }
-      }
-      op.spill_slot_placement = make_spill_slot_placement(op.slot_id, op.stack_offset_bytes);
-    }
   }
 }
 

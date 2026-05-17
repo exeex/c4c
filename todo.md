@@ -8,11 +8,11 @@ Current Step Title: Extract low-risk standalone fact publishers
 
 ## Just Finished
 
-Completed Step 2 label-identity extraction. `publish_prepared_bir_label_identity()` and its local prepared/BIR block-label resolver now live in `src/backend/prealloc/label_identity.cpp`, with `src/backend/prealloc/label_identity.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` still calls `publish_prepared_bir_label_identity(prepared_)` first, before the rest of the contract-plan publishers.
+Completed Step 2 compact regalloc placement identity extraction. `populate_regalloc_placement_identity()` now lives in `src/backend/prealloc/regalloc_placement_identity.cpp`, with `src/backend/prealloc/regalloc_placement_identity.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` still calls `populate_regalloc_placement_identity(prepared_)` in the same order, immediately after label identity and before frame/dynamic-stack/call publishers.
 
 ## Suggested Next
 
-Extract the next low-risk standalone publisher family from `src/backend/prealloc/prealloc.cpp`, preferably another compact family whose dependencies do not force broad helper-header creation.
+Extract another low-risk standalone fact publisher from `src/backend/prealloc/prealloc.cpp`; the storage-plan publisher is a reasonable next candidate only if its regalloc/value-location helper edges can stay narrow without creating a broad private helper header.
 
 ## Watchouts
 
@@ -24,6 +24,7 @@ Extract the next low-risk standalone publisher family from `src/backend/prealloc
 - `is_dynamic_alloca_call()` now has package linkage via `dynamic_stack.hpp` because `populate_frame_plan()` still uses it; keep that header narrow.
 - Label-identity build registration also relies on the existing recursive prealloc source glob; adding `label_identity.cpp` caused CMake to reconfigure successfully during the proof.
 - `find_preferred_block_label_id()` remains duplicated narrowly in `dynamic_stack.cpp` and `label_identity.cpp`; do not introduce a broad shared helper header unless more extracted publishers need it.
+- Regalloc placement identity keeps a narrow local copy of its placement/spill-slot/value-id helpers in `regalloc_placement_identity.cpp`; the original anonymous-namespace helpers remain in `prealloc.cpp` for other publisher families, so avoid broadening this into a shared helper header unless multiple extracted families prove they need the same seam.
 - Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
 
 ## Proof
