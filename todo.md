@@ -1,30 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/259_aarch64_cast_ops_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Retire the markdown shard
+Current Step ID: 6
+Current Step Title: Final validation and closure readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 5 by re-reading `cast_ops.md` against the compiled
-`cast_ops.cpp`/`cast_ops.hpp` owner and deleting the obsolete markdown shard.
-The valid durable content is reconciled: scalar cast opcode classification,
-selected-node construction, prepared record validation, lowering, simple
-integer spelling, scalar conversion spelling, and diagnostics now live in
-`cast_ops`; `machine_printer.cpp` only routes scalar cast printing to the
-compiled owner. The old accumulator-specific reference prose is stale for the
-current structured-register MIR path and was not copied into comments. The
-F128 content is reconciled by the Step 4 boundary decision: scalar cast
-records reject F128 scalar/conversion cases, while F128 cast helper printing
-stays inside the shared `print_f128_runtime_helper(...)` boundary with the
-arithmetic and comparison helper families.
+Completed Step 6 final validation for the AArch64 cast-ops redistribution
+plan. The broader backend proof passed and covers the cast record paths,
+AArch64 MIR lowering, dispatch routing, scalar cast printer delegation, and
+public backend smoke paths exercised by the `^backend_` suite.
 
 ## Suggested Next
 
-Run Step 6 final validation and supervisor closure readiness review for the
-cast-ops redistribution plan.
+Supervisor plan-owner closure review for the cast-ops redistribution plan.
 
 ## Watchouts
 
@@ -36,13 +27,16 @@ cast-ops redistribution plan.
   helper branch there until a broader F128 runtime-helper printer split is
   explicitly owned.
 - `cast_ops.md` is retired; do not recreate stale reference-only prose.
+- The runbook is ready for supervisor plan-owner closure review.
 
 ## Proof
 
 Ran exactly:
 
 ```bash
-{ cmake --build build --target c4c_backend backend_aarch64_scalar_cast_records_test backend_aarch64_prepared_scalar_cast_records_test backend_aarch64_machine_printer_test && ctest --test-dir build -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_machine_printer)$' --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build --target c4c_backend c4cll && ctest --test-dir build -R '^backend_' --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` contains 3/3 selected tests passed.
+Result: passed. `test_after.log` contains 139/139 `^backend_` tests passed.
+This supervisor-selected proof is sufficient for Step 6 final validation and
+closure-readiness recording.
