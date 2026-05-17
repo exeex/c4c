@@ -70,8 +70,28 @@ std::string read_call_abi_source() {
   return read_source("src/backend/bir/lir_to_bir/call_abi.cpp");
 }
 
+std::string read_aarch64_codegen_public_header() {
+  return read_source("src/backend/mir/aarch64/codegen/codegen.hpp");
+}
+
 bool contains(const std::string& text, const std::string& needle) {
   return text.find(needle) != std::string::npos;
+}
+
+int check_aarch64_public_codegen_compiled_module_api() {
+  const std::string source = read_aarch64_codegen_public_header();
+  if (source.empty()) {
+    return fail("could not read aarch64 public codegen header");
+  }
+
+  if (!contains(source, "using CompiledModule = module::Module;") ||
+      !contains(source, "using CompileResult = module::BuildResult;") ||
+      !contains(source, "CompileResult compile_prepared_module(\n"
+                        "    const c4c::backend::prepare::PreparedBirModule& prepared)")) {
+    return fail("aarch64 public codegen header does not expose the compiled-module API");
+  }
+
+  return 0;
 }
 
 int check_fast_paths_no_longer_parse_signature_text() {
@@ -141,6 +161,9 @@ int check_signature_abi_uses_structured_aggregate_refs() {
 }  // namespace
 
 int main() {
+  if (const int status = check_aarch64_public_codegen_compiled_module_api(); status != 0) {
+    return status;
+  }
   if (const int status = check_fast_paths_no_longer_parse_signature_text(); status != 0) {
     return status;
   }

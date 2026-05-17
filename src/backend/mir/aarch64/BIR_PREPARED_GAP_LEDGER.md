@@ -32,11 +32,13 @@ Status terms:
 - Existing target-local precedent: x86 consumes `PreparedBirModule` through
   `src/backend/mir/x86/api/api.hpp`, `src/backend/mir/x86/module/module.hpp`,
   `src/backend/mir/x86/prepared/prepared.hpp`, and route-debug surfaces.
-- Current AArch64 codegen enters through
-  `src/backend/mir/aarch64/codegen/emit.hpp` as
-  `build_module(const PreparedBirModule&)`, then splits orchestration,
-  traversal, instruction/operand construction, feature lowering, returns, and
-  compatibility projection across the current `codegen/` `.cpp/.hpp` files.
+- Public AArch64 compiled-module codegen enters through
+  `src/backend/mir/aarch64/codegen/codegen.hpp` as
+  `compile_prepared_module(const PreparedBirModule&)`, returning
+  `codegen::CompileResult` / `codegen::CompiledModule`; the lower
+  `codegen/emit.hpp` `build_module(const PreparedBirModule&)` route remains a
+  codegen-internal orchestration boundary, and `api::build_prepared_module(...)`
+  remains compatibility forwarding rather than the primary public route.
 - Current AArch64 assembler/linker headers expose staged text/object/link
   surfaces under `src/backend/mir/aarch64/assembler/` and
   `src/backend/mir/aarch64/linker/`.
@@ -51,7 +53,7 @@ initiative that may touch behavior after this markdown contract is accepted.
 
 | Feature family | Owner | Carrier status | Target-local record type | First allowed route |
 | --- | --- | --- | --- | --- |
-| Public prepared-module entry | `api/api.hpp`, `api/api.cpp` | Present prepared entry: `build_prepared_module(const PreparedBirModule&)`. Raw `bir::Module`, LIR text, and assembly text fallback are rejected. | `module::BuildResult` / `module::Module` returned through the public API. | AArch64 prepared-module target MIR boundary; no direct text emitter route. |
+| Public prepared-module entry | `codegen/codegen.hpp`, with `api/api.hpp` as compatibility forwarding | Present prepared entry: `codegen::compile_prepared_module(const PreparedBirModule&)`. Raw `bir::Module`, LIR text, and assembly text fallback are rejected. | `codegen::CompileResult` / `codegen::CompiledModule`; `module::BuildResult` / `module::Module` remain internal target MIR snapshots. | AArch64 prepared-module target MIR boundary; no direct text emitter route. |
 | Target profile and handoff validation | `abi/abi.hpp`, `abi/abi.cpp` | Present prepared carrier: `PreparedBirModule::target_profile`; AArch64/AAPCS64 validation exists. | `abi::HandoffError`, `abi::HandoffErrorKind`. | AArch64 target ABI validation and diagnostics only; no lowering behavior. |
 | AAPCS64 ABI call/return/variadic policy | `AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` plus `module/` snapshots | Present minimum contract over prepared call, return, variadic, memory-return, frame, and special-register facts; specific missing carriers remain deferred as named contract candidates. | Existing snapshots: `CallRecord`, `CallArgumentRecord`, `CallResultRecord`, `CallPreservedValueRecord`, `CalleeSaveRecord`, `AbiBindingRecord`, `MoveRecord`, `BlockRecord`, `FrameRecord`. | Consume the AAPCS64 contract before any call, return, variadic, frame, prologue, or epilogue instruction-selection route. |
 | Module/function/block containers | `module/module.hpp`, `module/module.cpp` | Present BIR and prepared carriers: retained BIR module plus `PreparedControlFlow`. | `Module`, `FunctionRecord`, `BlockRecord`. | AArch64 prepared-module target MIR boundary; containers stay module-owned. |
@@ -99,7 +101,7 @@ record. The status column is the current permission boundary for later work.
 
 | Feature family | BIR carrier | Prepared carrier | Target record | Owner | Status |
 | --- | --- | --- | --- | --- | --- |
-| Public prepared-module entry | Retained `bir::Module` only as input to preparation; raw BIR emitters are not accepted entry carriers. | `PreparedBirModule` passed through `build_prepared_module(const PreparedBirModule&)`. | `module::BuildResult`, `module::Module`. | `api/api.hpp`, `api/api.cpp`. | present for prepared entry; raw BIR emitters, LIR text, and assembly text fallback are rejected for this route. |
+| Public prepared-module entry | Retained `bir::Module` only as input to preparation; raw BIR emitters are not accepted entry carriers. | `PreparedBirModule` passed through `codegen::compile_prepared_module(const PreparedBirModule&)`; `api::build_prepared_module(...)` is compatibility forwarding. | Public names are `codegen::CompileResult`, `codegen::CompiledModule`; internal target MIR snapshots remain `module::BuildResult`, `module::Module`. | `codegen/codegen.hpp`; `api/api.hpp`, `api/api.cpp` only for compatibility forwarding. | present for prepared entry; raw BIR emitters, LIR text, and assembly text fallback are rejected for this route. |
 | Target profile and handoff validation | Target triple facts before preparation. | `PreparedBirModule::target_profile`. | `abi::HandoffError`, `abi::HandoffErrorKind`. | `abi/abi.hpp`, `abi/abi.cpp`. | present for AArch64/AAPCS64 validation; lowering must still gate on this. |
 | Module containers | `bir::Module`, `bir::Function`, `bir::Block`. | `PreparedBirModule::module`, `PreparedControlFlow`. | `Module`, `FunctionRecord`, `BlockRecord`. | `module/module.hpp`. | present as snapshots; container ownership does not imply instruction selection. |
 | Semantic ids and names | BIR function, block, value, slot, link, and text ids. | `PreparedNameTables`. | Id and label fields inside module, function, block, operand, data, and relocation records. | `module/module.hpp`, with lookup authority from shared preparation. | present; labels are display or diagnostics only, not semantic recovery. |
@@ -134,7 +136,7 @@ record. The status column is the current permission boundary for later work.
 
 | Contract fact | Current carrier | Status | Gap owner | Ledger note |
 | --- | --- | --- | --- | --- |
-| Accepted entry type is `PreparedBirModule`, not raw `bir::Module`. | Shared prepare exposes `prepare_semantic_bir_module_with_options(...)`; AArch64 exposes `build_prepared_module(const PreparedBirModule&)` through its prepared-module API. | present | AArch64 API/module boundary | Keep raw BIR only as upstream staging into preparation. Lowering consumers must enter through the prepared-module target record layer. |
+| Accepted entry type is `PreparedBirModule`, not raw `bir::Module`. | Shared prepare exposes `prepare_semantic_bir_module_with_options(...)`; AArch64 exposes `codegen::compile_prepared_module(const PreparedBirModule&)` through `codegen/codegen.hpp`. `api::build_prepared_module(...)` remains compatibility forwarding. | present | AArch64 codegen/API compatibility boundary | Keep raw BIR only as upstream staging into preparation. Lowering consumers must enter through the prepared-module target record layer. |
 | Semantic module structure. | `PreparedBirModule::module` retains BIR functions, blocks, instructions, globals, strings, and name tables. | present | shared preparation | AArch64 may read semantic operations from the retained module after prepared facts have been accepted. |
 | Target profile and AAPCS64 target ABI. | `PreparedBirModule::target_profile` includes `TargetArch::Aarch64` and `BackendAbiKind::Aapcs64` when triples resolve through `target_profile_from_triple(...)`. | present | shared preparation | Target entry must reject non-AArch64 prepared modules and require `backend_abi == Aapcs64` for AAPCS64 routes. |
 | Prepared intern tables for names and symbols. | `PreparedBirModule::names` carries `function_names`, `block_labels`, `value_names`, `slot_names`, `link_names`, and `texts`. | present | shared preparation | Use interned ids as lookup authority; display spellings are final spelling or diagnostics only. |
@@ -159,7 +161,7 @@ record. The status column is the current permission boundary for later work.
 
 | Required target-local structure | Current AArch64 availability | Status | Gap owner | Ledger note |
 | --- | --- | --- | --- | --- |
-| AArch64 module/function/block MIR container keyed back to prepared ids. | `module::Module`, `FunctionRecord`, and `BlockRecord` are live prepared-module records. Legacy text emitters remain historical surfaces only. | present | AArch64 module records | Later scalar, memory, branch, call, return, and printer work must consume these containers instead of reintroducing direct text-first entry points. |
+| AArch64 module/function/block MIR container keyed back to prepared ids. | Public codegen returns `codegen::CompiledModule`, an alias over the module-owned `module::Module`; `FunctionRecord` and `BlockRecord` are live prepared-module records. Legacy text emitters remain historical surfaces only. | present | AArch64 module records | Later scalar, memory, branch, call, return, and printer work must consume these containers instead of reintroducing direct text-first entry points. |
 | Typed virtual or prepared-value operands retaining `PreparedValueId`, `ValueNameId`, and `TypeKind`. | `module::OperandRecord` preserves prepared value identity, value names, type facts, allocation locations, and storage-plan snapshots. Split `codegen/instruction.*` and `codegen/operands.*` define the current downstream operand record surface. | present | AArch64 module records plus split codegen instruction/operand records | Do not use rendered value names or old emitter register strings as semantic operands. Missing prepared carriers should become separate open-idea candidates, not local workarounds. |
 | Target register classes and physical register references separated from semantic value ids. | `TargetRegisterRecord` records target-facing register class/bank, physical spelling, prepared value identity, allocation location, scratch authority, occupied register set, and deferred virtual placeholders. | present | AArch64 module records plus `ALLOCATION_CONTRACT.md` | Final register enum/encoding policy remains later work, but consumers must use these structured records rather than allocate homes locally. |
 | Frame, stack-slot, dynamic-stack, and callee-save MIR records sourced from prepared plans. | `FrameRecord`, `FrameSlotRecord`, `DynamicStackRecord`, and `CalleeSaveRecord` preserve prepared frame and slot snapshots. | present | AArch64 module records plus `AAPCS64_CALL_RETURN_FRAME_CONTRACT.md` | Prologue/epilogue work may consume these snapshots, `ALLOCATION_CONTRACT.md`, and the AAPCS64 contract; it must not recompute frame placement, save/restore policy, or spill slots locally. |
