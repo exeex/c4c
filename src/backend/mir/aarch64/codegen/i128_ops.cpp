@@ -2,8 +2,11 @@
 
 #include "alu.hpp"
 #include "calls.hpp"
+#include "comparison.hpp"
 
+#include <cstddef>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -99,6 +102,88 @@ MachineEffectResource prepared_value_def(
       .kind = MachineEffectResourceKind::PreparedValue,
       .value_id = value_id,
       .value_name = value_name,
+  };
+}
+
+void append_i128_pair_diagnostic(
+    module::ModuleLoweringDiagnostics& diagnostics,
+    module::ModuleLoweringDiagnosticKind kind,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string message) {
+  diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+      .kind = kind,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .instruction_family = module::InstructionLoweringFamily::Scalar,
+      .message = std::move(message),
+  });
+}
+
+[[nodiscard]] std::string i128_pair_error_message(
+    PreparedI128PairRecordError error) {
+  std::string message =
+      "AArch64 i128 pair operation lowering requires prepared i128 carrier facts";
+  message += "; error=";
+  message += prepared_i128_pair_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] std::string i128_transport_error_message(
+    PreparedI128TransportRecordError error) {
+  std::string message =
+      "AArch64 i128 transport lowering requires prepared i128 carrier facts";
+  message += "; error=";
+  message += prepared_i128_transport_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] std::string i128_runtime_helper_error_message(
+    PreparedI128RuntimeHelperRecordError error) {
+  std::string message =
+      "AArch64 i128 runtime helper-boundary lowering requires prepared i128 helper facts";
+  message += "; error=";
+  message += prepared_i128_runtime_helper_record_error_name(error);
+  return message;
+}
+
+[[nodiscard]] const prepare::PreparedI128RuntimeHelper* find_i128_runtime_helper_for_instruction(
+    const prepare::PreparedI128RuntimeHelperFunction& helpers,
+    std::size_t block_index,
+    std::size_t instruction_index) {
+  for (const auto& helper : helpers.helpers) {
+    if (helper.block_index == block_index &&
+        helper.instruction_index == instruction_index) {
+      return &helper;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] module::MachineInstruction make_i128_bir_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    InstructionRecord target) {
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
   };
 }
 
@@ -1729,6 +1814,241 @@ InstructionRecord make_i128_runtime_helper_boundary_instruction(
       .clobbers = effects_from_prepared_call_clobbers(instruction.clobbered_registers),
       .side_effects = {MachineSideEffectKind::Call},
       .payload = instruction,
+  };
+}
+
+I128InstructionLoweringResult lower_i128_pair_operation_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      (binary->operand_type != bir::TypeKind::I128 &&
+       binary->result.type != bir::TypeKind::I128)) {
+    return I128InstructionLoweringResult{.handled = false};
+  }
+
+  if (is_compare_predicate(binary->opcode)) {
+    return I128InstructionLoweringResult{
+        .handled = true,
+        .instruction = lower_prepared_i128_compare_instruction(
+            context, *binary, instruction_index, diagnostics),
+    };
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return I128InstructionLoweringResult{.handled = true};
+  }
+  const auto* i128_carriers =
+      prepare::find_prepared_i128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (i128_carriers == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  InstructionRecord target;
+  if (binary->opcode == bir::BinaryOpcode::Shl ||
+      binary->opcode == bir::BinaryOpcode::LShr ||
+      binary->opcode == bir::BinaryOpcode::AShr) {
+    if (context.function.value_locations == nullptr ||
+        context.function.storage_plan == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(PreparedI128PairRecordError::MissingShiftCountStorage));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    auto prepared = make_prepared_i128_shift_record(
+        context.function.prepared->names,
+        *context.function.value_locations,
+        *context.function.storage_plan,
+        *i128_carriers,
+        *binary);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(prepared.error));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    target = make_i128_shift_instruction(*prepared.record);
+  } else if (is_i128_div_rem_opcode(binary->opcode)) {
+    const auto* helper_function =
+        prepare::find_prepared_i128_runtime_helpers(*context.function.prepared,
+                                                    context.function.control_flow->function_name);
+    if (helper_function == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(
+              PreparedI128RuntimeHelperRecordError::MissingPreparedI128RuntimeHelper));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    const auto* helper =
+        find_i128_runtime_helper_for_instruction(
+            *helper_function, context.block_index, instruction_index);
+    if (helper == nullptr) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(
+              PreparedI128RuntimeHelperRecordError::MissingPreparedI128RuntimeHelper));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    auto prepared =
+        make_prepared_i128_runtime_helper_boundary_record(*i128_carriers, *helper);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_runtime_helper_error_message(prepared.error));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    target = make_i128_runtime_helper_boundary_instruction(*prepared.record);
+  } else {
+    auto prepared = make_prepared_i128_pair_operation_record(
+        context.function.prepared->names,
+        *i128_carriers,
+        *binary);
+    if (!prepared.record.has_value()) {
+      append_i128_pair_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          i128_pair_error_message(prepared.error));
+      return I128InstructionLoweringResult{.handled = true};
+    }
+    target = make_i128_pair_operation_instruction(*prepared.record);
+  }
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<I128PairOperationRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  } else if (auto* record = std::get_if<I128ShiftRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  } else if (auto* record = std::get_if<I128RuntimeHelperBoundaryRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->block_index = context.block_index;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_i128_pair_diagnostic(diagnostics,
+                                module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                                context,
+                                instruction_index,
+                                std::string{target.selection.diagnostic});
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  return I128InstructionLoweringResult{
+      .handled = true,
+      .instruction =
+          make_i128_bir_machine_instruction(context, instruction_index, std::move(target)),
+  };
+}
+
+I128InstructionLoweringResult lower_i128_copy_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  if (cast == nullptr ||
+      cast->opcode != bir::CastOpcode::Bitcast ||
+      cast->result.type != bir::TypeKind::I128 ||
+      cast->operand.type != bir::TypeKind::I128) {
+    return I128InstructionLoweringResult{.handled = false};
+  }
+
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  const auto* i128_carriers =
+      prepare::find_prepared_i128_carriers(*context.function.prepared,
+                                           context.function.control_flow->function_name);
+  if (i128_carriers == nullptr) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_pair_error_message(PreparedI128PairRecordError::MissingPreparedI128Carrier));
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  auto prepared = make_prepared_i128_copy_transport_record(
+      context.function.prepared->names, *i128_carriers, *cast);
+  if (!prepared.record.has_value()) {
+    append_i128_pair_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        i128_transport_error_message(prepared.error));
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  InstructionRecord target = make_i128_transport_instruction(*prepared.record);
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (auto* record = std::get_if<I128TransportRecord>(&target.payload)) {
+    record->block_label = context.control_flow_block->block_label;
+    record->instruction_index = instruction_index;
+  }
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    append_i128_pair_diagnostic(diagnostics,
+                                module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+                                context,
+                                instruction_index,
+                                std::string{target.selection.diagnostic});
+    return I128InstructionLoweringResult{.handled = true};
+  }
+
+  return I128InstructionLoweringResult{
+      .handled = true,
+      .instruction =
+          make_i128_bir_machine_instruction(context, instruction_index, std::move(target)),
   };
 }
 

@@ -1,11 +1,25 @@
 #pragma once
 
 #include "instruction.hpp"
+#include "../../mir.hpp"
 
+#include <cstddef>
 #include <optional>
 #include <string_view>
 
+namespace c4c::backend::aarch64::module {
+
+struct BlockLoweringContext;
+struct ModuleLoweringDiagnostics;
+
+}  // namespace c4c::backend::aarch64::module
+
 namespace c4c::backend::aarch64::codegen {
+
+struct I128InstructionLoweringResult {
+  bool handled = false;
+  std::optional<c4c::backend::mir::MachineInstruction<InstructionRecord>> instruction;
+};
 
 [[nodiscard]] std::string_view i128_transport_kind_name(I128TransportKind kind);
 [[nodiscard]] std::string_view prepared_i128_transport_record_error_name(
@@ -66,5 +80,15 @@ namespace c4c::backend::aarch64::codegen {
 make_prepared_i128_runtime_helper_boundary_record(
     const prepare::PreparedI128CarrierFunction& i128_carriers,
     const prepare::PreparedI128RuntimeHelper& helper);
+[[nodiscard]] I128InstructionLoweringResult lower_i128_pair_operation_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] I128InstructionLoweringResult lower_i128_copy_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 }  // namespace c4c::backend::aarch64::codegen
