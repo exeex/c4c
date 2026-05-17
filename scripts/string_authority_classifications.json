@@ -1055,7 +1055,7 @@
       "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/prealloc/out_of_ssa.cpp:639."
     },
     {
-      "path": "src/backend/prealloc/prealloc.hpp",
+      "path": "src/backend/prealloc/frame.hpp",
       "symbol": "find_prepared_stack_frame_offset_by_name",
       "pattern": "lookup-helper-name",
       "owner": "backend-prealloc",
@@ -1063,7 +1063,7 @@
       "category": "compatibility-bridge",
       "reason": "Current declaration-level string-keyed compatibility surface retained during the structured-authority migration; new uses must be classified exactly or replaced with structured authority.",
       "removal_condition": "Remove when the compatibility path is retired or all callers provide structured authority.",
-      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/prealloc/prealloc.hpp:335."
+      "evidence": "Strict Step 3 guard exposed this exact current declaration-level hit at src/backend/prealloc/frame.hpp:286."
     },
     {
       "path": "src/backend/prealloc/stack_layout/alloca_coalescing.cpp",

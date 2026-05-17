@@ -8,15 +8,13 @@ Current Step Title: Extract frame, addressing, liveness, and regalloc schema
 
 ## Just Finished
 
-Step 3 partially extracted the addressing schema family into
-`src/backend/prealloc/addressing.hpp`.
+Step 3 fixed the baseline-review fallout from moving
+`find_prepared_stack_frame_offset_by_name` into
+`src/backend/prealloc/frame.hpp`.
 
-`addressing.hpp` now owns prepared address base/materialization/schema records,
-memory access records, addressing function aggregate, and associated lookup/name
-helpers.
-
-`src/backend/prealloc/prealloc.hpp` now includes `addressing.hpp` and remains
-the compatibility umbrella.
+`scripts/string_authority_classifications.json` now classifies the exact
+current declaration path for the helper without weakening the compatibility
+bridge rationale.
 
 ## Suggested Next
 
@@ -40,6 +38,10 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
   lowest shared focused header that avoids recreating a helper monolith.
 - Register bank/placement types now live in `frame.hpp`; dependent Step 3
   headers can include that focused header instead of relying on `prealloc.hpp`.
+- The string-authority classification for
+  `find_prepared_stack_frame_offset_by_name` now follows the helper's current
+  declaration in `frame.hpp`; do not reintroduce the stale `prealloc.hpp`
+  metadata path.
 - Addressing types now live in `addressing.hpp`; dependent Step 3 headers can
   include that focused header instead of relying on `prealloc.hpp`.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
@@ -50,7 +52,8 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 Ran delegated proof:
 
-`bash -o pipefail -c 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '\''^backend_'\''' > test_after.log 2>&1`
+`bash -o pipefail -c 'cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '\''^(string_authority_guard|backend_)'\''' > test_after.log 2>&1`
 
-Result: passed. Build completed and 139/139 backend tests passed.
+Result: passed. Build completed and 141/141 selected tests passed, including
+`string_authority_guard` and backend tests.
 Proof log: `test_after.log`.
