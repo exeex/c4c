@@ -2,6 +2,7 @@
 #include "regalloc/assignment.hpp"
 #include "regalloc/classification.hpp"
 #include "regalloc/intervals.hpp"
+#include "regalloc/stack_slots.hpp"
 #include "regalloc/values.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/stack_layout.hpp"
@@ -34,6 +35,8 @@ using regalloc_detail::is_f128_immediate_constant;
 using regalloc_detail::locate_program_point;
 using regalloc_detail::materialize_register_names;
 using regalloc_detail::materialize_register_placements;
+using regalloc_detail::allocate_stack_slot;
+using regalloc_detail::normalized_value_size;
 using regalloc_detail::published_register_group_width;
 using regalloc_detail::register_bank_from_class;
 using regalloc_detail::resolve_register_class;
@@ -671,14 +674,6 @@ template <std::size_t N>
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }
 
-[[nodiscard]] std::size_t normalized_value_size(const PreparedRegallocValue& value) {
-  return stack_layout::normalize_size(value.type, 0);
-}
-
-[[nodiscard]] std::size_t normalized_value_alignment(const PreparedRegallocValue& value) {
-  return stack_layout::normalize_alignment(value.type, 0, normalized_value_size(value));
-}
-
 [[nodiscard]] PreparedMoveStorageKind assigned_storage_kind(const PreparedRegallocValue& value) {
   if (value.assigned_register.has_value()) {
     return PreparedMoveStorageKind::Register;
@@ -1101,49 +1096,6 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
                                 return assignment.end_point < start_point;
                               }),
                active.end());
-}
-
-[[nodiscard]] std::optional<PreparedStackSlotAssignment> existing_stack_slot_assignment(
-    const PreparedStackLayout& stack_layout,
-    const PreparedRegallocValue& value) {
-  if (!value.stack_object_id.has_value()) {
-    return std::nullopt;
-  }
-  for (const auto& slot : stack_layout.frame_slots) {
-    if (slot.object_id != *value.stack_object_id) {
-      continue;
-    }
-    return PreparedStackSlotAssignment{
-        .slot_id = slot.slot_id,
-        .offset_bytes = slot.offset_bytes,
-        .size_bytes = slot.size_bytes,
-        .align_bytes = slot.align_bytes,
-    };
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] PreparedStackSlotAssignment allocate_stack_slot(const PreparedRegallocValue& value,
-                                                              const PreparedStackLayout& stack_layout,
-                                                              PreparedFrameSlotId& next_slot_id,
-                                                              std::size_t& next_offset_bytes,
-                                                              std::size_t& frame_alignment_bytes) {
-  if (const auto existing = existing_stack_slot_assignment(stack_layout, value); existing.has_value()) {
-    return *existing;
-  }
-
-  const std::size_t size_bytes = normalized_value_size(value);
-  const std::size_t align_bytes = normalized_value_alignment(value);
-  next_offset_bytes = stack_layout::align_to(next_offset_bytes, align_bytes);
-  PreparedStackSlotAssignment slot{
-      .slot_id = next_slot_id++,
-      .offset_bytes = next_offset_bytes,
-      .size_bytes = size_bytes,
-      .align_bytes = align_bytes,
-  };
-  next_offset_bytes += size_bytes;
-  frame_alignment_bytes = std::max(frame_alignment_bytes, align_bytes);
-  return slot;
 }
 
 [[nodiscard]] PreparedValueHome classify_prepared_value_home(

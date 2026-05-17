@@ -8,31 +8,32 @@ Current Step Title: Isolate Interval Ranking and Physical Assignment
 
 ## Just Finished
 
-Step 3 second extraction moved the read-only physical-assignment candidate
-helpers into `src/backend/prealloc/regalloc/assignment.cpp` with a narrow
-private header in `src/backend/prealloc/regalloc/assignment.hpp`.
+Step 3 third extraction moved the stack-slot fallback helper cluster into
+`src/backend/prealloc/regalloc/stack_slots.cpp` with declarations in
+`src/backend/prealloc/regalloc/stack_slots.hpp`.
 
 Moved ownership:
 
-- `ActiveRegisterAssignment`
-- `assignments_overlap`
-- `choose_register_span`
-- `has_lower_allocation_rank`
-- `choose_eviction_candidate`
+- `normalized_value_size`
+- `normalized_value_alignment`
+- `existing_stack_slot_assignment`
+- `allocate_stack_slot`
 
-`src/backend/prealloc/regalloc.cpp` now includes the private assignment helper
-header and imports the active-assignment record plus read-only candidate/span
-selection helpers. Active-list expiry, physical assignment mutation, eviction
-mutation, stack-slot fallback, move resolution, pointer carriers,
-runtime-helper mapping, value-location publication, and prepared dump semantics
-remain in `regalloc.cpp`.
+`src/backend/prealloc/regalloc.cpp` now imports stack-slot normalization and
+slot-construction helpers from `regalloc_detail`. Allocation decisions,
+`requires_home_slot` handling, no-interval stack fallback decisions,
+register-eviction fallout, stack layout growth counters, final
+`prepared_.stack_layout` frame size/alignment publication, move resolution,
+pointer carriers, runtime-helper mapping, value-location publication, and
+prepared dump semantics remain in `regalloc.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: inspect whether the remaining stack-slot fallback helpers
-can move behind a focused allocator/stack-fallback owner without taking
-prepared value-home publication, move resolution, pointer carriers, or runtime
-helper mapping with them.
+Next coherent packet: inspect the remaining shared storage/move-resolution
+lookup helpers (`find_regalloc_value`, `assigned_storage_kind`,
+`assigned_storage_matches`, and the move-resolution appenders) for a narrow
+internal owner, without taking phi, consumer, call, return, runtime-helper, or
+value-location publication behavior in the same slice.
 
 ## Watchouts
 
@@ -70,10 +71,12 @@ helper mapping with them.
   still cross value appending, call-arg move resolution, and f128 runtime-helper
   mapping, so do not move those caller families as a follow-on without a
   separate packet.
-- `allocate_stack_slot` mutates `next_slot_id`, `next_offset_bytes`, and
-  `frame_alignment_bytes` from `run_regalloc()` and reads stack-layout
-  placement; keep it with allocator/stack fallback rather than the first
-  classification slice.
+- `stack_slots.cpp` mutates only the explicit `next_slot_id`,
+  `next_offset_bytes`, and `frame_alignment_bytes` references passed by
+  `run_regalloc()`; do not widen it into allocation decisions or final prepared
+  frame-layout publication without a separate allocator-state packet.
+- New `stack_slots.cpp` was picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
 
 ## Proof
 
