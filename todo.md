@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/266_aarch64_atomics_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create The Atomics Owner Boundary
+Current Step ID: 3
+Current Step Title: Delete The Stale Markdown Shard
 
 # Current Packet
 
