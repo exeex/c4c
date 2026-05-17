@@ -8,20 +8,21 @@ Current Step Title: Extract Regalloc, Value Location, and Control Flow Printers
 
 ## Just Finished
 
-Completed `plan.md` Step 4 value-location printer extraction:
-`append_value_locations` and its directly owned helper functions now live in
-`src/backend/prealloc/prepared_printer/value_locations.cpp`.
-`prepared_printer.cpp` still calls the private printer declaration in the same
-prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/value_locations.cpp`.
+Completed `plan.md` Step 4 regalloc printer extraction:
+`append_regalloc` and its directly owned value lookup, register placement,
+spill-slot placement, and occupancy helpers now live in
+`src/backend/prealloc/prepared_printer/regalloc.cpp`. `prepared_printer.cpp`
+still calls the private printer declaration in the same prepared dump order,
+and the direct-source `backend_prepare_phi_materialize_test` target now lists
+`prepared_printer/regalloc.cpp`.
 
 ## Suggested Next
 
-Continue `plan.md` Step 4 by extracting `append_regalloc` from
-`prepared_printer.cpp`, including only the regalloc-owned lookup and placement
-helpers needed by that printer. Keep the helper surface narrow and wire the
-direct-source test target that names `prepared_printer.cpp` to the new
-implementation file.
+Run Step 5 completion validation and shrink work: inspect the now-small
+`prepared_printer.cpp` for leftover helpers/includes that belong to already
+extracted printer families, remove only dead local scaffolding that does not
+change dump output, and prove the full prepared-printer split remains linked by
+the backend library plus the direct-source phi-materialize test.
 
 ## Watchouts
 
@@ -35,12 +36,14 @@ implementation file.
   `prepared_printer/calls.cpp`, `prepared_printer/control_flow.cpp`,
   `prepared_printer/frame.cpp`, `prepared_printer/functions.cpp`,
   `prepared_printer/inline_asm.cpp`, `prepared_printer/intrinsics.cpp`,
+  `prepared_printer/regalloc.cpp`,
   `prepared_printer/runtime_helpers.cpp`,
   `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, and
   `prepared_printer/value_locations.cpp`, plus `prepared_printer/variadic.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
-- `prepared_printer.cpp` still owns `append_regalloc` and its helper cluster.
+- `prepared_printer.cpp` now calls all extracted Step 4 private printer
+  declarations in dump order; remaining cleanup should be shrink-only.
 
 ## Proof
 
