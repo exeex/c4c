@@ -1,6 +1,6 @@
 #include "module.hpp"
 
-#include "../codegen/emit.hpp"
+#include "../codegen/module_compile.hpp"
 
 namespace c4c::backend::aarch64::module {
 

@@ -1,4 +1,4 @@
-#include "emit.hpp"
+#include "module_compile.hpp"
 
 #include "compatibility_projection.hpp"
 #include "traversal.hpp"
