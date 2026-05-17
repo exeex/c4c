@@ -8,20 +8,20 @@ Current Step Title: Extract frame, addressing, liveness, and regalloc schema
 
 ## Just Finished
 
-Step 3 partially extracted the frame/register-placement schema family into
-`src/backend/prealloc/frame.hpp`.
+Step 3 partially extracted the addressing schema family into
+`src/backend/prealloc/addressing.hpp`.
 
-`frame.hpp` now owns stack objects, frame slots, stack layout, register bank
-and slot placement vocabulary, spill slot placement, saved-register placement,
-frame plan, dynamic-stack plan, and the stack-frame offset helpers.
+`addressing.hpp` now owns prepared address base/materialization/schema records,
+memory access records, addressing function aggregate, and associated lookup/name
+helpers.
 
-`src/backend/prealloc/prealloc.hpp` now includes `frame.hpp` and remains the
-compatibility umbrella.
+`src/backend/prealloc/prealloc.hpp` now includes `addressing.hpp` and remains
+the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 3 by extracting the addressing schema family into a focused
-header while keeping `prealloc.hpp` as the public compatibility umbrella.
+Continue Step 3 by extracting the liveness schema family into a focused header
+while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
 
@@ -32,14 +32,16 @@ header while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `names.hpp` intentionally forward-declares `PreparedBirModule`; the concrete
   aggregate should move later with `module.hpp` after member-family headers
   exist.
-- Step 3 still needs focused extraction for addressing, liveness, regalloc,
-  and value-location schema.
+- Step 3 still needs focused extraction for liveness, regalloc, and
+  value-location schema.
 - Ambiguous boundary: `PreparedStorageEncodingKind` is introduced just before
   call plans but is reused by storage plans and indirect callee plans; extract
   with `calls.hpp` only if later includes stay acyclic, otherwise use the
   lowest shared focused header that avoids recreating a helper monolith.
 - Register bank/placement types now live in `frame.hpp`; dependent Step 3
   headers can include that focused header instead of relying on `prealloc.hpp`.
+- Addressing types now live in `addressing.hpp`; dependent Step 3 headers can
+  include that focused header instead of relying on `prealloc.hpp`.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
   distributing tiny helpers across unrelated family headers.
