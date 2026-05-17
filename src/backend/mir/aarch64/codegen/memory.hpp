@@ -21,24 +21,15 @@ struct MemoryInstructionLoweringResult {
 [[nodiscard]] std::string_view memory_instruction_kind_name(MemoryInstructionKind kind);
 [[nodiscard]] std::string_view prepared_memory_operand_record_error_name(
     PreparedMemoryOperandRecordError error);
-[[nodiscard]] std::string_view prepared_atomic_operation_record_error_name(
-    PreparedAtomicOperationRecordError error);
-[[nodiscard]] std::string_view atomic_memory_instruction_kind_name(
-    AtomicMemoryInstructionKind kind);
 [[nodiscard]] std::string memory_address(const MemoryOperand& address);
 [[nodiscard]] std::string memory_error_message(PreparedMemoryOperandRecordError error);
 
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
-[[nodiscard]] InstructionRecord make_atomic_memory_instruction(
-    AtomicMemoryInstructionRecord instruction);
 [[nodiscard]] MemoryInstructionLoweringResult lower_memory_instruction(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
     std::size_t instruction_index,
-    module::ModuleLoweringDiagnostics& diagnostics);
-[[nodiscard]] std::vector<module::MachineInstruction> lower_atomic_memory_operations_for_block(
-    const module::BlockLoweringContext& context,
     module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] MemoryInstructionLoweringResult lower_f128_transport_instruction(
     const module::BlockLoweringContext& context,
@@ -106,10 +97,5 @@ make_prepared_store_memory_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index,
     const bir::StoreGlobalInst& store);
-[[nodiscard]] PreparedAtomicOperationInstructionRecordResult
-make_prepared_atomic_operation_instruction_record(
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const prepare::PreparedAtomicOperationCarrier& operation);
 
 }  // namespace c4c::backend::aarch64::codegen
