@@ -8,32 +8,34 @@ Current Step Title: Extract Phi and Out-of-SSA Move Resolution
 
 ## Just Finished
 
-Step 6 first extraction moved the phi/out-of-SSA parallel-copy move-resolution
-owner out of `src/backend/prealloc/regalloc.cpp` without changing behavior.
+Step 6 follow-up extracted the remaining consumer move-resolution traversal out
+of `src/backend/prealloc/regalloc.cpp` without changing behavior.
 
 Moved ownership:
 
-- `append_phi_move_resolution`
-- phi parallel-copy reason helpers
-- i32 immediate materialization move-record append support used by
-  out-of-SSA parallel-copy moves
+- `append_consumer_move_resolution`
+- consumer block-label resolution for select-materialized join suppression
+- consumer Binary/Select/Cast operand traversal and move-record emission
 
 New files:
 
-- `src/backend/prealloc/regalloc/phi_moves.cpp`
-- `src/backend/prealloc/regalloc/phi_moves.hpp`
+- `src/backend/prealloc/regalloc/consumer_moves.cpp`
+- `src/backend/prealloc/regalloc/consumer_moves.hpp`
 
-`src/backend/prealloc/regalloc.cpp` still owns consumer move resolution,
-runtime-helper mapping call order, spill/reload publication, value-home
-publication, allocation decisions, and prepared move-bundle publication. The
-new phi owner depends only on prepared control-flow metadata, regalloc value
-lookup/classification, and the existing shared `move_records` append helpers.
+The new consumer owner depends only on BIR traversal, prepared control-flow
+metadata for select-materialized join filtering, regalloc value lookup, and the
+existing shared `move_records` append helpers. Runtime-helper mapping,
+spill/reload publication, value-location publication, allocation decisions, and
+prepared move-bundle publication remain in `src/backend/prealloc/regalloc.cpp`.
+An unused local `find_instruction_index_for_named_result` helper was removed
+while moving the adjacent consumer block.
 
 ## Suggested Next
 
-Next coherent packet: continue Step 6 by inspecting whether any remaining
-out-of-SSA support helpers belong with `phi_moves` without pulling in consumer
-move resolution, runtime-helper mapping, or prepared move-bundle publication.
+Next coherent packet: continue Step 6 by inspecting whether spill/reload
+publication has a clean owner boundary separate from allocation decisions,
+runtime-helper mapping, value-location publication, and prepared move-bundle
+publication.
 
 ## Watchouts
 
@@ -102,6 +104,15 @@ move resolution, runtime-helper mapping, or prepared move-bundle publication.
   move-bundle publication, or allocation policy.
 - New `phi_moves.cpp` was picked up by the recursive prealloc source glob after
   CMake regenerated during the delegated build.
+- `consumer_moves.cpp` owns only consumer-shaped move-record emission for
+  Binary/Select/Cast results. Do not grow it into out-of-SSA parallel-copy
+  traversal, runtime-helper mapping, spill/reload publication, value-home
+  publication, or prepared move-bundle publication.
+- Select-materialized joins remain filtered through prepared control-flow
+  authority before consumer move emission; preserve this ordering and the
+  existing duplicate-check behavior in `move_records.cpp`.
+- New `consumer_moves.cpp` was picked up by the recursive prealloc source glob
+  after CMake regenerated during the delegated build.
 - `clang-format` is not installed in this environment; the touched declarations
   and call sites were kept manually wrapped.
 

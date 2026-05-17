@@ -3,8 +3,8 @@
 #include "regalloc/call_moves.hpp"
 #include "regalloc/call_return_abi.hpp"
 #include "regalloc/classification.hpp"
+#include "regalloc/consumer_moves.hpp"
 #include "regalloc/intervals.hpp"
-#include "regalloc/move_records.hpp"
 #include "regalloc/phi_moves.hpp"
 #include "regalloc/stack_slots.hpp"
 #include "regalloc/storage.hpp"
@@ -29,7 +29,7 @@ namespace {
 using regalloc_detail::append_f128_constant_values_for_function;
 using regalloc_detail::append_call_arg_move_resolution;
 using regalloc_detail::append_call_result_move_resolution;
-using regalloc_detail::append_move_resolution_record;
+using regalloc_detail::append_consumer_move_resolution;
 using regalloc_detail::append_phi_move_resolution;
 using regalloc_detail::append_return_move_resolution;
 using regalloc_detail::ActiveRegisterAssignment;
@@ -59,7 +59,6 @@ using regalloc_detail::register_bank_from_class;
 using regalloc_detail::resolve_call_arg_abi;
 using regalloc_detail::resolve_register_class;
 using regalloc_detail::resolve_register_group_width;
-using regalloc_detail::storage_transfer_reason;
 using regalloc_detail::value_priority;
 using regalloc_detail::weighted_use_score;
 
@@ -1153,138 +1152,6 @@ void append_i128_runtime_helper_mappings(const PreparedNameTables& names,
   if (!function_helpers.helpers.empty() ||
       !function_helpers.missing_required_facts.empty()) {
     helper_mappings.functions.push_back(std::move(function_helpers));
-  }
-}
-
-[[nodiscard]] std::optional<std::size_t> find_instruction_index_for_named_result(
-    const bir::Block& block,
-    std::string_view value_name) {
-  for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
-    bool matches_result = std::visit(
-        [&](const auto& inst) {
-          using Inst = std::decay_t<decltype(inst)>;
-          if constexpr (std::is_same_v<Inst, bir::BinaryInst> || std::is_same_v<Inst, bir::SelectInst> ||
-                        std::is_same_v<Inst, bir::CastInst> || std::is_same_v<Inst, bir::LoadLocalInst> ||
-                        std::is_same_v<Inst, bir::LoadGlobalInst>) {
-            return inst.result.kind == bir::Value::Kind::Named && inst.result.name == value_name;
-          } else if constexpr (std::is_same_v<Inst, bir::CallInst>) {
-            return inst.result.has_value() && inst.result->kind == bir::Value::Kind::Named &&
-                   inst.result->name == value_name;
-          } else {
-            return false;
-          }
-        },
-        block.insts[instruction_index]);
-    if (matches_result) {
-      return instruction_index;
-    }
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::optional<BlockLabelId> resolve_existing_consumer_block_label_id(
-    const PreparedNameTables& names,
-    const bir::NameTables& bir_names,
-    const bir::Block& block) {
-  if (block.label_id != kInvalidBlockLabel) {
-    const std::string_view structured_label = bir_names.block_labels.spelling(block.label_id);
-    if (!structured_label.empty()) {
-      const BlockLabelId prepared_label_id = names.block_labels.find(structured_label);
-      if (prepared_label_id != kInvalidBlockLabel) {
-        return prepared_label_id;
-      }
-    }
-  }
-  return resolve_prepared_block_label_id(names, block.label);
-}
-
-void append_consumer_move_resolution(const PreparedNameTables& names,
-                                     const bir::NameTables& bir_names,
-                                     const bir::Function& function,
-                                     const PreparedControlFlowFunction* function_cf,
-                                     PreparedRegallocFunction& regalloc_function) {
-  auto is_authoritative_select_materialized_join_result =
-      [&](const bir::Block& block, const bir::SelectInst& select) {
-        if (function_cf == nullptr || select.result.kind != bir::Value::Kind::Named) {
-          return false;
-        }
-
-        const auto block_label_id = resolve_existing_consumer_block_label_id(names, bir_names, block);
-        if (!block_label_id.has_value()) {
-          return false;
-        }
-
-        const auto* join_transfer =
-            find_prepared_join_transfer(names, *function_cf, *block_label_id, select.result.name);
-        return join_transfer != nullptr &&
-               effective_prepared_join_transfer_carrier_kind(*join_transfer) ==
-                   PreparedJoinTransferCarrierKind::SelectMaterialization;
-      };
-
-  auto append_for_instruction = [&](const bir::Value& result,
-                                    std::initializer_list<const bir::Value*> operands,
-                                    std::size_t block_index,
-                                    std::size_t instruction_index) {
-    if (result.kind != bir::Value::Kind::Named) {
-      return;
-    }
-
-    const auto* destination = find_regalloc_value(regalloc_function, names, result.name);
-    if (destination == nullptr) {
-      return;
-    }
-
-    for (const bir::Value* operand : operands) {
-      if (operand == nullptr || operand->kind != bir::Value::Kind::Named) {
-        continue;
-      }
-      const auto* source = find_regalloc_value(regalloc_function, names, operand->name);
-      if (source == nullptr) {
-        continue;
-      }
-
-      append_move_resolution_record(regalloc_function,
-                                    *source,
-                                    *destination,
-                                    block_index,
-                                    instruction_index,
-                                    false,
-                                    false,
-                                    std::nullopt,
-                                    PreparedMoveResolutionOpKind::Move,
-                                    PreparedMoveAuthorityKind::None,
-                                    storage_transfer_reason("consumer", *source, *destination));
-    }
-  };
-
-  for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
-    const auto& block = function.blocks[block_index];
-    for (std::size_t instruction_index = 0; instruction_index < block.insts.size(); ++instruction_index) {
-      std::visit(
-          [&](const auto& inst) {
-            using Inst = std::decay_t<decltype(inst)>;
-            if constexpr (std::is_same_v<Inst, bir::BinaryInst>) {
-              append_for_instruction(inst.result,
-                                     {&inst.lhs, &inst.rhs},
-                                     block_index,
-                                     instruction_index);
-            } else if constexpr (std::is_same_v<Inst, bir::SelectInst>) {
-              // Select-materialized joins are already owned by published out-of-SSA
-              // join-transfer authority. Re-adding them here would regress into
-              // consumer-shaped reconstruction.
-              if (is_authoritative_select_materialized_join_result(block, inst)) {
-                return;
-              }
-              append_for_instruction(inst.result,
-                                     {&inst.lhs, &inst.rhs, &inst.true_value, &inst.false_value},
-                                     block_index,
-                                     instruction_index);
-            } else if constexpr (std::is_same_v<Inst, bir::CastInst>) {
-              append_for_instruction(inst.result, {&inst.operand}, block_index, instruction_index);
-            }
-          },
-          block.insts[instruction_index]);
-    }
   }
 }
 
