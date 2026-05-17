@@ -1736,12 +1736,6 @@ struct InstructionRecord {
 [[nodiscard]] OperandRecord make_memory_operand(MemoryOperand operand);
 [[nodiscard]] InstructionRecord make_branch_instruction(BranchInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction);
-[[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
-[[nodiscard]] ScalarInstructionRecord make_scalar_unary_instruction_record(
-    ScalarUnaryRecord unary);
-[[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
-[[nodiscard]] InstructionRecord make_atomic_memory_instruction(
-    AtomicMemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_scalar_fp_unary_intrinsic_instruction(
     ScalarFpUnaryIntrinsicRecord instruction);
 [[nodiscard]] InstructionRecord make_crc32w_intrinsic_instruction(
@@ -1750,6 +1744,12 @@ struct InstructionRecord {
     VectorLoadIntrinsicRecord instruction);
 [[nodiscard]] InstructionRecord make_vector_add_intrinsic_instruction(
     VectorAddIntrinsicRecord instruction);
+[[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
+[[nodiscard]] ScalarInstructionRecord make_scalar_unary_instruction_record(
+    ScalarUnaryRecord unary);
+[[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
+[[nodiscard]] InstructionRecord make_atomic_memory_instruction(
+    AtomicMemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_transport_instruction(
     F128TransportRecord instruction);
 [[nodiscard]] InstructionRecord make_f128_runtime_helper_boundary_instruction(

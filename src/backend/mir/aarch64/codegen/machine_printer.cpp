@@ -7,6 +7,7 @@
 #include "globals.hpp"
 #include "i128_ops.hpp"
 #include "inline_asm.hpp"
+#include "intrinsics.hpp"
 #include "memory.hpp"
 #include "returns.hpp"
 
@@ -84,27 +85,6 @@ std::optional<std::string> fp_register_name_with_view(const RegisterOperand& ope
     return std::nullopt;
   }
   return abi::register_name(*viewed);
-}
-
-bool has_complete_intrinsic_source(const prepare::PreparedIntrinsicCarrier* source) {
-  return source != nullptr &&
-         source->carrier_kind == prepare::PreparedIntrinsicCarrierKind::Complete;
-}
-
-bool has_exact_intrinsic_roles(const std::vector<bir::IntrinsicOperandRole>& roles,
-                               std::initializer_list<bir::IntrinsicOperandRole> expected) {
-  return roles.size() == expected.size() &&
-         std::equal(roles.begin(), roles.end(), expected.begin(), expected.end());
-}
-
-bool has_v16i8_unsigned_shape(bir::TypeKind element_type,
-                              std::size_t element_width_bytes,
-                              std::size_t lane_count,
-                              std::size_t total_width_bytes,
-                              bir::IntrinsicSignedness signedness) {
-  return element_type == bir::TypeKind::I8 && element_width_bytes == 1 &&
-         lane_count == 16 && total_width_bytes == 16 &&
-         signedness == bir::IntrinsicSignedness::Unsigned;
 }
 
 std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
@@ -668,235 +648,6 @@ mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruct
   return target_unsupported(bad_header(instruction) + alu.diagnostic);
 }
 
-mir::TargetInstructionPrintResult print_scalar_fp_unary_intrinsic(
-    const InstructionRecord& instruction,
-    const ScalarFpUnaryIntrinsicRecord& intrinsic) {
-  if (instruction.family != InstructionFamily::Intrinsic ||
-      instruction.opcode != MachineOpcode::ScalarFpUnaryIntrinsic) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer requires an intrinsic machine opcode");
-  }
-  if (intrinsic.source_carrier == nullptr ||
-      intrinsic.source_carrier->carrier_kind !=
-          prepare::PreparedIntrinsicCarrierKind::Complete) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer requires complete prepared carrier provenance");
-  }
-  if (intrinsic.family != bir::IntrinsicFamilyKind::ScalarFpUnary ||
-      intrinsic.operation != bir::IntrinsicOperationKind::FAbs) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "intrinsic operation is outside the printable scalar FP unary subset");
-  }
-  if ((intrinsic.operand_type != bir::TypeKind::F32 &&
-       intrinsic.operand_type != bir::TypeKind::F64) ||
-      intrinsic.operand_type != intrinsic.result_type) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer requires matching F32/F64 operand and result types");
-  }
-  if (!intrinsic.has_prepared_call_plan) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer requires prepared call-plan authority");
-  }
-  if (intrinsic.has_side_effects || intrinsic.requires_feature) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer only supports side-effect-free feature-free fabs");
-  }
-  const auto* operand_register = std::get_if<RegisterOperand>(&intrinsic.operand.payload);
-  if (!intrinsic.result_register.has_value() ||
-      intrinsic.operand.kind != OperandKind::Register ||
-      operand_register == nullptr) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer requires explicit operand and result registers");
-  }
-  const auto view = floating_register_view(intrinsic.operand_type);
-  if (!view.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer has no register view for operand type");
-  }
-  const auto result = fp_register_name_with_view(*intrinsic.result_register, *view);
-  const auto operand = fp_register_name_with_view(*operand_register, *view);
-  if (!result.has_value() || !operand.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "scalar FP unary intrinsic printer has incomplete printable FPR register facts");
-  }
-  std::ostringstream out;
-  out << "fabs " << *result << ", " << *operand;
-  return target_printed({out.str()});
-}
-
-mir::TargetInstructionPrintResult print_crc32w_intrinsic(
-    const InstructionRecord& instruction,
-    const Crc32WIntrinsicRecord& intrinsic) {
-  if (instruction.family != InstructionFamily::Intrinsic ||
-      instruction.opcode != MachineOpcode::Crc32WIntrinsic) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer requires a CRC32W machine opcode");
-  }
-  if (!has_complete_intrinsic_source(intrinsic.source_carrier)) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer requires complete prepared carrier provenance");
-  }
-  if (intrinsic.family != bir::IntrinsicFamilyKind::Crc ||
-      intrinsic.operation != bir::IntrinsicOperationKind::Crc32W ||
-      intrinsic.required_feature != bir::IntrinsicFeatureKind::AArch64Crc ||
-      !intrinsic.requires_feature ||
-      intrinsic.operand_type != bir::TypeKind::I32 ||
-      intrinsic.result_type != bir::TypeKind::I32 ||
-      intrinsic.signedness != bir::IntrinsicSignedness::Unsigned ||
-      !has_exact_intrinsic_roles(intrinsic.operand_roles,
-                                 {bir::IntrinsicOperandRole::Accumulator,
-                                  bir::IntrinsicOperandRole::Data})) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer requires selected CRC32W carrier facts");
-  }
-  if (!intrinsic.has_prepared_call_plan || !intrinsic.result_register.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer requires prepared register authority");
-  }
-  const auto* accumulator = std::get_if<RegisterOperand>(&intrinsic.accumulator.payload);
-  const auto* data = std::get_if<RegisterOperand>(&intrinsic.data.payload);
-  if (intrinsic.accumulator.kind != OperandKind::Register ||
-      intrinsic.data.kind != OperandKind::Register ||
-      accumulator == nullptr || data == nullptr) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer requires explicit operand registers");
-  }
-  const auto result_name =
-      register_name_with_view(*intrinsic.result_register, abi::RegisterView::W);
-  const auto accumulator_name = register_name_with_view(*accumulator, abi::RegisterView::W);
-  const auto data_name = register_name_with_view(*data, abi::RegisterView::W);
-  if (!result_name.has_value() || !accumulator_name.has_value() ||
-      !data_name.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "CRC32W intrinsic printer has incomplete printable W-register facts");
-  }
-  std::ostringstream out;
-  out << "crc32w " << *result_name << ", " << *accumulator_name << ", " << *data_name;
-  return target_printed({out.str()});
-}
-
-mir::TargetInstructionPrintResult print_vector_load_intrinsic(
-    const InstructionRecord& instruction,
-    const VectorLoadIntrinsicRecord& intrinsic) {
-  if (instruction.family != InstructionFamily::Intrinsic ||
-      instruction.opcode != MachineOpcode::VectorLoadIntrinsic) {
-    return target_unsupported(bad_header(instruction) +
-                              "vector-load intrinsic printer requires a vector-load machine opcode");
-  }
-  if (!has_complete_intrinsic_source(intrinsic.source_carrier)) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-load intrinsic printer requires complete prepared carrier provenance");
-  }
-  if (intrinsic.family != bir::IntrinsicFamilyKind::VectorMemory ||
-      intrinsic.operation != bir::IntrinsicOperationKind::VectorLoad ||
-      intrinsic.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
-      !intrinsic.requires_feature ||
-      intrinsic.operand_type != bir::TypeKind::Ptr ||
-      intrinsic.result_type != bir::TypeKind::I128 ||
-      intrinsic.memory_access != bir::IntrinsicMemoryAccessKind::Read ||
-      !has_exact_intrinsic_roles(intrinsic.operand_roles,
-                                 {bir::IntrinsicOperandRole::Pointer}) ||
-      !has_v16i8_unsigned_shape(intrinsic.vector_element_type,
-                                intrinsic.vector_element_width_bytes,
-                                intrinsic.vector_lane_count,
-                                intrinsic.vector_total_width_bytes,
-                                intrinsic.signedness)) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-load intrinsic printer requires selected v16i8 load carrier facts");
-  }
-  const auto* pointer = std::get_if<RegisterOperand>(&intrinsic.pointer.payload);
-  if (!intrinsic.has_prepared_call_plan || !intrinsic.result_register.has_value() ||
-      intrinsic.pointer.kind != OperandKind::Register || pointer == nullptr ||
-      intrinsic.memory.base_kind != MemoryBaseKind::PointerValue ||
-      !intrinsic.memory.base_register.has_value() ||
-      intrinsic.memory.byte_offset != 0 ||
-      intrinsic.memory.size_bytes != intrinsic.vector_total_width_bytes ||
-      intrinsic.memory.address_space != bir::AddressSpace::Default) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-load intrinsic printer requires pointer memory and result register authority");
-  }
-  const auto result_name = f128_vector_register_name(*intrinsic.result_register);
-  const auto pointer_name = register_name_with_view(*pointer, abi::RegisterView::X);
-  const auto memory_base_name =
-      register_name_with_view(*intrinsic.memory.base_register, abi::RegisterView::X);
-  if (!result_name.has_value() || !pointer_name.has_value() ||
-      !memory_base_name.has_value() || *pointer_name != *memory_base_name) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-load intrinsic printer has incomplete printable vector or pointer register facts");
-  }
-  std::ostringstream out;
-  out << "ld1 {" << *result_name << "}, [" << *memory_base_name << "]";
-  return target_printed({out.str()});
-}
-
-mir::TargetInstructionPrintResult print_vector_add_intrinsic(
-    const InstructionRecord& instruction,
-    const VectorAddIntrinsicRecord& intrinsic) {
-  if (instruction.family != InstructionFamily::Intrinsic ||
-      instruction.opcode != MachineOpcode::VectorAddIntrinsic) {
-    return target_unsupported(bad_header(instruction) +
-                              "vector-add intrinsic printer requires a vector-add machine opcode");
-  }
-  if (!has_complete_intrinsic_source(intrinsic.source_carrier)) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-add intrinsic printer requires complete prepared carrier provenance");
-  }
-  if (intrinsic.family != bir::IntrinsicFamilyKind::VectorOperation ||
-      intrinsic.operation != bir::IntrinsicOperationKind::VectorAdd ||
-      intrinsic.required_feature != bir::IntrinsicFeatureKind::AArch64Neon ||
-      !intrinsic.requires_feature ||
-      intrinsic.operand_type != bir::TypeKind::I128 ||
-      intrinsic.result_type != bir::TypeKind::I128 ||
-      intrinsic.memory_access != bir::IntrinsicMemoryAccessKind::None ||
-      !has_exact_intrinsic_roles(intrinsic.operand_roles,
-                                 {bir::IntrinsicOperandRole::VectorLhs,
-                                  bir::IntrinsicOperandRole::VectorRhs}) ||
-      !has_v16i8_unsigned_shape(intrinsic.vector_element_type,
-                                intrinsic.vector_element_width_bytes,
-                                intrinsic.vector_lane_count,
-                                intrinsic.vector_total_width_bytes,
-                                intrinsic.signedness)) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-add intrinsic printer requires selected v16i8 add carrier facts");
-  }
-  const auto* lhs = std::get_if<RegisterOperand>(&intrinsic.lhs.payload);
-  const auto* rhs = std::get_if<RegisterOperand>(&intrinsic.rhs.payload);
-  if (!intrinsic.has_prepared_call_plan || !intrinsic.result_register.has_value() ||
-      intrinsic.lhs.kind != OperandKind::Register ||
-      intrinsic.rhs.kind != OperandKind::Register ||
-      lhs == nullptr || rhs == nullptr) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-add intrinsic printer requires explicit operand and result registers");
-  }
-  const auto result_name = f128_vector_register_name(*intrinsic.result_register);
-  const auto lhs_name = f128_vector_register_name(*lhs);
-  const auto rhs_name = f128_vector_register_name(*rhs);
-  if (!result_name.has_value() || !lhs_name.has_value() || !rhs_name.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "vector-add intrinsic printer has incomplete printable vector register facts");
-  }
-  std::ostringstream out;
-  out << "add " << *result_name << ", " << *lhs_name << ", " << *rhs_name;
-  return target_printed({out.str()});
-}
-
 mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruction,
                                                const ReturnInstructionRecord& ret) {
   std::vector<std::string> lines;
@@ -1023,18 +774,8 @@ mir::TargetInstructionPrintResult print_machine_instruction_line_payloads(
   if (const auto* scalar = std::get_if<ScalarInstructionRecord>(&instruction.payload)) {
     return print_scalar(instruction, *scalar);
   }
-  if (const auto* intrinsic =
-          std::get_if<ScalarFpUnaryIntrinsicRecord>(&instruction.payload)) {
-    return print_scalar_fp_unary_intrinsic(instruction, *intrinsic);
-  }
-  if (const auto* intrinsic = std::get_if<Crc32WIntrinsicRecord>(&instruction.payload)) {
-    return print_crc32w_intrinsic(instruction, *intrinsic);
-  }
-  if (const auto* intrinsic = std::get_if<VectorLoadIntrinsicRecord>(&instruction.payload)) {
-    return print_vector_load_intrinsic(instruction, *intrinsic);
-  }
-  if (const auto* intrinsic = std::get_if<VectorAddIntrinsicRecord>(&instruction.payload)) {
-    return print_vector_add_intrinsic(instruction, *intrinsic);
+  if (instruction.family == InstructionFamily::Intrinsic) {
+    return print_intrinsic_instruction(instruction);
   }
   if (const auto* assembler = std::get_if<AssemblerInstructionRecord>(&instruction.payload)) {
     return print_assembler(instruction, *assembler);
