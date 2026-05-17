@@ -8,23 +8,24 @@ Current Step Title: Extract calls, variadic, storage, carriers, helpers, control
 
 ## Just Finished
 
-Step 4 continued by extracting the runtime helper schema family from
+Step 4 continued by extracting the control-flow schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/runtime_helpers.hpp`.
+`src/backend/prealloc/control_flow.hpp`.
 
-`runtime_helpers.hpp` now owns the f128/i128 runtime helper families, kinds,
-ABI transitions, result ownership enums, marshal direction/name helpers, helper
-binding structs, runtime helper function/container records, and associated
-helper ownership/policy records. It includes direct focused dependencies for
-prepared names, frame/register placement, value homes, regalloc move
-vocabulary, call preservation/clobber records, special carrier vocabulary, and
-BIR payload types. `prealloc.hpp` includes it and remains the compatibility
-umbrella.
+`control_flow.hpp` now owns the prepared route enum/name helper,
+join/branch/parallel-copy schema, computed value and materialized compare
+helper records, control-flow aggregate, inline resolve/find/classification and
+render-contract helpers, prepared BIR invariant vocabulary, and the
+out-of-SSA parallel-copy bridge helpers that can depend directly on focused
+headers. It includes direct focused dependencies for prepared names,
+value-location move bundles, and BIR payload types. `prealloc.hpp` includes it
+and remains the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 4 by extracting the control-flow schema into a focused header
-while keeping `prealloc.hpp` as the public compatibility umbrella.
+Continue Step 4 by extracting the module schema and module-level lookup helpers
+into a focused header while keeping `prealloc.hpp` as the public compatibility
+umbrella.
 
 ## Watchouts
 
@@ -62,13 +63,14 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `runtime_helpers.hpp` includes `calls.hpp` for call preservation/clobber
   records and `special_carriers.hpp` for i128/f128 carrier vocabulary; do not
   route those dependencies back through `prealloc.hpp`.
-- Remaining Step 4 families: control-flow and module schema.
-- Ambiguous boundary: control-flow helpers include substantial inline analysis
-  over BIR and prepared name tables; keep them together initially rather than
-  distributing tiny helpers across unrelated family headers.
-- The out-of-SSA parallel-copy bridge helpers that need
-  `PreparedParallelCopyBundle` still live in `prealloc.hpp` until Step 4 can
-  move control-flow and module-level helpers together without a cycle.
+- `control_flow.hpp` includes `value_locations.hpp` directly for the
+  out-of-SSA parallel-copy bridge helpers; do not route that edge back through
+  `prealloc.hpp`.
+- Remaining Step 4 family: module schema.
+- Ambiguous boundary: `PreparedBirInvariant` moved with the route/control-flow
+  vocabulary because `PreparedBirModule` depends on it, but the concrete
+  module aggregate and module-level lookup helpers remain in `prealloc.hpp` for
+  the next packet.
 
 ## Proof
 
