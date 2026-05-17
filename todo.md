@@ -8,20 +8,21 @@ Current Step Title: Extract Storage, Addressing, Runtime, Intrinsics, and Specia
 
 ## Just Finished
 
-Completed `plan.md` Step 3 intrinsic-carrier printer extraction:
-`append_intrinsic_carriers` and the helper functions it needs for
-intrinsic-carrier output now live in
-`src/backend/prealloc/prepared_printer/intrinsics.cpp`.
+Completed `plan.md` Step 3 inline-asm carrier printer extraction:
+`append_inline_asm_carriers` and the helper functions it needs for
+inline-asm carrier output now live in
+`src/backend/prealloc/prepared_printer/inline_asm.cpp`.
 `prepared_printer.cpp` still calls the private printer declaration in the same
 prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/intrinsics.cpp`.
+target now lists `prepared_printer/inline_asm.cpp`.
 
 ## Suggested Next
 
 Extract the next Step 3 prepared-printer family from `prepared_printer.cpp`
-into its own private implementation file, keeping the helper surface narrow and
-wiring any direct-source test target that names `prepared_printer.cpp` to the
-new implementation file.
+into its own private implementation file, with likely candidates being runtime
+helper output or addressing output. Keep the helper surface narrow and wire any
+direct-source test target that names `prepared_printer.cpp` to the new
+implementation file.
 
 ## Watchouts
 
@@ -33,8 +34,9 @@ new implementation file.
   the backend library; its CMake source list now also includes
   `prepared_printer/atomics.cpp`, `prepared_printer/calls.cpp`,
   `prepared_printer/frame.cpp`, `prepared_printer/functions.cpp`,
-  `prepared_printer/intrinsics.cpp`, `prepared_printer/special_carriers.cpp`,
-  `prepared_printer/storage.cpp`, and `prepared_printer/variadic.cpp`.
+  `prepared_printer/inline_asm.cpp`, `prepared_printer/intrinsics.cpp`,
+  `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, and
+  `prepared_printer/variadic.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
 
