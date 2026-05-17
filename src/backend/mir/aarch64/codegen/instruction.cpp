@@ -1,5 +1,6 @@
 #include "instruction.hpp"
 #include "alu.hpp"
+#include "cast_ops.hpp"
 #include "calls.hpp"
 #include "memory.hpp"
 
@@ -1113,85 +1114,7 @@ bool is_compare_predicate(bir::BinaryOpcode opcode) {
   return false;
 }
 
-bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
-  switch (opcode) {
-    case bir::CastOpcode::SExt:
-    case bir::CastOpcode::ZExt:
-    case bir::CastOpcode::Trunc:
-      return true;
-    case bir::CastOpcode::FPTrunc:
-    case bir::CastOpcode::FPExt:
-    case bir::CastOpcode::FPToSI:
-    case bir::CastOpcode::FPToUI:
-    case bir::CastOpcode::SIToFP:
-    case bir::CastOpcode::UIToFP:
-    case bir::CastOpcode::PtrToInt:
-    case bir::CastOpcode::IntToPtr:
-    case bir::CastOpcode::Bitcast:
-      return false;
-  }
-  return false;
-}
-
-bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode) {
-  switch (opcode) {
-    case bir::CastOpcode::FPTrunc:
-    case bir::CastOpcode::FPExt:
-    case bir::CastOpcode::FPToSI:
-    case bir::CastOpcode::FPToUI:
-    case bir::CastOpcode::SIToFP:
-    case bir::CastOpcode::UIToFP:
-      return true;
-    case bir::CastOpcode::SExt:
-    case bir::CastOpcode::ZExt:
-    case bir::CastOpcode::Trunc:
-    case bir::CastOpcode::PtrToInt:
-    case bir::CastOpcode::IntToPtr:
-    case bir::CastOpcode::Bitcast:
-      return false;
-  }
-  return false;
-}
-
-ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
-    bir::CastOpcode opcode) {
-  switch (opcode) {
-    case bir::CastOpcode::SExt:
-      return ScalarCastOperationKind::SignExtend;
-    case bir::CastOpcode::ZExt:
-      return ScalarCastOperationKind::ZeroExtend;
-    case bir::CastOpcode::Trunc:
-      return ScalarCastOperationKind::Truncate;
-    case bir::CastOpcode::FPTrunc:
-      return ScalarCastOperationKind::FloatTruncate;
-    case bir::CastOpcode::FPExt:
-      return ScalarCastOperationKind::FloatExtend;
-    case bir::CastOpcode::FPToSI:
-      return ScalarCastOperationKind::FloatToSignedInt;
-    case bir::CastOpcode::FPToUI:
-      return ScalarCastOperationKind::FloatToUnsignedInt;
-    case bir::CastOpcode::SIToFP:
-      return ScalarCastOperationKind::SignedIntToFloat;
-    case bir::CastOpcode::UIToFP:
-      return ScalarCastOperationKind::UnsignedIntToFloat;
-    case bir::CastOpcode::PtrToInt:
-    case bir::CastOpcode::IntToPtr:
-    case bir::CastOpcode::Bitcast:
-      return ScalarCastOperationKind::Deferred;
-  }
-  return ScalarCastOperationKind::Deferred;
-}
-
 namespace {
-
-PreparedScalarCastRecordResult scalar_cast_record_error(PreparedScalarCastRecordError error) {
-  return PreparedScalarCastRecordResult{.record = std::nullopt, .error = error};
-}
-
-PreparedScalarCastInstructionRecordResult scalar_cast_instruction_record_error(
-    PreparedScalarCastRecordError error) {
-  return PreparedScalarCastInstructionRecordResult{.record = std::nullopt, .error = error};
-}
 
 PreparedScalarFpUnaryIntrinsicInstructionRecordResult
 scalar_fp_unary_intrinsic_instruction_record_error(
@@ -1200,39 +1123,6 @@ scalar_fp_unary_intrinsic_instruction_record_error(
       .record = std::nullopt,
       .error = error,
   };
-}
-
-PreparedScalarCastRecordError scalar_cast_operand_error_from_alu_error(
-    PreparedScalarAluRecordError error) {
-  switch (error) {
-    case PreparedScalarAluRecordError::None:
-      return PreparedScalarCastRecordError::None;
-    case PreparedScalarAluRecordError::UnsupportedOperandValue:
-      return PreparedScalarCastRecordError::UnsupportedOperandValue;
-    case PreparedScalarAluRecordError::MissingOperandValueHome:
-      return PreparedScalarCastRecordError::MissingOperandValueHome;
-    case PreparedScalarAluRecordError::MissingOperandStorage:
-      return PreparedScalarCastRecordError::MissingOperandStorage;
-    case PreparedScalarAluRecordError::UnsupportedOperandStorage:
-      return PreparedScalarCastRecordError::UnsupportedOperandStorage;
-    case PreparedScalarAluRecordError::UnsupportedOperandType:
-      return PreparedScalarCastRecordError::UnsupportedOperandType;
-    case PreparedScalarAluRecordError::RegisterConversionFailed:
-      return PreparedScalarCastRecordError::RegisterConversionFailed;
-    case PreparedScalarAluRecordError::InvalidFunction:
-      return PreparedScalarCastRecordError::InvalidFunction;
-    case PreparedScalarAluRecordError::UnsupportedOpcode:
-      return PreparedScalarCastRecordError::UnsupportedOpcode;
-    case PreparedScalarAluRecordError::UnsupportedResultValue:
-      return PreparedScalarCastRecordError::UnsupportedResultValue;
-    case PreparedScalarAluRecordError::MissingResultValueHome:
-      return PreparedScalarCastRecordError::MissingResultValueHome;
-    case PreparedScalarAluRecordError::MissingResultStorage:
-      return PreparedScalarCastRecordError::MissingResultStorage;
-    case PreparedScalarAluRecordError::UnsupportedResultStorage:
-      return PreparedScalarCastRecordError::UnsupportedResultStorage;
-  }
-  return PreparedScalarCastRecordError::UnsupportedOperandType;
 }
 
 PreparedScalarFpUnaryIntrinsicRecordError intrinsic_operand_error_from_alu_error(
@@ -1552,27 +1442,6 @@ MachineOpcode machine_opcode_from_scalar_unary(ScalarUnaryOperationKind operatio
     case ScalarUnaryOperationKind::ByteSwap:
       return MachineOpcode::ByteSwap;
     case ScalarUnaryOperationKind::Deferred:
-      return MachineOpcode::Unspecified;
-  }
-  return MachineOpcode::Unspecified;
-}
-
-MachineOpcode machine_opcode_from_scalar_cast(ScalarCastOperationKind operation) {
-  switch (operation) {
-    case ScalarCastOperationKind::SignExtend:
-      return MachineOpcode::SignExtend;
-    case ScalarCastOperationKind::ZeroExtend:
-      return MachineOpcode::ZeroExtend;
-    case ScalarCastOperationKind::Truncate:
-      return MachineOpcode::Truncate;
-    case ScalarCastOperationKind::FloatExtend:
-    case ScalarCastOperationKind::FloatTruncate:
-    case ScalarCastOperationKind::SignedIntToFloat:
-    case ScalarCastOperationKind::UnsignedIntToFloat:
-    case ScalarCastOperationKind::FloatToSignedInt:
-    case ScalarCastOperationKind::FloatToUnsignedInt:
-      return MachineOpcode::Unspecified;
-    case ScalarCastOperationKind::Deferred:
       return MachineOpcode::Unspecified;
   }
   return MachineOpcode::Unspecified;
@@ -2288,18 +2157,6 @@ InstructionRecord make_scalar_instruction(ScalarInstructionRecord instruction) {
       .defs = defs,
       .uses = effects_from_operands(instruction.inputs),
       .payload = instruction,
-  };
-}
-
-ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast) {
-  return ScalarInstructionRecord{
-      .result_value_id = cast.result_value_id,
-      .result_value_name = cast.result_value_name,
-      .result_type = cast.result_type,
-      .result_register = cast.result_register,
-      .inputs = {cast.source},
-      .source_cast_opcode = cast.source_cast_opcode,
-      .scalar_cast = cast,
   };
 }
 
@@ -3403,118 +3260,6 @@ InstructionRecord make_unsupported_machine_instruction(InstructionFamily family,
       .family = family,
       .surface = RecordSurfaceKind::MachineInstructionNode,
       .selection = MachineNodeStatusRecord{.status = status, .diagnostic = diagnostic},
-  };
-}
-
-PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::CastInst& cast) {
-  if (value_locations.function_name == c4c::kInvalidFunctionName ||
-      storage_plan.function_name != value_locations.function_name) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::InvalidFunction);
-  }
-  const bool is_simple_integer_cast = is_simple_integer_cast_opcode(cast.opcode);
-  const bool is_conversion_cast = is_supported_scalar_conversion_cast_opcode(cast.opcode);
-  if (!is_simple_integer_cast && !is_conversion_cast) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOpcode);
-  }
-  if (cast.result.kind != bir::Value::Kind::Named || cast.result.name.empty()) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultValue);
-  }
-  const bool source_is_integer = scalar_register_view(cast.operand.type).has_value();
-  const bool result_is_integer = scalar_register_view(cast.result.type).has_value();
-  const bool source_is_float = is_scalar_alu_floating_type(cast.operand.type);
-  const bool result_is_float = is_scalar_alu_floating_type(cast.result.type);
-  const bool supported_float_width_conversion =
-      (cast.opcode == bir::CastOpcode::FPExt && cast.operand.type == bir::TypeKind::F32 &&
-       cast.result.type == bir::TypeKind::F64) ||
-      (cast.opcode == bir::CastOpcode::FPTrunc && cast.operand.type == bir::TypeKind::F64 &&
-       cast.result.type == bir::TypeKind::F32);
-  const bool supported_float_integer_conversion =
-      ((cast.opcode == bir::CastOpcode::SIToFP || cast.opcode == bir::CastOpcode::UIToFP) &&
-       source_is_integer && result_is_float) ||
-      ((cast.opcode == bir::CastOpcode::FPToSI || cast.opcode == bir::CastOpcode::FPToUI) &&
-       source_is_float && result_is_integer);
-  if ((!is_simple_integer_cast || !source_is_integer || !result_is_integer) &&
-      !supported_float_width_conversion && !supported_float_integer_conversion) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandType);
-  }
-
-  const auto* result_home = find_named_value_home(names, value_locations, cast.result);
-  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::MissingResultValueHome);
-  }
-  const auto* result_storage = find_storage_plan_value(storage_plan, result_home->value_id);
-  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::MissingResultStorage);
-  }
-  if (result_home->kind != prepare::PreparedValueHomeKind::Register ||
-      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
-      (!result_storage->register_placement.has_value() &&
-       (!result_home->register_name.has_value() || !result_storage->register_name.has_value() ||
-        *result_home->register_name != *result_storage->register_name))) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedResultStorage);
-  }
-  const auto result_register = make_prepared_register_operand(
-      *result_home, *result_storage, cast.result.type, RegisterOperandRole::StoragePlan);
-  if (!result_register.has_value()) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::RegisterConversionFailed);
-  }
-
-  OperandRecord source;
-  if (const auto error =
-          make_prepared_scalar_operand(names, value_locations, storage_plan, cast.operand, source);
-      error != PreparedScalarAluRecordError::None) {
-    return scalar_cast_record_error(scalar_cast_operand_error_from_alu_error(error));
-  }
-  const auto* source_register = std::get_if<RegisterOperand>(&source.payload);
-  if ((is_conversion_cast || supported_float_width_conversion) &&
-      (source.kind != OperandKind::Register || source_register == nullptr)) {
-    return scalar_cast_record_error(PreparedScalarCastRecordError::UnsupportedOperandStorage);
-  }
-  const auto source_bank =
-      source_register != nullptr ? source_register->prepared_bank : prepare::PreparedRegisterBank::None;
-  const auto result_bank = result_register->prepared_bank;
-
-  return PreparedScalarCastRecordResult{
-      .record =
-          ScalarCastRecord{
-              .surface = RecordSurfaceKind::RecordOnly,
-              .operation = scalar_cast_operation_from_cast_opcode(cast.opcode),
-              .source_cast_opcode = cast.opcode,
-              .source_type = cast.operand.type,
-              .result_value_id = result_home->value_id,
-              .result_value_name = result_home->value_name,
-              .result_type = cast.result.type,
-              .result_register = result_register,
-              .source = source,
-              .source_register_bank = source_bank,
-              .result_register_bank = result_bank,
-              .crosses_register_bank = source_bank != prepare::PreparedRegisterBank::None &&
-                                       result_bank != prepare::PreparedRegisterBank::None &&
-                                       source_bank != result_bank,
-              .supported_simple_integer_cast = is_simple_integer_cast,
-              .supported_float_integer_conversion = supported_float_integer_conversion,
-              .supported_float_width_conversion = supported_float_width_conversion,
-          },
-      .error = PreparedScalarCastRecordError::None,
-  };
-}
-
-PreparedScalarCastInstructionRecordResult make_prepared_scalar_cast_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::CastInst& cast) {
-  const auto result = make_prepared_scalar_cast_record(names, value_locations, storage_plan, cast);
-  if (!result.record.has_value()) {
-    return scalar_cast_instruction_record_error(result.error);
-  }
-  return PreparedScalarCastInstructionRecordResult{
-      .record = make_scalar_cast_instruction_record(*result.record),
-      .error = PreparedScalarCastRecordError::None,
   };
 }
 

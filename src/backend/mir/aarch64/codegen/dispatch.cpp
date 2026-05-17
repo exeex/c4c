@@ -3,6 +3,7 @@
 #include "../abi/abi.hpp"
 #include "alu.hpp"
 #include "calls.hpp"
+#include "cast_ops.hpp"
 #include "comparison.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
@@ -2023,6 +2024,9 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         ++result.visited_operations;
         continue;
+      } else if (auto lowered = lower_scalar_cast_instruction(
+              context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));
