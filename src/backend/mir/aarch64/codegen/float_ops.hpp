@@ -18,5 +18,11 @@ namespace c4c::backend::aarch64::codegen {
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
     const bir::BinaryInst& binary);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_prepared_scalar_float_alu_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state);
 
 }  // namespace c4c::backend::aarch64::codegen

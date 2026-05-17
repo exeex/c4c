@@ -5,6 +5,7 @@
 #include "calls.hpp"
 #include "cast_ops.hpp"
 #include "comparison.hpp"
+#include "float_ops.hpp"
 #include "globals.hpp"
 #include "memory.hpp"
 #include "returns.hpp"
@@ -2024,6 +2025,9 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         ++result.visited_operations;
         continue;
+      } else if (auto lowered = lower_prepared_scalar_float_alu_instruction(
+              context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_cast_instruction(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));

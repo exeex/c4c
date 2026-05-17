@@ -1331,6 +1331,9 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         *cast);
     scalar_record = prepared.record;
   } else if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    if (is_prepared_scalar_float_alu_operation(*binary)) {
+      return std::nullopt;
+    }
     const auto prepared =
         make_prepared_scalar_alu_instruction_record(
             context.function.prepared->names,

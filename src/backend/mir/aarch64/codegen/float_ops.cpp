@@ -1,13 +1,17 @@
 #include "float_ops.hpp"
 
+#include <cstddef>
 #include <sstream>
 #include <string>
 #include <string_view>
+#include <utility>
 #include <variant>
 #include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 namespace {
+
+namespace mir = c4c::backend::mir;
 
 [[nodiscard]] PreparedScalarAluRecordResult scalar_float_alu_record_error(
     PreparedScalarAluRecordError error) {
@@ -210,6 +214,62 @@ PreparedScalarAluRecordResult make_prepared_scalar_float_alu_record(
               .supported_floating_operation = true,
           },
       .error = PreparedScalarAluRecordError::None,
+  };
+}
+
+std::optional<module::MachineInstruction> lower_prepared_scalar_float_alu_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr || !is_prepared_scalar_float_alu_operation(*binary)) {
+    return std::nullopt;
+  }
+
+  const auto prepared = make_prepared_scalar_float_alu_record(
+      context.function.prepared->names,
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      *binary);
+  if (!prepared.record.has_value()) {
+    return std::nullopt;
+  }
+
+  auto scalar_record = make_scalar_alu_instruction_record(*prepared.record);
+  InstructionRecord target = make_scalar_instruction(scalar_record);
+  if (target.selection.status != MachineNodeSelectionStatus::Selected) {
+    return std::nullopt;
+  }
+  target.function_name = context.function.control_flow->function_name;
+  target.block_label = context.control_flow_block->block_label;
+  target.block_index = context.block_index;
+  target.instruction_index = instruction_index;
+  if (scalar_record.result_register.has_value()) {
+    record_emitted_scalar_register(scalar_state,
+                                   scalar_record.result_value_name,
+                                   *scalar_record.result_register);
+  }
+
+  return module::MachineInstruction{
+      .opcode = static_cast<mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          mir::MachineOrigin{
+              .reason = mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow->function_name,
+              .block_label = context.control_flow_block->block_label,
+              .instruction_index = instruction_index,
+          },
   };
 }
 
