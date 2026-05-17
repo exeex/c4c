@@ -20,6 +20,7 @@ set(C4C_BACKEND_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/float_ops.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/globals.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/i128_ops.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/inline_asm.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/machine_printer.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/instruction.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/mir/aarch64/codegen/memory.cpp"
