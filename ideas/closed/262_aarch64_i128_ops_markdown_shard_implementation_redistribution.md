@@ -1,6 +1,6 @@
 # AArch64 `i128_ops.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
 
 ## Intent
@@ -74,6 +74,32 @@ family-specific code in family-neutral owners.
   that spelling can be owned through i128-ops shard helpers.
 - Focused backend proof shows behavior is preserved.
 - The completed diff does not include unrelated feature expansion.
+
+## Closure
+
+Status: Closed
+Closed: 2026-05-17
+
+The redistribution is complete. The valid `i128_ops.md` shard behavior now has
+compiled ownership in `i128_ops.cpp` and `i128_ops.hpp`; broad instruction,
+dispatch, and printer owners now retain neutral routing/core responsibilities
+instead of i128-family bodies. The reconciled markdown shard was deleted.
+
+Reviewer report: `review/aarch64_i128_ops_redistribution.md`
+
+Final proof:
+
+- Command: `cmake --build --preset default && ctest --test-dir build -j --output-on-failure`
+- Log: `test_after.log`
+- Result: passed, 3167 tests passed, 0 failed
+- Regression guard: passed against accepted full-suite baseline, 3167 passed
+  before and 3167 passed after
+
+Legacy reference topics from the deleted shard that were not
+behavior-preserving redistribution work remain separate future initiatives if
+needed: unary neg/not, multiplication, variable shifts, float/i128 conversion
+helper calls, fixed accumulator helpers, and generic stack or indirect pair
+surfaces.
 
 ## Reviewer Reject Signals
 
