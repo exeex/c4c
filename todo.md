@@ -8,32 +8,28 @@ Current Step Title: Extract Pure Value Discovery and Classification Helpers
 
 ## Just Finished
 
-Step 2 extracted the pure classification/register metadata helper set selected
-by Step 1 into `src/backend/prealloc/regalloc/classification.cpp` with narrow
-declarations in `src/backend/prealloc/regalloc/classification.hpp`.
+Step 2 extracted the f128 constant value discovery and lookup helper set into
+`src/backend/prealloc/regalloc/values.cpp` with narrow declarations in
+`src/backend/prealloc/regalloc/values.hpp`.
 
 Moved helpers:
 
-- `classify_register_class`
-- `resolve_register_class`
-- `resolve_register_group_width`
-- `register_bank_from_class`
-- `materialize_register_names`
-- `materialize_register_placements`
-- `published_register_group_width`
-- `assigned_register_placement`
+- `is_f128_immediate_constant`
+- `f128_constant_prepared_name`
+- `append_f128_constant_value`
+- `append_f128_constant_values_for_function`
+- `find_f128_constant_regalloc_value`
 
-`src/backend/prealloc/regalloc.cpp` now includes the private header and imports
-only these helpers into its anonymous namespace. BIR traversal, stack fallback
-mutation, move resolution, pointer carriers, runtime-helper mapping, and
-publication vector ownership remain in `regalloc.cpp`.
+`src/backend/prealloc/regalloc.cpp` now includes the private value-discovery
+header and imports only the f128 constant helpers it still calls. Call/return
+ABI move resolution, runtime-helper mapping, allocation decisions, publication
+order, and prepared dump semantics remain in `regalloc.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: extract the f128 constant discovery helpers only if the
-supervisor wants to continue value discovery; otherwise move to a separate
-packet for interval ranking helpers. Keep either packet narrow and avoid
-combining traversal with allocator mutation.
+Next coherent packet: extract interval ranking and program-point location
+helpers if the supervisor wants to continue Step 2. Keep weighted use scoring
+with `locate_program_point` unless the shared helper boundary is made explicit.
 
 ## Watchouts
 
@@ -45,8 +41,8 @@ combining traversal with allocator mutation.
   recursive prealloc source glob after CMake regenerated during the delegated
   build.
 - `ProgramPointLocation` is shared by weighted-use scoring and spill/reload
-  publication; keep `locate_program_point` out of the first extraction unless
-  both owners move together or a private shared helper is introduced.
+  publication; keep `locate_program_point` out of a ranking-only extraction
+  unless both owners move together or a private shared helper is introduced.
 - `PreparedPointerCarrierMap` and `build_pointer_carrier_map` are pointer
   carrier owners, but `classify_prepared_value_home` consumes their result; do
   not move pointer carriers with value-home publication in the same first
@@ -56,10 +52,10 @@ combining traversal with allocator mutation.
   shared across phi, consumer, call, return, runtime-helper, and value-location
   owners; they likely need a small internal lookup/storage header before those
   families are split.
-- f128 constant discovery crosses values, call-arg move resolution, and f128
-  runtime-helper mapping through `is_f128_immediate_constant` and
-  `find_f128_constant_regalloc_value`; extract it only after the private helper
-  interface is settled.
+- f128 constant discovery now lives in `regalloc_detail::values`; its callers
+  still cross value appending, call-arg move resolution, and f128 runtime-helper
+  mapping, so do not move those caller families as a follow-on without a
+  separate packet.
 - `allocate_stack_slot` mutates `next_slot_id`, `next_offset_bytes`, and
   `frame_alignment_bytes` from `run_regalloc()` and reads stack-layout
   placement; keep it with allocator/stack fallback rather than the first
