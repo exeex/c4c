@@ -8,7 +8,7 @@ Current Step Title: Extract low-risk standalone fact publishers
 
 ## Just Finished
 
-Completed Step 2 dynamic-stack extraction. `populate_dynamic_stack_plan()` and the local `dynamic_alloca_type_text()` helper now live in `src/backend/prealloc/dynamic_stack.cpp`, with `src/backend/prealloc/dynamic_stack.hpp` carrying the narrow publisher declaration and shared dynamic-alloca predicate used by the existing frame-plan scan. `BirPreAlloc::publish_contract_plans()` still calls `populate_dynamic_stack_plan(prepared_)` in the same order as before.
+Completed Step 2 label-identity extraction. `publish_prepared_bir_label_identity()` and its local prepared/BIR block-label resolver now live in `src/backend/prealloc/label_identity.cpp`, with `src/backend/prealloc/label_identity.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` still calls `publish_prepared_bir_label_identity(prepared_)` first, before the rest of the contract-plan publishers.
 
 ## Suggested Next
 
@@ -22,6 +22,8 @@ Extract the next low-risk standalone publisher family from `src/backend/prealloc
 - Prefer one fact-publisher family per packet unless dependency edges require grouping.
 - Dynamic-stack build registration relies on the existing recursive prealloc source glob; adding `dynamic_stack.cpp` caused CMake to reconfigure successfully during the proof.
 - `is_dynamic_alloca_call()` now has package linkage via `dynamic_stack.hpp` because `populate_frame_plan()` still uses it; keep that header narrow.
+- Label-identity build registration also relies on the existing recursive prealloc source glob; adding `label_identity.cpp` caused CMake to reconfigure successfully during the proof.
+- `find_preferred_block_label_id()` remains duplicated narrowly in `dynamic_stack.cpp` and `label_identity.cpp`; do not introduce a broad shared helper header unless more extracted publishers need it.
 - Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
 
 ## Proof
