@@ -27,3 +27,5 @@ Extract the next low-risk standalone publisher family from `src/backend/prealloc
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1`; build succeeded and all 139 selected backend tests passed. Also ran `git diff --check`; it passed with no whitespace errors. Proof log: `test_after.log`.
+
+Post-commit baseline review follow-up: supervisor accepted `test_baseline.new.log` into `test_baseline.log`, so the baseline-review reminder has been handled.
