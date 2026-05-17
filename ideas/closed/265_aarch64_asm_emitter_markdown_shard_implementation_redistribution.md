@@ -1,7 +1,8 @@
 # AArch64 `asm_emitter.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Last Updated: 2026-05-17
 
 ## Intent
 
@@ -51,6 +52,20 @@ inline-asm machinery.
 - `asm_emitter.md` is deleted.
 - Focused AArch64 backend/MIR proof and public assembly smoke preserve output
   behavior.
+
+## Completion Notes
+
+Closed after Step 4 behavior-preservation proof. The audit found the live
+prepared-module-to-`.s` wrapper already belongs to `asm_emitter.cpp` and
+`asm_emitter.hpp`, while instruction spelling remains correctly owned by
+`machine_printer.*`. The stale
+`src/backend/mir/aarch64/codegen/asm_emitter.md` shard was deleted and the
+AArch64 classification index was updated to remove the stale reference.
+
+Close-time regression guard used the matching backend scope from
+`test_before.log` and `test_after.log` with behavior-preservation semantics:
+both logs reported 139/139 passing backend tests, no new failures, and the
+checker passed with `--allow-non-decreasing-passed`.
 
 ## Reviewer Reject Signals
 
