@@ -825,47 +825,6 @@ void append_value_locations(std::ostringstream& out, const PreparedBirModule& mo
   }
 }
 
-void append_storage_plans(std::ostringstream& out, const PreparedBirModule& module) {
-  out << "--- prepared-storage-plans ---\n";
-  for (const auto& function_plan : module.storage_plans.functions) {
-    out << "prepared.func @" << maybe_function_name(module.names, function_plan.function_name)
-        << "\n";
-    for (const auto& value : function_plan.values) {
-      out << "  storage " << maybe_value_name(module.names, value.value_name)
-          << " value_id=" << value.value_id
-          << " encoding=" << storage_encoding_kind_name(value.encoding)
-          << " bank=" << prepared_register_bank_name(value.bank);
-      append_register_placement(out, "placement", value.register_placement);
-      append_spill_slot_placement(out, "spill_slot", value.spill_slot_placement);
-      if (value.register_name.has_value()) {
-        out << " reg=" << *value.register_name;
-      }
-      append_register_occupancy(out,
-                                value.contiguous_width,
-                                value.occupied_register_names);
-      if (value.slot_id.has_value()) {
-        out << " slot_id=#" << *value.slot_id;
-      }
-      if (value.stack_offset_bytes.has_value()) {
-        out << " stack_offset=" << *value.stack_offset_bytes;
-      }
-      if (value.immediate_i32.has_value()) {
-        out << " imm_i32=" << *value.immediate_i32;
-      }
-      if (value.immediate_f128.has_value()) {
-        out << " imm_f128=0x" << std::hex << std::uppercase << std::setfill('0')
-            << std::setw(16) << value.immediate_f128->high_bits
-            << std::setw(16) << value.immediate_f128->low_bits
-            << std::dec;
-      }
-      if (value.symbol_name.has_value()) {
-        out << " symbol=" << prepared_link_name(module.names, *value.symbol_name);
-      }
-      out << "\n";
-    }
-  }
-}
-
 void append_i128_carriers(std::ostringstream& out, const PreparedBirModule& module) {
   out << "--- prepared-i128-carriers ---\n";
   for (const auto& function_carriers : module.i128_carriers.functions) {
