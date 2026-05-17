@@ -1,7 +1,8 @@
 # AArch64 `variadic.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -51,6 +52,15 @@ boundary makes the supported and deferred pieces visible.
 - Variadic behavior is not scattered across calls/prologue/memory without a
   clear owner.
 - Focused AArch64 backend proof preserves existing variadic call behavior.
+
+## Closure Note
+
+Closed after the active runbook exhausted all five steps. The compiled
+`variadic.cpp` and `variadic.hpp` owner exists, `variadic.md` is removed, and
+the focused backend before/after proof preserved the 139-test backend subset
+with no new failures. Full variadic function-entry, `va_list`, register-save
+area, and overflow-area behavior remain outside this completed ownership
+redistribution and require a separate capability idea.
 
 ## Reviewer Reject Signals
 
