@@ -1,5 +1,5 @@
 #include "src/backend/bir/bir.hpp"
-#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
@@ -12,7 +12,6 @@
 
 namespace {
 
-namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
@@ -477,7 +476,7 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
 
 int module_build_keeps_branch_node_without_restoring_legacy_return_nodes() {
   auto prepared = prepared_with_unconditional_branch();
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
     return fail("expected prepared branch module to build");
   }

@@ -1,6 +1,6 @@
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
 #include "src/backend/mir/aarch64/codegen/returns.hpp"
-#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/target_profile.hpp"
 
 #include <algorithm>
@@ -13,7 +13,6 @@
 namespace {
 
 namespace aarch64_abi = c4c::backend::aarch64::abi;
-namespace aarch64_api = c4c::backend::aarch64::api;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -592,7 +591,7 @@ prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_ope
 
 int return_selected_scalar_operands_prefer_storage_register_placement() {
   auto prepared = prepared_return_scalar_module_with_placement_only_operands();
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value() ||
       result.module->functions.empty()) {
     return fail("expected placement-only scalar operand module to build");

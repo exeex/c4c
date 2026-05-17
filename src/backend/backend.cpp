@@ -1,7 +1,7 @@
 #include "backend.hpp"
 
 #include "bir/bir.hpp"
-#include "mir/aarch64/api/api.hpp"
+#include "mir/aarch64/codegen/codegen.hpp"
 #include "mir/aarch64/codegen/machine_printer.hpp"
 #include "mir/x86/api/api.hpp"
 #include "mir/x86/x86.hpp"
@@ -157,7 +157,7 @@ c4c::backend::prepare::PreparedBirModule prepare_semantic_bir_pipeline(
 
 std::string print_aarch64_prepared_machine_nodes(
     const c4c::backend::prepare::PreparedBirModule& prepared) {
-  const auto built = c4c::backend::aarch64::api::build_prepared_module(prepared);
+  const auto built = c4c::backend::aarch64::codegen::compile_prepared_module(prepared);
   if (!built.module.has_value()) {
     std::string message = "AArch64 backend assembly route could not build a prepared module";
     if (built.error.has_value() && !built.error->message.empty()) {

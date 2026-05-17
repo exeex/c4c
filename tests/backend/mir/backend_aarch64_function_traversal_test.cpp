@@ -1,5 +1,5 @@
 #include "src/backend/bir/bir.hpp"
-#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -10,7 +10,7 @@
 
 namespace {
 
-namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -54,10 +54,10 @@ prepare::PreparedBirModule prepared_control_flow_with_two_functions() {
   return prepared;
 }
 
-int build_prepared_module_traverses_functions_and_blocks_into_mir() {
+int compile_prepared_module_traverses_functions_and_blocks_into_mir() {
   auto prepared = prepared_control_flow_with_two_functions();
 
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value() || !result.module.has_value()) {
     return fail("expected prepared traversal module to build");
   }
@@ -125,5 +125,5 @@ int build_prepared_module_traverses_functions_and_blocks_into_mir() {
 }  // namespace
 
 int main() {
-  return build_prepared_module_traverses_functions_and_blocks_into_mir();
+  return compile_prepared_module_traverses_functions_and_blocks_into_mir();
 }

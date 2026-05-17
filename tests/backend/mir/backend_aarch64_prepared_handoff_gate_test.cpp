@@ -1,5 +1,5 @@
-#include "src/backend/mir/aarch64/api/api.hpp"
 #include "src/backend/mir/aarch64/abi/abi.hpp"
+#include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
@@ -11,7 +11,7 @@
 namespace {
 
 namespace aarch64_abi = c4c::backend::aarch64::abi;
-namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace prepare = c4c::backend::prepare;
 
 int fail(const char* message) {
@@ -33,7 +33,7 @@ bool contains(std::string_view haystack, std::string_view needle) {
 int accepted_aarch64_aapcs64_handoff_keeps_prepared_identity() {
   auto prepared = prepared_for(c4c::default_target_profile(c4c::TargetArch::Aarch64));
 
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value()) {
     return fail("expected AArch64/AAPCS64 prepared module to pass handoff gate");
   }
@@ -53,7 +53,7 @@ int accepted_aarch64_aapcs64_handoff_keeps_prepared_identity() {
 int rejected_non_aarch64_target_does_not_build_module() {
   const auto prepared = prepared_for(c4c::default_target_profile(c4c::TargetArch::X86_64));
 
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.module.has_value()) {
     return fail("expected non-AArch64 prepared module to be rejected before module construction");
   }
@@ -73,7 +73,7 @@ int rejected_non_aapcs64_abi_does_not_build_module() {
   profile.backend_abi = c4c::BackendAbiKind::SysV_X86_64;
   const auto prepared = prepared_for(std::move(profile));
 
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.module.has_value()) {
     return fail("expected non-AAPCS64 prepared module to be rejected before module construction");
   }

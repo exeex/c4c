@@ -1,5 +1,5 @@
 #include "src/backend/bir/bir.hpp"
-#include "src/backend/mir/aarch64/api/api.hpp"
+#include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
@@ -11,7 +11,7 @@
 
 namespace {
 
-namespace aarch64_api = c4c::backend::aarch64::api;
+namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
@@ -57,7 +57,7 @@ prepare::PreparedBirModule prepared_module_with_function_and_block_identity() {
 int skeleton_validates_handoff_and_returns_empty_canonical_product() {
   auto prepared = prepared_module_with_function_and_block_identity();
 
-  const auto result = aarch64_api::build_prepared_module(prepared);
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
   if (result.error.has_value()) {
     return fail("expected AArch64 skeleton contract module to pass handoff validation");
   }
