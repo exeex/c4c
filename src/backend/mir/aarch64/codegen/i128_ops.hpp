@@ -2,6 +2,7 @@
 
 #include "instruction.hpp"
 #include "../../mir.hpp"
+#include "mir/printer.hpp"
 
 #include <cstddef>
 #include <optional>
@@ -41,6 +42,10 @@ struct I128InstructionLoweringResult {
     PreparedI128PairRecordError error);
 [[nodiscard]] std::string_view prepared_i128_runtime_helper_record_error_name(
     PreparedI128RuntimeHelperRecordError error);
+[[nodiscard]] std::optional<std::string> pair_low_register_name(
+    const I128PairOperandRecord& operand);
+[[nodiscard]] std::optional<std::string> pair_high_register_name(
+    const I128PairOperandRecord& operand);
 
 [[nodiscard]] InstructionRecord make_i128_transport_instruction(
     I128TransportRecord instruction);
@@ -90,5 +95,20 @@ make_prepared_i128_runtime_helper_boundary_record(
     const bir::Inst& inst,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] mir::TargetInstructionPrintResult print_i128_transport(
+    const InstructionRecord& instruction,
+    const I128TransportRecord& transport);
+[[nodiscard]] mir::TargetInstructionPrintResult print_i128_pair_operation(
+    const InstructionRecord& instruction,
+    const I128PairOperationRecord& pair);
+[[nodiscard]] mir::TargetInstructionPrintResult print_i128_shift(
+    const InstructionRecord& instruction,
+    const I128ShiftRecord& shift);
+[[nodiscard]] mir::TargetInstructionPrintResult print_i128_compare(
+    const InstructionRecord& instruction,
+    const I128CompareRecord& compare);
+[[nodiscard]] mir::TargetInstructionPrintResult print_i128_runtime_helper(
+    const InstructionRecord& instruction,
+    const I128RuntimeHelperBoundaryRecord& helper);
 
 }  // namespace c4c::backend::aarch64::codegen

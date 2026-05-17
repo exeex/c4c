@@ -3,10 +3,13 @@
 #include "alu.hpp"
 #include "calls.hpp"
 #include "comparison.hpp"
+#include "memory.hpp"
 
 #include <cstddef>
 #include <optional>
+#include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -185,6 +188,150 @@ void append_i128_pair_diagnostic(
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] mir::TargetInstructionPrintResult target_unsupported(
+    std::string diagnostic) {
+  return mir::target_instruction_unsupported(std::move(diagnostic));
+}
+
+[[nodiscard]] mir::TargetInstructionPrintResult target_printed(
+    std::vector<std::string> lines) {
+  return mir::target_instruction_lines_printed(std::move(lines));
+}
+
+[[nodiscard]] std::string bad_header(const InstructionRecord& instruction) {
+  return std::string("cannot print AArch64 machine node family=") +
+         std::string(instruction_family_name(instruction.family)) + " opcode=" +
+         std::string(machine_opcode_name(instruction.opcode)) + ": ";
+}
+
+bool complete_preserved_value_route(
+    const prepare::PreparedCallPreservedValue& preserved) {
+  switch (preserved.route) {
+    case prepare::PreparedCallPreservationRoute::Unknown:
+      return false;
+    case prepare::PreparedCallPreservationRoute::CalleeSavedRegister:
+      return preserved.register_name.has_value() &&
+             preserved.register_bank.has_value() &&
+             !preserved.occupied_register_names.empty() &&
+             preserved.register_placement.has_value() &&
+             preserved.callee_saved_save_index.has_value();
+    case prepare::PreparedCallPreservationRoute::StackSlot:
+      return preserved.slot_id.has_value() &&
+             preserved.stack_offset_bytes.has_value() &&
+             preserved.stack_size_bytes.has_value() &&
+             *preserved.stack_size_bytes > 0 &&
+             preserved.stack_align_bytes.has_value() &&
+             *preserved.stack_align_bytes > 0 &&
+             preserved.spill_slot_placement.has_value();
+  }
+  return false;
+}
+
+bool has_complete_live_preservation(
+    const prepare::PreparedI128RuntimeHelper::LivePreservationPolicy& policy) {
+  if (!policy.evaluated || !policy.caller_saved_clobbers_modeled ||
+      !policy.no_additional_live_preservation_required) {
+    return false;
+  }
+  for (const auto& preserved : policy.preserved_values) {
+    if (!complete_preserved_value_route(preserved)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool has_complete_selected_call_ownership(
+    const prepare::PreparedI128RuntimeHelper::SelectedCallOwnershipPolicy& ownership) {
+  return ownership.owns_terminal_call &&
+         ownership.has_callee_identity &&
+         ownership.has_resource_policy &&
+         ownership.has_clobber_policy &&
+         ownership.has_abi_bindings &&
+         ownership.has_marshaling &&
+         ownership.has_live_preservation;
+}
+
+bool is_decimal_digit(char ch) {
+  return ch >= '0' && ch <= '9';
+}
+
+bool is_printable_x_register_name(std::string_view name) {
+  if (name.size() < 2 || name.front() != 'x') {
+    return false;
+  }
+  unsigned index = 0;
+  for (std::size_t pos = 1; pos < name.size(); ++pos) {
+    if (!is_decimal_digit(name[pos])) {
+      return false;
+    }
+    index = index * 10U + static_cast<unsigned>(name[pos] - '0');
+  }
+  return index <= 30U;
+}
+
+std::optional<std::string> validate_i128_helper_move(
+    const prepare::PreparedI128RuntimeHelper::MarshalingMove& move,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+    prepare::PreparedMovePhase phase) {
+  if (move.direction != direction || move.phase != phase ||
+      move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+    return std::string{"i128 helper boundary has unsupported marshal/unmarshal move shape"};
+  }
+  if (move.carrier_lane.width_bytes != 8 ||
+      !move.carrier_lane.register_name.has_value() ||
+      !is_printable_x_register_name(*move.carrier_lane.register_name)) {
+    return std::string{"i128 helper boundary requires register-backed carrier lane moves"};
+  }
+  if (move.abi_register.width_bytes != 8 ||
+      move.abi_register.register_bank != prepare::PreparedRegisterBank::Gpr ||
+      move.abi_register.register_class != prepare::PreparedRegisterClass::General ||
+      !is_printable_x_register_name(move.abi_register.register_name)) {
+    return std::string{"i128 helper boundary requires GPR ABI register bindings"};
+  }
+  if (move.carrier_lane.value_id != move.abi_register.value_id ||
+      move.carrier_lane.value_name != move.abi_register.value_name ||
+      move.carrier_lane.role != move.abi_register.role ||
+      move.carrier_lane.lane_index != move.abi_register.lane_index ||
+      move.carrier_lane.width_bytes != move.abi_register.width_bytes) {
+    return std::string{"i128 helper boundary marshal/unmarshal lane facts mismatch"};
+  }
+  return std::nullopt;
+}
+
+std::optional<std::string> append_i128_helper_move_line(
+    std::vector<std::string>& lines,
+    const std::optional<prepare::PreparedI128RuntimeHelper::MarshalingMove>& move,
+    prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+    prepare::PreparedMovePhase phase) {
+  if (!move.has_value()) {
+    return std::string{"i128 helper boundary is missing structured marshal/unmarshal moves"};
+  }
+  if (const auto invalid = validate_i128_helper_move(*move, direction, phase);
+      invalid.has_value()) {
+    return invalid;
+  }
+
+  std::ostringstream line;
+  if (direction ==
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument) {
+    line << "mov " << move->abi_register.register_name << ", "
+         << *move->carrier_lane.register_name;
+  } else {
+    line << "mov " << *move->carrier_lane.register_name << ", "
+         << move->abi_register.register_name;
+  }
+  lines.push_back(line.str());
+  return std::nullopt;
+}
+
+std::optional<std::string> lane_register_name(const I128LaneTransportRecord& lane) {
+  if (!lane.reg.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(lane.reg->reg);
 }
 
 }  // namespace
@@ -401,6 +548,434 @@ std::string_view prepared_i128_runtime_helper_record_error_name(
       return "missing_clobber_policy";
   }
   return "unknown";
+}
+
+std::optional<std::string> pair_low_register_name(
+    const I128PairOperandRecord& operand) {
+  return lane_register_name(operand.low_lane);
+}
+
+std::optional<std::string> pair_high_register_name(
+    const I128PairOperandRecord& operand) {
+  return lane_register_name(operand.high_lane);
+}
+
+mir::TargetInstructionPrintResult print_i128_transport(
+    const InstructionRecord& instruction,
+    const I128TransportRecord& transport) {
+  const auto low = lane_register_name(transport.low_lane);
+  const auto high = lane_register_name(transport.high_lane);
+  if (!low.has_value() || !high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 transport node is missing structured low/high registers");
+  }
+  if (transport.transport_kind == I128TransportKind::CarrierSnapshot) {
+    std::ostringstream out;
+    out << "// i128 carrier " << *low << ", " << *high;
+    return target_printed({out.str()});
+  }
+  if (transport.transport_kind == I128TransportKind::CopyRegisterPair) {
+    const auto source_low = lane_register_name(transport.source_low_lane);
+    const auto source_high = lane_register_name(transport.source_high_lane);
+    if (!source_low.has_value() || !source_high.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "i128 copy transport is missing structured source low/high registers");
+    }
+    std::vector<std::string> lines;
+    if (*low != *source_low) {
+      std::ostringstream low_move;
+      low_move << "mov " << *low << ", " << *source_low;
+      lines.push_back(low_move.str());
+    }
+    if (*high != *source_high) {
+      std::ostringstream high_move;
+      high_move << "mov " << *high << ", " << *source_high;
+      lines.push_back(high_move.str());
+    }
+    if (lines.empty()) {
+      std::ostringstream out;
+      out << "// i128 copy preserved " << *low << ", " << *high;
+      lines.push_back(out.str());
+    }
+    return target_printed(std::move(lines));
+  }
+  if (!transport.memory.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 memory transport is missing structured memory operand");
+  }
+  const auto address = memory_address(*transport.memory);
+  if (address.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 memory transport address is not printable");
+  }
+  std::ostringstream out;
+  if (transport.transport_kind == I128TransportKind::LoadFromMemory) {
+    out << "ldp " << *low << ", " << *high << ", " << address;
+    return target_printed({out.str()});
+  }
+  if (transport.transport_kind == I128TransportKind::StoreToMemory) {
+    out << "stp " << *low << ", " << *high << ", " << address;
+    return target_printed({out.str()});
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 transport kind is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_pair_operation(
+    const InstructionRecord& instruction,
+    const I128PairOperationRecord& pair) {
+  const auto result_low = pair_low_register_name(pair.result);
+  const auto result_high = pair_high_register_name(pair.result);
+  const auto lhs_low = pair_low_register_name(pair.lhs);
+  const auto lhs_high = pair_high_register_name(pair.lhs);
+  const auto rhs_low = pair_low_register_name(pair.rhs);
+  const auto rhs_high = pair_high_register_name(pair.rhs);
+  if (!result_low.has_value() || !result_high.has_value() ||
+      !lhs_low.has_value() || !lhs_high.has_value() ||
+      !rhs_low.has_value() || !rhs_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 pair node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  auto emit_independent = [&](std::string_view mnemonic) {
+    std::ostringstream low;
+    low << mnemonic << " " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+    lines.push_back(low.str());
+    std::ostringstream high;
+    high << mnemonic << " " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+    lines.push_back(high.str());
+  };
+
+  switch (pair.operation) {
+    case I128PairOperationKind::Add: {
+      std::ostringstream low;
+      low << "adds " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "adc " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128PairOperationKind::Sub: {
+      std::ostringstream low;
+      low << "subs " << *result_low << ", " << *lhs_low << ", " << *rhs_low;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "sbc " << *result_high << ", " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128PairOperationKind::And:
+      emit_independent("and");
+      return target_printed(std::move(lines));
+    case I128PairOperationKind::Or:
+      emit_independent("orr");
+      return target_printed(std::move(lines));
+    case I128PairOperationKind::Xor:
+      emit_independent("eor");
+      return target_printed(std::move(lines));
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 pair operation is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_shift(
+    const InstructionRecord& instruction,
+    const I128ShiftRecord& shift) {
+  if (shift.count_kind != I128ShiftCountKind::Immediate) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift printer currently requires an immediate shift count");
+  }
+  const auto* immediate = std::get_if<ImmediateOperand>(&shift.shift_count.payload);
+  if (shift.shift_count.kind != OperandKind::Immediate || immediate == nullptr ||
+      immediate->signed_value < 0 || immediate->signed_value >= 64) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift immediate is outside the printable 0..63 subset");
+  }
+  const auto amount = immediate->signed_value;
+  const auto result_low = pair_low_register_name(shift.result);
+  const auto result_high = pair_high_register_name(shift.result);
+  const auto source_low = pair_low_register_name(shift.source);
+  const auto source_high = pair_high_register_name(shift.source);
+  if (!result_low.has_value() || !result_high.has_value() ||
+      !source_low.has_value() || !source_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 shift node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  auto emit_mov_pair = [&]() {
+    std::ostringstream low;
+    low << "mov " << *result_low << ", " << *source_low;
+    lines.push_back(low.str());
+    std::ostringstream high;
+    high << "mov " << *result_high << ", " << *source_high;
+    lines.push_back(high.str());
+  };
+  if (amount == 0) {
+    emit_mov_pair();
+    return target_printed(std::move(lines));
+  }
+
+  switch (shift.shift_kind) {
+    case I128ShiftKind::Left: {
+      std::ostringstream low;
+      low << "lsl " << *result_low << ", " << *source_low << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "extr " << *result_high << ", " << *source_high << ", " << *source_low
+           << ", #" << (64 - amount);
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128ShiftKind::LogicalRight: {
+      std::ostringstream low;
+      low << "extr " << *result_low << ", " << *source_low << ", " << *source_high
+          << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "lsr " << *result_high << ", " << *source_high << ", #" << amount;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+    case I128ShiftKind::ArithmeticRight: {
+      std::ostringstream low;
+      low << "extr " << *result_low << ", " << *source_low << ", " << *source_high
+          << ", #" << amount;
+      lines.push_back(low.str());
+      std::ostringstream high;
+      high << "asr " << *result_high << ", " << *source_high << ", #" << amount;
+      lines.push_back(high.str());
+      return target_printed(std::move(lines));
+    }
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "i128 shift kind is outside the printable subset");
+}
+
+mir::TargetInstructionPrintResult print_i128_compare(
+    const InstructionRecord& instruction,
+    const I128CompareRecord& compare) {
+  if (!compare.result_register.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 compare node is missing structured result register");
+  }
+  const auto result = abi::register_name(compare.result_register->reg);
+  const auto lhs_low = pair_low_register_name(compare.lhs);
+  const auto lhs_high = pair_high_register_name(compare.lhs);
+  const auto rhs_low = pair_low_register_name(compare.rhs);
+  const auto rhs_high = pair_high_register_name(compare.rhs);
+  if (!lhs_low.has_value() || !lhs_high.has_value() ||
+      !rhs_low.has_value() || !rhs_high.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 compare node is missing structured low/high registers");
+  }
+
+  std::vector<std::string> lines;
+  if (const auto condition = i128_equality_compare_condition(compare.predicate);
+      condition.has_value()) {
+    {
+      std::ostringstream high;
+      high << "cmp " << *lhs_high << ", " << *rhs_high;
+      lines.push_back(high.str());
+    }
+    {
+      std::ostringstream low;
+      low << "ccmp " << *lhs_low << ", " << *rhs_low << ", #0, eq";
+      lines.push_back(low.str());
+    }
+    {
+      std::ostringstream cset;
+      cset << "cset " << result << ", " << *condition;
+      lines.push_back(cset.str());
+    }
+    return target_printed(std::move(lines));
+  }
+
+  const auto relational_spelling = i128_relational_compare_spelling(compare.predicate);
+  if (!relational_spelling.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "i128 compare printer supports equality and relational predicates only");
+  }
+
+  const auto true_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                          std::to_string(compare.block_label) + "_" +
+                          std::to_string(compare.instruction_index) + "_true";
+  const auto false_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                           std::to_string(compare.block_label) + "_" +
+                           std::to_string(compare.instruction_index) + "_false";
+  const auto done_label = ".L_i128cmp_" + std::to_string(compare.function_name) + "_" +
+                          std::to_string(compare.block_label) + "_" +
+                          std::to_string(compare.instruction_index) + "_done";
+  {
+    std::ostringstream high;
+    high << "cmp " << *lhs_high << ", " << *rhs_high;
+    lines.push_back(high.str());
+  }
+  {
+    std::ostringstream high_true_branch;
+    high_true_branch << "b." << relational_spelling->high_true_condition << " " << true_label;
+    lines.push_back(high_true_branch.str());
+  }
+  {
+    std::ostringstream high_false_branch;
+    high_false_branch << "b." << relational_spelling->high_false_condition << " "
+                      << false_label;
+    lines.push_back(high_false_branch.str());
+  }
+  {
+    std::ostringstream low;
+    low << "cmp " << *lhs_low << ", " << *rhs_low;
+    lines.push_back(low.str());
+  }
+  {
+    std::ostringstream low_true_branch;
+    low_true_branch << "b." << relational_spelling->low_true_condition << " " << true_label;
+    lines.push_back(low_true_branch.str());
+  }
+  {
+    std::ostringstream fallthrough;
+    fallthrough << "b " << false_label;
+    lines.push_back(fallthrough.str());
+  }
+  lines.push_back(true_label + ":");
+  {
+    std::ostringstream set_true;
+    set_true << "mov " << result << ", #1";
+    lines.push_back(set_true.str());
+  }
+  {
+    std::ostringstream done;
+    done << "b " << done_label;
+    lines.push_back(done.str());
+  }
+  lines.push_back(false_label + ":");
+  {
+    std::ostringstream set_false;
+    set_false << "mov " << result << ", #0";
+    lines.push_back(set_false.str());
+  }
+  lines.push_back(done_label + ":");
+  return target_printed(std::move(lines));
+}
+
+mir::TargetInstructionPrintResult print_i128_runtime_helper(
+    const InstructionRecord& instruction,
+    const I128RuntimeHelperBoundaryRecord& helper) {
+  if (helper.source_helper == nullptr) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing prepared helper provenance");
+  }
+  if (helper.helper_family != prepare::PreparedI128RuntimeHelperFamily::DivRem ||
+      helper.callee_name.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing div/rem callee facts");
+  }
+  if (helper.result_ownership !=
+      prepare::PreparedI128RuntimeHelperResultOwnership::DirectLowHighLanes) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary requires direct low/high result ownership");
+  }
+  if (!helper.resource_policy.call_boundary ||
+      !helper.resource_policy.runtime_helper_callee ||
+      !helper.resource_policy.caller_saved_clobbers ||
+      !helper.resource_policy.preserves_source_operation_identity ||
+      helper.clobbered_registers.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing resource or clobber policy");
+  }
+  if (helper.abi_policy.transition !=
+          prepare::PreparedI128RuntimeHelperAbiTransition::
+              DirectRegisterPairArgumentsAndResult ||
+      helper.abi_policy.argument_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.result_bank != prepare::PreparedRegisterBank::Gpr ||
+      helper.abi_policy.argument_count != 2 ||
+      helper.abi_policy.lanes_per_argument != 2 ||
+      helper.abi_policy.result_lane_count != 2 ||
+      helper.abi_policy.lane_width_bytes != 8) {
+    return target_unsupported(bad_header(instruction) +
+                              "i128 helper boundary is missing ABI/register-bank policy");
+  }
+  if (!has_complete_live_preservation(helper.live_preservation_policy) ||
+      !has_complete_live_preservation(helper.source_helper->live_preservation_policy)) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary printing requires complete live-preservation facts");
+  }
+  if (!has_complete_selected_call_ownership(helper.selected_call_ownership) ||
+      !has_complete_selected_call_ownership(helper.source_helper->selected_call_ownership)) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary printing requires selected-call ownership facts");
+  }
+  if (helper.source_helper->callee_name != helper.callee_name ||
+      helper.source_helper->helper_family != helper.helper_family ||
+      helper.source_helper->helper_kind != helper.helper_kind ||
+      helper.source_helper->source_binary_opcode != helper.source_binary_opcode ||
+      helper.source_helper->result_ownership != helper.result_ownership) {
+    return target_unsupported(
+        bad_header(instruction) +
+        "i128 helper boundary source helper facts do not match selected record");
+  }
+
+  std::vector<std::string> lines;
+  const auto append_move =
+      [&](const std::optional<prepare::PreparedI128RuntimeHelper::MarshalingMove>& move,
+          prepare::PreparedI128RuntimeHelperMarshalDirection direction,
+          prepare::PreparedMovePhase phase) -> std::optional<std::string> {
+    return append_i128_helper_move_line(lines, move, direction, phase);
+  };
+
+  const auto before_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::CarrierLaneToAbiArgument;
+  const auto after_call =
+      prepare::PreparedI128RuntimeHelperMarshalDirection::AbiResultToCarrierLane;
+  if (const auto error = append_move(helper.source_helper->lhs_low_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->lhs_high_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->rhs_low_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->rhs_high_argument_move,
+                                     before_call,
+                                     prepare::PreparedMovePhase::BeforeCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  {
+    std::ostringstream call;
+    call << "bl " << helper.callee_name;
+    lines.push_back(call.str());
+  }
+  if (const auto error = append_move(helper.source_helper->result_low_unmarshal_move,
+                                     after_call,
+                                     prepare::PreparedMovePhase::AfterCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+  if (const auto error = append_move(helper.source_helper->result_high_unmarshal_move,
+                                     after_call,
+                                     prepare::PreparedMovePhase::AfterCall);
+      error.has_value()) {
+    return target_unsupported(bad_header(instruction) + *error);
+  }
+
+  return target_printed(std::move(lines));
 }
 
 PreparedI128TransportRecordResult i128_transport_record_error(

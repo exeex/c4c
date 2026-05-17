@@ -8,22 +8,21 @@ Current Step Title: Move i128 spelling and printing helpers
 
 ## Just Finished
 
-Step 3 moved the behavior-preserving i128 dispatch lowering cluster from
-`dispatch.cpp` into `i128_ops.cpp`/`i128_ops.hpp`. The i128 owner now contains
-the pair/copy lowering entry points, pair/transport/runtime-helper diagnostic
-message helpers, runtime-helper lookup, and the i128-local BIR machine
-instruction wrapper used by those lowering routes.
+Step 4 moved the behavior-preserving i128 spelling and printing helper cluster
+from `machine_printer.cpp` into `i128_ops.cpp`/`i128_ops.hpp`.
+`validate_i128_helper_move`, `append_i128_helper_move_line`,
+`pair_low_register_name`, `pair_high_register_name`, and the five
+`print_i128_*` entry points are now owned by the i128 shard.
 
-`dispatch.cpp` now remains a neutral caller for the i128 pair-operation and copy
-routes. Prepared carrier/runtime-helper authority and lowering semantics remain
-unchanged, and the existing `memory.cpp` i128 transport path stays with the
-memory owner.
+`machine_printer.cpp` now includes `i128_ops.hpp` and remains a neutral variant
+router for i128 transport, pair-operation, shift, compare, and runtime-helper
+records. Emitted assembly spelling and diagnostic text were preserved.
 
 ## Suggested Next
 
-Step 4 should move i128-specific spelling and printing helpers from
-`machine_printer.cpp` into `i128_ops.cpp`/`i128_ops.hpp`, leaving
-`machine_printer.cpp` as a neutral caller/delegator for i128 spelling.
+Step 5 should delete the stale markdown shard once the supervisor confirms the
+source idea no longer needs the redistributed i128 helper text as active
+implementation guidance.
 
 ## Watchouts
 
@@ -41,6 +40,9 @@ Step 4 should move i128-specific spelling and printing helpers from
 - Preserve `comparison.cpp` and `memory.cpp` as existing narrow owners unless
   the supervisor chooses to fold their i128-specific helpers into the new shard
   in a later behavior-preserving move.
+- The i128 printer owner now consumes `memory_address` and i128 compare
+  spelling helpers through existing public owner APIs; keep that dependency
+  direction unchanged unless Step 5 explicitly routes more code.
 
 ## Proof
 
