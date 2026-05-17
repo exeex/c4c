@@ -8,19 +8,20 @@ Current Step Title: Extract frame, addressing, liveness, and regalloc schema
 
 ## Just Finished
 
-Step 3 extracted the liveness schema family from
+Step 3 extracted the regalloc schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/liveness.hpp`.
+`src/backend/prealloc/regalloc.hpp`.
 
-`liveness.hpp` now owns `PreparedValueKind`,
-`prepared_value_kind_name`, live intervals, liveness values, blocks,
-functions, and the liveness aggregate. `prealloc.hpp` includes it and remains
-the compatibility umbrella.
+`regalloc.hpp` now owns register class/group overrides, target register
+identity, allocation status, physical/stack assignments, allocation
+constraints, interference, spill/reload records, regalloc value/function
+aggregates, and associated constexpr name helpers. `prealloc.hpp` includes it
+and remains the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 3 by extracting the regalloc schema family into a focused header
-while keeping `prealloc.hpp` as the public compatibility umbrella.
+Continue Step 3 by extracting the value-location schema family into a focused
+header while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
 
@@ -31,7 +32,10 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `names.hpp` intentionally forward-declares `PreparedBirModule`; the concrete
   aggregate should move later with `module.hpp` after member-family headers
   exist.
-- Step 3 still needs focused extraction for regalloc and value-location schema.
+- Step 3 still needs focused extraction for value-location schema.
+- `regalloc.hpp` now owns the move-resolution and ABI-binding vocabulary used
+  by value locations and later call plans; dependent headers can include it
+  directly instead of relying on `prealloc.hpp`.
 - Ambiguous boundary: `PreparedStorageEncodingKind` is introduced just before
   call plans but is reused by storage plans and indirect callee plans; extract
   with `calls.hpp` only if later includes stay acyclic, otherwise use the
