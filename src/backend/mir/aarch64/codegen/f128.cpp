@@ -75,6 +75,82 @@ std::vector<abi::RegisterReference> f128_occupied_register_references(
   return {reg};
 }
 
+MachineEffectResource f128_register_effect(const RegisterOperand& reg) {
+  MachineEffectResource resource;
+  resource.operand = make_register_operand(reg);
+  resource.kind = MachineEffectResourceKind::Register;
+  resource.value_id = reg.value_id;
+  resource.value_name = reg.value_name;
+  resource.reg = reg.reg;
+  return resource;
+}
+
+MachineEffectResource f128_memory_effect(const MemoryOperand& memory) {
+  MachineEffectResource resource;
+  resource.operand = make_memory_operand(memory);
+  resource.kind = MachineEffectResourceKind::Memory;
+  resource.value_id =
+      memory.result_value_id.has_value() ? memory.result_value_id : memory.stored_value_id;
+  if (memory.result_value_name.has_value()) {
+    resource.value_name = *memory.result_value_name;
+  } else if (memory.stored_value_name.has_value()) {
+    resource.value_name = *memory.stored_value_name;
+  }
+  resource.frame_slot_id = memory.frame_slot_id;
+  resource.symbol_name =
+      memory.symbol_name.has_value() ? memory.symbol_name : memory.string_symbol_name;
+  return resource;
+}
+
+MachineEffectResource f128_prepared_value_def(
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name) {
+  return MachineEffectResource{
+      .kind = MachineEffectResourceKind::PreparedValue,
+      .value_id = value_id,
+      .value_name = value_name,
+  };
+}
+
+MachineNodeStatusRecord validate_f128_transport_instruction(
+    const F128TransportRecord& instruction) {
+  if (instruction.source_carrier == nullptr) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport is missing prepared f128 carrier provenance"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::Missing) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport carrier is missing complete full-width authority"};
+  }
+  if (instruction.total_size_bytes != 16 || instruction.total_align_bytes != 16) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 transport carrier requires complete 16-byte size and alignment"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::FullWidthRegister &&
+      !instruction.reg.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 full-width register transport is missing q-register authority"};
+  }
+  if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::MemoryBacked &&
+      (!instruction.slot_id.has_value() || !instruction.stack_offset_bytes.has_value())) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 memory-backed transport is missing frame-slot authority"};
+  }
+  if ((instruction.transport_kind == F128TransportKind::LoadFromMemory ||
+       instruction.transport_kind == F128TransportKind::StoreToMemory) &&
+      !instruction.memory.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+        .diagnostic = "f128 memory transport is missing structured memory operand"};
+  }
+  return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+}
+
 }  // namespace
 
 PreparedF128TransportRecordResult f128_transport_record_error(
@@ -186,6 +262,62 @@ PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
   return PreparedF128TransportRecordResult{
       .record = std::move(record),
       .error = PreparedF128TransportRecordError::None,
+  };
+}
+
+InstructionRecord make_f128_transport_instruction(F128TransportRecord instruction) {
+  std::vector<OperandRecord> operands;
+  if (instruction.memory.has_value()) {
+    operands.push_back(make_memory_operand(*instruction.memory));
+  }
+  if (instruction.reg.has_value()) {
+    operands.push_back(make_register_operand(*instruction.reg));
+  }
+
+  std::vector<MachineEffectResource> defs;
+  std::vector<MachineEffectResource> uses;
+  if (instruction.transport_kind == F128TransportKind::LoadFromMemory ||
+      instruction.transport_kind == F128TransportKind::CarrierSnapshot) {
+    if (instruction.reg.has_value()) {
+      defs.push_back(f128_register_effect(*instruction.reg));
+    } else if (instruction.carrier_kind == prepare::PreparedF128CarrierKind::MemoryBacked) {
+      defs.push_back(f128_prepared_value_def(instruction.value_id, instruction.value_name));
+    }
+  }
+  if ((instruction.transport_kind == F128TransportKind::StoreToMemory ||
+       instruction.transport_kind == F128TransportKind::CarrierSnapshot) &&
+      instruction.reg.has_value()) {
+    uses.push_back(f128_register_effect(*instruction.reg));
+  }
+  if (instruction.memory.has_value()) {
+    auto memory_effect = f128_memory_effect(*instruction.memory);
+    if (instruction.transport_kind == F128TransportKind::LoadFromMemory) {
+      uses.push_back(std::move(memory_effect));
+    } else if (instruction.transport_kind == F128TransportKind::StoreToMemory) {
+      defs.push_back(std::move(memory_effect));
+    }
+  }
+
+  std::vector<MachineSideEffectKind> side_effects;
+  if (instruction.transport_kind == F128TransportKind::LoadFromMemory) {
+    side_effects.push_back(MachineSideEffectKind::MemoryRead);
+  } else if (instruction.transport_kind == F128TransportKind::StoreToMemory) {
+    side_effects.push_back(MachineSideEffectKind::MemoryWrite);
+  }
+
+  return InstructionRecord{
+      .family = InstructionFamily::F128Transport,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::F128Transport,
+      .selection = validate_f128_transport_instruction(instruction),
+      .function_name = instruction.function_name,
+      .block_label = instruction.block_label,
+      .instruction_index = instruction.instruction_index,
+      .operands = std::move(operands),
+      .defs = std::move(defs),
+      .uses = std::move(uses),
+      .side_effects = std::move(side_effects),
+      .payload = instruction,
   };
 }
 
