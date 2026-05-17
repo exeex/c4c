@@ -1,7 +1,8 @@
 # AArch64 `atomics.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -50,6 +51,20 @@ centralization problem this cleanup series is trying to remove.
 - Broad owners do not contain new atomic-family bulk implementation.
 - Supported behavior is preserved, and unsupported behavior remains explicit.
 - Focused backend proof covers the affected AArch64 codegen route.
+
+## Closure Summary
+
+Closed after Steps 1-4 completed the redistribution route:
+
+- `atomics.cpp` and `atomics.hpp` were created as the compiled current-route
+  atomic-family owner.
+- Current atomic record construction, validation, lowering entry points, and
+  dispatch routing were moved out of broad memory/dispatch ownership while
+  leaving unsupported atomics explicit and fail-closed.
+- `atomics.md` was deleted and required documentation/index references were
+  cleaned to point at the compiled owner.
+- Focused backend proof passed with `139/139` tests before and after, with no
+  new failures under the close-time regression guard.
 
 ## Reviewer Reject Signals
 
