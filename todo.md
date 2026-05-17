@@ -1,29 +1,27 @@
 Status: Active
 Source Idea Path: ideas/open/272_prealloc_schema_header_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract names and base declarations
+Current Step ID: 3
+Current Step Title: Extract frame, addressing, liveness, and regalloc schema
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 extracted the low-level prepared names/base declaration block into
-`src/backend/prealloc/names.hpp`.
+Step 3 partially extracted the frame/register-placement schema family into
+`src/backend/prealloc/frame.hpp`.
 
-`names.hpp` now owns the prepared ID aliases, `PrepareOptions`, `PrepareNote`,
-`PreparedNameTables`, the low-level `PreparedBirModule` forward declaration,
-and the prepared name spelling/intern helper functions.
+`frame.hpp` now owns stack objects, frame slots, stack layout, register bank
+and slot placement vocabulary, spill slot placement, saved-register placement,
+frame plan, dynamic-stack plan, and the stack-frame offset helpers.
 
-`src/backend/prealloc/prealloc.hpp` now includes `names.hpp` as the
-compatibility umbrella and still declares `infer_call_arg_abi`, `BirPreAlloc`,
-and the prepare entry APIs.
+`src/backend/prealloc/prealloc.hpp` now includes `frame.hpp` and remains the
+compatibility umbrella.
 
 ## Suggested Next
 
-Execute Step 3 from `plan.md`: extract the frame, addressing, liveness,
-regalloc, and value-location schema families into focused headers while keeping
-`prealloc.hpp` as the public compatibility umbrella.
+Continue Step 3 by extracting the addressing schema family into a focused
+header while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
 
@@ -34,14 +32,14 @@ regalloc, and value-location schema families into focused headers while keeping
 - `names.hpp` intentionally forward-declares `PreparedBirModule`; the concrete
   aggregate should move later with `module.hpp` after member-family headers
   exist.
+- Step 3 still needs focused extraction for addressing, liveness, regalloc,
+  and value-location schema.
 - Ambiguous boundary: `PreparedStorageEncodingKind` is introduced just before
   call plans but is reused by storage plans and indirect callee plans; extract
   with `calls.hpp` only if later includes stay acyclic, otherwise use the
   lowest shared focused header that avoids recreating a helper monolith.
-- Ambiguous boundary: register bank/placement types currently live with frame
-  and saved-register schema but are reused broadly by regalloc, value homes,
-  calls, carriers, and runtime helpers; move them before dependents or isolate
-  as part of the low-level frame/register-placement family.
+- Register bank/placement types now live in `frame.hpp`; dependent Step 3
+  headers can include that focused header instead of relying on `prealloc.hpp`.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
   distributing tiny helpers across unrelated family headers.
