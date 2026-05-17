@@ -8,33 +8,38 @@ Current Step Title: Extract ABI Call and Return Move Resolution
 
 ## Just Finished
 
-Step 5 first extraction moved behavior-preserving call/return ABI helper
-ownership out of `src/backend/prealloc/regalloc.cpp` into
-`src/backend/prealloc/regalloc/call_return_abi.cpp` with declarations in
-`src/backend/prealloc/regalloc/call_return_abi.hpp`.
+Step 5 follow-up extracted the call/return move-resolution appender boundary
+after the prior call/return ABI helper split.
 
 Moved ownership:
 
-- call argument/result occupied-register destination group helpers
-- f128 call-argument destination placement adjustment
-- call argument ABI fallback resolution and stack destination offset helpers
-- call argument and call result `PreparedMoveStorageKind` classification
-- scalar function return ABI inference and function return storage-kind
-  classification
+- `append_call_arg_move_resolution`
+- `append_call_result_move_resolution`
+- `append_return_move_resolution`
+- f128 constant call-argument move-record append support
+- unassigned return move-record append support
 
-`src/backend/prealloc/regalloc.cpp` still owns the move-resolution appenders and
-their duplicate-check record construction. The appender bodies now consume the
-extracted ABI helper surface without changing call argument/result/return move
-ordering, ABI semantics, runtime-helper mapping order, allocation decisions, or
-prepared publication order.
+New files:
+
+- `src/backend/prealloc/regalloc/call_moves.cpp`
+- `src/backend/prealloc/regalloc/call_moves.hpp`
+- `src/backend/prealloc/regalloc/move_records.cpp`
+- `src/backend/prealloc/regalloc/move_records.hpp`
+
+`src/backend/prealloc/regalloc.cpp` still owns phi/out-of-SSA move resolution,
+consumer move resolution, immediate i32 move-record append support,
+spill/reload publication, runtime-helper mapping call order, value-home
+publication, and allocation decisions. A narrow shared `move_records` helper
+now owns only storage-transfer reason strings and the two duplicate-checking
+`append_move_resolution_record` overloads already shared by phi/consumer and
+call/return paths.
 
 ## Suggested Next
 
-Next coherent packet: decide whether Step 5 should stop at this helper boundary
-or extract the call/return move-resolution appenders behind a shared
-move-record append interface. Do not move the appenders until the shared
-duplicate-check helper can be exposed without dragging phi/out-of-SSA,
-consumer, runtime-helper mapping, or value-location publication ownership.
+Next coherent packet: move to Step 6 and inspect whether phi/out-of-SSA move
+resolution can be extracted cleanly using the existing `move_records` helper.
+Keep consumer move resolution separate unless the boundary shows it is truly
+part of the same control-flow move owner.
 
 ## Watchouts
 
@@ -73,10 +78,6 @@ consumer, runtime-helper mapping, or value-location publication ownership.
   `assigned_storage_matches` now live in `regalloc_detail::storage`; keep that
   file read-only and do not grow it into move publication or allocator
   mutation.
-- The overloaded move-resolution appenders were intentionally left in
-  `regalloc.cpp`: their duplicate checks and `PreparedMoveResolution`
-  construction are coupled to phi, consumer, call, return, immediate,
-  f128-constant, ABI, and value-location publication behavior.
 - f128 constant discovery now lives in `regalloc_detail::values`; its callers
   still cross value appending, call-arg move resolution, and f128 runtime-helper
   mapping, so do not move those caller families as a follow-on without a
@@ -93,12 +94,16 @@ consumer, runtime-helper mapping, or value-location publication ownership.
   `regalloc.cpp`; moving it would require either moving/exposing move-bundle
   publication and call ABI binding publication or introducing callback plumbing
   around those adjacent families.
-- `append_call_arg_move_resolution`, `append_call_result_move_resolution`, and
-  `append_return_move_resolution` remain in `regalloc.cpp` because they call the
-  generic `append_move_resolution_record` duplicate-check helper shared with
-  phi/out-of-SSA and consumer move resolution. Moving those appenders cleanly
-  needs either a narrow exported move-record helper or a broader move-resolution
-  ownership packet.
+- `call_moves.cpp` owns only call argument/result and return ABI move
+  resolution. Do not grow it into runtime-helper mapping, value-home
+  publication, call-plan construction, or allocation policy.
+- `move_records.cpp` is intentionally narrow shared append infrastructure.
+  Keep immediate materialization, phi/out-of-SSA traversal, consumer traversal,
+  runtime-helper mapping, and publication ownership out of it.
+- `regalloc.cpp` still owns `append_immediate_i32_move_resolution_record`
+  because it is currently used only by phi/out-of-SSA immediate materialization.
+- New `call_moves.cpp` and `move_records.cpp` were picked up by the recursive
+  prealloc source glob after CMake regenerated during the delegated build.
 - `clang-format` is not installed in this environment; the touched declarations
   and call sites were kept manually wrapped.
 
