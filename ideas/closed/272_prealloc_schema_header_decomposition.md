@@ -1,7 +1,8 @@
 # Prealloc Schema Header Decomposition
 
-Status: Open
+Status: Complete
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -71,6 +72,13 @@ That hurts readability and compile parallelism:
 - Include churn is limited to the minimum needed for the schema split.
 - The split improves parallel compile potential by allowing family-specific
   implementation files to include narrower headers later.
+
+## Completion Notes
+
+Closed after extracting the focused prealloc schema headers, preserving
+`prealloc.hpp` as the compatibility umbrella, tightening only local obvious
+include sites, and proving the behavior-preserving split with backend tests and
+standalone first-include probes for the focused headers.
 
 ## Reviewer Reject Signals
 
