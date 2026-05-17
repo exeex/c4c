@@ -1,7 +1,8 @@
 # Prepared Printer Decomposition
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -57,6 +58,21 @@ rebuild the entire prepared printer.
 - Existing prepared dump tests pass with unchanged output.
 - Future dump-format changes can be reviewed in the file for the affected
   prepared fact family.
+
+## Completion Notes
+
+Closed after the active decomposition runbook completed all five ordered steps.
+The legacy `prepared_printer.cpp` is reduced to a small public entry and the
+printer implementation is split across private family-oriented translation
+units under `src/backend/prealloc/prepared_printer/`.
+
+Closure proof used the supervisor-provided backend validation:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+
+Result: passed with 139/139 backend tests passing. Regression guard comparison
+against `test_before.log` passed in non-decreasing mode, with 139 passing before
+and 139 passing after, no new failures, and no resolved-failure accounting
+needed for this printer-only refactor.
 
 ## Reviewer Reject Signals
 
