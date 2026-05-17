@@ -1,40 +1,45 @@
 Status: Active
 Source Idea Path: ideas/open/268_aarch64_intrinsics_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Delete The Stale Markdown Shard
+Current Step ID: 4
+Current Step Title: Prove Focused Backend Behavior
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: deleted the stale markdown-only shard
-`src/backend/mir/aarch64/codegen/intrinsics.md`.
+Completed Step 4 from `plan.md`: ran the focused AArch64/backend proof for the
+intrinsics owner redistribution.
 
-Cleaned live repository references to the deleted shard:
+The fresh backend proof passed and preserved the supported backend behavior
+covered by the suite, including AArch64 prepared carrier/record, dispatch,
+printer, and external-return assembly smoke coverage plus existing backend
+builtin/intrinsic routes such as `abs`, `fabs`, `memcpy`, and `memset`.
 
-- `CLASSIFICATION_INDEX.md` no longer lists `codegen/intrinsics.md` as a
-  salvageable legacy markdown artifact.
-- `BACKEND_CASE_BRINGUP_MATRIX.md` no longer points the blocked FP/SIMD,
-  cast, i128, atomics, and intrinsic row at the deleted markdown shard; it
-  names the compiled `intrinsics.cpp` / `intrinsics.hpp` owner for the current
-  accepted prepared-carrier intrinsic records.
+Explicit unsupported/fail-closed behavior is still covered by the backend suite,
+including `backend_cli_aarch64_asm_no_machine_nodes_fails` and the focused
+missing block/value CLI dump cases.
 
 ## Suggested Next
 
-Supervisor should review the Step 3 deletion/reference cleanup diff for route
-fit and commit readiness, then continue with the next runbook step if accepted.
+Supervisor should review the Step 4 proof log and decide whether this runbook
+is acceptance-ready or needs lifecycle follow-up.
 
 ## Watchouts
 
-- This packet intentionally did not expand intrinsic support, implementation
-  code, tests, or expectations.
-- The bring-up matrix still treats the affected public cases as blocked; the
-  compiled intrinsic owner is referenced only for the current accepted
-  prepared-carrier records.
-- `test_after.log` was left untouched, as delegated.
+- This proof packet intentionally did not change implementation files, tests,
+  `plan.md`, source ideas, or `test_before.log`.
+- The proof is the supervisor-delegated focused backend subset; no broader
+  validation was selected by this packet.
 
 ## Proof
 
-No build or test run was required by the delegated docs/lifecycle-only proof
-contract. `test_after.log` was not touched.
+Ran:
+
+```sh
+cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1
+```
+
+Result: passed. `test_after.log` contains the delegated proof output with
+`100% tests passed, 0 tests failed out of 139`; the CTest label summary reports
+`aarch64 = 0.50 sec*proc (30 tests)` and `backend = 7.86 sec*proc (139 tests)`.
