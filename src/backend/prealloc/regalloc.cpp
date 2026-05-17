@@ -1,5 +1,6 @@
 #include "prealloc.hpp"
 #include "regalloc/classification.hpp"
+#include "regalloc/intervals.hpp"
 #include "regalloc/values.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/stack_layout.hpp"
@@ -7,7 +8,6 @@
 #include <array>
 #include <algorithm>
 #include <charconv>
-#include <limits>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -24,24 +24,24 @@ namespace {
 using regalloc_detail::assigned_register_placement;
 using regalloc_detail::append_f128_constant_values_for_function;
 using regalloc_detail::find_f128_constant_regalloc_value;
+using regalloc_detail::interval_start_sort_key;
+using regalloc_detail::intervals_overlap;
 using regalloc_detail::is_f128_immediate_constant;
+using regalloc_detail::locate_program_point;
 using regalloc_detail::materialize_register_names;
 using regalloc_detail::materialize_register_placements;
 using regalloc_detail::published_register_group_width;
 using regalloc_detail::register_bank_from_class;
 using regalloc_detail::resolve_register_class;
 using regalloc_detail::resolve_register_group_width;
+using regalloc_detail::value_priority;
+using regalloc_detail::weighted_use_score;
 
 struct ActiveRegisterAssignment {
   std::size_t value_index = 0;
   std::size_t end_point = 0;
   std::string register_name;
   std::vector<std::string> occupied_register_names;
-};
-
-struct ProgramPointLocation {
-  std::size_t block_index = 0;
-  std::size_t instruction_index = 0;
 };
 
 struct PreparedPointerCarrierState {
@@ -51,69 +51,6 @@ struct PreparedPointerCarrierState {
 };
 
 using PreparedPointerCarrierMap = std::unordered_map<ValueNameId, PreparedPointerCarrierState>;
-
-[[nodiscard]] bool intervals_overlap(const PreparedLiveInterval& lhs,
-                                     const PreparedLiveInterval& rhs) {
-  return std::max(lhs.start_point, rhs.start_point) <= std::min(lhs.end_point, rhs.end_point);
-}
-
-[[nodiscard]] std::size_t value_priority(const PreparedLivenessValue& value) {
-  std::size_t priority = value.use_points.size();
-  if (value.live_interval.has_value() && value.live_interval->end_point >= value.live_interval->start_point) {
-    priority += (value.live_interval->end_point - value.live_interval->start_point) + 1U;
-  }
-  if (value.crosses_call) {
-    priority += 2U;
-  }
-  if (value.requires_home_slot) {
-    priority += 1U;
-  }
-  return priority;
-}
-
-[[nodiscard]] std::size_t loop_depth_weight(std::size_t loop_depth) {
-  switch (loop_depth) {
-    case 0:
-      return 1U;
-    case 1:
-      return 10U;
-    case 2:
-      return 100U;
-    case 3:
-      return 1000U;
-    default:
-      return 10000U;
-  }
-}
-
-[[nodiscard]] std::optional<ProgramPointLocation> locate_program_point(
-    const PreparedLivenessFunction& function,
-    std::size_t point) {
-  for (const auto& block : function.blocks) {
-    if (point < block.start_point || point > block.end_point) {
-      continue;
-    }
-    return ProgramPointLocation{
-        .block_index = block.block_index,
-        .instruction_index = point - block.start_point,
-    };
-  }
-  return std::nullopt;
-}
-
-[[nodiscard]] std::size_t weighted_use_score(const PreparedLivenessFunction& function,
-                                             const PreparedLivenessValue& value) {
-  std::size_t weighted_uses = 0;
-  for (const std::size_t use_point : value.use_points) {
-    std::size_t weight = 1U;
-    if (const auto location = locate_program_point(function, use_point); location.has_value() &&
-        location->block_index < function.block_loop_depth.size()) {
-      weight = loop_depth_weight(function.block_loop_depth[location->block_index]);
-    }
-    weighted_uses += weight;
-  }
-  return weighted_uses;
-}
 
 [[nodiscard]] bool is_i128_div_rem_helper_opcode(bir::BinaryOpcode opcode) {
   switch (opcode) {
@@ -2100,13 +2037,6 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
         names, target_profile, *function, regalloc_function, function_locations);
   }
   return function_locations;
-}
-
-[[nodiscard]] std::size_t interval_start_sort_key(const PreparedRegallocValue& value) {
-  if (!value.live_interval.has_value()) {
-    return std::numeric_limits<std::size_t>::max();
-  }
-  return value.live_interval->start_point;
 }
 
 [[nodiscard]] const bir::Function* find_bir_function(const bir::Module& module,

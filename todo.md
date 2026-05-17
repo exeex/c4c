@@ -1,35 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Extract Pure Value Discovery and Classification Helpers
+Current Step ID: 3
+Current Step Title: Isolate Interval Ranking and Physical Assignment
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 extracted the f128 constant value discovery and lookup helper set into
-`src/backend/prealloc/regalloc/values.cpp` with narrow declarations in
-`src/backend/prealloc/regalloc/values.hpp`.
+Step 3 extracted the pure interval ranking, program-point location, and
+weighted-use scoring helpers into `src/backend/prealloc/regalloc/intervals.cpp`
+with narrow declarations in `src/backend/prealloc/regalloc/intervals.hpp`.
 
 Moved helpers:
 
-- `is_f128_immediate_constant`
-- `f128_constant_prepared_name`
-- `append_f128_constant_value`
-- `append_f128_constant_values_for_function`
-- `find_f128_constant_regalloc_value`
+- `ProgramPointLocation`
+- `intervals_overlap`
+- `value_priority`
+- `loop_depth_weight`
+- `locate_program_point`
+- `weighted_use_score`
+- `interval_start_sort_key`
 
-`src/backend/prealloc/regalloc.cpp` now includes the private value-discovery
-header and imports only the f128 constant helpers it still calls. Call/return
-ABI move resolution, runtime-helper mapping, allocation decisions, publication
-order, and prepared dump semantics remain in `regalloc.cpp`.
+`src/backend/prealloc/regalloc.cpp` now includes the private interval helper
+header and imports only the read-only ranking/scoring helpers it still calls.
+Allocation loops, active assignment mutation, stack-slot fallback mutation,
+move resolution, pointer carriers, runtime-helper mapping, value-location
+publication, and prepared dump semantics remain in `regalloc.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: extract interval ranking and program-point location
-helpers if the supervisor wants to continue Step 2. Keep weighted use scoring
-with `locate_program_point` unless the shared helper boundary is made explicit.
+Next coherent packet: inspect physical assignment selection helpers in
+`regalloc.cpp` and extract only read-only candidate/ranking helpers if there is
+a clean owner; keep assignment mutation and stack-slot fallback in
+`regalloc.cpp`.
 
 ## Watchouts
 
@@ -37,12 +41,16 @@ with `locate_program_point` unless the shared helper boundary is made explicit.
 - Do not create testcase-shaped shortcuts or expectation downgrades.
 - Do not split prepared printer output in this plan.
 - Keep implementation progress in this file unless runbook scope changes.
-- New files under `src/backend/prealloc/regalloc/` were picked up by the
-  recursive prealloc source glob after CMake regenerated during the delegated
-  build.
-- `ProgramPointLocation` is shared by weighted-use scoring and spill/reload
-  publication; keep `locate_program_point` out of a ranking-only extraction
-  unless both owners move together or a private shared helper is introduced.
+- New `intervals.cpp` was picked up by the recursive prealloc source glob after
+  CMake regenerated during the delegated build.
+- `locate_program_point` is intentionally shared by weighted-use scoring and
+  spill/reload publication through `regalloc_detail::ProgramPointLocation`.
+- The allocation-order comparator remains inline in `run_regalloc()` to
+  preserve exact tie order: interval start ascending, priority descending, then
+  value id ascending.
+- `intervals.cpp` is read-only and must not grow into allocator mutation,
+  stack-slot fallback, move resolution, runtime-helper mapping, or publication
+  ownership.
 - `PreparedPointerCarrierMap` and `build_pointer_carrier_map` are pointer
   carrier owners, but `classify_prepared_value_home` consumes their result; do
   not move pointer carriers with value-home publication in the same first
