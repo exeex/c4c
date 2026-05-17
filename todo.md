@@ -8,19 +8,20 @@ Current Step Title: Extract calls, variadic, storage, carriers, helpers, control
 
 ## Just Finished
 
-Step 4 continued by extracting the variadic entry schema family from
+Step 4 continued by extracting the storage-plan schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/variadic.hpp`.
+`src/backend/prealloc/storage.hpp`.
 
-`variadic.hpp` now owns variadic entry register-save and overflow areas,
-`va_list` field/layout schema, helper kind/resources, scalar and aggregate
-`va_arg` access plans, helper operand homes, variadic function/container
-records, and the related inline completeness helpers.
+`storage.hpp` now owns storage plan value, per-function storage plan, and
+storage plan container records. It includes `calls.hpp` for
+`PreparedStorageEncodingKind` and direct focused dependencies for prepared
+names, frame slots, register bank/placement, spill-slot placement, and BIR
+F128 payloads.
 `prealloc.hpp` includes it and remains the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 4 by extracting the storage-plan schema into a focused header
+Continue Step 4 by extracting the special carrier schema into a focused header
 while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
@@ -53,7 +54,7 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `variadic.hpp` includes `value_locations.hpp` directly for
   `PreparedValueHome`; dependent code should not rely on `prealloc.hpp` for
   that edge.
-- Remaining Step 4 families: storage, carriers, helpers, control-flow, and
+- Remaining Step 4 families: carriers, helpers, control-flow, and
   module schema.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
