@@ -8,20 +8,22 @@ Current Step Title: Extract calls, variadic, storage, carriers, helpers, control
 
 ## Just Finished
 
-Step 4 continued by extracting the special carrier schema family from
+Step 4 continued by extracting the runtime helper schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/special_carriers.hpp`.
+`src/backend/prealloc/runtime_helpers.hpp`.
 
-`special_carriers.hpp` now owns i128/f128 carriers, atomic operation carriers,
-intrinsic carriers, inline asm carriers, their enum/name helpers, carrier
-function/container records, and inline asm tied-home carrier records. It
-includes direct focused dependencies for prepared names, frame/register
-placement, value homes, target register identities, and BIR payloads.
-`prealloc.hpp` includes it and remains the compatibility umbrella.
+`runtime_helpers.hpp` now owns the f128/i128 runtime helper families, kinds,
+ABI transitions, result ownership enums, marshal direction/name helpers, helper
+binding structs, runtime helper function/container records, and associated
+helper ownership/policy records. It includes direct focused dependencies for
+prepared names, frame/register placement, value homes, regalloc move
+vocabulary, call preservation/clobber records, special carrier vocabulary, and
+BIR payload types. `prealloc.hpp` includes it and remains the compatibility
+umbrella.
 
 ## Suggested Next
 
-Continue Step 4 by extracting the runtime helper schema into a focused header
+Continue Step 4 by extracting the control-flow schema into a focused header
 while keeping `prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
@@ -57,7 +59,10 @@ while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `special_carriers.hpp` includes `value_locations.hpp`, which supplies
   `PreparedValueHome` and `PreparedTargetRegisterIdentity` through the focused
   value-location/regalloc dependency chain.
-- Remaining Step 4 families: helpers, control-flow, and module schema.
+- `runtime_helpers.hpp` includes `calls.hpp` for call preservation/clobber
+  records and `special_carriers.hpp` for i128/f128 carrier vocabulary; do not
+  route those dependencies back through `prealloc.hpp`.
+- Remaining Step 4 families: control-flow and module schema.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
   distributing tiny helpers across unrelated family headers.
