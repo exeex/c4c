@@ -2,6 +2,7 @@
 #include "dynamic_stack.hpp"
 #include "label_identity.hpp"
 #include "regalloc_placement_identity.hpp"
+#include "storage_plans.hpp"
 #include "target_register_profile.hpp"
 
 #include <algorithm>
@@ -985,17 +986,6 @@ struct DirectCalleeResolution {
   return nullptr;
 }
 
-[[nodiscard]] const PreparedRegallocValue* find_regalloc_value_by_id(
-    const PreparedRegallocFunction& function,
-    PreparedValueId value_id) {
-  for (const auto& value : function.values) {
-    if (value.value_id == value_id) {
-      return &value;
-    }
-  }
-  return nullptr;
-}
-
 [[nodiscard]] const PreparedRegallocValue* find_f128_constant_regalloc_value(
     const PreparedRegallocFunction& function,
     const bir::Value& value) {
@@ -1080,58 +1070,6 @@ struct DirectCalleeResolution {
     }
   }
   return register_bank_from_type(type);
-}
-
-[[nodiscard]] PreparedStoragePlanValue build_storage_plan_value(
-    const c4c::TargetProfile& target_profile,
-    const PreparedRegallocFunction* regalloc_function,
-    const PreparedValueHome& home,
-    bir::TypeKind type) {
-  const auto* regalloc_value =
-      regalloc_function == nullptr ? nullptr : find_regalloc_value_by_name(*regalloc_function, home.value_name);
-  const bool home_is_assigned_register =
-      regalloc_value != nullptr && regalloc_value->assigned_register.has_value() &&
-      home.register_name ==
-          std::optional<std::string>{regalloc_value->assigned_register->register_name};
-
-  std::size_t contiguous_width = 1;
-  PreparedRegisterBank bank = register_bank_from_type(type);
-  std::vector<std::string> occupied_register_names;
-  std::optional<PreparedRegisterPlacement> register_placement;
-  if (home.register_name.has_value()) {
-    occupied_register_names.push_back(*home.register_name);
-  }
-  if (regalloc_value != nullptr) {
-    if (!home.register_name.has_value() || home_is_assigned_register) {
-      contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
-      bank = register_bank_from_class(regalloc_value->register_class);
-    }
-    if (home_is_assigned_register) {
-      contiguous_width = regalloc_value->assigned_register->contiguous_width;
-      occupied_register_names = regalloc_value->assigned_register->occupied_register_names;
-      register_placement =
-          assignment_register_placement(target_profile, *regalloc_value->assigned_register);
-    } else if (home.kind != PreparedValueHomeKind::Register) {
-      contiguous_width = std::max<std::size_t>(regalloc_value->register_group_width, 1);
-      bank = register_bank_from_class(regalloc_value->register_class);
-    }
-  }
-  return PreparedStoragePlanValue{
-      .value_id = home.value_id,
-      .value_name = home.value_name,
-      .encoding = storage_encoding_from_home(home),
-      .bank = bank,
-      .contiguous_width = contiguous_width,
-      .register_name = home.register_name,
-      .occupied_register_names = std::move(occupied_register_names),
-      .slot_id = home.slot_id,
-      .stack_offset_bytes = home.offset_bytes,
-      .immediate_i32 = home.immediate_i32,
-      .immediate_f128 = home.immediate_f128,
-      .symbol_name = std::nullopt,
-      .register_placement = register_placement,
-      .spill_slot_placement = make_spill_slot_placement(home.slot_id, home.offset_bytes),
-  };
 }
 
 [[nodiscard]] const PreparedStoragePlanValue* find_storage_plan_value(
@@ -4923,35 +4861,6 @@ void populate_frame_plan(PreparedBirModule& prepared) {
         plan.has_dynamic_stack && !plan.frame_slot_order.empty();
 
     prepared.frame_plan.functions.push_back(std::move(plan));
-  }
-}
-
-void populate_storage_plans(PreparedBirModule& prepared) {
-  prepared.storage_plans.functions.clear();
-
-  for (const auto& function_locations : prepared.value_locations.functions) {
-    PreparedStoragePlanFunction function_plan{
-        .function_name = function_locations.function_name,
-        .values = {},
-    };
-
-    const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_locations.function_name);
-    function_plan.values.reserve(function_locations.value_homes.size());
-    for (const auto& home : function_locations.value_homes) {
-      bir::TypeKind type = bir::TypeKind::Void;
-      if (regalloc_function != nullptr) {
-        if (const auto* regalloc_value = find_regalloc_value_by_id(*regalloc_function, home.value_id);
-            regalloc_value != nullptr) {
-          type = regalloc_value->type;
-        }
-      }
-      function_plan.values.push_back(
-          build_storage_plan_value(prepared.target_profile, regalloc_function, home, type));
-    }
-
-    if (!function_plan.values.empty()) {
-      prepared.storage_plans.functions.push_back(std::move(function_plan));
-    }
   }
 }
 

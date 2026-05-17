@@ -8,11 +8,11 @@ Current Step Title: Extract low-risk standalone fact publishers
 
 ## Just Finished
 
-Completed Step 2 compact regalloc placement identity extraction. `populate_regalloc_placement_identity()` now lives in `src/backend/prealloc/regalloc_placement_identity.cpp`, with `src/backend/prealloc/regalloc_placement_identity.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` still calls `populate_regalloc_placement_identity(prepared_)` in the same order, immediately after label identity and before frame/dynamic-stack/call publishers.
+Completed Step 2 storage-plan fact publisher extraction. `populate_storage_plans()` now lives in `src/backend/prealloc/storage_plans.cpp`, with `src/backend/prealloc/storage_plans.hpp` carrying the narrow publisher declaration. `BirPreAlloc::publish_contract_plans()` includes that header and still calls `populate_storage_plans(prepared_)` in the same phase order after the second frame-plan publish and before carrier/runtime-helper publishers.
 
 ## Suggested Next
 
-Extract another low-risk standalone fact publisher from `src/backend/prealloc/prealloc.cpp`; the storage-plan publisher is a reasonable next candidate only if its regalloc/value-location helper edges can stay narrow without creating a broad private helper header.
+Extract another low-risk standalone fact publisher from `src/backend/prealloc/prealloc.cpp`; the special-carrier or runtime-helper families should be dependency-checked first because several of them share call, regalloc, and storage-plan lookup helpers.
 
 ## Watchouts
 
@@ -21,10 +21,12 @@ Extract another low-risk standalone fact publisher from `src/backend/prealloc/pr
 - Avoid broad private helper headers that become a second monolith.
 - Prefer one fact-publisher family per packet unless dependency edges require grouping.
 - Dynamic-stack build registration relies on the existing recursive prealloc source glob; adding `dynamic_stack.cpp` caused CMake to reconfigure successfully during the proof.
+- Storage-plan build registration also relies on the existing recursive prealloc source glob; adding `storage_plans.cpp` caused CMake to reconfigure successfully during the proof.
 - `is_dynamic_alloca_call()` now has package linkage via `dynamic_stack.hpp` because `populate_frame_plan()` still uses it; keep that header narrow.
 - Label-identity build registration also relies on the existing recursive prealloc source glob; adding `label_identity.cpp` caused CMake to reconfigure successfully during the proof.
 - `find_preferred_block_label_id()` remains duplicated narrowly in `dynamic_stack.cpp` and `label_identity.cpp`; do not introduce a broad shared helper header unless more extracted publishers need it.
 - Regalloc placement identity keeps a narrow local copy of its placement/spill-slot/value-id helpers in `regalloc_placement_identity.cpp`; the original anonymous-namespace helpers remain in `prealloc.cpp` for other publisher families, so avoid broadening this into a shared helper header unless multiple extracted families prove they need the same seam.
+- Storage plans keep narrow local copies of register-bank, register-placement, regalloc lookup, and storage-encoding helpers; `prealloc.cpp` keeps its own versions where other publisher families still need them.
 - Larger families to defer: frame plan shares callee-save and placement helpers; call/runtime helpers share `build_call_clobber_set()`, `build_call_preserved_values()`, `find_call_program_point()`, and register/ABI helpers; carriers depend on storage plans and family-specific validation.
 
 ## Proof
