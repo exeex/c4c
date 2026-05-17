@@ -1,5 +1,18 @@
 # AArch64 Codegen Route And Legacy Module Surface
 
+## Markdown Policy
+
+This directory should contain no markdown shards other than this `README.md`.
+Historical shard notes such as `alu.md`, `memory.md`, `records.md`, or
+`prologue.md` must be reconciled into live compiled owners, moved to a durable
+contract outside this directory, or deleted.
+
+Do not recreate `records.md`, `records.cpp`, or `records.hpp` as a centralized
+record pile. Live target instruction, operand, and machine-node structure now
+belongs in the current compiled owners, especially `instruction.hpp`,
+`instruction.cpp`, `operands.*`, family-specific lowerers, and shared MIR
+container contracts.
+
 ## Current Live Route
 
 The current AArch64 backend route is:
