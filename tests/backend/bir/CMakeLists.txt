@@ -7,6 +7,7 @@ add_executable(backend_prepare_phi_materialize_test
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/frame.cpp"
     "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/functions.cpp"
+    "${PROJECT_SOURCE_DIR}/src/backend/prealloc/prepared_printer/variadic.cpp"
 )
 target_include_directories(backend_prepare_phi_materialize_test PRIVATE
     "${PROJECT_SOURCE_DIR}"
