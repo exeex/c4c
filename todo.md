@@ -1,54 +1,74 @@
 Status: Active
 Source Idea Path: ideas/open/271_aarch64_variadic_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add The Compiled Variadic Owner
+Current Step ID: 3
+Current Step Title: Route Or Record Integration
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 2, `Add The Compiled Variadic Owner`.
+Completed Plan Step 3, `Route Or Record Integration`.
 
-Added `src/backend/mir/aarch64/codegen/variadic.hpp` and `variadic.cpp`, wired
-`variadic.cpp` into `src/backend/CMakeLists.txt`, and moved the current live
-variadic boundary behavior behind that compiled owner:
+Reviewed the compiled route after Step 2. The integration hooks that should be
+owned by `variadic.{hpp,cpp}` already route through that compiled boundary:
 
-- helper classification for `llvm.va_start.p0`, `llvm.va_copy.p0.p0`,
-  `llvm.va_arg.*`, and `llvm.va_arg.aggregate`
-- prepared variadic entry fact gating and missing-fact diagnostics
-- helper operand-home completeness checks and helper-specific consumption
-  diagnostics
-- structured helper record builders for `va_start`, scalar `va_arg`, aggregate
-  `va_arg`, and `va_copy`
-- variadic helper machine-node selection diagnostics and printer branches
+- `dispatch.cpp` calls `variadic_entry_helper_kind`,
+  `require_prepared_variadic_entry_plan`,
+  `variadic_helper_operand_homes_complete`, and
+  `variadic_helper_missing_consumption_fact_message` for helper classification,
+  prepared entry gating, operand-home completeness, and helper-specific missing
+  fact diagnostics.
+- `calls.cpp` calls `complete_variadic_call_record`,
+  `variadic_call_selection_status`, and `print_variadic_call` for structured
+  helper record completion, machine-node selection status, and helper printer
+  branches.
+- `src/backend/CMakeLists.txt` compiles `variadic.cpp`, so the compiled owner is
+  discoverable by the backend build.
 
-The narrow call sites in `dispatch.cpp` and `calls.cpp` now call the variadic
-owner. Existing prepared-carrier authority, opcodes, side effects, direct extern
-variadic wrapper/FPR-count metadata, unsupported contracts, and emitted printer
-text were preserved; no new `va_start`, `va_arg`, `va_copy`, register-save-area,
-overflow-area, or `va_list` semantics were implemented.
+The remaining live facts are intentionally still records/carriers rather than
+new variadic policy owners: `PreparedCallPlan::wrapper_kind ==
+DirectExternVariadic` and `PreparedCallPlan::variadic_fpr_arg_register_count`
+stay in the prepared call plan, while `CallInstructionRecord` retains the
+direct call wrapper/FPR-count fields plus the structured variadic helper record
+payloads needed by generic instruction construction. `instruction.hpp` remains
+the shared record surface for opcodes, machine pseudo/mnemonic enums,
+`VariadicVaStartRecord`, scalar and aggregate `VariadicVaArgRecord`,
+`VariadicVaCopyRecord`, and `CallInstructionRecord`; it does not reconstruct
+legacy `va_list` behavior.
+
+`calls.cpp` remains scoped to call sequencing, generic machine-node effect
+assembly, and ordinary direct/indirect call printing. `dispatch.cpp` remains
+scoped to routing BIR calls through prepared call and helper provenance.
+`prologue`, `memory`, and `module_compile` have no live compiled variadic hooks
+after the Step 2 route, so they remain focused on frame, memory, and module
+driver responsibilities rather than variadic save-area or overflow-area policy.
+
+No additional code movement is needed before Step 4. Step 4 can delete
+`src/backend/mir/aarch64/codegen/variadic.md` as a historical shard without
+additional integration work, provided the deletion packet confirms no active
+references still treat that markdown file as implementation authority.
+This remains an ownership redistribution only: no new `va_start`, `va_arg`,
+`va_copy`, register-save-area, overflow-area, or `va_list` semantics were
+implemented or requested.
 
 ## Suggested Next
 
-Execute Step 3 by reviewing the resulting compiled route boundary and deciding
-whether any remaining variadic integration hooks should move to
-`variadic.{hpp,cpp}`. Keep that packet behavior-preserving; if no further live
-route movement is needed, record the deferral in `todo.md` rather than changing
-ABI behavior.
+Execute Step 4 by deleting `src/backend/mir/aarch64/codegen/variadic.md` and
+checking that remaining references do not name it as an active implementation
+artifact. Keep the packet deletion-only unless the supervisor explicitly
+authorizes another movement.
 
 ## Watchouts
 
-The direct extern variadic call metadata still belongs to `PreparedCallPlan` and
-`CallInstructionRecord`; this packet did not change call ABI classification or
-the ordinary direct-call printer output. `variadic.md` remains historical and
-was not touched.
+Preserve the explicit deferral of full variadic function-entry behavior. Do not
+turn the structured helper records or printer diagnostics into new AAPCS64
+`va_start`, `va_arg`, `va_copy`, register-save-area, overflow-area, or
+`va_list` semantics during the deletion packet. Direct extern variadic call
+metadata still belongs to prepared/call records.
 
 ## Proof
 
-Ran:
-
-`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
-
-Result: passed. `test_after.log` contains the fresh build plus backend subset
-proof; the backend subset reports 139/139 tests passed.
+No build or test proof was run; the delegated packet was a todo-only
+integration decision and explicitly required no proof unless implementation
+changes became unavoidable. `test_after.log` was not touched.
