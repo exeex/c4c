@@ -1,29 +1,28 @@
 Status: Active
 Source Idea Path: ideas/open/261_aarch64_f128_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Create The F128 Compiled Owner Boundary
+Current Step ID: 3
+Current Step Title: Move F128 Construction, Transport, And Lowering Bodies
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Create The F128 Compiled Owner Boundary completed as a
-behavior-neutral build-boundary packet. Added `f128.hpp` with forwarding
-declarations for the existing f128 transport/helper construction and naming
-surface, added an empty compiled owner translation unit `f128.cpp`, and
-registered `f128.cpp` in `src/backend/CMakeLists.txt`. No f128 bodies,
-semantic checks, lowering routes, printer logic, tests, `plan.md`, source
-idea, or markdown shard content moved or changed.
+Step 3: Move F128 Construction, Transport, And Lowering Bodies started with
+the narrow transport-construction extraction. Moved
+`make_prepared_f128_carrier_transport_record` into `f128.cpp` with its
+directly required f128-only error-result helper and full-width carrier register
+operand converter. `instruction.cpp` now includes `f128.hpp` so the still
+unmoved runtime-helper construction body can continue using the f128 register
+converter. No helper-boundary construction, lowering, printer logic, tests,
+`plan.md`, source idea, or markdown shard content changed.
 
 ## Suggested Next
 
-Step 3 should move the first narrow f128 implementation body cluster into
-`f128.cpp`. The lowest-risk target remains transport construction:
-`make_prepared_f128_carrier_transport_record`, its directly required f128-only
-private helpers, and the transport kind/error naming helpers if dependency
-shape stays local. Keep helper-boundary construction, lowering, and printer
-spelling out of the first extraction unless required by compile ownership.
+Continue Step 3 by moving the f128 transport instruction construction body:
+`validate_f128_transport_instruction` and `make_f128_transport_instruction`.
+Keep memory lowering, helper-boundary construction, and printer spelling out
+unless compile ownership exposes a hard declaration dependency.
 
 ## Watchouts
 
@@ -41,20 +40,23 @@ spelling out of the first extraction unless required by compile ownership.
 - `f128.md` describes legacy address/temp/constant/source hooks that are not
   currently implemented as live C++ selected nodes. Moving code must not
   synthesize those old hooks or claim semantic completion by recreating names.
-- The first real body move should probably split transport construction from
-  helper-boundary construction; moving both helper construction and printer
-  spelling at once would cross more dependencies than necessary.
+- Transport construction is now split from helper-boundary construction; keep
+  the next move focused on transport instruction construction/validation before
+  touching helper-boundary or printer bodies.
 - `memory.cpp` already owns `lower_f128_transport_instruction`; Step 3 needs to
   decide whether that lowering is routed through `f128.cpp` or left as neutral
   memory routing that calls f128-owned construction helpers.
+- `make_f128_register_operand` is declared in `f128.hpp` because the unmoved
+  runtime-helper construction body still depends on it. Narrow or hide that
+  bridge only after the helper-boundary construction body moves.
 - `f128.hpp` currently redeclares an existing surface from `instruction.hpp`;
-  duplicate default arguments are intentionally avoided there. When bodies move,
-  remove or narrow the corresponding declarations in `instruction.hpp` only if
-  needed for clean ownership and include flow.
+  duplicate default arguments remain intentionally avoided there. Remove or
+  narrow corresponding declarations in `instruction.hpp` only if needed for
+  clean ownership and include flow.
 
 ## Proof
 
-Exact delegated proof passed:
+Exact delegated proof passed for the transport-construction extraction:
 `{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`.
-`test_after.log` is preserved. The run built the new compiled owner and passed
+`test_after.log` is preserved. The run built the f128 owner split and passed
 139/139 backend tests.

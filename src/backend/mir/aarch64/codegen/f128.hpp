@@ -20,6 +20,9 @@ namespace c4c::backend::aarch64::codegen {
 [[nodiscard]] InstructionRecord make_f128_runtime_helper_boundary_instruction(
     F128RuntimeHelperBoundaryRecord instruction);
 
+[[nodiscard]] std::optional<RegisterOperand> make_f128_register_operand(
+    const prepare::PreparedF128Carrier& carrier);
+
 [[nodiscard]] PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
     const prepare::PreparedF128CarrierFunction& f128_carriers,
     c4c::ValueNameId value_name,

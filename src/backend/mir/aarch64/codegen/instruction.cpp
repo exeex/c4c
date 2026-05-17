@@ -2,6 +2,7 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
 #include "calls.hpp"
+#include "f128.hpp"
 #include "memory.hpp"
 
 #include <algorithm>
@@ -3381,14 +3382,6 @@ PreparedI128TransportRecordResult i128_transport_record_error(
   };
 }
 
-PreparedF128TransportRecordResult f128_transport_record_error(
-    PreparedF128TransportRecordError error) {
-  return PreparedF128TransportRecordResult{
-      .record = std::nullopt,
-      .error = error,
-  };
-}
-
 PreparedF128RuntimeHelperRecordResult f128_runtime_helper_record_error(
     PreparedF128RuntimeHelperRecordError error) {
   return PreparedF128RuntimeHelperRecordResult{
@@ -3416,30 +3409,6 @@ std::optional<RegisterOperand> make_i128_lane_register_operand(
       .prepared_class = carrier.register_class,
       .prepared_bank = carrier.register_bank,
       .expected_view = abi::RegisterView::X,
-      .contiguous_width = carrier.contiguous_width,
-      .occupied_register_references = occupied_register_references(*converted.reg),
-      .occupied_registers = occupied_register_views(*converted.reg),
-  };
-}
-
-std::optional<RegisterOperand> make_f128_register_operand(
-    const prepare::PreparedF128Carrier& carrier) {
-  if (!carrier.register_name.has_value()) {
-    return std::nullopt;
-  }
-  const auto converted = abi::convert_prepared_register(
-      *carrier.register_name, carrier.register_bank, carrier.register_class, abi::RegisterView::Q);
-  if (!converted.has_value()) {
-    return std::nullopt;
-  }
-  return RegisterOperand{
-      .reg = *converted.reg,
-      .role = RegisterOperandRole::StoragePlan,
-      .value_id = carrier.value_id,
-      .value_name = carrier.value_name,
-      .prepared_class = carrier.register_class,
-      .prepared_bank = carrier.register_bank,
-      .expected_view = abi::RegisterView::Q,
       .contiguous_width = carrier.contiguous_width,
       .occupied_register_references = occupied_register_references(*converted.reg),
       .occupied_registers = occupied_register_views(*converted.reg),
@@ -3703,86 +3672,6 @@ PreparedI128TransportRecordResult make_prepared_i128_copy_transport_record(
         PreparedI128TransportRecordError::RegisterConversionFailed);
   }
   return prepared;
-}
-
-PreparedF128TransportRecordResult make_prepared_f128_carrier_transport_record(
-    const prepare::PreparedF128CarrierFunction& f128_carriers,
-    c4c::ValueNameId value_name,
-    F128TransportKind transport_kind,
-    std::optional<MemoryOperand> memory) {
-  if (f128_carriers.function_name == c4c::kInvalidFunctionName) {
-    return f128_transport_record_error(PreparedF128TransportRecordError::InvalidFunction);
-  }
-  const auto* carrier = prepare::find_prepared_f128_carrier(f128_carriers, value_name);
-  if (carrier == nullptr) {
-    return f128_transport_record_error(
-        PreparedF128TransportRecordError::MissingPreparedF128Carrier);
-  }
-  if (!carrier->missing_required_facts.empty() ||
-      carrier->kind == prepare::PreparedF128CarrierKind::Missing) {
-    return f128_transport_record_error(
-        PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
-  }
-  if (carrier->total_size_bytes != 16 || carrier->total_align_bytes != 16) {
-    return f128_transport_record_error(
-        PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
-  }
-  if (transport_kind != F128TransportKind::CarrierSnapshot) {
-    if (!memory.has_value()) {
-      return f128_transport_record_error(PreparedF128TransportRecordError::MissingMemoryOperand);
-    }
-    if (memory->size_bytes != carrier->total_size_bytes) {
-      return f128_transport_record_error(
-          PreparedF128TransportRecordError::MemoryAccessSizeMismatch);
-    }
-  }
-
-  F128TransportRecord record{
-      .surface = RecordSurfaceKind::RecordOnly,
-      .transport_kind = transport_kind,
-      .function_name = f128_carriers.function_name,
-      .block_label = memory.has_value() ? memory->block_label : c4c::kInvalidBlockLabel,
-      .instruction_index = memory.has_value() ? memory->instruction_index : 0,
-      .value_id = carrier->value_id,
-      .value_name = carrier->value_name,
-      .value_type = bir::TypeKind::F128,
-      .carrier_kind = carrier->kind,
-      .total_size_bytes = carrier->total_size_bytes,
-      .total_align_bytes = carrier->total_align_bytes,
-      .register_bank = carrier->register_bank,
-      .register_class = carrier->register_class,
-      .contiguous_width = carrier->contiguous_width,
-      .occupied_register_names = carrier->occupied_register_names,
-      .register_placement = carrier->register_placement,
-      .slot_id = carrier->slot_id,
-      .stack_offset_bytes = carrier->stack_offset_bytes,
-      .memory = std::move(memory),
-      .source_carrier = carrier,
-  };
-
-  switch (carrier->kind) {
-    case prepare::PreparedF128CarrierKind::FullWidthRegister:
-      record.reg = make_f128_register_operand(*carrier);
-      if (!record.reg.has_value()) {
-        return f128_transport_record_error(
-            PreparedF128TransportRecordError::RegisterConversionFailed);
-      }
-      break;
-    case prepare::PreparedF128CarrierKind::MemoryBacked:
-      if (!record.slot_id.has_value() || !record.stack_offset_bytes.has_value()) {
-        return f128_transport_record_error(
-            PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
-      }
-      break;
-    case prepare::PreparedF128CarrierKind::Missing:
-      return f128_transport_record_error(
-          PreparedF128TransportRecordError::IncompletePreparedF128Carrier);
-  }
-
-  return PreparedF128TransportRecordResult{
-      .record = std::move(record),
-      .error = PreparedF128TransportRecordError::None,
-  };
 }
 
 PreparedI128PairRecordResult i128_pair_record_error(
