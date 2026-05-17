@@ -3,6 +3,7 @@
 #include "regalloc/classification.hpp"
 #include "regalloc/intervals.hpp"
 #include "regalloc/stack_slots.hpp"
+#include "regalloc/storage.hpp"
 #include "regalloc/values.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/stack_layout.hpp"
@@ -26,8 +27,11 @@ namespace {
 using regalloc_detail::assigned_register_placement;
 using regalloc_detail::append_f128_constant_values_for_function;
 using regalloc_detail::ActiveRegisterAssignment;
+using regalloc_detail::assigned_storage_kind;
+using regalloc_detail::assigned_storage_matches;
 using regalloc_detail::choose_eviction_candidate;
 using regalloc_detail::choose_register_span;
+using regalloc_detail::find_regalloc_value;
 using regalloc_detail::find_f128_constant_regalloc_value;
 using regalloc_detail::interval_start_sort_key;
 using regalloc_detail::intervals_overlap;
@@ -672,35 +676,6 @@ template <std::size_t N>
 [[nodiscard]] std::size_t call_stack_argument_alignment_bytes(const bir::CallArgAbiInfo& abi) {
   const std::size_t abi_alignment = abi.align_bytes == 0 ? abi.size_bytes : abi.align_bytes;
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
-}
-
-[[nodiscard]] PreparedMoveStorageKind assigned_storage_kind(const PreparedRegallocValue& value) {
-  if (value.assigned_register.has_value()) {
-    return PreparedMoveStorageKind::Register;
-  }
-  if (value.assigned_stack_slot.has_value()) {
-    return PreparedMoveStorageKind::StackSlot;
-  }
-  return PreparedMoveStorageKind::None;
-}
-
-[[nodiscard]] bool assigned_storage_matches(const PreparedRegallocValue& lhs,
-                                            const PreparedRegallocValue& rhs) {
-  const PreparedMoveStorageKind lhs_kind = assigned_storage_kind(lhs);
-  const PreparedMoveStorageKind rhs_kind = assigned_storage_kind(rhs);
-  if (lhs_kind != rhs_kind) {
-    return false;
-  }
-  switch (lhs_kind) {
-    case PreparedMoveStorageKind::None:
-      return true;
-    case PreparedMoveStorageKind::Register:
-      return lhs.assigned_register->occupied_register_names ==
-             rhs.assigned_register->occupied_register_names;
-    case PreparedMoveStorageKind::StackSlot:
-      return lhs.assigned_stack_slot->slot_id == rhs.assigned_stack_slot->slot_id;
-  }
-  return false;
 }
 
 [[nodiscard]] std::string storage_transfer_reason(std::string_view prefix,
@@ -1695,11 +1670,6 @@ void append_prepared_abi_binding(PreparedValueLocationFunction& function_locatio
     const bir::CallInst& call,
     std::size_t arg_index);
 [[nodiscard]] PreparedMoveStorageKind call_result_storage_kind(const bir::CallInst& call);
-[[nodiscard]] const PreparedRegallocValue* find_regalloc_value(
-    const PreparedRegallocFunction& function,
-    const PreparedNameTables& names,
-    std::string_view value_name);
-
 void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                        const c4c::TargetProfile& target_profile,
                                        const c4c::backend::bir::Function& function,
@@ -1917,25 +1887,6 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                                  return function.name == function_spelling;
                                });
   if (it == module.functions.end()) {
-    return nullptr;
-  }
-  return &*it;
-}
-
-[[nodiscard]] const PreparedRegallocValue* find_regalloc_value(
-    const PreparedRegallocFunction& function,
-    const PreparedNameTables& names,
-    std::string_view value_name) {
-  const ValueNameId value_name_id = names.value_names.find(value_name);
-  if (value_name_id == kInvalidValueName) {
-    return nullptr;
-  }
-  const auto it = std::find_if(function.values.begin(),
-                               function.values.end(),
-                               [value_name_id](const PreparedRegallocValue& value) {
-                                 return value.value_name == value_name_id;
-                               });
-  if (it == function.values.end()) {
     return nullptr;
   }
   return &*it;

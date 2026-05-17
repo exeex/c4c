@@ -8,32 +8,27 @@ Current Step Title: Isolate Interval Ranking and Physical Assignment
 
 ## Just Finished
 
-Step 3 third extraction moved the stack-slot fallback helper cluster into
-`src/backend/prealloc/regalloc/stack_slots.cpp` with declarations in
-`src/backend/prealloc/regalloc/stack_slots.hpp`.
+Step 3 transition-helper extraction moved the narrow shared lookup/storage
+helper cluster into `src/backend/prealloc/regalloc/storage.cpp` with
+declarations in `src/backend/prealloc/regalloc/storage.hpp`.
 
 Moved ownership:
 
-- `normalized_value_size`
-- `normalized_value_alignment`
-- `existing_stack_slot_assignment`
-- `allocate_stack_slot`
+- `assigned_storage_kind`
+- `assigned_storage_matches`
+- `find_regalloc_value`
 
-`src/backend/prealloc/regalloc.cpp` now imports stack-slot normalization and
-slot-construction helpers from `regalloc_detail`. Allocation decisions,
-`requires_home_slot` handling, no-interval stack fallback decisions,
-register-eviction fallout, stack layout growth counters, final
-`prepared_.stack_layout` frame size/alignment publication, move resolution,
-pointer carriers, runtime-helper mapping, value-location publication, and
-prepared dump semantics remain in `regalloc.cpp`.
+`src/backend/prealloc/regalloc.cpp` now imports those read-only helpers from
+`regalloc_detail`. Allocation decisions, move-resolution record construction
+and de-duplication, phi/consumer/call/return routing, runtime-helper mapping,
+value-location publication, ABI binding publication, and prepared dump
+semantics remain in `regalloc.cpp`.
 
 ## Suggested Next
 
-Next coherent packet: inspect the remaining shared storage/move-resolution
-lookup helpers (`find_regalloc_value`, `assigned_storage_kind`,
-`assigned_storage_matches`, and the move-resolution appenders) for a narrow
-internal owner, without taking phi, consumer, call, return, runtime-helper, or
-value-location publication behavior in the same slice.
+Next coherent packet: inspect pointer-carrier/home-classification boundaries
+or another remaining read-only helper cluster in Step 3, without moving
+value-location publication or runtime-helper mapping in the same slice.
 
 ## Watchouts
 
@@ -63,10 +58,13 @@ value-location publication behavior in the same slice.
   not move pointer carriers with value-home publication in the same first
   packet.
 - `find_regalloc_value`, `assigned_storage_kind`,
-  `assigned_storage_matches`, and the overloaded move-resolution appenders are
-  shared across phi, consumer, call, return, runtime-helper, and value-location
-  owners; they likely need a small internal lookup/storage header before those
-  families are split.
+  `assigned_storage_matches` now live in `regalloc_detail::storage`; keep that
+  file read-only and do not grow it into move publication or allocator
+  mutation.
+- The overloaded move-resolution appenders were intentionally left in
+  `regalloc.cpp`: their duplicate checks and `PreparedMoveResolution`
+  construction are coupled to phi, consumer, call, return, immediate,
+  f128-constant, ABI, and value-location publication behavior.
 - f128 constant discovery now lives in `regalloc_detail::values`; its callers
   still cross value appending, call-arg move resolution, and f128 runtime-helper
   mapping, so do not move those caller families as a follow-on without a
@@ -77,6 +75,8 @@ value-location publication behavior in the same slice.
   frame-layout publication without a separate allocator-state packet.
 - New `stack_slots.cpp` was picked up by the recursive prealloc source glob
   after CMake regenerated during the delegated build.
+- New `storage.cpp` was picked up by the recursive prealloc source glob after
+  CMake regenerated during the delegated build.
 
 ## Proof
 
