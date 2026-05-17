@@ -8,20 +8,20 @@ Current Step Title: Extract frame, addressing, liveness, and regalloc schema
 
 ## Just Finished
 
-Step 3 extracted the regalloc schema family from
+Step 3 finished by extracting the value-location schema family from
 `src/backend/prealloc/prealloc.hpp` into
-`src/backend/prealloc/regalloc.hpp`.
+`src/backend/prealloc/value_locations.hpp`.
 
-`regalloc.hpp` now owns register class/group overrides, target register
-identity, allocation status, physical/stack assignments, allocation
-constraints, interference, spill/reload records, regalloc value/function
-aggregates, and associated constexpr name helpers. `prealloc.hpp` includes it
-and remains the compatibility umbrella.
+`value_locations.hpp` now owns value-home kind/name helpers, value homes,
+move phases and bundles, out-of-SSA move authority helpers, value-location
+function aggregate/container, and direct value-location lookup helpers.
+`prealloc.hpp` includes it and remains the compatibility umbrella.
 
 ## Suggested Next
 
-Continue Step 3 by extracting the value-location schema family into a focused
-header while keeping `prealloc.hpp` as the public compatibility umbrella.
+Continue with Step 4 by extracting calls, variadic, storage, carriers, helpers,
+control flow, and module schema into focused headers while keeping
+`prealloc.hpp` as the public compatibility umbrella.
 
 ## Watchouts
 
@@ -32,7 +32,6 @@ header while keeping `prealloc.hpp` as the public compatibility umbrella.
 - `names.hpp` intentionally forward-declares `PreparedBirModule`; the concrete
   aggregate should move later with `module.hpp` after member-family headers
   exist.
-- Step 3 still needs focused extraction for value-location schema.
 - `regalloc.hpp` now owns the move-resolution and ABI-binding vocabulary used
   by value locations and later call plans; dependent headers can include it
   directly instead of relying on `prealloc.hpp`.
@@ -51,6 +50,9 @@ header while keeping `prealloc.hpp` as the public compatibility umbrella.
 - Ambiguous boundary: control-flow helpers include substantial inline analysis
   over BIR and prepared name tables; keep them together initially rather than
   distributing tiny helpers across unrelated family headers.
+- The out-of-SSA parallel-copy bridge helpers that need
+  `PreparedParallelCopyBundle` still live in `prealloc.hpp` until Step 4 can
+  move control-flow and module-level helpers together without a cycle.
 
 ## Proof
 
