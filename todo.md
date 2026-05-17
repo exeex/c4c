@@ -8,12 +8,13 @@ Current Step Title: Extract Storage, Addressing, Runtime, Intrinsics, and Specia
 
 ## Just Finished
 
-Completed `plan.md` Step 3 atomic-operation printer extraction:
-`append_atomic_operations` and the helper functions it needs for atomic-operation
-output now live in `src/backend/prealloc/prepared_printer/atomics.cpp`.
+Completed `plan.md` Step 3 intrinsic-carrier printer extraction:
+`append_intrinsic_carriers` and the helper functions it needs for
+intrinsic-carrier output now live in
+`src/backend/prealloc/prepared_printer/intrinsics.cpp`.
 `prepared_printer.cpp` still calls the private printer declaration in the same
 prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/atomics.cpp`.
+target now lists `prepared_printer/intrinsics.cpp`.
 
 ## Suggested Next
 
@@ -31,9 +32,9 @@ new implementation file.
 - One existing backend test links `prepared_printer.cpp` directly instead of
   the backend library; its CMake source list now also includes
   `prepared_printer/atomics.cpp`, `prepared_printer/calls.cpp`,
-  `prepared_printer/functions.cpp`, `prepared_printer/frame.cpp`,
-  `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, and
-  `prepared_printer/variadic.cpp`.
+  `prepared_printer/frame.cpp`, `prepared_printer/functions.cpp`,
+  `prepared_printer/intrinsics.cpp`, `prepared_printer/special_carriers.cpp`,
+  `prepared_printer/storage.cpp`, and `prepared_printer/variadic.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
 

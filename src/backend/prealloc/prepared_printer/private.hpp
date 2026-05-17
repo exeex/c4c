@@ -16,5 +16,6 @@ void append_storage_plans(std::ostringstream& out, const PreparedBirModule& modu
 void append_i128_carriers(std::ostringstream& out, const PreparedBirModule& module);
 void append_f128_carriers(std::ostringstream& out, const PreparedBirModule& module);
 void append_atomic_operations(std::ostringstream& out, const PreparedBirModule& module);
+void append_intrinsic_carriers(std::ostringstream& out, const PreparedBirModule& module);
 
 }  // namespace c4c::backend::prepare
