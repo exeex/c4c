@@ -59,7 +59,7 @@ The removed module listed these codegen shards:
 - `f128`
 - `inline_asm`
 - `intrinsics`
-- `prologue`
+- `prologue` (now represented by `prologue.hpp` / `prologue.cpp`)
 - `memory`
 - `alu`
 - `comparison`

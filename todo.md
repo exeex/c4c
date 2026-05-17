@@ -1,37 +1,33 @@
 Status: Active
 Source Idea Path: ideas/open/270_aarch64_prologue_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Route Or Record Integration
+Current Step ID: 4
+Current Step Title: Delete The Markdown Shard
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 3, `Route Or Record Integration`, by recording that the
-narrow current prologue integration is already behavior-preservingly routed
-through `prologue.{hpp,cpp}` from traversal. No additional behavior-preserving
-integration point exists in the current shard for calls, returns, memory, or
-module compile, so those paths remain untouched.
+Completed plan Step 4, `Delete The Markdown Shard`, by deleting
+`src/backend/mir/aarch64/codegen/prologue.md` and cleaning live references that
+treated the deleted markdown shard as an active artifact.
 
-This packet intentionally records the deferred boundaries rather than widening
-the route: callee-save, dynamic-stack, frame-pointer, variadic-entry,
-outgoing-area, and concrete save/restore behavior all remain out of scope for
-the current integration slice.
+`CLASSIFICATION_INDEX.md` no longer indexes the removed shard, and
+`BACKEND_CASE_BRINGUP_MATRIX.md` now points frame/prologue responsibility at
+`prologue.cpp` / `prologue.hpp` only where that structured owner is relevant.
+Public support statuses were left unchanged.
 
 ## Suggested Next
 
-Supervisor should decide whether the completed Step 3 record is enough to move
-to the next plan step or whether the active runbook needs lifecycle review.
+Supervisor should decide whether Step 4 completes the active runbook or whether
+the lifecycle state needs plan-owner review.
 
 ## Watchouts
 
-No implementation files were inspected or changed in this packet. The current
-decision depends on Step 2's routing already placing prepared prologue and
-epilogue boundary insertion behind `prologue.{hpp,cpp}` while leaving calls,
-returns, memory, and module compile behavior unchanged.
+This was a docs/lifecycle-only deletion packet. No implementation files, tests,
+or unrelated markdown shards were changed.
 
 ## Proof
 
-No build required for this todo-only integration-decision packet. No proof
-command was run, and `test_after.log` was intentionally left untouched.
+No build required for this docs/lifecycle-only packet. No proof command was
+run, and `test_after.log` was intentionally left untouched.
