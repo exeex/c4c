@@ -1,45 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Extract ABI Call and Return Move Resolution
+Current Step ID: 6
+Current Step Title: Extract Phi and Out-of-SSA Move Resolution
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 follow-up extracted the call/return move-resolution appender boundary
-after the prior call/return ABI helper split.
+Step 6 first extraction moved the phi/out-of-SSA parallel-copy move-resolution
+owner out of `src/backend/prealloc/regalloc.cpp` without changing behavior.
 
 Moved ownership:
 
-- `append_call_arg_move_resolution`
-- `append_call_result_move_resolution`
-- `append_return_move_resolution`
-- f128 constant call-argument move-record append support
-- unassigned return move-record append support
+- `append_phi_move_resolution`
+- phi parallel-copy reason helpers
+- i32 immediate materialization move-record append support used by
+  out-of-SSA parallel-copy moves
 
 New files:
 
-- `src/backend/prealloc/regalloc/call_moves.cpp`
-- `src/backend/prealloc/regalloc/call_moves.hpp`
-- `src/backend/prealloc/regalloc/move_records.cpp`
-- `src/backend/prealloc/regalloc/move_records.hpp`
+- `src/backend/prealloc/regalloc/phi_moves.cpp`
+- `src/backend/prealloc/regalloc/phi_moves.hpp`
 
-`src/backend/prealloc/regalloc.cpp` still owns phi/out-of-SSA move resolution,
-consumer move resolution, immediate i32 move-record append support,
-spill/reload publication, runtime-helper mapping call order, value-home
-publication, and allocation decisions. A narrow shared `move_records` helper
-now owns only storage-transfer reason strings and the two duplicate-checking
-`append_move_resolution_record` overloads already shared by phi/consumer and
-call/return paths.
+`src/backend/prealloc/regalloc.cpp` still owns consumer move resolution,
+runtime-helper mapping call order, spill/reload publication, value-home
+publication, allocation decisions, and prepared move-bundle publication. The
+new phi owner depends only on prepared control-flow metadata, regalloc value
+lookup/classification, and the existing shared `move_records` append helpers.
 
 ## Suggested Next
 
-Next coherent packet: move to Step 6 and inspect whether phi/out-of-SSA move
-resolution can be extracted cleanly using the existing `move_records` helper.
-Keep consumer move resolution separate unless the boundary shows it is truly
-part of the same control-flow move owner.
+Next coherent packet: continue Step 6 by inspecting whether any remaining
+out-of-SSA support helpers belong with `phi_moves` without pulling in consumer
+move resolution, runtime-helper mapping, or prepared move-bundle publication.
 
 ## Watchouts
 
@@ -100,10 +94,14 @@ part of the same control-flow move owner.
 - `move_records.cpp` is intentionally narrow shared append infrastructure.
   Keep immediate materialization, phi/out-of-SSA traversal, consumer traversal,
   runtime-helper mapping, and publication ownership out of it.
-- `regalloc.cpp` still owns `append_immediate_i32_move_resolution_record`
-  because it is currently used only by phi/out-of-SSA immediate materialization.
 - New `call_moves.cpp` and `move_records.cpp` were picked up by the recursive
   prealloc source glob after CMake regenerated during the delegated build.
+- `phi_moves.cpp` owns only phi/out-of-SSA parallel-copy move-record emission,
+  including i32 immediate materialization for those parallel-copy moves. Do not
+  grow it into consumer move reconstruction, runtime-helper mapping, prepared
+  move-bundle publication, or allocation policy.
+- New `phi_moves.cpp` was picked up by the recursive prealloc source glob after
+  CMake regenerated during the delegated build.
 - `clang-format` is not installed in this environment; the touched declarations
   and call sites were kept manually wrapped.
 
