@@ -1745,12 +1745,8 @@ struct InstructionRecord {
 [[nodiscard]] bool is_scalar_alu_floating_type(bir::TypeKind type);
 [[nodiscard]] bool is_scalar_unary_integer_operation(ScalarUnaryOperationKind operation,
                                                      bir::TypeKind type);
-[[nodiscard]] bool is_simple_integer_cast_opcode(bir::CastOpcode opcode);
-[[nodiscard]] bool is_supported_scalar_conversion_cast_opcode(bir::CastOpcode opcode);
 [[nodiscard]] ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     bir::BinaryOpcode opcode);
-[[nodiscard]] ScalarCastOperationKind scalar_cast_operation_from_cast_opcode(
-    bir::CastOpcode opcode);
 [[nodiscard]] OperandRecord make_register_operand(RegisterOperand operand);
 [[nodiscard]] OperandRecord make_immediate_operand(ImmediateOperand operand);
 [[nodiscard]] OperandRecord make_prepared_value_operand(PreparedValueOperand operand);
@@ -1763,7 +1759,6 @@ struct InstructionRecord {
 [[nodiscard]] ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu);
 [[nodiscard]] ScalarInstructionRecord make_scalar_unary_instruction_record(
     ScalarUnaryRecord unary);
-[[nodiscard]] ScalarInstructionRecord make_scalar_cast_instruction_record(ScalarCastRecord cast);
 [[nodiscard]] InstructionRecord make_memory_instruction(MemoryInstructionRecord instruction);
 [[nodiscard]] InstructionRecord make_atomic_memory_instruction(
     AtomicMemoryInstructionRecord instruction);
@@ -1828,17 +1823,6 @@ make_prepared_scalar_unary_instruction_record(
     ScalarUnaryOperationKind operation,
     const bir::Value& result,
     const bir::Value& operand);
-[[nodiscard]] PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::CastInst& cast);
-[[nodiscard]] PreparedScalarCastInstructionRecordResult
-make_prepared_scalar_cast_instruction_record(
-    const prepare::PreparedNameTables& names,
-    const prepare::PreparedValueLocationFunction& value_locations,
-    const prepare::PreparedStoragePlanFunction& storage_plan,
-    const bir::CastInst& cast);
 [[nodiscard]] PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,

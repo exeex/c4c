@@ -8,25 +8,23 @@ Current Step Title: Move cast construction and lowering behavior
 
 ## Just Finished
 
-Completed Step 3 by moving scalar cast opcode classification, selected-node
-record construction, and prepared scalar cast instruction construction into
-`cast_ops.cpp`/`cast_ops.hpp`. `dispatch.cpp` now routes cast instructions
-through `lower_scalar_cast_instruction(...)` before falling back to generic
-scalar lowering; `instruction.cpp` retains the family-neutral scalar
-instruction core and compatibility declarations remain in `instruction.hpp`.
+Completed Step 3 compatibility-boundary cleanup by removing the cast helper
+declarations from `instruction.hpp`; direct cast helper users now include
+`cast_ops.hpp`, while `instruction.cpp` keeps an explicit `cast_ops.hpp`
+include for family-neutral scalar opcode routing.
 
 ## Suggested Next
 
-Delegate the next packet for Step 3 or review scope: reconcile remaining
-cast-family compatibility declarations/callers so public cast construction
-users include `cast_ops.hpp` directly where feasible.
+Delegate the next Step 3 packet or supervisor review scope to decide whether
+any remaining cast-family behavior should move, especially the F128 helper
+boundary bodies that were intentionally left behavior-preserving.
 
 ## Watchouts
 
 - Preserve scalar cast behavior; this is ownership redistribution only.
 - Do not expand cast semantics or rewrite expectations to claim progress.
-- F128 runtime helper delegation in `dispatch.cpp` was left behavior-preserving;
-  this packet did not move those helper-boundary bodies.
+- F128 runtime helper delegation in `dispatch.cpp` remains behavior-preserving;
+  this packet only cleaned declaration/include ownership.
 - Keep `cast_ops.md` until its valid durable content has been reconciled.
 
 ## Proof
@@ -34,12 +32,7 @@ users include `cast_ops.hpp` directly where feasible.
 Ran exactly:
 
 ```bash
-{ cmake --build build --target c4c_backend backend_aarch64_scalar_cast_records_test backend_aarch64_prepared_scalar_cast_records_test && ctest --test-dir build -R '^backend_aarch64_.*cast' --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build --target c4c_backend backend_aarch64_scalar_cast_records_test backend_aarch64_prepared_scalar_cast_records_test backend_aarch64_scalar_record_contract_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test && ctest --test-dir build -R '^(backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_scalar_record_contract|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch)$' --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` contains 2/2 matching cast tests passed.
-
-Supervisor validation: also ran
-`cmake --build build --target backend_aarch64_instruction_dispatch_test &&
-ctest --test-dir build -R '^backend_aarch64_instruction_dispatch$'
---output-on-failure`; result passed, 1/1.
+Result: passed. `test_after.log` contains 5/5 selected tests passed.

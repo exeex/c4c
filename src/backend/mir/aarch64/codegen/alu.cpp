@@ -1,4 +1,5 @@
 #include "alu.hpp"
+#include "cast_ops.hpp"
 #include "operands.hpp"
 
 #include <cstdint>
