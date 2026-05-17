@@ -1,58 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/274_prealloc_regalloc_implementation_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 8
-Current Step Title: Extract Spill and Reload Publication
+Current Step ID: 9
+Current Step Title: Consolidate Coordinator and Ownership Map
 
 # Current Packet
 
 ## Just Finished
 
-Step 8 extracted spill/reload prepared-fact publication out of
-`src/backend/prealloc/regalloc.cpp` without changing behavior.
+Step 9 consolidated the coordinator after the extraction sequence without
+moving behavior or allocation policy.
 
-Moved ownership:
+Removed dead coordinator residue from `src/backend/prealloc/regalloc.cpp`:
 
-- `append_spill_reload_ops`
+- stale `<type_traits>` and `<unordered_map>` includes
+- stale `function_return_storage_kind` and `infer_scalar_function_return_abi`
+  `using` declarations
 
-New files:
-
-- `src/backend/prealloc/regalloc/spill_reload.cpp`
-- `src/backend/prealloc/regalloc/spill_reload.hpp`
-
-The new spill/reload owner depends only on prepared liveness, allocator-chosen
-spill points, existing program-point lookup, register-bank classification, and
-the mutable `PreparedRegallocFunction` publication target. The `run_regalloc()`
-call remains in the same position after allocation and before phi/consumer/call
-move resolution, runtime-helper mapping, frame publication, and value-location
-publication.
+Updated `src/backend/prealloc/README.md` with the existing ownership-map
+guidance: `regalloc.cpp` now reads as the coordinator for liveness seeding,
+allocation ordering/assignment, phase ordering, and prepared-fact publication;
+focused helpers under `regalloc/` own classifiers, move-record emission,
+spill/reload publication, runtime-helper mapping, stack-slot allocation, and
+value-home construction.
 
 ## Suggested Next
 
-Next coherent packet: Step 9 coordinator consolidation. Remove any dead
-includes/using declarations left by extraction and document the remaining
-ownership map only where the repo already carries prealloc ownership guidance.
+Next coherent packet: supervisor/plan-owner review of Step 9 completion and
+whether the active runbook should close, split, or continue with a new
+post-consolidation packet.
 
 ## Watchouts
 
-- Preserve spill/reload publication order: value order, one spill at the
-  allocator-chosen spill point, then unique reload use points after that spill
-  point.
-- Keep the spill heuristic, spill point vector mutation, and allocation
-  decisions in `run_regalloc()` or a future allocator owner; `spill_reload.cpp`
-  should stay publication-only.
+- `regalloc.cpp` still intentionally owns allocation ordering, active
+  assignment mutation, eviction/spill-point selection, public phase ordering,
+  frame-size publication, and final prepared publication flow.
+- `build_prepared_value_location_function`, prepared move-bundle publication,
+  and call ABI binding publication remain in `regalloc.cpp`; moving them would
+  require a separate ownership packet because they bridge move records,
+  value-home publication, and public value-location output.
 - Preserve move-resolution ordering, duplicate-check behavior, ABI semantics,
   runtime-helper mapping order, prepared dump output, and value-location
   publication order.
 - Do not create testcase-shaped shortcuts or expectation downgrades.
 - Do not split prepared printer output in this plan.
 - Keep implementation progress in this file unless runbook scope changes.
-- New `spill_reload.cpp` was picked up by the recursive prealloc source glob
-  after CMake regenerated during the delegated build.
-- New `intervals.cpp` was picked up by the recursive prealloc source glob after
-  CMake regenerated during the delegated build.
-- New `assignment.cpp` was also picked up by the recursive prealloc source glob
-  after CMake regenerated during the delegated build.
 - `locate_program_point` is intentionally shared by weighted-use scoring and
   spill/reload publication through `regalloc_detail::ProgramPointLocation`.
 - The allocation-order comparator remains inline in `run_regalloc()` to

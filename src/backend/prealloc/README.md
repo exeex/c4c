@@ -64,6 +64,16 @@ Target backends should not:
 - reconstruct call placement from raw BIR shape when a prepared call plan is
   available
 
+## Regalloc Coordinator Ownership
+
+`regalloc.cpp` is the regalloc coordinator. It seeds per-function regalloc
+facts from liveness, runs allocation ordering and register/stack assignment,
+preserves phase order, and publishes the public prepared facts. Helpers under
+`regalloc/` own focused read-only classifiers, move-record emission,
+spill/reload publication, runtime-helper mapping, stack-slot allocation, and
+value-home construction; they should not grow new allocation policy unless the
+active plan explicitly moves that ownership.
+
 ## Current Status
 
 The stack-layout implementation is live. `BirPreAlloc::run()` calls

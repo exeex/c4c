@@ -19,8 +19,6 @@
 #include <optional>
 #include <string>
 #include <string_view>
-#include <type_traits>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -48,8 +46,6 @@ using regalloc_detail::call_result_destination_register_names;
 using regalloc_detail::call_result_storage_kind;
 using regalloc_detail::f128_call_arg_destination_placement;
 using regalloc_detail::find_regalloc_value;
-using regalloc_detail::function_return_storage_kind;
-using regalloc_detail::infer_scalar_function_return_abi;
 using regalloc_detail::interval_start_sort_key;
 using regalloc_detail::intervals_overlap;
 using regalloc_detail::materialize_register_names;
