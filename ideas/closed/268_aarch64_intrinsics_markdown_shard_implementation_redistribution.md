@@ -1,7 +1,8 @@
 # AArch64 `intrinsics.md` Shard Implementation Redistribution
 
-Status: Open
+Status: Closed
 Created: 2026-05-17
+Closed: 2026-05-17
 
 ## Intent
 
@@ -47,6 +48,14 @@ the accidental home for unrelated platform builtins.
 - `intrinsics.md` is deleted.
 - Intrinsic behavior is not centralized in family-neutral owners.
 - Focused backend proof covers any affected intrinsic or dispatch paths.
+
+## Closure Notes
+
+Closed after the active runbook completed the compiled AArch64 intrinsics
+owner split, deleted the stale markdown shard, and recorded focused backend
+proof in `test_after.log`. The close-time regression guard used matching
+backend before/after logs and passed with non-decreasing results:
+139/139 before and 139/139 after.
 
 ## Reviewer Reject Signals
 
