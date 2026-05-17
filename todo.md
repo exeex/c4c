@@ -8,32 +8,24 @@ Current Step Title: Prove Focused Backend Behavior
 
 ## Just Finished
 
-Completed Step 3 from `plan.md`: deleted the stale
-`src/backend/mir/aarch64/codegen/inline_asm.md` markdown shard after the
-compiled inline-asm owner boundary was created.
+Completed Step 4 from `plan.md`: recorded the focused backend proof for the
+AArch64 inline-asm redistribution after the compiled owner boundary and stale
+markdown-shard cleanup.
 
-Cleaned the required non-lifecycle references:
-
-- removed the obsolete `codegen/inline_asm.md` row from
-  `src/backend/mir/aarch64/CLASSIFICATION_INDEX.md`
-- updated the inline-asm bring-up row in
-  `src/backend/mir/aarch64/BACKEND_CASE_BRINGUP_MATRIX.md` to point at
-  `src/backend/mir/aarch64/codegen/inline_asm.cpp` and
-  `src/backend/mir/aarch64/codegen/inline_asm.hpp`
-
-Confirmed no non-lifecycle repository reference still expects
-`inline_asm.md`. Remaining mentions are lifecycle context in `plan.md`,
-`todo.md`, and the source idea, which this packet left untouched.
+The backend subset passed `139/139`. The proof covers the affected AArch64
+selected-node/backend route, target instruction dispatch, machine printer,
+prepared handoff, and public AArch64 asm smoke tests. Public inline-asm cases
+remain blocked, and unsupported inline-asm paths stay fail-closed.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: record the focused backend proof for preserved
-inline-asm redistribution behavior and explicit unsupported behavior.
+Ask the plan owner to evaluate whether the active runbook can be closed or
+whether the source idea needs another lifecycle action.
 
 ## Watchouts
 
 - The bring-up matrix still marks public inline-asm cases blocked; this packet
-  did not broaden public AArch64 inline-asm support.
+  recorded preserved behavior and did not broaden support.
 - Lifecycle references to `inline_asm.md` remain intentionally as plan/source
   context until the plan is closed by the plan owner.
 
