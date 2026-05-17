@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/267_aarch64_inline_asm_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Delete The Stale Markdown Shard
+Current Step ID: 4
+Current Step Title: Prove Focused Backend Behavior
 
 # Current Packet
 
