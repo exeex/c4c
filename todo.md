@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/275_prepared_printer_decomposition.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Extract Storage, Addressing, Runtime, Intrinsics, and Special Printers
+Current Step ID: 4
+Current Step Title: Extract Regalloc, Value Location, and Control Flow Printers
 
 # Current Packet
 
