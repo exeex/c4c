@@ -1,48 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/262_aarch64_i128_ops_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Move i128 spelling and printing helpers
+Current Step ID: 5
+Current Step Title: Delete the reconciled markdown shard
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 moved the behavior-preserving i128 spelling and printing helper cluster
-from `machine_printer.cpp` into `i128_ops.cpp`/`i128_ops.hpp`.
-`validate_i128_helper_move`, `append_i128_helper_move_line`,
-`pair_low_register_name`, `pair_high_register_name`, and the five
-`print_i128_*` entry points are now owned by the i128 shard.
+Step 5 deleted the reconciled
+`src/backend/mir/aarch64/codegen/i128_ops.md` markdown shard after confirming
+the behavior-preserving shard content now has compiled ownership in
+`i128_ops.cpp`/`i128_ops.hpp`.
 
-`machine_printer.cpp` now includes `i128_ops.hpp` and remains a neutral variant
-router for i128 transport, pair-operation, shift, compare, and runtime-helper
-records. Emitted assembly spelling and diagnostic text were preserved.
+Represented compiled ownership now includes i128 transport/copy records,
+low/high lane register and memory facts, add/sub/and/or/xor pair-operation
+records, immediate shift records, scalar compare records, div/rem runtime
+helper boundary records, selected-node construction and status diagnostics,
+dispatch lowering entry points, and printer spelling for the i128 target
+instruction records.
+
+The deleted shard also contained legacy reference guidance for behavior that
+was not a behavior-preserving move in this redistribution plan: unary neg/not,
+multiplication, variable shifts, float/i128 conversion helper calls, direct
+fixed-register accumulator helpers, and generic stack or indirect pair helper
+surfaces. Those remain explicit gaps or separate initiatives rather than
+Step 5 implementation work.
 
 ## Suggested Next
 
-Step 5 should delete the stale markdown shard once the supervisor confirms the
-source idea no longer needs the redistributed i128 helper text as active
-implementation guidance.
+Step 6 should run the supervisor-selected validation and route review for the
+completed redistribution, including broader proof if the supervisor decides the
+instruction/dispatch/printer touch points need more than the focused backend
+subset.
 
 ## Watchouts
 
-- Do not move or redesign the prepared authority in `src/backend/prealloc/*`;
-  i128 relocation should consume `PreparedI128Carrier*` and
-  `PreparedI128RuntimeHelper*` facts exactly as the current broad owners do.
-- `i128_ops.hpp` now exposes the pair/copy lowering entry points. It avoids the
-  `module.hpp`/`instruction.hpp` include cycle by using the underlying MIR
-  instruction type in `I128InstructionLoweringResult` and forward-declaring the
-  module context types.
-- Avoid treating `i128_ops.md` as a license to add missing semantics during the
-  redistribution steps. Behavior-changing gaps such as unary neg/not,
-  multiplication, variable shifts, and float/i128 conversion emission need
-  explicit supervisor routing if they become implementation work.
+- Step 5 intentionally did not change implementation `.cpp`/`.hpp` files; this
+  packet only removed the reconciled markdown shard and recorded the ownership
+  decision.
+- Do not resurrect `i128_ops.md` as active implementation guidance. New i128
+  semantic expansion should route through a fresh source idea or supervisor
+  packet.
 - Preserve `comparison.cpp` and `memory.cpp` as existing narrow owners unless
-  the supervisor chooses to fold their i128-specific helpers into the new shard
-  in a later behavior-preserving move.
-- The i128 printer owner now consumes `memory_address` and i128 compare
-  spelling helpers through existing public owner APIs; keep that dependency
-  direction unchanged unless Step 5 explicitly routes more code.
+  the supervisor chooses to fold their i128-specific helpers into the shard in a
+  later behavior-preserving move.
+- Keep `i128_ops.hpp`'s current dependency shape: it exposes i128 lowering and
+  printer entry points while avoiding the `module.hpp`/`instruction.hpp`
+  include cycle through forward declarations and the underlying MIR instruction
+  result type.
 
 ## Proof
 
