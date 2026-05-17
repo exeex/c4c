@@ -1,33 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/270_aarch64_prologue_markdown_shard_implementation_redistribution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Delete The Markdown Shard
+Current Step ID: 5
+Current Step Title: Focused Proof And Acceptance Check
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 4, `Delete The Markdown Shard`, by deleting
-`src/backend/mir/aarch64/codegen/prologue.md` and cleaning live references that
-treated the deleted markdown shard as an active artifact.
+Completed plan Step 5, `Focused Proof And Acceptance Check`, by running the
+delegated fresh backend build plus focused `backend_` CTest subset for the
+AArch64 prologue owner redistribution.
 
-`CLASSIFICATION_INDEX.md` no longer indexes the removed shard, and
-`BACKEND_CASE_BRINGUP_MATRIX.md` now points frame/prologue responsibility at
-`prologue.cpp` / `prologue.hpp` only where that structured owner is relevant.
-Public support statuses were left unchanged.
+The proof passed with preserved ABI-visible/simple fixed-frame behavior covered
+by the backend frame, call, return, prepared-stack, and AArch64 record tests.
+No tests or expectations were weakened in this proof packet.
 
 ## Suggested Next
 
-Supervisor should decide whether Step 4 completes the active runbook or whether
-the lifecycle state needs plan-owner review.
+Supervisor should review the completed runbook state and decide whether to call
+plan-owner for lifecycle closure, replacement, or source-idea follow-up.
 
 ## Watchouts
 
-This was a docs/lifecycle-only deletion packet. No implementation files, tests,
-or unrelated markdown shards were changed.
+This was proof-only. No implementation files, tests, expectations,
+`plan.md`, source ideas, deleted markdown shards, or `test_before.log` were
+touched.
 
 ## Proof
 
-No build required for this docs/lifecycle-only packet. No proof command was
-run, and `test_after.log` was intentionally left untouched.
+Ran the exact delegated proof:
+
+`cmake --build --preset default > test_after.log 2>&1 && ctest --test-dir build -j --output-on-failure -R '^backend_' >> test_after.log 2>&1`
+
+Result: passed. The build completed and the focused backend subset reported
+`100% tests passed, 0 tests failed out of 139`. Proof log:
+`test_after.log`.
