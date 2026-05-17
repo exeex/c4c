@@ -8,40 +8,33 @@ Current Step Title: Delete The Stale Markdown Shard
 
 ## Just Finished
 
-Completed Step 2 by creating `src/backend/mir/aarch64/codegen/atomics.cpp`
-and `atomics.hpp` as the compiled AArch64 atomics owner boundary.
+Completed Step 3 by deleting
+`src/backend/mir/aarch64/codegen/atomics.md` after Step 2 established
+`atomics.cpp`/`atomics.hpp` as the compiled AArch64 atomics owner boundary.
 
-Moved current-route atomic ownership out of `memory.cpp`/`memory.hpp`:
+Updated the required non-lifecycle references:
 
-- atomic record error naming and atomic instruction kind naming
-- prepared atomic carrier validation and record construction
-- selected atomic width, ordering, RMW opcode, result-mode, and storage
-  authority checks
-- fail-closed diagnostics for incomplete carriers, unsupported forms, missing
-  authority, and scratch/register conversion failures
-- `make_atomic_memory_instruction(...)` selection, defs/uses, side effects,
-  and atomic machine opcode routing
-- `lower_atomic_memory_operations_for_block(...)` prepared-carrier scan and
-  high-level lowering entry point
-
-`dispatch.cpp` now includes `atomics.hpp` and still calls the same high-level
-`lower_atomic_memory_operations_for_block(...)` entry point. `memory.cpp` keeps
-ordinary memory lowering only. `machine_printer.*`, tests, markdown shards,
-`plan.md`, and `ideas/open/*` were not touched.
+- removed the stale `codegen/atomics.md` row from
+  `src/backend/mir/aarch64/CLASSIFICATION_INDEX.md`
+- updated `src/backend/mir/aarch64/BACKEND_CASE_BRINGUP_MATRIX.md` so the
+  mixed future-feature row no longer requires the deleted markdown shard and
+  names `atomics.cpp`/`atomics.hpp` as the current atomics owner
 
 ## Suggested Next
 
-Proceed to Step 3 by deleting `src/backend/mir/aarch64/codegen/atomics.md`
-and updating only required source/docs index references that still expect the
-stale markdown shard.
+Proceed to Step 4 by recording focused backend behavior proof for the atomics
+redistribution and confirming supported behavior is preserved while unsupported
+behavior remains explicit.
 
 ## Watchouts
 
-- The new owner intentionally preserves the existing prepared-route subset; it
-  does not port the legacy fixed-register markdown behavior.
-- Final assembly spelling still lives in `machine_printer.cpp`; printer
-  behavior was not changed.
-- Instruction payload declarations remain in `instruction.hpp`.
+- Reference search with `rg` found no remaining `atomics.md` references under
+  `src/backend/mir/aarch64` after the deletion and owned docs cleanup.
+- Remaining `atomics.md` mentions are lifecycle/archive references in
+  `plan.md`, `todo.md`, `ideas/open/*`, and `ideas/closed/*`; the packet
+  explicitly left those untouched.
+- Neighboring AArch64 markdown shards, implementation files, tests, `plan.md`,
+  and idea files were not touched.
 
 ## Proof
 
