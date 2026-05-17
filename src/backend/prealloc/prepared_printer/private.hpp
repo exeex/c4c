@@ -8,6 +8,7 @@ namespace c4c::backend::prepare {
 
 void append_function_summaries(std::ostringstream& out, const PreparedBirModule& module);
 void append_prepared_control_flow(std::ostringstream& out, const PreparedBirModule& module);
+void append_value_locations(std::ostringstream& out, const PreparedBirModule& module);
 void append_stack_layout(std::ostringstream& out, const PreparedBirModule& module);
 void append_frame_plan(std::ostringstream& out, const PreparedBirModule& module);
 void append_dynamic_stack_plan(std::ostringstream& out, const PreparedBirModule& module);

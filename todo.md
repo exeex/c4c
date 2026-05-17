@@ -8,21 +8,20 @@ Current Step Title: Extract Regalloc, Value Location, and Control Flow Printers
 
 ## Just Finished
 
-Completed `plan.md` Step 4 control-flow printer extraction:
-`append_prepared_control_flow` and its directly owned helper functions now live
-in `src/backend/prealloc/prepared_printer/control_flow.cpp`.
+Completed `plan.md` Step 4 value-location printer extraction:
+`append_value_locations` and its directly owned helper functions now live in
+`src/backend/prealloc/prepared_printer/value_locations.cpp`.
 `prepared_printer.cpp` still calls the private printer declaration in the same
 prepared dump order, and the direct-source `backend_prepare_phi_materialize_test`
-target now lists `prepared_printer/control_flow.cpp`.
+target now lists `prepared_printer/value_locations.cpp`.
 
 ## Suggested Next
 
-Continue `plan.md` Step 4 by extracting `append_value_locations` or
-`append_regalloc` from `prepared_printer.cpp`, with `append_value_locations`
-being the next likely candidate because it still owns move-bundle printing and
-shares fewer helpers than the regalloc section. Keep the helper surface narrow
-and wire the direct-source test target that names `prepared_printer.cpp` to the
-new implementation file.
+Continue `plan.md` Step 4 by extracting `append_regalloc` from
+`prepared_printer.cpp`, including only the regalloc-owned lookup and placement
+helpers needed by that printer. Keep the helper surface narrow and wire the
+direct-source test target that names `prepared_printer.cpp` to the new
+implementation file.
 
 ## Watchouts
 
@@ -38,11 +37,10 @@ new implementation file.
   `prepared_printer/inline_asm.cpp`, `prepared_printer/intrinsics.cpp`,
   `prepared_printer/runtime_helpers.cpp`,
   `prepared_printer/special_carriers.cpp`, `prepared_printer/storage.cpp`, and
-  `prepared_printer/variadic.cpp`.
+  `prepared_printer/value_locations.cpp`, plus `prepared_printer/variadic.cpp`.
 - Keep promoting only the declarations a moved printer actually needs; avoid
   turning `private.hpp` into a broad helper dump.
-- `prepared_printer.cpp` still owns `append_value_locations`,
-  `append_regalloc`, and their helper cluster.
+- `prepared_printer.cpp` still owns `append_regalloc` and its helper cluster.
 
 ## Proof
 
