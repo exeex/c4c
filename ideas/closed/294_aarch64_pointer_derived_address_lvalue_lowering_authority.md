@@ -1,8 +1,9 @@
 # AArch64 Pointer-Derived Address/Lvalue Lowering Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Split From: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -119,3 +120,26 @@ Reject the route if it:
 - preserves the old failure mode behind a new abstraction name where object or
   pointer facts exist but emission still does not publish the concrete address
   to the load, store, compound update, or call argument that consumes it.
+
+## Closure Note
+
+Closed after Step 4 boundary sampling. Starter representatives `src/00032.c`,
+`src/00130.c`, `src/00180.c`, and `src/00217.c` are green, with generated
+AArch64 evidence for local/global address derivation, byte/subobject loads,
+address-valued call arguments, same-address compound lvalue updates, and
+pointer-derived store-local publication.
+
+Nearby same-family sampling repaired `src/00019.c`: generated AArch64 now
+co-emits the same-index frame-slot materialization and scalar pointer producer
+before storing the self-pointer chain, so the test passes. Step 4 also
+inspected `src/00137.c` and `src/00138.c`; their string byte loads and
+compares are generated from `.str0`, but the selected branch writes the return
+value into `x13` and returns without publishing the phi/control result to
+`w0`. Those residual failures are separated return/control-value publication
+work, not pointer-derived address/lvalue authority.
+
+Regression guard accepted the Step 4 before/after logs: the focused subset
+improved from 4/7 to 5/7, resolving `c_testsuite_aarch64_backend_src_00019_c`
+with no new failures. The full-suite baseline at commit `5b37c5906` was
+accepted clean at 3159/3159. No progress was claimed through expectation,
+runner, allowlist, timeout, or unsupported-classification changes.
