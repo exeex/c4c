@@ -69,6 +69,60 @@ void append_memory_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_byte_immediate_store_machine_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const MemoryInstructionRecord& memory) {
+  if (memory.memory_kind != MemoryInstructionKind::Store ||
+      memory.address.size_bytes != 1 || !memory.value.has_value() ||
+      memory.value->kind != OperandKind::Immediate) {
+    return std::nullopt;
+  }
+  const auto* immediate = std::get_if<ImmediateOperand>(&memory.value->payload);
+  if (immediate == nullptr) {
+    return std::nullopt;
+  }
+  const auto address = memory_address(memory.address);
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (address.empty() || scratches.empty()) {
+    return std::nullopt;
+  }
+  const auto scratch = abi::w_register(scratches.front().index);
+  const auto byte_value = static_cast<unsigned>(immediate->unsigned_value & 0xffU);
+
+  std::ostringstream asm_text;
+  asm_text << "movz " << abi::register_name(scratch) << ", #" << byte_value
+           << "\nstrb " << abi::register_name(scratch) << ", " << address;
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{
+              .status = MachineNodeSelectionStatus::Selected,
+          },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = {make_memory_operand(memory.address)},
+      .side_effects = {MachineSideEffectKind::MemoryWrite},
+      .payload =
+          AssemblerInstructionRecord{
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = asm_text.str(),
+          },
+  };
+  return make_bir_machine_instruction(context, instruction_index, std::move(target));
+}
+
 const prepare::PreparedStoragePlanValue* find_storage_plan_value(
     const prepare::PreparedStoragePlanFunction& storage_plan,
     prepare::PreparedValueId value_id) {
@@ -1716,6 +1770,12 @@ MemoryInstructionLoweringResult lower_memory_instruction(
     return MemoryInstructionLoweringResult{.handled = true};
   }
   retarget_load_result_to_return_abi(context, *prepared.record);
+  if (auto byte_immediate_store =
+          make_byte_immediate_store_machine_instruction(context, instruction_index, *prepared.record);
+      byte_immediate_store.has_value()) {
+    return MemoryInstructionLoweringResult{.handled = true,
+                                           .instruction = std::move(byte_immediate_store)};
+  }
 
   InstructionRecord target = make_memory_instruction(*prepared.record);
   target.function_name = context.function.control_flow->function_name;

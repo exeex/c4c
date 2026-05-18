@@ -272,8 +272,12 @@ std::string_view machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind k
       return "sub";
     case MachinePrinterMnemonicKind::Load:
       return "ldr";
+    case MachinePrinterMnemonicKind::LoadByte:
+      return "ldrb";
     case MachinePrinterMnemonicKind::Store:
       return "str";
+    case MachinePrinterMnemonicKind::StoreByte:
+      return "strb";
     case MachinePrinterMnemonicKind::Move:
       return "mov";
     case MachinePrinterMnemonicKind::Return:
@@ -384,6 +388,15 @@ MachinePrinterMnemonicKind machine_instruction_primary_printer_mnemonic_kind(
   }
   if (std::get_if<SpillReloadInstructionRecord>(&instruction.payload) != nullptr) {
     return machine_pseudo_printer_mnemonic_kind(instruction.pseudo);
+  }
+  if (const auto* memory = std::get_if<MemoryInstructionRecord>(&instruction.payload);
+      memory != nullptr && memory->address.size_bytes == 1) {
+    if (memory->memory_kind == MemoryInstructionKind::Load) {
+      return MachinePrinterMnemonicKind::LoadByte;
+    }
+    if (memory->memory_kind == MemoryInstructionKind::Store) {
+      return MachinePrinterMnemonicKind::StoreByte;
+    }
   }
   return machine_opcode_printer_mnemonic_kind(instruction.opcode);
 }
