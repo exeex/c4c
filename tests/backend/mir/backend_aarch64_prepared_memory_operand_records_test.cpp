@@ -896,12 +896,12 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
       .address =
           bir::MemoryAddress{
               .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+              .base_name = "wrong.global",
               .byte_offset = 16,
               .size_bytes = 4,
               .align_bytes = 4,
               .address_space = bir::AddressSpace::Gs,
               .is_volatile = true,
-              .base_link_name_id = c4c::LinkNameId{777},
           },
   };
   const auto symbol_mismatch = aarch64_codegen::make_prepared_memory_operand_record(

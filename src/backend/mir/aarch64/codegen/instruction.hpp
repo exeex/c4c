@@ -681,6 +681,7 @@ struct MemoryOperand {
   std::optional<RegisterOperand> base_register;
   std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
   std::optional<c4c::LinkNameId> symbol_name;
+  std::string symbol_label;
   std::optional<c4c::ValueNameId> pointer_value_name;
   std::optional<prepare::PreparedValueId> pointer_value_id;
   std::optional<c4c::TextId> string_name;

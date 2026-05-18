@@ -10,45 +10,29 @@ Current Step Title: Repair Static/Global Data Pointer Materialization
 
 ## Just Finished
 
-Step 4 (`Sample Related Mismatch Cases and Decide Closure`) ran the selected
-related stdio/data subset excluding the previously separated `00161` scalar
-local-state case and the timeout-sensitive `00132` overlap case.
+Step 5 (`Repair Static/Global Data Pointer Materialization`) repaired the
+AArch64 prepared-memory route for scalar static/global objects. The generated
+assembly for `src/00197.c` now emits scalar globals in `.data`, lowers
+`bir.load_global` into symbol-address materialization plus `ldr`, and lowers
+`bir.store_global` into symbol-address materialization plus `str`.
 
-Classification:
+Follow-up: restored the exported
+`make_prepared_frame_slot_load_memory_instruction_record(...)` local-load API
+as a compatibility wrapper around the generalized load helper so the default
+build tests continue to link.
 
-- Passed: `00125`, `00131`, `00154`, `00166`, `00184`, `00190`, `00191`,
-  `00201`, and `00211`.
-- Runtime mismatch with no output: `00156`, `00158`, `00160`, `00168`,
-  `00169`, and `00183`.
-- Runtime mismatch with partial or wrong output: `00159`, `00192`, and
-  `00197`.
-- Runtime nonzero: `00206` segfaulted.
-- Timed out: none.
+Follow-up: updated the focused backend contracts for the newly supported scalar
+symbol-backed memory path. Scalar global-symbol load/store now selects, while
+missing symbol identity and unsupported string-constant memory bases still
+fail closed.
 
-Owner split:
-
-- Still visible in this source-idea family: `00197` exercises static/global
-  data value materialization and prints address-shaped negative values instead
-  of `fred`/`joe` values; `00206` exercises string-literal pointer arguments to
-  `printf("%s")` and segfaults before producing output.
-- Separate owners, do not broaden this plan around them: `00156`, `00158`,
-  `00160`, `00168`, `00169`, `00183`, and `00192` are dominated by loop,
-  branch, switch, conditional-expression, recursion, or scalar/local-state
-  behavior after the starter external-call string/global cases already pass.
-  `00159` is dominated by internal direct-call argument/return behavior and
-  should not be treated as the external `printf` string/global address owner.
+`src/00197.c` now prints the expected `fred`, `joe`, and static-local values
+instead of address-shaped values for this source-idea owner.
 
 ## Suggested Next
 
-Continue the active runbook. Step 5 now owns `00197` as a focused
-static/global data materialization packet. Step 6 now owns `00206` as a
-focused `%s` string-literal direct external-call pointer packet.
-
-Suggested Step 5 proof should start narrow on `src/00197.c`, then include the
-already-green starter owner subset when practical. Do not create follow-on
-ideas for the other sampled failures from this lifecycle action; they remain
-separate owners outside this active source idea until the supervisor chooses to
-open them explicitly.
+Continue to Step 6 as a focused `%s` string-literal direct external-call
+pointer packet for `src/00206.c`.
 
 ## Watchouts
 
@@ -56,6 +40,11 @@ open them explicitly.
   classifications, timeout settings, CTest registration, parser, or sema.
 - Reject named-case shortcuts, literal-spelling shortcuts, and `printf`-only
   special cases.
+- Step 5 only covered scalar static/global object emission plus symbol-backed
+  memory load/store for the prepared AArch64 route. Aggregate globals,
+  pointer-initializer globals, GOT/TLS storage models, and wider global data
+  emission remain outside this packet unless the supervisor explicitly scopes
+  them.
 - `src/00161.c` remains separated as a scalar/local-state issue; its call
   sequence was already correctly lowering the string/global direct-call
   argument owner.
@@ -72,9 +61,10 @@ open them explicitly.
 Ran the supervisor-selected proof:
 
 ```bash
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure --timeout 5 -R '^c_testsuite_aarch64_backend_src_00(125|131|154|156|158|159|160|166|168|169|183|184|190|191|192|197|201|206|211)_c$'; } > test_after.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00197_c$'; } > test_after.log 2>&1
 ```
 
-Exit code was `8`: 9 tests passed and 10 failed. Nonzero result is classified
-above and allowed for this sampling packet. Canonical proof log:
+Both commands exited `0`: the backend bucket passed, and
+`c_testsuite_aarch64_backend_src_00197_c` passed. Canonical Step 5 proof log:
 `test_after.log`.

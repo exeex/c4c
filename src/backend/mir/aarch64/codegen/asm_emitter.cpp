@@ -3,6 +3,7 @@
 #include "machine_printer.hpp"
 #include "mir/printer.hpp"
 
+#include <cstdint>
 #include <sstream>
 #include <stdexcept>
 #include <string_view>
@@ -41,6 +42,72 @@ void append_string_constants(std::ostringstream& assembly,
     }
     assembly << constant.name << ":\n";
     assembly << byte_directive(constant.bytes) << "\n";
+  }
+}
+
+std::string global_label(const c4c::backend::bir::Module& module,
+                         const c4c::backend::bir::Global& global) {
+  const std::string_view structured = module.names.link_names.spelling(global.link_name_id);
+  if (!structured.empty()) {
+    return std::string{structured};
+  }
+  return global.name;
+}
+
+std::int64_t scalar_global_initializer(const c4c::backend::bir::Global& global) {
+  if (global.initializer.has_value() &&
+      global.initializer->kind == c4c::backend::bir::Value::Kind::Immediate) {
+    return global.initializer->immediate;
+  }
+  return 0;
+}
+
+bool is_supported_scalar_global(const c4c::backend::bir::Global& global) {
+  switch (global.type) {
+    case c4c::backend::bir::TypeKind::I8:
+    case c4c::backend::bir::TypeKind::I16:
+    case c4c::backend::bir::TypeKind::I32:
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return true;
+    default:
+      return false;
+  }
+}
+
+std::string scalar_global_directive(const c4c::backend::bir::Global& global) {
+  switch (global.type) {
+    case c4c::backend::bir::TypeKind::I8:
+      return ".byte";
+    case c4c::backend::bir::TypeKind::I16:
+      return ".hword";
+    case c4c::backend::bir::TypeKind::I32:
+      return ".word";
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return ".xword";
+    default:
+      return {};
+  }
+}
+
+void append_global_objects(std::ostringstream& assembly,
+                           const c4c::backend::prepare::PreparedBirModule& prepared) {
+  bool wrote_section = false;
+  for (const auto& global : prepared.module.globals) {
+    if (global.is_extern || !is_supported_scalar_global(global)) {
+      continue;
+    }
+    if (!wrote_section) {
+      assembly << "    .data\n";
+      wrote_section = true;
+    }
+    if (global.align_bytes > 1) {
+      assembly << "    .balign " << global.align_bytes << "\n";
+    }
+    assembly << global_label(prepared.module, global) << ":\n";
+    assembly << "    " << scalar_global_directive(global) << " "
+             << scalar_global_initializer(global) << "\n";
   }
 }
 
@@ -84,6 +151,7 @@ std::string print_prepared_machine_nodes(
     throw std::invalid_argument(
         "AArch64 backend assembly route reached the machine-node printer, but no selected printable machine nodes are available for this source input");
   }
+  append_global_objects(assembly, prepared);
   append_string_constants(assembly, prepared);
   assembly << "    .section .note.GNU-stack,\"\",@progbits\n";
   return assembly.str();

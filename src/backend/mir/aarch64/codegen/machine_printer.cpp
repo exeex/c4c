@@ -158,6 +158,21 @@ std::optional<abi::RegisterReference> local_address_store_scratch_register() {
   return abi::x_register(scratch.index);
 }
 
+std::optional<abi::RegisterReference> symbol_immediate_store_scratch_register(
+    const MemoryInstructionRecord& memory) {
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2) {
+    return std::nullopt;
+  }
+  if (memory.address.size_bytes == 4) {
+    return abi::w_register(scratches[1].index);
+  }
+  if (memory.address.size_bytes == 8) {
+    return abi::x_register(scratches[1].index);
+  }
+  return std::nullopt;
+}
+
 std::vector<std::string> materialize_local_address_lines(
     abi::RegisterReference scratch,
     const FrameSlotOperand& slot) {
@@ -167,6 +182,36 @@ std::vector<std::string> materialize_local_address_lines(
   std::ostringstream line;
   line << "add " << abi::register_name(scratch) << ", sp, #" << slot.offset_bytes;
   return {line.str()};
+}
+
+std::string relocation_operand(std::string_view label, std::int64_t byte_offset) {
+  std::string operand{label};
+  if (byte_offset > 0) {
+    operand += "+";
+    operand += std::to_string(byte_offset);
+  } else if (byte_offset < 0) {
+    operand += std::to_string(byte_offset);
+  }
+  return operand;
+}
+
+std::optional<abi::RegisterReference> symbol_address_scratch_register() {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  return abi::x_register(scratch.index);
+}
+
+std::vector<std::string> materialize_symbol_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address) {
+  if (address.symbol_label.empty()) {
+    return {};
+  }
+  const std::string scratch_name = abi::register_name(scratch);
+  const std::string reloc = relocation_operand(address.symbol_label, address.byte_offset);
+  return {
+      "adrp " + scratch_name + ", " + reloc,
+      "add " + scratch_name + ", " + scratch_name + ", :lo12:" + reloc,
+  };
 }
 
 std::vector<std::string> materialize_integer_constant_lines(
@@ -594,12 +639,76 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
   return target_printed({condition_line.str(), branch_line.str()});
 }
 
+mir::TargetInstructionPrintResult print_symbol_memory(const InstructionRecord& instruction,
+                                                      const MemoryInstructionRecord& memory) {
+  const auto scratch = symbol_address_scratch_register();
+  if (!scratch.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "symbol memory scratch is not printable");
+  }
+  auto lines = materialize_symbol_address_lines(*scratch, memory.address);
+  if (lines.empty()) {
+    return target_unsupported(bad_header(instruction) +
+                              "symbol memory address is not printable");
+  }
+  const auto mnemonic = required_primary_mnemonic(instruction);
+  if (mnemonic.empty()) {
+    return target_unsupported(bad_header(instruction) + "memory mnemonic is not printable");
+  }
+  const std::string address = "[" + std::string{abi::register_name(*scratch)} + "]";
+  if (memory.memory_kind == MemoryInstructionKind::Load) {
+    if (!memory.result_register.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "load node is missing a structured destination register operand");
+    }
+    std::ostringstream load;
+    load << mnemonic << " " << register_name(*memory.result_register) << ", " << address;
+    lines.push_back(load.str());
+    return target_printed(std::move(lines));
+  }
+  if (!memory.value.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "store node is missing stored value operand");
+  }
+  const auto* value = std::get_if<RegisterOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Register && value != nullptr) {
+    std::ostringstream store;
+    store << mnemonic << " " << register_name(*value) << ", " << address;
+    lines.push_back(store.str());
+    return target_printed(std::move(lines));
+  }
+  const auto* immediate = std::get_if<ImmediateOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Immediate && immediate != nullptr) {
+    const auto value_scratch = symbol_immediate_store_scratch_register(memory);
+    if (!value_scratch.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "symbol immediate store scratch is not printable");
+    }
+    auto value_lines =
+        materialize_immediate_store_value_lines(*value_scratch, *immediate, memory);
+    if (value_lines.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "immediate store value is not printable");
+    }
+    lines.insert(lines.end(), value_lines.begin(), value_lines.end());
+    std::ostringstream store;
+    store << mnemonic << " " << abi::register_name(*value_scratch) << ", " << address;
+    lines.push_back(store.str());
+    return target_printed(std::move(lines));
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "symbol store value is not a register or immediate operand");
+}
+
 mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruction,
                                                const MemoryInstructionRecord& memory) {
   if (memory.address.support != MemoryOperandSupportKind::Prepared ||
       !memory.address.can_use_base_plus_offset) {
     return target_unsupported(bad_header(instruction) +
                               "memory address is not a prepared base+offset");
+  }
+  if (memory.address.base_kind == MemoryBaseKind::Symbol) {
+    return print_symbol_memory(instruction, memory);
   }
   const auto address = memory_address(memory.address);
   if (address.empty()) {

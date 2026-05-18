@@ -220,7 +220,7 @@ int memory_and_spill_nodes_fail_closed_when_required_facts_are_missing() {
           "memory operand is outside the selected subset") {
     return fail("expected unsupported memory operands to fail closed without guessing");
   }
-  const auto global_memory = aarch64_codegen::make_memory_instruction(
+  const auto missing_symbol_identity = aarch64_codegen::make_memory_instruction(
       aarch64_codegen::MemoryInstructionRecord{
           .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
           .address =
@@ -239,9 +239,37 @@ int memory_and_spill_nodes_fail_closed_when_required_facts_are_missing() {
           .result_value_name = c4c::ValueNameId{45},
           .value_type = bir::TypeKind::I32,
       });
-  if (global_memory.selection.status !=
-      aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported) {
-    return fail("expected global/linker memory forms to remain fail-closed in this slice");
+  if (missing_symbol_identity.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::MissingRequiredFacts ||
+      missing_symbol_identity.selection.diagnostic !=
+          "symbol memory node is missing symbol identity") {
+    return fail("expected symbol memory without printable identity to fail closed");
+  }
+
+  const auto scalar_symbol_memory = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address =
+              aarch64_codegen::MemoryOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+                  .function_name = c4c::FunctionNameId{12},
+                  .block_label = c4c::BlockLabelId{22},
+                  .instruction_index = 9,
+                  .result_value_id = prepare::PreparedValueId{35},
+                  .result_value_name = c4c::ValueNameId{45},
+                  .base_kind = aarch64_codegen::MemoryBaseKind::Symbol,
+                  .symbol_name = c4c::LinkNameId{55},
+                  .symbol_label = "g.contract",
+                  .can_use_base_plus_offset = true,
+              },
+          .result_value_id = prepare::PreparedValueId{35},
+          .result_value_name = c4c::ValueNameId{45},
+          .value_type = bir::TypeKind::I32,
+      });
+  if (scalar_symbol_memory.selection.status !=
+      aarch64_codegen::MachineNodeSelectionStatus::Selected) {
+    return fail("expected scalar symbol-backed memory with structured identity to select");
   }
 
   const auto incomplete_spill = aarch64_codegen::make_spill_reload_instruction(
