@@ -8,40 +8,33 @@ Current Step Title: Nearby Same-Family Sampling and Boundary Separation
 
 ## Just Finished
 
-Lifecycle review after commits `3f197a9e5` and `55962b3d5` aligned the active
-state for Step 4. Step 2 and Step 3 starter work are recorded as satisfied:
-`00032.c`, `00130.c`, `00180.c`, and `00217.c` are green, including the Step 3
-compound-update and address-argument shapes.
+Step 4 nearby same-family sampling is complete for `00019.c`, `00137.c`, and
+`00138.c`. Generated-code evidence showed one in-scope same-surface break:
+`00019.c` computed the local struct base address with a same-index frame-slot
+materialization, but dispatch emitted only the materialization and skipped the
+real scalar pointer producer feeding the following `StoreLocal`.
 
-The AArch64 global GEP alias publication now requires a valid `LinkNameId`, so
-raw-only/no-`TextId` string-pool globals cannot recover through spelling-only
-aliases. The `00217.c` starter repair remains intact: `char *data = t` still
-reaches semantic BIR as `bir.store_local %lv.data, ptr @t`, and AArch64
-dispatch still emits both the same-index direct-global materialization and the
-real local pointer store.
+`00019.c` before repair: semantic BIR had `%lv.s = bir.add ptr %lv.s.0, 0`
+followed by `bir.store_local %lv.s.0, ptr %lv.s`; generated AArch64 emitted
+`mov x13, sp` but then stored stale `x19` with `str x19, [sp]`, causing the
+self-pointer chain to load through an uninitialized pointer. The repair in
+`src/backend/mir/aarch64/codegen/dispatch.cpp` narrowly co-emits a same-index
+address materialization plus scalar pointer producer only when that scalar
+result immediately feeds the next pointer `StoreLocal`. Generated AArch64 now
+emits `mov x13, sp`, `add x19, x13, #0`, and `str x19, [sp]`; `00019.c` passes.
 
-Generated evidence: `00217.c` semantic BIR now contains the intended
-load-compute-store chain:
-`%t10 = bir.load_global i32 @t, offset 4`, `%t12 = bir.add i64 %t11, %t6`,
-`%t13 = bir.trunc i64 %t12 to i32`, and `bir.store_global @t, offset 4, i32
-%t13`. Generated AArch64 now emits `adrp x20, t`, `add x20, x20, :lo12:t`, and
-`str x20, [sp]`, so `printf` receives the non-null `data` pointer. The
-store-global value publication now emits the update chain before the existing
-memory store: `ldr w13, [x9]` from `t+4`, `ldr w9, [sp, #24]`, `ldr x10, [sp,
-#16]`, `sub x9, x9, x10`, `add x13, x13, x9`, then `str w13, [x9]` back to
-`t+4`.
-
-Regression evidence: the raw-only `.str.raw_only` fixture in
-`backend_lir_to_bir_notes` now fails closed because its global has
-`kInvalidLinkName`, while real linked globals such as `00217.c`'s `@t` still
-publish the AArch64 alias through durable link identity.
+`00137.c` and `00138.c` are separated from the active address/lvalue family.
+Their string byte loads and compares are generated correctly from `.str0`, but
+the selected branch writes the return value into `x13` (`mov x13, #0` or
+`mov x13, #1`) and returns without publishing that phi/control result to `w0`.
+They remain return/control-value publication failures, not pointer-derived
+lvalue authority failures.
 
 ## Suggested Next
 
-Delegate Step 4 nearby same-family sampling. A coherent next packet is to test
-the supervisor-selected nearby pointer/address cases, likely `00019.c`,
-`00137.c`, and `00138.c`, with generated-assembly inspection before claiming
-any residual failure in scope.
+Ask the supervisor to review/accept the Step 4 `00019.c` same-family repair and
+boundary separation. A separate plan packet should own `00137.c` and `00138.c`
+if return/control-value publication is in scope for a later initiative.
 
 ## Watchouts
 
@@ -72,23 +65,23 @@ any residual failure in scope.
   before widening this source idea. Do not treat nearby sampling failures as
   address/lvalue wins without generated-code evidence of the same authority
   break.
+- The new scalar/materialization co-emission is intentionally constrained to a
+  scalar pointer result immediately consumed by the next pointer `StoreLocal`.
+  A broader interception also caught `00180.c`'s call-argument producer and
+  regressed it; keep the next-consumer guard.
 
 ## Proof
 
 Ran the delegated proof:
 
 ```sh
-{ cmake --build build --target backend_lir_to_bir_notes_test c4cll && ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure && cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00019|00137|00138|00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-`test_after.log` records `backend_lir_to_bir_notes` passing and all four
-AArch64 delegated tests passing: `00032.c`, `00130.c`, `00180.c`, and
-`00217.c`. The passing `00217.c` test proves the generated output remains
-`data = "0123-5678"`. Both build portions passed. `git diff --check` passed.
-Stale-process check found no stale `ctest`, `c4cll`, `qemu`, or build/test
-process beyond the check command itself.
-
-Lifecycle alignment note: no proof rerun was needed for this plan-owner packet;
-the completed starter subset/proof from the committed Step 2/3 work is
-preserved above, and `Current Step ID` now points to Step 4 for the next
-executor packet.
+`test_after.log` records strict monotonic improvement over `test_before.log`:
+5/7 now pass instead of 4/7. `00019.c`, `00032.c`, `00130.c`, `00180.c`, and
+`00217.c` pass. `00137.c` and `00138.c` still fail with exit 1 and are
+classified as separated return/control-value publication failures. The build
+portion passed. `git diff --check` passed. Stale-process check found no stale
+`ctest`, `c4cll`, `qemu`, or build/test process beyond the check command
+itself.

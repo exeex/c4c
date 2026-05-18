@@ -943,6 +943,35 @@ void retarget_pointer_store_value_to_materialized_address(
   memory_record->value = make_register_operand(materialized_address);
 }
 
+void retarget_pointer_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named ||
+      store->value.type != bir::TypeKind::Ptr) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      memory_record->value_type != bir::TypeKind::Ptr) {
+    return;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value()) {
+    return;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  if (!emitted.has_value()) {
+    return;
+  }
+  memory_record->value = make_register_operand(*emitted);
+}
+
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset) {
   std::string operand{label};
@@ -1308,6 +1337,47 @@ lower_store_global_value_publication(
     block.instructions.push_back(std::move(*lowered_memory.instruction));
   }
   return lowered_memory.handled;
+}
+
+[[nodiscard]] bool lower_scalar_with_address_materialization(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::MachineBlock& block,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      binary->result.kind != bir::Value::Kind::Named ||
+      binary->result.type != bir::TypeKind::Ptr ||
+      context.bir_block == nullptr ||
+      instruction_index + 1 >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto* next_store =
+      std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[instruction_index + 1]);
+  if (next_store == nullptr ||
+      next_store->value.kind != bir::Value::Kind::Named ||
+      next_store->value.type != bir::TypeKind::Ptr ||
+      next_store->value.name != binary->result.name) {
+    return false;
+  }
+
+  auto materialized = lower_address_materialization(context, instruction_index, diagnostics);
+  if (!materialized.has_value()) {
+    return false;
+  }
+
+  record_address_materialization_result(scalar_state, *materialized);
+  auto lowered_scalar =
+      lower_scalar_instruction(context, inst, instruction_index, scalar_state, diagnostics);
+  if (!lowered_scalar.has_value()) {
+    return false;
+  }
+
+  block.instructions.push_back(std::move(*materialized));
+  block.instructions.push_back(std::move(*lowered_scalar));
+  return true;
 }
 
 void append_unsupported_instruction_diagnostic(
@@ -2111,6 +2181,15 @@ InstructionDispatchResult dispatch_prepared_block(
                      diagnostics)) {
         ++result.visited_operations;
         continue;
+      } else if (lower_scalar_with_address_materialization(
+                     context,
+                     inst,
+                     instruction_index,
+                     scalar_state,
+                     block,
+                     diagnostics)) {
+        ++result.visited_operations;
+        continue;
       } else if (auto lowered = lower_address_materialization(
                      context, instruction_index, diagnostics)) {
         record_address_materialization_result(scalar_state, *lowered);
@@ -2178,6 +2257,8 @@ InstructionDispatchResult dispatch_prepared_block(
                        lower_memory_instruction(context, inst, instruction_index, diagnostics);
                    lowered_ordinary_memory.handled) {
           if (lowered_ordinary_memory.instruction.has_value()) {
+            retarget_pointer_store_value_to_emitted_scalar(
+                context, inst, scalar_state, *lowered_ordinary_memory.instruction);
             if (auto value_publication =
                     lower_store_global_value_publication(
                         context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
