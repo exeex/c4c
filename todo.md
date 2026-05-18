@@ -8,11 +8,12 @@ Current Step Title: Repair Core Pointer-Derived Lvalue Address Publication
 
 ## Just Finished
 
-Step 2 `00217.c` global pointer publication and compound lvalue update
-preservation are complete for the starter subset. The global GEP result for
-`char *data = t` still reaches semantic BIR as `bir.store_local %lv.data, ptr
-@t`, and AArch64 dispatch now emits both the same-index direct-global
-materialization and the real local pointer store.
+Step 2 post-commit regression repair is complete. The AArch64 global GEP alias
+publication now requires a valid `LinkNameId`, so raw-only/no-`TextId`
+string-pool globals cannot recover through spelling-only aliases. The `00217.c`
+starter repair remains intact: `char *data = t` still reaches semantic BIR as
+`bir.store_local %lv.data, ptr @t`, and AArch64 dispatch still emits both the
+same-index direct-global materialization and the real local pointer store.
 
 Generated evidence: `00217.c` semantic BIR now contains the intended
 load-compute-store chain:
@@ -25,11 +26,16 @@ memory store: `ldr w13, [x9]` from `t+4`, `ldr w9, [sp, #24]`, `ldr x10, [sp,
 #16]`, `sub x9, x9, x10`, `add x13, x13, x9`, then `str w13, [x9]` back to
 `t+4`.
 
+Regression evidence: the raw-only `.str.raw_only` fixture in
+`backend_lir_to_bir_notes` now fails closed because its global has
+`kInvalidLinkName`, while real linked globals such as `00217.c`'s `@t` still
+publish the AArch64 alias through durable link identity.
+
 ## Suggested Next
 
-Ask the supervisor to review/accept the completed Step 2 starter subset or
-delegate the next Step 2 packet. The focused `00217.c` repair is green with the
-`00032`, `00130`, and `00180` guards.
+Ask the supervisor to review/accept the regression repair or delegate the next
+Step 2 packet. The notes regression and focused `00217.c` starter subset are
+both green.
 
 ## Watchouts
 
@@ -52,17 +58,21 @@ delegate the next Step 2 packet. The focused `00217.c` repair is green with the
   same-block integer load/cast/add/sub chain into the prepared register that
   the existing `StoreGlobal` memory record already consumes. It does not name
   `00217.c` and does not rewrite expectations.
+- Keep the BIR alias guard identity-based. Do not reintroduce raw-spelling
+  recovery for string-pool globals without `TextId` or globals without
+  `LinkNameId`.
 
 ## Proof
 
 Ran the delegated proof:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build --target backend_lir_to_bir_notes_test c4cll && ctest --test-dir build -R '^backend_lir_to_bir_notes$' --output-on-failure && cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-`test_after.log` records all four delegated tests passing: `00032.c`,
-`00130.c`, `00180.c`, and `00217.c`. The passing `00217.c` test proves the
-generated output is `data = "0123-5678"`. The build portion passed. `git diff
---check` passed. Stale-process check found no stale `ctest`, `c4cll`, `qemu`,
-or build/test process beyond the check command itself.
+`test_after.log` records `backend_lir_to_bir_notes` passing and all four
+AArch64 delegated tests passing: `00032.c`, `00130.c`, `00180.c`, and
+`00217.c`. The passing `00217.c` test proves the generated output remains
+`data = "0123-5678"`. Both build portions passed. `git diff --check` passed.
+Stale-process check found no stale `ctest`, `c4cll`, `qemu`, or build/test
+process beyond the check command itself.
