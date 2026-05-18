@@ -525,6 +525,37 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     move_record.source_f128_constant_payload = source_f128_carrier->constant_payload;
   }
 
+  const bool symbol_address_argument_materialized_at_call_site =
+      bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::SymbolAddress &&
+      source_home != nullptr &&
+      source_home->kind != prepare::PreparedValueHomeKind::Register &&
+      context.function.prepared != nullptr &&
+      context.function.control_flow != nullptr &&
+      context.control_flow_block != nullptr &&
+      [&]() {
+        const auto* addressing = prepare::find_prepared_addressing(
+            *context.function.prepared, context.function.control_flow->function_name);
+        if (addressing == nullptr) {
+          return false;
+        }
+        for (const auto& materialization : addressing->address_materializations) {
+          if (materialization.block_label == context.control_flow_block->block_label &&
+              materialization.inst_index == instruction_index &&
+              materialization.result_value_name == source_home->value_name) {
+            return true;
+          }
+        }
+        return false;
+      }();
+  if (symbol_address_argument_materialized_at_call_site) {
+    return std::nullopt;
+  }
+
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&

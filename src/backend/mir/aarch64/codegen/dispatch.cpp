@@ -715,16 +715,17 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         const auto* call_plan = find_prepared_call_plan(context, instruction_index);
         if (call_plan != nullptr) {
-          if (auto materialized =
-                  lower_address_materialization(context, instruction_index, diagnostics)) {
+          auto materialized_addresses =
+              lower_address_materializations(context, instruction_index, diagnostics);
+          for (auto& materialized : materialized_addresses) {
             if (const auto* address_record =
-                    std::get_if<AddressMaterializationRecord>(&materialized->target.payload);
+                    std::get_if<AddressMaterializationRecord>(&materialized.target.payload);
                 address_record != nullptr && address_record->result_register.has_value()) {
               record_emitted_scalar_register(scalar_state,
                                              address_record->result_value_name,
                                              *address_record->result_register);
             }
-            block.instructions.push_back(std::move(*materialized));
+            block.instructions.push_back(std::move(materialized));
           }
           auto before_call_moves =
               lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);

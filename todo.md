@@ -3,36 +3,28 @@
 Status: Active
 Source Idea Path: ideas/open/287_aarch64_string_global_address_external_call_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 5
-Current Step Title: Repair Static/Global Data Pointer Materialization
+Current Step ID: 6
+Current Step Title: Repair %s String-Literal External-Call Pointer Arguments
 
 # Current Packet
 
 ## Just Finished
 
-Step 5 (`Repair Static/Global Data Pointer Materialization`) repaired the
-AArch64 prepared-memory route for scalar static/global objects. The generated
-assembly for `src/00197.c` now emits scalar globals in `.data`, lowers
-`bir.load_global` into symbol-address materialization plus `ldr`, and lowers
-`bir.store_global` into symbol-address materialization plus `str`.
+Step 6 (`Repair %s String-Literal External-Call Pointer Arguments`) repaired
+the AArch64 prepared direct-call path for string/global address arguments.
+Call dispatch now emits every prepared address materialization attached to a
+call instruction instead of only the first one, and stack-home symbol/string
+call arguments can materialize directly into their ABI argument register when
+there is no stored pointer value to reload.
 
-Follow-up: restored the exported
-`make_prepared_frame_slot_load_memory_instruction_record(...)` local-load API
-as a compatibility wrapper around the generalized load helper so the default
-build tests continue to link.
-
-Follow-up: updated the focused backend contracts for the newly supported scalar
-symbol-backed memory path. Scalar global-symbol load/store now selects, while
-missing symbol identity and unsupported string-constant memory bases still
-fail closed.
-
-`src/00197.c` now prints the expected `fred`, `joe`, and static-local values
-instead of address-shaped values for this source-idea owner.
+`src/00206.c` now passes on the AArch64 backend route: each `printf("%s", ...)`
+call receives the correct string literal address in `x1` instead of using a
+missing or stale pointer argument.
 
 ## Suggested Next
 
-Continue to Step 6 as a focused `%s` string-literal direct external-call
-pointer packet for `src/00206.c`.
+Supervisor should review this Step 6 slice for commit readiness and decide
+whether the active runbook is ready for owner-side closure.
 
 ## Watchouts
 
@@ -40,11 +32,10 @@ pointer packet for `src/00206.c`.
   classifications, timeout settings, CTest registration, parser, or sema.
 - Reject named-case shortcuts, literal-spelling shortcuts, and `printf`-only
   special cases.
-- Step 5 only covered scalar static/global object emission plus symbol-backed
-  memory load/store for the prepared AArch64 route. Aggregate globals,
-  pointer-initializer globals, GOT/TLS storage models, and wider global data
-  emission remain outside this packet unless the supervisor explicitly scopes
-  them.
+- This packet fixes direct external-call pointer arguments whose address
+  materialization is already present in prepared addressing. It does not widen
+  aggregate globals, pointer-initializer globals, GOT/TLS storage models, or
+  broader variadic ABI coverage.
 - `src/00161.c` remains separated as a scalar/local-state issue; its call
   sequence was already correctly lowering the string/global direct-call
   argument owner.
@@ -61,10 +52,20 @@ pointer packet for `src/00206.c`.
 Ran the supervisor-selected proof:
 
 ```bash
-ctest --test-dir build -j --output-on-failure -R '^backend_'
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00197_c$'; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00206_c$'; } > test_after.log 2>&1
 ```
 
-Both commands exited `0`: the backend bucket passed, and
-`c_testsuite_aarch64_backend_src_00197_c` passed. Canonical Step 5 proof log:
-`test_after.log`.
+The command exited `0`, and `c_testsuite_aarch64_backend_src_00206_c` passed.
+Canonical Step 6 proof log: `test_after.log`.
+
+Supervisor acceptance proof also passed:
+
+```bash
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(125|131|154|197|206|211)_c$'; } > /tmp/c4c_step6_owner_subset.log 2>&1
+cmake --build --preset default
+```
+
+The backend subset passed 139/139, the Step 6 owner subset passed 6/6, and
+the default preset build passed. Owner subset proof log:
+`/tmp/c4c_step6_owner_subset.log`.

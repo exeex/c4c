@@ -6,6 +6,7 @@
 
 #include <cstddef>
 #include <optional>
+#include <vector>
 
 namespace c4c::backend::aarch64::codegen {
 
@@ -26,6 +27,10 @@ make_prepared_address_materialization_instruction_record(
     c4c::BlockLabelId block_label,
     std::size_t instruction_index);
 [[nodiscard]] std::optional<module::MachineInstruction> lower_address_materialization(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::vector<module::MachineInstruction> lower_address_materializations(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);

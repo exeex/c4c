@@ -1617,6 +1617,242 @@ prepare::PreparedBirModule prepared_with_direct_variadic_call_symbol_address_arg
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_direct_variadic_call_stack_symbol_address_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.stack.symbol.arg");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.stack.symbol.arg.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.stack.symbol.arg.entry");
+  const auto printf_link = prepared.names.link_names.intern("printf");
+  const auto fmt_value_name = prepared.names.value_names.intern("@.fmt");
+  const auto payload_value_name = prepared.names.value_names.intern("@.payload");
+  const auto fmt_text = prepared.names.texts.intern(".fmt");
+  const auto payload_text = prepared.names.texts.intern(".payload");
+  const auto fmt_arg = bir::Value::named(bir::TypeKind::Ptr, "@.fmt");
+  const auto payload_arg = bir::Value::named(bir::TypeKind::Ptr, "@.payload");
+
+  prepared.module.names.texts.intern(".fmt");
+  prepared.module.names.texts.intern(".payload");
+  prepared.module.string_constants.push_back(
+      bir::StringConstant{.name = ".fmt", .name_id = fmt_text, .bytes = "%s\n"});
+  prepared.module.string_constants.push_back(
+      bir::StringConstant{.name = ".payload", .name_id = payload_text, .bytes = "ok"});
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.stack.symbol.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.call.stack.symbol.arg.entry",
+          .insts = {bir::CallInst{
+              .callee = "printf",
+              .callee_link_name_id = printf_link,
+              .args = {fmt_arg, payload_arg},
+              .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+              .return_type = bir::TypeKind::I32,
+              .calling_convention = bir::CallingConv::C,
+              .is_variadic = true,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{1},
+                  .function_name = function_name,
+                  .value_name = fmt_value_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x13"},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{2},
+                  .function_name = function_name,
+                  .value_name = payload_value_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{0},
+                  .offset_bytes = 0,
+              },
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeCall,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{1},
+                              .to_value_id = prepare::PreparedValueId{1},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"x0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "call_arg_symbol_address_to_register",
+                          },
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{2},
+                              .to_value_id = prepare::PreparedValueId{2},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{1},
+                              .destination_register_name = std::string{"x1"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x1"},
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "call_arg_stack_to_register",
+                          },
+                      },
+                  .abi_bindings =
+                      {
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"x0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                          },
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{1},
+                              .destination_register_name = std::string{"x1"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x1"},
+                          },
+                      },
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{1},
+                  .value_name = fmt_value_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"x13"},
+                  .register_placement = prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Gpr,
+                      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{2},
+                  .value_name = payload_value_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .slot_id = prepare::PreparedFrameSlotId{0},
+                  .stack_offset_bytes = 0,
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternVariadic,
+          .direct_callee_name = std::string{"printf"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
+                      .source_value_id = prepare::PreparedValueId{1},
+                      .source_symbol_name = std::string{"@.fmt"},
+                      .source_register_name = std::string{"x13"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  },
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 1,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
+                      .source_value_id = prepare::PreparedValueId{2},
+                      .source_symbol_name = std::string{"@.payload"},
+                      .destination_register_name = std::string{"x1"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x1"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CallArgument,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
+                  },
+              },
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .address_materializations =
+          {
+              prepare::PreparedAddressMaterialization{
+                  .function_name = function_name,
+                  .block_label = entry_label,
+                  .inst_index = 0,
+                  .kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+                  .result_value_name = fmt_value_name,
+                  .text_name = fmt_text,
+              },
+              prepare::PreparedAddressMaterialization{
+                  .function_name = function_name,
+                  .block_label = entry_label,
+                  .inst_index = 0,
+                  .kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+                  .result_value_name = payload_value_name,
+                  .text_name = payload_text,
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_result_register_move() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -7687,6 +7923,54 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
   return 0;
 }
 
+int stack_home_symbol_address_argument_materializes_directly_to_call_register() {
+  auto prepared = prepared_with_direct_variadic_call_stack_symbol_address_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+      !diagnostics.empty()) {
+    return fail("expected stack-home symbol call argument to materialize before direct call: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+
+  const auto* payload_address =
+      std::get_if<aarch64_module::codegen::AddressMaterializationRecord>(
+          &block.instructions[1].target.payload);
+  if (payload_address == nullptr ||
+      payload_address->kind !=
+          aarch64_module::codegen::AddressMaterializationKind::StringConstant ||
+      !payload_address->result_register.has_value() ||
+      payload_address->result_register->reg != aarch64_module::abi::x_register(1) ||
+      payload_address->result_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{2}}) {
+    return fail("expected stack-home string argument address to materialize directly into x1");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-home symbol argument route to print: " + printed.diagnostic);
+  }
+  if (printed.assembly.find("adrp x1, .payload") == std::string::npos ||
+      printed.assembly.find("add x1, x1, :lo12:.payload") == std::string::npos ||
+      printed.assembly.find("bl printf") == std::string::npos) {
+    return fail("expected printed call route to materialize payload string into x1");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_result_move_after_direct_call() {
   auto prepared = prepared_with_direct_call_result_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -10164,6 +10448,11 @@ int main() {
   }
   if (const int status =
           semantic_symbol_address_argument_avoids_deferred_call_boundary_move();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          stack_home_symbol_address_argument_materializes_directly_to_call_register();
       status != 0) {
     return status;
   }
