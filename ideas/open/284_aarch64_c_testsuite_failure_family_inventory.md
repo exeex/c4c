@@ -154,6 +154,15 @@ Durable inventory findings to preserve:
   errors `src/00087.c`, `src/00089.c`, `src/00124.c`, and `src/00210.c` had
   aligned frames and an indirect-call/function-pointer value failure shape, so
   they were split from the SP/frame-alignment owner.
+- After scalar parameter/ALU authority and call-argument register authority
+  completed, refreshed representative sampling selected AArch64 scalar
+  expression/control-value authority as the next focused semantic owner.
+  Starter representatives are `src/00009.c`, `src/00012.c`, `src/00056.c`,
+  `src/00156.c`, `src/00161.c`, and `src/00211.c`. The split explicitly
+  defers pointer/aggregate address authority (`src/00019.c`-style failures),
+  timeout/hang cases (`src/00132.c`, `src/00173.c`, `src/00220.c`), and
+  compile-stage printer gaps. The active lifecycle state switched to
+  `ideas/open/292_aarch64_scalar_expression_control_value_authority.md`.
 
 ## Reviewer Reject Signals
 
