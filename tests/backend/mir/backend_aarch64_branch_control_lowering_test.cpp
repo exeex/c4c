@@ -76,6 +76,58 @@ prepare::PreparedBirModule prepared_with_unconditional_branch() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_unconditional_branch_divergent_bir_label_ids() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("branch.split_ids");
+  const auto entry_label = prepared.names.block_labels.intern("branch.entry");
+  const auto exit_label = prepared.names.block_labels.intern("branch.exit");
+  const auto function_link_name = prepared.module.names.link_names.intern("branch.split_ids");
+  prepared.module.names.block_labels.intern("module.only");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("branch.entry");
+  const auto bir_exit_label = prepared.module.names.block_labels.intern("branch.exit");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = entry_label,
+                  .terminator_kind = bir::TerminatorKind::Branch,
+                  .branch_target_label = exit_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = exit_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+  });
+
+  bir::Block entry;
+  entry.label = "branch.entry";
+  entry.label_id = bir_entry_label;
+  entry.terminator = bir::BranchTerminator{
+      .target_label = "branch.exit",
+      .target_label_id = bir_exit_label,
+  };
+
+  bir::Block exit;
+  exit.label = "branch.exit";
+  exit.label_id = bir_exit_label;
+  exit.terminator = bir::ReturnTerminator{};
+
+  bir::Function function;
+  function.name = "branch.split_ids";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(entry);
+  function.blocks.push_back(exit);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
 prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
   return prepare::PreparedRegisterPlacement{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -169,6 +221,94 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
   function.link_name_id = function_link_name;
   function.return_type = bir::TypeKind::Void;
   function.blocks.push_back(entry);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_loop_header_fused_compare_branch() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("loop.fn");
+  const auto header_label = prepared.names.block_labels.intern("for.cond.1");
+  const auto body_label = prepared.names.block_labels.intern("block_1");
+  const auto exit_label = prepared.names.block_labels.intern("block_2");
+  const auto condition_name = prepared.names.value_names.intern("%t1");
+  const auto lhs_name = prepared.names.value_names.intern("%t0");
+  const auto function_link_name = prepared.module.names.link_names.intern("loop.fn");
+  prepared.module.names.block_labels.intern("module.only");
+  const auto bir_header_label = prepared.module.names.block_labels.intern("for.cond.1");
+  const auto bir_body_label = prepared.module.names.block_labels.intern("block_1");
+  const auto bir_exit_label = prepared.module.names.block_labels.intern("block_2");
+  const auto condition = bir::Value::named(bir::TypeKind::I32, "%t1");
+  const auto lhs = bir::Value::named(bir::TypeKind::I32, "%t0");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = header_label,
+          .terminator_kind = bir::TerminatorKind::CondBranch,
+          .true_label = body_label,
+          .false_label = exit_label,
+      }},
+      .branch_conditions = {prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = header_label,
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = condition,
+          .predicate = bir::BinaryOpcode::Ne,
+          .compare_type = bir::TypeKind::I32,
+          .lhs = lhs,
+          .rhs = bir::Value::immediate_i32(0),
+          .can_fuse_with_branch = true,
+          .true_label = body_label,
+          .false_label = exit_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{11},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{12},
+                  .function_name = function_name,
+                  .value_name = lhs_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{12},
+          .value_name = lhs_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .register_placement = caller_saved_gpr(0),
+      }},
+  });
+
+  bir::Block header;
+  header.label = "for.cond.1";
+  header.label_id = bir_header_label;
+  header.terminator = bir::CondBranchTerminator{
+      .condition = condition,
+      .true_label = "block_1",
+      .false_label = "block_2",
+      .true_label_id = bir_body_label,
+      .false_label_id = bir_exit_label,
+  };
+
+  bir::Function function;
+  function.name = "loop.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(header);
   prepared.module.functions.push_back(function);
   return prepared;
 }
@@ -325,6 +465,38 @@ int direct_dispatch_lowers_unconditional_branch_to_selected_node() {
       branch->target.block_label != function_cf.blocks[1].block_label ||
       branch->target.condition_value_id.has_value()) {
     return fail("expected branch payload to preserve prepared destination label identity");
+  }
+  return 0;
+}
+
+int direct_dispatch_lowers_unconditional_branch_with_divergent_bir_label_ids() {
+  auto prepared = prepared_with_unconditional_branch_divergent_bir_label_ids();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      !diagnostics.empty()) {
+    return fail("expected unconditional branch to canonicalize retained BIR target labels");
+  }
+  if (block.successors.size() != 1 ||
+      block.successors.front().target_label != function_cf.blocks[1].block_label) {
+    return fail("expected canonicalized unconditional branch to record prepared successor label");
+  }
+  const auto* branch =
+      std::get_if<aarch64_codegen::BranchInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (branch == nullptr || branch->target.block_label != function_cf.blocks[1].block_label) {
+    return fail("expected canonicalized unconditional branch payload to use prepared target");
   }
   return 0;
 }
@@ -508,6 +680,52 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   return 0;
 }
 
+int direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids() {
+  auto prepared = prepared_with_loop_header_fused_compare_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 7);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1 ||
+      !diagnostics.empty()) {
+    return fail("expected loop-header compare branch to canonicalize retained BIR targets");
+  }
+  if (block.successors.size() != 2 ||
+      block.successors[0].target_label != block_cf.true_label ||
+      block.successors[1].target_label != block_cf.false_label) {
+    return fail("expected loop-header compare branch to record prepared true/false successors");
+  }
+
+  const auto& instruction = block.instructions.front();
+  if (instruction.target.opcode != aarch64_codegen::MachineOpcode::CompareBranch ||
+      instruction.target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected) {
+    return fail("expected loop-header terminator to select a fused compare branch");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(instruction.target);
+  if (!printed.ok || printed.instruction_lines.size() != 3 ||
+      printed.instruction_lines[0] != "cmp w13, #0" ||
+      printed.instruction_lines[1] !=
+          "b.ne .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.true_label) ||
+      printed.instruction_lines[2] !=
+          "b .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.false_label)) {
+    return fail("expected loop-header fused compare branch to print cmp plus exits");
+  }
+  return 0;
+}
+
 int module_build_keeps_branch_node_without_restoring_legacy_return_nodes() {
   auto prepared = prepared_with_unconditional_branch();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -573,6 +791,11 @@ int main() {
     return status;
   }
   if (const int status =
+          direct_dispatch_lowers_unconditional_branch_with_divergent_bir_label_ids();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
           module_build_keeps_branch_node_without_restoring_legacy_return_nodes();
       status != 0) {
     return status;
@@ -584,6 +807,11 @@ int main() {
   }
   if (const int status =
           direct_dispatch_lowers_fusable_compare_branch_to_selected_node();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids();
       status != 0) {
     return status;
   }
