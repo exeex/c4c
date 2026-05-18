@@ -3,11 +3,14 @@
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 
 #include <iostream>
+#include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 namespace {
 
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
@@ -1303,6 +1306,39 @@ int address_materialization_records_preserve_prepared_carrier_facts() {
   return 0;
 }
 
+int address_materialization_prefers_explicit_register_name_over_placement() {
+  auto fixture = make_address_fixture();
+  fixture.locations.value_homes.front().register_name = std::string{"x20"};
+  fixture.storage.values.front().register_name = std::string{"x20"};
+  fixture.storage.values.front().occupied_register_names = {"x20"};
+  fixture.storage.values.front().register_placement = prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+
+  const auto direct =
+      aarch64_codegen::make_prepared_address_materialization_instruction_record(
+          fixture.names,
+          fixture.locations,
+          fixture.storage,
+          fixture.addressing,
+          fixture.block_label,
+          0);
+  if (!direct.record.has_value() ||
+      direct.error != aarch64_codegen::PreparedAddressMaterializationRecordError::None ||
+      !direct.record->result_register.has_value()) {
+    return fail("expected explicit-register address materialization to select");
+  }
+  if (direct.record->result_register->reg != aarch64_abi::x_register(20) ||
+      direct.record->result_register->occupied_registers != std::vector<std::string_view>{"x20"}) {
+    return fail("expected address materialization to honor explicit x20 register name");
+  }
+
+  return 0;
+}
+
 int address_materialization_policy_and_identity_fail_closed() {
   auto fixture = make_address_fixture();
   fixture.addressing.address_materializations[1].address_materialization_policy =
@@ -1515,6 +1551,10 @@ int main() {
     return status;
   }
   if (const int status = address_materialization_records_preserve_prepared_carrier_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = address_materialization_prefers_explicit_register_name_over_placement();
       status != 0) {
     return status;
   }

@@ -241,16 +241,15 @@ std::optional<RegisterOperand> make_prepared_register_operand(
   }
   const auto prepared_class = register_class_from_bank(storage.bank);
   abi::PreparedRegisterConversionResult converted;
-  if (storage.register_placement.has_value()) {
+  if (home.register_name.has_value() && storage.register_name.has_value() &&
+      *home.register_name == *storage.register_name) {
+    converted = abi::convert_prepared_register(
+        *storage.register_name, storage.bank, prepared_class, expected_view);
+  } else if (storage.register_placement.has_value()) {
     converted = abi::convert_prepared_register(
         *storage.register_placement, prepared_class, expected_view);
   } else {
-    if (!home.register_name.has_value() || !storage.register_name.has_value() ||
-        *home.register_name != *storage.register_name) {
-      return std::nullopt;
-    }
-    converted = abi::convert_prepared_register(
-        *storage.register_name, storage.bank, prepared_class, expected_view);
+    return std::nullopt;
   }
   if (!converted.has_value()) {
     return std::nullopt;

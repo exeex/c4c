@@ -2211,6 +2211,7 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
       .size_bytes = 4,
       .align_bytes = 4,
   });
+  const c4c::LinkNameId indirect_target_id = module.names.link_names.intern("callee.fn");
 
   bir::Function function;
   function.name = "stack_layout_link_name_authoritative_global_access_activation";
@@ -2262,6 +2263,12 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
               .base_label_id = block_label_id(module, "target"),
           },
   });
+  entry.insts.push_back(bir::CallInst{
+      .callee_value = bir::Value::named_symbol_pointer("@callee.fn", indirect_target_id),
+      .return_type = bir::TypeKind::Void,
+      .calling_convention = bir::CallingConv::C,
+      .is_indirect = true,
+  });
   entry.terminator = bir::ReturnTerminator{
       .value = bir::Value::named(bir::TypeKind::I32, "id.loaded"),
   };
@@ -2273,6 +2280,17 @@ prepare::PreparedBirModule prepare_link_name_authoritative_global_access_module(
   target.terminator = bir::ReturnTerminator{};
   function.blocks.push_back(std::move(target));
   module.functions.push_back(std::move(function));
+
+  bir::Function indirect_target;
+  indirect_target.name = "callee.fn";
+  indirect_target.link_name_id = indirect_target_id;
+  indirect_target.return_type = bir::TypeKind::Void;
+  indirect_target.blocks.push_back(bir::Block{
+      .label = "callee.entry",
+      .terminator = bir::ReturnTerminator{},
+      .label_id = block_label_id(module, "callee.entry"),
+  });
+  module.functions.push_back(std::move(indirect_target));
 
   prepare::PreparedBirModule prepared;
   prepared.module = std::move(module);
@@ -3788,9 +3806,9 @@ int check_link_name_authoritative_global_access_activation(
     return fail("expected raw-only compatibility global store to resolve by spelling");
   }
 
-  if (function_addressing->address_materializations.size() != 4) {
+  if (function_addressing->address_materializations.size() != 5) {
     return fail(
-        "expected link-name fixture to publish global, GOT, and label address materializations");
+        "expected link-name fixture to publish global, GOT, label, and indirect-callee address materializations");
   }
   const auto* direct_global =
       prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 3);
@@ -3872,6 +3890,25 @@ int check_link_name_authoritative_global_access_activation(
       label_address->is_thread_local ||
       label_address->has_tls_address_space) {
     return fail("expected label materialization to preserve target label and address facts");
+  }
+  const auto* indirect_callee =
+      prepare::find_prepared_address_materialization(*function_addressing, entry_block_label_id, 7);
+  if (indirect_callee == nullptr) {
+    return fail("expected prepared addressing to record indirect callee address materialization");
+  }
+  if (indirect_callee->kind != prepare::PreparedAddressMaterializationKind::DirectGlobal ||
+      !indirect_callee->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *indirect_callee->result_value_name) !=
+          "@callee.fn" ||
+      !indirect_callee->symbol_name.has_value() ||
+      prepare::prepared_link_name(prepared.names, *indirect_callee->symbol_name) !=
+          "callee.fn" ||
+      indirect_callee->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::Direct ||
+      indirect_callee->address_space != bir::AddressSpace::Default ||
+      indirect_callee->is_thread_local ||
+      indirect_callee->has_tls_address_space) {
+    return fail("expected indirect callee materialization to preserve function symbol identity");
   }
 
   return 0;

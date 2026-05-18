@@ -1114,6 +1114,18 @@ void append_address_materializations(PreparedNameTables& names,
           append_direct_global_address_materialization(
               names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, *call->result);
         }
+        if (call->is_indirect && call->callee_value.has_value()) {
+          append_direct_global_address_materialization(
+              names,
+              function_addressing,
+              notes,
+              module,
+              target_profile,
+              function_name_id,
+              block_label_id,
+              inst_index,
+              *call->callee_value);
+        }
         for (const auto& argument : call->args) {
           append_call_argument_address_materialization(names,
                                                        function_addressing,
