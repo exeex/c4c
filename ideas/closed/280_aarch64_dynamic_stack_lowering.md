@@ -1,7 +1,8 @@
 # AArch64 Dynamic Stack Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -52,6 +53,23 @@ and restore semantics.
 - Any remaining unsupported dynamic-stack form fails before machine output with
   a specific owner-layer diagnostic.
 - `[RUNTIME_UNAVAILABLE]` is not counted as pass evidence.
+
+## Closure Notes
+
+Closed after Step 6 completion review. Focused backend proof is green,
+`00207.c` advanced beyond the old AArch64 dynamic-stack unsupported diagnostic
+to `[RUNTIME_UNAVAILABLE]`, and generated/proof artifacts contain no
+`llvm.stacksave`, `llvm.dynamic_alloca.*`, `llvm.stackrestore`, or old
+dynamic-stack unsupported diagnostics.
+
+The broader AArch64 backend scan selected 220 tests and reported 190
+`[RUNTIME_UNAVAILABLE]`, 30 `[FRONTEND_FAIL]`, and 0 `[BACKEND_FAIL]`. Runtime
+unavailability remains out of scope for this idea and is not counted as pass
+evidence.
+
+Close-time regression guard passed on matching backend scope:
+`test_before.log` and `test_after.log` both report 139 passed, 0 failed, 139
+total, with zero new failures.
 
 ## Reviewer Reject Signals
 
