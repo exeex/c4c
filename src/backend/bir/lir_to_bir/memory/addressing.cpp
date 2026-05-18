@@ -1044,6 +1044,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     if (resolved_address.has_value()) {
       auto linked_address = *resolved_address;
       linked_address.link_name_id = global_it->second.link_name_id;
+      if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+          linked_address.byte_offset == 0) {
+        value_aliases[gep.result.str()] =
+            bir::Value::named_symbol_pointer("@" + linked_address.global_name,
+                                             linked_address.link_name_id);
+      }
       global_pointer_slots[gep.result.str()] = std::move(linked_address);
       return true;
     }
