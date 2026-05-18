@@ -3,25 +3,22 @@
 Status: Active
 Source Idea Path: ideas/open/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Simple Runtime Probes
+Current Step ID: 5
+Current Step Title: Reclassify Timeout Boundary
 
 # Current Packet
 
 ## Just Finished
 
-Completed the follow-up for plan.md Step 3, "Repair LR Preservation For
-Non-Leaf Functions", covering and repairing the combined non-leaf plus
-saved-register frame shape that still left `00121.c` with `bl f`, `bl g`, and
-a bare `ret`.
+Completed plan.md Step 4, "Prove Simple Runtime Probes", using the targeted
+runtime probe evidence after the Step 3 LR preservation repair. The old
+link-register timeout owner is gone from the clean probe set:
 
-Extended the focused backend coverage so target-instruction, machine-printer,
-and return-lowering tests assert LR preservation still works when a frame also
-carries a prepared saved `x19` slot. Extended the repair so AArch64 frame
-boundary insertion no longer suppresses LR frames just because prepared
-saved-callee registers exist, computes the combined frame extent from prepared
-saved-register slots plus the LR save slot, and prints saved-register
-`str`/`ldr` lines when complete slot facts are present.
+- `00100.c` passed.
+- `00121.c` passed.
+- `00116.c` no longer times out and no longer has the LR-clobber shape, but
+  fails with `RUNTIME_NONZERO exit=1`; treat that as a different semantic owner
+  for follow-on work, not as Step 4 LR-proof failure.
 
 Regenerated runtime probe assembly now shows `00121.c` `main` with a real LR
 frame around both calls:
@@ -31,10 +28,11 @@ shape is gone.
 
 ## Suggested Next
 
-Execute plan.md Step 4 follow-up focused on the remaining non-LR owner:
-`00116.c` now has an LR frame and exits nonzero (`RUNTIME_NONZERO exit=1`).
-Investigate argument/value return behavior for `f(0)` without changing
-c-testsuite contracts or expanding back into timeout handling.
+Execute plan.md Step 5 by reclassifying the original 23-case timeout bucket
+after LR preservation. Separate cases fixed by LR preservation from remaining
+timeouts or non-timeout failures, and record follow-on semantic owners such as
+the `00116.c` `RUNTIME_NONZERO exit=1` argument/value behavior outside this LR
+route instead of implementing that behavior here.
 
 ## Watchouts
 
