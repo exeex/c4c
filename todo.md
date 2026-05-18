@@ -3,45 +3,18 @@
 Status: Active
 Source Idea Path: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Rehydrate Inventory Context
+Current Step ID: 2
+Current Step Title: Refresh Safe AArch64 Backend Scan
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 1 inventory rehydration without running a broad scan.
+Completed Step 2 by refreshing the AArch64 backend c-testsuite scan with an
+explicit timeout. No implementation, tests, lifecycle source files, or root
+proof logs were changed.
 
-Current source context:
-
-- Active inventory source is `ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md`.
-- Recent closed AArch64 owners `285` through `291` were inspected and should
-  not be reopened without contrary evidence:
-  `285` non-leaf link-register preservation, `286` scalar call value
-  semantics, `287` string/global address direct external-call lowering, `288`
-  stack-frame/SP alignment, `289` function-pointer indirect-call values, `290`
-  scalar parameter/ALU authority, and `291` call-argument register authority.
-
-Scan artifact decision:
-
-- `/tmp/c4c_aarch64_backend_scan_212.log` exists and is timestamped
-  `2026-05-18 14:39 UTC`.
-- `/tmp/c4c_aarch64_backend_scan_212.classified` exists and is timestamped
-  `2026-05-18 14:40 UTC`.
-- The classified file reports 212 cases with 38 `PASS`, 49 `FRONTEND_FAIL`,
-  101 `RUNTIME_NONZERO`, 23 `RUNTIME_MISMATCH`, and 1 `TIMEOUT`.
-- That scan is stale for current ownership because it still marks closed-owner
-  representatives as failing, including `src/00087.c`, `src/00089.c`,
-  `src/00124.c`, and `src/00210.c`.
-- No newer broad AArch64 scan artifact was found under `/tmp`; the latest scan
-  pair is trusted only as historical inventory context, not as the current
-  split source.
-
-## Suggested Next
-
-Run Step 2 to refresh the AArch64 backend inventory with an explicit per-test
-timeout and stale generated-runtime process check. Use this exact timeout-safe
-command shape, writing outside root proof logs:
+Refresh command:
 
 ```bash
 pgrep -af '/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' > /tmp/c4c_aarch64_backend_scan_212_refresh.pre_pgrep || true
@@ -49,8 +22,63 @@ pgrep -af '/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' > /t
 pgrep -af '/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' > /tmp/c4c_aarch64_backend_scan_212_refresh.post_pgrep || true
 ```
 
-If either pgrep file is nonempty, treat it as stale generated-runtime process
-evidence to resolve before trusting follow-on scans.
+Artifacts:
+
+- `/tmp/c4c_aarch64_backend_scan_212_refresh.log`
+- `/tmp/c4c_aarch64_backend_scan_212_refresh.classified`
+- `/tmp/c4c_aarch64_backend_scan_212_refresh.pre_pgrep`
+- `/tmp/c4c_aarch64_backend_scan_212_refresh.post_pgrep`
+- `/tmp/c4c_aarch64_backend_scan_212_refresh.filtered_pgrep`
+
+Refreshed counts from the classified artifact:
+
+- `PASS`: 82
+- `FRONTEND_FAIL`: 49
+- `BACKEND_FAIL`: 0
+- `RUNTIME_NONZERO`: 53
+- `RUNTIME_MISMATCH`: 25
+- `TIMEOUT`: 3
+- Total: 212
+
+Runtime nonzero signal/exit families:
+
+- `Segmentation fault`: 7
+- exit `1`: 38
+- exit `2`: 3
+- exit `64`: 1
+- exit `96`: 1
+- exit `183`: 1
+- exit `221`: 1
+- exit `230`: 1
+
+Generated-runtime process check:
+
+- The raw pre/post `pgrep -af` files each contain a self-match for the shell
+  command line because the search path appears in the command text.
+- A filtered process check for command lines beginning with
+  `/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/` wrote
+  `/tmp/c4c_aarch64_backend_scan_212_refresh.filtered_pgrep` and found 0
+  generated-runtime processes.
+- No stale generated-runtime process is currently known.
+
+## Suggested Next
+
+Run Step 3 sampling against the refreshed classification before selecting or
+splitting a next owner. Do not reopen a closed owner from counts alone; sample
+the current generated BIR/prepared/MIR/assembly/runtime shape first.
+
+Notable Step 3 inputs from the refreshed scan:
+
+- Closed-owner representatives now passing include `src/00004.c`,
+  `src/00005.c`, `src/00013.c`, `src/00087.c`, `src/00125.c`,
+  `src/00131.c`, `src/00154.c`, and `src/00210.c`.
+- `src/00089.c` is currently `RUNTIME_NONZERO` with `Segmentation fault` and
+  `src/00124.c` is currently `RUNTIME_NONZERO` with exit `96`; these are
+  contrary to their closed-owner summaries and require Step 3 evidence before
+  deciding whether they are scan/build-state artifacts, fresh regressions, or
+  separate current owners.
+- Timeout cases are `src/00132.c`, `src/00173.c`, and `src/00220.c`; keep them
+  quarantined unless Step 3 explicitly chooses a hang-safe route.
 
 ## Watchouts
 
@@ -65,12 +93,14 @@ evidence to resolve before trusting follow-on scans.
   semantic owner.
 - Do not reopen closed AArch64 owners unless new proof contradicts their
   closure.
-- The current known-stale scan still contains pre-closure failures from owners
-  `289`, `290`, and `291`; do not split new work from those entries until a
-  refreshed scan confirms a current failure shape.
+- The refreshed scan is suitable for Step 3 sampling, but it is not itself a
+  semantic owner decision.
+- Treat `src/00089.c` and `src/00124.c` as high-priority consistency checks
+  because they conflict with recent closure summaries.
 
 ## Proof
 
-No build proof was required and no broad scan was run in this packet. Evidence
-came from inspecting source idea `284`, closed ideas `285` through `291`, and
-the existing `/tmp/c4c_aarch64_backend_scan_212.*` artifacts.
+The delegated timeout-safe broad scan was run and captured in
+`/tmp/c4c_aarch64_backend_scan_212_refresh.log`. Classification was written to
+`/tmp/c4c_aarch64_backend_scan_212_refresh.classified`. No root proof logs were
+used.
