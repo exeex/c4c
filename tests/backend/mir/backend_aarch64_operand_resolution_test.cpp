@@ -11,6 +11,7 @@
 
 namespace {
 
+namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace mir = c4c::backend::mir;
@@ -86,6 +87,9 @@ int storage_plan_register_precedes_value_home() {
   if (reg == nullptr || !resolved->register_reference.has_value()) {
     return fail("expected resolved storage-plan operand to be a typed register");
   }
+  if (*resolved->register_reference != aarch64_abi::x_register(13)) {
+    return fail("expected storage-plan caller-saved slot 0 to resolve to x13");
+  }
   if (!diagnostics.empty()) {
     return fail("expected storage-plan register resolution to be diagnostic-free");
   }
@@ -118,7 +122,7 @@ int regalloc_assignment_precedes_storage_plan() {
           .register_class = prepare::PreparedRegisterClass::General,
           .assigned_register = prepare::PreparedPhysicalRegisterAssignment{
               .reg_class = prepare::PreparedRegisterClass::General,
-              .placement = caller_saved_gpr(1),
+              .placement = caller_saved_gpr(0),
           },
       }},
   });
@@ -135,6 +139,10 @@ int regalloc_assignment_precedes_storage_plan() {
   }
   if (std::get_if<mir::PhysicalRegister>(&resolved->operand.payload) == nullptr) {
     return fail("expected regalloc assignment to produce a typed register operand");
+  }
+  if (!resolved->register_reference.has_value() ||
+      *resolved->register_reference != aarch64_abi::x_register(13)) {
+    return fail("expected regalloc caller-saved slot 0 to resolve to x13");
   }
   return diagnostics.empty() ? 0 : fail("expected regalloc resolution to be diagnostic-free");
 }

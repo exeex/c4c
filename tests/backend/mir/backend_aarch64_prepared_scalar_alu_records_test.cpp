@@ -334,15 +334,15 @@ int supported_floating_scalar_alu_records_preserve_fpr_facts() {
 
 int prepared_scalar_alu_registers_prefer_storage_register_placement() {
   auto fixture = make_i64_fixture();
-  fixture.storage.values[0].register_name = std::nullopt;
-  fixture.storage.values[0].occupied_register_names.clear();
-  fixture.storage.values[0].register_placement = caller_saved_gpr(3);
-  fixture.storage.values[1].register_name = std::string{"mismatched-rhs-spelling"};
-  fixture.storage.values[1].occupied_register_names = {"mismatched-rhs-spelling"};
-  fixture.storage.values[1].register_placement = caller_saved_gpr(4);
-  fixture.storage.values[2].register_name = std::nullopt;
-  fixture.storage.values[2].occupied_register_names.clear();
-  fixture.storage.values[2].register_placement = caller_saved_gpr(5);
+  fixture.storage.values[0].register_name = std::string{"mismatched-lhs-spelling"};
+  fixture.storage.values[0].occupied_register_names = {"mismatched-lhs-spelling"};
+  fixture.storage.values[0].register_placement = caller_saved_gpr(0);
+  fixture.storage.values[1].register_name = std::string{"x2"};
+  fixture.storage.values[1].occupied_register_names = {"x2"};
+  fixture.storage.values[1].register_placement = std::nullopt;
+  fixture.storage.values[2].register_name = std::string{"x0"};
+  fixture.storage.values[2].occupied_register_names = {"x0"};
+  fixture.storage.values[2].register_placement = std::nullopt;
 
   const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
       fixture.names,
@@ -358,17 +358,17 @@ int prepared_scalar_alu_registers_prefer_storage_register_placement() {
   const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
   const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
   if (!alu.result_register.has_value() || lhs == nullptr || rhs == nullptr ||
-      alu.result_register->reg != aarch64_abi::x_register(5) ||
-      lhs->reg != aarch64_abi::x_register(3) ||
-      rhs->reg != aarch64_abi::x_register(4) ||
+      alu.result_register->reg != aarch64_abi::x_register(0) ||
+      lhs->reg != aarch64_abi::x_register(13) ||
+      rhs->reg != aarch64_abi::x_register(2) ||
       alu.result_register->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       lhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       rhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {
     return fail("expected ALU result and operands to use storage placement registers");
   }
-  if (rhs->occupied_register_references.size() != 1 ||
-      rhs->occupied_register_references.front() != aarch64_abi::x_register(4) ||
-      rhs->occupied_registers.size() != 1 || rhs->occupied_registers.front() != "x4") {
+  if (lhs->occupied_register_references.size() != 1 ||
+      lhs->occupied_register_references.front() != aarch64_abi::x_register(13) ||
+      lhs->occupied_registers.size() != 1 || lhs->occupied_registers.front() != "x13") {
     return fail("expected occupied register display to follow typed placement conversion");
   }
   return 0;
@@ -562,7 +562,7 @@ prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_ope
                   .bank = prepare::PreparedRegisterBank::Gpr,
                   .contiguous_width = 1,
                   .register_name = std::nullopt,
-                  .register_placement = caller_saved_gpr(1),
+                  .register_placement = caller_saved_gpr(0),
               },
               prepare::PreparedStoragePlanValue{
                   .value_id = prepare::PreparedValueId{11},
@@ -570,9 +570,8 @@ prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_ope
                   .encoding = prepare::PreparedStorageEncodingKind::Register,
                   .bank = prepare::PreparedRegisterBank::Gpr,
                   .contiguous_width = 1,
-                  .register_name = std::string{"x19"},
-                  .occupied_register_names = {"x19"},
-                  .register_placement = caller_saved_gpr(2),
+                  .register_name = std::string{"x2"},
+                  .occupied_register_names = {"x2"},
               },
               prepare::PreparedStoragePlanValue{
                   .value_id = prepare::PreparedValueId{12},
@@ -580,8 +579,8 @@ prepare::PreparedBirModule prepared_return_scalar_module_with_placement_only_ope
                   .encoding = prepare::PreparedStorageEncodingKind::Register,
                   .bank = prepare::PreparedRegisterBank::Gpr,
                   .contiguous_width = 1,
-                  .register_name = std::string{"mismatched-result-spelling"},
-                  .register_placement = caller_saved_gpr(0),
+                  .register_name = std::string{"x0"},
+                  .occupied_register_names = {"x0"},
               },
           },
   });
@@ -619,7 +618,7 @@ int return_selected_scalar_operands_prefer_storage_register_placement() {
   const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(
       &scalar.scalar_alu->rhs.payload);
   if (lhs == nullptr || rhs == nullptr ||
-      lhs->reg != aarch64_abi::x_register(1) ||
+      lhs->reg != aarch64_abi::x_register(13) ||
       rhs->reg != aarch64_abi::x_register(2) ||
       lhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       rhs->role != aarch64_codegen::RegisterOperandRole::StoragePlan) {

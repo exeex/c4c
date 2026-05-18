@@ -233,10 +233,10 @@ int prepared_scalar_cast_registers_prefer_storage_register_placement() {
   auto fixture = make_fixture(bir::TypeKind::I32, bir::TypeKind::I64);
   fixture.storage.values[0].register_name = std::string{"mismatched-source-spelling"};
   fixture.storage.values[0].occupied_register_names = {"mismatched-source-spelling"};
-  fixture.storage.values[0].register_placement = caller_saved_gpr(3);
-  fixture.storage.values[1].register_name = std::nullopt;
-  fixture.storage.values[1].occupied_register_names.clear();
-  fixture.storage.values[1].register_placement = caller_saved_gpr(4);
+  fixture.storage.values[0].register_placement = caller_saved_gpr(0);
+  fixture.storage.values[1].register_name = std::string{"x0"};
+  fixture.storage.values[1].occupied_register_names = {"x0"};
+  fixture.storage.values[1].register_placement = std::nullopt;
 
   const auto result = aarch64_codegen::make_prepared_scalar_cast_record(
       fixture.names,
@@ -250,13 +250,13 @@ int prepared_scalar_cast_registers_prefer_storage_register_placement() {
 
   const auto* source =
       std::get_if<aarch64_codegen::RegisterOperand>(&result.record->source.payload);
-  if (source == nullptr || source->reg != aarch64_abi::w_register(3) ||
+  if (source == nullptr || source->reg != aarch64_abi::w_register(13) ||
       source->role != aarch64_codegen::RegisterOperandRole::StoragePlan ||
       source->expected_view != aarch64_abi::RegisterView::W) {
     return fail("expected cast source to use storage placement register");
   }
   if (!result.record->result_register.has_value() ||
-      result.record->result_register->reg != aarch64_abi::x_register(4) ||
+      result.record->result_register->reg != aarch64_abi::x_register(0) ||
       result.record->result_register->role !=
           aarch64_codegen::RegisterOperandRole::StoragePlan ||
       result.record->result_register->expected_view != aarch64_abi::RegisterView::X) {
