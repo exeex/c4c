@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite Failure Family Inventory
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -201,6 +202,32 @@ Durable inventory findings to preserve:
   initializer work, and closed-owner overlap. The active lifecycle state
   switched to
   `ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`.
+- After pointer-derived address/lvalue lowering authority completed,
+  `ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`
+  moved to
+  `ideas/closed/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`.
+  The starter representatives `src/00032.c`, `src/00130.c`, `src/00180.c`,
+  and `src/00217.c` passed. Nearby same-family `src/00019.c` was repaired
+  under that owner. `src/00137.c` and `src/00138.c` were inspected and
+  separated as return/control-value publication failures rather than
+  pointer-derived address/lvalue failures, and the accepted full-suite
+  baseline at commit `5b37c5906` was clean at 3159/3159. No remaining
+  actionable AArch64 backend family is known from the current evidence.
+
+## Closure Note
+
+Closed after post-294 reconciliation. The inventory fulfilled its umbrella
+purpose by repeatedly classifying the AArch64 backend c-testsuite failures,
+splitting focused semantic owners 285 through 294, and switching lifecycle
+state to those focused owners before implementation. Owner 294 is now closed,
+`00019` was handled as same-family pointer/address work, and the formerly
+separated `00137`/`00138` boundary does not require a durable follow-up idea
+because the accepted full-suite baseline at `5b37c5906` is clean 3159/3159.
+
+Regression guard passed on the canonical Step 4 before/after logs, improving
+from 4/7 to 5/7 with `c_testsuite_aarch64_backend_src_00019_c` resolved and no
+new failures. No progress was claimed through expected-output, runner,
+allowlist, timeout, unsupported-classification, or CTest contract changes.
 
 ## Reviewer Reject Signals
 
