@@ -1543,7 +1543,7 @@ prepare::PreparedBirModule prepared_with_direct_variadic_call_symbol_address_arg
                   .function_name = function_name,
                   .value_name = str_value_name,
                   .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"x13"},
+                  .register_name = std::string{"x21"},
               },
           },
       .move_bundles =
@@ -1604,12 +1604,18 @@ prepare::PreparedBirModule prepared_with_direct_variadic_call_symbol_address_arg
                       .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
                       .source_value_id = prepare::PreparedValueId{1},
                       .source_symbol_name = std::string{"@.str0"},
-                      .source_register_name = std::string{"x13"},
+                      .source_register_name = std::string{"x21"},
                       .source_register_bank = prepare::PreparedRegisterBank::Gpr,
                       .destination_register_name = std::string{"x0"},
                       .destination_contiguous_width = 1,
                       .destination_occupied_register_names = {"x0"},
                       .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_register_placement = prepare::PreparedRegisterPlacement{
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                          .slot_index = 1,
+                          .contiguous_width = 1,
+                      },
                   },
               },
       }},
@@ -7890,10 +7896,15 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
       move->move.destination_kind !=
           prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
       move->move.destination_register_name != std::optional<std::string>{"x0"} ||
+      !move->source_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::x_register(21) ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0) ||
       move->source_bundle != &function_context.value_locations->move_bundles.front() ||
       move->source_move !=
           &function_context.value_locations->move_bundles.front().moves.front()) {
-    return fail("expected symbol-address call argument to reach call-boundary move provenance");
+    return fail(
+        "expected symbol-address call argument to use authoritative prepared x21 -> x0 move");
   }
   if (call == nullptr || !call->direct_callee.has_value() ||
       call->direct_callee_label != "printf" ||
@@ -7904,7 +7915,7 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
       call->prepared_arguments.front().source_symbol_name !=
           std::optional<std::string>{"@.str0"} ||
       call->prepared_arguments.front().source_register_name !=
-          std::optional<std::string>{"x13"} ||
+          std::optional<std::string>{"x21"} ||
       call->prepared_arguments.front().destination_register_name !=
           std::optional<std::string>{"x0"}) {
     return fail("expected direct variadic call to preserve symbol-address argument facts");
@@ -7919,6 +7930,11 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
   }
   if (printed.assembly.find("bl printf") == std::string::npos) {
     return fail("expected printable symbol-address call route to keep the direct printf call");
+  }
+  if (printed.assembly.find("mov x0, x21") == std::string::npos ||
+      printed.assembly.find("mov x0, x20") != std::string::npos) {
+    return fail(
+        "expected printed symbol-address call route to move authoritative x21 into x0");
   }
   return 0;
 }

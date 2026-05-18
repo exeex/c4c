@@ -233,11 +233,11 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                              register_class_from_bank(*bank)}
                        : std::nullopt;
   abi::PreparedRegisterConversionResult converted;
-  if (placement.has_value()) {
-    converted = abi::convert_prepared_register(*placement, prepared_class, expected_view);
-  } else if (register_name.has_value()) {
+  if (register_name.has_value()) {
     converted = abi::convert_prepared_register(
         *register_name, bank, prepared_class, expected_view);
+  } else if (placement.has_value()) {
+    converted = abi::convert_prepared_register(*placement, prepared_class, expected_view);
   } else {
     return std::nullopt;
   }

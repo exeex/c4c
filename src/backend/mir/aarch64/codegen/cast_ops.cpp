@@ -267,6 +267,31 @@ namespace {
   };
 }
 
+[[nodiscard]] bool register_spelling_matches_storage_view(
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedStoragePlanValue& storage,
+    bir::TypeKind type) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      storage.encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return false;
+  }
+  if (storage.register_placement.has_value()) {
+    return true;
+  }
+  if (!home.register_name.has_value() || !storage.register_name.has_value() ||
+      *home.register_name != *storage.register_name) {
+    return false;
+  }
+  const auto expected_view = scalar_storage_register_view(type);
+  if (!expected_view.has_value()) {
+    return false;
+  }
+  const auto prepared_class = register_class_from_bank(storage.bank);
+  const auto converted = abi::convert_prepared_register(
+      *storage.register_name, storage.bank, prepared_class, expected_view);
+  return converted.has_value();
+}
+
 [[nodiscard]] PreparedScalarCastRecordResult scalar_cast_record_error(
     PreparedScalarCastRecordError error) {
   return PreparedScalarCastRecordResult{.record = std::nullopt, .error = error};
@@ -475,6 +500,18 @@ PreparedScalarCastRecordResult make_prepared_scalar_cast_record(
           make_prepared_scalar_operand(names, value_locations, storage_plan, cast.operand, source);
       error != PreparedScalarAluRecordError::None) {
     return scalar_cast_record_error(scalar_cast_operand_error_from_alu_error(error));
+  }
+  if (cast.operand.kind == bir::Value::Kind::Named) {
+    const auto* source_home = find_named_value_home(names, value_locations, cast.operand);
+    const auto* source_storage =
+        source_home != nullptr ? find_storage_plan_value(storage_plan, source_home->value_id)
+                               : nullptr;
+    if (source_home != nullptr && source_storage != nullptr &&
+        source_storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+        !register_spelling_matches_storage_view(*source_home, *source_storage,
+                                                cast.operand.type)) {
+      return scalar_cast_record_error(PreparedScalarCastRecordError::RegisterConversionFailed);
+    }
   }
   const auto* source_register = std::get_if<RegisterOperand>(&source.payload);
   if ((is_conversion_cast || supported_float_width_conversion) &&
