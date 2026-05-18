@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite Undefined Temporary Labels
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -51,6 +52,21 @@ and from call-boundary move lowering.
 - The AArch64 c-testsuite backend subset shows the targeted failure family is
   reduced or reclassified to the next truthful owner layer without counting
   `[RUNTIME_UNAVAILABLE]` as pass evidence.
+
+## Completion Notes
+
+The active runbook completed through Step 6. Focused backend proof demonstrated
+the repaired label-definition path, and the broad `aarch64_backend` scan
+reported zero remaining undefined temporary `.LBB...` diagnostics.
+
+The representative cases from the source idea (`00005.c`, `00006.c`, `00040.c`,
+`00156.c`, and `00220.c`) moved past the undefined temporary-label blocker and
+now classify as `[RUNTIME_UNAVAILABLE]` when reached in this environment.
+Runtime-unavailable was not counted as pass evidence.
+
+The same broad scan exposed a separate backend-symbol family in `00207.c`
+involving undefined LLVM stack helpers. That work is tracked separately in
+`ideas/open/279_aarch64_c_testsuite_llvm_stack_helper_symbols.md`.
 
 ## Reviewer Reject Signals
 
