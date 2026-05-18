@@ -8,47 +8,48 @@ Current Step Title: Repair Local Operand Materialization
 
 ## Just Finished
 
-Step 2 test/contract alignment is complete for the AArch64 prepared
-caller-saved placement conversion change. The regressed backend contracts now
-align with the prealloc-owned caller-saved pool: `caller_saved#0` is the only
-current AArch64 prepared caller-saved slot and resolves to `x13`/`w13`; tests
-that prove placement authority over legacy register names now use that slot
-instead of synthetic slots 1+.
+Step 2 local-materialization repair is complete. AArch64 local stores now select
+immediate store records from authoritative prepared frame-slot address facts,
+unstructured local load/store instructions may use prepared size/offset facts,
+immediate store materialization uses the reserved MIR scratch pool (`w9`/`x9`)
+instead of indirect-call/linker scratch registers, and local loads feed the
+prepared destination register before scalar ALU emission.
 
 Changed files:
 
-- `tests/backend/mir/backend_aarch64_prepared_scalar_alu_records_test.cpp`
-- `tests/backend/mir/backend_aarch64_prepared_scalar_cast_records_test.cpp`
-- `tests/backend/mir/backend_aarch64_operand_resolution_test.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `tests/backend/mir/backend_aarch64_prepared_memory_operand_records_test.cpp`
 - `todo.md`
 - `test_after.log`
 
-The aligned backend subset passes, including the three regressed tests plus
-prepared conversion and return-register coverage. The AArch64 runtime smoke
-route remains at the next local store/load materialization owner layer.
-Generated `00003.c` assembly still has no local store/load for `x = 4`:
+Generated `00003.c` AArch64 now materializes the local `x = 4`, stores it to
+the prepared frame slot, reloads it into the prepared `%t0` home (`w13`), and
+then performs the subtraction:
 
 ```asm
 main:
+    mov w9, #4
+    str w9, [sp]
+    ldr w13, [sp]
     sub w0, w13, #4
     ret
 ```
 
-`00003.c` still fails at runtime with `[RUNTIME_NONZERO]` because `w13` remains
-uninitialized; this run observed `exit=124`. The exact nonzero value is not the
-owner signal. The stable signal is that the old incoming-`w0` placement bug is
-gone and the artifact still lacks `str`/`ldr` for the prepared
-`store_local`/`load_local`.
+Focused memory coverage proves unstructured prepared local immediate stores
+select without fabricating stored value homes and print through the reserved MIR
+scratch register (`w9`). The runtime smoke route for `00001.c`, `00002.c`, and
+`00003.c` passes.
 
 ## Suggested Next
 
-Execute the next packet against local memory assignment/reference
-materialization: make the prepared immediate `store_local %lv.x, i32 4` and
-frame-slot `load_local i32 %lv.x` produce real AArch64 storage traffic or an
-equivalent semantically owned value before ALU emission. Then rerun:
+Step 2 is acceptance-ready for supervisor review. A coherent follow-up packet
+would broaden AArch64 backend scan coverage after the local materialization,
+using the supervisor-selected broader route rather than adding more named smoke
+cases here.
 
 ```sh
-set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_register_conversion|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_operand_resolution|backend_aarch64_return_lowering)$' && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003)_c$'; } 2>&1 | tee test_after.log
+set -o pipefail; { cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend; } 2>&1 | tee test_after.log
 ```
 
 ## Watchouts
@@ -65,24 +66,23 @@ set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j -
 - Keep ABI classification helpers such as `caller_saved_gp_registers()` as ABI
   vocabulary; prepared structured placement conversion now has its own
   prealloc-aligned caller-saved mapping.
-- Do not treat `sub w0, w13, #4` as success: `w13` is still uninitialized until
-  local store/load materialization is repaired.
+- The immediate-store printer currently covers the selected 4-byte and 8-byte
+  integer store subset. Smaller local widths should remain fail-closed until
+  byte/halfword store mnemonics are modeled.
+- Do not borrow `x16`/`x17` for generic materialization; those remain
+  indirect-call/linker scratch registers. Use reserved MIR scratch (`x9`/`x10`)
+  for this class of printer materialization.
 
 ## Proof
 
 Ran the delegated proof:
 
 ```sh
-set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_register_conversion|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_operand_resolution|backend_aarch64_return_lowering)$' && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003)_c$'; } 2>&1 | tee test_after.log
+set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_register_vocabulary|backend_aarch64_prepared_register_conversion|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_operand_resolution|backend_aarch64_return_lowering|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract)$' && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003)_c$'; } 2>&1 | tee test_after.log
 ```
 
-Result: command exited `8`. `backend_aarch64_prepared_register_conversion` and
-`backend_aarch64_prepared_scalar_alu_records`,
-`backend_aarch64_prepared_scalar_cast_records`,
-`backend_aarch64_operand_resolution`, and `backend_aarch64_return_lowering`
-passed. `c_testsuite_aarch64_backend_src_00001_c` and
-`c_testsuite_aarch64_backend_src_00002_c` passed through the AArch64 backend
-runtime route. `c_testsuite_aarch64_backend_src_00003_c` remains past the old
-`sub w0, w0, #4` / `[RUNTIME_NONZERO] exit=253` owner layer and failed in this
-run with `[RUNTIME_NONZERO] exit=124` from the missing local store/load
-materialization layer. Proof log: `test_after.log`.
+Result: command exited `0`. All nine backend tests in the delegated subset
+passed. `c_testsuite_aarch64_backend_src_00001_c`,
+`c_testsuite_aarch64_backend_src_00002_c`, and
+`c_testsuite_aarch64_backend_src_00003_c` all passed through the AArch64
+backend runtime route. Proof log: `test_after.log`.

@@ -97,6 +97,18 @@ std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
   return std::nullopt;
 }
 
+std::optional<abi::RegisterReference> immediate_store_scratch_register(
+    const MemoryInstructionRecord& memory) {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  if (memory.address.size_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  if (memory.address.size_bytes == 8) {
+    return abi::x_register(scratch.index);
+  }
+  return std::nullopt;
+}
+
 std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::F32:
@@ -414,12 +426,27 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
                               "store node is missing stored value operand");
   }
   const auto* value = std::get_if<RegisterOperand>(&memory.value->payload);
-  if (memory.value->kind != OperandKind::Register || value == nullptr) {
-    return target_unsupported(bad_header(instruction) + "store value is not a register operand");
+  if (memory.value->kind == OperandKind::Register && value != nullptr) {
+    std::ostringstream out;
+    out << mnemonic << " " << register_name(*value) << ", " << address;
+    return target_printed({out.str()});
   }
-  std::ostringstream out;
-  out << mnemonic << " " << register_name(*value) << ", " << address;
-  return target_printed({out.str()});
+  const auto* immediate = std::get_if<ImmediateOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Immediate && immediate != nullptr) {
+    const auto scratch = immediate_store_scratch_register(memory);
+    if (!scratch.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "immediate store width is not printable");
+    }
+    const auto scratch_name = abi::register_name(*scratch);
+    std::ostringstream materialize;
+    materialize << "mov " << scratch_name << ", #" << immediate->signed_value;
+    std::ostringstream store;
+    store << mnemonic << " " << scratch_name << ", " << address;
+    return target_printed({materialize.str(), store.str()});
+  }
+  return target_unsupported(bad_header(instruction) +
+                            "store value is not a register or immediate operand");
 }
 
 mir::TargetInstructionPrintResult print_atomic_memory(

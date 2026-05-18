@@ -1,5 +1,6 @@
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
+#include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 
 #include <iostream>
 #include <utility>
@@ -191,6 +192,21 @@ PreparedMemoryFixture make_fixture() {
                           .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
                           .frame_slot_id = prepare::PreparedFrameSlotId{21},
                           .byte_offset = 12,
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = fixture.function_name,
+                  .block_label = fixture.block_label,
+                  .inst_index = 7,
+                  .address_space = bir::AddressSpace::Default,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{22},
+                          .byte_offset = 16,
                           .size_bytes = 4,
                           .align_bytes = 4,
                           .can_use_base_plus_offset = true,
@@ -618,6 +634,53 @@ int frame_slot_store_conversion_selects_structured_register_source() {
       aarch64_codegen::prepared_memory_operand_record_error_name(missing_storage.error) !=
           "missing_stored_storage") {
     return fail("expected missing stored-source storage to fail closed");
+  }
+  return 0;
+}
+
+int frame_slot_store_conversion_materializes_immediate_source() {
+  auto fixture = make_fixture();
+  const bir::StoreLocalInst store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = bir::Value::immediate_i32(4),
+      .byte_offset = 16,
+      .align_bytes = 4,
+  };
+
+  const auto selected = aarch64_codegen::make_prepared_store_memory_instruction_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      fixture.addressing,
+      fixture.block_label,
+      7,
+      store);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected frame-slot immediate store machine record to select");
+  }
+
+  const auto& store_record = *selected.record;
+  if (store_record.memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      store_record.address.base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      store_record.address.frame_slot_id != prepare::PreparedFrameSlotId{22} ||
+      store_record.address.size_bytes != 4 || !store_record.value.has_value() ||
+      store_record.value->kind != aarch64_codegen::OperandKind::Immediate ||
+      store_record.address.stored_value_id.has_value() ||
+      store_record.address.stored_value_name.has_value()) {
+    return fail("expected immediate store record to preserve address without fabricating value home");
+  }
+
+  const auto instruction = aarch64_codegen::make_memory_instruction(store_record);
+  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::Store) {
+    return fail("expected immediate store instruction to select");
+  }
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0] != "mov w9, #4" ||
+      printed.instruction_lines[1] != "str w9, [sp, #16]") {
+    return fail("expected immediate store to materialize through a scratch register before str");
   }
   return 0;
 }
@@ -1377,6 +1440,10 @@ int main() {
     return status;
   }
   if (const int status = frame_slot_store_conversion_selects_structured_register_source();
+      status != 0) {
+    return status;
+  }
+  if (const int status = frame_slot_store_conversion_materializes_immediate_source();
       status != 0) {
     return status;
   }

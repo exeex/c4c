@@ -152,7 +152,7 @@ PreparedMemoryOperandRecordError validate_unstructured_memory_instruction_facts(
     const MemoryOperand& memory) {
   if (static_cast<std::int64_t>(instruction_byte_offset) != memory.byte_offset ||
       (instruction_align_bytes != 0 && instruction_align_bytes != memory.align_bytes) ||
-      memory.size_bytes != 0 || memory.address_space != bir::AddressSpace::Default ||
+      memory.address_space != bir::AddressSpace::Default ||
       memory.is_volatile) {
     return PreparedMemoryOperandRecordError::AddressFactMismatch;
   }
@@ -601,6 +601,18 @@ MachineEffectResource prepared_value_def(
   };
 }
 
+bool is_immediate_store_value(const MemoryInstructionRecord& instruction) {
+  if (!instruction.value.has_value() ||
+      instruction.value->kind != OperandKind::Immediate) {
+    return false;
+  }
+  return std::get_if<ImmediateOperand>(&instruction.value->payload) != nullptr;
+}
+
+bool is_supported_immediate_store_width(const MemoryInstructionRecord& instruction) {
+  return instruction.address.size_bytes == 4 || instruction.address.size_bytes == 8;
+}
+
 std::vector<MachineEffectResource> memory_effects_from_operands(
     const std::vector<OperandRecord>& operands) {
   std::vector<MachineEffectResource> effects;
@@ -656,7 +668,20 @@ MachineNodeStatusRecord memory_selection_status(const MemoryInstructionRecord& i
     }
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
   }
-  if (!instruction.value.has_value() || !instruction.address.stored_value_id.has_value() ||
+  if (!instruction.value.has_value()) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "store node is missing stored value operand"};
+  }
+  if (is_immediate_store_value(instruction)) {
+    if (!is_supported_immediate_store_width(instruction)) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::DeferredUnsupported,
+                                     .diagnostic =
+                                         "immediate store width is outside the selected subset"};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (!instruction.address.stored_value_id.has_value() ||
       !instruction.address.stored_value_name.has_value()) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
@@ -1003,6 +1028,23 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
   }
   if (!operand.record->stored_value_id.has_value() ||
       !operand.record->stored_value_name.has_value()) {
+    if (stored_value.kind == bir::Value::Kind::Immediate) {
+      const auto immediate = make_scalar_immediate_operand(stored_value);
+      if (!immediate.has_value()) {
+        return memory_instruction_record_error(
+            PreparedMemoryOperandRecordError::UnsupportedStoredStorage);
+      }
+      return PreparedMemoryInstructionRecordResult{
+          .record =
+              MemoryInstructionRecord{
+                  .memory_kind = MemoryInstructionKind::Store,
+                  .address = *operand.record,
+                  .value = make_immediate_operand(*immediate),
+                  .value_type = stored_value.type,
+              },
+          .error = PreparedMemoryOperandRecordError::None,
+      };
+    }
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingStoredValueHome);
   }
