@@ -1,6 +1,6 @@
 # AArch64 Scalar Expression Control-Value Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Split From: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
@@ -79,6 +79,22 @@ branches, and scalar call arguments.
   authority primitive.
 - No progress is claimed through expectation, runner, allowlist, timeout, or
   unsupported-classification changes.
+
+## Closure Notes
+
+Closed on 2026-05-18 after the starter representatives `src/00009.c`,
+`src/00012.c`, `src/00056.c`, `src/00156.c`, `src/00161.c`, and
+`src/00211.c` all passed, broader timeout-protected AArch64 backend
+c-testsuite validation showed same-family scalar/control wins beyond the
+starters, and remaining failures were separated into pointer/aggregate,
+timeout, printer/admission, floating/conversion/string, and side-effect
+control buckets.
+
+The close gate used a matched full-suite regression guard with
+`test_before.log` normalized from the supervisor-accepted full-suite baseline
+and `test_after.log` regenerated from the current tree. Both logs reported
+3159/3159 passing tests, and the regression guard passed with non-decreasing
+pass count allowed for this lifecycle-only close.
 
 ## Reviewer Reject Signals
 
