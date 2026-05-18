@@ -220,6 +220,11 @@ Baseline review follow-up:
 
 - treat `test_baseline.new.log` as hook-produced candidate evidence, not an
   already accepted baseline
+- before accepting or rejecting a baseline candidate after runtime-heavy
+  external tests, check for leftover test/runtime processes with:
+  `ps -eo pid,ppid,pgid,pcpu,stat,etime,cmd --sort=-pcpu | rg 'ctest|cmake -D|/workspaces/c4c/build[^ ]*(/| )[A-Za-z0-9_.+-]*\\.bin|/workspaces/c4c/build[^ ]*/c4cll'`.
+  Kill stale test/runtime process groups before continuing so a hung generated
+  executable under `/workspaces/c4c/build*` cannot poison the next proof run
 - compare `test_baseline.new.log` to `test_baseline.log`
 - if the candidate is monotonic, accept it with
   `scripts/plan_review_state.py accept-baseline`
