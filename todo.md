@@ -3,33 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/287_aarch64_string_global_address_external_call_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Expand to Starter Stdio/Data Representatives
+Current Step ID: 4
+Current Step Title: Sample Related Mismatch Cases and Decide Closure
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 (`Expand to Starter Stdio/Data Representatives`) ran the selected
-starter subset for `src/00125.c`, `src/00131.c`, `src/00154.c`, `src/00161.c`,
-and `src/00211.c`.
+Step 4 (`Sample Related Mismatch Cases and Decide Closure`) ran the selected
+related stdio/data subset excluding the previously separated `00161` scalar
+local-state case and the timeout-sensitive `00132` overlap case.
 
-The address-materialization/direct-call repair generalized across the starter
-stdio/data representatives that exercise this owner: `00125`, `00131`,
-`00154`, and `00211` passed in the delegated AArch64 backend subset. The
-remaining `00161` failure is separated from this source idea: the generated
-assembly materializes the format string and moves the formatted scalar argument
-before `bl printf`, but then omits the scalar `a = t + p` update after the call.
-Prepared BIR contains `%t6 = bir.add i32 %t4, %t5` followed by the store to
-`%lv.a`; emitted AArch64 loads `t` and `p` and then stores `t` back to `p`
-without emitting the add/store-result sequence for `a`.
+Classification:
+
+- Passed: `00125`, `00131`, `00154`, `00166`, `00184`, `00190`, `00191`,
+  `00201`, and `00211`.
+- Runtime mismatch with no output: `00156`, `00158`, `00160`, `00168`,
+  `00169`, and `00183`.
+- Runtime mismatch with partial or wrong output: `00159`, `00192`, and
+  `00197`.
+- Runtime nonzero: `00206` segfaulted.
+- Timed out: none.
+
+Owner split:
+
+- Still visible in this source-idea family: `00197` exercises static/global
+  data value materialization and prints address-shaped negative values instead
+  of `fred`/`joe` values; `00206` exercises string-literal pointer arguments to
+  `printf("%s")` and segfaults before producing output.
+- Separate owners, do not broaden this plan around them: `00156`, `00158`,
+  `00160`, `00168`, `00169`, `00183`, and `00192` are dominated by loop,
+  branch, switch, conditional-expression, recursion, or scalar/local-state
+  behavior after the starter external-call string/global cases already pass.
+  `00159` is dominated by internal direct-call argument/return behavior and
+  should not be treated as the external `printf` string/global address owner.
 
 ## Suggested Next
 
-Treat Step 3 as blocked only by the separated `00161` scalar/local-state issue.
-The next coherent packet for this source idea is Step 4 sampling of nearby
-stdio/data mismatch cases after the supervisor decides whether to route the
-`00161` scalar stack-slot result/local update gap into a separate focused idea.
+Do not close this source idea as exhausted yet. Ask plan-owner/reviewer to
+decide whether the still-visible `00197` static/global data materialization and
+`00206` `%s` string-literal external-call pointer failures belong in the active
+runbook or should be split into one or more focused follow-on ideas.
 
 ## Watchouts
 
@@ -37,12 +51,13 @@ stdio/data mismatch cases after the supervisor decides whether to route the
   classifications, timeout settings, CTest registration, parser, or sema.
 - Reject named-case shortcuts, literal-spelling shortcuts, and `printf`-only
   special cases.
-- `src/00161.c` should not be repaired inside this address/direct-call route
-  unless the proposed change is a semantic AArch64 scalar/local-store repair.
-  Its call sequence is already correctly lowering the string/global direct-call
+- `src/00161.c` remains separated as a scalar/local-state issue; its call
+  sequence was already correctly lowering the string/global direct-call
   argument owner.
-- Keep `src/00132.c` out of first proof; it remains timeout-sensitive and
-  loop/local-store-compounded.
+- `src/00132.c` remains intentionally excluded here because it is
+  timeout-sensitive overlap evidence.
+- `00197` and `00206` are the only sampled failures that keep the
+  string/global address materialization/direct external-call owner visible.
 - Keep broad aggregate ABI/HFA returns, broad variadic ABI completeness,
   `_Generic`, wide chars, and function-pointer casts out of this route.
 
@@ -51,9 +66,9 @@ stdio/data mismatch cases after the supervisor decides whether to route the
 Ran the supervisor-selected proof:
 
 ```bash
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(125|131|154|161|211)_c$'; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure --timeout 5 -R '^c_testsuite_aarch64_backend_src_00(125|131|154|156|158|159|160|166|168|169|183|184|190|191|192|197|201|206|211)_c$'; } > test_after.log 2>&1
 ```
 
-Exit code was `8`: `00125`, `00131`, `00154`, and `00211` passed; `00161`
-failed with a runtime mismatch, printing only `1` instead of the Fibonacci
-sequence through `89`. Canonical proof log: `test_after.log`.
+Exit code was `8`: 9 tests passed and 10 failed. Nonzero result is classified
+above and allowed for this sampling packet. Canonical proof log:
+`test_after.log`.
