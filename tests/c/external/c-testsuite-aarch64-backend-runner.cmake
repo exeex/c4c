@@ -57,13 +57,26 @@ if(NOT back_rc EQUAL 0)
   message(FATAL_ERROR "[BACKEND_FAIL] ${SRC}\n${back_out}${back_err}")
 endif()
 
-string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" C_TESTSUITE_HOST_CPU)
+set(c_testsuite_host_processor "${CMAKE_HOST_SYSTEM_PROCESSOR}")
+if(c_testsuite_host_processor STREQUAL "")
+  execute_process(
+    COMMAND uname -m
+    RESULT_VARIABLE uname_rc
+    OUTPUT_VARIABLE uname_out
+    ERROR_QUIET
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+  )
+  if(uname_rc EQUAL 0)
+    set(c_testsuite_host_processor "${uname_out}")
+  endif()
+endif()
+string(TOLOWER "${c_testsuite_host_processor}" C_TESTSUITE_HOST_CPU)
 set(runtime_command "${OUT_BIN}")
 if(NOT (C_TESTSUITE_HOST_CPU STREQUAL "aarch64" OR C_TESTSUITE_HOST_CPU STREQUAL "arm64"))
   if(NOT DEFINED BACKEND_RUNTIME_RUNNER OR "${BACKEND_RUNTIME_RUNNER}" STREQUAL "")
     message(FATAL_ERROR
       "[RUNTIME_UNAVAILABLE] ${SRC}\n"
-      "AArch64 backend binary ${OUT_BIN} cannot be run directly on host ${CMAKE_HOST_SYSTEM_PROCESSOR}; "
+      "AArch64 backend binary ${OUT_BIN} cannot be run directly on host ${c_testsuite_host_processor}; "
       "set C_TESTSUITE_AARCH64_BACKEND_RUNNER to a runner/emulator command")
   endif()
   separate_arguments(runtime_command UNIX_COMMAND "${BACKEND_RUNTIME_RUNNER}")

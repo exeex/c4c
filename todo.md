@@ -1,42 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Prove Focused Backend Runtime Smoke Cases
+Current Step ID: 3
+Current Step Title: Tighten Route Diagnostics If Needed
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 attempted the focused AArch64 backend runtime smoke proof for
-`00001.c`, `00002.c`, and `00003.c`.
+Step 3 fixed the AArch64 c-testsuite backend runner's native-host detection in
+`cmake -P` script mode. When `CMAKE_HOST_SYSTEM_PROCESSOR` is empty, the
+runner now falls back to `uname -m` before deciding whether native AArch64
+execution is available. Non-AArch64 hosts with no runner still fail closed as
+`[RUNTIME_UNAVAILABLE]`.
 
-- `c_testsuite_aarch64_backend_src_00001_c`: failed at
-  `[RUNTIME_UNAVAILABLE]`. Owner layer: AArch64 c-testsuite runtime route/host
-  contract, because the script saw an empty host processor and no
-  `BACKEND_RUNTIME_RUNNER`.
-- `c_testsuite_aarch64_backend_src_00002_c`: failed at
-  `[RUNTIME_UNAVAILABLE]`. Owner layer: AArch64 c-testsuite runtime route/host
-  contract.
-- `c_testsuite_aarch64_backend_src_00003_c`: failed at
-  `[RUNTIME_UNAVAILABLE]`. Owner layer: AArch64 c-testsuite runtime route/host
-  contract.
+- `c_testsuite_aarch64_backend_src_00001_c`: passed. It went through backend
+  `.s` emission, clang `-x assembler` link, executable runtime, and empty
+  expected-output comparison.
+- `c_testsuite_aarch64_backend_src_00002_c`: passed through the same full
+  route and empty expected-output comparison.
+- `c_testsuite_aarch64_backend_src_00003_c`: no longer fails at
+  `[RUNTIME_UNAVAILABLE]`; it now reaches the real runtime owner layer and
+  fails as `[RUNTIME_NONZERO] ... exit=1`.
 - Generated `.s` files exist for all three cases under
   `build-aarch64-scan/c_testsuite_aarch64_backend/src/` and start with
-  `.text`, so the runner did not take an LLVM IR fallback path before the
-  failure.
+  `.text`, so no LLVM IR fallback path was used.
 - Executables exist for all three cases at the matching `.c.bin` paths, which
-  means clang consumed assembler input and completed the link before the
-  runtime gate failed.
-- Expected sidecars for these three cases are empty. The CTest route did not
-  reach runtime expected-output comparison because it stopped at
-  `[RUNTIME_UNAVAILABLE]`.
+  confirms clang consumed assembler input and produced runtime artifacts.
+- Expected sidecars for these three cases are present and empty.
 
 ## Suggested Next
 
-Run a narrow Step 3 route fix so `cmake -P` execution gets a real host CPU
-classification or an equivalent native-runtime signal, then rerun the same
-focused smoke proof.
+Use the now-unblocked smoke route to isolate the `00003.c` backend-codegen
+runtime nonzero failure without changing route scripts or expected outputs.
 
 ## Watchouts
 
@@ -47,11 +43,10 @@ focused smoke proof.
   CTest expectations to claim progress.
 - Do not add filename-specific lowering or printer shortcuts for named
   c-testsuite files.
-- Direct native artifact inspection outside the CTest route ran `00001.c.bin`
-  and `00002.c.bin` with exit 0 and no output, but `00003.c.bin` exited 1 with
-  no output. This is not route pass evidence; it is a likely backend-codegen
-  owner-layer issue that the fixed route should expose as `[RUNTIME_NONZERO]`
-  after the runtime availability gate is repaired.
+- The `00003.c` generated assembly currently returns without writing the result
+  into `w0` (`sub w19, w0, #4; ret`), which matches the observed
+  `[RUNTIME_NONZERO] exit=1` and belongs to backend codegen, not the runtime
+  route.
 
 ## Proof
 
@@ -61,7 +56,8 @@ Command:
 set -o pipefail; { cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003)_c$'; } 2>&1 | tee test_after.log
 ```
 
-Result: failed with exit code 8. Configure and `c4cll` build completed, then
-all three selected CTest cases failed at `[RUNTIME_UNAVAILABLE]` after
-assembler output and linked binaries had already been produced. Proof log:
-`test_after.log`.
+Result: failed with exit code 8 because one of three selected tests failed.
+Configure and `c4cll` build completed. `00001.c` and `00002.c` passed the full
+`.s -> clang -x assembler -> executable -> runtime -> expected-output` route.
+`00003.c` failed at `[RUNTIME_NONZERO]` with exit 1. No selected case reported
+`[RUNTIME_UNAVAILABLE]`. Proof log: `test_after.log`.
