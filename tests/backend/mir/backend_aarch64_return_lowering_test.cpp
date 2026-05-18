@@ -140,6 +140,41 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedSavedRegister prepared_saved_x19(std::size_t offset_bytes) {
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "x19",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x19"},
+      .save_index = 0,
+      .placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+          .slot_index = 0,
+          .contiguous_width = 1,
+      },
+      .slot_placement =
+          prepare::PreparedSavedRegisterSlotPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x19",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x19"},
+              .save_index = 0,
+              .register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+              .slot_id = prepare::PreparedFrameSlotId{19},
+              .stack_offset_bytes = offset_bytes,
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+              .fixed_location = true,
+          },
+  };
+}
+
 prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
   prepare::PreparedBirModule prepared = prepared_with_return_block();
 
@@ -256,6 +291,64 @@ prepare::PreparedBirModule prepared_with_return_selected_register_scalar_value()
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
       .function_name = function_name,
       .values = {register_storage(prepare::PreparedValueId{7}, result_name, "x19")},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_void_direct_call_then_return() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("return.nonleaf");
+  const auto entry_label = prepared.names.block_labels.intern("return.nonleaf.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("return.nonleaf.entry");
+  const auto callee_link = prepared.names.link_names.intern("callee");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "return.nonleaf",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "return.nonleaf.entry",
+          .insts = {bir::CallInst{
+              .callee = "callee",
+              .callee_link_name_id = callee_link,
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"callee"},
+      }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_saved_register_direct_call_then_return() {
+  auto prepared = prepared_with_void_direct_call_then_return();
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers = {prepared_saved_x19(0)},
   });
   return prepared;
 }
@@ -679,6 +772,45 @@ int module_build_retains_return_abi_for_register_scalar_result() {
   return 0;
 }
 
+int module_build_preserves_link_register_around_non_leaf_return() {
+  auto prepared = prepared_with_saved_register_direct_call_then_return();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected non-leaf prepared return module to build");
+  }
+
+  const auto& instructions =
+      result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() != 4) {
+    return fail("expected non-leaf return block to contain LR frame, call, and return");
+  }
+  const auto* setup =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&instructions[0].target.payload);
+  const auto* call =
+      std::get_if<aarch64_codegen::CallInstructionRecord>(&instructions[1].target.payload);
+  const auto* teardown =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&instructions[2].target.payload);
+  const auto* ret =
+      std::get_if<aarch64_codegen::ReturnInstructionRecord>(&instructions[3].target.payload);
+  if (setup == nullptr || call == nullptr || teardown == nullptr || ret == nullptr ||
+      setup->frame_kind != aarch64_codegen::FrameInstructionKind::PrologueSetup ||
+      teardown->frame_kind != aarch64_codegen::FrameInstructionKind::EpilogueTeardown ||
+      !setup->preserves_link_register || !teardown->preserves_link_register ||
+      setup->link_register_save_offset_bytes != std::optional<std::size_t>{8} ||
+      teardown->link_register_save_offset_bytes != std::optional<std::size_t>{8} ||
+      setup->frame_size_bytes != 32 || teardown->frame_size_bytes != 32 ||
+      setup->saved_callee_registers.size() != 1 ||
+      instructions[0].target.uses.size() != 2 ||
+      instructions[0].target.uses.front().reg != aarch64_abi::link_register() ||
+      instructions[0].target.uses[1].reg != aarch64_abi::x_register(19) ||
+      instructions[2].target.defs.size() != 2 ||
+      instructions[2].target.defs.front().reg != aarch64_abi::link_register() ||
+      instructions[2].target.defs[1].reg != aarch64_abi::x_register(19)) {
+    return fail("expected non-leaf return lowering to preserve LR with saved registers");
+  }
+  return 0;
+}
+
 int module_build_retains_return_abi_for_memory_load_result() {
   auto prepared = prepared_with_return_selected_memory_load_value();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -824,6 +956,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_retains_return_abi_for_register_scalar_result();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_preserves_link_register_around_non_leaf_return();
       status != 0) {
     return status;
   }

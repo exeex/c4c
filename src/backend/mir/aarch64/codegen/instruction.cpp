@@ -880,6 +880,48 @@ prepare::PreparedRegisterClass register_class_from_bank(
   return prepare::PreparedRegisterClass::None;
 }
 
+std::optional<abi::RegisterView> saved_register_expected_view(
+    prepare::PreparedRegisterBank bank) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return abi::RegisterView::X;
+    case prepare::PreparedRegisterBank::Fpr:
+      return abi::RegisterView::D;
+    case prepare::PreparedRegisterBank::Vreg:
+      return abi::RegisterView::Q;
+    case prepare::PreparedRegisterBank::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::optional<RegisterOperand> register_operand_from_saved_register(
+    const prepare::PreparedSavedRegister& saved) {
+  const auto prepared_class = register_class_from_bank(saved.bank);
+  const auto expected_view = saved_register_expected_view(saved.bank);
+  const auto converted =
+      abi::convert_prepared_register(saved, prepared_class, expected_view);
+  if (!converted.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string_view> occupied_registers;
+  occupied_registers.reserve(saved.occupied_register_names.size());
+  for (const auto& occupied : saved.occupied_register_names) {
+    occupied_registers.push_back(occupied);
+  }
+  return RegisterOperand{
+      .reg = *converted.reg,
+      .role = RegisterOperandRole::SpillAuthority,
+      .prepared_class = prepared_class,
+      .prepared_bank = saved.bank,
+      .expected_view = expected_view,
+      .contiguous_width = saved.contiguous_width,
+      .occupied_register_references = {*converted.reg},
+      .occupied_registers = std::move(occupied_registers),
+  };
+}
+
 std::string_view register_display_name(
     abi::RegisterReference reg) {
   static constexpr std::string_view x_names[] = {
@@ -1517,12 +1559,23 @@ MachineNodeStatusRecord spill_reload_selection_status(
 }
 
 MachineNodeStatusRecord frame_selection_status(const FrameInstructionRecord& instruction) {
-  if (instruction.source_frame == nullptr ||
-      instruction.function_name == c4c::kInvalidFunctionName ||
+  if (instruction.function_name == c4c::kInvalidFunctionName ||
       instruction.frame_alignment_bytes == 0) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "frame node is missing prepared frame facts"};
+  }
+  if (instruction.source_frame == nullptr && !instruction.preserves_link_register) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "frame node is missing prepared frame facts"};
+  }
+  if (instruction.preserves_link_register &&
+      (!instruction.link_register_save_offset_bytes.has_value() ||
+       instruction.frame_size_bytes == 0)) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
+                                   .diagnostic =
+                                       "link-register frame node is missing save slot facts"};
   }
   if ((instruction.frame_kind == FrameInstructionKind::CalleeSaveStore ||
        instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) &&
@@ -1688,12 +1741,41 @@ InstructionRecord make_spill_reload_instruction(SpillReloadInstructionRecord ins
 InstructionRecord make_frame_instruction(FrameInstructionRecord instruction) {
   std::vector<MachineEffectResource> defs;
   std::vector<MachineEffectResource> uses;
+  if (instruction.preserves_link_register) {
+    const auto link_register = make_register_operand(RegisterOperand{
+        .reg = abi::link_register(),
+        .role = RegisterOperandRole::CallAbi,
+        .prepared_class = prepare::PreparedRegisterClass::General,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = abi::RegisterView::X,
+        .contiguous_width = 1,
+        .occupied_register_references = {abi::link_register()},
+        .occupied_registers = {"x30"},
+    });
+    if (instruction.frame_kind == FrameInstructionKind::EpilogueTeardown) {
+      defs.push_back(effect_from_operand(link_register));
+    } else if (instruction.frame_kind == FrameInstructionKind::PrologueSetup) {
+      uses.push_back(effect_from_operand(link_register));
+    }
+  }
   if (instruction.callee_save.has_value() &&
       instruction.callee_save->register_operand.has_value()) {
     const auto reg_operand = make_register_operand(*instruction.callee_save->register_operand);
     if (instruction.frame_kind == FrameInstructionKind::CalleeSaveLoad) {
       defs.push_back(effect_from_operand(reg_operand));
     } else {
+      uses.push_back(effect_from_operand(reg_operand));
+    }
+  }
+  for (const auto& saved : instruction.saved_callee_registers) {
+    auto saved_register = register_operand_from_saved_register(saved);
+    if (!saved_register.has_value()) {
+      continue;
+    }
+    const auto reg_operand = make_register_operand(*saved_register);
+    if (instruction.frame_kind == FrameInstructionKind::EpilogueTeardown) {
+      defs.push_back(effect_from_operand(reg_operand));
+    } else if (instruction.frame_kind == FrameInstructionKind::PrologueSetup) {
       uses.push_back(effect_from_operand(reg_operand));
     }
   }

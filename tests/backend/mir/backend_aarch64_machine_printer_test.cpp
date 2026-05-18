@@ -133,6 +133,41 @@ prepare::PreparedTargetRegisterIdentity gpr_identity(std::size_t physical_index)
   };
 }
 
+prepare::PreparedSavedRegister prepared_saved_x19(std::size_t offset_bytes) {
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "x19",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x19"},
+      .save_index = 0,
+      .placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+          .slot_index = 0,
+          .contiguous_width = 1,
+      },
+      .slot_placement =
+          prepare::PreparedSavedRegisterSlotPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x19",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x19"},
+              .save_index = 0,
+              .register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+              .slot_id = prepare::PreparedFrameSlotId{19},
+              .stack_offset_bytes = offset_bytes,
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+              .fixed_location = true,
+          },
+  };
+}
+
 aarch64_codegen::AssemblerInstructionRecord selected_inline_asm_record(
     std::string templ = "add %w0, %w1, %w2\nmov %x0, #%3") {
   auto output = wreg(3);
@@ -3923,6 +3958,49 @@ int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
                          "simple frame common-printer drift guard");
 }
 
+int selected_non_leaf_frame_prints_link_register_save_restore() {
+  const auto saved_x19 = prepared_saved_x19(16);
+  const auto setup = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 32,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{0},
+          .saved_callee_registers = {saved_x19},
+      });
+  const auto teardown = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 32,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{0},
+          .saved_callee_registers = {saved_x19},
+      });
+
+  const auto result = print_common_instruction_nodes({setup, teardown});
+  if (!result.ok) {
+    return fail("expected non-leaf LR frame nodes to print: " + result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    sub sp, sp, #32\n"
+                         "    str x30, [sp, #0]\n"
+                         "    str x19, [sp, #16]\n"
+                         "    ldr x19, [sp, #16]\n"
+                         "    ldr x30, [sp, #0]\n"
+                         "    add sp, sp, #32\n",
+                         "    sub sp, sp, #32\n"
+                         "    str x30, [sp, #0]\n"
+                         "    str x19, [sp, #16]\n"
+                         "    ldr x19, [sp, #16]\n"
+                         "    ldr x30, [sp, #0]\n"
+                         "    add sp, sp, #32\n",
+                         "non-leaf LR frame common-printer drift guard");
+}
+
 int selected_direct_address_materialization_prints_page_low12_sequence() {
   prepare::PreparedAddressMaterialization source;
   const auto address = aarch64_codegen::make_address_materialization_instruction(
@@ -5197,16 +5275,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       .function_name = c4c::FunctionNameId{2},
       .frame_size_bytes = 32,
       .frame_alignment_bytes = 16,
-      .saved_callee_registers =
-          {
-              prepare::PreparedSavedRegister{
-                  .bank = prepare::PreparedRegisterBank::Gpr,
-                  .register_name = "x19",
-                  .contiguous_width = 1,
-                  .occupied_register_names = {"x19"},
-                  .save_index = 0,
-              },
-          },
+      .saved_callee_registers = {prepared_saved_x19(16)},
   };
   const auto frame_with_saved_register = aarch64_codegen::make_frame_instruction(
       aarch64_codegen::FrameInstructionRecord{
@@ -5219,10 +5288,8 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       });
   const auto saved_result =
       aarch64_codegen::print_machine_instruction_line_payloads(frame_with_saved_register);
-  if (saved_result.ok ||
-      saved_result.diagnostic.find("callee-save frame node is outside the printable subset") ==
-          std::string::npos) {
-    return fail("expected frame with callee-save facts to fail closed");
+  if (!saved_result.ok) {
+    return fail("expected frame with complete callee-save facts to print");
   }
 
   const prepare::PreparedFramePlanFunction dynamic_frame{
@@ -5489,6 +5556,10 @@ int main() {
   }
   if (const int result =
           selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_non_leaf_frame_prints_link_register_save_restore();
       result != 0) {
     return result;
   }

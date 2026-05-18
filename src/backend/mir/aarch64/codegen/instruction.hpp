@@ -1385,6 +1385,8 @@ struct FrameInstructionRecord {
   c4c::FunctionNameId function_name = c4c::kInvalidFunctionName;
   std::size_t frame_size_bytes = 0;
   std::size_t frame_alignment_bytes = 0;
+  bool preserves_link_register = false;
+  std::optional<std::size_t> link_register_save_offset_bytes;
   std::vector<prepare::PreparedFrameSlotId> frame_slot_order;
   std::vector<prepare::PreparedSavedRegister> saved_callee_registers;
   bool has_dynamic_stack = false;

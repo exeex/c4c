@@ -118,6 +118,41 @@ prepare::PreparedF128Carrier f128_full_width_register_carrier(
   };
 }
 
+prepare::PreparedSavedRegister prepared_saved_x19(std::size_t offset_bytes) {
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "x19",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x19"},
+      .save_index = 0,
+      .placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+          .slot_index = 0,
+          .contiguous_width = 1,
+      },
+      .slot_placement =
+          prepare::PreparedSavedRegisterSlotPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x19",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x19"},
+              .save_index = 0,
+              .register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              },
+              .slot_id = prepare::PreparedFrameSlotId{19},
+              .stack_offset_bytes = offset_bytes,
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+              .fixed_location = true,
+          },
+  };
+}
+
 int branch_scalar_and_memory_instruction_records_preserve_typed_operands() {
   const auto condition = make_value_register(prepare::PreparedValueId{10},
                                              c4c::ValueNameId{3},
@@ -1831,6 +1866,51 @@ int frame_instruction_records_preserve_prepared_frame_facts() {
       callee_save.side_effects.size() != 1 ||
       callee_save.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
     return fail("expected callee-save frame record to carry prepared save provenance");
+  }
+
+  return 0;
+}
+
+int non_leaf_frame_records_preserve_link_register_contract() {
+  const auto saved_x19 = prepared_saved_x19(16);
+  const auto prologue = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 32,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{0},
+          .saved_callee_registers = {saved_x19},
+      });
+  const auto epilogue = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 32,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{0},
+          .saved_callee_registers = {saved_x19},
+      });
+
+  const auto* prologue_payload =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&prologue.payload);
+  const auto* epilogue_payload =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&epilogue.payload);
+  if (prologue_payload == nullptr || epilogue_payload == nullptr ||
+      prologue.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      epilogue.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !prologue_payload->preserves_link_register ||
+      !epilogue_payload->preserves_link_register ||
+      prologue.uses.size() != 2 || epilogue.defs.size() != 2 ||
+      prologue.uses.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      epilogue.defs.front().kind != aarch64_codegen::MachineEffectResourceKind::Register ||
+      prologue.uses.front().reg != aarch64_abi::link_register() ||
+      epilogue.defs.front().reg != aarch64_abi::link_register() ||
+      prologue.uses[1].reg != aarch64_abi::x_register(19) ||
+      epilogue.defs[1].reg != aarch64_abi::x_register(19)) {
+    return fail("expected non-leaf frame records to model LR and saved-register effects");
   }
 
   return 0;
@@ -4034,6 +4114,10 @@ int main() {
     return status;
   }
   if (const int status = frame_instruction_records_preserve_prepared_frame_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = non_leaf_frame_records_preserve_link_register_contract();
       status != 0) {
     return status;
   }

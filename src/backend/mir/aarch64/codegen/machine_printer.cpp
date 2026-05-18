@@ -830,9 +830,23 @@ mir::TargetInstructionPrintResult print_atomic_memory(
                             "atomic memory kind is outside the printable subset");
 }
 
+std::optional<std::string> saved_register_stack_line(
+    const prepare::PreparedSavedRegister& saved,
+    std::string_view mnemonic) {
+  if (!saved.slot_placement.has_value() ||
+      !prepare::has_complete_prepared_saved_register_slot_placement(
+          *saved.slot_placement)) {
+    return std::nullopt;
+  }
+  std::ostringstream out;
+  out << mnemonic << " " << saved.register_name << ", [sp, #"
+      << *saved.slot_placement->stack_offset_bytes << "]";
+  return out.str();
+}
+
 mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instruction,
                                               const FrameInstructionRecord& frame) {
-  if (frame.source_frame == nullptr) {
+  if (frame.source_frame == nullptr && !frame.preserves_link_register) {
     return target_unsupported(bad_header(instruction) +
                               "frame node is missing prepared frame provenance");
   }
@@ -848,7 +862,7 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     return target_unsupported(bad_header(instruction) +
                               "dynamic-stack frame node is outside the printable subset");
   }
-  if (!frame.saved_callee_registers.empty() || frame.callee_save.has_value()) {
+  if (frame.callee_save.has_value()) {
     return target_unsupported(bad_header(instruction) +
                               "callee-save frame node is outside the printable subset");
   }
@@ -861,10 +875,26 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
   if (frame.frame_size_bytes == 0) {
     return target_printed({});
   }
-  if (frame.frame_size_bytes > 4095) {
+  if (frame.preserves_link_register &&
+      !frame.link_register_save_offset_bytes.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "link-register frame node is missing save slot facts");
+  }
+  if (frame.frame_size_bytes > 4095 ||
+      (frame.link_register_save_offset_bytes.has_value() &&
+       *frame.link_register_save_offset_bytes > 4095)) {
     return target_unsupported(bad_header(instruction) +
                               "frame adjustment immediate is outside the plain #imm "
                               "encoding range 0..4095");
+  }
+  for (const auto& saved : frame.saved_callee_registers) {
+    if (!saved.slot_placement.has_value() ||
+        !prepare::has_complete_prepared_saved_register_slot_placement(
+            *saved.slot_placement) ||
+        *saved.slot_placement->stack_offset_bytes > 4095) {
+      return target_unsupported(bad_header(instruction) +
+                                "callee-save frame node is missing printable slot facts");
+    }
   }
 
   const auto mnemonic = required_primary_mnemonic(instruction);
@@ -872,9 +902,43 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     return target_unsupported(bad_header(instruction) + "frame mnemonic is not printable");
   }
 
+  std::vector<std::string> lines;
   std::ostringstream out;
   out << mnemonic << " sp, sp, #" << frame.frame_size_bytes;
-  return target_printed({out.str()});
+  if (frame.frame_kind == FrameInstructionKind::PrologueSetup) {
+    lines.push_back(out.str());
+    if (frame.preserves_link_register) {
+      std::ostringstream save;
+      save << "str x30, [sp, #" << *frame.link_register_save_offset_bytes << "]";
+      lines.push_back(save.str());
+    }
+    for (const auto& saved : frame.saved_callee_registers) {
+      auto line = saved_register_stack_line(saved, "str");
+      if (!line.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "callee-save frame node is missing printable slot facts");
+      }
+      lines.push_back(std::move(*line));
+    }
+  } else {
+    for (auto it = frame.saved_callee_registers.rbegin();
+         it != frame.saved_callee_registers.rend();
+         ++it) {
+      auto line = saved_register_stack_line(*it, "ldr");
+      if (!line.has_value()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "callee-save frame node is missing printable slot facts");
+      }
+      lines.push_back(std::move(*line));
+    }
+    if (frame.preserves_link_register) {
+      std::ostringstream restore;
+      restore << "ldr x30, [sp, #" << *frame.link_register_save_offset_bytes << "]";
+      lines.push_back(restore.str());
+    }
+    lines.push_back(out.str());
+  }
+  return target_printed(std::move(lines));
 }
 
 mir::TargetInstructionPrintResult print_scalar(const InstructionRecord& instruction,
