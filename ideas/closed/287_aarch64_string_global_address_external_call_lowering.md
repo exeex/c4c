@@ -1,6 +1,6 @@
 # AArch64 String/Global Address External Call Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Source Inventory: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
@@ -70,6 +70,20 @@ parser, sema, or timeout-policy problem.
 - Any remaining timeout behavior, especially `src/00132.c`, is explicitly
   kept separate unless later evidence shows only this address/call owner
   remains.
+
+## Closure Notes
+
+Closed after Step 6 completed the remaining sampled owner gap for `%s`
+string-literal direct external-call pointer arguments. The focused owner subset
+covering `src/00125.c`, `src/00131.c`, `src/00154.c`, `src/00197.c`,
+`src/00206.c`, and `src/00211.c` passed, and the backend subset and default
+build were reported green by the supervisor.
+
+`src/00161.c` remains documented outside this closure as a separate
+scalar/local-state issue; its string/global direct-call argument lowering owner
+was already separated from this route. `src/00132.c` remains timeout-sensitive
+overlap evidence and was intentionally excluded from this idea's acceptance
+proof.
 
 ## Reviewer Reject Signals
 
