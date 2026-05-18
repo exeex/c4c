@@ -8,39 +8,30 @@ Current Step Title: Validate Boundary and Broader Sampling
 
 ## Just Finished
 
-Step 4 repaired the `00169` boundary case while preserving the passing starter
-reps `00164`, `00183`, and `00202`. The call-boundary dispatcher now retargets
-prepared call moves to the freshest emitted scalar source when one exists, keeps
-the ABI destination view width-compatible with that fresh source, and publishes
-only source-conflicting argument moves before a call-site address materialization
-reuses the same register. This prevents a live scalar call argument from being
-read out of a stale prepared home after the address materialization clobbers the
-last emitted register.
+Step 4 recorded the supervisor-run broader sampling result without rerunning
+tests or changing code. The four in-scope side-effect/control-value publication
+representatives passed: `00164`, `00169`, `00183`, and `00202`.
 
-Generated-code evidence for `00169`: the middle loop value `%t20` is loaded
-into `w20`, published to the variadic `printf` argument register `w2`, and only
-then is `x20` reused for the format-string address:
+The broader sample
+`00159|00164|00168|00169|00172|00183|00193|00202|00217` was `5/9`: `00164`,
+`00169`, `00172`, `00183`, and `00202` passed; `00159`, `00168`, `00193`, and
+`00217` failed.
 
-```asm
-ldr w13, [sp]
-ldr w20, [sp, #4]
-mov w2, w20
-adrp x20, .str0
-add x20, x20, :lo12:.str0
-mov x0, x20
-mov w1, w13
-ldr w3, [sp, #8]
-bl printf
-```
+Failure bucket classification against the source idea:
 
-The focused boundary subset improved from the baseline `3/4` to `4/4`: `00169`
-now passes, and `00164`, `00183`, and `00202` remained passing.
+- `00159`: explicitly separated closed-owner overlap, not this
+  side-effect/control-value publication route.
+- `00168`: explicitly separated closed-owner overlap, not this
+  side-effect/control-value publication route.
+- `00193`: explicitly separated closed-owner overlap, not this
+  side-effect/control-value publication route.
+- `00217`: pointer/address/string-heavy bucket explicitly out of scope for this
+  route.
 
 ## Suggested Next
 
-Supervisor should review and commit this Step 4 slice, then decide whether Step
-4 needs broader sampling beyond the four delegated reps or whether the runbook
-is ready for lifecycle review.
+Supervisor should treat Step 4 sampling as recorded and decide whether to send
+the route to lifecycle close review.
 
 ## Watchouts
 
@@ -70,30 +61,33 @@ is ready for lifecycle review.
 - Do not touch expected outputs, allowlists, unsupported classifications,
   timeout policy, runner behavior, CTest registration, or build/test
   infrastructure.
+- The broader-sample failures are not evidence to expand this route: `00159`,
+  `00168`, and `00193` remain closed-owner overlap buckets, and `00217` remains
+  pointer/address/string-heavy. Reopening them would require fresh
+  generated-code proof that contradicts the source idea's separation.
 
 ## Proof
 
-Ran the delegated proof exactly:
+Did not rerun tests per the delegated packet. Reused the supervisor-run broader
+sampling log:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00169|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+/tmp/c4c_aarch64_side_effect_step4_broader_sample.log
 ```
 
-Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
-of 4` for `00164`, `00169`, `00183`, and `00202`. This is a strict
-pass-count improvement over `test_before.log`, which showed `00169` failing
-with the second printed field clobbered while the other three reps passed.
+Result: `56% tests passed, 4 tests failed out of 9` for the broader sample.
+Passing tests: `00164`, `00169`, `00172`, `00183`, and `00202`. Failing tests:
+`00159`, `00168`, `00193`, and `00217`.
 
-Stale-process check:
+The in-scope Step 4 representatives `00164`, `00169`, `00183`, and `00202` are
+all passing in the reused log.
 
 ```sh
 pgrep -af '^/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' || true
 ```
 
-Result: no generated runtime process remained.
-
-Additional check: `git diff --check` passed.
+Result already observed clean: no generated runtime process remained.
 
 Log paths:
 
-- `test_after.log`
+- `/tmp/c4c_aarch64_side_effect_step4_broader_sample.log`
