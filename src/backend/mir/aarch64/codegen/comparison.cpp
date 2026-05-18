@@ -1,4 +1,5 @@
 #include "comparison.hpp"
+#include "alu.hpp"
 #include "operands.hpp"
 
 #include <optional>
@@ -127,15 +128,24 @@ void append_i128_compare_diagnostic(
     const CompareValueRecord& value,
     module::ModuleLoweringDiagnostics& diagnostics) {
   if (value.source_value.kind == bir::Value::Kind::Immediate) {
-    return make_immediate_operand(ImmediateOperand{
-        .kind = value.source_value.immediate < 0 ? ImmediateKind::SignedInteger
-                                                 : ImmediateKind::UnsignedInteger,
-        .type = value.source_value.type,
-        .signed_value = value.source_value.immediate,
-        .unsigned_value = value.source_value.immediate_bits,
-        .source_value_id = value.value_id,
-        .source_value_name = value.value_name,
-    });
+    const auto immediate =
+        make_scalar_immediate_operand(value.source_value, value.value_id, value.value_name);
+    if (!immediate.has_value()) {
+      diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+          .kind = module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          .function_name = context.function.control_flow != nullptr
+                               ? context.function.control_flow->function_name
+                               : c4c::kInvalidFunctionName,
+          .block_label = context.control_flow_block != nullptr
+                             ? context.control_flow_block->block_label
+                             : c4c::kInvalidBlockLabel,
+          .instruction_family = module::InstructionLoweringFamily::BranchControl,
+          .message =
+              "AArch64 fused compare branch requires scalar immediate compare operands",
+      });
+      return std::nullopt;
+    }
+    return make_immediate_operand(*immediate);
   }
 
   if (!value.value_id.has_value()) {
