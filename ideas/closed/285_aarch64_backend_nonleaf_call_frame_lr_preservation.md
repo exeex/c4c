@@ -1,7 +1,8 @@
 # AArch64 Backend Non-Leaf Call-Frame LR Preservation
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 Origin: Split from ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
 ## Intent
@@ -63,6 +64,34 @@ or goto defects.
   different, recorded semantic owner.
 - The fix is expressed through the AArch64 backend's frame/call/return model,
   not by special-casing tests or function names.
+
+## Completion Note
+
+2026-05-18: Closed after the AArch64 backend learned to preserve and restore
+`x30` for non-leaf call frames through the backend frame/call/return model.
+Focused backend close-gate proof passed for:
+
+```bash
+cmake --build build --target backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_aarch64_return_lowering_test
+ctest --test-dir build -R 'backend_aarch64_(target_instruction_records|machine_printer|return_lowering)$' --output-on-failure
+```
+
+The monotonic regression guard compared matching canonical `test_before.log`
+and `test_after.log` scopes with `--allow-non-decreasing-passed` and reported
+3/3 before, 3/3 after, no new failing tests, and no suspicious timeout tests.
+
+The Step 5 timeout-boundary rerun reclassified the original 23 timeout cases:
+
+- Pass after LR preservation: `00100.c`, `00121.c`.
+- Still timeout: `00132.c`.
+- Non-timeout `RUNTIME_NONZERO`: `00116.c`, `00175.c`, `00196.c`, `00199.c`.
+- Non-timeout `RUNTIME_MISMATCH`: `00125.c`, `00131.c`, `00154.c`,
+  `00159.c`, `00161.c`, `00166.c`, `00172.c`, `00178.c`, `00184.c`,
+  `00190.c`, `00191.c`, `00192.c`, `00197.c`, `00201.c`, `00206.c`,
+  `00211.c`.
+
+Remaining failures are follow-on semantic families, not evidence that the old
+non-leaf link-register preservation owner remains open.
 
 ## Reviewer Reject Signals
 

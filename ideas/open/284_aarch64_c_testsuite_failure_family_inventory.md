@@ -85,6 +85,11 @@ the active implementation target. The first focused repair idea created from
 the inventory is
 `ideas/open/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md`.
 
+2026-05-18: The non-leaf LR preservation idea completed and moved to
+`ideas/closed/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md`.
+The next focused semantic follow-on is
+`ideas/open/286_aarch64_scalar_call_value_semantics.md`.
+
 Durable inventory findings to preserve:
 
 - The 212-case AArch64 backend c-testsuite scan classified as 46 `PASS`, 49
@@ -101,6 +106,11 @@ Durable inventory findings to preserve:
   link-register owner no longer masks their behavior. Secondary risks include
   string-literal/variadic calls, loop predicates, short-circuit control flow,
   local stack slots, aggregates/pointers, static globals, and goto behavior.
+- After LR preservation, the original 23 timeout cases reclassified to two
+  passes (`00100.c`, `00121.c`), one remaining timeout (`00132.c`), four
+  `RUNTIME_NONZERO` cases (`00116.c`, `00175.c`, `00196.c`, `00199.c`), and
+  sixteen `RUNTIME_MISMATCH` cases. The remaining owners are semantic backend
+  families, not the old non-leaf LR preservation failure.
 
 ## Reviewer Reject Signals
 
