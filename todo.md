@@ -3,42 +3,33 @@
 Status: Active
 Source Idea Path: ideas/open/287_aarch64_string_global_address_external_call_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Implement General Address Materialization for Call Arguments
+Current Step ID: 3
+Current Step Title: Expand to Starter Stdio/Data Representatives
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 (`Implement General Address Materialization for Call Arguments`)
-completed the first general AArch64 repair for direct call arguments whose
-source encoding is a string/global address. Stack-layout preparation now
-publishes a prepared address-materialization record for pointer-valued direct
-call arguments that name a retained string constant or carry a structured
-global/function `LinkNameId`. AArch64 block dispatch lowers that prepared
-address materialization before before-call ABI moves, so the existing call
-move consumes an initialized source register instead of `mov x0, x13` from an
-unmaterialized scratch.
+Step 3 (`Expand to Starter Stdio/Data Representatives`) ran the selected
+starter subset for `src/00125.c`, `src/00131.c`, `src/00154.c`, `src/00161.c`,
+and `src/00211.c`.
 
-The public AArch64 assembly route now also emits retained BIR string constants
-into `.rodata` with an explicit trailing NUL byte. For
-`tests/c/external/c-testsuite/src/00125.c`, the generated assembly now contains:
-
-```asm
-adrp x13, .str0
-add x13, x13, :lo12:.str0
-mov x0, x13
-bl printf
-```
-
-and emits `.str0` in `.rodata` as byte data ending in `0`.
+The address-materialization/direct-call repair generalized across the starter
+stdio/data representatives that exercise this owner: `00125`, `00131`,
+`00154`, and `00211` passed in the delegated AArch64 backend subset. The
+remaining `00161` failure is separated from this source idea: the generated
+assembly materializes the format string and moves the formatted scalar argument
+before `bl printf`, but then omits the scalar `a = t + p` update after the call.
+Prepared BIR contains `%t6 = bir.add i32 %t4, %t5` followed by the store to
+`%lv.a`; emitted AArch64 loads `t` and `p` and then stores `t` back to `p`
+without emitting the add/store-result sequence for `a`.
 
 ## Suggested Next
 
-Keep the next packet narrow around nearby same-feature coverage: prove one
-additional direct external call argument that uses a structured global/function
-symbol address, or broaden AArch64 string/global call-argument coverage only
-far enough to catch duplicate materialization and multi-argument ordering.
+Treat Step 3 as blocked only by the separated `00161` scalar/local-state issue.
+The next coherent packet for this source idea is Step 4 sampling of nearby
+stdio/data mismatch cases after the supervisor decides whether to route the
+`00161` scalar stack-slot result/local update gap into a separate focused idea.
 
 ## Watchouts
 
@@ -46,12 +37,11 @@ far enough to catch duplicate materialization and multi-argument ordering.
   classifications, timeout settings, CTest registration, parser, or sema.
 - Reject named-case shortcuts, literal-spelling shortcuts, and `printf`-only
   special cases.
-- The dispatch fix materializes at most the prepared address record associated
-  with the call instruction index before call moves. If later calls need more
-  than one address-valued direct argument at the same instruction index, the
-  prepared-addressing lookup shape may need to grow beyond the current
-  first-match helper.
-- Keep `src/00132.c` out of first proof; it is timeout-sensitive and
+- `src/00161.c` should not be repaired inside this address/direct-call route
+  unless the proposed change is a semantic AArch64 scalar/local-store repair.
+  Its call sequence is already correctly lowering the string/global direct-call
+  argument owner.
+- Keep `src/00132.c` out of first proof; it remains timeout-sensitive and
   loop/local-store-compounded.
 - Keep broad aggregate ABI/HFA returns, broad variadic ABI completeness,
   `_Generic`, wide chars, and function-pointer casts out of this route.
@@ -61,15 +51,9 @@ far enough to catch duplicate materialization and multi-argument ordering.
 Ran the supervisor-selected proof:
 
 ```bash
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00125_c$'; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(125|131|154|161|211)_c$'; } > test_after.log 2>&1
 ```
 
-Exit code was `0`; `src/00125.c` passed. Canonical proof log:
-`test_after.log`.
-
-Focused local guard also passed:
-
-```bash
-cmake --build build --target backend_prepare_stack_layout_test
-./build/tests/backend/bir/backend_prepare_stack_layout_test
-```
+Exit code was `8`: `00125`, `00131`, `00154`, and `00211` passed; `00161`
+failed with a runtime mismatch, printing only `1` instead of the Fibonacci
+sequence through `89`. Canonical proof log: `test_after.log`.
