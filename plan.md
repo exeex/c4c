@@ -1,161 +1,181 @@
-# AArch64 Stack Frame SP Alignment
+# AArch64 Function Pointer Indirect Call Values
 
 Status: Active
-Source Idea: ideas/open/288_aarch64_stack_frame_sp_alignment.md
+Source Idea: ideas/open/289_aarch64_function_pointer_indirect_call_values.md
 Activated From: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
 ## Purpose
 
-Repair the AArch64 backend frame-size and stack-slot layout path that can emit
-function stack adjustments which leave `sp` misaligned.
+Repair the AArch64 backend path for first-class function-pointer values that
+eventually feed indirect `blr` calls.
 
 ## Goal
 
-Make generated AArch64 functions preserve 16-byte stack-pointer alignment
-while keeping local scalar, pointer, and array stack slots addressable.
+Make function symbols, function-pointer stores/loads, function-pointer
+returns, and global/static function-pointer initializers produce valid callee
+values for indirect AArch64 calls.
 
 ## Core Rule
 
-Fix semantic frame layout and stack adjustment. Do not improve this route by
-changing tests, expected outputs, runner behavior, CTest registration,
-allowlists, unsupported classifications, timeout policy, parser, sema, or
-c-testsuite filename/frame-size shortcuts.
+Fix semantic function-pointer value lowering and indirect-call setup. Do not
+improve this route by changing tests, expected outputs, runner behavior, CTest
+registration, allowlists, unsupported classifications, timeout policy, parser,
+sema, or c-testsuite filename/symbol-specific shortcuts.
 
 ## Read First
 
-- `ideas/open/288_aarch64_stack_frame_sp_alignment.md`
+- `ideas/open/289_aarch64_function_pointer_indirect_call_values.md`
 - `todo.md`
-- `tests/c/external/c-testsuite/src/00004.c`
-- `tests/c/external/c-testsuite/src/00005.c`
-- `tests/c/external/c-testsuite/src/00013.c`
-- `tests/c/external/c-testsuite/src/00014.c`
-- `tests/c/external/c-testsuite/src/00015.c`
-- `tests/c/external/c-testsuite/src/00016.c`
+- `tests/c/external/c-testsuite/src/00087.c`
+- `tests/c/external/c-testsuite/src/00089.c`
+- `tests/c/external/c-testsuite/src/00124.c`
+- `tests/c/external/c-testsuite/src/00210.c`
 
 ## Current Targets
 
-- AArch64 backend frame-size computation.
-- AArch64 prologue/epilogue stack adjustment.
-- Local stack-slot offsets when frame padding is required.
-- Minimal bus-error proof case: `src/00004.c`.
-- Nearby local pointer/array bus-error proof cases: `src/00005.c`,
-  `src/00013.c`, `src/00014.c`, `src/00015.c`, and `src/00016.c`.
+- AArch64 function symbol address materialization as pointer values.
+- Function-pointer values in local aggregate fields and local slots.
+- Function-pointer values in global/static aggregate initializers.
+- Function returns whose result is a function pointer.
+- Indirect-call callee operand lowering into the register consumed by `blr`.
+- Focused proof cases: `src/00087.c`, `src/00089.c`, `src/00124.c`, and
+  `src/00210.c`.
 
 ## Non-Goals
 
+- Do not revisit stack-frame/SP alignment unless a new unaligned frame is
+  proven.
 - Do not change runner behavior, allowlists, expectations, unsupported
   classifications, timeout settings, or CTest registration.
 - Do not change parser or sema behavior.
-- Do not add named-case shortcuts, exact frame-size shortcuts, local-variable
-  spelling shortcuts, or emitted-instruction-text matching.
-- Do not take on broad pointer semantics, array semantics, struct layout,
-  aggregate ABI, function-pointer semantics, broad variadic ABI, libc
-  behavior, or timeout-sensitive cases unless proven to be directly downstream
-  of the same SP/frame-alignment defect.
-- Do not fold compare/branch printer/lowering work into this route.
+- Do not add named-case shortcuts, function-name shortcuts, aggregate-field
+  shortcuts, or emitted-instruction-text matching.
+- Do not take on broad aggregate ABI, broad struct layout rewrites, libc
+  behavior, compare/branch lowering, `_Generic`, or timeout-sensitive cases.
 
 ## Working Model
 
-The refreshed inventory found a 28-case `Bus error` cluster. The smallest
-representative, `src/00004.c`, emits a 24-byte stack frame, which violates the
-AArch64 requirement that `sp` remain 16-byte aligned. The first repair should
-round or pad frame allocation semantically, then verify local slot addressing
-still uses the correct offsets.
+The previous SP/frame-alignment idea removed the misaligned-frame owner from
+the former bus-error cluster. The remaining bus-error representatives have
+aligned frames and crash before or at indirect `blr`, where the callee value
+should be a materialized function pointer carried through locals, globals,
+returns, or casts. The first repair should establish the smallest local
+function-pointer field case, then expand across global initialization and
+returned function-pointer values.
 
 ## Execution Rules
 
 - Keep packets small and prove each packet with a fresh build or compile/run
   command chosen by the supervisor.
-- Inspect generated AArch64 assembly when debugging, but accept progress only
-  through semantic behavior and relevant test proof.
-- Preserve local-slot load/store correctness when adding alignment padding.
-- Document unrelated remaining bus-error or pointer/array blockers in
-  `todo.md` instead of broadening this route.
+- Inspect generated AArch64 assembly when debugging, especially function
+  symbol address materialization and the register used by `blr`.
+- Preserve direct-call behavior and existing frame alignment.
+- Document unrelated aggregate, attribute, frontend, or local-state blockers
+  in `todo.md` instead of broadening this route.
 - Escalate to reviewer scrutiny if the implementation appears to special-case
-  one c-testsuite filename, one frame size, or one local-variable layout.
+  one c-testsuite filename, one function name, one field name, or one emitted
+  `blr` shape.
 
 ## Steps
 
-### Step 1: Establish Minimal SP Alignment Failure
+### Step 1: Establish Minimal Local Function-Pointer Failure
 
-Goal: Prove and localize the smallest bus-error failure to misaligned stack
-frame allocation.
+Goal: Prove and localize the smallest remaining bus-error case to a bad
+function-pointer value before indirect `blr`.
 
-Primary target: `tests/c/external/c-testsuite/src/00004.c`.
+Primary target: `tests/c/external/c-testsuite/src/00087.c`.
 
 Actions:
 
-- Reproduce the current AArch64 backend behavior for `src/00004.c` with the
+- Reproduce the current AArch64 backend behavior for `src/00087.c` with the
   supervisor-selected narrow command.
-- Inspect the generated function prologue, epilogue, frame size, and local
-  stack-slot offsets.
-- Confirm where the frame size should become a multiple of 16 and how local
-  offsets should remain valid after padding.
+- Inspect generated function symbol materialization, the local aggregate field
+  store/load, and the indirect `blr` callee register.
+- Confirm the generated frame remains aligned so this is not an SP-alignment
+  regression.
 - Record the observed failure shape and owned backend surfaces in `todo.md`.
 
-Completion check: `todo.md` names the current failure, the frame/layout
-surface to change, and the proof command/log used for the baseline.
+Completion check: `todo.md` names the current function-pointer value failure,
+the backend lowering/emission surface to change, and the proof command/log
+used for the baseline.
 
-### Step 2: Repair General AArch64 Frame Alignment
+### Step 2: Repair Local Function-Pointer Value Lowering
 
-Goal: Ensure generated AArch64 frames preserve 16-byte `sp` alignment without
-breaking local stack-slot addressing.
+Goal: Carry a function symbol through a local function-pointer field into a
+valid indirect call target.
 
-Primary target: AArch64 backend frame sizing and prologue/epilogue emission.
-
-Actions:
-
-- Add or repair the semantic path that rounds/pads stack frame size to the
-  AArch64 alignment requirement.
-- Keep local slot offsets, frame-base assumptions, and stack restores
-  consistent with the aligned frame size.
-- Ensure call boundaries see an aligned `sp` when generated functions contain
-  calls.
-- Build and run the supervisor-selected narrow proof for `src/00004.c`.
-
-Completion check: `src/00004.c` no longer fails from SP misalignment, and
-generated frames keep `sp` 16-byte aligned.
-
-### Step 3: Expand to Nearby Pointer and Array Locals
-
-Goal: Show the frame-alignment repair generalizes beyond the minimal local
-pointer case.
-
-Primary target: `src/00005.c`, `src/00013.c`, `src/00014.c`, `src/00015.c`,
-and `src/00016.c`.
+Primary target: AArch64 backend function-pointer value materialization,
+local storage, reload, and indirect-call callee setup.
 
 Actions:
 
-- Run the supervisor-selected subset covering the nearby bus-error local
-  pointer/array representatives.
-- Inspect any remaining failures and separate SP/frame-alignment defects from
-  broader pointer, array, struct, function-pointer, or local-state owners.
-- Repair only defects that are inside this idea's frame-size, stack-adjustment,
-  and local-slot offset scope.
-- Record proof results and any deferred blockers in `todo.md`.
+- Add or repair the semantic path that materializes function symbol addresses
+  as first-class pointer values.
+- Ensure local stores/loads preserve callable function-pointer values.
+- Ensure the indirect-call callee operand is moved into the register consumed
+  by `blr`.
+- Build and run the supervisor-selected narrow proof for `src/00087.c`.
 
-Completion check: the nearby local pointer/array family passes for this owner,
-or `todo.md` clearly separates remaining failures that belong to another
-focused idea.
+Completion check: `src/00087.c` no longer bus-errors from a bad indirect-call
+callee value.
 
-### Step 4: Sample the Wider Bus-Error Cluster and Decide Closure
+### Step 3: Expand to Global Initializers and Returned Function Pointers
 
-Goal: Confirm the route is not overfit to the first six cases and decide
-whether the source idea is complete.
+Goal: Show the repair generalizes beyond the local field case.
 
-Primary target: remaining `Bus error` cases from the refreshed inventory.
+Primary target: `src/00089.c` and `src/00124.c`.
 
 Actions:
 
-- Ask the supervisor for a broader related-case subset after the nearby proof
-  is green.
-- Include representative struct, function-pointer, and attribute/function
-  pointer bus-error cases only to classify whether SP/frame alignment remains
-  the owner.
-- Keep timeout-sensitive cases and compare/branch compile-stage gaps out of
-  this acceptance route.
-- If the broader subset exposes a separate semantic owner, record a follow-on
-  idea instead of absorbing it into this route.
+- Run the supervisor-selected subset covering global/static function-pointer
+  initialization and function-pointer return representatives.
+- Inspect remaining failures and separate global initializer, return-value,
+  aggregate, or call-chain defects from unrelated owners.
+- Repair only defects inside this idea's function-pointer value and indirect
+  call scope.
+- Record proof results and deferred blockers in `todo.md`.
 
-Completion check: broader bus-error proof supports closure of this focused
-idea, or `todo.md` records the exact remaining source-idea gap.
+Completion check: `src/00089.c` and `src/00124.c` pass for this owner, or
+`todo.md` clearly separates remaining failures that belong to another focused
+idea.
+
+### Step 4: Validate Attributed Function-Pointer Cast Overlap
+
+Goal: Decide whether attributed function-pointer casts are covered by the same
+backend function-pointer value owner.
+
+Primary target: `tests/c/external/c-testsuite/src/00210.c`.
+
+Actions:
+
+- Run the supervisor-selected proof for `src/00210.c` after the core
+  function-pointer cases are green.
+- Inspect whether any remaining failure is backend function-pointer value
+  loss, frontend attribute parsing/type handling, or unrelated call/stdio
+  behavior.
+- Repair only backend value/callee lowering defects inside this idea.
+- If the failure reduces to a frontend or attribute-specific owner, record a
+  separate follow-on instead of broadening this route.
+
+Completion check: `src/00210.c` passes for this owner, or `todo.md` records
+the exact non-owner blocker.
+
+### Step 5: Closure Review
+
+Goal: Confirm the route is not overfit and decide whether the source idea is
+complete.
+
+Primary target: the focused four-case function-pointer subset.
+
+Actions:
+
+- Re-run the supervisor-selected owner subset covering `00087`, `00089`,
+  `00124`, and `00210`.
+- Confirm generated frames remain aligned and no pass-count improvement came
+  from tests, expectations, runner behavior, allowlists, unsupported
+  classifications, or timeout policy.
+- If broader former bus-error sampling exposes a separate semantic owner,
+  record or split it instead of absorbing it into this route.
+
+Completion check: focused proof supports closure of this source idea, or
+`todo.md` records the exact remaining source-idea gap.

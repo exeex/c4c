@@ -105,6 +105,13 @@ alignment as the next focused semantic repair family. The active lifecycle
 state switched to
 `ideas/open/288_aarch64_stack_frame_sp_alignment.md`.
 
+2026-05-18: The stack-frame/SP alignment idea completed and moved to
+`ideas/closed/288_aarch64_stack_frame_sp_alignment.md`. Wider former
+bus-error sampling left four aligned-frame bus-error cases with bad or missing
+function-pointer values before indirect `blr`; the active lifecycle state
+switched to
+`ideas/open/289_aarch64_function_pointer_indirect_call_values.md`.
+
 Durable inventory findings to preserve:
 
 - The 212-case AArch64 backend c-testsuite scan classified as 46 `PASS`, 49
@@ -140,6 +147,13 @@ Durable inventory findings to preserve:
   emits a 24-byte stack frame (`sub sp, sp, #24`). That makes stack-frame/SP
   16-byte alignment the first owner to repair before treating nearby
   pointer/local/array failures as broader pointer-semantics issues.
+- After stack-frame/SP alignment, the nearby local pointer/array subset
+  `src/00004.c`, `src/00005.c`, `src/00013.c`, `src/00014.c`,
+  `src/00015.c`, and `src/00016.c` passed. Wider former bus-error sampling
+  selected 28 cases: 17 passed, 11 failed, and 0 timed out. Remaining bus
+  errors `src/00087.c`, `src/00089.c`, `src/00124.c`, and `src/00210.c` had
+  aligned frames and an indirect-call/function-pointer value failure shape, so
+  they were split from the SP/frame-alignment owner.
 
 ## Reviewer Reject Signals
 

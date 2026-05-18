@@ -1,6 +1,6 @@
 # AArch64 Stack Frame SP Alignment
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Source Inventory: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
@@ -69,6 +69,25 @@ as broad pointer-semantics failures.
 - No progress is claimed through test expectation rewrites, allowlist changes,
   unsupported classifications, runner changes, timeout changes, or CTest
   contract changes.
+
+## Closure Notes
+
+Closed after Step 4 sampled the wider former bus-error cluster. The minimal
+SP-alignment representative `src/00004.c` passed after the frame adjustment
+repair, and the nearby local pointer/array subset `src/00004.c`,
+`src/00005.c`, `src/00013.c`, `src/00014.c`, `src/00015.c`, and
+`src/00016.c` passed.
+
+The wider 28-case former bus-error sample selected all 28 tests: 17 passed, 11
+failed, and 0 timed out. The remaining bus-error cases `src/00087.c`,
+`src/00089.c`, `src/00124.c`, and `src/00210.c` no longer show the old
+SP/frame-alignment owner; their generated frames are aligned and the remaining
+failure shape is bad or missing function-pointer values before an indirect
+`blr`. Those cases were split to
+`ideas/open/289_aarch64_function_pointer_indirect_call_values.md`.
+
+Other non-bus runtime failures from the sample remain outside this idea as
+separate runtime semantic owners.
 
 ## Reviewer Reject Signals
 
