@@ -193,6 +193,14 @@ Durable inventory findings to preserve:
   while `00217` remains pointer/address/string-heavy. This umbrella inventory
   should reactivate for a post-293 classification pass and choose the next
   focused semantic owner instead of closing as complete.
+- After the post-293 classification pass, the next focused owner is AArch64
+  pointer-derived address/lvalue lowering authority. Starter representatives
+  are `src/00217.c`, `src/00032.c`, `src/00130.c`, and `src/00180.c`. The
+  split explicitly defers frontend failures, timeout/hang work, floating and
+  scalar-conversion cases, string/library-only behavior, aggregate/global
+  initializer work, and closed-owner overlap. The active lifecycle state
+  switched to
+  `ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`.
 
 ## Reviewer Reject Signals
 

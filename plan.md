@@ -1,148 +1,188 @@
-# AArch64 C-Testsuite Failure Family Inventory Runbook
+# AArch64 Pointer-Derived Address/Lvalue Lowering Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
+Source Idea: ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md
 
 ## Purpose
 
-Use the current AArch64 backend c-testsuite failures as an umbrella inventory,
-then split exactly one focused semantic repair idea before implementation work
-continues.
+Repair the AArch64 backend path that derives concrete pointer, array, and
+subobject addresses for lvalue loads, stores, compound updates, and
+address-valued call arguments.
 
 ## Goal
 
-Refresh the post-293 AArch64 failure map, classify remaining backend/runtime
-families, and select the next focused owner or document why no owner is ready.
+Make pointer-derived lvalue consumers use the authoritative concrete address
+instead of uninitialized pointer registers, out-of-frame stack offsets, wrong
+element offsets, or fallback slots.
 
 ## Core Rule
 
-This runbook is inventory-only. Do not implement compiler/backend repairs under
-this umbrella idea.
+Fix semantic address derivation and publication. Do not special-case named
+c-testsuite files or broaden into deferred frontend, timeout,
+floating/conversion, string/library-only, aggregate initializer, or closed-owner
+overlap buckets.
 
 ## Read First
 
+- `ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md`
 - `ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md`
 - `ideas/closed/293_aarch64_side_effect_control_value_publication_authority.md`
-- Latest focused proof artifacts if still present:
+- Current lifecycle state:
+  - `todo.md`
+- Proof artifacts if still present:
   - `test_before.log`
   - `test_after.log`
-  - `/tmp/c4c_aarch64_side_effect_step4_broader_sample.log`
+  - `/tmp/c4c_aarch64_post293_inventory_scan.log`
 
 ## Current Targets
 
-- Remaining AArch64 backend c-testsuite failures after closed focused ideas
-  285-293.
-- Known unresolved buckets from 293 close: closed-owner overlap
-  (`src/00159.c`, `src/00168.c`, `src/00193.c`) and pointer/address/string-heavy
-  work (`src/00217.c`) from the broader side-effect sample.
-- Previously deferred buckets from the umbrella inventory: timeout/hang,
-  printer/admission, floating/conversion/string-only, pointer/aggregate address
-  authority, and broad aggregate/function-pointer behavior.
-- Closed owners must stay closed unless fresh generated-code evidence
-  contradicts their closure.
+- Starter representatives: `src/00217.c`, `src/00032.c`, `src/00130.c`, and
+  `src/00180.c`.
+- Address families: local arrays, global data, array-to-pointer decay, pointer
+  arithmetic, pointer increments, pointer-to-array indexing, pointer casts, and
+  subobject offsets.
+- Consumer families: lvalue loads, lvalue stores, compound lvalue updates, and
+  address-valued direct-call arguments.
+- Later nearby sampling after the first fix: `src/00019.c`, `src/00137.c`,
+  `src/00138.c`, and pointer-heavy string or indirect-call cases if generated
+  code shows the same address authority failure.
 
 ## Non-Goals
 
 - Do not touch implementation files, tests, CTest registration, runner
   behavior, expected outputs, allowlists, unsupported classifications, timeout
   policy, or build/test infrastructure.
-- Do not treat timeout/hang cases as ordinary runtime mismatches.
-- Do not create a named-testcase repair idea without a broader semantic owner.
-- Do not reopen closed AArch64 owners from residual failure counts alone.
-- Do not keep this umbrella active for implementation once a coherent focused
-  owner is identified.
+- Do not treat frontend/admission failures as this backend owner.
+- Do not treat timeout or hang cases such as `src/00220.c` as ordinary runtime
+  mismatches.
+- Do not absorb floating or scalar-conversion cases such as `src/00174.c`,
+  `src/00175.c`, and `src/00119.c`.
+- Do not claim string/library-only behavior as fixed unless generated-code
+  evidence shows wrong pointer-derived address publication was the cause.
+- Do not absorb aggregate/global initializer work such as `src/00050.c`.
+- Do not reopen closed-owner overlap such as `src/00159.c`, `src/00168.c`,
+  `src/00193.c`, and `src/00196.c` without contradictory generated-code proof.
 
 ## Working Model
 
-The focused side-effect/control-value owner is closed. The next inventory pass
-should classify the remaining failure surface from current evidence, separate
-closed-owner overlap from genuinely new semantic ownership, and split the next
-tractable focused idea before coding starts.
+The AArch64 backend has learned several scalar and call-value authorities, but
+some pointer/address consumers still do not receive the concrete memory address
+they semantically require. The implementation should repair the shared address
+derivation/publication path and then prove it on multiple pointer/array shapes
+instead of encoding one testcase shape.
 
 ## Execution Rules
 
-- Use timeout-protected broad scans and check for stale generated-runtime
-  processes afterward.
-- Prefer current broad evidence if it already reflects the post-293 tree;
-  otherwise rerun the AArch64 backend label with an explicit timeout.
-- Inspect representatives by semantic family, not by filename count alone.
-- Separate frontend-owned failures from backend/runtime-owned failures.
-- Write current inventory observations and rejected buckets to `todo.md` while
-  investigating.
-- If a coherent focused owner emerges, create a new `ideas/open/*.md` source
-  idea with concrete reviewer reject signals and switch lifecycle state to it.
+- Start from generated AArch64 assembly for the four starter representatives
+  and identify the first common authority break before editing code.
+- Prefer existing backend/prealloc address facts and local helper patterns over
+  new ad hoc testcase matching.
+- Keep lvalue address identity intact across load, compute, and store when an
+  update expression consumes and writes the same addressed object.
+- For direct calls, distinguish address-valued arguments from scalar value
+  arguments and publish the object or subobject address to the ABI argument
+  register.
+- Update `todo.md` with each executor packet's owned files, proof command, and
+  generated-assembly observations.
+- Use `test_after.log` as the executor proof log unless the supervisor delegates
+  another artifact.
 
 ## Steps
 
-### Step 1: Refresh Post-293 Inventory
+### Step 1: Locate the Shared Address Authority Break
 
-Goal: establish the current AArch64 backend failure map after side-effect
-control-value publication authority closed.
+Goal: identify where pointer/array object identity stops being converted into
+the concrete AArch64 address consumed by loads, stores, updates, or calls.
 
-Primary target: timeout-protected AArch64 backend c-testsuite scan.
-
-Actions:
-
-- Prefer existing post-293 broad artifacts only if they are current for
-  `HEAD`.
-- Otherwise run:
-  `ctest --test-dir build-aarch64-scan -L '^aarch64_backend$' -j 8 --timeout 5 --output-on-failure`
-- Record pass/fail totals and classify failures into frontend, runtime
-  nonzero, runtime mismatch, timeout, and compile/printer/admission buckets.
-- Check that no generated-runtime process remains after the scan.
-- Preserve the side-effect Step 4 broader-sample separation for `00159`,
-  `00168`, `00193`, and `00217` until fresh evidence proves a different owner.
-
-Completion check:
-
-- `todo.md` records current totals, representative cases, log paths,
-  stale-process cleanup result, and any buckets that remain closed-owner
-  overlap rather than new owner candidates.
-
-### Step 2: Select the Next Semantic Owner
-
-Goal: choose the smallest remaining backend/runtime family that can become a
-focused repair idea.
-
-Primary target: representatives from non-frontend, non-timeout buckets unless
-fresh evidence shows a timeout-specific owner is now safest.
+Primary target: generated AArch64 for `src/00217.c`, `src/00032.c`,
+`src/00130.c`, and `src/00180.c`.
 
 Actions:
 
-- Inspect generated output and source shape for representative failures.
-- Compare candidates against closed owners 285-293 to avoid reopening closed
-  work without contradictory evidence.
-- Prefer a semantic family that can be proven with a small starter subset and
-  broader nearby sampling.
-- Defer buckets that are primarily frontend, environment-sensitive timeout,
-  or compile-stage printer/admission work unless they are clearly the next
-  safest owner.
-- Record why the selected family is not just a named c-testsuite case and why
-  rejected candidates are deferred.
+- Inspect source shape and generated assembly for each starter.
+- Trace the lowering path for local array decay, global data address plus
+  offset, pointer increments, pointer-to-array indexing, pointer casts, and
+  address-valued call arguments.
+- Identify the smallest shared backend/prealloc surface that chooses fallback
+  slots, stale scratch registers, uninitialized pointer registers, or wrong
+  element offsets instead of the semantic address.
+- Record the exact first repair target and narrow proof command in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the selected owner, starter representatives, rejected or
-  deferred buckets, closed-owner overlap rationale, and the proof shape expected
-  for the focused idea.
+- `todo.md` names the common address/lvalue authority break, the files expected
+  to change, the starter subset command, and the generated-assembly symptoms
+  that must disappear.
 
-### Step 3: Split or Hold Inventory
+### Step 2: Repair Core Pointer-Derived Lvalue Address Publication
 
-Goal: leave lifecycle state consistent after the inventory decision.
+Goal: make lvalue loads and stores consume the concrete pointer-derived address
+  for the starter family.
 
-Primary target: `ideas/open/` plus active lifecycle files.
+Primary target: the backend/prealloc surface identified in Step 1.
 
 Actions:
 
-- If a focused owner is ready, create a new `ideas/open/*.md` file with intent,
-  scope, acceptance criteria, and concrete reviewer reject signals.
-- Switch active lifecycle state from this umbrella inventory to the focused
-  idea using a new `plan.md` and reset `todo.md`.
-- If no owner is ready, keep this umbrella active only with a narrow next
-  classification step or record the exact ambiguity that blocks selection.
+- Repair address derivation for local/global objects, array decay, pointer
+  arithmetic, casts, and subobject offsets without named-case shortcuts.
+- Ensure emitted loads and stores use the derived address and the correct
+  element scale or byte offset.
+- Keep the change narrow to address/lvalue authority and avoid reopening
+  scalar control-value or call-register owners.
+- Run the delegated starter subset and capture `test_after.log`.
 
 Completion check:
 
-- There is at most one active plan.
-- `plan.md` and `todo.md`, if present, point to the same `ideas/open/*.md`.
-- This umbrella is not used for implementation work.
+- Starter tests that exercise ordinary pointer-derived loads/stores no longer
+  fail from uninitialized pointers, out-of-frame offsets, wrong element
+  offsets, or fallback slots, and generated assembly confirms the fixed
+  address source.
+
+### Step 3: Repair Compound Lvalue Updates and Address Arguments
+
+Goal: cover the remaining starter shapes where the same derived address is used
+  across load-compute-store or published as a direct-call argument.
+
+Primary target: `src/00217.c` compound lvalue update and `src/00180.c`
+address-valued `strcpy`/`printf` arguments, plus any same-surface starter
+fallout.
+
+Actions:
+
+- Ensure compound updates load the old value from the derived address, compute
+  the semantic result, and store back through that same address.
+- Ensure address-valued call arguments publish the local/global/subobject
+  address, not a stale scalar or uninitialized callee-saved register.
+- Run the delegated starter subset and inspect generated assembly before
+  widening.
+
+Completion check:
+
+- `src/00217.c`, `src/00032.c`, `src/00130.c`, and `src/00180.c` pass or have
+  any remaining failures classified outside this source idea, with assembly
+  evidence for correct address derivation and lvalue consumption.
+
+### Step 4: Nearby Same-Family Sampling and Boundary Separation
+
+Goal: prove the repair is semantic while keeping deferred buckets separate.
+
+Primary target: nearby pointer-heavy cases such as `src/00019.c`,
+`src/00137.c`, `src/00138.c`, and string or indirect-call cases only when
+generated code shows the same pointer-derived address failure.
+
+Actions:
+
+- Sample nearby pointer/address cases selected by the supervisor.
+- Compare any residual failures against frontend, timeout,
+  floating/conversion, string/library-only, aggregate initializer, and
+  closed-owner overlap buckets before claiming them in scope.
+- Preserve generated-assembly observations for both wins and separated
+  failures in `todo.md`.
+- Ask for reviewer scrutiny if the route starts depending on testcase-shaped
+  matching or expectation changes.
+
+Completion check:
+
+- The focused starter subset is green or cleanly separated, nearby sampling
+  shows same-family address/lvalue wins, deferred buckets remain explicitly out
+  of scope, and no progress depends on test expectation or runner changes.
