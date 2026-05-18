@@ -1,8 +1,9 @@
 # AArch64 Scalar Call Value Semantics
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Origin: Follow-on from ideas/closed/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -59,6 +60,19 @@ or fixed by changing runtime expectations.
 - `00159.c` is inspected as a nearby mixed-call probe and either improves under
   the same semantic repair or is recorded as blocked by a separate owner such
   as `printf`/string-literal behavior.
+
+## Completion Note
+
+The active runbook completed all five steps. The implementation and proof
+slices materialized AArch64 scalar call immediates, proved the focused backend
+call-value path, confirmed runtime probes `00116.c` and `00159.c`, and
+classified the nearby 23-case call-boundary subset with all selected cases
+passing and no remaining scalar call-value owner visible in that subset.
+
+No follow-on idea was created from this route. This closure does not claim
+unrelated `printf`, string-literal addressing, variadic-call, loop,
+aggregate/pointer, static-storage, short-circuit, goto, or
+macro/preprocessor-adjacent families outside the proven subset.
 
 ## Reviewer Reject Signals
 
