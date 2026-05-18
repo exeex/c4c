@@ -314,6 +314,8 @@ std::optional<RegisterOperand> make_call_argument_address_register_operand(
 std::optional<AddressMaterializationKind> selected_address_materialization_kind(
     prepare::PreparedAddressMaterializationKind kind) {
   switch (kind) {
+    case prepare::PreparedAddressMaterializationKind::FrameSlot:
+      return AddressMaterializationKind::FrameSlot;
     case prepare::PreparedAddressMaterializationKind::DirectGlobal:
       return AddressMaterializationKind::DirectPageLow12;
     case prepare::PreparedAddressMaterializationKind::GotGlobal:
@@ -335,6 +337,12 @@ PreparedAddressMaterializationRecordError validate_address_materialization_ident
     const prepare::PreparedAddressMaterialization& materialization,
     AddressMaterializationRecord& record) {
   switch (materialization.kind) {
+    case prepare::PreparedAddressMaterializationKind::FrameSlot:
+      if (!materialization.frame_slot_id.has_value()) {
+        return PreparedAddressMaterializationRecordError::MissingFrameSlotId;
+      }
+      record.frame_slot_id = materialization.frame_slot_id;
+      return PreparedAddressMaterializationRecordError::None;
     case prepare::PreparedAddressMaterializationKind::DirectGlobal:
       if (materialization.address_materialization_policy ==
           bir::GlobalAddressMaterializationPolicy::Unspecified) {
@@ -804,6 +812,8 @@ mir::TargetInstructionPrintResult print_address_materialization_instruction(
 
   std::string_view label;
   switch (address.kind) {
+    case AddressMaterializationKind::FrameSlot:
+      break;
     case AddressMaterializationKind::DirectPageLow12:
       label = address.symbol_label;
       if (label.empty()) {
@@ -865,6 +875,14 @@ mir::TargetInstructionPrintResult print_address_materialization_instruction(
   }
 
   const std::string result = abi::register_name(address.result_register->reg);
+  if (address.kind == AddressMaterializationKind::FrameSlot) {
+    if (address.byte_offset == 0) {
+      return address_materialization_printed({"mov " + result + ", sp"});
+    }
+    return address_materialization_printed({
+        "add " + result + ", sp, #" + std::to_string(address.byte_offset),
+    });
+  }
   if (address.kind == AddressMaterializationKind::GotPageLow12) {
     std::vector<std::string> lines{
         "adrp " + result + ", " + prefixed_relocation_operand(":got:", label),

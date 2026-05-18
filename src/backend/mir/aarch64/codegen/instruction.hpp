@@ -519,6 +519,7 @@ enum class PreparedAtomicOperationRecordError {
 };
 
 enum class AddressMaterializationKind {
+  FrameSlot,
   DirectPageLow12,
   GotPageLow12,
   TlsRelative,
@@ -537,6 +538,7 @@ enum class PreparedAddressMaterializationRecordError {
   MissingResultStorage,
   UnsupportedResultStorage,
   RegisterConversionFailed,
+  MissingFrameSlotId,
   MissingSymbolIdentity,
   MissingStringIdentity,
   MissingLabelIdentity,
@@ -1320,6 +1322,7 @@ struct AddressMaterializationRecord {
   prepare::PreparedValueHomeKind result_home_kind =
       prepare::PreparedValueHomeKind::None;
   std::optional<RegisterOperand> result_register;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
   std::optional<c4c::LinkNameId> symbol_name;
   std::string_view symbol_label;
   std::optional<c4c::TextId> text_name;

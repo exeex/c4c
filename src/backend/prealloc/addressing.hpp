@@ -53,6 +53,7 @@ enum class PreparedValueHomeKind;
 
 enum class PreparedAddressMaterializationKind {
   None,
+  FrameSlot,
   DirectGlobal,
   StringConstant,
   Label,
@@ -65,6 +66,8 @@ enum class PreparedAddressMaterializationKind {
   switch (kind) {
     case PreparedAddressMaterializationKind::None:
       return "none";
+    case PreparedAddressMaterializationKind::FrameSlot:
+      return "frame_slot";
     case PreparedAddressMaterializationKind::DirectGlobal:
       return "direct_global";
     case PreparedAddressMaterializationKind::StringConstant:
@@ -138,6 +141,7 @@ struct PreparedAddressMaterialization {
   std::optional<ValueNameId> result_value_name;
   std::optional<PreparedValueId> result_value_id;
   std::optional<PreparedValueHomeKind> result_home_kind;
+  std::optional<PreparedFrameSlotId> frame_slot_id;
   std::optional<LinkNameId> symbol_name;
   std::optional<TextId> text_name;
   std::optional<BlockLabelId> target_label;

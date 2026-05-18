@@ -826,6 +826,38 @@ void append_missing_address_materialization_fact(std::vector<PrepareNote>& notes
   });
 }
 
+void append_frame_slot_address_materialization(PreparedNameTables& names,
+                                               PreparedAddressingFunction& function_addressing,
+                                               const bir::NameTables& bir_names,
+                                               FunctionNameId function_name_id,
+                                               BlockLabelId block_label_id,
+                                               std::size_t inst_index,
+                                               const bir::Value& result,
+                                               std::int64_t byte_offset,
+                                               const FrameSlotMap& frame_slots_by_name) {
+  if (result.type != bir::TypeKind::Ptr || result.kind != bir::Value::Kind::Named ||
+      result.name.empty()) {
+    return;
+  }
+
+  const SlotNameId prepared_slot_id =
+      intern_prepared_slot_name(names, bir_names, kInvalidSlotName, result.name);
+  const auto slot_it = frame_slots_by_name.find(prepared_slot_id);
+  if (slot_it == frame_slots_by_name.end() || slot_it->second == nullptr) {
+    return;
+  }
+
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = PreparedAddressMaterializationKind::FrameSlot,
+      .result_value_name = prepared_named_value_id(names, result),
+      .frame_slot_id = slot_it->second->slot_id,
+      .byte_offset = static_cast<std::int64_t>(slot_it->second->offset_bytes) + byte_offset,
+  });
+}
+
 void append_direct_global_address_materialization(PreparedNameTables& names,
                                                   PreparedAddressingFunction& function_addressing,
                                                   std::vector<PrepareNote>& notes,
@@ -979,10 +1011,20 @@ void append_call_argument_address_materialization(PreparedNameTables& names,
                                                   FunctionNameId function_name_id,
                                                   BlockLabelId block_label_id,
                                                   std::size_t inst_index,
-                                                  const bir::Value& argument) {
+                                                  const bir::Value& argument,
+                                                  const FrameSlotMap& frame_slots_by_name) {
   if (argument.type != bir::TypeKind::Ptr || argument.kind != bir::Value::Kind::Named) {
     return;
   }
+  append_frame_slot_address_materialization(names,
+                                            function_addressing,
+                                            module.names,
+                                            function_name_id,
+                                            block_label_id,
+                                            inst_index,
+                                            argument,
+                                            0,
+                                            frame_slots_by_name);
   if (argument.pointer_symbol_link_name_id != kInvalidLinkName) {
     append_direct_global_address_materialization(
         names,
@@ -1091,13 +1133,23 @@ void append_address_materializations(PreparedNameTables& names,
                                      const bir::Module& module,
                                      const c4c::TargetProfile& target_profile,
                                      FunctionNameId function_name_id,
-                                     const bir::Function& function) {
+                                     const bir::Function& function,
+                                     const FrameSlotMap& frame_slots_by_name) {
   for (const auto& block : function.blocks) {
     const BlockLabelId block_label_id =
         intern_preferred_block_label(names, module.names, block.label_id, block.label);
     for (std::size_t inst_index = 0; inst_index < block.insts.size(); ++inst_index) {
       const auto& inst = block.insts[inst_index];
       if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        append_frame_slot_address_materialization(names,
+                                                  function_addressing,
+                                                  module.names,
+                                                  function_name_id,
+                                                  block_label_id,
+                                                  inst_index,
+                                                  binary->lhs,
+                                                  0,
+                                                  frame_slots_by_name);
         append_direct_global_address_materialization(
             names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, binary->result);
       } else if (const auto* select = std::get_if<bir::SelectInst>(&inst)) {
@@ -1135,7 +1187,8 @@ void append_address_materializations(PreparedNameTables& names,
                                                        function_name_id,
                                                        block_label_id,
                                                        inst_index,
-                                                       argument);
+                                                       argument,
+                                                       frame_slots_by_name);
         }
       } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         append_direct_global_address_materialization(
@@ -1189,6 +1242,26 @@ void append_address_materializations(PreparedNameTables& names,
             load_global->result,
             load_global->address,
             static_cast<std::int64_t>(load_global->byte_offset));
+      } else if (const auto* store_local = std::get_if<bir::StoreLocalInst>(&inst)) {
+        append_frame_slot_address_materialization(names,
+                                                  function_addressing,
+                                                  module.names,
+                                                  function_name_id,
+                                                  block_label_id,
+                                                  inst_index,
+                                                  store_local->value,
+                                                  0,
+                                                  frame_slots_by_name);
+        append_direct_global_address_materialization(
+            names,
+            function_addressing,
+            notes,
+            module,
+            target_profile,
+            function_name_id,
+            block_label_id,
+            inst_index,
+            store_local->value);
       }
     }
   }
@@ -1234,20 +1307,22 @@ void BirPreAlloc::run_stack_layout() {
         .frame_size_bytes = function_frame_size,
         .frame_alignment_bytes = function_frame_alignment,
     });
+    const auto frame_slots_by_name = build_frame_slot_map(function_objects, function_slots);
     append_direct_frame_slot_accesses(
         prepared_.names,
         function_addressing,
         function_name_id,
         prepared_.module.names,
         function,
-        build_frame_slot_map(function_objects, function_slots));
+        frame_slots_by_name);
     append_address_materializations(prepared_.names,
                                     function_addressing,
                                     prepared_.notes,
                                     prepared_.module,
                                     prepared_.target_profile,
                                     function_name_id,
-                                    function);
+                                    function,
+                                    frame_slots_by_name);
 
     prepared_.stack_layout.objects.insert(prepared_.stack_layout.objects.end(),
                                           std::make_move_iterator(function_objects.begin()),

@@ -710,6 +710,8 @@ std::string_view prepared_scalar_fp_unary_intrinsic_record_error_name(
 
 std::string_view address_materialization_kind_name(AddressMaterializationKind kind) {
   switch (kind) {
+    case AddressMaterializationKind::FrameSlot:
+      return "frame_slot";
     case AddressMaterializationKind::DirectPageLow12:
       return "direct_page_low12";
     case AddressMaterializationKind::GotPageLow12:
@@ -747,6 +749,8 @@ std::string_view prepared_address_materialization_record_error_name(
       return "unsupported_result_storage";
     case PreparedAddressMaterializationRecordError::RegisterConversionFailed:
       return "register_conversion_failed";
+    case PreparedAddressMaterializationRecordError::MissingFrameSlotId:
+      return "missing_frame_slot_id";
     case PreparedAddressMaterializationRecordError::MissingSymbolIdentity:
       return "missing_symbol_identity";
     case PreparedAddressMaterializationRecordError::MissingStringIdentity:
@@ -1163,6 +1167,7 @@ MachineOpcode machine_opcode_from_branch_instruction(const BranchInstructionReco
 MachineOpcode machine_opcode_from_address_materialization(
     const AddressMaterializationRecord& instruction) {
   switch (instruction.kind) {
+    case AddressMaterializationKind::FrameSlot:
     case AddressMaterializationKind::DirectPageLow12:
     case AddressMaterializationKind::GotPageLow12:
     case AddressMaterializationKind::TlsRelative:
@@ -1501,6 +1506,14 @@ MachineNodeStatusRecord address_materialization_selection_status(
       return MachineNodeStatusRecord{
           .status = MachineNodeSelectionStatus::MissingRequiredFacts,
           .diagnostic = "label address materialization is missing target label identity"};
+    }
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (instruction.kind == AddressMaterializationKind::FrameSlot) {
+    if (!instruction.frame_slot_id.has_value()) {
+      return MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::MissingRequiredFacts,
+          .diagnostic = "frame-slot address materialization is missing frame slot identity"};
     }
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
   }

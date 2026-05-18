@@ -50,6 +50,24 @@ BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(
   return lookup_scalar_byte_offset_layout_result(type_text, type_decls, structured_layouts).layout;
 }
 
+[[nodiscard]] bool append_local_slot_address_value(std::string_view result_name,
+                                                   const LocalSlotAddress& address,
+                                                   std::vector<bir::Inst>* lowered_insts) {
+  if (result_name.empty() || address.slot_name.empty() ||
+      (result_name == address.slot_name && address.byte_offset == 0)) {
+    return false;
+  }
+  lowered_insts->push_back(bir::BinaryInst{
+      .opcode = address.byte_offset < 0 ? bir::BinaryOpcode::Sub : bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
+      .operand_type = bir::TypeKind::Ptr,
+      .lhs = bir::Value::named(bir::TypeKind::Ptr, address.slot_name),
+      .rhs = bir::Value::immediate_i64(address.byte_offset < 0 ? -address.byte_offset
+                                                               : address.byte_offset),
+  });
+  return true;
+}
+
 static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -1034,6 +1052,14 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
+        if (value.kind == bir::Value::Kind::Named) {
+          const auto published_address = local_slot_address_slots->find(ptr_it->second);
+          if (published_address != local_slot_address_slots->end()) {
+            (void)append_local_slot_address_value(value.name,
+                                                  published_address->second,
+                                                  lowered_insts);
+          }
+        }
       }
       if (const auto pointer_value_it = pointer_value_addresses.find(stored_operand.str());
           pointer_value_it != pointer_value_addresses.end()) {
@@ -1074,6 +1100,14 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
+        if (value.kind == bir::Value::Kind::Named) {
+          const auto published_address = local_slot_address_slots->find(ptr_it->second);
+          if (published_address != local_slot_address_slots->end()) {
+            (void)append_local_slot_address_value(value.name,
+                                                  published_address->second,
+                                                  lowered_insts);
+          }
+        }
       } else if (const auto local_aggregate_it = local_aggregate_slots.find(stored_operand.str());
                  local_aggregate_it != local_aggregate_slots.end() &&
                  local_slot_ptr_val_it == local_slot_pointer_values.end()) {
@@ -1108,6 +1142,14 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         local_address_slots->erase(ptr_it->second);
         local_indirect_pointer_slots->erase(ptr_it->second);
         stored_local_slot_address = true;
+        if (value.kind == bir::Value::Kind::Named) {
+          const auto published_address = local_slot_address_slots->find(ptr_it->second);
+          if (published_address != local_slot_address_slots->end()) {
+            (void)append_local_slot_address_value(value.name,
+                                                  published_address->second,
+                                                  lowered_insts);
+          }
+        }
       }
       const auto global_ptr_it = global_pointer_slots.find(stored_operand.str());
       if (global_ptr_it != global_pointer_slots.end()) {
@@ -1275,6 +1317,13 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
                                          local_slot_pointer_values,
                                          local_aggregate_slots,
                                          local_pointer_array_bases);
+  if (const auto local_address_it = local_slot_address_slots.find(slot);
+      local_address_it != local_slot_address_slots.end()) {
+    (*local_slot_pointer_values)[result] = local_address_it->second;
+    if (append_local_slot_address_value(result, local_address_it->second, lowered_insts)) {
+      return true;
+    }
+  }
   if (const auto addr_it = local_address_slots.find(slot); addr_it != local_address_slots.end()) {
     const bool preserve_loaded_pointer_provenance =
         local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
