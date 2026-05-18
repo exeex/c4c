@@ -8,57 +8,57 @@ Current Step Title: Repair Side-Effecting Expression Result Publication
 
 ## Just Finished
 
-Step 1 located the starter authority loss at the prepared value publication
-boundary between prealloc move/value-location facts and AArch64 codegen
-emission.
+Step 2 implemented the smallest coherent side-effecting-expression publication
+slice for `src/00202.c`: prepared scalar ALU frame-slot result publication plus
+rematerializable-immediate local-store publication.
 
-Failure evidence:
+The private scalar ALU fallback path now accepts prepared stack-slot result
+homes by choosing the existing spill scratch register and carrying
+`result_stack_offset_bytes` into the `ScalarAluRecord`. The scalar ALU printer
+now appends the same stack publication store for computed `mul`, signed
+`div`/`rem`, and unsigned-reduction results that add/sub already used.
 
-- `src/00202.c` has correct prepared side-effect semantics:
-  `%t2 = bir.mul i32 %t1, 2`, `bir.store_local %lv.bob, i32 %t2`, and the
-  first `printf` argument plan reads bob from a prepared frame-slot value.
-  Generated assembly never emits the `mul` result publication; it later does
-  `ldr w9, [sp, #8]` and stores that stale saved-register slot into bob, so
-  output is `bob: 1` instead of `bob: 42`.
-- `src/00183.c` has correct prepared control-selected semantics:
-  `%t21 = bir.select slt i32 %t7, 5, i32 %t18, %t20` with
-  `select_materialization` join transfers for `%t18 -> %t21` and `%t20 -> %t21`.
-  Generated assembly computes branch-local values in `w20`, but the join emits
-  no prepared block-entry/out-of-SSA copy to the call argument; `printf` uses
-  stale `x13`, producing `0..9` instead of squares/triples.
-- `src/00164.c` combines both shapes. Prepared scalar call arguments name
-  computed values such as `%t3`, `%t8`, `%t29`, `%t50`, and later compare/logical
-  materializations, but generated assembly repeatedly prints stale call results
-  or old scalar registers instead of the prepared computed values.
+The prepared memory store path now accepts named rematerializable-immediate
+values when the value home and storage plan agree on the immediate, so
+assignment/local-store publication can materialize the immediate into the
+destination local slot.
 
-First concrete implementation boundary: AArch64 codegen must emit prepared
-scalar publication moves, starting with scalar ALU results whose authoritative
-home is a frame slot, then block-entry/out-of-SSA `select_materialization`
-copies. The files implicated by the boundary are
-`src/backend/mir/aarch64/codegen/alu.cpp`,
-`src/backend/mir/aarch64/codegen/memory.cpp`, and the dispatch gap for
-`PreparedMovePhase::BlockEntry` bundles in
-`src/backend/mir/aarch64/codegen/dispatch.cpp`/move lowering.
+Generated-code evidence for `src/00202.c`:
+
+```asm
+mov w9, #2
+mul w9, w13, w9
+str w9, [sp, #8]
+ldr w9, [sp, #8]
+str w9, [sp]
+movz w9, #63
+str w9, [sp, #4]
+```
+
+`src/00202.c` now passes: the first observable line consumes the published
+`bob *= 2` value and the second line consumes the published `jim = 60 + 3`
+rematerializable immediate.
 
 ## Suggested Next
 
-Implement the smallest Step 2 side-effecting expression primitive: prepared
-scalar ALU results with frame-slot homes must publish their computed scratch
-register back to the prepared frame slot before local-store/call consumers read
-that value. Use `src/00202.c` as the primary proof and keep `src/00164.c` as
-the mixed-shape guard.
+Stay in Step 2 and sample the remaining `src/00164.c` assignment-like forms to
+separate same-owner side-effect publication gaps from closed-owner-looking call,
+comparison, and control-value symptoms. Do not start the Step 3
+`src/00183.c` BlockEntry/select-materialization repair until the supervisor
+chooses that packet.
 
 ## Watchouts
 
-- Do not fold the `src/00183.c` conditional-expression gap into the first
-  side-effecting-expression packet unless the same prepared move emission helper
-  naturally covers both; it is the Step 3 block-entry/out-of-SSA
-  `select_materialization` half of the same publication boundary.
+- Do not fold the `src/00183.c` conditional-expression gap into the next Step 2
+  packet; it is still the Step 3 block-entry/out-of-SSA
+  `select_materialization` half of the publication boundary.
+- The current `00202` store uses the existing prepared stack offset carried by
+  scalar ALU records. This matches the existing add/sub publication mechanism,
+  but a later broader cleanup may still need a single frame-slot-address helper
+  shared with memory/call publication so raw prepared offsets do not proliferate.
 - `src/00164.c` still shows closed-owner-looking symptoms around call
-  arguments and compare/logical values, but prepared call plans already name the
-  right argument sources. Treat this as missing publication from prepared values,
-  not a reason to reopen closed scalar call, call-argument, switch/control, or
-  function-pointer owners.
+  arguments and compare/logical values. Treat them as missing publication from
+  prepared values unless generated-code evidence proves a closed owner regressed.
 - Keep pointer/address-heavy cases `src/00172.c` and `src/00217.c` deferred
   unless the same scalar side-effect/control publication primitive owns them.
 - Do not touch expected outputs, allowlists, unsupported classifications,
@@ -73,8 +73,24 @@ Ran the delegated proof exactly:
 { cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: failed as expected, 0/3 passing. All three starter reps are
-`RUNTIME_MISMATCH`.
+Result: failed overall, 0/3 passing, but `00202` materially advanced. Current
+status for the first run:
+
+- `00202`: still `RUNTIME_MISMATCH`, but first line now prints
+  `jim: 21, bob: 42`; remaining mismatch is the later immediate assignment
+  publication for `jim`.
+- `00164`: still `RUNTIME_MISMATCH`; not accepted as repaired in this packet.
+- `00183`: still `RUNTIME_MISMATCH`; unchanged Step 3
+  `select_materialization`/BlockEntry gap.
+
+After extending the same slice, reran the delegated proof exactly:
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+```
+
+Result: failed overall, 1/3 passing. `00202` passed. `00164` and `00183`
+remain `RUNTIME_MISMATCH` in the expected remaining buckets.
 
 Stale-process check:
 
@@ -84,8 +100,17 @@ pgrep -af '^/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' || 
 
 Result: no generated runtime process remained.
 
-Supporting dumps:
+Shared-code regression check:
 
-- `/tmp/c4c_aarch64_side_effect_step1_00164.prepared.txt`
-- `/tmp/c4c_aarch64_side_effect_step1_00183.prepared.txt`
-- `/tmp/c4c_aarch64_side_effect_step1_00202.prepared.txt`
+```sh
+ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure > /tmp/c4c_aarch64_side_effect_step2_backend_aarch64.log 2>&1
+```
+
+Result: passed, 27/27.
+
+Additional check: `git diff --check` passed.
+
+Proof logs:
+
+- `test_after.log`
+- `/tmp/c4c_aarch64_side_effect_step2_backend_aarch64.log`

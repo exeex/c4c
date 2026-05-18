@@ -1336,7 +1336,8 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
   if (stored_home == nullptr ||
       stored_home->value_name != *operand.record->stored_value_name ||
       (stored_home->kind != prepare::PreparedValueHomeKind::Register &&
-       stored_home->kind != prepare::PreparedValueHomeKind::StackSlot)) {
+       stored_home->kind != prepare::PreparedValueHomeKind::StackSlot &&
+       stored_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate)) {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingStoredValueHome);
   }
@@ -1346,6 +1347,30 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
   if (stored_storage == nullptr ||
       stored_storage->value_name != *operand.record->stored_value_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingStoredStorage);
+  }
+  if (stored_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
+      stored_storage->encoding == prepare::PreparedStorageEncodingKind::Immediate &&
+      stored_home->immediate_i32.has_value() &&
+      stored_storage->immediate_i32.has_value() &&
+      *stored_home->immediate_i32 == *stored_storage->immediate_i32) {
+    const auto immediate = make_scalar_immediate_operand(
+        bir::Value::immediate_i32(static_cast<std::int32_t>(*stored_storage->immediate_i32)),
+        stored_home->value_id,
+        stored_home->value_name);
+    if (!immediate.has_value()) {
+      return memory_instruction_record_error(
+          PreparedMemoryOperandRecordError::UnsupportedStoredStorage);
+    }
+    return PreparedMemoryInstructionRecordResult{
+        .record =
+            MemoryInstructionRecord{
+                .memory_kind = MemoryInstructionKind::Store,
+                .address = *operand.record,
+                .value = make_immediate_operand(*immediate),
+                .value_type = stored_value.type,
+            },
+        .error = PreparedMemoryOperandRecordError::None,
+    };
   }
   if (stored_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       stored_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&

@@ -121,6 +121,39 @@ namespace mir = c4c::backend::mir;
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string> scalar_alu_stack_publication_line(
+    const ScalarAluRecord& alu,
+    std::string_view result) {
+  if (!alu.result_stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  if (*alu.result_stack_offset_bytes < 0 || *alu.result_stack_offset_bytes > 4095) {
+    return std::string{};
+  }
+  std::ostringstream store;
+  store << "str " << result << ", [sp";
+  if (*alu.result_stack_offset_bytes != 0) {
+    store << ", #" << *alu.result_stack_offset_bytes;
+  }
+  store << "]";
+  return store.str();
+}
+
+[[nodiscard]] ScalarAluPrintResult append_scalar_alu_stack_publication(
+    std::vector<std::string>& lines,
+    const ScalarAluRecord& alu,
+    std::string_view result) {
+  const auto publication = scalar_alu_stack_publication_line(alu, result);
+  if (publication.has_value() && publication->empty()) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar ALU stack publication offset is not printable"};
+  }
+  if (publication.has_value()) {
+    lines.push_back(*publication);
+  }
+  return {.lines = std::move(lines), .diagnostic = {}};
+}
+
 [[nodiscard]] bool is_unsigned_power_of_two_reduction_opcode(bir::BinaryOpcode opcode) {
   return opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
 }
@@ -847,13 +880,13 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       std::ostringstream out;
       out << "mul " << *result << ", " << *lhs << ", " << *rhs;
       lines.push_back(out.str());
-      return {.lines = std::move(lines), .diagnostic = {}};
+      return append_scalar_alu_stack_publication(lines, alu, *result);
     }
     if (alu.source_binary_opcode == bir::BinaryOpcode::SDiv) {
       std::ostringstream out;
       out << "sdiv " << *result << ", " << *lhs << ", " << *rhs;
       lines.push_back(out.str());
-      return {.lines = std::move(lines), .diagnostic = {}};
+      return append_scalar_alu_stack_publication(lines, alu, *result);
     }
     if (alu.source_binary_opcode == bir::BinaryOpcode::SRem) {
       std::optional<std::string> divisor = rhs;
@@ -893,7 +926,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       msub << "msub " << *result << ", " << *quotient << ", " << *divisor << ", "
            << *lhs;
       lines.push_back(msub.str());
-      return {.lines = std::move(lines), .diagnostic = {}};
+      return append_scalar_alu_stack_publication(lines, alu, *result);
     }
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
@@ -946,7 +979,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                << *alu.post_zero_extend_result_bits;
         lines.push_back(extend.str());
       }
-      return {.lines = std::move(lines), .diagnostic = {}};
+      return append_scalar_alu_stack_publication(lines, alu, *result);
     }
     if (alu.operation == ScalarAluOperationKind::And &&
         alu.source_binary_opcode == bir::BinaryOpcode::URem) {
@@ -958,7 +991,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                << *alu.post_zero_extend_result_bits;
         lines.push_back(extend.str());
       }
-      return {.lines = std::move(lines), .diagnostic = {}};
+      return append_scalar_alu_stack_publication(lines, alu, *result);
     }
     return {.lines = std::nullopt,
             .diagnostic = "scalar unsigned reduction operation is not printable"};
@@ -1091,18 +1124,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     lines.push_back(extend.str());
   }
   if (alu.result_stack_offset_bytes.has_value()) {
-    if (*alu.result_stack_offset_bytes < 0 || *alu.result_stack_offset_bytes > 4095) {
-      return {.lines = std::nullopt,
-              .diagnostic =
-                  "scalar add/sub stack publication offset is not printable"};
-    }
-    std::ostringstream store;
-    store << "str " << *result << ", [sp";
-    if (*alu.result_stack_offset_bytes != 0) {
-      store << ", #" << *alu.result_stack_offset_bytes;
-    }
-    store << "]";
-    lines.push_back(store.str());
+    return append_scalar_alu_stack_publication(lines, alu, *result);
   }
   return {.lines = std::move(lines), .diagnostic = {}};
 }
@@ -1707,18 +1729,20 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           result_register = find_return_chain_register(
               context, instruction_index, *result_home, binary->result.type);
         }
+        std::optional<std::int64_t> result_stack_offset_bytes;
         if (!result_register.has_value() && result_home != nullptr &&
             is_scalar_alu_publication_opcode(binary->opcode) &&
             context.function.prepared != nullptr &&
             context.function.value_locations != nullptr &&
             context.function.storage_plan != nullptr) {
           RegisterOperand storage_register;
-          if (make_prepared_scalar_result_register_operand(
+          if (make_prepared_scalar_result_operand(
                   context.function.prepared->names,
                   *context.function.value_locations,
                   *context.function.storage_plan,
                   binary->result,
-                  storage_register) == PreparedScalarAluRecordError::None) {
+                  storage_register,
+                  result_stack_offset_bytes) == PreparedScalarAluRecordError::None) {
             result_register = storage_register;
           }
         }
@@ -1739,6 +1763,7 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
             .result_value_name = result_home->value_name,
             .result_type = binary->result.type,
             .result_register = *result_register,
+            .result_stack_offset_bytes = result_stack_offset_bytes,
             .lhs = *lhs,
             .rhs = *rhs,
             .supported_integer_operation = true,
