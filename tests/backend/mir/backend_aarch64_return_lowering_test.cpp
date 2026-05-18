@@ -260,6 +260,105 @@ prepare::PreparedBirModule prepared_with_return_selected_register_scalar_value()
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_return_selected_memory_load_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{20},
+              .object_id = prepare::PreparedObjectId{20},
+              .function_name = function_name,
+              .offset_bytes = 0,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+  };
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+      .slot_id = c4c::SlotNameId{5},
+      .byte_offset = 0,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .byte_offset = 0,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .base_slot_id = c4c::SlotNameId{5},
+          },
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%loaded")};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {register_home(prepare::PreparedValueId{8},
+                                    function_name,
+                                    loaded_name,
+                                    "w19")},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeReturn,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{8},
+              .to_value_id = prepare::PreparedValueId{8},
+              .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_contiguous_width = 1,
+              .destination_register_placement = call_result_gpr(0),
+          }},
+      }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {register_storage(prepare::PreparedValueId{8}, loaded_name, "w19")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = prepared.control_flow.functions.front().blocks.front().block_label,
+              .inst_index = 0,
+              .result_value_name = loaded_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{20},
+                      .byte_offset = 0,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_return_selected_scalar_chain() {
   prepare::PreparedBirModule prepared = prepared_with_return_block();
 
@@ -580,6 +679,48 @@ int module_build_retains_return_abi_for_register_scalar_result() {
   return 0;
 }
 
+int module_build_retains_return_abi_for_memory_load_result() {
+  auto prepared = prepared_with_return_selected_memory_load_value();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    return fail("expected memory-load return dispatch to select load plus return");
+  }
+  const auto& instructions = block.instructions;
+  if (instructions.size() != 2 ||
+      instructions[0].target.family != aarch64_module::codegen::InstructionFamily::Memory ||
+      instructions[1].target.family != aarch64_module::codegen::InstructionFamily::Return) {
+    return fail("expected memory load and return instructions for loaded return value");
+  }
+  const auto* memory = std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+      &instructions[0].target.payload);
+  const auto* ret = std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+      &instructions[1].target.payload);
+  const auto* ret_reg =
+      ret != nullptr && ret->value.has_value()
+          ? std::get_if<aarch64_module::codegen::RegisterOperand>(&ret->value->payload)
+          : nullptr;
+  if (memory == nullptr || !memory->result_register.has_value() ||
+      memory->result_register->reg != aarch64_abi::w_register(0) ||
+      memory->result_register->role !=
+          aarch64_module::codegen::RegisterOperandRole::CallAbi ||
+      ret_reg == nullptr || ret_reg->reg != aarch64_abi::w_register(0) ||
+      ret_reg->value_id != prepare::PreparedValueId{8}) {
+    return fail("expected memory-loaded return value to honor FunctionReturnAbi w0");
+  }
+  return 0;
+}
+
 int module_build_selects_scalar_chain_before_return() {
   auto prepared = prepared_with_return_selected_scalar_chain();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -683,6 +824,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_retains_return_abi_for_register_scalar_result();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_retains_return_abi_for_memory_load_result();
       status != 0) {
     return status;
   }
