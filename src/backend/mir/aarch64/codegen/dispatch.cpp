@@ -221,7 +221,8 @@ lower_predecessor_select_parallel_copy_sources(
                                                  successor->insts[source_index],
                                                  source_index,
                                                  edge_state,
-                                                 diagnostics);
+                                                 diagnostics,
+                                                 true);
       if (!source_lowered.has_value()) {
         lowered.clear();
         return lowered;

@@ -846,7 +846,8 @@ namespace mir = c4c::backend::mir;
 [[nodiscard]] std::optional<OperandRecord> make_control_publication_operand(
     const bir::Value& value,
     const module::BlockLoweringContext& context,
-    const BlockScalarLoweringState& scalar_state) {
+    const BlockScalarLoweringState& scalar_state,
+    bool allow_prepared_load_source) {
   if (value.kind == bir::Value::Kind::Immediate) {
     return make_immediate_scalar_operand(value);
   }
@@ -857,6 +858,12 @@ namespace mir = c4c::backend::mir;
   const auto emitted = find_emitted_scalar_register(scalar_state, home->value_name);
   if (emitted.has_value()) {
     return make_register_operand(*emitted);
+  }
+  if (allow_prepared_load_source) {
+    auto source = make_prepared_scalar_load_source(context, *home);
+    if (source.has_value()) {
+      return make_memory_operand(*source);
+    }
   }
   if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
     auto source = make_prepared_scalar_load_source(context, *home);
@@ -1042,7 +1049,8 @@ lower_scalar_compare_publication(
     const bir::BinaryInst& binary,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics) {
+    module::ModuleLoweringDiagnostics& diagnostics,
+    bool allow_prepared_load_source) {
   if (!is_scalar_compare_opcode(binary.opcode) ||
       context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
@@ -1072,10 +1080,10 @@ lower_scalar_compare_publication(
     return std::nullopt;
   }
   (void)diagnostics;
-  auto lhs_operand =
-      make_control_publication_operand(binary.lhs, context, scalar_state);
-  auto rhs_operand =
-      make_control_publication_operand(binary.rhs, context, scalar_state);
+  auto lhs_operand = make_control_publication_operand(
+      binary.lhs, context, scalar_state, allow_prepared_load_source);
+  auto rhs_operand = make_control_publication_operand(
+      binary.rhs, context, scalar_state, allow_prepared_load_source);
   if (!lhs_operand.has_value() || !rhs_operand.has_value()) {
     return std::nullopt;
   }
@@ -2418,10 +2426,16 @@ std::optional<module::MachineInstruction> lower_scalar_control_value_instruction
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics) {
+    module::ModuleLoweringDiagnostics& diagnostics,
+    bool allow_prepared_load_source) {
   if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
     return lower_scalar_compare_publication(
-        context, *binary, instruction_index, scalar_state, diagnostics);
+        context,
+        *binary,
+        instruction_index,
+        scalar_state,
+        diagnostics,
+        allow_prepared_load_source);
   }
   return std::nullopt;
 }

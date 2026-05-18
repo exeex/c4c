@@ -96,6 +96,7 @@ lower_scalar_control_value_instruction(
     const bir::Inst& inst,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
-    module::ModuleLoweringDiagnostics& diagnostics);
+    module::ModuleLoweringDiagnostics& diagnostics,
+    bool allow_prepared_load_source = false);
 
 }  // namespace c4c::backend::aarch64::codegen

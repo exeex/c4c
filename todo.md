@@ -8,46 +8,39 @@ Current Step Title: Repair Control-Selected Expression Publication
 
 ## Just Finished
 
-Step 3 materially advanced the next `00164` stale publication after `%t106` by
-repairing scalar value-home freshness across the eighth-line expression
-`a | b ^ c & d`. The AArch64 scalar state now evicts older value names when a
-new value is published into the same physical register, clears caller-saved
-scalar publications after ordinary calls, and records after-call prepared move
-destinations back into the scalar state. The scalar fallback also treats an
-un-emitted register-home value as reloadable when prepared memory facts identify
-the defining load source, and its memory-source scratch choice avoids clobbering
-a still-needed register operand.
+Step 3 materially advanced the next `00164` stale publication after the compare
+pair by repairing edge-local control compare publication for
+`a != b && c != d`. The predecessor parallel-copy source hook now asks scalar
+control publication to allow prepared-load-source operands only for the
+synthetic edge lowering path, so `%t149 = c != d` can be computed on the
+`logic.rhs.end.145 -> logic.end.146` edge without enabling all
+`BeforeInstruction` moves or broadening ordinary same-block control publication.
 
-Generated-code evidence for `00164`: after the `%t106` print, the eighth output
-expression now reloads the source locals and produces the expected `46` instead
-of OR-ing stale `x13`:
+Generated-code evidence for `00164`: after the `a != a, a != b` compare pair,
+the true edge for `a != b && c != d` now reloads `c` and `d`, compares them, and
+publishes `%t153` in `w13` before the eleventh `printf`:
 
 ```asm
 ldr w9, [sp, #8]
 ldr w10, [sp, #12]
-and w9, w9, w10
-str w9, [sp, #160]
-ldr w10, [sp, #4]
-eor w9, w10, w9
-str w9, [sp, #164]
-ldr w10, [sp]
-orr w9, w10, w9
-str w9, [sp, #168]
+cmp w9, w10
+cset w13, ne
 ```
 
 The focused subset still fails overall with known remaining `00164` and `00183`
-runtime mismatches, while `00202` passes. `00164` now preserves and advances the
-front of the output to `134`, `134`, `0`, `1`, `1`, `1`, `1`, `46`; the compare
-pair remains `1, 0` and `0, 1`. The next `00164` stale value is now the
-eleventh line, expected `1`.
+runtime mismatches, while `00202` passes. `00164` preserves the first ten lines:
+`134`, `134`, `0`, `1`, `1`, `1`, `1`, `46`, `1, 0`, `0, 1`. The eleventh line
+now prints the expected `1`. The next `00164` stale publication is the arithmetic
+reuse after that boundary: lines 12 and 13 now print `2`, `2` instead of
+`1916`, `1916`.
 
 ## Suggested Next
 
-Continue Step 3 at the next `00164` stale select-chain use after the eighth-line
-repair. The next packet should target the eleventh output line, expected `1`,
-where `a != b && c != d` still prints a stale call/result register value. Keep
-the fix tied to prepared join-transfer, parallel-copy, or scalar publication
-authority rather than enabling all `BeforeInstruction` moves globally.
+Continue Step 3 at the next `00164` stale scalar/call publication after the
+fixed `a != b && c != d` boundary. The next packet should target lines 12 and
+13, where `a + b * c / f` now prints stale call/control state as `2`, `2`
+instead of `1916`, `1916`, while preserving the first eleven `00164` lines,
+`00202`, and the compare pair.
 
 Proposed proof command:
 
@@ -60,12 +53,18 @@ Proposed proof command:
 - A broad attempt to emit every `PreparedMovePhase::BeforeInstruction` bundle
   regressed the first-six-line `00164` contract. Keep the next slice tied to
   explicit predecessor parallel-copy or join-transfer authority.
+- A broad attempt to allow prepared-load-source operands for all control
+  publication fixed line 11 but regressed line 3 from `0` to `1`. The landed
+  path deliberately gates that reload behind the synthetic edge-publication
+  call from `lower_predecessor_select_parallel_copy_sources`.
 - The implemented edge hook currently handles the bounded shape needed by
   `%t106`: an out-of-SSA predecessor block-entry bundle with a named scalar
   compare source defined in the successor join prefix, and only when source and
-  destination prepared homes name the same register. If the next stale value
-  needs non-coalesced edge publication, add an explicit prepared-register move
-  after source lowering rather than assuming the source home is the destination.
+  destination prepared homes name the same register. It now also allows prepared
+  load-source operands for the edge-computed compare source. If the next stale
+  value needs non-coalesced edge publication, add an explicit prepared-register
+  move after source lowering rather than assuming the source home is the
+  destination.
 - Prepared memory access instruction indexes can lag the compacted prepared BIR
   block indexes; the scalar fallback now reloads by prepared result value name
   when ordinary memory lowering misses an un-emitted register-home load.
@@ -86,9 +85,11 @@ Ran the delegated proof exactly:
 
 Result: failed overall at the focused scan subset. The scan subset remains 1/3
 passing: `00202` passed; `00164` and `00183` remain `RUNTIME_MISMATCH`. `00164`
-advanced to actual output starting `134`, `134`, `0`, `1`, `1`, `1`, `1`, `46`;
-the compare pair lines remain `1, 0` and `0, 1`. The next stale `00164` line is
-the eleventh line, expected `1`, actual stale register value.
+materially advanced: the first ten lines remain `134`, `134`, `0`, `1`, `1`,
+`1`, `1`, `46`, `1, 0`, `0, 1`, and the eleventh line now prints the expected
+`1`. The next stale `00164` boundary is lines 12 and 13, expected `1916`,
+`1916`, actual `2`, `2`. `00183` remains unchanged at `0`, `1`, `4`, `9`,
+`16`, `25`, `36`, `49`, `64`, `81`.
 
 Stale-process check:
 
