@@ -1,196 +1,160 @@
-# AArch64 C-Testsuite Backend Runtime Execution Plan
+# AArch64 Backend Result Register Runtime Nonzero Plan
 
 Status: Active
-Source Idea: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
+Source Idea: ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md
+Supersedes Active Runbook: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
 
 ## Purpose
 
-Turn the existing AArch64 backend c-testsuite route into a real runtime
-execution workflow on an AArch64 host or with an explicit runner.
+Repair the AArch64 backend result-register/codegen failure exposed by the
+runtime c-testsuite route after idea 276 made that route execute truthfully.
 
 ## Goal
 
-Prove representative c-testsuite cases compile through the AArch64 backend
-assembly path, assemble/link with clang, run, and match their `.expected`
-sidecars, then produce a broader failure inventory grouped by owner stage.
+Make integer return expressions materialize their result in the AArch64 ABI
+return register before `ret`, so `src/00003.c` and nearby same-feature cases
+pass the backend assembly runtime route without expectation changes.
 
 ## Core Rule
 
-Passing evidence must exercise `c4cll --codegen asm --target
-aarch64-unknown-linux-gnu` and the `.s -> clang -> executable -> runtime ->
-expected-output` path. Do not count LLVM IR fallback, runtime-unavailable, or
-expectation weakening as progress.
+Fix the semantic backend/codegen rule. Do not use filename-specific matching,
+c-testsuite shortcuts, LLVM IR fallback, or expectation weakening as progress.
 
 ## Read First
 
+- `ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md`
+- `todo.md`
 - `ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md`
-- `tests/c/external/c-testsuite/RunCase.cmake`
-- `tests/c/external/c-testsuite-aarch64-backend-runner.cmake`
-- `tests/c/external/CMakeLists.txt`
-- Existing AArch64 backend c-testsuite build tree and logs, if present.
+- `test_after.log`, if still present, for the latest focused route evidence
+- AArch64 backend lowering, register-allocation, and assembly emission code
+  touched by integer return-value codegen
 
-## Current Scope
+## Current Targets
 
-- AArch64 backend c-testsuite CMake/CTest route configuration.
-- Native AArch64 host execution or `C_TESTSUITE_AARCH64_BACKEND_RUNNER`.
-- Focused runtime proof for representative simple c-testsuite cases.
-- Broader `aarch64_backend` route inventory after focused proof.
+- AArch64 backend return-value lowering/result-register placement.
+- Runtime proof for `tests/c/external/c-testsuite/src/00003.c`.
+- Regression proof for already passing route smoke cases `00001.c` and
+  `00002.c`.
+- At least one nearby arithmetic-return case that proves the repair is not
+  named-case overfit.
 
 ## Non-Goals
 
-- Do not make the full c-testsuite corpus pass in this runbook.
-- Do not weaken `.expected` files, allowlists, unsupported classifications, or
-  CTest expectations.
-- Do not count `[RUNTIME_UNAVAILABLE]` as a pass.
-- Do not add filename-specific lowering, printer hacks, or c-testsuite-shaped
-  backend shortcuts.
-- Do not rework the x86 backend route or replace the external clang/as runtime
-  route with an in-process assembler.
-- Do not fold non-runtime backend/codegen/BIR repairs into this route-readiness
-  plan; split focused follow-up ideas instead.
+- Do not change c-testsuite `.expected` sidecars, allowlists, unsupported
+  classifications, or CTest expectations.
+- Do not edit the runtime runner or native-host detection unless the supervisor
+  opens a separate route issue.
+- Do not claim progress from LLVM IR fallback.
+- Do not perform broad unrelated AArch64 ABI rewrites.
+- Do not fold additional backend failure families into this plan; split new
+  owner layers into focused follow-up ideas.
 
 ## Working Model
 
-Idea 276 was parked because the previous host could reach the runtime boundary
-but had no AArch64 host or configured runner. This environment reports an
-AArch64 host, so the route can be reactivated to test the runtime side without
-requiring `C_TESTSUITE_AARCH64_BACKEND_RUNNER`.
+Idea 276 proved that the AArch64 backend c-testsuite runtime route can run
+simple cases on this host. `00001.c` and `00002.c` pass through backend `.s`,
+clang assembler input, executable runtime, and empty expected-output compare.
+`00003.c` now fails at runtime with nonzero exit because generated assembly
+computes `w0 - 4` into `w19` and returns without writing the computed value
+back to `w0`.
 
-The route already selected 220 `aarch64_backend` tests before parking, with
-failures grouped as 121 `[RUNTIME_UNAVAILABLE]`, 85 `[FRONTEND_FAIL]`, and 14
-`[BACKEND_FAIL]`. This plan should first verify the runner/native-host contract
-and focused smoke cases, then rerun a broader scan to learn which failures are
-real after runtime is available.
+The likely owner layer is AArch64 backend return-value codegen or register
+placement around return expressions. The executor should verify the exact
+compiler path before changing code.
 
 ## Execution Rules
 
-- Keep each packet bounded to one audit, configuration/proof, or inventory
-  step.
+- Keep each packet bounded to investigation, one semantic repair, or one proof
+  update.
 - Update `todo.md` with the current packet result and exact proof command.
 - Preserve `test_after.log` as the canonical executor proof log for routine
-  packets.
-- Use native AArch64 execution when `uname -m` reports `aarch64`; otherwise
-  require `C_TESTSUITE_AARCH64_BACKEND_RUNNER`.
-- Keep diagnostics distinct for frontend/BIR failure, backend assembly failure,
-  assembler/link failure, runtime unavailable, runtime nonzero, and runtime
-  mismatch.
-- If focused runtime proof exposes a separate compiler/backend failure family,
-  record a follow-up idea instead of expanding this route plan.
+  packets unless the supervisor delegates another artifact.
+- Prefer AST-backed symbol queries via `c4c-clang-tools` for large C++ backend
+  files.
+- Treat a change as route drift if its main effect is making only `00003.c`
+  pass without repairing return-value result-register placement.
 
 ## Steps
 
-### Step 1: Audit Runtime Route And Host Contract
+### Step 1: Localize Return Result Register Ownership
 
-Goal: confirm the current CMake runner route will run AArch64 backend binaries
-natively in this environment or through the configured runner.
-
-Primary targets:
-
-- `tests/c/external/c-testsuite/RunCase.cmake`
-- `tests/c/external/c-testsuite-aarch64-backend-runner.cmake`
-- `tests/c/external/CMakeLists.txt`
+Goal: identify the backend path that lowers C integer return expressions and
+chooses the final AArch64 result register.
 
 Actions:
 
-- Inspect the current backend route and the frontend LLVM IR c-testsuite route
-  for invocation differences.
-- Confirm `CODEGEN_MODE=backend-aarch64` invokes `c4cll --codegen asm --target
-  aarch64-unknown-linux-gnu`.
-- Confirm the runner path uses direct execution on AArch64 hosts and
-  `C_TESTSUITE_AARCH64_BACKEND_RUNNER` only for non-AArch64 hosts.
-- Confirm missing runtime remains `[RUNTIME_UNAVAILABLE]` and is not converted
-  into a pass.
-- Record the exact focused CTest command the supervisor should delegate next.
+- Inspect the failing `00003.c` assembly and, if useful, dumps for the
+  corresponding HIR/BIR/backend route.
+- Locate the return-expression lowering, AArch64 instruction selection, and
+  any move/register-allocation logic responsible for values returned from a
+  function.
+- Compare a passing trivial return case with `00003.c` to determine why the
+  computed subtraction remains in `w19`.
+- Record the smallest semantic repair point and a focused proof command in
+  `todo.md`.
 
 Completion check:
 
-- `todo.md` names the native/runner decision, the relevant CMake variables, and
-  the focused proof command for representative smoke cases.
+- `todo.md` names the owner function or backend stage, explains why the result
+  misses `w0`, and gives the exact proof subset for the repair packet.
 
-### Step 2: Prove Focused Backend Runtime Smoke Cases
+### Step 2: Repair Return-Value Materialization
 
-Goal: prove representative simple c-testsuite cases go through backend
-assembly, clang assemble/link, runtime execution, and expected-output compare.
-
-Primary targets:
-
-- `tests/c/external/c-testsuite-aarch64-backend-runner.cmake`
-- generated files under the AArch64 backend c-testsuite build tree
+Goal: ensure integer return expression values are in the ABI result register
+before function return.
 
 Actions:
 
-- Configure or reuse the AArch64 backend c-testsuite scan build with
-  `ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON`.
-- Run a focused subset for representative simple cases such as `src/00001.c`,
-  `src/00002.c`, and `src/00003.c`.
-- Inspect proof output or generated artifacts to confirm `.s` output exists,
-  clang consumed assembler input with `--target=aarch64-unknown-linux-gnu -x
-  assembler`, an executable was produced, and runtime output matched the
-  `.expected` sidecar.
-- Confirm no LLVM IR fallback was used.
+- Implement the smallest semantic backend/codegen change at the owner point
+  identified in Step 1.
+- Preserve existing behavior for direct literal/argument returns and ordinary
+  temporary register use.
+- Avoid case-specific checks for c-testsuite filenames, expression text, or
+  exact instruction sequences.
+- Build the affected target before runtime proof.
 
 Completion check:
 
-- The focused smoke cases pass through runtime and expected-output comparison,
-  or `todo.md` records the exact first failing stage and owner layer.
+- The project builds for the affected backend target, and generated assembly
+  for the failing case writes or moves the computed return value into `w0`
+  before `ret`.
 
-### Step 3: Tighten Route Diagnostics If Needed
+### Step 3: Prove Focused Runtime And Nearby Coverage
 
-Goal: make route failures acceptance-quality without weakening expectations.
-
-Primary targets:
-
-- `tests/c/external/c-testsuite/RunCase.cmake`
-- `tests/c/external/c-testsuite-aarch64-backend-runner.cmake`
+Goal: prove the repair through the same backend runtime route and reject
+testcase overfit.
 
 Actions:
 
-- If Step 2 shows vague or collapsed failure output, separate diagnostics for
-  frontend/BIR, backend assembly, assembler/link, runtime unavailable, runtime
-  nonzero, and runtime mismatch.
-- Ensure missing `.s` output and LLVM IR fallback are rejected explicitly.
-- Keep the route runnable from CMake/CTest with the native-host or runner
-  contract from Step 1.
+- Run the focused AArch64 backend c-testsuite route for `00001.c`, `00002.c`,
+  and `00003.c`.
+- Add or run at least one nearby arithmetic-return backend/runtime case that
+  exercises the same result-register rule without being `00003.c` shaped.
+- Confirm no LLVM IR fallback was used and no expectations were weakened.
+- Preserve exact proof output in `test_after.log`.
 
 Completion check:
 
-- Focused smoke proof has distinct stage diagnostics and still uses the
-  backend assembly runtime path.
+- `00003.c`, the already passing smoke cases, and the nearby same-feature proof
+  pass with backend `.s -> clang -x assembler -> executable -> runtime ->
+  expected-output` evidence.
 
-### Step 4: Run Broader AArch64 Backend C-Testsuite Route
+### Step 4: Review Residual Scope
 
-Goal: produce actionable broader evidence after runtime execution is available.
-
-Actions:
-
-- Run the configured broader route, normally:
-  `ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend`
-- Group failures by stage: frontend/BIR, backend assembly, assembler/link,
-  runtime unavailable, runtime nonzero, runtime mismatch, and pass.
-- Compare the new counts against the parked inventory where useful.
-
-Completion check:
-
-- `todo.md` records broad scan counts by stage and identifies any non-runtime
-  failure families that should become focused follow-up ideas.
-
-### Step 5: Completion Review
-
-Goal: decide whether idea 276 is complete under its source acceptance criteria.
+Goal: decide whether this focused idea is complete or whether additional
+failure families should be split.
 
 Actions:
 
-- Compare focused runtime proof and broad inventory against
-  `ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md`.
-- Confirm representative cases compile to AArch64 `.s`, assemble/link, run, and
-  match expected output.
-- Confirm runtime-unavailable remains a blocker only when no host or runner is
-  available.
+- Compare the implemented behavior and proof against
+  `ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md`.
+- Confirm no unrelated runtime-route or broad ABI work was folded into this
+  plan.
 - If complete, request plan-owner closure review.
-- If a distinct backend/codegen/BIR repair is needed, create or request a
-  focused follow-up idea instead of broadening this runbook.
+- If proof exposes a distinct backend/codegen/BIR issue, create or request a
+  focused follow-up idea instead of expanding this plan.
 
 Completion check:
 
-- `todo.md` clearly says whether the source idea is ready for closure review or
-  names the exact blocker/follow-up owner layer.
+- `todo.md` clearly says whether idea 277 is ready for closure review or names
+  the exact blocker/follow-up owner layer.

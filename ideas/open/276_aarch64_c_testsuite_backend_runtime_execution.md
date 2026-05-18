@@ -136,6 +136,23 @@ the failures as 121 `[RUNTIME_UNAVAILABLE]`, 85 `[FRONTEND_FAIL]`, and 14
 `[BACKEND_FAIL]`. Non-runtime capability repairs should be split into focused
 follow-up ideas rather than folded into this route-readiness plan.
 
+## Lifecycle Deactivation Note
+
+Plan-owner switch on 2026-05-18 deactivated the runtime-route runbook after
+Step 3 proved the route is no longer blocked at runtime availability on this
+AArch64 host. `src/00001.c` and `src/00002.c` passed the full backend
+`.s -> clang -x assembler -> executable -> runtime -> expected-output` path.
+`src/00003.c` reached runtime truthfully and failed as `[RUNTIME_NONZERO]
+exit=1`; the generated assembly shape was `sub w19, w0, #4; ret`, returning
+without placing the result in `w0`.
+
+That failure is a separate AArch64 backend result-register/codegen issue, not
+runtime-route infrastructure. It was split into
+`ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md` instead of
+expanding this route-readiness plan. Re-activate this idea after the focused
+backend-codegen repair if the broader route inventory or closure review for
+idea 276 is still needed.
+
 ## Reviewer Reject Signals
 
 Reject the route or slice if it:
