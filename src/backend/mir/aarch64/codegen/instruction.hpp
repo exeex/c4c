@@ -1576,6 +1576,7 @@ struct CallInstructionRecord {
 struct ReturnInstructionRecord {
   std::optional<OperandRecord> value;
   bir::TypeKind value_type = bir::TypeKind::Void;
+  std::string symbol_label;
 };
 
 struct InlineAsmMachineOperandRecord {

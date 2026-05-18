@@ -4,8 +4,10 @@
 #include "mir/printer.hpp"
 
 #include <cstdint>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 
 namespace c4c::backend::aarch64::codegen {
@@ -54,6 +56,42 @@ std::string global_label(const c4c::backend::bir::Module& module,
   return global.name;
 }
 
+std::string logical_symbol_name(const c4c::backend::bir::Module& module,
+                                const c4c::backend::bir::Value& value) {
+  if (value.pointer_symbol_link_name_id != c4c::kInvalidLinkName) {
+    const std::string_view structured =
+        module.names.link_names.spelling(value.pointer_symbol_link_name_id);
+    if (!structured.empty()) {
+      return std::string{structured};
+    }
+  }
+  if (!value.name.empty() && value.name.front() == '@') {
+    return value.name.substr(1);
+  }
+  return value.name;
+}
+
+std::optional<std::string> initializer_symbol_name(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Global& global) {
+  if (global.initializer_symbol_name_id != c4c::kInvalidLinkName) {
+    const std::string_view structured =
+        module.names.link_names.spelling(global.initializer_symbol_name_id);
+    if (!structured.empty()) {
+      return std::string{structured};
+    }
+  }
+  if (!global.initializer_symbol_name.has_value() ||
+      global.initializer_symbol_name->empty()) {
+    return std::nullopt;
+  }
+  std::string symbol = *global.initializer_symbol_name;
+  if (!symbol.empty() && symbol.front() == '@') {
+    symbol.erase(symbol.begin());
+  }
+  return symbol;
+}
+
 std::int64_t scalar_global_initializer(const c4c::backend::bir::Global& global) {
   if (global.initializer.has_value() &&
       global.initializer->kind == c4c::backend::bir::Value::Kind::Immediate) {
@@ -91,11 +129,86 @@ std::string scalar_global_directive(const c4c::backend::bir::Global& global) {
   }
 }
 
+std::optional<std::string> global_initializer_directive(
+    const c4c::backend::bir::Module& module,
+    const c4c::backend::bir::Value& value) {
+  if (value.kind == c4c::backend::bir::Value::Kind::Named) {
+    if (value.type != c4c::backend::bir::TypeKind::Ptr) {
+      return std::nullopt;
+    }
+    return ".xword " + logical_symbol_name(module, value);
+  }
+  if (value.kind != c4c::backend::bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  switch (value.type) {
+    case c4c::backend::bir::TypeKind::I8:
+      return ".byte " + std::to_string(static_cast<std::int8_t>(value.immediate));
+    case c4c::backend::bir::TypeKind::I16:
+      return ".hword " + std::to_string(static_cast<std::int16_t>(value.immediate));
+    case c4c::backend::bir::TypeKind::I32:
+      return ".word " + std::to_string(static_cast<std::int32_t>(value.immediate));
+    case c4c::backend::bir::TypeKind::I64:
+    case c4c::backend::bir::TypeKind::Ptr:
+      return ".xword " + std::to_string(value.immediate);
+    default:
+      return std::nullopt;
+  }
+}
+
+bool emit_global_initializer(std::ostringstream& assembly,
+                             const c4c::backend::bir::Module& module,
+                             const c4c::backend::bir::Global& global) {
+  if (global.initializer.has_value()) {
+    const auto directive = global_initializer_directive(module, *global.initializer);
+    if (!directive.has_value()) {
+      return false;
+    }
+    assembly << "    " << *directive << "\n";
+    return true;
+  }
+  if (!global.initializer_elements.empty()) {
+    for (const auto& element : global.initializer_elements) {
+      const auto directive = global_initializer_directive(module, element);
+      if (!directive.has_value()) {
+        return false;
+      }
+      assembly << "    " << *directive << "\n";
+    }
+    return true;
+  }
+  if (global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
+      global.initializer_symbol_name.has_value()) {
+    const auto symbol = initializer_symbol_name(module, global);
+    if (symbol.has_value()) {
+      assembly << "    .xword " << *symbol << "\n";
+      return true;
+    }
+  }
+  if (is_supported_scalar_global(global)) {
+    assembly << "    " << scalar_global_directive(global) << " "
+             << scalar_global_initializer(global) << "\n";
+    return true;
+  }
+  if (global.size_bytes != 0) {
+    assembly << "    .zero " << global.size_bytes << "\n";
+    return true;
+  }
+  return false;
+}
+
+bool is_emit_supported_global(const c4c::backend::bir::Global& global) {
+  return is_supported_scalar_global(global) || global.initializer.has_value() ||
+         !global.initializer_elements.empty() ||
+         global.initializer_symbol_name_id != c4c::kInvalidLinkName ||
+         global.size_bytes != 0;
+}
+
 void append_global_objects(std::ostringstream& assembly,
                            const c4c::backend::prepare::PreparedBirModule& prepared) {
   bool wrote_section = false;
   for (const auto& global : prepared.module.globals) {
-    if (global.is_extern || !is_supported_scalar_global(global)) {
+    if (global.is_extern || !is_emit_supported_global(global)) {
       continue;
     }
     if (!wrote_section) {
@@ -106,8 +219,9 @@ void append_global_objects(std::ostringstream& assembly,
       assembly << "    .balign " << global.align_bytes << "\n";
     }
     assembly << global_label(prepared.module, global) << ":\n";
-    assembly << "    " << scalar_global_directive(global) << " "
-             << scalar_global_initializer(global) << "\n";
+    if (!emit_global_initializer(assembly, prepared.module, global)) {
+      assembly << "    # global data emission deferred to behavior-recovery packet\n";
+    }
   }
 }
 

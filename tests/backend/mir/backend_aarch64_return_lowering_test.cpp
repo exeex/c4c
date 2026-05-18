@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/aarch64/codegen/asm_emitter.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
@@ -58,6 +59,29 @@ prepare::PreparedBirModule prepared_with_immediate_return_value() {
   function.name = "return.fn";
   function.link_name_id = function_link_name;
   function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_symbol_pointer_return_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto callee_link_name = prepared.module.names.link_names.intern("callee.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.terminator = bir::ReturnTerminator{
+      .value = bir::Value::named_symbol_pointer("@stale.callee.display", callee_link_name),
+  };
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Ptr;
   function.blocks.push_back(std::move(entry));
   prepared.module.functions.push_back(std::move(function));
   return prepared;
@@ -785,6 +809,42 @@ int direct_dispatch_attaches_immediate_return_value() {
   return 0;
 }
 
+int direct_dispatch_attaches_symbol_pointer_return_value() {
+  auto prepared = prepared_with_symbol_pointer_return_value();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || !result.visited_terminator ||
+      result.emitted_instructions != 1 || block.instructions.size() != 1) {
+    return fail("expected symbol-pointer return dispatch to emit one return instruction");
+  }
+
+  const auto* ret = std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+      &block.instructions.front().target.payload);
+  const auto* symbol =
+      ret != nullptr && ret->value.has_value()
+          ? std::get_if<aarch64_module::codegen::SymbolOperand>(&ret->value->payload)
+          : nullptr;
+  const auto callee_link_name = prepared.module.names.link_names.find("callee.fn");
+  if (ret == nullptr || ret->value_type != bir::TypeKind::Ptr ||
+      ret->symbol_label != "callee.fn" || symbol == nullptr ||
+      symbol->link_name != callee_link_name || symbol->type != bir::TypeKind::Ptr) {
+    return fail("expected symbol-pointer return value to prefer structured symbol identity");
+  }
+  if (ret->symbol_label == "stale.callee.display") {
+    return fail("symbol-pointer return label must not use stale display spelling when LinkNameId is available");
+  }
+  return 0;
+}
+
 int module_build_attaches_named_rematerialized_return_value() {
   auto prepared = prepared_with_named_rematerialized_return_value();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -803,6 +863,48 @@ int module_build_attaches_named_rematerialized_return_value() {
   if (immediate == nullptr || immediate->signed_value != 9 ||
       immediate->source_value_id != prepare::PreparedValueId{4}) {
     return fail("expected named rematerialized return to resolve through prepared value authority");
+  }
+  return 0;
+}
+
+int aarch64_asm_emits_pointer_initializer_elements_as_xword_symbols() {
+  auto prepared = prepared_with_immediate_return_value();
+  const auto slot_link_name = prepared.module.names.link_names.intern("fnptr.slot");
+  const auto callee_link_name = prepared.module.names.link_names.intern("callee.fn");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "fnptr.slot",
+      .link_name_id = slot_link_name,
+      .type = bir::TypeKind::Ptr,
+      .is_extern = false,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_elements = {
+          bir::Value::named_symbol_pointer("@stale.callee.display", callee_link_name),
+      },
+  });
+  const auto alias_link_name = prepared.module.names.link_names.intern("alias.fnptr");
+  const auto target_link_name = prepared.module.names.link_names.intern("semantic.target");
+  prepared.module.globals.push_back(bir::Global{
+      .name = "alias.fnptr",
+      .link_name_id = alias_link_name,
+      .type = bir::TypeKind::Ptr,
+      .is_extern = false,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer_symbol_name = "stale.target.display",
+      .initializer_symbol_name_id = target_link_name,
+  });
+
+  const auto assembly = aarch64_codegen::print_prepared_machine_nodes(prepared);
+  if (assembly.find("fnptr.slot:\n") == std::string::npos ||
+      assembly.find("    .xword callee.fn\n") == std::string::npos ||
+      assembly.find("alias.fnptr:\n") == std::string::npos ||
+      assembly.find("    .xword semantic.target\n") == std::string::npos) {
+    return fail("expected AArch64 data emission to render pointer initializers from structured LinkNameId spellings");
+  }
+  if (assembly.find("stale.callee.display") != std::string::npos ||
+      assembly.find("stale.target.display") != std::string::npos) {
+    return fail("AArch64 data emission must not use stale pointer initializer display spelling when LinkNameId is available");
   }
   return 0;
 }
@@ -1156,7 +1258,16 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const int status = direct_dispatch_attaches_symbol_pointer_return_value();
+      status != 0) {
+    return status;
+  }
   if (const int status = module_build_attaches_named_rematerialized_return_value();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          aarch64_asm_emits_pointer_initializer_elements_as_xword_symbols();
       status != 0) {
     return status;
   }

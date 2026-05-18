@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -118,6 +119,36 @@ namespace prepare = c4c::backend::prepare;
   return make_resolved_return_operand(*resolved, value);
 }
 
+[[nodiscard]] std::string symbol_label_for_return_value(
+    const bir::Value& value,
+    const module::FunctionLoweringContext& context) {
+  if (value.pointer_symbol_link_name_id != c4c::kInvalidLinkName &&
+      context.prepared != nullptr) {
+    const auto structured =
+        context.prepared->module.names.link_names.spelling(value.pointer_symbol_link_name_id);
+    if (!structured.empty()) {
+      return std::string(structured);
+    }
+  }
+  if (!value.name.empty() && value.name.front() == '@') {
+    return value.name.substr(1);
+  }
+  return value.name;
+}
+
+[[nodiscard]] std::optional<OperandRecord> make_symbol_return_operand(
+    const bir::Value& value) {
+  if (value.kind != bir::Value::Kind::Named ||
+      value.type != bir::TypeKind::Ptr ||
+      value.pointer_symbol_link_name_id == c4c::kInvalidLinkName) {
+    return std::nullopt;
+  }
+  return make_symbol_operand(SymbolOperand{
+      .link_name = value.pointer_symbol_link_name_id,
+      .type = bir::TypeKind::Ptr,
+  });
+}
+
 [[nodiscard]] std::optional<ReturnInstructionRecord> make_return_record(
     const module::BlockLoweringContext& context,
     const BlockScalarLoweringState& scalar_state,
@@ -131,6 +162,9 @@ namespace prepare = c4c::backend::prepare;
   record.value_type = value.type;
   if (value.kind == bir::Value::Kind::Immediate) {
     record.value = make_immediate_return_operand(value);
+  } else if (auto symbol = make_symbol_return_operand(value)) {
+    record.value = std::move(*symbol);
+    record.symbol_label = symbol_label_for_return_value(value, context.function);
   } else {
     const auto* home = find_named_value_home(value, context.function);
     const auto emitted =
@@ -303,6 +337,11 @@ ReturnValuePrintForm classify_return_value_print_form(
   if (value.kind == OperandKind::Immediate &&
       std::get_if<ImmediateOperand>(&value.payload) != nullptr) {
     return ReturnValuePrintForm::ImmediateMaterialization;
+  }
+  if (value.kind == OperandKind::Symbol &&
+      std::get_if<SymbolOperand>(&value.payload) != nullptr &&
+      !instruction.symbol_label.empty()) {
+    return ReturnValuePrintForm::SymbolAddressMaterialization;
   }
   return ReturnValuePrintForm::Unsupported;
 }

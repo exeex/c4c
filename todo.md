@@ -3,42 +3,75 @@
 Status: Active
 Source Idea Path: ideas/open/289_aarch64_function_pointer_indirect_call_values.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Local Function-Pointer Value Lowering
+Current Step ID: 3
+Current Step Title: Expand to Global Initializers and Returned Function Pointers
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 2, "Repair Local Function-Pointer Value Lowering", for the
-local function-pointer field route in `tests/c/external/c-testsuite/src/00087.c`.
+Completed the Step 3 structured symbol-spelling hardening packet for the
+global/static initializer and returned function-pointer repair.
 
-Implemented the semantic native-backend repair by publishing prepared
-address-materialization facts for indirect-call callee operands that already
-carry structured function-symbol pointer identity. AArch64 global-address
-lowering now honors matching explicit prepared home/storage register names
-before falling back to placement-derived registers, so the materialized symbol
-address reaches the same register consumed by `blr`.
+Supervisor acceptance proof has accepted Step 3 for this function-pointer
+owner: the `00089` global/static function-pointer initializer route is
+resolved, and the `00124` returned function-pointer route reaches the selected
+callee through an indirect call. `00124` is not claimed green because its
+remaining runtime-nonzero result is the already separated scalar
+parameter/ALU blocker.
 
-Observed repaired `main` assembly materializes `foo` into the indirect callee
-register and preserves the indirect call shape:
+Hardened the current implementation so semantic `LinkNameId` spelling is the
+authority when available:
+
+- symbol-pointer returns now prefer
+  `module.names.link_names.spelling(pointer_symbol_link_name_id)` and only use
+  the display name as a compatibility fallback.
+- global/static function-pointer initializer emission now prefers
+  `module.names.link_names.spelling(initializer_symbol_name_id)` or
+  `pointer_symbol_link_name_id` before falling back to stale display text.
+
+Added drift-resistant backend coverage where the display text is intentionally
+stale while the `LinkNameId` spelling is authoritative:
+
+- `backend_aarch64_return_lowering` verifies returned symbol-pointer records
+  and `.xword <symbol>` global initializer emission use the structured spelling
+  rather than stale display strings.
+- `backend_aarch64_machine_printer` remains covered for selected
+  symbol-pointer returns printing `adrp/add x0` before `ret`.
+- `backend_lir_to_bir_notes` remains covered for direct function-pointer return
+  values preserving structured `LinkNameId` identity.
+
+The hardened surfaces cover the Step 3 implementation that makes `00089`
+preserve indirect calls and initialize the global function-pointer field:
 
 ```asm
-adrp x20, foo
-add x20, x20, :lo12:foo
-blr x20
+go:
+    adrp x0, anon
+    add x0, x0, :lo12:anon
+    ret
+s:
+    .xword zero
 ```
 
-Added focused backend coverage in `backend_prepare_stack_layout` for an
-indirect function-symbol callee address materialization and in
-`backend_aarch64_prepared_memory_operand_records` for explicit callee-register
-name selection over placement fallback during address materialization.
+They also cover the `00124` function-pointer return path that returns the
+selected function pointer through the ABI return register and keeps the
+caller-side indirect call:
+
+```asm
+f1:
+    adrp x0, f2
+    add x0, x0, :lo12:f2
+    ret
+main:
+    blr x13
+```
 
 ## Suggested Next
 
-Delegate Step 3 to expand the function-pointer value proof to global/static
-function-pointer initialization and returned function-pointer representatives,
-starting with `src/00089.c` and `src/00124.c`.
+Delegate a separate scalar AArch64 parameter/ALU packet before treating
+`src/00124.c` as fully green: `f2` is reached through the returned function
+pointer, but its body subtracts stale callee-saved registers instead of the
+incoming ABI argument registers.
 
 ## Watchouts
 
@@ -51,50 +84,35 @@ starting with `src/00089.c` and `src/00124.c`.
 - Preserve direct-call behavior and existing aligned frame behavior.
 - Keep non-bus runtime failures from the wider sample outside this route unless
   they are proven to share the same function-pointer indirect-call owner.
-- The Step 2 repair covers structured symbol-pointer indirect callees. Step 3
-  should verify whether global initializers and returned function pointers also
-  arrive at indirect calls with structured symbol identity, or whether they need
-  a separate value-propagation repair.
-- Avoid treating this as a direct-call conversion. The source expression is an
-  indirect call through a function pointer field, and Step 2 should preserve
-  that semantic shape instead of rewriting only this case to `bl foo`.
+- `src/00089.c` now passes under the delegated proof.
+- `src/00124.c` no longer segfaults from a bad returned function-pointer
+  callee. The latest delegated proof exits `8`; generated `f1` returns `f2`
+  via `x0`, and `main` performs `blr x13`, but generated `f2` still computes
+  `sub w0, w19, w20` instead of using its incoming `w0`/`w1` parameters.
+  Treat that as a separate scalar parameter/ALU lowering owner unless the
+  supervisor intentionally broadens this source idea.
+- Do not convert indirect calls to named direct calls; the repaired shape still
+  uses `blr`.
 
 ## Proof
 
-Ran the delegated proof exactly:
+Built the focused backend test targets:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00087_c$'; } > test_before.log 2>&1
-```
-
-Result: failed as expected; `test_before.log` records the Step 1 baseline
-`[RUNTIME_NONZERO] .../src/00087.c exit=Bus error`.
-
-Ran focused backend coverage:
-
-```sh
-cmake --build build-aarch64-scan --target backend_prepare_stack_layout_test backend_aarch64_prepared_memory_operand_records_test c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^(backend_prepare_stack_layout|backend_aarch64_prepared_memory_operand_records)$'
+cmake --build build --target backend_aarch64_return_lowering_test backend_aarch64_machine_printer_test backend_lir_to_bir_notes_test
 ```
 
 Result: passed.
 
-Ran the delegated Step 2 proof exactly:
+Ran the focused backend tests:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00087_c$'; } > test_after.log 2>&1
+ctest --test-dir build --output-on-failure -R '^(backend_aarch64_return_lowering|backend_aarch64_machine_printer|backend_lir_to_bir_notes)$'
 ```
 
-Result: passed; `test_after.log` records
-`c_testsuite_aarch64_backend_src_00087_c` passing.
+Result: passed 3/3.
 
-Supervisor acceptance proof for Step 2:
-
-```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
-```
-
-Result: passed; the regression guard resolved
-`c_testsuite_aarch64_backend_src_00087_c`.
+Ran the delegated backend proof subset:
 
 ```sh
 ctest --test-dir build -j --output-on-failure -R '^backend_'
@@ -102,23 +120,46 @@ ctest --test-dir build -j --output-on-failure -R '^backend_'
 
 Result: passed 139/139.
 
+Ran the delegated Step 3 owner proof exactly:
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00089_c$|^c_testsuite_aarch64_backend_src_00124_c$'; } > test_after.log 2>&1
+```
+
+Result: selected 2 tests. `c_testsuite_aarch64_backend_src_00089_c` passed.
+`c_testsuite_aarch64_backend_src_00124_c` failed with `exit=8` after the
+function-pointer return/callee path was repaired; `test_after.log` is the
+canonical proof log.
+
+Supervisor acceptance proof for the completed Step 3 function-pointer slice:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
+```
+
+Result: passed; resolved `00089` with no new failures.
+
 ```sh
 cmake --build --preset default
 ```
 
 Result: passed.
 
-Follow-on owner probe:
-
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(087|089)_c$|^c_testsuite_aarch64_backend_src_00124_c$'; } > /tmp/c4c_fnptr_step2_owner_probe.log 2>&1
+ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Result: selected 3 tests. `00087` passed, `00089` bus errored, and `00124`
-segfaulted, confirming Step 3 still owns global/returned function-pointer
-work.
+Result: passed 139/139 on clean rerun.
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(087|089)_c$|^c_testsuite_aarch64_backend_src_00124_c$'; } > /tmp/c4c_fnptr_step3_owner_subset.log 2>&1
+```
+
+Result: `00087` passed, `00089` passed, and `00124` failed
+runtime-nonzero from the already separated scalar parameter/ALU blocker.
+Step 3 is accepted for the function-pointer owner without claiming `00124`
+fully green.
 
 Transient inspection artifacts used:
-- `/tmp/00087.prepared-after`
-- `/tmp/00087.after.s`
-- `/tmp/00087.after2.s`
+- `/tmp/00089.step3.s`
+- `/tmp/00124.step3.s`

@@ -11,6 +11,7 @@ enum class ReturnValuePrintForm {
   NoValue,
   PrimaryReturn,
   ImmediateMaterialization,
+  SymbolAddressMaterialization,
   Unsupported,
 };
 

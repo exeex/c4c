@@ -1031,6 +1031,8 @@ int expect_pointer_value_symbol_identity_carrier() {
   const c4c::LinkNameId fn_arg_id = module.link_names.intern("semantic_function_arg");
   const c4c::LinkNameId byval_global_id = module.link_names.intern("semantic_byval_payload");
   const c4c::LinkNameId user_id = module.link_names.intern("semantic_pointer_user");
+  const c4c::LinkNameId returner_id =
+      module.link_names.intern("semantic_pointer_returner");
 
   c4c::codegen::lir::LirExternDecl sink;
   sink.name = "drifted_sink_display";
@@ -1115,21 +1117,48 @@ int expect_pointer_value_symbol_identity_carrier() {
   function.blocks.push_back(std::move(entry));
   module.functions.push_back(std::move(function));
 
+  LirFunction returner;
+  returner.name = "drifted_pointer_returner_display";
+  returner.link_name_id = returner_id;
+  returner.signature_text = "define ptr @drifted_pointer_returner_display()";
+  LirBlock returner_entry;
+  returner_entry.label = "entry";
+  returner_entry.terminator = LirRet{
+      .value_str = "@semantic_function_arg",
+      .type_str = "ptr",
+  };
+  returner.blocks.push_back(std::move(returner_entry));
+  module.functions.push_back(std::move(returner));
+
   auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
   if (!result.module.has_value()) {
     return fail("pointer-value LinkNameId carrier fixture should lower to BIR");
   }
 
   const c4c::backend::bir::Function* lowered_user = nullptr;
+  const c4c::backend::bir::Function* lowered_returner = nullptr;
   for (const auto& lowered_function : result.module->functions) {
     if (lowered_function.link_name_id == user_id) {
       lowered_user = &lowered_function;
-      break;
+    }
+    if (lowered_function.link_name_id == returner_id) {
+      lowered_returner = &lowered_function;
     }
   }
   if (lowered_user == nullptr || lowered_user->blocks.empty() ||
       lowered_user->blocks.front().insts.empty()) {
     return fail("pointer-value carrier fixture should lower the user call");
+  }
+  if (lowered_returner == nullptr || lowered_returner->blocks.empty() ||
+      !lowered_returner->blocks.front().terminator.value.has_value() ||
+      lowered_returner->blocks.front().terminator.value->name != "@semantic_function_arg" ||
+      lowered_returner->blocks.front().terminator.value->pointer_symbol_link_name_id !=
+          fn_arg_id) {
+    return fail("direct function pointer returns should preserve LinkNameId identity");
+  }
+  if (*lowered_returner->blocks.front().terminator.value ==
+      c4c::backend::bir::Value::named(TypeKind::Ptr, "@semantic_function_arg")) {
+    return fail("direct function pointer return values must not be raw display spelling only");
   }
 
   std::vector<const c4c::backend::bir::CallInst*> calls;

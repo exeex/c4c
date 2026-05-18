@@ -1111,6 +1111,15 @@ mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruct
       lines.push_back(move_line.str());
       break;
     }
+    case ReturnValuePrintForm::SymbolAddressMaterialization: {
+      if (ret.symbol_label.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "return symbol address is missing a printable label");
+      }
+      lines.push_back("adrp x0, " + ret.symbol_label);
+      lines.push_back("add x0, x0, :lo12:" + ret.symbol_label);
+      break;
+    }
     case ReturnValuePrintForm::NoValue:
       break;
   }

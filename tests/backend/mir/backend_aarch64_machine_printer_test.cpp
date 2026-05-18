@@ -3427,6 +3427,33 @@ int selected_immediate_return_node_prints_callable_epilogue() {
   return 0;
 }
 
+int selected_symbol_pointer_return_node_prints_address_materialization_before_ret() {
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_symbol_operand(
+              aarch64_codegen::SymbolOperand{
+                  .link_name = c4c::LinkNameId{72},
+                  .type = bir::TypeKind::Ptr,
+              }),
+          .value_type = bir::TypeKind::Ptr,
+          .symbol_label = "selected_callee",
+      });
+
+  const auto result = print_common_instruction_nodes({ret});
+  if (!result.ok) {
+    return fail("expected selected symbol-pointer return node to print AArch64 return text: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    adrp x0, selected_callee\n"
+      "    add x0, x0, :lo12:selected_callee\n"
+      "    ret\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "symbol-pointer return common-printer drift guard");
+}
+
 int common_mir_printer_can_delegate_to_aarch64_target_spelling_adapter() {
   const auto ret = aarch64_codegen::make_return_instruction(
       aarch64_codegen::ReturnInstructionRecord{
@@ -5573,6 +5600,11 @@ int main() {
     return result;
   }
   if (const int result = selected_immediate_return_node_prints_callable_epilogue();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_symbol_pointer_return_node_prints_address_materialization_before_ret();
       result != 0) {
     return result;
   }

@@ -380,6 +380,21 @@ std::optional<bir::Value> BirFunctionLowerer::lower_value(
 std::optional<bir::Value> BirFunctionLowerer::lower_value(
     const c4c::codegen::lir::LirOperand& operand,
     bir::TypeKind expected_type) const {
+  if (expected_type == bir::TypeKind::Ptr &&
+      operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+    const std::string global_name = operand.str().substr(1);
+    const auto global_it = global_types_.find(global_name);
+    if (global_it != global_types_.end() &&
+        global_it->second.link_name_id != c4c::kInvalidLinkName) {
+      return bir::Value::named_symbol_pointer(operand.str(), global_it->second.link_name_id);
+    }
+    if (const auto function_link_name_id =
+            function_symbols_.find_raw_symbol_link_name_id(global_name);
+        function_link_name_id.has_value() &&
+        *function_link_name_id != c4c::kInvalidLinkName) {
+      return bir::Value::named_symbol_pointer(operand.str(), *function_link_name_id);
+    }
+  }
   return lower_value(operand, expected_type, value_aliases_);
 }
 
