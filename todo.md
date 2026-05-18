@@ -1,19 +1,24 @@
 Status: Active
 Source Idea Path: ideas/open/294_aarch64_pointer_derived_address_lvalue_lowering_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 2
-Current Step Title: Repair Core Pointer-Derived Lvalue Address Publication
+Current Step ID: Step 4
+Current Step Title: Nearby Same-Family Sampling and Boundary Separation
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 post-commit regression repair is complete. The AArch64 global GEP alias
-publication now requires a valid `LinkNameId`, so raw-only/no-`TextId`
-string-pool globals cannot recover through spelling-only aliases. The `00217.c`
-starter repair remains intact: `char *data = t` still reaches semantic BIR as
-`bir.store_local %lv.data, ptr @t`, and AArch64 dispatch still emits both the
-same-index direct-global materialization and the real local pointer store.
+Lifecycle review after commits `3f197a9e5` and `55962b3d5` aligned the active
+state for Step 4. Step 2 and Step 3 starter work are recorded as satisfied:
+`00032.c`, `00130.c`, `00180.c`, and `00217.c` are green, including the Step 3
+compound-update and address-argument shapes.
+
+The AArch64 global GEP alias publication now requires a valid `LinkNameId`, so
+raw-only/no-`TextId` string-pool globals cannot recover through spelling-only
+aliases. The `00217.c` starter repair remains intact: `char *data = t` still
+reaches semantic BIR as `bir.store_local %lv.data, ptr @t`, and AArch64
+dispatch still emits both the same-index direct-global materialization and the
+real local pointer store.
 
 Generated evidence: `00217.c` semantic BIR now contains the intended
 load-compute-store chain:
@@ -33,9 +38,10 @@ publish the AArch64 alias through durable link identity.
 
 ## Suggested Next
 
-Ask the supervisor to review/accept the regression repair or delegate the next
-Step 2 packet. The notes regression and focused `00217.c` starter subset are
-both green.
+Delegate Step 4 nearby same-family sampling. A coherent next packet is to test
+the supervisor-selected nearby pointer/address cases, likely `00019.c`,
+`00137.c`, and `00138.c`, with generated-assembly inspection before claiming
+any residual failure in scope.
 
 ## Watchouts
 
@@ -61,6 +67,11 @@ both green.
 - Keep the BIR alias guard identity-based. Do not reintroduce raw-spelling
   recovery for string-pool globals without `TextId` or globals without
   `LinkNameId`.
+- Step 4 should separate frontend, timeout, floating/conversion,
+  string/library-only, aggregate initializer, and closed-owner overlap buckets
+  before widening this source idea. Do not treat nearby sampling failures as
+  address/lvalue wins without generated-code evidence of the same authority
+  break.
 
 ## Proof
 
@@ -76,3 +87,8 @@ AArch64 delegated tests passing: `00032.c`, `00130.c`, `00180.c`, and
 `data = "0123-5678"`. Both build portions passed. `git diff --check` passed.
 Stale-process check found no stale `ctest`, `c4cll`, `qemu`, or build/test
 process beyond the check command itself.
+
+Lifecycle alignment note: no proof rerun was needed for this plan-owner packet;
+the completed starter subset/proof from the committed Step 2/3 work is
+preserved above, and `Current Step ID` now points to Step 4 for the next
+executor packet.
