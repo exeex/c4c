@@ -8,14 +8,36 @@ Current Step Title: Audit Runtime Route And Host Contract
 
 ## Just Finished
 
-Lifecycle activation created this execution state for Step 1 of `plan.md`.
+Step 1 audited the AArch64 backend c-testsuite runtime route and host
+contract.
+
+- Host proof: `uname -m` reported `aarch64`, so this workspace satisfies the
+  native AArch64 runtime path and does not require
+  `C_TESTSUITE_AARCH64_BACKEND_RUNNER` for runtime execution.
+- Native runtime applies when the runner script sees CMake host processor
+  `aarch64` or `arm64`; other hosts must provide a runner/emulator through
+  `C_TESTSUITE_AARCH64_BACKEND_RUNNER`.
+- Registration is controlled by `ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN` and
+  labels tests with `aarch64_backend`; representative smoke cases also receive
+  `aarch64_backend_smoke`.
+- The cache variable `C_TESTSUITE_AARCH64_BACKEND_RUNNER` is declared in
+  `tests/CMakeLists.txt`, passed as `BACKEND_RUNTIME_RUNNER` by
+  `tests/c/external/CMakeLists.txt`, and consumed by
+  `tests/c/external/c-testsuite-aarch64-backend-runner.cmake`.
+- `CODEGEN_MODE=backend-aarch64` is guarded by
+  `tests/c/external/c-testsuite-aarch64-backend-runner.cmake` and invokes
+  `c4cll --codegen asm --target aarch64-unknown-linux-gnu`.
+- Missing runtime on a non-`aarch64`/`arm64` host with an empty
+  `BACKEND_RUNTIME_RUNNER` still fails closed as `[RUNTIME_UNAVAILABLE]`.
 
 ## Suggested Next
 
-Run Step 1: audit the AArch64 backend c-testsuite runner route, confirm this
-`aarch64` host satisfies the runtime contract without
-`C_TESTSUITE_AARCH64_BACKEND_RUNNER`, and record the focused smoke CTest
-command for representative simple cases.
+Use this exact Step 2 focused smoke proof command for representative simple
+cases `00001.c`, `00002.c`, and `00003.c`:
+
+```sh
+set -o pipefail; { cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003)_c$'; } 2>&1 | tee test_after.log
+```
 
 ## Watchouts
 
@@ -29,4 +51,15 @@ command for representative simple cases.
 
 ## Proof
 
-Lifecycle-only activation; no build or test proof required.
+Command:
+
+```sh
+set -o pipefail; { uname -m; cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan -N -L aarch64_backend; } 2>&1 | tee test_after.log
+```
+
+Result: passed with exit code 0. The command printed `aarch64`, configured
+`build-aarch64-scan`, found `c4cll` already built, and listed 220
+`aarch64_backend` CTest entries. The listed focused smoke representatives were
+`c_testsuite_aarch64_backend_src_00001_c`,
+`c_testsuite_aarch64_backend_src_00002_c`, and
+`c_testsuite_aarch64_backend_src_00003_c`.
