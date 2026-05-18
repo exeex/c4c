@@ -8,57 +8,75 @@ Current Step Title: Repair Side-Effecting Expression Result Publication
 
 ## Just Finished
 
-Step 2 implemented the smallest coherent side-effecting-expression publication
-slice for `src/00202.c`: prepared scalar ALU frame-slot result publication plus
-rematerializable-immediate local-store publication.
+Step 2 sampled the remaining `src/00164.c` side-effecting expression surface
+after the `src/00202.c` repair. The sample shows Step 2 is not complete:
+`src/00202.c` now passes, but `src/00164.c` still fails before the Step 3
+control/select cases because the assignment-like `c + d` value is not
+published for either the plain call argument or `(y = c + d)`.
 
-The private scalar ALU fallback path now accepts prepared stack-slot result
-homes by choosing the existing spill scratch register and carrying
-`result_stack_offset_bytes` into the `ScalarAluRecord`. The scalar ALU printer
-now appends the same stack publication store for computed `mul`, signed
-`div`/`rem`, and unsigned-reduction results that add/sub already used.
+Prepared-code evidence for `src/00164.c`:
 
-The prepared memory store path now accepts named rematerializable-immediate
-values when the value home and storage plan agree on the immediate, so
-assignment/local-store publication can materialize the immediate into the
-destination local slot.
-
-Generated-code evidence for `src/00202.c`:
-
-```asm
-mov w9, #2
-mul w9, w13, w9
-str w9, [sp, #8]
-ldr w9, [sp, #8]
-str w9, [sp]
-movz w9, #63
-str w9, [sp, #4]
+```text
+%t1 = bir.load_local i32 %lv.c
+%t2 = bir.load_local i32 %lv.d
+%t3 = bir.add i32 %t1, %t2
+%t4 = bir.call i32 printf(ptr @.str0, i32 %t3)
+%t6 = bir.load_local i32 %lv.c
+%t7 = bir.load_local i32 %lv.d
+%t8 = bir.add i32 %t6, %t7
+bir.store_local %lv.y, i32 %t8
+%t9 = bir.call i32 printf(ptr @.str0, i32 %t8)
 ```
 
-`src/00202.c` now passes: the first observable line consumes the published
-`bob *= 2` value and the second line consumes the published `jim = 60 + 3`
-rematerializable immediate.
+Prepared metadata says `%t3` is a frame-slot value consumed as the first
+`printf` argument from `stack+32`, and `%t8` is a register value with a
+prepared store-local memory access for `%lv.y`.
+
+Generated AArch64 currently emits:
+
+```asm
+ldr w13, [sp, #8]
+mov x0, x20
+bl printf
+mov x13, x0
+str w13, [sp, #24]
+mov x0, x20
+mov x1, x13
+bl printf
+```
+
+That sequence loads only `c`, never materializes `c + d` into `%t3`/`x1`, and
+stores the first `printf` return value into `y`'s local slot before the second
+print. The runtime confirms the first two lines are still wrong:
+expected `134`, `134`; actual garbage, `12`.
 
 ## Suggested Next
 
-Stay in Step 2 and sample the remaining `src/00164.c` assignment-like forms to
-separate same-owner side-effect publication gaps from closed-owner-looking call,
-comparison, and control-value symptoms. Do not start the Step 3
-`src/00183.c` BlockEntry/select-materialization repair until the supervisor
-chooses that packet.
+Stay in Step 2 for one more code packet: repair AArch64 publication/order for
+prepared scalar `add` results whose consumers include both a frame-slot
+variadic call argument and a following `store_local` assignment result, using
+`src/00164.c` plus already-green `src/00202.c` as the proof subset.
+
+Proposed proof command:
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+```
 
 ## Watchouts
 
 - Do not fold the `src/00183.c` conditional-expression gap into the next Step 2
   packet; it is still the Step 3 block-entry/out-of-SSA
   `select_materialization` half of the publication boundary.
-- The current `00202` store uses the existing prepared stack offset carried by
-  scalar ALU records. This matches the existing add/sub publication mechanism,
-  but a later broader cleanup may still need a single frame-slot-address helper
-  shared with memory/call publication so raw prepared offsets do not proliferate.
-- `src/00164.c` still shows closed-owner-looking symptoms around call
-  arguments and compare/logical values. Treat them as missing publication from
-  prepared values unless generated-code evidence proves a closed owner regressed.
+- `00164` has later logical/select, compare, bitwise, and arithmetic symptoms,
+  but the first actionable Step 2 bug is earlier: the `c + d` result for
+  `%t3`/`%t8` is not computed/published before its call-argument and
+  assignment consumers.
+- The first callsite metadata wants `arg1 bank=gpr from=frame_slot:stack+32 to=x1`;
+  current assembly does not emit the frame-slot publication or the `x1`
+  materialization for that argument.
+- The prepared store-local access for `%t8` targets `%lv.y`; current assembly
+  instead stores `x0` from the previous `printf` call to `y`'s slot.
 - Keep pointer/address-heavy cases `src/00172.c` and `src/00217.c` deferred
   unless the same scalar side-effect/control publication primitive owns them.
 - Do not touch expected outputs, allowlists, unsupported classifications,
@@ -67,30 +85,14 @@ chooses that packet.
 
 ## Proof
 
-Ran the delegated proof exactly:
+Ran the delegated focused sample exactly under `/tmp`:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_side_effect_step2_00164_sample.log 2>&1
 ```
 
-Result: failed overall, 0/3 passing, but `00202` materially advanced. Current
-status for the first run:
-
-- `00202`: still `RUNTIME_MISMATCH`, but first line now prints
-  `jim: 21, bob: 42`; remaining mismatch is the later immediate assignment
-  publication for `jim`.
-- `00164`: still `RUNTIME_MISMATCH`; not accepted as repaired in this packet.
-- `00183`: still `RUNTIME_MISMATCH`; unchanged Step 3
-  `select_materialization`/BlockEntry gap.
-
-After extending the same slice, reran the delegated proof exactly:
-
-```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
-```
-
-Result: failed overall, 1/3 passing. `00202` passed. `00164` and `00183`
-remain `RUNTIME_MISMATCH` in the expected remaining buckets.
+Result: failed overall, 1/2 passing. `00202` passed. `00164` remains
+`RUNTIME_MISMATCH`.
 
 Stale-process check:
 
@@ -100,17 +102,9 @@ pgrep -af '^/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' || 
 
 Result: no generated runtime process remained.
 
-Shared-code regression check:
+Additional artifacts:
 
-```sh
-ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure > /tmp/c4c_aarch64_side_effect_step2_backend_aarch64.log 2>&1
-```
-
-Result: passed, 27/27.
-
-Additional check: `git diff --check` passed.
-
-Proof logs:
-
-- `test_after.log`
-- `/tmp/c4c_aarch64_side_effect_step2_backend_aarch64.log`
+- `/tmp/c4c_aarch64_side_effect_step2_00164_sample.log`
+- `/tmp/c4c_aarch64_side_effect_step2_00164_prepared.txt`
+- `/tmp/c4c_aarch64_side_effect_step2_00164_mir.txt`
+- `/tmp/c4c_aarch64_side_effect_step2_00164_direct.s`
