@@ -32,6 +32,11 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
       set(C_TESTSUITE_BACKEND_DIR "")
     endif()
 
+    set(C_TESTSUITE_AARCH64_BACKEND_SMOKE_CASES
+        "src/00001.c"
+        "src/00002.c"
+        "src/00003.c")
+
     function(register_c_testsuite_backend_case backend_id backend_label backend_mode backend_triple backend_dir backend_run_case backend_runner)
       set(backend_test_name "c_testsuite_${backend_id}_backend_${test_id}")
       add_test(
@@ -49,7 +54,14 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
                 -DOUT_BIN=${CMAKE_BINARY_DIR}/${backend_dir}/${rel_src}.bin
                 -P "${backend_run_case}"
       )
-      set_tests_properties("${backend_test_name}" PROPERTIES LABELS "c_testsuite;${backend_label}")
+      set(backend_labels "c_testsuite;${backend_label}")
+      if(backend_label STREQUAL "aarch64_backend")
+        list(FIND C_TESTSUITE_AARCH64_BACKEND_SMOKE_CASES "${rel_src}" smoke_case_index)
+        if(NOT smoke_case_index EQUAL -1)
+          list(APPEND backend_labels "aarch64_backend_smoke")
+        endif()
+      endif()
+      set_tests_properties("${backend_test_name}" PROPERTIES LABELS "${backend_labels}")
     endfunction()
 
     file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
