@@ -1352,9 +1352,13 @@ MachineNodeStatusRecord branch_selection_status(const BranchInstructionRecord& i
                                        "conditional branch is missing target pair or condition"};
   }
   const auto& condition = *instruction.condition_record;
+  const bool valid_condition_type =
+      condition.form == BranchConditionForm::FusedCompare
+          ? condition.condition_type != bir::TypeKind::Void
+          : condition.condition_type == bir::TypeKind::I1;
   if (!condition.condition_value_id.has_value() ||
       condition.condition_value_name == c4c::kInvalidValueName ||
-      condition.condition_type != bir::TypeKind::I1) {
+      !valid_condition_type) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::MissingRequiredFacts,
                                    .diagnostic =
                                        "conditional branch is missing condition value identity"};

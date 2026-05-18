@@ -32,6 +32,8 @@ mir::TargetInstructionPrintResult target_printed(std::vector<std::string> lines)
   return mir::target_instruction_lines_printed(std::move(lines));
 }
 
+std::string bad_header(const InstructionRecord& instruction);
+
 std::string block_label(c4c::FunctionNameId function_name, c4c::BlockLabelId block_label) {
   return ".LBB" + std::to_string(function_name) + "_" + std::to_string(block_label);
 }
@@ -95,6 +97,48 @@ std::optional<abi::RegisterView> integer_register_view(unsigned bit_width) {
     return abi::RegisterView::X;
   }
   return std::nullopt;
+}
+
+std::optional<abi::RegisterView> compare_register_view(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return abi::RegisterView::W;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return abi::RegisterView::X;
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<std::string_view> compare_branch_condition(bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case bir::BinaryOpcode::Eq:
+      return std::string_view{"eq"};
+    case bir::BinaryOpcode::Ne:
+      return std::string_view{"ne"};
+    case bir::BinaryOpcode::Slt:
+      return std::string_view{"lt"};
+    case bir::BinaryOpcode::Sle:
+      return std::string_view{"le"};
+    case bir::BinaryOpcode::Sgt:
+      return std::string_view{"gt"};
+    case bir::BinaryOpcode::Sge:
+      return std::string_view{"ge"};
+    case bir::BinaryOpcode::Ult:
+      return std::string_view{"lo"};
+    case bir::BinaryOpcode::Ule:
+      return std::string_view{"ls"};
+    case bir::BinaryOpcode::Ugt:
+      return std::string_view{"hi"};
+    case bir::BinaryOpcode::Uge:
+      return std::string_view{"hs"};
+    default:
+      return std::nullopt;
+  }
 }
 
 std::optional<abi::RegisterReference> immediate_store_scratch_register(
@@ -170,6 +214,90 @@ std::vector<std::string> materialize_immediate_store_value_lines(
     return materialize_integer_constant_lines(scratch, value, 64);
   }
   return {};
+}
+
+std::optional<std::string> compare_operand_spelling(const OperandRecord& operand,
+                                                    bir::TypeKind compare_type,
+                                                    bool is_lhs) {
+  if (operand.kind == OperandKind::Register) {
+    const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+    if (reg == nullptr) {
+      return std::nullopt;
+    }
+    const auto view = compare_register_view(compare_type);
+    if (!view.has_value()) {
+      return std::nullopt;
+    }
+    return register_name_with_view(*reg, *view);
+  }
+
+  if (!is_lhs && operand.kind == OperandKind::Immediate) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+    if (immediate == nullptr) {
+      return std::nullopt;
+    }
+    if (immediate->kind == ImmediateKind::SignedInteger &&
+        immediate->signed_value < 0) {
+      return std::nullopt;
+    }
+    const auto value = immediate->kind == ImmediateKind::SignedInteger
+                           ? static_cast<std::uint64_t>(immediate->signed_value)
+                           : immediate->unsigned_value;
+    if (value > 4095U) {
+      return std::nullopt;
+    }
+    return "#" + std::to_string(value);
+  }
+
+  return std::nullopt;
+}
+
+mir::TargetInstructionPrintResult print_fused_compare_branch(
+    const InstructionRecord& instruction,
+    const BranchTargetPairRecord& targets,
+    const BranchConditionRecord& condition) {
+  if (!condition.predicate.has_value() || !condition.compare_operands.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "fused compare branch is missing compare facts");
+  }
+  if (instruction.operands.size() < 5U) {
+    return target_unsupported(bad_header(instruction) +
+                              "fused compare branch is missing printable operands");
+  }
+
+  const auto condition_code =
+      compare_branch_condition(condition.predicate->source_predicate);
+  if (!condition_code.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "fused compare branch predicate is not printable");
+  }
+
+  const auto lhs =
+      compare_operand_spelling(instruction.operands[3],
+                               condition.compare_operands->compare_type,
+                               true);
+  const auto rhs =
+      compare_operand_spelling(instruction.operands[4],
+                               condition.compare_operands->compare_type,
+                               false);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "fused compare branch operands are not printable");
+  }
+
+  std::ostringstream compare_line;
+  compare_line << "cmp " << *lhs << ", " << *rhs;
+  std::ostringstream true_branch_line;
+  true_branch_line << "b." << *condition_code << " "
+                   << block_label(targets.true_target.function_name,
+                                  targets.true_target.block_label);
+  std::ostringstream false_branch_line;
+  false_branch_line << "b "
+                    << block_label(targets.false_target.function_name,
+                                   targets.false_target.block_label);
+  return target_printed({compare_line.str(),
+                         true_branch_line.str(),
+                         false_branch_line.str()});
 }
 
 std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
@@ -419,9 +547,25 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
     out << mnemonic << " " << block_label(branch.target.function_name, branch.target.block_label);
     return target_printed({out.str()});
   }
-  if (!branch.target_pair.has_value() || !branch.condition.has_value()) {
+  if (!branch.target_pair.has_value()) {
     return target_unsupported(bad_header(instruction) +
-                              "conditional branch is missing target pair or condition operand");
+                              "conditional branch is missing target pair");
+  }
+  const auto& targets = *branch.target_pair;
+  if (targets.true_target.function_name == c4c::kInvalidFunctionName ||
+      targets.true_target.block_label == c4c::kInvalidBlockLabel ||
+      targets.false_target.function_name == c4c::kInvalidFunctionName ||
+      targets.false_target.block_label == c4c::kInvalidBlockLabel) {
+    return target_unsupported(bad_header(instruction) +
+                              "conditional branch target identity is missing");
+  }
+  if (branch.condition_record.has_value() &&
+      branch.condition_record->form == BranchConditionForm::FusedCompare) {
+    return print_fused_compare_branch(instruction, targets, *branch.condition_record);
+  }
+  if (!branch.condition.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "conditional branch is missing condition operand");
   }
   const auto* condition = std::get_if<RegisterOperand>(&branch.condition->payload);
   if (branch.condition->kind != OperandKind::Register || condition == nullptr) {
@@ -432,15 +576,6 @@ mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruct
       branch.condition_record->form != BranchConditionForm::MaterializedBool) {
     return target_unsupported(bad_header(instruction) +
                               "only materialized-bool conditional branches are printable");
-  }
-
-  const auto& targets = *branch.target_pair;
-  if (targets.true_target.function_name == c4c::kInvalidFunctionName ||
-      targets.true_target.block_label == c4c::kInvalidBlockLabel ||
-      targets.false_target.function_name == c4c::kInvalidFunctionName ||
-      targets.false_target.block_label == c4c::kInvalidBlockLabel) {
-    return target_unsupported(bad_header(instruction) +
-                              "conditional branch target identity is missing");
   }
 
   const auto spelling = comparison_materialized_bool_branch_spelling(instruction);

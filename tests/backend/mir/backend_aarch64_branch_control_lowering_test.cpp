@@ -1,6 +1,7 @@
 #include "src/backend/bir/bir.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
 #include "src/target_profile.hpp"
@@ -75,6 +76,15 @@ prepare::PreparedBirModule prepared_with_unconditional_branch() {
   return prepared;
 }
 
+prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
+  };
+}
+
 prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
     bool can_fuse_with_branch = true) {
   prepare::PreparedBirModule prepared;
@@ -86,11 +96,13 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
   const auto then_label = prepared.names.block_labels.intern("cond.then");
   const auto else_label = prepared.names.block_labels.intern("cond.else");
   const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
   const auto function_link_name = prepared.module.names.link_names.intern("cond.fn");
   const auto bir_entry_label = prepared.module.names.block_labels.intern("cond.entry");
   const auto bir_then_label = prepared.module.names.block_labels.intern("cond.then");
   const auto bir_else_label = prepared.module.names.block_labels.intern("cond.else");
-  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto condition = bir::Value::named(bir::TypeKind::I32, "%cond");
+  const auto lhs = bir::Value::named(bir::TypeKind::I32, "%lhs");
 
   prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
       .function_name = function_name,
@@ -107,8 +119,8 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
           .condition_value = condition,
           .predicate = bir::BinaryOpcode::Eq,
           .compare_type = bir::TypeKind::I32,
-          .lhs = bir::Value::immediate_i32(1),
-          .rhs = bir::Value::immediate_i32(1),
+          .lhs = lhs,
+          .rhs = bir::Value::immediate_i32(0),
           .can_fuse_with_branch = can_fuse_with_branch,
           .true_label = then_label,
           .false_label = else_label,
@@ -116,10 +128,28 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
   });
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
-      .value_homes = {prepare::PreparedValueHome{
-          .value_id = prepare::PreparedValueId{9},
-          .function_name = function_name,
-          .value_name = condition_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{9},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{10},
+                  .function_name = function_name,
+                  .value_name = lhs_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{10},
+          .value_name = lhs_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .register_placement = caller_saved_gpr(0),
       }},
   });
 
@@ -141,15 +171,6 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
   function.blocks.push_back(entry);
   prepared.module.functions.push_back(function);
   return prepared;
-}
-
-prepare::PreparedRegisterPlacement caller_saved_gpr(std::size_t slot_index) {
-  return prepare::PreparedRegisterPlacement{
-      .bank = prepare::PreparedRegisterBank::Gpr,
-      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
-      .slot_index = slot_index,
-      .contiguous_width = 1,
-  };
 }
 
 prepare::PreparedBirModule prepared_with_materialized_bool_conditional_branch() {
@@ -452,8 +473,9 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
       condition.predicate->source_predicate != bir::BinaryOpcode::Eq ||
       condition.predicate->compare_type != bir::TypeKind::I32 ||
       condition.compare_operands->compare_type != bir::TypeKind::I32 ||
-      condition.compare_operands->lhs.source_value != bir::Value::immediate_i32(1) ||
-      condition.compare_operands->rhs.source_value != bir::Value::immediate_i32(1)) {
+      condition.compare_operands->lhs.source_value !=
+          bir::Value::named(bir::TypeKind::I32, "%lhs") ||
+      condition.compare_operands->rhs.source_value != bir::Value::immediate_i32(0)) {
     return fail("expected compare branch condition record to preserve compare facts");
   }
   if (!condition.compare_branch_candidate.has_value() ||
@@ -467,9 +489,21 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
       instruction.target.operands[0].kind != aarch64_codegen::OperandKind::BranchTarget ||
       instruction.target.operands[1].kind != aarch64_codegen::OperandKind::BranchTarget ||
       instruction.target.operands[2].kind != aarch64_codegen::OperandKind::PreparedValue ||
-      instruction.target.operands[3].kind != aarch64_codegen::OperandKind::Immediate ||
+      instruction.target.operands[3].kind != aarch64_codegen::OperandKind::Register ||
       instruction.target.operands[4].kind != aarch64_codegen::OperandKind::Immediate) {
     return fail("expected compare branch node operands to carry targets and compare inputs");
+  }
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(instruction.target);
+  if (!printed.ok || printed.instruction_lines.size() != 3 ||
+      printed.instruction_lines[0] != "cmp w13, #0" ||
+      printed.instruction_lines[1] !=
+          "b.eq .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.true_label) ||
+      printed.instruction_lines[2] !=
+          "b .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.false_label)) {
+    return fail("expected fusable compare branch to print cmp plus true/false branches");
   }
   return 0;
 }

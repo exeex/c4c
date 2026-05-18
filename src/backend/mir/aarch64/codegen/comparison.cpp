@@ -122,6 +122,126 @@ void append_i128_compare_diagnostic(
   });
 }
 
+[[nodiscard]] std::optional<OperandRecord> make_fused_compare_print_operand(
+    const module::BlockLoweringContext& context,
+    const CompareValueRecord& value,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (value.source_value.kind == bir::Value::Kind::Immediate) {
+    return make_immediate_operand(ImmediateOperand{
+        .kind = value.source_value.immediate < 0 ? ImmediateKind::SignedInteger
+                                                 : ImmediateKind::UnsignedInteger,
+        .type = value.source_value.type,
+        .signed_value = value.source_value.immediate,
+        .unsigned_value = value.source_value.immediate_bits,
+        .source_value_id = value.value_id,
+        .source_value_name = value.value_name,
+    });
+  }
+
+  if (!value.value_id.has_value()) {
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_family = module::InstructionLoweringFamily::BranchControl,
+        .value_name = value.value_name,
+        .message =
+            "AArch64 fused compare branch requires prepared compare operand identity",
+    });
+    return std::nullopt;
+  }
+
+  const auto expected_view = scalar_register_view(value.type);
+  if (!expected_view.has_value()) {
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_family = module::InstructionLoweringFamily::BranchControl,
+        .value_id = *value.value_id,
+        .value_name = value.value_name,
+        .message =
+            "AArch64 fused compare branch only supports scalar integer or pointer compare operands",
+    });
+    return std::nullopt;
+  }
+
+  auto resolved = resolve_value_operand(*value.value_id, context.function, diagnostics);
+  if (!resolved.has_value() || !resolved->register_reference.has_value()) {
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_family = module::InstructionLoweringFamily::BranchControl,
+        .value_id = *value.value_id,
+        .value_name = value.value_name,
+        .message =
+            "AArch64 fused compare branch requires register compare operands",
+    });
+    return std::nullopt;
+  }
+
+  auto reg = *resolved->register_reference;
+  reg.view = *expected_view;
+
+  return make_register_operand(RegisterOperand{
+      .reg = reg,
+      .role = register_role_from_authority(resolved->authority),
+      .value_id = *value.value_id,
+      .value_name = value.value_name,
+      .expected_view = expected_view,
+  });
+}
+
+[[nodiscard]] bool install_fused_compare_print_operands(
+    const module::BlockLoweringContext& context,
+    const BranchConditionRecord& condition,
+    InstructionRecord& instruction,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (condition.form != BranchConditionForm::FusedCompare) {
+    return true;
+  }
+  if (!condition.compare_operands.has_value() || instruction.operands.size() < 5U) {
+    diagnostics.entries.push_back(module::ModuleLoweringDiagnostic{
+        .kind = module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_family = module::InstructionLoweringFamily::BranchControl,
+        .message =
+            "AArch64 fused compare branch requires printable compare operands",
+    });
+    return false;
+  }
+
+  auto lhs = make_fused_compare_print_operand(
+      context, condition.compare_operands->lhs, diagnostics);
+  auto rhs = make_fused_compare_print_operand(
+      context, condition.compare_operands->rhs, diagnostics);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return false;
+  }
+
+  instruction.operands[3] = std::move(*lhs);
+  instruction.operands[4] = std::move(*rhs);
+  return true;
+}
+
 [[nodiscard]] module::MachineInstruction make_branch_instruction(
     const module::BlockLoweringContext& context,
     BranchInstructionRecord record) {
@@ -348,8 +468,16 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
       terminator.false_label_id != branch_condition.false_label) {
     return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
   }
-  if (branch_condition.condition_value.type != bir::TypeKind::I1 ||
-      terminator.condition.type != bir::TypeKind::I1) {
+  const bool is_fused_compare =
+      branch_condition.kind == prepare::PreparedBranchConditionKind::FusedCompare;
+  if (!is_fused_compare &&
+      (branch_condition.condition_value.type != bir::TypeKind::I1 ||
+       terminator.condition.type != bir::TypeKind::I1)) {
+    return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
+  }
+  if (is_fused_compare &&
+      (branch_condition.condition_value.type == bir::TypeKind::Void ||
+       terminator.condition.type == bir::TypeKind::Void)) {
     return branch_record_error(PreparedBranchRecordError::MissingBranchCondition);
   }
   if (branch_condition.condition_value != terminator.condition) {
@@ -598,6 +726,13 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
   }
 
   auto instruction = make_branch_instruction(context, std::move(record));
+  const auto* branch =
+      std::get_if<BranchInstructionRecord>(&instruction.target.payload);
+  if (branch != nullptr && branch->condition_record.has_value() &&
+      !install_fused_compare_print_operands(
+          context, *branch->condition_record, instruction.target, diagnostics)) {
+    return std::nullopt;
+  }
   const auto expected_opcode =
       branch_condition->kind == prepare::PreparedBranchConditionKind::FusedCompare
           ? MachineOpcode::CompareBranch
