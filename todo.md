@@ -8,38 +8,39 @@ Current Step Title: Validate Boundary and Broader Sampling
 
 ## Just Finished
 
-Step 3 finished the focused starter subset by repairing `00183`
-conditional-expression result publication while preserving `00164` and `00202`.
-The AArch64 control-publication path now lowers prepared scalar `select`
-results by comparing the selected predicate, materializing same-block scalar
-producer values into non-overlapping registers, and publishing the selected
-value into the prepared result register. The dispatch path also skips
-coalesced out-of-SSA join-transfer source producers in the successor block when
-the prepared predecessor parallel copy has already made source and destination
-share the selected register, preventing stale recomputation from overwriting the
-published result.
+Step 4 repaired the `00169` boundary case while preserving the passing starter
+reps `00164`, `00183`, and `00202`. The call-boundary dispatcher now retargets
+prepared call moves to the freshest emitted scalar source when one exists, keeps
+the ABI destination view width-compatible with that fresh source, and publishes
+only source-conflicting argument moves before a call-site address materialization
+reuses the same register. This prevents a live scalar call argument from being
+read out of a stale prepared home after the address materialization clobbers the
+last emitted register.
 
-Generated-code evidence for `00183`: the final call argument now computes both
-arms and selects into `%t21`'s prepared register `w13` before `printf` consumes
-it:
+Generated-code evidence for `00169`: the middle loop value `%t20` is loaded
+into `w20`, published to the variadic `printf` argument register `w2`, and only
+then is `x20` reused for the format-string address:
 
 ```asm
-ldr w10, [sp]
-mov w13, #3
-mul w13, w10, w13
-csel w13, w9, w13, lt
+ldr w13, [sp]
+ldr w20, [sp, #4]
+mov w2, w20
+adrp x20, .str0
+add x20, x20, :lo12:.str0
 mov x0, x20
-mov x1, x13
+mov w1, w13
+ldr w3, [sp, #8]
+bl printf
 ```
 
-The focused subset now passes all three starter reps. `00183` prints the final
-five loop iterations as `15`, `18`, `21`, `24`, `27`, and the proof preserved
-the previously passing `00164` and `00202`.
+The focused boundary subset improved from the baseline `3/4` to `4/4`: `00169`
+now passes, and `00164`, `00183`, and `00202` remained passing.
 
 ## Suggested Next
 
-Continue Step 3 or ask the supervisor whether the starter subset is ready to
-move to Step 4 boundary sampling with `00169` plus the preserved starter reps.
+Supervisor should review and commit this Step 4 slice, then decide whether Step
+4 needs broader sampling beyond the four delegated reps or whether the runbook
+is ready for lifecycle review.
 
 ## Watchouts
 
@@ -47,6 +48,11 @@ move to Step 4 boundary sampling with `00169` plus the preserved starter reps.
   coalesced out-of-SSA join-transfer authority. Do not broaden this into
   enabling every `PreparedMovePhase::BeforeInstruction` bundle; that previously
   regressed the first-six-line `00164` contract.
+- The new call-boundary ordering is intentionally narrow: it hoists only
+  argument moves whose fresh emitted source register aliases a pending
+  call-site address materialization result, and it excludes the address value
+  itself. Avoid turning this into wholesale reordering of the prepared
+  call-argument bundle.
 - The implemented edge hook currently handles the bounded shape needed by
   `%t106`: an out-of-SSA predecessor block-entry bundle with a named scalar
   compare source defined in the successor join prefix, and only when source and
@@ -70,11 +76,13 @@ move to Step 4 boundary sampling with `00169` plus the preserved starter reps.
 Ran the delegated proof exactly:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00169|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
 Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
-of 3` for `00164`, `00183`, and `00202`.
+of 4` for `00164`, `00169`, `00183`, and `00202`. This is a strict
+pass-count improvement over `test_before.log`, which showed `00169` failing
+with the second printed field clobbered while the other three reps passed.
 
 Stale-process check:
 
