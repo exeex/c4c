@@ -91,6 +91,149 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return nullptr;
 }
 
+[[nodiscard]] bool binary_result_matches_value(const bir::Inst& inst,
+                                               std::string_view value_name) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  return binary != nullptr &&
+         binary->result.kind == bir::Value::Kind::Named &&
+         binary->result.name == value_name;
+}
+
+[[nodiscard]] bool binary_uses_named_value(const bir::Inst& inst,
+                                           std::string_view value_name) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr) {
+    return false;
+  }
+  const auto matches = [&](const bir::Value& value) {
+    return value.kind == bir::Value::Kind::Named && value.name == value_name;
+  };
+  return matches(binary->lhs) || matches(binary->rhs);
+}
+
+[[nodiscard]] bool prepared_edge_select_source_is_destination_register(
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedValueHome& destination_home) {
+  return source_home.kind == prepare::PreparedValueHomeKind::Register &&
+         destination_home.kind == prepare::PreparedValueHomeKind::Register &&
+         source_home.register_name.has_value() &&
+         destination_home.register_name.has_value() &&
+         *source_home.register_name == *destination_home.register_name;
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_predecessor_select_parallel_copy_sources(
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  std::vector<module::MachineInstruction> lowered;
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.bir_function == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::Branch ||
+      context.bir_block->terminator.kind != bir::TerminatorKind::Branch) {
+    return lowered;
+  }
+
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      *context.function.value_locations,
+      prepare::PreparedMovePhase::BlockEntry,
+      context.block_index,
+      0);
+  if (bundle == nullptr ||
+      bundle->authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+      bundle->source_parallel_copy_predecessor_label !=
+          std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} ||
+      !bundle->source_parallel_copy_successor_label.has_value()) {
+    return lowered;
+  }
+
+  const auto successor_label = prepare::prepared_block_label(
+      context.function.prepared->names,
+      *bundle->source_parallel_copy_successor_label);
+  if (successor_label.empty() ||
+      successor_label != context.bir_block->terminator.target_label) {
+    return lowered;
+  }
+  const auto* successor =
+      prepare::find_block_in_function(*context.function.bir_function, successor_label);
+  if (successor == nullptr) {
+    return lowered;
+  }
+
+  for (const auto& move : bundle->moves) {
+    if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.source_immediate_i32.has_value() ||
+        move.from_value_id == move.to_value_id) {
+      continue;
+    }
+    const auto* source_home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          move.from_value_id);
+    const auto* destination_home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          move.to_value_id);
+    if (source_home == nullptr ||
+        destination_home == nullptr ||
+        source_home->value_name == c4c::kInvalidValueName ||
+        destination_home->kind != prepare::PreparedValueHomeKind::Register) {
+      continue;
+    }
+    const auto source_name =
+        prepare::prepared_value_name(context.function.prepared->names, source_home->value_name);
+    if (source_name.empty()) {
+      continue;
+    }
+    if (!prepared_edge_select_source_is_destination_register(*source_home,
+                                                            *destination_home)) {
+      continue;
+    }
+    for (std::size_t source_index = 0; source_index < successor->insts.size(); ++source_index) {
+      if (!binary_result_matches_value(successor->insts[source_index], source_name)) {
+        continue;
+      }
+      auto edge_context = context;
+      edge_context.bir_block = successor;
+      BlockScalarLoweringState edge_state = scalar_state;
+      if (source_index > 0) {
+        const auto& previous = successor->insts[source_index - 1];
+        const auto* previous_binary = std::get_if<bir::BinaryInst>(&previous);
+        if (previous_binary != nullptr &&
+            previous_binary->result.kind == bir::Value::Kind::Named &&
+            binary_uses_named_value(successor->insts[source_index],
+                                    previous_binary->result.name)) {
+          if (auto previous_lowered =
+                  lower_scalar_instruction(edge_context,
+                                           previous,
+                                           source_index - 1,
+                                           edge_state,
+                                           diagnostics)) {
+            lowered.push_back(std::move(*previous_lowered));
+          }
+        }
+      }
+      auto source_lowered =
+          lower_scalar_control_value_instruction(edge_context,
+                                                 successor->insts[source_index],
+                                                 source_index,
+                                                 edge_state,
+                                                 diagnostics);
+      if (!source_lowered.has_value()) {
+        lowered.clear();
+        return lowered;
+      }
+      lowered.push_back(std::move(*source_lowered));
+      scalar_state = std::move(edge_state);
+      return lowered;
+    }
+  }
+  return lowered;
+}
+
 [[nodiscard]] module::InstructionLoweringFamily classify_instruction(
     const bir::Inst& inst) {
   return std::visit(
@@ -891,6 +1034,10 @@ InstructionDispatchResult dispatch_prepared_block(
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::Branch) {
+    for (auto& edge_source :
+         lower_predecessor_select_parallel_copy_sources(context, scalar_state, diagnostics)) {
+      block.instructions.push_back(std::move(edge_source));
+    }
     if (auto lowered = lower_prepared_branch_terminator(context, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors.push_back(make_unconditional_branch_successor(context));
