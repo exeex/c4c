@@ -624,7 +624,9 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 
   auto destination = make_register_operand_from_prepared_authority(
-      binding.destination_register_name,
+      binding.destination_register_placement.has_value()
+          ? std::optional<std::string>{}
+          : binding.destination_register_name,
       binding.destination_register_placement.has_value()
           ? binding.destination_register_placement
           : argument->destination_register_placement,

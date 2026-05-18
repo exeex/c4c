@@ -10,14 +10,22 @@ Current Step Title: Repair The First Scalar Publication Primitive
 
 ## Just Finished
 
-Step 2 implemented the first scalar publication primitive in
-`src/backend/mir/aarch64/codegen/alu.cpp`: when a prepared scalar result has
-authoritative rematerializable-immediate storage and is being published to the
-return ABI, lowering now materializes that immediate into the ABI result
-register instead of falling back to stale physical-register reconstruction.
+Step 2 repaired the regression from the first scalar publication primitive.
+The immediate return-publication fallback in
+`src/backend/mir/aarch64/codegen/alu.cpp` is now limited to the semantic stale
+publication case: a rematerializable immediate return result whose ALU source
+depends on a named authoritative immediate that has not been emitted as a
+selected scalar register. This preserves selected public `add`/`sub` chains
+while keeping the `src/00012.c` repair.
 
-`src/00012.c` advanced from `sub w0, w19, #8` and runtime nonzero to passing.
-Generated assembly now contains authoritative return publication:
+The packet also fixed the directly required AArch64 call-boundary helper in
+`src/backend/mir/aarch64/codegen/calls.cpp`: immediate GPR call arguments now
+prefer the typed prepared register placement when materializing the ABI
+destination, so the internal return-lowering proof selects `w0` for an I32
+immediate argument instead of losing the move.
+
+`src/00012.c` remains passing. Generated assembly still contains authoritative
+return publication:
 
 ```asm
 mov w0, #0
@@ -25,11 +33,12 @@ add w0, w0, #0
 ret
 ```
 
-The same proof shows the remaining starter failures are still in other
-publication subfamilies: `00056.c` still omits the `x2` call argument for the
-frame-slot scalar source, `00211.c` still passes a stale scalar variadic
-argument, and `00009.c`/`00156.c`/`00161.c` still fail in broader scalar
-result/control-value publication.
+The public backend regression cases again print the selected chains:
+`return_add.c` emits `mov w0, #2` then `add w0, w0, #3`, and
+`return_add_sub_chain.c` emits `mov w0, #2`, `add w0, w0, #3`, then
+`sub w0, w0, #1`. The focused subset now has `00012.c` and `00211.c` passing;
+`00009.c`, `00056.c`, `00156.c`, and `00161.c` remain failing in other scalar
+publication/control-value subfamilies.
 
 ## Suggested Next
 
@@ -48,6 +57,8 @@ the authoritative `x2`/`w2` value before `bl printf`.
 - `src/00056.c` confirms the third `printf` format pointer is correct; only the
   scalar second variadic value is missing. Treat it as scalar ABI argument
   materialization, not the closed string/global address owner.
+- `src/00211.c` now passes after the immediate GPR call-argument placement fix;
+  do not spend the next packet on that representative unless it regresses.
 - `src/00056.c`'s prepared call argument names `source_encoding=frame_slot` and
   `source_stack_offset=24`, but the generated local store for `d` is currently
   at `[sp, #12]`; verify the authoritative stack-slot offset model before
@@ -60,11 +71,20 @@ the authoritative `x2`/`w2` value before `bl printf`.
 Ran exactly:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build -j && ctest --test-dir build -R '^(backend_aarch64_return_lowering|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke)$' -j 4 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: failed overall with 1/6 passing. `00012` passed; `00009`, `00056`,
-`00156`, `00161`, and `00211` still failed. Proof log: `test_after.log`.
+Result: passed, 3/3. Proof log: `test_after.log`.
+
+Also ran exactly:
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_scalar_step2_regression_fix_subset.ctest.log 2>&1
+```
+
+Result: failed overall with 2/6 passing. `00012` and `00211` passed; `00009`,
+`00056`, `00156`, and `00161` still failed. Focused subset log:
+`/tmp/c4c_aarch64_scalar_step2_regression_fix_subset.ctest.log`.
 
 Required process check:
 

@@ -611,6 +611,18 @@ namespace mir = c4c::backend::mir;
       home->value_name);
 }
 
+[[nodiscard]] bool uses_unemitted_authoritative_immediate(
+    const bir::Value& value,
+    const module::BlockLoweringContext& context,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto* home = find_named_value_home(value, context.function);
+  if (home == nullptr ||
+      find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
+    return false;
+  }
+  return authoritative_immediate_storage(value, context.function).has_value();
+}
+
 }  // namespace
 
 ScalarAluPrintResult make_scalar_alu_print_lines(
@@ -1412,7 +1424,9 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
       const auto authoritative_immediate =
           authoritative_immediate_storage(binary->result, context.function);
       if (result_home != nullptr && authoritative_immediate.has_value() &&
-          result_register.has_value()) {
+          result_register.has_value() &&
+          (uses_unemitted_authoritative_immediate(binary->lhs, context, scalar_state) ||
+           uses_unemitted_authoritative_immediate(binary->rhs, context, scalar_state))) {
         const auto zero = make_scalar_immediate_operand(
             bir::Value::immediate_i32(0),
             result_home->value_id,
