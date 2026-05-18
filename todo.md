@@ -1,54 +1,75 @@
 Status: Active
 Source Idea Path: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconfirm Focused Runtime Route
+Current Step ID: 2
+Current Step Title: Broader AArch64 Backend Runtime Inventory
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 reconfirmed the focused AArch64 c-testsuite backend runtime route after
-idea 282 closure. The focused backend tests are green, and
-`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c` all
-pass through the real backend runtime path.
+Step 2 started the broader AArch64 backend c-testsuite inventory. CTest
+selected 220 `aarch64_backend` cases. The first six cases,
+`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c`,
+passed through the real backend runtime route. The next selected case,
+`c_testsuite_aarch64_backend_src_00007_c`, reached `.s` generation and
+`clang -x assembler` executable generation, then hung at runtime. I stopped the
+run after roughly 2.5 minutes with no CTest progress and recorded the manual
+stop in `test_after.log`.
 
-Route-stage evidence from
-`tests/c/external/c-testsuite-aarch64-backend-runner.cmake`:
+Route-stage inventory from this partial broad scan:
 
-- compile source with `c4cll --codegen asm --target aarch64-unknown-linux-gnu`
-  into the backend output path
-- require backend output to exist and begin as assembly via the `.text` check,
-  otherwise fail as `[BACKEND_FALLBACK_IR]`
-- assemble/link with `clang --target=aarch64-unknown-linux-gnu -x assembler`
-  into an executable
-- run the executable directly on native AArch64, or fail closed as
-  `[RUNTIME_UNAVAILABLE]` when no runner is configured for non-AArch64 hosts
-- compare runtime stdout/stderr with the `.expected` sidecar and fail as
-  `[RUNTIME_MISMATCH]` on differences
+- selected: 220
+- passed: 6
+- `[RUNTIME_HANG]`: 1 (`00007.c`)
+- not run after stop: 213
+- `[FRONTEND_FAIL]`, `[BACKEND_OUTPUT_MISSING]`, `[BACKEND_FALLBACK_IR]`,
+  `[BACKEND_FAIL]`, `[RUNTIME_UNAVAILABLE]`, `[RUNTIME_NONZERO]`,
+  `[RUNTIME_MISMATCH]`: 0 observed before the hang
 
-Generated artifacts exist for the focused route, including
-`build-aarch64-scan/c_testsuite_aarch64_backend/src/00001.c.s`,
-`00001.c.bin`, `00006.c.s`, and `00006.c.bin`. This proof did not use LLVM IR
-fallback, c-testsuite expectation changes, allowlist changes, unsupported
-classification weakening, or runner changes.
+The first distinct owner layer is AArch64 backend loop/control lowering for
+`00007.c`, not the runtime route itself. Generated artifacts exist:
+`build-aarch64-scan/c_testsuite_aarch64_backend/src/00007.c.s` and
+`00007.c.bin`. The assembly shows an unconditional self-loop before the
+expected loop-exit condition:
+
+```asm
+.LBB1_2:
+ldr w13, [sp]
+ldr w13, [sp]
+sub w19, w13, #1
+str w19, [sp]
+b .LBB1_2
+```
+
+The same file later emits another unconditional loop header:
+
+```asm
+.LBB1_8:
+ldr w13, [sp]
+b .LBB1_8
+```
+
+This is hang evidence, not pass evidence. The route up to the first blocker is
+still real AArch64 backend assembly; no LLVM IR fallback, expectation
+weakening, allowlist change, unsupported reclassification, or runner edit was
+used.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: run a broad AArch64 backend inventory so idea
-276 can classify the remaining route surface beyond the focused six-case
-smoke. Suggested command:
-
-```sh
-set -o pipefail; { cmake --build --preset default && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend; } 2>&1 | tee test_after.log
-```
+Open or activate a focused follow-up idea for the `00007.c` loop-control
+runtime hang. The smallest next packet should localize why the AArch64 backend
+emits unconditional self-loops for the `for` loop control shape in `00007.c`
+after the `00006.c` fused-compare loop case was repaired.
 
 ## Watchouts
 
 - Do not fold backend semantic repairs directly into idea 276; split remaining
   capability gaps into focused follow-up ideas.
 - Do not count `[RUNTIME_UNAVAILABLE]` as pass evidence.
-- Preserve distinct route-stage classifications.
+- Preserve distinct route-stage classifications. The broad scan is currently
+  blocked at `[RUNTIME_HANG]` for `00007.c`, with only six broad-route passes
+  recorded before the stop.
 - Do not change c-testsuite expectations, allowlists, unsupported
   classifications, runner files, or timeout policy to claim route progress.
 - `ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md` remains
@@ -57,13 +78,15 @@ set -o pipefail; { cmake --build --preset default && cmake -S . -B build-aarch64
 
 ## Proof
 
-Step 1 proof command:
+Step 2 proof command:
 
 ```sh
-set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_branch_control_lowering|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_memory_operand_records|backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_aarch64_operand_resolution)$' && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c$'; } 2>&1 | tee test_after.log
+set -o pipefail; { cmake --build --preset default && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend; } 2>&1 | tee test_after.log
 ```
 
-Result: PASS, exit 0. The seven focused backend tests passed, and
-`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c` all
-passed through the AArch64 backend runtime route. `test_after.log` contains the
-full command output.
+Result: BLOCKED by runtime hang. The command selected 220 tests and passed
+`00001.c` through `00006.c`, then hung while running
+`c_testsuite_aarch64_backend_src_00007_c`. I killed the `00007.c.bin` runtime,
+runner, CTest, and wrapper processes after roughly 2.5 minutes with no CTest
+progress. `test_after.log` contains the partial output plus a `[MANUAL_STOP]`
+line documenting the stop.
