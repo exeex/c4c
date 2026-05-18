@@ -8,57 +8,21 @@ Current Step Title: Repair Control-Selected Expression Publication
 
 ## Just Finished
 
-Step 3 reduced the dirty slice to the first same-block scalar compare
-publication primitive for AArch64 control values and fixed the reviewer-found
-scratch-clobber hazard in that path. Compare binaries now materialize through
-selected `cmp`/`cset` assembler nodes when their operands have authoritative
-same-block sources: immediates, same-block emitted scalar registers, or
-same-block prepared frame-slot loads. Dispatch records the emitted compare
-result in `BlockScalarLoweringState`, so later call-boundary argument moves can
-consume the freshly materialized register instead of a stale logical home. The
-compare materializer now carries the actual LHS register/scratch as occupied
-while materializing RHS, so memory/memory compares cannot clobber the loaded
-LHS before `cmp`.
+Step 3 repaired the regression introduced by `27a97e2ac` where
+`backend_aarch64_machine_printer` failed the selected scalar fail-closed
+contract for out-of-range add immediates. The scalar add/sub/bitwise printer now
+restores the expected plain `#imm` diagnostic for non-encodable immediates and
+the precise `sub` diagnostic for immediate-LHS/register-RHS shapes. This keeps
+the common scalar printer rejecting unprintable selected nodes without changing
+the Step 3 compare/control publication helper or weakening its same-block
+compare publication behavior.
 
-Generated `src/00164.c` evidence now shows comparison call arguments published
-before `printf`:
-
-```asm
-ldr w9, [sp]
-ldr w10, [sp]
-cmp w9, w10
-cset w13, eq
-ldr w9, [sp]
-ldr w10, [sp, #4]
-cmp w9, w10
-cset w9, eq
-mov x0, x21
-mov x1, x13
-mov w2, w9
-bl printf
-...
-ldr w9, [sp]
-ldr w10, [sp]
-cmp w9, w10
-cset w13, ne
-...
-cmp w9, w10
-cset w9, ne
-```
-
-The proof still fails overall and does not improve the strict pass count over
-`test_before.log` (both are 1/3 passing). `00202` remains passing and the first
-six `00164` output lines are preserved (`134`, `134`, `0`, `1`, `1`, `1`).
-`00164` also now prints the equality/inequality pair lines correctly
-(`1, 0` and `0, 1`). The remaining first bad value is still the `%t106`
-control-selected chain after `%t104`: generated assembly computes `%t103`
-with `orr`, but the following `printf` still consumes stale `x13` for `%t106`.
-The incomplete select-publication attempt was removed from the dirty diff. A
-terminator-move scheduling probe was also rejected because the prepared
-parallel-copy source for `%t106` is `%t104`, while `%t104` is a value in
-successor block `logic.end.100`, not an already-materialized predecessor value.
-The precise remaining boundary is therefore select materialization with
-predecessor/edge authority, not same-block compare publication.
+The delegated proof now passes the repaired internal regression and the broader
+`^backend_aarch64_` suite. The focused c-testsuite subset still fails overall
+with the already-known `00164`/`00183` runtime mismatches, while `00202`
+passes, `00164` still preserves the first six output lines (`134`, `134`, `0`,
+`1`, `1`, `1`), and the compare pair improvement remains visible as `1, 0` and
+`0, 1`.
 
 ## Suggested Next
 
@@ -76,6 +40,10 @@ Proposed proof command:
 
 ## Watchouts
 
+- The delegated proof command starts with `ctest` in `build`; after editing
+  `alu.cpp`, the internal test binary had to be refreshed with
+  `cmake --build build --target backend_aarch64_machine_printer_test` before the
+  proof could exercise this slice.
 - Do not lower select operands from plain prepared register homes unless a
   same-block emitted value, same-block prepared memory access, or explicit
   predecessor-edge transfer proves the source is authoritative on the current
@@ -100,21 +68,24 @@ Proposed proof command:
 
 ## Proof
 
-Ran the delegated focused proof exactly:
+Prerequisite stale-binary refresh:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+cmake --build build --target backend_aarch64_machine_printer_test
 ```
 
-Result: failed overall, 1/3 passing, matching `test_before.log` by pass count.
-`00202` passed. `00164` and `00183` remain `RUNTIME_MISMATCH`. `00164`
-preserved the first six expected outputs and advanced the same-block comparison
-publication lines; the remaining bad values are the stale `%t106` select result
-and later arithmetic call-result values. The current `00164` actual output
-starts `134`, `134`, `0`, `1`, `1`, `1`, then stale `%t106` values before the
-now-correct `1, 0` and `0, 1` comparison lines. The reviewer scratch-clobber
-fix is covered by the rebuilt `c4cll` and generated-code evidence now showing
-distinct LHS/RHS scratch registers for memory/memory compares.
+Then ran the delegated proof exactly:
+
+```sh
+{ ctest --test-dir build -R '^backend_aarch64_machine_printer$' --output-on-failure && ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure && cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+```
+
+Result: failed overall at the final focused scan subset. The internal
+`backend_aarch64_machine_printer` regression passed, and the broader
+`^backend_aarch64_` suite passed 27/27. The scan subset remained 1/3 passing:
+`00202` passed; `00164` and `00183` remain `RUNTIME_MISMATCH`. `00164` actual
+output starts `134`, `134`, `0`, `1`, `1`, `1`, then stale select-chain values,
+and still includes the repaired compare pair lines `1, 0` and `0, 1`.
 
 Stale-process check:
 

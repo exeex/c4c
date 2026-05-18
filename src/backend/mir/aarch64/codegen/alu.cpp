@@ -1511,7 +1511,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
        !scalar_alu_operation_accepts_immediate(alu.operation, *rhs_immediate))) {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar add/sub/bitwise immediate operand is outside the selected immediate encoding range"};
+                "scalar add/sub/bitwise immediate operand is outside the plain #imm encoding range 0..4095"};
   }
 
   std::string_view mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
@@ -1670,6 +1670,12 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
              << scalar_immediate_name(*rhs_immediate);
     lines.push_back(add_line.str());
   } else {
+    if (lhs_is_immediate && (rhs_is_register || rhs_is_memory) &&
+        instruction.opcode == MachineOpcode::Sub) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar sub with an immediate lhs and register rhs is not printable"};
+    }
     return {.lines = std::nullopt,
             .diagnostic =
                 "scalar sub/bitwise with an immediate lhs and register rhs is not printable"};
