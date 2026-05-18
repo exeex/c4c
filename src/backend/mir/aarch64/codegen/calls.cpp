@@ -343,6 +343,9 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
 
   const bool selected_gpr_argument_move =
       argument != nullptr &&
+      (argument->source_encoding == prepare::PreparedStorageEncodingKind::Register ||
+       argument->source_encoding == prepare::PreparedStorageEncodingKind::SymbolAddress) &&
+      argument->source_register_name.has_value() &&
       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
   const bool selected_f128_argument_move =
@@ -392,7 +395,6 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
       source_home->register_name.has_value() && argument != nullptr &&
-      argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
       (selected_gpr_argument_move || selected_f128_argument_move) &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
@@ -477,6 +479,22 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     move_record.destination_register = *destination;
     move_record.source_f128_carrier = source_f128_carrier;
     move_record.source_f128_constant_payload = source_f128_carrier->constant_payload;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      !selected_f128_constant_argument_move &&
+      (!move_record.source_register.has_value() ||
+       !move_record.destination_register.has_value())) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 call-argument move lowering requires selected prepared register source and destination");
+    return std::nullopt;
   }
 
   return make_call_boundary_machine_instruction(
@@ -628,6 +646,21 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     move_record.destination_register = *destination;
     move_record.destination_f128_carrier =
         selected_f128_result_move ? destination_f128_carrier : nullptr;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      (!move_record.source_register.has_value() ||
+       !move_record.destination_register.has_value())) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 call-result move lowering requires selected prepared register source and destination");
+    return std::nullopt;
   }
 
   return make_call_boundary_machine_instruction(
