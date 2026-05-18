@@ -1,124 +1,162 @@
-# AArch64 C-Testsuite Failure Family Inventory Runbook
+# AArch64 Side-Effect Control-Value Publication Authority Runbook
 
 Status: Active
-Source Idea: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
+Source Idea: ideas/open/293_aarch64_side_effect_control_value_publication_authority.md
 
 ## Purpose
 
-Use the current AArch64 backend c-testsuite failures as an umbrella inventory,
-then split exactly one focused semantic repair idea before implementation work
-continues.
+Repair AArch64 backend publication of scalar values produced by side-effecting
+expressions and control-selected expressions so later observable consumers use
+the authoritative semantic value.
 
 ## Goal
 
-Refresh the post-292 AArch64 failure map, classify remaining backend/runtime
-families, and select the next focused owner or document why no owner is ready.
+Make the focused starter representatives pass by repairing the publication
+authority chain, then prove the repair is not a filename-specific or
+closed-owner overlap fix.
 
 ## Core Rule
 
-This runbook is inventory-only. Do not implement compiler/backend repairs under
-this umbrella idea.
+Fix side-effect/control-value publication semantics. Do not broaden into
+pointer/aggregate, timeout, printer/admission, floating/conversion/string, or
+test harness work.
 
 ## Read First
 
-- `ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md`
-- `ideas/closed/292_aarch64_scalar_expression_control_value_authority.md`
-- Latest broad scan artifacts if still present:
-  - `/tmp/c4c_aarch64_scalar_step4_broad.log`
-  - `/tmp/c4c_aarch64_scalar_step4_summary.txt`
-  - `/tmp/c4c_aarch64_scalar_step4_new_passes.txt`
+- `ideas/open/293_aarch64_side_effect_control_value_publication_authority.md`
+- `todo.md`
+- Representative generated assembly under
+  `build-aarch64-scan/c_testsuite_aarch64_backend/src/00164.c.s`
+  `build-aarch64-scan/c_testsuite_aarch64_backend/src/00183.c.s`
+  `build-aarch64-scan/c_testsuite_aarch64_backend/src/00202.c.s`
+  `build-aarch64-scan/c_testsuite_aarch64_backend/src/00169.c.s`
 
 ## Current Targets
 
-- Remaining AArch64 backend c-testsuite failures after closed focused ideas
-  285-292.
-- Known unresolved buckets: pointer/aggregate, timeout, printer/admission,
-  floating/conversion/string, and side-effect control.
-- Closed owners must stay closed unless fresh generated-code evidence
-  contradicts their closure.
+- Starter reps: `src/00164.c`, `src/00183.c`, `src/00202.c`.
+- Boundary/support rep: `src/00169.c`.
+- Main implementation surfaces are likely in AArch64 MIR codegen and prepared
+  value publication paths, but Step 1 must locate the exact ownership boundary
+  before edits.
 
 ## Non-Goals
 
-- Do not touch implementation files, tests, CTest registration, runner
-  behavior, expected outputs, allowlists, or unsupported classifications.
-- Do not treat timeout/hang cases as ordinary runtime mismatches.
-- Do not create a named-testcase repair idea without a broader semantic owner.
-- Do not reopen closed AArch64 owners from residual failure counts alone.
+- Do not touch expected outputs, runner behavior, allowlists, unsupported
+  classifications, timeout policy, CTest registration, or build/test
+  infrastructure.
+- Do not reopen closed AArch64 owners for LR preservation, scalar call-value
+  semantics, string/global external-call lowering, stack-frame alignment,
+  function-pointer indirect calls, scalar parameter ALU authority, call-argument
+  register authority, or scalar expression/control authority without
+  contradictory generated-code proof.
+- Do not claim progress by fixing only one c-testsuite filename or one emitted
+  instruction sequence.
+- Do not fold pointer/aggregate/address-heavy failures, timeouts,
+  printer/admission failures, floating/conversion/string-only behavior, or
+  broad aggregate ABI work into this route.
+
+## Working Model
+
+The broken cases compute, assign, or select a scalar value, but a later
+consumer reads an older or unrelated physical location. The repair should make
+the selected semantic value authoritative at publication points such as stores,
+call arguments, return values, and print-visible scalar consumers.
 
 ## Execution Rules
 
-- Use timeout-protected broad scans and check for stale generated-runtime
-  processes afterward.
-- Inspect representatives by semantic family, not by filename count alone.
-- Separate frontend-owned failures from backend/runtime-owned failures.
-- Write durable next-owner information to `todo.md` while investigating.
-- If a coherent focused owner emerges, create a new `ideas/open/*.md` source
-  idea with concrete reviewer reject signals and switch lifecycle state to it.
+- Start from generated-code evidence for the starter reps before editing.
+- Prefer semantic publication rules over testcase-shaped matching.
+- Keep each code slice narrow enough to prove with a focused CTest subset.
+- After each runtime subset run, check for stale generated-runtime processes.
+- Escalate to broader AArch64 backend sampling before treating the route as
+  close-ready.
 
 ## Steps
 
-### Step 1: Refresh Post-292 Inventory
+### Step 1: Locate Side-Effect Publication Boundaries
 
-Goal: establish the current AArch64 backend failure map after scalar
-expression/control-value authority closed.
+Goal: identify the exact backend/prealloc boundary where side-effecting and
+control-selected expression values lose authority.
 
-Primary target: timeout-protected AArch64 backend c-testsuite scan.
-
-Actions:
-
-- Prefer the latest post-292 broad artifacts if they are still current.
-- Otherwise run:
-  `ctest --test-dir build-aarch64-scan -L '^aarch64_backend$' -j 8 --timeout 5 --output-on-failure`
-- Record pass/fail totals and classify failures into frontend, runtime
-  nonzero, runtime mismatch, timeout, and compile/printer/admission buckets.
-- Check that no generated-runtime process remains after the scan.
-
-Completion check:
-
-- `todo.md` records current totals, representative cases, log paths, and any
-  stale-process cleanup result.
-
-### Step 2: Select the Next Semantic Owner
-
-Goal: choose the smallest remaining backend/runtime family that can become a
-focused repair idea.
-
-Primary target: representatives from non-frontend, non-timeout buckets unless
-fresh evidence shows a timeout-specific owner is now safest.
+Primary target: generated assembly and MIR/codegen paths for `src/00164.c`,
+`src/00183.c`, and `src/00202.c`.
 
 Actions:
 
-- Inspect generated output and source shape for representative failures.
-- Compare candidates against closed owners 285-292 to avoid reopening closed
-  work without contradictory evidence.
-- Prefer a semantic family that can be proven with a small starter subset and
-  broader nearby sampling.
-- Defer buckets that are primarily frontend, environment-sensitive timeout,
-  or compile-stage printer/admission work unless they are clearly the next
-  safest owner.
+- Build `c4cll` in `build-aarch64-scan`.
+- Run the starter subset:
+  `ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure`
+- Inspect generated assembly and any useful dumps to separate assignment,
+  compound-assignment, logical/comparison, and conditional-expression failure
+  shapes.
+- Record the first repair primitive and any rejected overlap with closed owners
+  in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the selected owner, starter representatives, rejected or
-  deferred buckets, and the proof shape expected for the focused idea.
+- `todo.md` names the first concrete implementation boundary, starter failure
+  evidence, proof command, and stale-process result.
 
-### Step 3: Split or Close Inventory
+### Step 2: Repair Side-Effecting Expression Result Publication
 
-Goal: leave lifecycle state consistent after the inventory decision.
+Goal: publish authoritative values for assignment-like and compound-assignment
+expression results consumed later.
 
-Primary target: `ideas/open/` plus active lifecycle files.
+Primary target: the codegen/prepared-value boundary identified in Step 1.
 
 Actions:
 
-- If a focused owner is ready, create a new `ideas/open/*.md` file with intent,
-  scope, acceptance criteria, and concrete reviewer reject signals.
-- Switch active lifecycle state from this umbrella inventory to the focused
-  idea using a new `plan.md` and reset `todo.md`.
-- If no owner is ready, keep this umbrella active only with a narrow next
-  classification step or record the exact ambiguity that blocks selection.
+- Repair the smallest semantic primitive that keeps assigned objects and
+  expression results aligned.
+- Prove `src/00202.c` and the relevant `src/00164.c` expression forms without
+  relying on stale stack slots or unrelated registers.
+- Keep pointer-through-address and aggregate behavior out of scope unless the
+  exact same scalar publication primitive owns it.
 
 Completion check:
 
-- There is at most one active plan.
-- `plan.md` and `todo.md`, if present, point to the same `ideas/open/*.md`.
-- This umbrella is not used for implementation work.
+- The focused subset shows the repaired side-effecting expression cases passing
+  or materially advanced, and generated assembly consumes the authoritative
+  value.
+
+### Step 3: Repair Control-Selected Expression Publication
+
+Goal: publish values selected by conditional, logical, and comparison control
+flow to later scalar consumers.
+
+Primary target: conditional-expression and logical/comparison result
+materialization for `src/00183.c` and remaining `src/00164.c` failures.
+
+Actions:
+
+- Repair control-selected scalar value materialization without reopening broad
+  branch predicate or switch-dispatch owners.
+- Prove selected results reach later stores, print calls, returns, or scalar
+  call arguments.
+- Use generated-code evidence to reject closed-owner or pointer/address drift.
+
+Completion check:
+
+- Starter reps `src/00164.c`, `src/00183.c`, and `src/00202.c` pass or are
+  blocked only by a documented out-of-scope owner.
+
+### Step 4: Validate Boundary and Broader Sampling
+
+Goal: prove the route is semantic and close-ready rather than starter-only.
+
+Primary target: `src/00169.c` plus nearby non-timeout runtime mismatch samples
+chosen by the supervisor.
+
+Actions:
+
+- Run the starter subset plus boundary sample:
+  `ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00169|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure`
+- Add broader nearby sampling only after pointer/address-heavy and closed-owner
+  overlap cases are explicitly separated.
+- Record remaining buckets in `todo.md` and request lifecycle close review only
+  if the source idea acceptance criteria are satisfied.
+
+Completion check:
+
+- Starter reps pass, boundary sampling is explained, stale-runtime checks are
+  clean, and broader validation does not show same-owner regressions.

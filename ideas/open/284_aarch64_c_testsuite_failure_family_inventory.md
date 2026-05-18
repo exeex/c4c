@@ -173,6 +173,16 @@ Durable inventory findings to preserve:
   floating/conversion/string, and side-effect control buckets. This umbrella
   inventory should reactivate for one more classification pass and choose the
   next focused semantic owner instead of closing as complete.
+- After the post-292 runtime-mismatch sampling pass, the next focused owner is
+  AArch64 side-effecting expression and control-value publication authority.
+  Starter representatives are `src/00164.c`, `src/00183.c`, and `src/00202.c`,
+  with `src/00169.c` retained as a supporting boundary sample for call-argument
+  clobber interactions. The split explicitly defers closed-owner overlap
+  (`src/00159.c`, `src/00168.c`, `src/00193.c`), pointer/address-heavy cases
+  (`src/00172.c`, `src/00217.c`), timeout cases, printer/admission failures,
+  floating/conversion/string-only cases, and broad aggregate/function-pointer
+  behavior. The active lifecycle state switched to
+  `ideas/open/293_aarch64_side_effect_control_value_publication_authority.md`.
 
 ## Reviewer Reject Signals
 
