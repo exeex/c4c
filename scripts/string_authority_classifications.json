@@ -406,6 +406,50 @@
       "evidence": "Function signature accepts ValueNameId and compares value.value_name."
     },
     {
+      "path": "src/backend/prealloc/call_plans.cpp",
+      "symbol": "find_regalloc_value_by_name",
+      "pattern": "lookup-helper-name",
+      "owner": "backend-prealloc",
+      "domain": "prepared regalloc value lookup",
+      "category": "structured-authority",
+      "reason": "Helper takes ValueNameId, not raw string spelling; the name in the helper reflects prepared value id lookup after prealloc publisher extraction.",
+      "removal_condition": "Keep while PreparedRegallocValue is indexed by ValueNameId.",
+      "evidence": "Function signature accepts ValueNameId and compares value.value_name."
+    },
+    {
+      "path": "src/backend/prealloc/f128_runtime_helpers.cpp",
+      "symbol": "find_regalloc_value_by_name",
+      "pattern": "lookup-helper-name",
+      "owner": "backend-prealloc",
+      "domain": "prepared regalloc value lookup",
+      "category": "structured-authority",
+      "reason": "Helper takes ValueNameId, not raw string spelling; the name in the helper reflects prepared value id lookup after runtime-helper publisher extraction.",
+      "removal_condition": "Keep while PreparedRegallocValue is indexed by ValueNameId.",
+      "evidence": "Function signature accepts ValueNameId and compares value.value_name."
+    },
+    {
+      "path": "src/backend/prealloc/i128_runtime_helpers.cpp",
+      "symbol": "find_regalloc_value_by_name",
+      "pattern": "lookup-helper-name",
+      "owner": "backend-prealloc",
+      "domain": "prepared regalloc value lookup",
+      "category": "structured-authority",
+      "reason": "Helper takes ValueNameId, not raw string spelling; the name in the helper reflects prepared value id lookup after runtime-helper publisher extraction.",
+      "removal_condition": "Keep while PreparedRegallocValue is indexed by ValueNameId.",
+      "evidence": "Function signature accepts ValueNameId and compares value.value_name."
+    },
+    {
+      "path": "src/backend/prealloc/storage_plans.cpp",
+      "symbol": "find_regalloc_value_by_name",
+      "pattern": "lookup-helper-name",
+      "owner": "backend-prealloc",
+      "domain": "prepared regalloc value lookup",
+      "category": "structured-authority",
+      "reason": "Helper takes ValueNameId, not raw string spelling; the name in the helper reflects prepared value id lookup after storage-plan publisher extraction.",
+      "removal_condition": "Keep while PreparedRegallocValue is indexed by ValueNameId.",
+      "evidence": "Function signature accepts ValueNameId and compares value.value_name."
+    },
+    {
       "path": "src/backend/prealloc/regalloc.cpp",
       "symbol": "named_binaries",
       "pattern": "string-view-keyed-container",
