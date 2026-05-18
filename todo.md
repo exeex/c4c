@@ -10,44 +10,54 @@ Current Step Title: Repair The First Scalar Publication Primitive
 
 ## Just Finished
 
-Step 2 repaired the prepared scalar frame-slot source to AArch64
-call-argument ABI-register primitive.
+Step 2 corrected the `src/00009.c` scalar integer multiply/divide/remainder
+publication primitive so it preserves the existing AArch64 backend contracts
+for unsupported public scalar-ALU vocabulary and unsigned power-of-two
+div/rem reductions.
 
-`src/backend/mir/aarch64/codegen/calls.cpp` now lowers a prepared GPR
-call-argument move whose source value home is `stack_slot` and whose call plan
-source encoding is `frame_slot` by building a prepared frame-slot memory source
-from the value's authoritative load access. The lowering deliberately resolves
-the current stack-layout slot from prepared addressing instead of blindly using
-the logical call-plan `source_stack_offset_bytes`.
+`src/backend/mir/aarch64/codegen/alu.cpp` keeps the public
+`is_scalar_alu_integer_opcode` vocabulary narrow: `mul`, signed `div`, and
+signed `rem` remain outside that supported predicate, and the prepared scalar
+ALU record API still fails closed for signed reductions and non-power unsigned
+reductions. A private publication predicate is used only while lowering a
+machine instruction with an authoritative prepared result register, allowing
+the local-store publication case to emit real `mul`, `sdiv`, and `sdiv`/`msub`
+without broadening the API-level supported opcode set.
 
-`src/backend/mir/aarch64/codegen/instruction.hpp` now lets
-`CallBoundaryMoveInstructionRecord` carry that source memory operand, and the
-call-boundary printer emits a load into the destination ABI register.
+Unsigned `UDiv`/`URem` power-of-two records continue to route through the
+existing structured reduction printer as `lsr`/`and`; the generic
+multiply/divide/remainder printer does not claim those opcodes.
 
-For `src/00056.c`, the third `printf` call now materializes the second scalar
-variadic value before the call:
+For `src/00009.c`, generated code now publishes each scalar expression result
+before storing back to local `x`:
 
 ```asm
-mov x0, x21
-mov x1, x13
-ldr w2, [sp, #12]
-bl printf
+ldr w13, [sp]
+mov w19, #10
+mul w19, w13, w19
+str w19, [sp]
+ldr w13, [sp]
+mov w19, #2
+sdiv w19, w13, w19
+str w19, [sp]
+ldr w13, [sp]
+mov w9, #3
+sdiv w19, w13, w9
+msub w19, w19, w9, w13
+str w19, [sp]
 ```
 
-This uses the resolved `%t8` load access for local `d` at frame slot `#3`
-offset `12`; it does not load the call-plan logical `source_stack_offset=24`,
-which aliases the saved `x21` slot in the current frame layout.
-
-The focused subset now has `00012.c`, `00056.c`, and `00211.c` passing.
-`00009.c`, `00156.c`, and `00161.c` remain failing in other scalar
-publication/control-value subfamilies.
+The focused subset still has `00009.c`, `00012.c`, `00056.c`, and `00211.c`
+passing. `00156.c` and `00161.c` remain failing in the loop/control-value
+subfamily and were not special-cased in this packet.
 
 ## Suggested Next
 
-Continue Step 2 by locating the next smallest shared owner among the remaining
-representatives `src/00009.c`, `src/00156.c`, and `src/00161.c`. Keep the
-scope on scalar expression/control-value publication; do not widen into
-pointer/aggregate address or timeout owners.
+Continue with the remaining representatives `src/00156.c` and `src/00161.c`
+as a focused scalar branch/loop-control-value publication packet. Start from
+their generated AArch64 control-flow and predicate materialization, and only
+reuse the scalar ALU primitive from this packet if the same stale publication
+defect directly appears.
 
 ## Watchouts
 
@@ -55,14 +65,17 @@ pointer/aggregate address or timeout owners.
   unsupported downgrades, or CTest edits.
 - Keep pointer/aggregate address failures, timeout/hang cases, and
   compile-stage printer gaps out of this owner.
-- `src/00056.c` confirms the third `printf` format pointer is correct; only the
-  scalar second variadic value is missing. Treat it as scalar ABI argument
-  materialization, not the closed string/global address owner.
 - `src/00211.c` now passes after the immediate GPR call-argument placement fix;
   do not spend the next packet on that representative unless it regresses.
 - `src/00056.c` now passes because the call-boundary load uses the prepared
   memory access for `%t8` (`frame_slot=#3`, current offset `12`) rather than
   the logical storage-plan spill slot `#6+stack24`.
+- `src/00009.c` now passes because `mul`, `sdiv`, and signed remainder are
+  emitted from the lowering-only scalar publication path; do not add these
+  opcodes to the public supported-integer vocabulary or route UDiv/URem
+  power-of-two cases around the existing `lsr`/`and` reduction path.
+- Do not reinterpret the remaining `00156`/`00161` failures as plain
+  arithmetic publication without generated control-flow evidence.
 - Prepared storage plans can name logical spill slots that are not current
   printable frame slots. For future frame-slot publication work, prefer
   prepared addressing plus stack-layout resolution when the value is produced by
@@ -71,18 +84,26 @@ pointer/aggregate address or timeout owners.
 
 ## Proof
 
-Ran exactly:
+Ran broader AArch64 backend proof exactly:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build -j && ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: failed overall with 3/6 passing. `00012`, `00056`, and `00211` passed;
-`00009` failed with runtime nonzero, while `00156` and `00161` failed with
-runtime mismatch. Proof log: `test_after.log`.
+Result: passed, 27/27. Proof log: `test_after.log`.
 
-Supporting local assembly check for `00056`:
-`/tmp/c4c_aarch64_scalar_step2_00056.after.s`.
+Then ran focused scalar subset exactly:
+
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_scalar_step2_00009_fix_subset.log 2>&1
+```
+
+Result: failed overall with 4/6 passing, as expected for the remaining owner.
+`00009`, `00012`, `00056`, and `00211` passed; `00156` and `00161` failed
+with runtime mismatch. Focused proof log:
+`/tmp/c4c_aarch64_scalar_step2_00009_fix_subset.log`.
+
+Additional check: `git diff --check` passed.
 
 Required process check:
 

@@ -125,6 +125,19 @@ namespace mir = c4c::backend::mir;
   return opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
 }
 
+[[nodiscard]] bool is_scalar_alu_publication_opcode(bir::BinaryOpcode opcode) {
+  return is_scalar_alu_integer_opcode(opcode) || opcode == bir::BinaryOpcode::Mul ||
+         opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::SRem;
+}
+
+[[nodiscard]] ScalarAluOperationKind scalar_alu_publication_operation(
+    bir::BinaryOpcode opcode) {
+  if (opcode == bir::BinaryOpcode::SRem) {
+    return ScalarAluOperationKind::Div;
+  }
+  return scalar_alu_operation_from_binary_opcode(opcode);
+}
+
 [[nodiscard]] std::optional<unsigned> unsigned_reduction_post_zero_extend_bits(
     bir::TypeKind type) {
   switch (type) {
@@ -162,6 +175,35 @@ namespace mir = c4c::backend::mir;
   }
   if (opcode == bir::BinaryOpcode::URem) {
     return ScalarAluOperationKind::And;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool scalar_registers_alias(
+    const RegisterOperand& lhs,
+    const RegisterOperand& rhs) {
+  return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
+}
+
+[[nodiscard]] std::optional<std::string> scalar_gp_scratch_name(
+    abi::RegisterView view,
+    const std::vector<const RegisterOperand*>& occupied) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    const auto viewed = abi::gp_register(scratch.index, view);
+    if (!viewed.has_value()) {
+      continue;
+    }
+    bool aliases_occupied = false;
+    for (const auto* reg : occupied) {
+      if (reg != nullptr && reg->reg.bank == viewed->bank &&
+          reg->reg.index == viewed->index) {
+        aliases_occupied = true;
+        break;
+      }
+    }
+    if (!aliases_occupied) {
+      return abi::register_name(*viewed);
+    }
   }
   return std::nullopt;
 }
@@ -534,7 +576,7 @@ namespace mir = c4c::backend::mir;
     const auto* next_binary =
         std::get_if<bir::BinaryInst>(&context.bir_block->insts[next_index]);
     if (next_binary == nullptr ||
-        !is_scalar_alu_integer_opcode(next_binary->opcode)) {
+        !is_scalar_alu_publication_opcode(next_binary->opcode)) {
       return std::nullopt;
     }
     const bool consumes_current = value_matches_name(next_binary->lhs, current_name) ||
@@ -702,6 +744,123 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
     return make_scalar_float_alu_print_lines(scalar);
+  }
+  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
+      (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::Mul ||
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SDiv ||
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SRem)) {
+    const auto& alu = *scalar.scalar_alu;
+    if (scalar.inputs.size() != 2) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar mul/div/rem node requires two structured operands"};
+    }
+    const auto result_view = scalar_register_view(alu.result_type);
+    const auto operand_view = scalar_register_view(alu.operand_type);
+    if (!result_view.has_value() || result_view != operand_view) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar mul/div/rem node requires matching integer widths"};
+    }
+    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+    const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+    const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
+                                 rhs_register != nullptr;
+    const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
+                                  rhs_immediate != nullptr;
+    if (scalar.inputs[0].kind != OperandKind::Register || lhs_register == nullptr ||
+        (!rhs_is_register && !rhs_is_immediate) || !scalar.result_register.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar mul/div/rem node requires register lhs, register/immediate rhs, and result register"};
+    }
+    const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
+    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *operand_view);
+    if (!result.has_value() || !lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar mul/div/rem node has incomplete printable register facts"};
+    }
+
+    const bool is_remainder_opcode = alu.source_binary_opcode == bir::BinaryOpcode::SRem;
+    std::vector<std::string> lines;
+    std::optional<std::string> rhs;
+    if (rhs_is_register) {
+      rhs = scalar_gp_register_name_with_view(*rhs_register, *operand_view);
+      if (!rhs.has_value()) {
+        return {.lines = std::nullopt,
+                .diagnostic =
+                    "scalar mul/div/rem node has incomplete printable rhs register facts"};
+      }
+    } else {
+      const bool result_aliases_lhs = scalar_registers_alias(*scalar.result_register,
+                                                            *lhs_register);
+      const auto scratch = scalar_gp_scratch_name(
+          *operand_view,
+          is_remainder_opcode || result_aliases_lhs
+              ? std::vector<const RegisterOperand*>{&*scalar.result_register, lhs_register}
+              : std::vector<const RegisterOperand*>{lhs_register});
+      rhs = (is_remainder_opcode || result_aliases_lhs) ? scratch : result;
+      if (!rhs.has_value()) {
+        return {.lines = std::nullopt,
+                .diagnostic = "scalar mul/div/rem node needs an available scratch register"};
+      }
+      std::ostringstream move;
+      move << "mov " << *rhs << ", " << scalar_immediate_name(*rhs_immediate);
+      lines.push_back(move.str());
+    }
+
+    if (alu.source_binary_opcode == bir::BinaryOpcode::Mul) {
+      std::ostringstream out;
+      out << "mul " << *result << ", " << *lhs << ", " << *rhs;
+      lines.push_back(out.str());
+      return {.lines = std::move(lines), .diagnostic = {}};
+    }
+    if (alu.source_binary_opcode == bir::BinaryOpcode::SDiv) {
+      std::ostringstream out;
+      out << "sdiv " << *result << ", " << *lhs << ", " << *rhs;
+      lines.push_back(out.str());
+      return {.lines = std::move(lines), .diagnostic = {}};
+    }
+    if (alu.source_binary_opcode == bir::BinaryOpcode::SRem) {
+      std::optional<std::string> divisor = rhs;
+      if (rhs_register != nullptr && scalar_registers_alias(*scalar.result_register,
+                                                            *rhs_register)) {
+        const auto scratch = scalar_gp_scratch_name(
+            *operand_view, {&*scalar.result_register, lhs_register});
+        if (!scratch.has_value()) {
+          return {.lines = std::nullopt,
+                  .diagnostic =
+                      "scalar rem node needs scratch when result aliases divisor"};
+        }
+        std::ostringstream move;
+        move << "mov " << *scratch << ", " << *rhs;
+        lines.push_back(move.str());
+        divisor = scratch;
+      }
+      std::optional<std::string> quotient = result;
+      if (scalar_registers_alias(*scalar.result_register, *lhs_register)) {
+        const auto scratch = scalar_gp_scratch_name(
+            *operand_view,
+            rhs_register == nullptr
+                ? std::vector<const RegisterOperand*>{&*scalar.result_register}
+                : std::vector<const RegisterOperand*>{&*scalar.result_register,
+                                                      rhs_register});
+        if (!scratch.has_value()) {
+          return {.lines = std::nullopt,
+                  .diagnostic =
+                      "scalar rem node needs scratch when result aliases dividend"};
+        }
+        quotient = scratch;
+      }
+      std::ostringstream div;
+      div << "sdiv " << *quotient << ", " << *lhs << ", " << *divisor;
+      lines.push_back(div.str());
+      std::ostringstream msub;
+      msub << "msub " << *result << ", " << *quotient << ", " << *divisor << ", "
+           << *lhs;
+      lines.push_back(msub.str());
+      return {.lines = std::move(lines), .diagnostic = {}};
+    }
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
       (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::UDiv ||
@@ -909,13 +1068,13 @@ bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
     case bir::BinaryOpcode::Xor:
       return true;
     case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::Eq:
     case bir::BinaryOpcode::Ne:
     case bir::BinaryOpcode::Slt:
@@ -1453,17 +1612,32 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           result_register = find_return_chain_register(
               context, instruction_index, *result_home, binary->result.type);
         }
+        if (!result_register.has_value() && result_home != nullptr &&
+            is_scalar_alu_publication_opcode(binary->opcode) &&
+            context.function.prepared != nullptr &&
+            context.function.value_locations != nullptr &&
+            context.function.storage_plan != nullptr) {
+          RegisterOperand storage_register;
+          if (make_prepared_scalar_result_register_operand(
+                  context.function.prepared->names,
+                  *context.function.value_locations,
+                  *context.function.storage_plan,
+                  binary->result,
+                  storage_register) == PreparedScalarAluRecordError::None) {
+            result_register = storage_register;
+          }
+        }
         const auto lhs =
             make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
         const auto rhs =
             make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
         if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||
-            !rhs.has_value() || !is_scalar_alu_integer_opcode(binary->opcode)) {
+            !rhs.has_value() || !is_scalar_alu_publication_opcode(binary->opcode)) {
           return std::nullopt;
         }
         scalar_record = make_scalar_alu_instruction_record(ScalarAluRecord{
             .surface = RecordSurfaceKind::MachineInstructionNode,
-            .operation = scalar_alu_operation_from_binary_opcode(binary->opcode),
+            .operation = scalar_alu_publication_operation(binary->opcode),
             .source_binary_opcode = binary->opcode,
             .operand_type = binary->operand_type,
             .result_value_id = result_home->value_id,
