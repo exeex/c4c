@@ -1,8 +1,23 @@
 # AArch64 Backend Result Register Runtime Nonzero
 
-Status: Open
+Status: Open, inactive after result-register owner repair
 Created: 2026-05-18
 Discovered From: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
+
+## Lifecycle Handoff
+
+The focused result-register owner layer was repaired by commit `d298e1945`.
+Focused backend coverage now proves a non-rematerializable scalar return value
+whose storage home is `x19` is retargeted into the prepared AArch64 ABI return
+register, and `00003.c` assembly advanced from `sub w19, w0, #4; ret` to
+`sub w0, w0, #4; ret`.
+
+The original `[RUNTIME_NONZERO] exit=1` result-register failure is gone. The
+same runtime route still fails as `[RUNTIME_NONZERO] exit=253` because the left
+operand is still the incoming `w0` value instead of the source-local value
+`4`. That is a separate local/operand materialization issue, now tracked by
+`ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`.
+Do not expand this idea into that owner layer.
 
 ## Intent
 
