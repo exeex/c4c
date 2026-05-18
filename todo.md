@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/293_aarch64_side_effect_control_value_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Locate Side-Effect Publication Boundaries
+Current Step ID: Step 2
+Current Step Title: Repair Side-Effecting Expression Result Publication
 
 # Current Packet
 
