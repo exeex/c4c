@@ -1,72 +1,74 @@
-# AArch64 Address-Exposed Local Pointer Runtime Nonzero Plan
+# AArch64 Loop Branch Control Runtime Hang Plan
 
 Status: Active
-Source Idea: ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md
-Activated After: ideas/closed/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
+Source Idea: ideas/open/282_aarch64_loop_branch_control_runtime_hang.md
+Activated After: ideas/closed/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md
 
 ## Purpose
 
-Repair the next AArch64 backend runtime failure family exposed after scalar
-local operand materialization for `00003.c` was fixed.
+Repair the AArch64 backend conditional branch and loop-control lowering failure
+family exposed after local operand materialization and address-exposed pointer
+storage were fixed.
 
 ## Goal
 
-Make address-exposed local and pointer semantics lower coherently enough for
-`tests/c/external/c-testsuite/src/00004.c` and `00005.c` to advance through the
-AArch64 backend runtime route without expectation changes.
+Make the supported conditional branch and loop-control forms lower to truthful
+AArch64 control flow so `00005.c` no longer returns through the wrong
+straight-line first-`if` path and `00006.c` no longer hangs in an unconditional
+self-loop.
 
 ## Core Rule
 
-Fix the semantic backend/codegen rule for address-exposed locals or pointer
-memory operands. Do not use filename-specific matching, c-testsuite shortcuts,
-LLVM IR fallback, expectation weakening, or broad ABI/register-allocation
-rewrites as progress.
+Fix semantic branch/control lowering. Do not use filename-specific matching,
+c-testsuite shortcuts, timeout or expectation changes, LLVM IR fallback, or a
+rewrite of completed address/pointer storage work as progress.
 
 ## Read First
 
-- `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
-- `todo.md`
-- `ideas/closed/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`
 - `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`
-- `test_after.log`, if still present, for the latest focused route evidence
-- AArch64 backend lowering, prepared memory operand, address formation,
-  load/store, storage-plan, and assembly emission code touched by
-  address-exposed locals or pointers
+- `todo.md`
+- `ideas/closed/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
+- `ideas/closed/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`
+- `test_after.log`, if still present, for latest focused route evidence
+- AArch64 backend branch/control lowering, CFG edge selection, comparison
+  lowering, label emission, and return lowering paths touched by conditional
+  branches or loops
 
 ## Current Targets
 
-- AArch64 backend route for `00004.c`.
-- Residual classification for `00005.c` after address-exposed pointer storage
-  is repaired.
-- Address-exposed local storage, pointer value materialization, load/store
-  address formation, and prepared memory operand consumption.
-- Regression proof for idea 278 focused cases: `00001.c`, `00002.c`, and
-  `00003.c`.
-- Focused backend proof that covers the repaired memory/pointer operand rule
-  outside the exact c-testsuite filenames where practical.
+- `tests/c/external/c-testsuite/src/00005.c`: first-`if` conditional branch
+  lowering after pointer storage is already coherent.
+- `tests/c/external/c-testsuite/src/00006.c`: loop-control lowering that
+  currently emits an unconditional self-loop.
+- Focused backend branch/control proof outside exact c-testsuite filenames
+  where practical.
+- Regression proof for ideas 278 and 281: `00001.c`, `00002.c`, `00003.c`,
+  and `00004.c`.
 
 ## Non-Goals
 
-- Do not rework loop or branch control lowering for `00006.c`; that belongs to
-  `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`.
+- Do not reopen address-exposed local or pointer storage semantics for
+  `00004.c`/`00005.c` unless trace evidence proves the exact owner returned.
 - Do not change c-testsuite `.expected` sidecars, allowlists, unsupported
-  classifications, CTest contracts, runner files, or route diagnostics.
-- Do not add filename-specific handling for `00004.c` or `00005.c`.
+  classifications, CTest contracts, runner files, or timeout policy to claim
+  progress.
+- Do not add filename-specific handling for `00005.c` or `00006.c`.
 - Do not route proof through LLVM IR fallback while claiming AArch64 backend
   progress.
-- Do not perform broad ABI, runtime-runner, or register-allocation rewrites
-  unless tracing proves they are the direct owner of this address-exposed local
-  family.
+- Do not perform broad CFG, parser, frontend, ABI, or register-allocation
+  rewrites unless the trace proves the branch-control owner requires them.
 
 ## Working Model
 
-Idea 278 repaired ordinary scalar local operand materialization. The broad
-AArch64 backend scan then advanced through `00001.c`, `00002.c`, and
-`00003.c`, but `00004.c` and `00005.c` fail as `[RUNTIME_NONZERO] exit=1`.
+After ideas 278 and 281, scalar locals, pointer slot stores, and the `00004.c`
+return-handoff path are repaired. The remaining `00005.c` failure is
+straight-line branch/control lowering: generated assembly still returns through
+`mov w0, #1; ret` for the first `if` path instead of branching over it when the
+loaded condition is false.
 
-Those failures are later than the immediate scalar local store/load owner. The
-likely owner is address-exposed local storage, pointer value materialization,
-load/store address formation, or prepared memory operand consumption.
+The `00006.c` failure is another control-flow owner: generated assembly
+decrements a stack local but emits an unconditional branch back to the loop
+label, leaving the post-loop return unreachable.
 
 ## Execution Rules
 
@@ -77,99 +79,109 @@ load/store address formation, or prepared memory operand consumption.
   packets unless the supervisor delegates another artifact.
 - Prefer AST-backed symbol queries via `c4c-clang-tools` for large C++ backend
   files.
-- Treat a change as route drift if its main effect is making only `00004.c` or
-  `00005.c` pass without repairing address-exposed local or pointer semantics.
-- Keep `00005.c` and `00006.c` branch/loop control evidence out of this plan
-  except as follow-up pointers to idea 282.
+- Use timeout-bounded runtime proof or assembly-only localization while the
+  `00006.c` hang remains active.
+- Treat a change as route drift if it only makes one c-testsuite filename pass
+  without repairing conditional branch or loop-control lowering.
 
 ## Steps
 
-### Step 1: Localize Address-Exposed Local Ownership
+### Step 1: Localize Conditional Branch Ownership
 
-Goal: identify the backend path that lowers address-taken locals and pointer
-reads/writes for the failing AArch64 runtime cases.
+Goal: identify where the `00005.c` first-`if` condition and branch target are
+lost or emitted as straight-line return control.
 
 Actions:
 
-- Reproduce or inspect the focused `00004.c` and `00005.c` AArch64 backend
-  route evidence.
-- Compare the generated assembly against the source-level pointer/addressed
-  local behavior.
-- Trace where address-exposed local storage, pointer values, and memory
-  operands are represented before AArch64 lowering.
-- Identify whether the owner is storage publication, pointer materialization,
-  address formation, load/store selection, or prepared memory operand
-  consumption.
+- Inspect the generated `00005.c` assembly and relevant HIR/BIR/MIR or prepared
+  control-flow facts.
+- Trace how the loaded condition should become a conditional branch over the
+  wrong return path.
+- Identify whether the owner is comparison lowering, branch target selection,
+  CFG edge consumption, label emission, or return emission ordering.
 - Record the smallest semantic repair point and a focused proof command in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` names the owner function or backend stage, explains why `00004.c`
-  and `00005.c` currently return nonzero, and gives the exact proof subset for
-  the repair packet.
+- `todo.md` names the owner function or backend stage, explains why `00005.c`
+  currently falls through to the wrong return, and gives the exact proof subset
+  for the repair packet.
 
-### Step 2: Repair Address-Exposed Local Or Pointer Lowering
+### Step 2: Repair Supported Conditional Branch Lowering
 
-Goal: lower the supported address-exposed local or pointer form coherently for
-AArch64 machine output.
+Goal: lower the supported first-`if` branch form into truthful AArch64 control
+flow.
 
 Actions:
 
 - Implement the smallest semantic backend/codegen change at the owner point
   identified in Step 1.
-- Preserve scalar local operand materialization from idea 278.
+- Preserve address-exposed pointer storage from idea 281 and scalar local
+  materialization from idea 278.
 - Preserve result-register behavior from idea 277.
-- Keep unsupported forms fail-closed or truthfully classified at the owner
-  layer.
 - Build the affected backend target before runtime proof.
 
 Completion check:
 
-- The project builds for the affected backend target, and generated assembly
-  for the motivating cases uses coherent address-exposed local or pointer
-  storage semantics rather than unrelated ABI registers or filename-shaped
-  shortcuts.
+- `00005.c` no longer returns through the wrong straight-line first-`if` path,
+  and focused backend branch/control proof covers the repaired rule.
 
-### Step 3: Prove Runtime And Regression Coverage
+### Step 3: Localize And Repair Loop Control
 
-Goal: prove the repair through the AArch64 backend route and reject testcase
-overfit.
+Goal: address the `00006.c` hang caused by unconditional loop self-branching.
 
 Actions:
 
-- Run the focused AArch64 backend route for `00004.c`.
-- Rerun `00001.c`, `00002.c`, and `00003.c` to prove idea 278 remains green.
-- Run focused backend memory/pointer operand coverage that exercises the same
-  semantic rule outside the exact c-testsuite filenames where practical.
-- Classify `00005.c` only far enough to decide whether the remaining failure is
-  still address-exposed pointer storage or belongs to branch/control follow-up
-  idea 282.
-- Confirm no LLVM IR fallback was used and no expectations were weakened.
+- Inspect `00006.c` generated assembly and control-flow facts with timeout-safe
+  proof handling.
+- Trace where the loop condition or exit edge is lost.
+- Repair the supported loop-control lowering form without weakening runtime
+  contracts or timeout policy.
+- Keep this step separate from unrelated branch/CFG rewrites unless trace
+  evidence proves they share the same owner.
+
+Completion check:
+
+- `00006.c` no longer hangs due to an unconditional self-loop and generated
+  control flow contains a truthful loop-exit path.
+
+### Step 4: Prove Runtime And Regression Coverage
+
+Goal: prove the branch/control repairs and reject testcase overfit.
+
+Actions:
+
+- Run focused backend branch/control coverage.
+- Run the AArch64 backend route for `00005.c` and `00006.c`.
+- Rerun `00001.c`, `00002.c`, `00003.c`, and `00004.c` to prove ideas 278 and
+  281 remain green.
+- Confirm no LLVM IR fallback was used and no expectations, allowlists, runner
+  files, or timeout policy were weakened.
 - Preserve exact proof output in `test_after.log`.
 
 Completion check:
 
-- `00004.c` advances through the AArch64 backend runtime route without
-  expectation weakening, idea 278 proof cases remain green, and any remaining
-  `00005.c` failure is either proven address/pointer scope or split to idea
-  282 as branch/control scope.
+- `00005.c` and `00006.c` advance through the owned branch/control failure
+  modes, prior proof cases remain green, and any later failure family is
+  classified truthfully.
 
-### Step 4: Review Residual Scope
+### Step 5: Review Residual Scope
 
-Goal: decide whether idea 281 is complete or whether later failure families
-should remain split.
+Goal: decide whether idea 282 is complete or whether later failure families
+should be split.
 
 Actions:
 
-- Compare the implemented behavior and proof against
-  `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`.
-- Confirm no loop/branch control work for `00006.c` was folded into this plan.
+- Compare the implementation and proof against
+  `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`.
+- Confirm no address/pointer storage, expectation, runner, timeout, or broad
+  frontend/ABI work was folded into this plan.
 - If complete, request plan-owner closure review.
-- If proof exposes a distinct backend/codegen/BIR issue, create or request a
-  focused follow-up idea instead of expanding this plan.
+- If proof exposes a distinct later issue, create or request a focused
+  follow-up idea instead of expanding this plan.
 
 Completion check:
 
-- `todo.md` clearly says whether idea 281 is ready for closure review or names
+- `todo.md` clearly says whether idea 282 is ready for closure review or names
   the exact blocker/follow-up owner layer.

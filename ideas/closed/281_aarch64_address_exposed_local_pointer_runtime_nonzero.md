@@ -1,8 +1,9 @@
 # AArch64 Address-Exposed Local Pointer Runtime Nonzero
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Discovered From: ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -59,6 +60,24 @@ operand facts used by that path.
   the exact c-testsuite filenames where practical.
 - Any remaining later failure family is split into its own source idea instead
   of expanding this one.
+
+## Closure Notes
+
+Closed after Step 4 residual-scope review. The address-exposed local pointer
+storage and memory-load return handoff scope is complete: `00004.c` passes the
+AArch64 backend runtime route, the focused AArch64 backend memory/operand/
+return proof is green, and `00001.c`, `00002.c`, and `00003.c` remain green.
+
+The remaining `00005.c` failure was split into
+`ideas/open/282_aarch64_loop_branch_control_runtime_hang.md` because its
+pointer slot stores are coherent after this repair and the remaining evidence
+is conditional branch/control lowering for the first `if`, not
+address-exposed pointer storage. `00006.c` also remains owned by idea 282.
+
+Close-time regression guard passed with matching-scope logs:
+`test_before.log` and `test_after.log` both cover the six focused AArch64
+backend tests plus `c_testsuite_aarch64_backend_src_(00001|00002|00003|00004)_c`,
+with 4 passed, 0 failed, and no new failures in the parsed final CTest summary.
 
 ## Reviewer Reject Signals
 
