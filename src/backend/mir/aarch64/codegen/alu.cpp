@@ -587,6 +587,30 @@ namespace mir = c4c::backend::mir;
   return make_named_scalar_operand(value, context, diagnostics);
 }
 
+[[nodiscard]] std::optional<ImmediateOperand> authoritative_immediate_storage(
+    const bir::Value& value,
+    const module::FunctionLoweringContext& context) {
+  const auto* home = find_named_value_home(value, context);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate ||
+      !home->immediate_i32.has_value() || context.storage_plan == nullptr) {
+    return std::nullopt;
+  }
+  const auto* storage = find_prepared_scalar_storage(*context.storage_plan,
+                                                     home->value_id);
+  if (storage == nullptr ||
+      storage->value_name != home->value_name ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Immediate ||
+      !storage->immediate_i32.has_value() ||
+      *storage->immediate_i32 != *home->immediate_i32) {
+    return std::nullopt;
+  }
+  return make_scalar_immediate_operand(
+      bir::Value::immediate_i32(static_cast<std::int32_t>(*storage->immediate_i32)),
+      home->value_id,
+      home->value_name);
+}
+
 }  // namespace
 
 ScalarAluPrintResult make_scalar_alu_print_lines(
@@ -1385,31 +1409,58 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
                                          result_home->value_id,
                                          result_home->value_name,
                                          binary->result.type);
-      if (!result_register.has_value() && result_home != nullptr) {
-        result_register = find_return_chain_register(
-            context, instruction_index, *result_home, binary->result.type);
+      const auto authoritative_immediate =
+          authoritative_immediate_storage(binary->result, context.function);
+      if (result_home != nullptr && authoritative_immediate.has_value() &&
+          result_register.has_value()) {
+        const auto zero = make_scalar_immediate_operand(
+            bir::Value::immediate_i32(0),
+            result_home->value_id,
+            result_home->value_name);
+        if (!zero.has_value()) {
+          return std::nullopt;
+        }
+        scalar_record = make_scalar_alu_instruction_record(ScalarAluRecord{
+            .surface = RecordSurfaceKind::MachineInstructionNode,
+            .operation = ScalarAluOperationKind::Add,
+            .source_binary_opcode = bir::BinaryOpcode::Add,
+            .operand_type = binary->result.type,
+            .result_value_id = result_home->value_id,
+            .result_value_name = result_home->value_name,
+            .result_type = binary->result.type,
+            .result_register = *result_register,
+            .lhs = make_immediate_operand(*authoritative_immediate),
+            .rhs = make_immediate_operand(*zero),
+            .supported_integer_operation = true,
+        });
       }
-      const auto lhs =
-          make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
-      const auto rhs =
-          make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
-      if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||
-          !rhs.has_value() || !is_scalar_alu_integer_opcode(binary->opcode)) {
-        return std::nullopt;
+      if (!scalar_record.has_value()) {
+        if (!result_register.has_value() && result_home != nullptr) {
+          result_register = find_return_chain_register(
+              context, instruction_index, *result_home, binary->result.type);
+        }
+        const auto lhs =
+            make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
+        const auto rhs =
+            make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
+        if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||
+            !rhs.has_value() || !is_scalar_alu_integer_opcode(binary->opcode)) {
+          return std::nullopt;
+        }
+        scalar_record = make_scalar_alu_instruction_record(ScalarAluRecord{
+            .surface = RecordSurfaceKind::MachineInstructionNode,
+            .operation = scalar_alu_operation_from_binary_opcode(binary->opcode),
+            .source_binary_opcode = binary->opcode,
+            .operand_type = binary->operand_type,
+            .result_value_id = result_home->value_id,
+            .result_value_name = result_home->value_name,
+            .result_type = binary->result.type,
+            .result_register = *result_register,
+            .lhs = *lhs,
+            .rhs = *rhs,
+            .supported_integer_operation = true,
+        });
       }
-      scalar_record = make_scalar_alu_instruction_record(ScalarAluRecord{
-          .surface = RecordSurfaceKind::MachineInstructionNode,
-          .operation = scalar_alu_operation_from_binary_opcode(binary->opcode),
-          .source_binary_opcode = binary->opcode,
-          .operand_type = binary->operand_type,
-          .result_value_id = result_home->value_id,
-          .result_value_name = result_home->value_name,
-          .result_type = binary->result.type,
-          .result_register = *result_register,
-          .lhs = *lhs,
-          .rhs = *rhs,
-          .supported_integer_operation = true,
-      });
     }
   } else {
     return std::nullopt;
