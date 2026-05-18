@@ -1,6 +1,6 @@
 # AArch64 Scalar Parameter ALU Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Split From: ideas/closed/289_aarch64_function_pointer_indirect_call_values.md
 
@@ -40,6 +40,33 @@ registers instead of incoming `w0`/`w1` parameters.
   authoritative incoming parameter registers.
 - No progress is claimed through expectation, runner, allowlist, timeout, or
   unsupported-classification changes.
+
+## Closure Summary
+
+Closed on 2026-05-18 after Step 4 owner-boundary validation.
+
+The scalar parameter/ALU owner is complete:
+
+- The focused AArch64 scalar ALU backend test passes.
+- `src/00124.c` passes.
+- Generated `f2` consumes authoritative incoming scalar parameter registers:
+
+```asm
+sub w0, w0, w1
+ret
+```
+
+The function-pointer return and indirect-call path remained valid and outside
+this owner.
+
+Close validation used the matching `src/00124.c` root proof logs without
+modifying them:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with no new failures.
 
 ## Reviewer Reject Signals
 
