@@ -90,6 +90,13 @@ the inventory is
 The next focused semantic follow-on is
 `ideas/open/286_aarch64_scalar_call_value_semantics.md`.
 
+2026-05-18: The scalar call-value semantics idea completed and moved to
+`ideas/closed/286_aarch64_scalar_call_value_semantics.md`. The refreshed
+inventory then selected AArch64 backend string/global address materialization
+plus external-call argument setup as the next focused semantic repair family.
+The active lifecycle state switched to
+`ideas/open/287_aarch64_string_global_address_external_call_lowering.md`.
+
 Durable inventory findings to preserve:
 
 - The 212-case AArch64 backend c-testsuite scan classified as 46 `PASS`, 49
@@ -111,6 +118,13 @@ Durable inventory findings to preserve:
   `RUNTIME_NONZERO` cases (`00116.c`, `00175.c`, `00196.c`, `00199.c`), and
   sixteen `RUNTIME_MISMATCH` cases. The remaining owners are semantic backend
   families, not the old non-leaf LR preservation failure.
+- After scalar call-value repair, the next selected family is represented by
+  `src/00125.c`, `src/00131.c`, `src/00154.c`, `src/00161.c`, and
+  `src/00211.c`. These cases expose missing or incorrect materialization of
+  string-literal/global/static data addresses and address-valued arguments for
+  direct external calls such as `printf`/stdio. `src/00132.c` overlaps this
+  family but remains timeout-sensitive and compounded by loop/local-store
+  behavior, so it should not be used as first proof for the focused route.
 
 ## Reviewer Reject Signals
 

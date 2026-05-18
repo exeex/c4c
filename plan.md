@@ -1,156 +1,158 @@
-# AArch64 C-Testsuite Failure Family Inventory
+# AArch64 String/Global Address External Call Lowering
 
 Status: Active
-Source Idea: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
-Follows Closed Ideas:
-- ideas/closed/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md
-- ideas/closed/286_aarch64_scalar_call_value_semantics.md
+Source Idea: ideas/open/287_aarch64_string_global_address_external_call_lowering.md
+Activated From: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
 ## Purpose
 
-Return to the AArch64 backend c-testsuite umbrella inventory after the first
-focused repair routes, classify the remaining failure families, and split the
-next semantic repair idea before implementation starts.
+Repair the AArch64 backend path that fails to materialize string/global
+addresses and place pointer-valued direct external-call arguments correctly.
 
 ## Goal
 
-Produce a current, evidence-backed inventory of the AArch64 backend c-testsuite
-route and create or identify the next focused repair idea from a semantic
-failure family.
+Make the starter stdio/string family execute through semantic AArch64 backend
+lowering instead of passing uninitialized or incorrect address values to
+external calls.
 
 ## Core Rule
 
-This is an inventory and lifecycle-splitting route. Do not implement compiler
-or test repairs here, and do not improve counts by changing expectations,
-allowlists, unsupported classifications, timeout policy, CTest behavior,
-runner behavior, testcase filenames, or exact emitted-instruction matching.
+Fix the backend capability. Do not improve this route by changing runner
+behavior, CTest registration, allowlists, unsupported classifications,
+expected outputs, timeout policy, parser/sema behavior, or c-testsuite
+filename/literal-specific shortcuts.
 
 ## Read First
 
-- `ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md`
-- `ideas/closed/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md`
-- `ideas/closed/286_aarch64_scalar_call_value_semantics.md`
+- `ideas/open/287_aarch64_string_global_address_external_call_lowering.md`
 - `todo.md`
-- `/tmp/c4c_aarch64_backend_scan_212.log`, if still present
-- `/tmp/c4c_aarch64_backend_scan_212.classified`, if still present
+- `tests/c/external/c-testsuite/src/00125.c`
+- `tests/c/external/c-testsuite/src/00131.c`
+- `tests/c/external/c-testsuite/src/00154.c`
+- `tests/c/external/c-testsuite/src/00161.c`
+- `tests/c/external/c-testsuite/src/00211.c`
 
 ## Current Targets
 
-- The 212-case AArch64 backend c-testsuite route after runtime-hang quarantine.
-- Remaining `FRONTEND_FAIL`, `RUNTIME_NONZERO`, `RUNTIME_MISMATCH`, and
-  `TIMEOUT` buckets after LR preservation and scalar call-value repairs.
-- Semantic family boundaries suitable for focused follow-on ideas.
+- AArch64 backend string-literal address materialization.
+- AArch64 backend global/static data address materialization where the value is
+  used as a pointer.
+- Pointer-valued call arguments and formatted scalar arguments for direct
+  external calls, especially stdio calls such as `printf`.
+- Starter proof cases: `src/00125.c`, `src/00131.c`, `src/00154.c`,
+  `src/00161.c`, and `src/00211.c`.
 
 ## Non-Goals
 
-- Do not implement backend, frontend, runner, or test expectation changes.
-- Do not treat this umbrella idea as an implementation route.
-- Do not run broad runtime scans without an explicit timeout and stale-process
-  cleanup checks.
-- Do not absorb unrelated compiler initiatives into this inventory.
-- Do not assume the old scan counts are still current after the closed focused
-  repairs.
+- Do not touch runner behavior, allowlists, expectations, unsupported
+  classifications, timeout settings, or CTest registration.
+- Do not change parser or sema behavior.
+- Do not add named-case shortcuts, literal-spelling shortcuts, or `printf`-only
+  special cases.
+- Do not take on full aggregate ABI/HFA returns, broad variadic ABI
+  completeness, `_Generic`, wide chars, or function-pointer casts.
+- Do not use `src/00132.c` as the first proof; it is timeout-sensitive and
+  compounded by loop/local-store behavior.
 
 ## Working Model
 
-The original AArch64 backend scan had 212 registered cases and classified as
-46 `PASS`, 49 `FRONTEND_FAIL`, 87 `RUNTIME_NONZERO`, 7 `RUNTIME_MISMATCH`, and
-23 `TIMEOUT`. The non-leaf LR route and scalar call-value route repaired known
-call-boundary owners; the scalar route's final 23-case boundary proof passed
-all selected cases. The next useful inventory step is to refresh the current
-classification, separate frontend-owned failures from backend/runtime-owned
-families, and split the next focused semantic repair idea.
+The current failure family is visible in successfully emitted AArch64 programs
+that call external stdio functions with bad address arguments. The first
+repair should establish a general backend mechanism for materializing
+address-valued data and moving those values into ABI argument registers for
+direct calls. Once the smallest string-literal case works, expand to repeated
+prints and formatted scalar cases to prove the fix is not a named-case patch.
 
 ## Execution Rules
 
-- Record current inventory and family findings in `todo.md`.
-- Use representative files from each bucket; do not select one testcase as the
-  repair route without identifying the broader owner.
-- Keep timeout/hang cases separate and use explicit timeout behavior plus
-  stale generated-runtime process checks if any runtime scan is run.
-- Treat frontend failures as separate from backend/runtime failures.
-- Create focused ideas only for semantic owners that remain visible after the
-  closed LR and scalar call-value routes.
-- Switch lifecycle state to a focused idea before implementation work begins.
+- Keep packets small and prove each packet with a fresh build or compile/run
+  command chosen by the supervisor.
+- Inspect generated AArch64 assembly when debugging, but accept progress only
+  through semantic behavior and relevant test proof.
+- Prefer lowering/emission changes that generalize across string literals,
+  global/static addresses, and pointer-valued call arguments.
+- Document unrelated blockers in `todo.md` instead of broadening this route.
+- Escalate to reviewer scrutiny if the implementation appears to special-case
+  one c-testsuite filename, one literal, or `printf` alone.
 
 ## Steps
 
-### Step 1: Refresh AArch64 Inventory Evidence
+### Step 1: Establish the Minimal Address Argument Failure
 
-Goal: Establish the current AArch64 backend c-testsuite classification after
-the closed LR preservation and scalar call-value routes.
+Goal: Prove and localize the smallest non-timeout failure in the selected
+family.
 
-Primary target: the 212-case AArch64 backend c-testsuite route.
-
-Actions:
-
-- Inspect any still-current scan logs named by the source idea.
-- If the logs are absent or stale, rerun the AArch64 backend c-testsuite route
-  with an explicit timeout and check for stale generated-runtime processes
-  afterward.
-- Record the command, log paths, total case count, and bucket counts in
-  `todo.md`.
-- Call out any difference from the old 46/49/87/7/23 inventory.
-
-Completion check: `todo.md` contains a current inventory with counts, proof
-command or log source, and any stale-process cleanup result.
-
-### Step 2: Classify Representative Failure Families
-
-Goal: Turn the current buckets into semantic families with clear ownership.
-
-Primary target: representative files from each non-pass bucket.
+Primary target: `tests/c/external/c-testsuite/src/00125.c`.
 
 Actions:
 
-- Inspect representative `FRONTEND_FAIL` cases and separate frontend-owned
-  parse/sema failures from backend/runtime failures.
-- Inspect representative `RUNTIME_NONZERO` and `RUNTIME_MISMATCH` cases for
-  shared semantic owners.
-- Keep any `TIMEOUT` cases isolated from ordinary mismatch work.
-- Compare call-boundary cases against the closed scalar call-value result so
-  already-repaired owners are not rediscovered as new work.
+- Reproduce the current AArch64 backend behavior for `src/00125.c` with the
+  supervisor-selected narrow command.
+- Inspect the generated call path and identify where the string-literal
+  address should become the value passed in `x0`.
+- Record the observed failure shape and owned backend surfaces in `todo.md`.
 
-Completion check: `todo.md` names the major semantic families, representative
-cases, owner boundary, and any families that are intentionally deferred.
+Completion check: `todo.md` names the current failure, the backend lowering or
+emission surface to change, and the proof command/log used for the baseline.
 
-### Step 3: Select the Next Focused Repair Idea
+### Step 2: Implement General Address Materialization for Call Arguments
 
-Goal: Choose the next tractable semantic family for implementation outside
-this umbrella inventory.
+Goal: Materialize string/global/static addresses and route them into direct
+external-call ABI argument registers without case-specific matching.
 
-Primary target: one current backend/runtime-owned family, or a frontend-owned
-family if it is the best next source idea.
+Primary target: AArch64 backend lowering/emission for address-valued call
+arguments.
 
 Actions:
 
-- Prefer a family with multiple representative cases and a plausible shared
-  compiler owner.
-- Reject named-case-only fixes, expectation rewrites, allowlist edits, and
-  runner changes as progress.
-- Decide whether timeout/hang cases need a dedicated safe idea or should stay
-  deferred.
-- If no family is ready, record the exact ambiguity and missing evidence in
-  `todo.md`.
+- Add or repair the semantic path that produces AArch64 address materialization
+  for string literals and global/static data references.
+- Ensure pointer-valued call operands are assigned to the proper argument
+  registers before direct external calls.
+- Keep the implementation independent of specific c-testsuite filenames,
+  literal spellings, or `printf` as a unique callee.
+- Build and run the supervisor-selected narrow proof for `src/00125.c`.
 
-Completion check: `todo.md` identifies the selected family and explains why it
-is ready for a focused idea, or explains why no family is ready.
+Completion check: the minimal proof for `src/00125.c` passes or any remaining
+failure is documented as a distinct blocker that is not the original missing
+address/call-argument owner.
 
-### Step 4: Split and Switch Lifecycle State
+### Step 3: Expand to Starter Stdio/Data Representatives
 
-Goal: Leave this umbrella route only after durable source intent exists for
-the selected focused repair.
+Goal: Show the repair generalizes across the selected family.
 
-Primary target: lifecycle artifacts, not implementation files.
+Primary target: `src/00131.c`, `src/00154.c`, `src/00161.c`, and
+`src/00211.c`.
 
 Actions:
 
-- Ask the plan owner to create a focused `ideas/open/*.md` file for the
-  selected semantic family, including concrete reviewer reject signals.
-- Deactivate this inventory runbook with only durable summary and leftover
-  notes preserved in the source idea.
-- Activate the focused idea into `plan.md` and reset `todo.md` before any
-  implementation packet starts.
+- Run the supervisor-selected subset covering the starter representatives.
+- Inspect any remaining failures and separate address/call-argument defects
+  from unrelated scalar, aggregate, local-memory, or frontend blockers.
+- Repair only defects that are inside this idea's address materialization and
+  direct external-call argument scope.
+- Record proof results and any deferred blockers in `todo.md`.
 
-Completion check: lifecycle state has switched from this umbrella idea to a
-focused repair idea, or `todo.md` records the blocker that prevents the split.
+Completion check: the starter family passes for this owner, or `todo.md`
+clearly separates remaining failures that belong to another focused idea.
+
+### Step 4: Sample Related Mismatch Cases and Decide Closure
+
+Goal: Confirm the route is not overfit to the starter cases and decide whether
+the source idea is complete.
+
+Primary target: related stdio/data mismatch cases from the inventory.
+
+Actions:
+
+- Ask the supervisor for a broader related-case subset after starter proof is
+  green.
+- Include nearby stdio/data cases that exercise the same address and direct
+  external-call argument owner.
+- Keep `src/00132.c` out of first acceptance proof; inspect it only as
+  timeout-sensitive overlap evidence after the starter family is repaired.
+- If the broader subset exposes a separate semantic owner, record a follow-on
+  idea instead of absorbing it into this route.
+
+Completion check: broader related-case proof supports closure of this focused
+idea, or `todo.md` records the exact remaining source-idea gap.
