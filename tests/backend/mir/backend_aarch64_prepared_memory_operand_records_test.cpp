@@ -686,6 +686,57 @@ int frame_slot_store_conversion_materializes_immediate_source() {
   return 0;
 }
 
+int frame_slot_store_prints_local_address_source_through_reserved_scratch() {
+  const aarch64_codegen::MemoryInstructionRecord record{
+      .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+      .address =
+          aarch64_codegen::MemoryOperand{
+              .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+              .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+              .function_name = c4c::FunctionNameId{1},
+              .block_label = c4c::BlockLabelId{1},
+              .instruction_index = 3,
+              .stored_value_id = prepare::PreparedValueId{11},
+              .stored_value_name = c4c::ValueNameId{11},
+              .base_kind = aarch64_codegen::MemoryBaseKind::FrameSlot,
+              .frame_slot_id = prepare::PreparedFrameSlotId{21},
+              .byte_offset = 8,
+              .byte_offset_is_prepared_snapshot = true,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .can_use_base_plus_offset = true,
+          },
+      .value =
+          aarch64_codegen::make_frame_slot_operand(
+              aarch64_codegen::FrameSlotOperand{
+                  .slot_id = prepare::PreparedFrameSlotId{20},
+                  .object_id = prepare::PreparedObjectId{20},
+                  .function_name = c4c::FunctionNameId{1},
+                  .value_name = c4c::ValueNameId{10},
+                  .type = bir::TypeKind::I32,
+                  .offset_bytes = 0,
+                  .offset_is_prepared_snapshot = true,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .fixed_location = true,
+              }),
+      .value_type = bir::TypeKind::Ptr,
+  };
+
+  const auto instruction = aarch64_codegen::make_memory_instruction(record);
+  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::Store) {
+    return fail("expected local-address store record to select");
+  }
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0] != "add x9, sp, #0" ||
+      printed.instruction_lines[1] != "str x9, [sp, #8]") {
+    return fail("expected local address store to materialize frame-slot address through x9");
+  }
+  return 0;
+}
+
 int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
   auto fixture = make_fixture();
   const bir::LoadGlobalInst load{
@@ -1445,6 +1496,10 @@ int main() {
     return status;
   }
   if (const int status = frame_slot_store_conversion_materializes_immediate_source();
+      status != 0) {
+    return status;
+  }
+  if (const int status = frame_slot_store_prints_local_address_source_through_reserved_scratch();
       status != 0) {
     return status;
   }

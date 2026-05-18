@@ -109,6 +109,22 @@ std::optional<abi::RegisterReference> immediate_store_scratch_register(
   return std::nullopt;
 }
 
+std::optional<abi::RegisterReference> local_address_store_scratch_register() {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  return abi::x_register(scratch.index);
+}
+
+std::vector<std::string> materialize_local_address_lines(
+    abi::RegisterReference scratch,
+    const FrameSlotOperand& slot) {
+  if (slot.offset_bytes > 4095U) {
+    return {};
+  }
+  std::ostringstream line;
+  line << "add " << abi::register_name(scratch) << ", sp, #" << slot.offset_bytes;
+  return {line.str()};
+}
+
 std::vector<std::string> materialize_integer_constant_lines(
     abi::RegisterReference destination,
     std::uint64_t value,
@@ -477,6 +493,23 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
     std::ostringstream out;
     out << mnemonic << " " << register_name(*value) << ", " << address;
     return target_printed({out.str()});
+  }
+  const auto* frame_slot = std::get_if<FrameSlotOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::FrameSlot && frame_slot != nullptr) {
+    const auto scratch = local_address_store_scratch_register();
+    if (!scratch.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "local address store scratch is not printable");
+    }
+    auto lines = materialize_local_address_lines(*scratch, *frame_slot);
+    if (lines.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "local address store offset is not printable");
+    }
+    std::ostringstream store;
+    store << mnemonic << " " << abi::register_name(*scratch) << ", " << address;
+    lines.push_back(store.str());
+    return target_printed(std::move(lines));
   }
   const auto* immediate = std::get_if<ImmediateOperand>(&memory.value->payload);
   if (memory.value->kind == OperandKind::Immediate && immediate != nullptr) {

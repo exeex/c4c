@@ -80,6 +80,134 @@ const prepare::PreparedStoragePlanValue* find_storage_plan_value(
   return nullptr;
 }
 
+const prepare::PreparedFrameSlot* find_frame_slot_by_slot_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedStackObject* find_stack_object_by_object_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+const prepare::PreparedStackObject* find_stack_object_by_value_name(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    c4c::FunctionNameId function_name,
+    c4c::ValueNameId value_name) {
+  if (function_name == c4c::kInvalidFunctionName || value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto value_text = prepare::prepared_value_name(names, value_name);
+  for (const auto& object : stack_layout.objects) {
+    if (object.function_name != function_name) {
+      continue;
+    }
+    if (object.value_name == value_name ||
+        (!value_text.empty() && prepare::prepared_stack_object_name(names, object) == value_text)) {
+      return &object;
+    }
+  }
+  return nullptr;
+}
+
+std::optional<FrameSlotOperand> make_frame_slot_operand_from_stack_slot(
+    const prepare::PreparedStackLayout& stack_layout,
+    const prepare::PreparedFrameSlot& slot) {
+  const auto* object = find_stack_object_by_object_id(stack_layout, slot.object_id);
+  if (object == nullptr) {
+    return std::nullopt;
+  }
+  return FrameSlotOperand{
+      .slot_id = slot.slot_id,
+      .object_id = slot.object_id,
+      .function_name = slot.function_name,
+      .slot_name = object->slot_name,
+      .value_name = object->value_name,
+      .type = object->type,
+      .offset_bytes = slot.offset_bytes,
+      .offset_is_prepared_snapshot = true,
+      .size_bytes = slot.size_bytes,
+      .align_bytes = slot.align_bytes,
+      .fixed_location = slot.fixed_location,
+  };
+}
+
+bool resolve_frame_slot_memory_offset(const prepare::PreparedStackLayout& stack_layout,
+                                      MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot) {
+    return true;
+  }
+  if (!address.frame_slot_id.has_value()) {
+    return false;
+  }
+  const auto* slot = find_frame_slot_by_slot_id(stack_layout, *address.frame_slot_id);
+  if (slot == nullptr) {
+    return false;
+  }
+  address.byte_offset += static_cast<std::int64_t>(slot->offset_bytes);
+  address.byte_offset_is_prepared_snapshot = true;
+  return true;
+}
+
+bool rewrite_local_address_store_value(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    c4c::FunctionNameId function_name,
+    const bir::StoreLocalInst& store,
+    MemoryInstructionRecord& record) {
+  if (record.memory_kind != MemoryInstructionKind::Store ||
+      store.value.kind != bir::Value::Kind::Named || store.value.type != bir::TypeKind::Ptr ||
+      !record.address.stored_value_name.has_value()) {
+    return true;
+  }
+
+  const auto* object =
+      find_stack_object_by_value_name(
+          names, stack_layout, function_name, *record.address.stored_value_name);
+  if (object == nullptr) {
+    return true;
+  }
+  const auto* slot = prepare::find_prepared_frame_slot(stack_layout, object->object_id);
+  if (slot == nullptr) {
+    return false;
+  }
+  auto operand = make_frame_slot_operand_from_stack_slot(stack_layout, *slot);
+  if (!operand.has_value()) {
+    return false;
+  }
+  record.value = make_frame_slot_operand(*operand);
+  return true;
+}
+
+bool apply_stack_layout_to_memory_record(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedStackLayout& stack_layout,
+    c4c::FunctionNameId function_name,
+    const bir::StoreLocalInst* local_store,
+    MemoryInstructionRecord& record) {
+  if (!resolve_frame_slot_memory_offset(stack_layout, record.address)) {
+    return false;
+  }
+  if (local_store == nullptr) {
+    return true;
+  }
+  return rewrite_local_address_store_value(
+      names, stack_layout, function_name, *local_store, record);
+}
+
 std::optional<prepare::PreparedValueId> find_value_home_id(
     const prepare::PreparedValueLocationFunction& value_locations,
     c4c::ValueNameId value_name) {
@@ -1330,6 +1458,20 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         context,
         instruction_index,
         memory_error_message(prepared.error));
+    return MemoryInstructionLoweringResult{.handled = true};
+  }
+  if (context.function.prepared == nullptr ||
+      !apply_stack_layout_to_memory_record(context.function.prepared->names,
+                                           context.function.prepared->stack_layout,
+                                           context.function.control_flow->function_name,
+                                           local_store,
+                                           *prepared.record)) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 memory lowering requires prepared frame-slot stack offsets");
     return MemoryInstructionLoweringResult{.handled = true};
   }
 
