@@ -323,6 +323,30 @@ void append_i128_compare_diagnostic(
   return canonical;
 }
 
+[[nodiscard]] bir::Terminator canonicalize_conditional_branch_terminator_targets(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedControlFlowBlock& block,
+    const bir::Terminator& terminator) {
+  bir::Terminator canonical = terminator;
+  if (block.terminator_kind != bir::TerminatorKind::CondBranch ||
+      canonical.kind != bir::TerminatorKind::CondBranch) {
+    return canonical;
+  }
+  if (bir_terminator_target_matches_prepared_label(names,
+                                                   block.true_label,
+                                                   canonical.true_label_id,
+                                                   canonical.true_label)) {
+    canonical.true_label_id = block.true_label;
+  }
+  if (bir_terminator_target_matches_prepared_label(names,
+                                                   block.false_label,
+                                                   canonical.false_label_id,
+                                                   canonical.false_label)) {
+    canonical.false_label_id = block.false_label;
+  }
+  return canonical;
+}
+
 }  // namespace
 
 std::string_view comparison_unconditional_branch_mnemonic(
@@ -497,14 +521,8 @@ PreparedBranchInstructionRecordResult make_prepared_conditional_branch_record(
   }
   if (block.true_label != branch_condition.true_label ||
       block.false_label != branch_condition.false_label ||
-      !bir_terminator_target_matches_prepared_label(names,
-                                                    branch_condition.true_label,
-                                                    terminator.true_label_id,
-                                                    terminator.true_label) ||
-      !bir_terminator_target_matches_prepared_label(names,
-                                                    branch_condition.false_label,
-                                                    terminator.false_label_id,
-                                                    terminator.false_label)) {
+      terminator.true_label_id != branch_condition.true_label ||
+      terminator.false_label_id != branch_condition.false_label) {
     return branch_record_error(PreparedBranchRecordError::TerminatorTargetMismatch);
   }
   const bool is_fused_compare =
@@ -733,12 +751,16 @@ std::optional<module::MachineInstruction> lower_prepared_conditional_branch_term
     return std::nullopt;
   }
 
+  const auto canonical_terminator = canonicalize_conditional_branch_terminator_targets(
+      context.function.prepared->names,
+      *context.control_flow_block,
+      context.bir_block->terminator);
   auto prepared_record = make_prepared_conditional_branch_record(
       context.function.prepared->names,
       *context.function.value_locations,
       *context.control_flow_block,
       *branch_condition,
-      context.bir_block->terminator);
+      canonical_terminator);
   if (!prepared_record.record.has_value()) {
     append_branch_diagnostic(
         diagnostics,
