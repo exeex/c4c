@@ -1,75 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Run Broader AArch64 Backend C-Testsuite Route
+Current Step ID: 5
+Current Step Title: Close Readiness
 
 # Current Packet
 
 ## Just Finished
 
-Completed Step 4: ran the broader registered AArch64 backend c-testsuite route
-with label `aarch64_backend` in `build-aarch64-scan` and preserved the output
-in `test_after.log`.
+Completed Step 5: reran the focused AArch64 backend smoke route in
+`build-aarch64-scan` and preserved the output in `test_after.log`.
 
-CTest selected 220 registered AArch64 backend tests. Configure and the
-`c4cll` build completed; CTest registration was not the blocker. Result:
-0 passed, 220 failed. Because `C_TESTSUITE_AARCH64_BACKEND_RUNNER` was not
-configured on this host, runtime-unavailable cases are classified distinctly
-and are not counted as passes.
+Configure and the `c4cll` build completed. CTest selected the three smoke
+tests with label `aarch64_backend_smoke`: `src/00001.c`, `src/00002.c`, and
+`src/00003.c`. All three reached an AArch64 backend binary and failed as
+`[RUNTIME_UNAVAILABLE]` because `C_TESTSUITE_AARCH64_BACKEND_RUNNER` is unset
+on this non-AArch64 host. Runtime-unavailable remains distinct and is not
+counted as pass.
 
-Failure-stage summary from `test_after.log`:
+Close-readiness accounting:
 
-- `[RUNTIME_UNAVAILABLE]`: 121 cases. Representative cases:
-  `src/00001.c`, `src/00002.c`, `src/00003.c`, `src/00004.c`,
-  `src/00009.c`. These reached an AArch64 backend binary but could not run
-  directly on this host without an AArch64 runner/emulator command.
-- `[FRONTEND_FAIL]`: 85 cases. Representative nontrivial families:
-  `src/00040.c` / `src/00056.c` for deferred unsupported call-boundary move
-  nodes reaching the machine-node printer; `src/00024.c` for scalar `sub`
-  with immediate lhs and register rhs; `src/00027.c`, `src/00028.c`,
-  `src/00029.c`, and `src/00035.c` for scalar `or`/`and`/`xor` outside the
-  printable add/sub subset; `src/00031.c` for add/sub immediate range;
-  `src/00143.c` / `src/00157.c` for semantic `lir_to_bir` capability-bucket
-  failures; `src/00204.c` for bootstrap `lir_to_bir` global support limits.
-- `[BACKEND_FAIL]`: 14 cases. Representative cases: `src/00005.c`,
-  `src/00006.c`, `src/00007.c`, `src/00008.c`, `src/00010.c`,
-  `src/00033.c`, `src/00034.c`, `src/00101.c`, `src/00127.c`,
-  `src/00129.c`; these fail in backend assembly/link handling with
-  undefined temporary symbols such as `.LBB1_2` / `.LBB2_5`.
-- `[BACKEND_OUTPUT_MISSING]`, `[BACKEND_FALLBACK_IR]`, `[RUNTIME_NONZERO]`,
-  and `[RUNTIME_MISMATCH]`: 0 cases in this run.
+- Focused route registration: confirmed by the three selected smoke tests.
+- Focused backend path: confirmed far enough to produce AArch64 backend
+  binaries before the host runtime boundary.
+- Broader-route evidence: use the existing Step 4 inventory from the previous
+  packet, which selected 220 `aarch64_backend` tests and classified failures as
+  121 `[RUNTIME_UNAVAILABLE]`, 85 `[FRONTEND_FAIL]`, and 14 `[BACKEND_FAIL]`,
+  with zero fallback-IR, output-missing, runtime-nonzero, or runtime-mismatch
+  cases in that run.
+- Expectations and allowlists: no expectations, allowlists, implementation
+  files, CMake runner files, or tests were changed in this packet.
+- Closure status: ready for plan-owner closure review as route-registration
+  and failure-inventory evidence. The exact remaining blocker for true runtime
+  pass evidence is environmental: configure
+  `C_TESTSUITE_AARCH64_BACKEND_RUNNER` or run on an AArch64 host, then rerun
+  the smoke route so runtime-unavailable cases can become runtime pass,
+  runtime-nonzero, or runtime-mismatch.
 
 ## Suggested Next
 
-Take the largest non-runtime failure family as the next implementation packet:
-repair or further isolate the AArch64 call-boundary move lowering/selection
-path that currently reaches the machine-node printer as
-`deferred_unsupported`, represented by `src/00040.c` and `src/00056.c`.
+Ask the plan owner for closure review of the route-readiness plan. Do not start
+a new capability repair under this packet.
 
 ## Watchouts
 
-- A passing test must use AArch64 backend `.s`, not LLVM IR fallback.
-- Runtime-unavailable is not a pass; it is the current host limitation for
-  121 cases in this broader run.
-- The current broad route is registered and executable; the blocker is not
-  configure, build, or CTest registration.
-- Do not weaken expected outputs or shrink allowlists to get green.
-- Do not add named-case AArch64 lowering shortcuts for the representative
-  c-testsuite sources; fix semantic lowering/selection families.
-- If rerun on a host with `C_TESTSUITE_AARCH64_BACKEND_RUNNER` configured,
-  reclassify the 121 runtime-unavailable cases because they may become
-  `[RUNTIME_NONZERO]`, `[RUNTIME_MISMATCH]`, or true passes.
+- The delegated proof command pipes through `tee`, so the shell command exits
+  successfully even though CTest reports three failed tests; the meaningful
+  proof result is the CTest failure classification in `test_after.log`.
+- Runtime-unavailable is not a pass. It is the current host limitation for the
+  three focused smoke tests and for the 121 broader-route cases from Step 4.
+- The close-readiness evidence should not be used to claim backend capability
+  repairs. Non-runtime Step 4 failures remain separate frontend/backend
+  capability work outside this packet.
 
 ## Proof
 
-Ran the delegated proof command and preserved output in `test_after.log`:
+Ran the delegated Step 5 proof command and preserved output in
+`test_after.log`:
 
 ```sh
-{ cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend; } 2>&1 | tee test_after.log
+{ cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -L aarch64_backend_smoke; } 2>&1 | tee test_after.log
 ```
 
-Configure and build completed. CTest selected 220 tests with label
-`aarch64_backend` and reported `0% tests passed, 220 tests failed out of 220`.
-The proof is sufficient for route execution and failure-stage classification;
-it is not a green acceptance proof for backend capability.
+Configure and build completed. CTest selected three tests with label
+`aarch64_backend_smoke` and reported `0% tests passed, 3 tests failed out of
+3`. All three failures are `[RUNTIME_UNAVAILABLE]` due to the unset
+`C_TESTSUITE_AARCH64_BACKEND_RUNNER`; this proves the focused route reaches the
+runtime boundary but is not green runtime acceptance evidence on this host.
