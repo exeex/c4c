@@ -10,72 +10,68 @@ Current Step Title: Reclassify Timeout Boundary
 
 ## Just Finished
 
-Completed plan.md Step 4, "Prove Simple Runtime Probes", using the targeted
-runtime probe evidence after the Step 3 LR preservation repair. The old
-link-register timeout owner is gone from the clean probe set:
+Completed plan.md Step 5, "Reclassify Timeout Boundary", by rebuilding the
+AArch64 scan compiler and rerunning only the original 23-case timeout bucket
+with an explicit 10 second CTest timeout. The original timeout bucket is now
+fully reclassified:
 
-- `00100.c` passed.
-- `00121.c` passed.
-- `00116.c` no longer times out and no longer has the LR-clobber shape, but
-  fails with `RUNTIME_NONZERO exit=1`; treat that as a different semantic owner
-  for follow-on work, not as Step 4 LR-proof failure.
+- Pass after LR preservation: `00100.c`, `00121.c`.
+- Still timeout: `00132.c`.
+- Non-timeout `RUNTIME_NONZERO`: `00116.c` exits 1; `00175.c`, `00196.c`, and
+  `00199.c` segfault.
+- Non-timeout `RUNTIME_MISMATCH`: `00125.c`, `00131.c`, `00154.c`, `00159.c`,
+  `00161.c`, `00166.c`, `00172.c`, `00178.c`, `00184.c`, `00190.c`,
+  `00191.c`, `00192.c`, `00197.c`, `00201.c`, `00206.c`, and `00211.c`.
 
-Regenerated runtime probe assembly now shows `00121.c` `main` with a real LR
-frame around both calls:
-`sub sp, sp, #32`, `str x30, [sp, #16]`, `bl f`, `bl g`,
-`ldr x30, [sp, #16]`, `add sp, sp, #32`, `ret`. The old LR-clobber timeout
-shape is gone.
+This confirms the old broad LR-preservation timeout boundary has collapsed to
+two passes, one remaining timeout, and 20 quick runtime failures.
 
 ## Suggested Next
 
-Execute plan.md Step 5 by reclassifying the original 23-case timeout bucket
-after LR preservation. Separate cases fixed by LR preservation from remaining
-timeouts or non-timeout failures, and record follow-on semantic owners such as
-the `00116.c` `RUNTIME_NONZERO exit=1` argument/value behavior outside this LR
-route instead of implementing that behavior here.
+Plan-owner should decide whether to close this LR-preservation plan, deactivate
+it, or split follow-on work into separate source ideas. No follow-on semantic
+owner was implemented in this packet.
 
 ## Watchouts
 
-- Do not special-case c-testsuite filenames, function names, exact emitted text,
-  timeout settings, allowlists, unsupported classifications, or expected
-  outputs.
-- Keep printf, string literals, variadic calls, loop predicates,
-  short-circuiting, aggregates/pointers, static globals, and goto behavior out
-  of this LR preservation route.
-- Use explicit timeouts for runtime probes and check for stale generated
-  runtime processes after timeout-oriented runs.
-- Dynamic-stack frames remain outside this printable LR subset and still fail
-  closed instead of guessing a combined dynamic frame layout.
-- `00121.c` passes the targeted runtime probe after this repair. Its
-  regenerated assembly uses `x19` as the live value across calls, while the
-  prepared frame facts visible to this packet only required the combined frame
-  extent and LR save slot in the generated output.
-- `00116.c` is no longer an LR timeout shape: regenerated `main` saves/restores
-  `x30` around `bl f`, then returns. The remaining exit=1 should be treated as
-  an argument/value return semantic owner.
+- Likely follow-on owner groups are semantic/backend capability work, not LR
+  preservation: argument/return value lowering (`00116.c`), printf/string
+  literal/variadic-call behavior (`00125.c`, `00131.c`, `00166.c`, `00190.c`),
+  aggregate and pointer access (`00154.c`, `00172.c`), loop/control-flow
+  lowering (`00132.c`, `00161.c`, `00191.c`, `00192.c`), scalar conversions and
+  sizeof/type semantics (`00175.c`, `00178.c`, `00184.c`), short-circuit calls
+  (`00196.c`), static storage duration (`00197.c`), goto across block scopes
+  (`00199.c`), and macro/preprocessor-adjacent cases (`00201.c`, `00206.c`,
+  `00211.c`).
+- `00159.c` mixes call return values and normal calls; its current mismatch is
+  quick and should be grouped with follow-on call/printf semantics rather than
+  the LR timeout repair.
+- The stale-process check after the timeout-oriented run matched only the
+  check command and its `rg` child, with no stale generated runtime, `ctest`,
+  `cmake -D`, or `c4cll` process left behind.
+- Do not turn the remaining failures into expectation changes, allowlist
+  edits, timeout changes, CTest runner changes, or c-testsuite-specific
+  shortcuts.
 
 ## Proof
 
-Ran the delegated proof command exactly, with combined output in
-`test_after.log`:
+Ran the delegated proof command with combined output in `test_after.log`:
 
 ```sh
-cmake --build build --target backend_aarch64_target_instruction_records_test backend_aarch64_machine_printer_test backend_aarch64_return_lowering_test > test_after.log 2>&1 && ctest --test-dir build -R 'backend_aarch64_(target_instruction_records|machine_printer|return_lowering)$' --output-on-failure >> test_after.log 2>&1
+cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00100|00116|00121|00125|00131|00132|00154|00159|00161|00166|00172|00175|00178|00184|00190|00191|00192|00196|00197|00199|00201|00206|00211)_c$' --output-on-failure --timeout 10
 ```
 
-Result: passed. `ctest` ran
-`backend_aarch64_target_instruction_records`,
-`backend_aarch64_machine_printer`, and `backend_aarch64_return_lowering` with
-0 failures.
+Result: build succeeded; CTest ran all 23 selected tests. `00100.c` and
+`00121.c` passed. CTest exited nonzero because the reclassified boundary still
+contains 21 failures: 1 timeout, 4 `RUNTIME_NONZERO`, and 16
+`RUNTIME_MISMATCH`. This is sufficient for Step 5 runtime reclassification and
+is not treated as an implementation blocker for this evidence-only packet.
 
-Then ran the delegated runtime probe command separately, not written to
-`test_after.log`:
+Then ran the delegated stale-process check:
 
 ```sh
-cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_00(100|116|121)_c$' --output-on-failure --timeout 10
+ps -eo pid,ppid,pgid,pcpu,stat,etime,cmd --sort=-pcpu | rg 'ctest|cmake -D|/workspaces/c4c/build[^ ]*(/| )[A-Za-z0-9_.+-]*\.bin|/workspaces/c4c/build[^ ]*/c4cll'
 ```
 
-Result: `00100.c` passed, `00121.c` passed, and `00116.c` failed with
-`RUNTIME_NONZERO exit=1`. The runtime command therefore exited nonzero because
-of the remaining `00116.c` semantic owner, not because of the old LR timeout
-shape.
+Result: no stale target process remained; the only matches were the stale-check
+shell command itself and its `rg` child.
