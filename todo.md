@@ -8,75 +8,120 @@ Current Step Title: Select the Next Semantic Owner
 
 ## Just Finished
 
-Completed Step 1 by reusing the current post-292 timeout-protected AArch64
-backend scan artifacts from the scalar-control close validation. No broad scan
-rerun was needed.
+Completed Step 2 by sampling the focused remaining runtime-mismatch
+representatives and selecting the next focused owner.
 
-Current totals from `/tmp/c4c_aarch64_scalar_step4_broad.log`:
+Focused subset:
 
-- 212 AArch64 backend c-testsuite cases scanned.
-- 118 passed, 94 failed.
-- Failure markers: 55 `FRONTEND_FAIL`, 24 `RUNTIME_NONZERO`, 13
-  `RUNTIME_MISMATCH`, 2 `TIMEOUT`.
-- Closed Step 292 starter representatives now pass in the broad scan:
-  `00009`, `00012`, `00056`, `00156`, `00161`, and `00211`.
+- `00159`, `00164`, `00168`, `00169`, `00172`, `00183`, `00193`, `00202`,
+  and `00217` were rerun under the delegated timeout-safe subset.
+- All 9 failed as `RUNTIME_MISMATCH`, matching the broad post-292 inventory
+  bucket.
+- No generated runtime process remained after the run.
 
-Representative remaining buckets:
+Selected semantic owner:
 
-- Printer/admission frontend-labeled failures: branch printer `00041`,
-  `00054`, `00127`, `00203`; scalar printer `00024`, `00027`, `00028`,
-  `00029`, `00134`, `00139`, `00213`; memory printer `00173`, `00187`,
-  `00194`; semantic `lir_to_bir` local-memory gaps `00046`, `00143`,
-  `00157`, `00176`, `00205`, `00216`, `00218`.
-- Runtime nonzero failures: `00050`, `00121`, `00089`, `00019`, `00032`,
-  `00042`, `00066`, `00086`, `00102`, `00109`, `00112`, `00113`, `00111`,
-  `00119`, `00123`, `00130`, `00138`, `00137`, `00144`, `00170`, `00180`,
-  `00179`, `00186`, `00189`.
-- Runtime mismatch failures: `00159`, `00164`, `00169`, `00168`, `00172`,
-  `00175`, `00174`, `00183`, `00193`, `00196`, `00202`, `00217`, `00219`.
-- Timeout failures: `00132` and `00220`.
+- AArch64 side-effecting expression and control-value publication authority.
+- Starter representatives: `00164`, `00183`, and `00202`.
+- Supporting nearby representative for early owner-boundary sampling: `00169`.
 
-The stale generated-runtime process artifact
-`/tmp/c4c_aarch64_scalar_step4_broad.pgrep` is empty, so no stale generated
-runtime process was recorded after the scan.
+Why this owner is ready:
+
+- `00164` shows expression values with side effects or control-derived results
+  not being published to the later `printf` consumers. Examples include
+  `(y = c + d)`, logical `&&`/`||`, comparison values, and arithmetic values;
+  generated assembly prints stale or unrelated values such as `11`,
+  callee-return values, or unmaterialized comparison results.
+- `00183` shows conditional-expression branch results losing the selected
+  value. The loop counter is printed instead of the selected `Count*Count` or
+  `Count*3` result.
+- `00202` shows compound-assignment side effects not updating both the
+  expression result and the assigned object. Generated assembly stores from an
+  unrelated stack slot, so `bob = jim *= 2` leaves `bob` and later `jim`
+  stale.
+- `00169` is useful as a boundary probe because the nested-loop middle value is
+  loaded, then clobbered by format-pointer setup before the variadic call
+  consumes it. It overlaps call-argument placement, so it should be supporting
+  proof, not the first acceptance case.
+
+Expected focused-idea proof shape:
+
+- Start with backend-level proof that side-effecting expression results
+  publish authoritative values to their consumers without relying on stale
+  scratch or callee-saved registers.
+- Runtime starter subset:
+  `c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$`.
+- Then sample the boundary case
+  `c_testsuite_aarch64_backend_src_00169_c$` to make sure the repair does not
+  merely handle one expression form and does not reopen closed call-argument
+  authority by accident.
+- Broader nearby sampling can add `00172` and `00217` only after pointer and
+  aggregate/address-specific behavior is explicitly separated from the
+  side-effect/control owner.
 
 ## Suggested Next
 
-Step 2 should sample the runtime pointer/aggregate and side-effect/control
-value bucket first, using representatives `00159`, `00164`, `00168`, `00169`,
-`00172`, `00183`, `00193`, `00202`, and `00217`. This is the smallest
-backend/runtime-focused candidate set left after Step 292 because it avoids
-printer/admission gaps, timeout cases, and the mostly compile-stage
-local-memory `lir_to_bir` failures while still covering call return values,
-loop-carried locals, pointer dereference/comparison, switch control flow,
-compound assignment side effects, and string/aggregate storage symptoms.
+Step 3 should ask the plan owner to split a focused idea for AArch64
+side-effecting expression and control-value publication authority, then switch
+the active lifecycle state to that idea before implementation begins.
 
 ## Watchouts
 
 - Do not implement fixes under this umbrella idea.
 - Do not reopen closed AArch64 owners without contradictory generated-code
   evidence.
-- The `FRONTEND_FAIL` bucket is mostly AArch64 backend admission/printer failure
-  text in this artifact, not necessarily frontend source-language ownership.
-- Timeout cases `00132` and `00220` require explicit timeout handling and
-  stale-process cleanup before they become a repair owner.
-- Defer scalar printer-only cases such as `00024`, `00027`, `00028`, `00029`,
-  `00134`, `00139`, and `00213` unless Step 2 evidence shows the runtime
-  bucket is not coherent.
+- Rejected or deferred closed-owner overlap:
+  - `00159` and `00168` both show scalar parameter/call-return problems in
+    generated code (`myfunc`/`factorial` consume stale parameter or return
+    registers). They contradict closed-owner expectations enough to record as
+    overlap, but they are not the cleanest next split while the side-effect
+    owner has cleaner non-call starters.
+  - `00193` switch dispatch compares `w13` instead of the incoming argument
+    register, so it is scalar parameter/control overlap rather than a clean
+    switch-only owner.
+- Rejected or deferred pointer/aggregate/address bucket:
+  - `00172` proves pointer compare/result publication is still broken, but it
+    should be split only after scalar side-effect/control expression results
+    are not masking the boolean publication path.
+  - `00217` mixes global address/local pointer initialization, pointer
+    arithmetic, compound assignment through a pointer, and string storage.
+    It is too compounded for first proof but should be sampled after the
+    cleaner side-effect owner.
+- Deferred buckets outside this owner: printer/admission failures, timeout
+  cases `00132` and `00220`, floating/conversion/string-only cases, and broad
+  aggregate ABI or function-pointer behavior.
 
 ## Proof
 
-Reused existing timeout-protected artifacts; no root proof logs were written and
-no broad scan was rerun.
+No broad scan was run and no root proof logs were written.
 
-Artifacts used:
+Focused proof command:
 
-- `/tmp/c4c_aarch64_scalar_step4_broad.log`
-- `/tmp/c4c_aarch64_scalar_step4_summary.txt`
-- `/tmp/c4c_aarch64_scalar_step4_new_passes.txt`
-- `/tmp/c4c_aarch64_scalar_step4_broad.pgrep`
+```sh
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00159|00164|00168|00169|00172|00183|00193|00202|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_inventory_step2_runtime_subset.log 2>&1
+```
 
-Classification checks:
+Result: failed as expected for inventory sampling, 0/9 passing with all nine
+selected representatives reported as `RUNTIME_MISMATCH`.
 
-- `rg -o "\[(FRONTEND_FAIL|RUNTIME_NONZERO|RUNTIME_MISMATCH)\]" /tmp/c4c_aarch64_scalar_step4_broad.log | sort | uniq -c`
-- `rg -n "Timeout|TIMEOUT" /tmp/c4c_aarch64_scalar_step4_broad.log`
+Stale-process check:
+
+```sh
+pgrep -af '^/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' > /tmp/c4c_aarch64_inventory_step2_runtime_subset.pgrep || true
+```
+
+Result: `/tmp/c4c_aarch64_inventory_step2_runtime_subset.pgrep` is empty.
+
+Artifacts inspected:
+
+- `/tmp/c4c_aarch64_inventory_step2_runtime_subset.log`
+- `/tmp/c4c_aarch64_inventory_step2_runtime_subset.pgrep`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00159.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00164.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00168.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00169.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00172.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00183.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00193.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00202.c.s`
+- `build-aarch64-scan/c_testsuite_aarch64_backend/src/00217.c.s`
