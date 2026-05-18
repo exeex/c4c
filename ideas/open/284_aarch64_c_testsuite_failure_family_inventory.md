@@ -97,6 +97,14 @@ plus external-call argument setup as the next focused semantic repair family.
 The active lifecycle state switched to
 `ideas/open/287_aarch64_string_global_address_external_call_lowering.md`.
 
+2026-05-18: The string/global address external-call lowering idea completed
+and moved to
+`ideas/closed/287_aarch64_string_global_address_external_call_lowering.md`.
+The next refreshed inventory selected AArch64 stack-frame/SP 16-byte
+alignment as the next focused semantic repair family. The active lifecycle
+state switched to
+`ideas/open/288_aarch64_stack_frame_sp_alignment.md`.
+
 Durable inventory findings to preserve:
 
 - The 212-case AArch64 backend c-testsuite scan classified as 46 `PASS`, 49
@@ -125,6 +133,13 @@ Durable inventory findings to preserve:
   direct external calls such as `printf`/stdio. `src/00132.c` overlaps this
   family but remains timeout-sensitive and compounded by loop/local-store
   behavior, so it should not be used as first proof for the focused route.
+- After string/global address external-call lowering, the refreshed scan
+  classified 212 registered AArch64 backend cases as 80 passed, 129 failed
+  non-timeout, and 3 timed out. The best next focused family is a 28-case
+  `Bus error` runtime cluster whose minimal representative `src/00004.c`
+  emits a 24-byte stack frame (`sub sp, sp, #24`). That makes stack-frame/SP
+  16-byte alignment the first owner to repair before treating nearby
+  pointer/local/array failures as broader pointer-semantics issues.
 
 ## Reviewer Reject Signals
 
