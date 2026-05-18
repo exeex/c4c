@@ -1,7 +1,8 @@
 # AArch64 Side-Effect Control-Value Publication Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 Split From: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 
 ## Intent
@@ -84,6 +85,16 @@ remaining runtime mismatches or pointer/address failures.
   generated-code proof shows they share this exact publication primitive.
 - No progress is claimed through expectation, runner, allowlist, timeout, or
   unsupported-classification changes.
+
+## Closure Notes
+
+Closed after Step 4 boundary validation. The focused boundary subset
+`00164|00169|00183|00202` passed 4/4 in `test_after.log`, with the regression
+guard showing no new failures against the matching Step 4 baseline. The
+broader nearby sample passed the in-scope representatives `00164`, `00169`,
+`00183`, and `00202`; the remaining failures `00159`, `00168`, `00193`, and
+`00217` were explicitly separated as closed-owner overlap or
+pointer/address/string-heavy work outside this source idea.
 
 ## Reviewer Reject Signals
 
