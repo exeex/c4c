@@ -1,6 +1,6 @@
 # AArch64 Function Pointer Indirect Call Values
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Source Inventory: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 Split From: ideas/closed/288_aarch64_stack_frame_sp_alignment.md
@@ -75,6 +75,32 @@ work. It is not residual SP/frame alignment.
 - No progress is claimed through test expectation rewrites, allowlist changes,
   unsupported classifications, runner changes, timeout changes, or CTest
   contract changes.
+
+## Closure Summary
+
+Closed on 2026-05-18 after Step 5 closure review.
+
+The function-pointer owner is complete:
+
+- `src/00087.c` passes for local function-pointer value/callee materialization.
+- `src/00089.c` passes for global/static function-pointer initialization.
+- `src/00124.c` is separated into
+  `ideas/open/290_aarch64_scalar_parameter_alu_authority.md`; generated code
+  already returns and indirectly calls the selected function pointer, and the
+  remaining failure is stale scalar parameter/ALU authority.
+- `src/00210.c` is separated into
+  `ideas/open/291_aarch64_call_argument_register_authority.md`; attributed
+  function-pointer calls remain valid indirect calls, and the remaining
+  mismatch is the `printf` format-pointer call-argument register move.
+
+Close validation used a matching four-case close-scope regression guard in
+temporary logs because root proof logs were intentionally left untouched:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before /tmp/c4c_fnptr_close_before.log --after /tmp/c4c_fnptr_close_after.log --allow-non-decreasing-passed
+```
+
+Result: passed with 2 passing and 2 separated non-owner failures in both logs.
 
 ## Reviewer Reject Signals
 
