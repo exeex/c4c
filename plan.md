@@ -1,69 +1,70 @@
-# AArch64 Backend Local Operand Materialization Runtime Nonzero Plan
+# AArch64 Address-Exposed Local Pointer Runtime Nonzero Plan
 
 Status: Active
-Source Idea: ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
-Supersedes Active Runbook: ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md
+Source Idea: ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md
+Activated After: ideas/closed/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
 
 ## Purpose
 
-Repair the AArch64 backend operand/local-value materialization failure exposed
-after the result-register owner layer from idea 277 was fixed.
+Repair the next AArch64 backend runtime failure family exposed after scalar
+local operand materialization for `00003.c` was fixed.
 
 ## Goal
 
-Make local integer values used as arithmetic operands materialize from their
-actual source value or storage before the returned expression is computed, so
-`src/00003.c` passes the AArch64 backend runtime route without expectation
-changes.
+Make address-exposed local and pointer semantics lower coherently enough for
+`tests/c/external/c-testsuite/src/00004.c` and `00005.c` to advance through the
+AArch64 backend runtime route without expectation changes.
 
 ## Core Rule
 
-Fix the semantic backend/codegen rule for local operand materialization. Do not
-use filename-specific matching, c-testsuite shortcuts, LLVM IR fallback,
-expectation weakening, or a regression of the result-register repair as
-progress.
+Fix the semantic backend/codegen rule for address-exposed locals or pointer
+memory operands. Do not use filename-specific matching, c-testsuite shortcuts,
+LLVM IR fallback, expectation weakening, or broad ABI/register-allocation
+rewrites as progress.
 
 ## Read First
 
-- `ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`
+- `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
 - `todo.md`
-- `ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md`
+- `ideas/closed/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`
+- `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`
 - `test_after.log`, if still present, for the latest focused route evidence
-- AArch64 backend lowering, storage-plan, assignment, load/materialization, and
-  assembly emission code touched by local integer operands
+- AArch64 backend lowering, prepared memory operand, address formation,
+  load/store, storage-plan, and assembly emission code touched by
+  address-exposed locals or pointers
 
 ## Current Targets
 
-- AArch64 backend lowering for local integer values used as operands.
-- Runtime proof for `tests/c/external/c-testsuite/src/00003.c`.
-- Regression proof for already passing route smoke cases `00001.c` and
-  `00002.c`.
-- Focused proof that the idea 277 result-register fix remains intact.
-- At least one nearby local-value arithmetic case that proves the repair is not
-  named-case overfit.
+- AArch64 backend route for `00004.c` and `00005.c`.
+- Address-exposed local storage, pointer value materialization, load/store
+  address formation, and prepared memory operand consumption.
+- Regression proof for idea 278 focused cases: `00001.c`, `00002.c`, and
+  `00003.c`.
+- Focused backend proof that covers the repaired memory/pointer operand rule
+  outside the exact c-testsuite filenames where practical.
 
 ## Non-Goals
 
-- Do not rework return-result register placement except to preserve the idea
-  277 repair.
+- Do not rework loop or branch control lowering for `00006.c`; that belongs to
+  `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`.
 - Do not change c-testsuite `.expected` sidecars, allowlists, unsupported
-  classifications, or CTest expectations.
-- Do not edit the runtime runner or native-host detection.
-- Do not claim progress from LLVM IR fallback.
-- Do not perform broad unrelated AArch64 ABI or register-allocation rewrites.
-- Do not fold additional backend failure families into this plan; split new
-  owner layers into focused follow-up ideas.
+  classifications, CTest contracts, runner files, or route diagnostics.
+- Do not add filename-specific handling for `00004.c` or `00005.c`.
+- Do not route proof through LLVM IR fallback while claiming AArch64 backend
+  progress.
+- Do not perform broad ABI, runtime-runner, or register-allocation rewrites
+  unless tracing proves they are the direct owner of this address-exposed local
+  family.
 
 ## Working Model
 
-Idea 277 fixed the original result-register failure: `00003.c` no longer emits
-`sub w19, w0, #4; ret` and now returns through `w0`. The remaining assembly
-shape `sub w0, w0, #4; ret` still fails because the left operand is incoming
-`w0`, not the source-local `x = 4` value. The likely owner layer is local
-assignment/reference materialization or storage-plan lowering for operands
-feeding arithmetic expressions.
+Idea 278 repaired ordinary scalar local operand materialization. The broad
+AArch64 backend scan then advanced through `00001.c`, `00002.c`, and
+`00003.c`, but `00004.c` and `00005.c` fail as `[RUNTIME_NONZERO] exit=1`.
 
-The executor should verify the exact compiler path before changing code.
+Those failures are later than the immediate scalar local store/load owner. The
+likely owner is address-exposed local storage, pointer value materialization,
+load/store address formation, or prepared memory operand consumption.
 
 ## Execution Rules
 
@@ -74,94 +75,94 @@ The executor should verify the exact compiler path before changing code.
   packets unless the supervisor delegates another artifact.
 - Prefer AST-backed symbol queries via `c4c-clang-tools` for large C++ backend
   files.
-- Treat a change as route drift if its main effect is making only `00003.c`
-  pass without repairing local operand materialization.
+- Treat a change as route drift if its main effect is making only `00004.c` or
+  `00005.c` pass without repairing address-exposed local or pointer semantics.
+- Keep `00006.c` branch/loop control evidence out of this plan except as a
+  follow-up pointer to idea 282.
 
 ## Steps
 
-### Step 1: Localize Local Operand Ownership
+### Step 1: Localize Address-Exposed Local Ownership
 
-Goal: identify the backend path that lowers local integer assignments and
-references into operands for AArch64 arithmetic expressions.
+Goal: identify the backend path that lowers address-taken locals and pointer
+reads/writes for the failing AArch64 runtime cases.
 
 Actions:
 
-- Inspect the failing `00003.c` assembly and, if useful, dumps for the
-  corresponding HIR/BIR/backend route.
-- Locate the lowering path for the local `x = 4` value and its later use as
-  the left subtraction operand.
-- Compare a passing trivial return case with the failing local arithmetic case
-  to determine why the operand remains tied to incoming `w0`.
+- Reproduce or inspect the focused `00004.c` and `00005.c` AArch64 backend
+  route evidence.
+- Compare the generated assembly against the source-level pointer/addressed
+  local behavior.
+- Trace where address-exposed local storage, pointer values, and memory
+  operands are represented before AArch64 lowering.
+- Identify whether the owner is storage publication, pointer materialization,
+  address formation, load/store selection, or prepared memory operand
+  consumption.
 - Record the smallest semantic repair point and a focused proof command in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` names the owner function or backend stage, explains why the local
-  operand reads incoming `w0`, and gives the exact proof subset for the repair
-  packet.
+- `todo.md` names the owner function or backend stage, explains why `00004.c`
+  and `00005.c` currently return nonzero, and gives the exact proof subset for
+  the repair packet.
 
-### Step 2: Repair Local Operand Materialization
+### Step 2: Repair Address-Exposed Local Or Pointer Lowering
 
-Goal: ensure local integer values used as expression operands are materialized
-from their actual value or storage before AArch64 arithmetic emission.
+Goal: lower the supported address-exposed local or pointer form coherently for
+AArch64 machine output.
 
 Actions:
 
 - Implement the smallest semantic backend/codegen change at the owner point
   identified in Step 1.
-- Preserve direct literal returns, direct argument returns, ordinary temporary
-  register use, and the idea 277 return-result register behavior.
-- Avoid case-specific checks for c-testsuite filenames, expression text, or
-  exact instruction sequences.
-- Build the affected target before runtime proof.
+- Preserve scalar local operand materialization from idea 278.
+- Preserve result-register behavior from idea 277.
+- Keep unsupported forms fail-closed or truthfully classified at the owner
+  layer.
+- Build the affected backend target before runtime proof.
 
 Completion check:
 
 - The project builds for the affected backend target, and generated assembly
-  for the motivating case no longer uses unrelated incoming `w0` as the local
-  value operand.
+  for the motivating cases uses coherent address-exposed local or pointer
+  storage semantics rather than unrelated ABI registers or filename-shaped
+  shortcuts.
 
-### Step 3: Prove Runtime And Nearby Coverage
+### Step 3: Prove Runtime And Regression Coverage
 
-Goal: prove the repair through the same backend runtime route and reject
-testcase overfit.
+Goal: prove the repair through the AArch64 backend route and reject testcase
+overfit.
 
 Actions:
 
-- Run the focused AArch64 backend c-testsuite route for `00001.c`, `00002.c`,
-  and `00003.c`.
-- Run the focused backend return-lowering coverage from idea 277 to prove the
-  result-register repair remains intact.
-- Add or run at least one nearby local-value arithmetic backend/runtime case
-  that exercises the same operand materialization rule without being
-  `00003.c` shaped.
+- Run the focused AArch64 backend route for `00004.c` and `00005.c`.
+- Rerun `00001.c`, `00002.c`, and `00003.c` to prove idea 278 remains green.
+- Run focused backend memory/pointer operand coverage that exercises the same
+  semantic rule outside the exact c-testsuite filenames where practical.
 - Confirm no LLVM IR fallback was used and no expectations were weakened.
 - Preserve exact proof output in `test_after.log`.
 
 Completion check:
 
-- `00003.c`, the already passing smoke cases, the result-register regression
-  coverage, and the nearby same-feature proof pass with backend `.s -> clang
-  -x assembler -> executable -> runtime -> expected-output` evidence where
-  applicable.
+- `00004.c` and `00005.c` advance through the AArch64 backend runtime route
+  without expectation weakening, and idea 278 proof cases remain green.
 
 ### Step 4: Review Residual Scope
 
-Goal: decide whether this focused idea is complete or whether additional
-failure families should be split.
+Goal: decide whether idea 281 is complete or whether later failure families
+should remain split.
 
 Actions:
 
 - Compare the implemented behavior and proof against
-  `ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md`.
-- Confirm no unrelated runtime-route, broad ABI, or register-allocation work
-  was folded into this plan.
+  `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`.
+- Confirm no loop/branch control work for `00006.c` was folded into this plan.
 - If complete, request plan-owner closure review.
 - If proof exposes a distinct backend/codegen/BIR issue, create or request a
   focused follow-up idea instead of expanding this plan.
 
 Completion check:
 
-- `todo.md` clearly says whether idea 278 is ready for closure review or names
+- `todo.md` clearly says whether idea 281 is ready for closure review or names
   the exact blocker/follow-up owner layer.

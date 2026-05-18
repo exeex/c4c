@@ -1,8 +1,9 @@
 # AArch64 Backend Local Operand Materialization Runtime Nonzero
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Discovered From: ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -71,6 +72,28 @@ runtime route evidence.
   rather than named-case matching.
 - The idea 277 result-register behavior remains intact: returned integer
   expression values are still written to `w0`/`x0` before `ret`.
+
+## Closure Notes
+
+Closed after Step 4 residual-scope review. The local operand materialization
+scope is satisfied: the focused nine-test AArch64 backend subset passes, and
+`c_testsuite_aarch64_backend_src_00001_c`,
+`c_testsuite_aarch64_backend_src_00002_c`, and
+`c_testsuite_aarch64_backend_src_00003_c` pass through the AArch64 backend
+runtime route without expectation weakening.
+
+The later broad-scan blockers were split instead of folded into this idea:
+
+- `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
+  owns `00004.c` and `00005.c`.
+- `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md` owns
+  `00006.c`.
+
+Close-time regression guard passed with matching-scope logs:
+`test_before.log` and `test_after.log` both cover the focused nine-test
+AArch64 backend subset plus the `00001.c`/`00002.c`/`00003.c` AArch64 backend
+c-testsuite route, with 3 passed, 0 failed, and no new failures in the parsed
+final CTest summary.
 
 ## Reviewer Reject Signals
 
