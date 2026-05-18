@@ -1,15 +1,21 @@
 Status: Active
 Source Idea Path: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Broader AArch64 Backend Runtime Inventory
+Current Step ID: 3
+Current Step Title: Completion Or Split Review
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 started the broader AArch64 backend c-testsuite inventory. CTest
-selected 220 `aarch64_backend` cases. The first six cases,
+Step 3 plan-owner split review accepted the Step 2 broad-route inventory as
+route-readiness evidence for idea 276 and created the next focused backend
+owner-layer follow-up:
+
+- `ideas/open/283_aarch64_for_loop_control_runtime_hang.md`
+
+The route infrastructure is no longer the blocker. Step 2 selected 220
+`aarch64_backend` cases. The first six cases,
 `c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c`,
 passed through the real backend runtime route. The next selected case,
 `c_testsuite_aarch64_backend_src_00007_c`, reached `.s` generation and
@@ -55,12 +61,35 @@ still real AArch64 backend assembly; no LLVM IR fallback, expectation
 weakening, allowlist change, unsupported reclassification, or runner edit was
 used.
 
+Idea 276 is ready for closure review once matching close-gate logs are
+available. The source criteria are satisfied by the current evidence:
+representative cases run through the real backend route, missing/fallback route
+cases are rejected by the runner contract, stage classifications remain
+distinct, and the broader scan produced actionable follow-up evidence. The
+remaining `00007.c` hang is a backend loop/control capability gap owned by
+idea 283, not route-readiness scope.
+
 ## Suggested Next
 
-Open or activate a focused follow-up idea for the `00007.c` loop-control
-runtime hang. The smallest next packet should localize why the AArch64 backend
-emits unconditional self-loops for the `for` loop control shape in `00007.c`
-after the `00006.c` fused-compare loop case was repaired.
+Provide matching-scope close-gate logs for idea 276, then rerun plan-owner
+closure review. Use the same command for both `test_before.log` and
+`test_after.log`:
+
+```sh
+set -o pipefail; { cmake --build --preset default && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c$'; } 2>&1 | tee test_before.log
+```
+
+Then rerun the exact same command to `tee test_after.log` and compare:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+After idea 276 closes, activate
+`ideas/open/283_aarch64_for_loop_control_runtime_hang.md` as the next focused
+backend repair. The smallest first packet should localize why AArch64 emits
+unconditional self-loops for the `for` loop-control shape in `00007.c` after
+the `00006.c` fused-compare loop case was repaired.
 
 ## Watchouts
 
@@ -75,6 +104,8 @@ after the `00006.c` fused-compare loop case was repaired.
 - `ideas/open/277_aarch64_backend_result_register_runtime_nonzero.md` remains
   open but inactive; do not reactivate it unless supervisor chooses to close or
   repair that lifecycle record separately.
+- Do not activate idea 283 before idea 276 closure unless the supervisor
+  explicitly chooses to switch away from route-readiness closure.
 
 ## Proof
 
