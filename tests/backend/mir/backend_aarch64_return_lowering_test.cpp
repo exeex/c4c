@@ -6,6 +6,7 @@
 #include "src/target_profile.hpp"
 
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -907,6 +908,47 @@ int module_build_preserves_link_register_around_non_leaf_return() {
   return 0;
 }
 
+int module_build_aligns_leaf_fixed_frame_to_aarch64_sp_boundary() {
+  auto prepared = prepared_with_return_block();
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 8,
+      .saved_callee_registers = {prepared_saved_x19(16)},
+  });
+
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected leaf fixed-frame module to build");
+  }
+
+  const auto& instructions =
+      result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() != 3) {
+    return fail("expected leaf fixed frame to contain prologue, epilogue, and return");
+  }
+  const auto* setup =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&instructions[0].target.payload);
+  const auto* teardown =
+      std::get_if<aarch64_codegen::FrameInstructionRecord>(&instructions[1].target.payload);
+  const auto* ret =
+      std::get_if<aarch64_codegen::ReturnInstructionRecord>(&instructions[2].target.payload);
+  if (setup == nullptr || teardown == nullptr || ret == nullptr ||
+      setup->frame_kind != aarch64_codegen::FrameInstructionKind::PrologueSetup ||
+      teardown->frame_kind != aarch64_codegen::FrameInstructionKind::EpilogueTeardown ||
+      setup->preserves_link_register || teardown->preserves_link_register ||
+      setup->frame_size_bytes != 32 || teardown->frame_size_bytes != 32 ||
+      setup->frame_alignment_bytes != 16 || teardown->frame_alignment_bytes != 16 ||
+      setup->saved_callee_registers.size() != 1 ||
+      !setup->saved_callee_registers.front().slot_placement.has_value() ||
+      setup->saved_callee_registers.front().slot_placement->stack_offset_bytes !=
+          std::optional<std::size_t>{16}) {
+    return fail("expected leaf frame to round SP adjustment without moving saved slot");
+  }
+  return 0;
+}
+
 int module_build_materializes_scalar_immediate_before_direct_call() {
   auto prepared = prepared_with_direct_call_immediate_argument_then_return();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -1127,6 +1169,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_preserves_link_register_around_non_leaf_return();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_aligns_leaf_fixed_frame_to_aarch64_sp_boundary();
       status != 0) {
     return status;
   }

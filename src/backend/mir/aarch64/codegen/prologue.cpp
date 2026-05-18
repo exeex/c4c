@@ -12,6 +12,8 @@
 namespace c4c::backend::aarch64::codegen {
 namespace {
 
+constexpr std::size_t kStackPointerAlignmentBytes = 16;
+
 [[nodiscard]] bool has_simple_fixed_frame_plan(
     const module::FunctionLoweringContext& context) {
   const auto* frame = context.frame_plan;
@@ -72,8 +74,7 @@ struct FrameBoundaryFacts {
   const std::size_t prepared_frame_alignment =
       frame != nullptr ? frame->frame_alignment_bytes : 0;
   std::size_t frame_alignment =
-      non_leaf ? std::max<std::size_t>(prepared_frame_alignment, 16)
-               : prepared_frame_alignment;
+      std::max<std::size_t>(prepared_frame_alignment, kStackPointerAlignmentBytes);
   std::size_t prepared_frame_size = frame != nullptr ? frame->frame_size_bytes : 0;
   if (frame != nullptr) {
     for (const auto& saved : frame->saved_callee_registers) {
@@ -89,13 +90,9 @@ struct FrameBoundaryFacts {
       frame_alignment = std::max(frame_alignment, *placement.align_bytes);
     }
   }
-  if (non_leaf) {
-    frame_alignment = std::max<std::size_t>(frame_alignment, 16);
-  }
-
   FrameBoundaryFacts facts;
   facts.frame_alignment_bytes = frame_alignment;
-  facts.frame_size_bytes = prepared_frame_size;
+  facts.frame_size_bytes = align_to(prepared_frame_size, frame_alignment);
   if (non_leaf) {
     facts.preserves_link_register = true;
     facts.link_register_save_offset_bytes = prepared_frame_size;
