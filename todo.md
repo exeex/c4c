@@ -8,27 +8,23 @@ Current Step Title: Repair Core Pointer-Derived Lvalue Address Publication
 
 ## Just Finished
 
-Step 2 `00130.c` local i8 subobject load consumer is complete. The slice keeps
-the byte-width frame-slot memory emission (`strb`/`ldrb`) and adds a prepared
-fused-compare branch fallback for same-block sign-extension consumers of
-already-emitted byte loads. If the sign-extension source was not emitted by the
-ordinary memory path, the fallback reloads the prepared frame-slot byte from the
-same prepared memory access before extending and branching.
+Step 2 `00180.c` local subobject address-valued call argument publication is
+complete. The AArch64 local array-base GEP path now publishes nonzero local
+subobject addresses as real pointer `add` BIR values, and the same-block
+call-argument scalar producer retargets its ALU operands to already-emitted
+prepared registers so the call move consumes the concrete address instead of a
+raw named-register fallback.
 
-Generated evidence: `00130.c` prepared addressing maps `%lv.arr.7` and
-`%t32.addr, addr %lv.arr.4+3` to frame slot `#2` offset `0`, size `1`, align
-`1`. Generated AArch64 now stores `arr[1][3]` with `strb w9, [sp, #2]`,
-loads the direct and pointer-derived i8 checks with `ldrb`, sign-extends the
-loaded byte (`sxtb`), and emits the prepared compare/branch instead of falling
-through or consuming stale `w19`. For the `*q` path, assembly now includes
-`ldrb w10, [sp, #2]`, `sxtb w21, w10`, `cmp w21, #2`, and the prepared branch
-to the true/false labels.
+Generated evidence: `00180.c` semantic BIR now defines `%t5` before the
+`printf` call as `%t5 = bir.add ptr %lv.a.0, 1`. Generated AArch64 now emits
+`mov x20, sp`, then `add x13, x20, #1`, then moves the published address with
+`mov x1, x13` before `bl printf`. The previous stale `ldr w1, [sp, #16]` and
+uninitialized `x19` address source are gone.
 
 ## Suggested Next
 
-Keep `00180.c` and `00217.c` as separate packets. `00180.c` still needs the
-direct-call argument path to publish the nonzero local subobject address, and
-`00217.c` still needs the global/runtime pointer update route.
+Keep `00217.c` separated for the global/runtime pointer propagation packet.
+The focused local subobject address-valued call argument case is now passing.
 
 ## Watchouts
 
@@ -40,9 +36,9 @@ direct-call argument path to publish the nonzero local subobject address, and
   and related load-local forms.
 - `00130.c` now passes in the delegated subset; preserve the new byte-memory
   and emitted-byte fused-branch behavior when taking later pointer packets.
-- `00180.c` is blocked before AArch64 call-boundary consumption: `%t5` has no
-  BIR definition, so prealloc/call lowering cannot distinguish it from a stale
-  spill slot without an upstream call-argument address fact.
+- `00180.c` now has the missing `%t5` address fact and passes in the delegated
+  subset; preserve nonzero local array/subobject pointer publication through
+  call arguments.
 - Keep `00217.c` separated for a global/runtime pointer packet; it still needs
   `PointerAddress` propagation through load-compute-store and likely should not
   be widened into the local frame-slot patch.
@@ -56,8 +52,8 @@ Ran the delegated proof:
 ```
 
 `test_after.log` records strict pass-count improvement over `test_before.log`:
-`00032.c` and `00130.c` pass, while `00180.c` and `00217.c` still fail as
-separate deferred packets. The build portion passed, and the proof log
-preserves the failing subset details. `git diff --check` passed.
+`00032.c`, `00130.c`, and `00180.c` pass, while `00217.c` remains the separated
+global/runtime pointer failure. The build portion passed, and the proof log
+preserves the remaining `00217.c` runtime mismatch. `git diff --check` passed.
 Stale-process check found no stale `ctest`, `c4cll`, `qemu`, or build/test
 process beyond the check command itself.

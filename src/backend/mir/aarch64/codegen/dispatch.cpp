@@ -321,6 +321,12 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   const auto producer_index =
       find_same_block_scalar_producer(context, value.name, before_instruction_index);
   if (!producer_index.has_value() || context.bir_block == nullptr) {
+    if (auto prepared_register = make_named_prepared_result_register(context, value);
+        prepared_register.has_value()) {
+      record_emitted_scalar_register(scalar_state,
+                                     prepared_register->value_name,
+                                     *prepared_register);
+    }
     return true;
   }
   const auto* binary = std::get_if<bir::BinaryInst>(&context.bir_block->insts[*producer_index]);
@@ -366,6 +372,30 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
         scalar->result_register = *expected_result;
         if (scalar->scalar_alu.has_value()) {
           scalar->scalar_alu->result_register = *expected_result;
+          if (const auto lhs_name = prepared_named_value_id(context, binary->lhs);
+              lhs_name.has_value()) {
+            if (const auto lhs_register =
+                find_emitted_scalar_register(scalar_state, *lhs_name);
+                lhs_register.has_value()) {
+              auto lhs_operand = make_register_operand(*lhs_register);
+              scalar->scalar_alu->lhs = lhs_operand;
+              if (!scalar->inputs.empty()) {
+                scalar->inputs[0] = std::move(lhs_operand);
+              }
+            }
+          }
+          if (const auto rhs_name = prepared_named_value_id(context, binary->rhs);
+              rhs_name.has_value()) {
+            if (const auto rhs_register =
+                    find_emitted_scalar_register(scalar_state, *rhs_name);
+                rhs_register.has_value()) {
+              auto rhs_operand = make_register_operand(*rhs_register);
+              scalar->scalar_alu->rhs = rhs_operand;
+              if (scalar->inputs.size() > 1) {
+                scalar->inputs[1] = std::move(rhs_operand);
+              }
+            }
+          }
         }
         record_emitted_scalar_register(scalar_state,
                                        expected_result->value_name,

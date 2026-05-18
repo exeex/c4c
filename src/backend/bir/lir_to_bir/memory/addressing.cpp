@@ -983,6 +983,39 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         value_aliases[std::string(result_name)] =
             bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name));
       };
+  const auto publish_aarch64_local_array_base_address =
+      [&](std::string_view result_name) {
+        if (context_.target_profile.arch != c4c::TargetArch::Aarch64) {
+          return;
+        }
+        const auto array_base_it = local_pointer_array_bases.find(std::string(result_name));
+        if (array_base_it == local_pointer_array_bases.end() ||
+            array_base_it->second.element_slots.empty() ||
+            array_base_it->second.base_index == 0) {
+          return;
+        }
+        const auto first_slot_type_it =
+            local_slot_types.find(array_base_it->second.element_slots.front());
+        if (first_slot_type_it == local_slot_types.end()) {
+          return;
+        }
+        const auto element_size = type_size_bytes(first_slot_type_it->second);
+        if (element_size == 0) {
+          return;
+        }
+        lowered_insts->push_back(bir::BinaryInst{
+            .opcode = bir::BinaryOpcode::Add,
+            .result = bir::Value::named(bir::TypeKind::Ptr, std::string(result_name)),
+            .operand_type = bir::TypeKind::Ptr,
+            .lhs = bir::Value::named(bir::TypeKind::Ptr,
+                                     array_base_it->second.element_slots.front()),
+            .rhs = bir::Value::immediate_i64(
+                static_cast<std::int64_t>(array_base_it->second.base_index *
+                                          element_size)),
+        });
+        value_aliases[std::string(result_name)] =
+            bir::Value::named(bir::TypeKind::Ptr, std::string(result_name));
+      };
   if (gep.result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue ||
       (gep.ptr.kind() != c4c::codegen::lir::LirOperandKind::SsaValue &&
        gep.ptr.kind() != c4c::codegen::lir::LirOperandKind::Global)) {
@@ -1185,6 +1218,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       }
       local_pointer_slots[gep.result.str()] = *resolved_slot;
       publish_exact_local_pointer_owner(gep.result.str(), *resolved_slot);
+      publish_aarch64_local_array_base_address(gep.result.str());
       return true;
     }
     if (established_aggregate_subobject) {
@@ -1262,6 +1296,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       return true;
     }
     resolved_slot = local_pointer_slots[gep.result.str()];
+    publish_aarch64_local_array_base_address(gep.result.str());
   } else if (const auto handled = try_lower_local_pointer_array_base_gep(gep,
                                                                          value_aliases,
                                                                          type_decls,
@@ -1280,6 +1315,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
       return true;
     }
     resolved_slot = local_pointer_slots[gep.result.str()];
+    publish_aarch64_local_array_base_address(gep.result.str());
   } else if (const auto global_ptr_it = global_pointer_slots.find(gep.ptr.str());
              global_ptr_it != global_pointer_slots.end()) {
     auto base_address = global_ptr_it->second;
@@ -1585,6 +1621,18 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           };
           if (resolved_target->byte_offset == base_byte_offset) {
             value_aliases[gep.result.str()] = *base_pointer;
+          } else if (context_.target_profile.arch == c4c::TargetArch::Aarch64) {
+            const auto byte_delta =
+                resolved_target->byte_offset - static_cast<std::int64_t>(base_byte_offset);
+            lowered_insts->push_back(bir::BinaryInst{
+                .opcode = byte_delta < 0 ? bir::BinaryOpcode::Sub : bir::BinaryOpcode::Add,
+                .result = bir::Value::named(bir::TypeKind::Ptr, gep.result.str()),
+                .operand_type = bir::TypeKind::Ptr,
+                .lhs = *base_pointer,
+                .rhs = bir::Value::immediate_i64(byte_delta < 0 ? -byte_delta : byte_delta),
+            });
+            value_aliases[gep.result.str()] =
+                bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
           }
           return true;
         }
