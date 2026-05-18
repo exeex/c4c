@@ -1,8 +1,9 @@
 # AArch64 For-Loop Control Runtime Hang
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Discovered From: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -63,6 +64,25 @@ infrastructure.
   route.
 - Any later runtime or backend failure is classified truthfully and split
   rather than hidden behind timeout, expectation, runner, or allowlist changes.
+
+## Closure Notes
+
+Closed after Step 2 repair and close-gate review. Commits `dd5dfbe80` and
+`e3feea5e2` repaired the supported `for`/loop-control owner and fixed back the
+prepared branch-record boundary regression. `00007.c` no longer hangs, and
+generated AArch64 control flow has truthful conditional loop-exit paths.
+
+Focused backend proof covers divergent prepared/BIR label IDs outside the exact
+c-testsuite filename, including prepared branch records and branch-control
+lowering. The AArch64 backend runtime route for `00001.c` through `00007.c`
+is green with timeout-bounded proof, and `00001.c` through `00006.c` remain
+green.
+
+Close-time regression guard passed with regenerated matching-scope logs:
+`test_before.log` and `test_after.log` both cover the eight focused AArch64
+backend tests plus `c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006|00007)_c`,
+with 7 passed, 0 failed, and no new failures in the parsed final CTest
+summary.
 
 ## Reviewer Reject Signals
 
