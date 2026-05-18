@@ -383,6 +383,56 @@ prepare::PreparedBirModule prepare_stack_layout_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_direct_call_string_argument_module() {
+  bir::Module module;
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.call",
+      .name_id = module.names.texts.intern(".L.str.call"),
+      .bytes = "call-arg",
+      .align_bytes = 1,
+  });
+
+  bir::Function function;
+  function.name = "stack_layout_direct_call_string_argument_activation";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee = "puts",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.L.str.call")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
   const c4c::FunctionNameId function_name_id =
       find_function_name_id(prepared, "stack_layout_copy_coalescing_activation");
@@ -577,6 +627,37 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
   if (prepare::find_prepared_addressing(
           prepared, find_function_name_id(prepared, "missing_function")) != nullptr) {
     return fail("expected prepared addressing frame-fact bootstrap to reject missing functions");
+  }
+  return 0;
+}
+
+int check_direct_call_string_argument_materialization(
+    const prepare::PreparedBirModule& prepared) {
+  const c4c::FunctionNameId function_name_id =
+      find_function_name_id(prepared, "stack_layout_direct_call_string_argument_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  if (function_addressing == nullptr) {
+    return fail("expected direct-call string argument fixture to publish prepared addressing");
+  }
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  const auto* materialization =
+      prepare::find_prepared_address_materialization(*function_addressing,
+                                                     entry_block_label_id,
+                                                     0);
+  if (materialization == nullptr) {
+    return fail("expected direct call string argument to publish address materialization");
+  }
+  if (materialization->kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+      !materialization->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *materialization->result_value_name) !=
+          "@.L.str.call" ||
+      !materialization->text_name.has_value() ||
+      prepared.names.texts.lookup(*materialization->text_name) != ".L.str.call" ||
+      materialization->byte_offset != 0 ||
+      materialization->address_space != bir::AddressSpace::Default ||
+      materialization->has_tls_address_space ||
+      materialization->symbol_name.has_value()) {
+    return fail("expected direct call string argument materialization to preserve string identity");
   }
   return 0;
 }
@@ -4089,6 +4170,11 @@ int main() {
     return rc;
   }
   if (const int rc = check_prepared_addressing_frame_fact_bootstrap(copy_prepared); rc != 0) {
+    return rc;
+  }
+  const auto call_string_arg_prepared = prepare_direct_call_string_argument_module();
+  if (const int rc = check_direct_call_string_argument_materialization(call_string_arg_prepared);
+      rc != 0) {
     return rc;
   }
   if (const int rc = check_prepared_addressing_contract_activation(); rc != 0) {

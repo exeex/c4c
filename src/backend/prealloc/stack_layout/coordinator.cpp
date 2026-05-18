@@ -955,6 +955,71 @@ void append_string_constant_address_materialization(PreparedNameTables& names,
   });
 }
 
+[[nodiscard]] std::optional<std::string_view> direct_string_constant_name(
+    const bir::Module& module,
+    const bir::Value& value) {
+  if (value.type != bir::TypeKind::Ptr || value.kind != bir::Value::Kind::Named ||
+      value.name.empty() || value.name.front() != '@') {
+    return std::nullopt;
+  }
+  std::string_view text_name(value.name.data() + 1, value.name.size() - 1);
+  for (const auto& string_constant : module.string_constants) {
+    if (string_constant.name == text_name) {
+      return text_name;
+    }
+  }
+  return std::nullopt;
+}
+
+void append_call_argument_address_materialization(PreparedNameTables& names,
+                                                  PreparedAddressingFunction& function_addressing,
+                                                  std::vector<PrepareNote>& notes,
+                                                  const bir::Module& module,
+                                                  const c4c::TargetProfile& target_profile,
+                                                  FunctionNameId function_name_id,
+                                                  BlockLabelId block_label_id,
+                                                  std::size_t inst_index,
+                                                  const bir::Value& argument) {
+  if (argument.type != bir::TypeKind::Ptr || argument.kind != bir::Value::Kind::Named) {
+    return;
+  }
+  if (argument.pointer_symbol_link_name_id != kInvalidLinkName) {
+    append_direct_global_address_materialization(
+        names,
+        function_addressing,
+        notes,
+        module,
+        target_profile,
+        function_name_id,
+        block_label_id,
+        inst_index,
+        argument);
+    return;
+  }
+
+  const auto text_name = direct_string_constant_name(module, argument);
+  if (!text_name.has_value()) {
+    return;
+  }
+  const auto prepared_text_name = resolve_prepared_text_id(names, module, *text_name);
+  if (!prepared_text_name.has_value()) {
+    append_missing_address_materialization_fact(
+        notes,
+        "prepared string-constant call-argument address materialization for '" +
+            argument.name + "' is missing a string text identity");
+    return;
+  }
+  function_addressing.address_materializations.push_back(PreparedAddressMaterialization{
+      .function_name = function_name_id,
+      .block_label = block_label_id,
+      .inst_index = inst_index,
+      .kind = PreparedAddressMaterializationKind::StringConstant,
+      .result_value_name = prepared_named_value_id(names, argument),
+      .text_name = *prepared_text_name,
+      .address_space = bir::AddressSpace::Default,
+  });
+}
+
 [[nodiscard]] std::optional<BlockLabelId> resolve_label_address_target(
     PreparedNameTables& names,
     const bir::NameTables& bir_names,
@@ -1048,6 +1113,17 @@ void append_address_materializations(PreparedNameTables& names,
         if (call->result.has_value()) {
           append_direct_global_address_materialization(
               names, function_addressing, notes, module, target_profile, function_name_id, block_label_id, inst_index, *call->result);
+        }
+        for (const auto& argument : call->args) {
+          append_call_argument_address_materialization(names,
+                                                       function_addressing,
+                                                       notes,
+                                                       module,
+                                                       target_profile,
+                                                       function_name_id,
+                                                       block_label_id,
+                                                       inst_index,
+                                                       argument);
         }
       } else if (const auto* load_local = std::get_if<bir::LoadLocalInst>(&inst)) {
         append_direct_global_address_materialization(
