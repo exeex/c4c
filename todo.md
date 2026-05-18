@@ -8,12 +8,14 @@ Current Step Title: Repair Local Operand Materialization
 
 ## Just Finished
 
-Step 2 local-materialization repair is complete. AArch64 local stores now select
-immediate store records from authoritative prepared frame-slot address facts,
+Step 2 local-materialization repair is complete, including the reviewer-found
+immediate-store support boundary. AArch64 local stores now select immediate
+store records from authoritative prepared frame-slot address facts,
 unstructured local load/store instructions may use prepared size/offset facts,
-immediate store materialization uses the reserved MIR scratch pool (`w9`/`x9`)
-instead of indirect-call/linker scratch registers, and local loads feed the
-prepared destination register before scalar ALU emission.
+and immediate store materialization uses valid `movz`/`movk` sequences in the
+reserved MIR scratch pool (`w9`/`x9`) instead of indirect-call/linker scratch
+registers. Local loads then feed the prepared destination register before
+scalar ALU emission.
 
 Changed files:
 
@@ -29,7 +31,7 @@ then performs the subtraction:
 
 ```asm
 main:
-    mov w9, #4
+    movz w9, #4
     str w9, [sp]
     ldr w13, [sp]
     sub w0, w13, #4
@@ -38,8 +40,11 @@ main:
 
 Focused memory coverage proves unstructured prepared local immediate stores
 select without fabricating stored value homes and print through the reserved MIR
-scratch register (`w9`). The runtime smoke route for `00001.c`, `00002.c`, and
-`00003.c` passes.
+scratch register (`w9`). It now uses the non-trivial constant `123456789` and
+expects `movz w9, #52501` plus `movk w9, #1883, lsl #16` before the `str`, so
+the selected immediate-store subset no longer claims a single invalid
+`mov #imm` can materialize arbitrary constants. The runtime smoke route for
+`00001.c`, `00002.c`, and `00003.c` passes.
 
 ## Suggested Next
 
@@ -67,8 +72,9 @@ set -o pipefail; { cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DEN
   vocabulary; prepared structured placement conversion now has its own
   prealloc-aligned caller-saved mapping.
 - The immediate-store printer currently covers the selected 4-byte and 8-byte
-  integer store subset. Smaller local widths should remain fail-closed until
-  byte/halfword store mnemonics are modeled.
+  integer store subset with `movz`/`movk` scratch materialization. Smaller
+  local widths should remain fail-closed until byte/halfword store mnemonics
+  are modeled.
 - Do not borrow `x16`/`x17` for generic materialization; those remain
   indirect-call/linker scratch registers. Use reserved MIR scratch (`x9`/`x10`)
   for this class of printer materialization.

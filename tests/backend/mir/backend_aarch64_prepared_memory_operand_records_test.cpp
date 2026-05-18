@@ -642,7 +642,7 @@ int frame_slot_store_conversion_materializes_immediate_source() {
   auto fixture = make_fixture();
   const bir::StoreLocalInst store{
       .slot_id = c4c::SlotNameId{5},
-      .value = bir::Value::immediate_i32(4),
+      .value = bir::Value::immediate_i32(123456789),
       .byte_offset = 16,
       .align_bytes = 4,
   };
@@ -677,10 +677,11 @@ int frame_slot_store_conversion_materializes_immediate_source() {
     return fail("expected immediate store instruction to select");
   }
   const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
-  if (!printed.ok || printed.instruction_lines.size() != 2 ||
-      printed.instruction_lines[0] != "mov w9, #4" ||
-      printed.instruction_lines[1] != "str w9, [sp, #16]") {
-    return fail("expected immediate store to materialize through a scratch register before str");
+  if (!printed.ok || printed.instruction_lines.size() != 3 ||
+      printed.instruction_lines[0] != "movz w9, #52501" ||
+      printed.instruction_lines[1] != "movk w9, #1883, lsl #16" ||
+      printed.instruction_lines[2] != "str w9, [sp, #16]") {
+    return fail("expected non-trivial immediate store to materialize through scratch before str");
   }
   return 0;
 }
