@@ -183,6 +183,16 @@ Durable inventory findings to preserve:
   floating/conversion/string-only cases, and broad aggregate/function-pointer
   behavior. The active lifecycle state switched to
   `ideas/open/293_aarch64_side_effect_control_value_publication_authority.md`.
+- After side-effect/control-value publication authority completed,
+  `ideas/open/293_aarch64_side_effect_control_value_publication_authority.md`
+  moved to
+  `ideas/closed/293_aarch64_side_effect_control_value_publication_authority.md`.
+  The focused boundary subset `00164|00169|00183|00202` passed. The remaining
+  broader-sample failures `00159`, `00168`, and `00193` are closed-owner
+  overlap unless fresh generated-code evidence contradicts that separation,
+  while `00217` remains pointer/address/string-heavy. This umbrella inventory
+  should reactivate for a post-293 classification pass and choose the next
+  focused semantic owner instead of closing as complete.
 
 ## Reviewer Reject Signals
 
