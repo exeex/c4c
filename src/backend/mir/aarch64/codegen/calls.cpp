@@ -1,4 +1,5 @@
 #include "calls.hpp"
+#include "memory.hpp"
 #include "variadic.hpp"
 
 #include <cstddef>
@@ -314,6 +315,89 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 }
 
+[[nodiscard]] std::optional<abi::RegisterView> scalar_integer_register_view_from_size(
+    std::size_t size_bytes) {
+  if (size_bytes > 0 && size_bytes <= 4) {
+    return abi::RegisterView::W;
+  }
+  if (size_bytes == 8) {
+    return abi::RegisterView::X;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      source_home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedMemoryAccess* source_access = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.result_value_name == std::optional<c4c::ValueNameId>{source_home.value_name}) {
+      if (source_access != nullptr) {
+        return std::nullopt;
+      }
+      source_access = &access;
+    }
+  }
+  if (source_access == nullptr ||
+      source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !source_access->address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = find_frame_slot_by_id(context.function.prepared->stack_layout,
+                                           *source_access->address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = source_access->function_name,
+      .block_label = source_access->block_label,
+      .instruction_index = source_access->inst_index,
+      .result_value_id = argument.source_value_id,
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = source_access->address.frame_slot_id,
+      .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
+                     source_access->address.byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = source_access->address.size_bytes,
+      .align_bytes = source_access->address.align_bytes,
+      .address_space = source_access->address_space,
+      .is_volatile = source_access->is_volatile,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -502,6 +586,54 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
         selected_f128_argument_move ? source_f128_carrier : nullptr;
   }
 
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      binding != nullptr &&
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
+    auto source = make_frame_slot_call_argument_source(
+        context, *argument, *source_home, instruction_index);
+    auto destination = make_register_operand_from_prepared_authority(
+        binding->destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : binding->destination_register_name,
+        binding->destination_register_placement.has_value()
+            ? binding->destination_register_placement
+            : argument->destination_register_placement,
+        argument->destination_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : argument->source_value_id,
+        source_home->value_name,
+        binding->destination_contiguous_width,
+        binding->destination_occupied_register_names,
+        source.has_value()
+            ? scalar_integer_register_view_from_size(source->size_bytes)
+            : std::nullopt,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 frame-slot call-argument move requires a prepared load access for the source value");
+      return std::nullopt;
+    }
+    move_record.source_memory = *source;
+    move_record.destination_register = *destination;
+  }
+
   if (selected_f128_constant_argument_move) {
     auto destination = make_register_operand_from_prepared_authority(
         binding->destination_register_name,
@@ -561,7 +693,8 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       !selected_f128_constant_argument_move &&
-      (!move_record.source_register.has_value() ||
+      ((!move_record.source_register.has_value() &&
+        !move_record.source_memory.has_value()) ||
        !move_record.destination_register.has_value())) {
     append_call_diagnostic(
         diagnostics,
@@ -1402,7 +1535,8 @@ std::vector<MachineEffectResource> effects_from_operands(
 MachineNodeStatusRecord call_boundary_move_selection_status(
     const CallBoundaryMoveInstructionRecord& instruction) {
   if (instruction.source_bundle == nullptr ||
-      (instruction.source_move == nullptr && !instruction.source_immediate.has_value()) ||
+      (instruction.source_move == nullptr && !instruction.source_immediate.has_value() &&
+       !instruction.source_memory.has_value()) ||
       instruction.function_name == c4c::kInvalidFunctionName) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
@@ -1428,7 +1562,8 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .diagnostic =
             "call-boundary move node is outside the selected register call-boundary move subset"};
   }
-  if ((!instruction.source_register.has_value() && !instruction.source_immediate.has_value()) ||
+  if ((!instruction.source_register.has_value() && !instruction.source_immediate.has_value() &&
+       !instruction.source_memory.has_value()) ||
       !instruction.destination_register.has_value()) {
     const bool selected_f128_constant_argument_move =
         selected_register_argument_move &&
@@ -1461,6 +1596,21 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
   if (instruction.source_immediate.has_value() &&
       instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (instruction.source_memory.has_value() &&
+      instruction.source_memory->support == MemoryOperandSupportKind::Prepared &&
+      instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+      instruction.source_memory->frame_slot_id.has_value() &&
+      instruction.source_memory->byte_offset_is_prepared_snapshot &&
+      instruction.source_memory->can_use_base_plus_offset &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (instruction.source_memory.has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared frame-slot source and GPR destination"};
   }
   if (!instruction.source_register.has_value()) {
     return MachineNodeStatusRecord{
@@ -1550,6 +1700,10 @@ InstructionRecord make_call_boundary_move_instruction(
   }
   if (instruction.source_register.has_value()) {
     const auto source = make_register_operand(*instruction.source_register);
+    operands.push_back(source);
+    uses.push_back(effect_from_operand(source));
+  } else if (instruction.source_memory.has_value()) {
+    const auto source = make_memory_operand(*instruction.source_memory);
     operands.push_back(source);
     uses.push_back(effect_from_operand(source));
   } else if (instruction.source_immediate.has_value()) {
@@ -1707,15 +1861,36 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
     const InstructionRecord& instruction,
     const CallBoundaryMoveInstructionRecord& move) {
   if (move.source_bundle == nullptr ||
-      (move.source_move == nullptr && !move.source_immediate.has_value())) {
+      (move.source_move == nullptr && !move.source_immediate.has_value() &&
+       !move.source_memory.has_value())) {
     return target_unsupported(bad_header(instruction) +
                               "call-boundary move node is missing prepared move provenance");
   }
-  if ((!move.source_register.has_value() && !move.source_immediate.has_value()) ||
+  if ((!move.source_register.has_value() && !move.source_immediate.has_value() &&
+       !move.source_memory.has_value()) ||
       !move.destination_register.has_value()) {
     return target_unsupported(
         bad_header(instruction) +
         "call-boundary move node requires prepared register source and destination");
+  }
+  if (move.source_memory.has_value()) {
+    if (move.source_memory->support != MemoryOperandSupportKind::Prepared ||
+        move.source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        !move.source_memory->frame_slot_id.has_value() ||
+        !move.source_memory->byte_offset_is_prepared_snapshot ||
+        !move.source_memory->can_use_base_plus_offset) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "call-boundary frame-slot move requires a prepared frame-slot address");
+    }
+    const auto address = memory_address(*move.source_memory);
+    if (address.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "call-boundary frame-slot address is not printable");
+    }
+    std::ostringstream out;
+    out << "ldr " << register_name(*move.destination_register) << ", " << address;
+    return target_printed({out.str()});
   }
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {

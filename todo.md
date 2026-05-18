@@ -10,43 +10,44 @@ Current Step Title: Repair The First Scalar Publication Primitive
 
 ## Just Finished
 
-Step 2 repaired the regression from the first scalar publication primitive.
-The immediate return-publication fallback in
-`src/backend/mir/aarch64/codegen/alu.cpp` is now limited to the semantic stale
-publication case: a rematerializable immediate return result whose ALU source
-depends on a named authoritative immediate that has not been emitted as a
-selected scalar register. This preserves selected public `add`/`sub` chains
-while keeping the `src/00012.c` repair.
+Step 2 repaired the prepared scalar frame-slot source to AArch64
+call-argument ABI-register primitive.
 
-The packet also fixed the directly required AArch64 call-boundary helper in
-`src/backend/mir/aarch64/codegen/calls.cpp`: immediate GPR call arguments now
-prefer the typed prepared register placement when materializing the ABI
-destination, so the internal return-lowering proof selects `w0` for an I32
-immediate argument instead of losing the move.
+`src/backend/mir/aarch64/codegen/calls.cpp` now lowers a prepared GPR
+call-argument move whose source value home is `stack_slot` and whose call plan
+source encoding is `frame_slot` by building a prepared frame-slot memory source
+from the value's authoritative load access. The lowering deliberately resolves
+the current stack-layout slot from prepared addressing instead of blindly using
+the logical call-plan `source_stack_offset_bytes`.
 
-`src/00012.c` remains passing. Generated assembly still contains authoritative
-return publication:
+`src/backend/mir/aarch64/codegen/instruction.hpp` now lets
+`CallBoundaryMoveInstructionRecord` carry that source memory operand, and the
+call-boundary printer emits a load into the destination ABI register.
+
+For `src/00056.c`, the third `printf` call now materializes the second scalar
+variadic value before the call:
 
 ```asm
-mov w0, #0
-add w0, w0, #0
-ret
+mov x0, x21
+mov x1, x13
+ldr w2, [sp, #12]
+bl printf
 ```
 
-The public backend regression cases again print the selected chains:
-`return_add.c` emits `mov w0, #2` then `add w0, w0, #3`, and
-`return_add_sub_chain.c` emits `mov w0, #2`, `add w0, w0, #3`, then
-`sub w0, w0, #1`. The focused subset now has `00012.c` and `00211.c` passing;
-`00009.c`, `00056.c`, `00156.c`, and `00161.c` remain failing in other scalar
+This uses the resolved `%t8` load access for local `d` at frame slot `#3`
+offset `12`; it does not load the call-plan logical `source_stack_offset=24`,
+which aliases the saved `x21` slot in the current frame layout.
+
+The focused subset now has `00012.c`, `00056.c`, and `00211.c` passing.
+`00009.c`, `00156.c`, and `00161.c` remain failing in other scalar
 publication/control-value subfamilies.
 
 ## Suggested Next
 
-Continue Step 2 with the next smallest shared primitive in
-`src/backend/mir/aarch64/codegen/calls.cpp`: materialize prepared scalar
-frame-slot sources feeding call-argument ABI registers. Use `src/00056.c` as
-the first representative and prove that the third `printf` call materializes
-the authoritative `x2`/`w2` value before `bl printf`.
+Continue Step 2 by locating the next smallest shared owner among the remaining
+representatives `src/00009.c`, `src/00156.c`, and `src/00161.c`. Keep the
+scope on scalar expression/control-value publication; do not widen into
+pointer/aggregate address or timeout owners.
 
 ## Watchouts
 
@@ -59,11 +60,13 @@ the authoritative `x2`/`w2` value before `bl printf`.
   materialization, not the closed string/global address owner.
 - `src/00211.c` now passes after the immediate GPR call-argument placement fix;
   do not spend the next packet on that representative unless it regresses.
-- `src/00056.c`'s prepared call argument names `source_encoding=frame_slot` and
-  `source_stack_offset=24`, but the generated local store for `d` is currently
-  at `[sp, #12]`; verify the authoritative stack-slot offset model before
-  printing a load, because blindly loading `[sp, #24]` would read the saved
-  `x21` slot in the current assembly layout.
+- `src/00056.c` now passes because the call-boundary load uses the prepared
+  memory access for `%t8` (`frame_slot=#3`, current offset `12`) rather than
+  the logical storage-plan spill slot `#6+stack24`.
+- Prepared storage plans can name logical spill slots that are not current
+  printable frame slots. For future frame-slot publication work, prefer
+  prepared addressing plus stack-layout resolution when the value is produced by
+  a load access.
 - `clang-format` is not installed in this environment.
 
 ## Proof
@@ -71,20 +74,15 @@ the authoritative `x2`/`w2` value before `bl printf`.
 Ran exactly:
 
 ```sh
-{ cmake --build build -j && ctest --test-dir build -R '^(backend_aarch64_return_lowering|backend_cli_aarch64_asm_external_return_add_smoke|backend_cli_aarch64_asm_external_return_add_sub_chain_smoke)$' -j 4 --output-on-failure; } > test_after.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: passed, 3/3. Proof log: `test_after.log`.
+Result: failed overall with 3/6 passing. `00012`, `00056`, and `00211` passed;
+`00009` failed with runtime nonzero, while `00156` and `00161` failed with
+runtime mismatch. Proof log: `test_after.log`.
 
-Also ran exactly:
-
-```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_scalar_step2_regression_fix_subset.ctest.log 2>&1
-```
-
-Result: failed overall with 2/6 passing. `00012` and `00211` passed; `00009`,
-`00056`, `00156`, and `00161` still failed. Focused subset log:
-`/tmp/c4c_aarch64_scalar_step2_regression_fix_subset.ctest.log`.
+Supporting local assembly check for `00056`:
+`/tmp/c4c_aarch64_scalar_step2_00056.after.s`.
 
 Required process check:
 
