@@ -1,6 +1,6 @@
 # AArch64 Call Argument Register Authority
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Split From: ideas/closed/289_aarch64_function_pointer_indirect_call_values.md
 
@@ -43,6 +43,30 @@ emitted move uses `x20`.
 - Existing indirect function-pointer call shape remains indirect and valid.
 - No progress is claimed through expectation, runner, allowlist, timeout, or
   unsupported-classification changes.
+
+## Closure Summary
+
+Closed on 2026-05-18 after Step 3 repair evidence and Step 4 owner-boundary
+validation showed this source idea complete.
+
+- `src/00210.c` passes under the delegated owner proof.
+- Focused call-boundary backend proof passed.
+- The backend bucket passed 139/139 in the repair packet.
+- Generated `src/00210.c` AArch64 assembly moves the authoritative `.str0`
+  register `x21` into ABI destination register `x0` for `printf`.
+- Attributed function-pointer calls remain semantic indirect calls through
+  `actual_function` via `blr x20`.
+- No test expectation, runner, allowlist, unsupported-classification, timeout,
+  parser, or sema changes were used for acceptance.
+
+Close validation used existing root proof logs without modifying them:
+
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+  rejected only because both matching close-scope logs already passed one test
+  and the pass count did not strictly increase.
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+  passed with `passed=1 failed=0 total=1` before and after, no new failing
+  tests, and no new long tests.
 
 ## Reviewer Reject Signals
 
