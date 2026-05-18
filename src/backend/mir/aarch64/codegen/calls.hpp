@@ -37,6 +37,11 @@ effects_from_prepared_call_preserved_values(
     const prepare::PreparedCallPlan& call_plan,
     std::size_t instruction_index,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::vector<module::MachineInstruction> lower_value_moves(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedMovePhase phase,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics);
 [[nodiscard]] std::optional<module::MachineInstruction> lower_prepared_call_instruction(
     const module::BlockLoweringContext& context,
     const bir::CallInst& call_inst,

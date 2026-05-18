@@ -684,6 +684,41 @@ InstructionDispatchResult dispatch_prepared_block(
   }
 
   BlockScalarLoweringState scalar_state;
+  auto record_call_boundary_destination =
+      [&](const module::MachineInstruction& instruction) {
+    const auto* move_record =
+        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+    if (move_record != nullptr && move_record->destination_register.has_value()) {
+      record_emitted_scalar_register(scalar_state,
+                                     move_record->destination_register->value_name,
+                                     *move_record->destination_register);
+    }
+  };
+  auto retarget_call_boundary_source_to_emitted_scalar =
+      [&](module::MachineInstruction& instruction) {
+    auto* move_record =
+        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+    if (move_record == nullptr || !move_record->source_memory.has_value() ||
+        !move_record->source_memory->result_value_name.has_value()) {
+      return;
+    }
+    const auto emitted = find_emitted_scalar_register(
+        scalar_state,
+        *move_record->source_memory->result_value_name);
+    if (!emitted.has_value()) {
+      return;
+    }
+    move_record->source_register = *emitted;
+    move_record->source_memory.reset();
+  };
+  for (auto& block_entry_move : lower_value_moves(
+           context,
+           prepare::PreparedMovePhase::BlockEntry,
+           0,
+           diagnostics)) {
+    record_call_boundary_destination(block_entry_move);
+    block.instructions.push_back(std::move(block_entry_move));
+  }
   if (context.bir_block != nullptr) {
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
@@ -730,6 +765,7 @@ InstructionDispatchResult dispatch_prepared_block(
           auto before_call_moves =
               lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);
           for (auto& before_call_move : before_call_moves) {
+            retarget_call_boundary_source_to_emitted_scalar(before_call_move);
             block.instructions.push_back(std::move(before_call_move));
           }
         }

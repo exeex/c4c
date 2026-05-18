@@ -1,6 +1,7 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
 #include "float_ops.hpp"
+#include "memory.hpp"
 #include "operands.hpp"
 
 #include <cstdint>
@@ -51,6 +52,31 @@ namespace mir = c4c::backend::mir;
 [[nodiscard]] bool is_plain_add_sub_immediate(const ImmediateOperand& operand) {
   return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
          operand.signed_value <= 4095;
+}
+
+[[nodiscard]] bool is_plain_logical_immediate(const ImmediateOperand& operand) {
+  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
+         operand.signed_value <= 4095;
+}
+
+[[nodiscard]] bool scalar_alu_operation_accepts_immediate(
+    ScalarAluOperationKind operation,
+    const ImmediateOperand& operand) {
+  switch (operation) {
+    case ScalarAluOperationKind::Add:
+    case ScalarAluOperationKind::Sub:
+      return is_plain_add_sub_immediate(operand);
+    case ScalarAluOperationKind::And:
+    case ScalarAluOperationKind::Or:
+    case ScalarAluOperationKind::Xor:
+      return is_plain_logical_immediate(operand);
+    case ScalarAluOperationKind::Mul:
+    case ScalarAluOperationKind::Div:
+    case ScalarAluOperationKind::LogicalShiftRight:
+    case ScalarAluOperationKind::Deferred:
+      return false;
+  }
+  return false;
 }
 
 [[nodiscard]] std::optional<unsigned> integer_scalar_bit_width(bir::TypeKind type) {
@@ -218,7 +244,7 @@ namespace mir = c4c::backend::mir;
   return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
 }
 
-[[nodiscard]] std::optional<std::string> scalar_gp_scratch_name(
+[[nodiscard]] std::optional<RegisterOperand> scalar_gp_scratch_register(
     abi::RegisterView view,
     const std::vector<const RegisterOperand*>& occupied) {
   for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
@@ -235,10 +261,24 @@ namespace mir = c4c::backend::mir;
       }
     }
     if (!aliases_occupied) {
-      return abi::register_name(*viewed);
+      return RegisterOperand{
+          .reg = *viewed,
+          .role = RegisterOperandRole::ReservedMirScratch,
+          .expected_view = view,
+      };
     }
   }
   return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> scalar_gp_scratch_name(
+    abi::RegisterView view,
+    const std::vector<const RegisterOperand*>& occupied) {
+  const auto scratch = scalar_gp_scratch_register(view, occupied);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  return abi::register_name(scratch->reg);
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
@@ -449,6 +489,76 @@ namespace mir = c4c::backend::mir;
       .contiguous_width = storage.contiguous_width,
       .occupied_register_references = occupied_register_references(*scratch),
       .occupied_registers = occupied_register_views(*scratch),
+  };
+}
+
+[[nodiscard]] const prepare::PreparedFrameSlot* find_scalar_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_prepared_scalar_load_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedMemoryAccess* source_access = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.result_value_name == std::optional<c4c::ValueNameId>{home.value_name}) {
+      if (source_access != nullptr) {
+        return std::nullopt;
+      }
+      source_access = &access;
+    }
+  }
+  if (source_access == nullptr ||
+      source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !source_access->address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = find_scalar_frame_slot_by_id(
+      context.function.prepared->stack_layout,
+      *source_access->address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = source_access->function_name,
+      .block_label = source_access->block_label,
+      .instruction_index = source_access->inst_index,
+      .result_value_id = home.value_id,
+      .result_value_name = home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = source_access->address.frame_slot_id,
+      .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
+                     source_access->address.byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = source_access->address.size_bytes,
+      .align_bytes = source_access->address.align_bytes,
+      .address_space = source_access->address_space,
+      .is_volatile = source_access->is_volatile,
+      .can_use_base_plus_offset = true,
   };
 }
 
@@ -693,6 +803,12 @@ namespace mir = c4c::backend::mir;
   if (emitted.has_value()) {
     return make_register_operand(*emitted);
   }
+  if (home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+    auto source = make_prepared_scalar_load_source(context, *home);
+    if (source.has_value()) {
+      return make_memory_operand(*source);
+    }
+  }
   return make_named_scalar_operand(value, context, diagnostics);
 }
 
@@ -812,6 +928,35 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_floating_operation) {
     return make_scalar_float_alu_print_lines(scalar);
   }
+  auto materialize_scalar_register_source =
+      [&](const OperandRecord& operand,
+          const RegisterOperand* reg,
+          const MemoryOperand* memory,
+          abi::RegisterView view,
+          std::vector<const RegisterOperand*> occupied,
+          std::vector<std::string>& lines) -> std::optional<std::string> {
+    if (operand.kind == OperandKind::Register && reg != nullptr) {
+      return scalar_gp_register_name_with_view(*reg, view);
+    }
+    if (operand.kind != OperandKind::Memory || memory == nullptr ||
+        memory->base_kind != MemoryBaseKind::FrameSlot ||
+        memory->support != MemoryOperandSupportKind::Prepared ||
+        !memory->can_use_base_plus_offset ||
+        !memory->byte_offset_is_prepared_snapshot) {
+      return std::nullopt;
+    }
+    const auto address = memory_address(*memory);
+    const auto scratch = scalar_gp_scratch_register(view, occupied);
+    if (address.empty() || !scratch.has_value()) {
+      return std::nullopt;
+    }
+    const std::string scratch_name = abi::register_name(scratch->reg);
+    std::ostringstream load;
+    load << "ldr " << scratch_name << ", " << address;
+    lines.push_back(load.str());
+    return scratch_name;
+  };
+
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
       (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::Mul ||
        scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SDiv ||
@@ -829,38 +974,60 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     }
     const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
     const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+    const auto* lhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[1].payload);
     const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+    const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
+                                 lhs_register != nullptr;
+    const bool lhs_is_memory = scalar.inputs[0].kind == OperandKind::Memory &&
+                               lhs_memory != nullptr;
     const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
                                  rhs_register != nullptr;
+    const bool rhs_is_memory = scalar.inputs[1].kind == OperandKind::Memory &&
+                               rhs_memory != nullptr;
     const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
                                   rhs_immediate != nullptr;
-    if (scalar.inputs[0].kind != OperandKind::Register || lhs_register == nullptr ||
-        (!rhs_is_register && !rhs_is_immediate) || !scalar.result_register.has_value()) {
+    if ((!lhs_is_register && !lhs_is_memory) ||
+        (!rhs_is_register && !rhs_is_memory && !rhs_is_immediate) ||
+        !scalar.result_register.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar mul/div/rem node requires register lhs, register/immediate rhs, and result register"};
+                  "scalar mul/div/rem node requires register/memory lhs, register/memory/immediate rhs, and result register"};
     }
     const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
-    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *operand_view);
-    if (!result.has_value() || !lhs.has_value()) {
+    if (!result.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar mul/div/rem node has incomplete printable register facts"};
+                  "scalar mul/div/rem node has incomplete printable result register facts"};
     }
 
     const bool is_remainder_opcode = alu.source_binary_opcode == bir::BinaryOpcode::SRem;
     std::vector<std::string> lines;
+    std::vector<const RegisterOperand*> lhs_occupied;
+    const auto lhs = materialize_scalar_register_source(
+        scalar.inputs[0], lhs_register, lhs_memory, *operand_view, lhs_occupied, lines);
+    if (!lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar mul/div/rem node has incomplete printable lhs facts"};
+    }
     std::optional<std::string> rhs;
-    if (rhs_is_register) {
-      rhs = scalar_gp_register_name_with_view(*rhs_register, *operand_view);
+    if (rhs_is_register || rhs_is_memory) {
+      std::vector<const RegisterOperand*> rhs_occupied{&*scalar.result_register};
+      if (lhs_register != nullptr) {
+        rhs_occupied.push_back(lhs_register);
+      }
+      rhs = materialize_scalar_register_source(
+          scalar.inputs[1], rhs_register, rhs_memory, *operand_view, rhs_occupied, lines);
       if (!rhs.has_value()) {
         return {.lines = std::nullopt,
                 .diagnostic =
-                    "scalar mul/div/rem node has incomplete printable rhs register facts"};
+                    "scalar mul/div/rem node has incomplete printable rhs facts"};
       }
     } else {
-      const bool result_aliases_lhs = scalar_registers_alias(*scalar.result_register,
-                                                            *lhs_register);
+      const bool result_aliases_lhs =
+          lhs_register != nullptr && scalar_registers_alias(*scalar.result_register,
+                                                           *lhs_register);
       const auto scratch = scalar_gp_scratch_name(
           *operand_view,
           is_remainder_opcode || result_aliases_lhs
@@ -905,7 +1072,8 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
         divisor = scratch;
       }
       std::optional<std::string> quotient = result;
-      if (scalar_registers_alias(*scalar.result_register, *lhs_register)) {
+      if (lhs_register != nullptr &&
+          scalar_registers_alias(*scalar.result_register, *lhs_register)) {
         const auto scratch = scalar_gp_scratch_name(
             *operand_view,
             rhs_register == nullptr
@@ -996,49 +1164,76 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     return {.lines = std::nullopt,
             .diagnostic = "scalar unsigned reduction operation is not printable"};
   }
-  if (instruction.opcode != MachineOpcode::Add && instruction.opcode != MachineOpcode::Sub) {
+  if (instruction.opcode != MachineOpcode::Add &&
+      instruction.opcode != MachineOpcode::Sub &&
+      instruction.opcode != MachineOpcode::And &&
+      instruction.opcode != MachineOpcode::Or &&
+      instruction.opcode != MachineOpcode::Xor) {
     return {.lines = std::nullopt,
-            .diagnostic = "scalar node opcode is outside the printable add/sub subset"};
+            .diagnostic = "scalar node opcode is outside the printable add/sub/bitwise subset"};
   }
   if (scalar.inputs.size() != 2) {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar add/sub node requires exactly two register or immediate operands"};
+                "scalar add/sub/bitwise node requires exactly two register or immediate operands"};
   }
 
   const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
   const auto* rhs_register = std::get_if<RegisterOperand>(&scalar.inputs[1].payload);
+  const auto* lhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[0].payload);
+  const auto* rhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[1].payload);
   const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
   const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
   const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
                                lhs_register != nullptr;
   const bool rhs_is_register = scalar.inputs[1].kind == OperandKind::Register &&
                                rhs_register != nullptr;
+  const bool lhs_is_memory = scalar.inputs[0].kind == OperandKind::Memory &&
+                             lhs_memory != nullptr;
+  const bool rhs_is_memory = scalar.inputs[1].kind == OperandKind::Memory &&
+                             rhs_memory != nullptr;
   const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
                                 lhs_immediate != nullptr;
   const bool rhs_is_immediate = scalar.inputs[1].kind == OperandKind::Immediate &&
                                 rhs_immediate != nullptr;
-  if ((!lhs_is_register && !lhs_is_immediate) || (!rhs_is_register && !rhs_is_immediate)) {
-    return {.lines = std::nullopt,
-            .diagnostic = "scalar add/sub node requires register or immediate operands"};
-  }
-  if ((lhs_is_immediate && !is_plain_add_sub_immediate(*lhs_immediate)) ||
-      (rhs_is_immediate && !is_plain_add_sub_immediate(*rhs_immediate))) {
+  if ((!lhs_is_register && !lhs_is_memory && !lhs_is_immediate) ||
+      (!rhs_is_register && !rhs_is_memory && !rhs_is_immediate)) {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar add/sub immediate operand is outside the plain #imm encoding range 0..4095"};
+                "scalar add/sub/bitwise node requires register, memory, or immediate operands"};
   }
-
-  const auto mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
-  if (mnemonic.empty()) {
+  if ((lhs_is_memory && lhs_memory->base_kind != MemoryBaseKind::FrameSlot) ||
+      (rhs_is_memory && rhs_memory->base_kind != MemoryBaseKind::FrameSlot)) {
     return {.lines = std::nullopt,
-            .diagnostic = "scalar add/sub mnemonic is not printable"};
+            .diagnostic =
+                "scalar add/sub/bitwise memory operands require prepared frame-slot sources"};
   }
   const auto& alu = *scalar.scalar_alu;
+  if ((lhs_is_immediate &&
+       !scalar_alu_operation_accepts_immediate(alu.operation, *lhs_immediate)) ||
+      (rhs_is_immediate &&
+       !scalar_alu_operation_accepts_immediate(alu.operation, *rhs_immediate))) {
+    return {.lines = std::nullopt,
+            .diagnostic =
+                "scalar add/sub/bitwise immediate operand is outside the selected immediate encoding range"};
+  }
+
+  std::string_view mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
+  if (instruction.opcode == MachineOpcode::And) {
+    mnemonic = "and";
+  } else if (instruction.opcode == MachineOpcode::Or) {
+    mnemonic = "orr";
+  } else if (instruction.opcode == MachineOpcode::Xor) {
+    mnemonic = "eor";
+  }
+  if (mnemonic.empty()) {
+    return {.lines = std::nullopt,
+            .diagnostic = "scalar add/sub/bitwise mnemonic is not printable"};
+  }
   if (alu.post_zero_extend_result_bits.has_value()) {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar add/sub node does not support post-zero-extension facts"};
+                "scalar add/sub/bitwise node does not support post-zero-extension facts"};
   }
   if (alu.post_sign_extend_result_bits.has_value() &&
       (*alu.post_sign_extend_result_bits != 32U ||
@@ -1046,7 +1241,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
        alu.result_type != bir::TypeKind::I64)) {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar add/sub node has unsupported post-sign-extension width"};
+                "scalar add/sub/bitwise node has unsupported post-sign-extension width"};
   }
 
   std::vector<std::string> lines;
@@ -1055,44 +1250,116 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                                                    : scalar_register_view(alu.result_type);
   if (!result_view.has_value()) {
     return {.lines = std::nullopt,
-            .diagnostic = "scalar add/sub node has unsupported printable result width"};
+            .diagnostic = "scalar add/sub/bitwise node has unsupported printable result width"};
   }
   const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
   if (!result.has_value()) {
     return {.lines = std::nullopt,
-            .diagnostic = "scalar add/sub node has incomplete printable result register fact"};
+            .diagnostic =
+                "scalar add/sub/bitwise node has incomplete printable result register fact"};
   }
-  if (lhs_is_register && rhs_is_register) {
-    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
-    const auto rhs = scalar_gp_register_name_with_view(*rhs_register, *result_view);
+
+  struct MaterializedScalarSource {
+    std::string name;
+    std::optional<RegisterOperand> scratch;
+  };
+
+  const auto materialize_source =
+      [&](const OperandRecord& operand,
+          const RegisterOperand* reg,
+          const MemoryOperand* memory,
+          const ImmediateOperand* immediate,
+          std::vector<const RegisterOperand*> occupied)
+          -> std::optional<MaterializedScalarSource> {
+    if (operand.kind == OperandKind::Register && reg != nullptr) {
+      const auto name = scalar_gp_register_name_with_view(*reg, *result_view);
+      if (!name.has_value()) {
+        return std::nullopt;
+      }
+      return MaterializedScalarSource{.name = *name};
+    }
+    if (operand.kind == OperandKind::Memory && memory != nullptr) {
+      if (memory->support != MemoryOperandSupportKind::Prepared ||
+          !memory->can_use_base_plus_offset ||
+          !memory->byte_offset_is_prepared_snapshot) {
+        return std::nullopt;
+      }
+      const auto address = memory_address(*memory);
+      const auto scratch = scalar_gp_scratch_register(*result_view, occupied);
+      if (address.empty() || !scratch.has_value()) {
+        return std::nullopt;
+      }
+      const std::string scratch_name = abi::register_name(scratch->reg);
+      std::ostringstream load;
+      load << "ldr " << scratch_name << ", " << address;
+      lines.push_back(load.str());
+      return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
+    }
+    if (operand.kind == OperandKind::Immediate && immediate != nullptr) {
+      return MaterializedScalarSource{.name = scalar_immediate_name(*immediate)};
+    }
+    return std::nullopt;
+  };
+
+  const bool lhs_requires_register_source = lhs_is_register || lhs_is_memory;
+  const bool rhs_requires_register_source = rhs_is_register || rhs_is_memory;
+  if (lhs_requires_register_source && rhs_requires_register_source) {
+    std::vector<const RegisterOperand*> rhs_occupied;
+    if (scalar.result_register.has_value()) {
+      rhs_occupied.push_back(&*scalar.result_register);
+    }
+    if (lhs_is_register) {
+      rhs_occupied.push_back(lhs_register);
+    }
+    const auto lhs = materialize_source(
+        scalar.inputs[0], lhs_register, lhs_memory, nullptr,
+        {});
+    if (lhs.has_value() && lhs->scratch.has_value()) {
+      rhs_occupied.push_back(&*lhs->scratch);
+    }
+    const auto rhs = materialize_source(
+        scalar.inputs[1], rhs_register, rhs_memory, nullptr, std::move(rhs_occupied));
     if (!lhs.has_value() || !rhs.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar add/sub node has incomplete printable operand register facts"};
+                  "scalar add/sub/bitwise node has incomplete printable register or memory operand facts"};
     }
     std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << *lhs << ", " << *rhs;
+    out << mnemonic << " " << *result << ", " << lhs->name << ", " << rhs->name;
     lines.push_back(out.str());
-  } else if (lhs_is_register && rhs_is_immediate) {
-    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
+  } else if ((lhs_is_register || lhs_is_memory) && rhs_is_immediate) {
+    const auto lhs = materialize_source(
+        scalar.inputs[0],
+        lhs_register,
+        lhs_memory,
+        nullptr,
+        {});
     if (!lhs.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar add/sub node has incomplete printable operand register facts"};
+                "scalar add/sub/bitwise node has incomplete printable lhs operand facts"};
     }
     std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << *lhs << ", "
+    out << mnemonic << " " << *result << ", " << lhs->name << ", "
         << scalar_immediate_name(*rhs_immediate);
     lines.push_back(out.str());
-  } else if (lhs_is_immediate && rhs_is_register && instruction.opcode == MachineOpcode::Add) {
-    const auto rhs = scalar_gp_register_name_with_view(*rhs_register, *result_view);
+  } else if (lhs_is_immediate && (rhs_is_register || rhs_is_memory) &&
+             instruction.opcode == MachineOpcode::Add) {
+    const auto rhs = materialize_source(
+        scalar.inputs[1],
+        rhs_register,
+        rhs_memory,
+        nullptr,
+        scalar.result_register.has_value()
+            ? std::vector<const RegisterOperand*>{&*scalar.result_register}
+            : std::vector<const RegisterOperand*>{});
     if (!rhs.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar add/sub node has incomplete printable operand register facts"};
+                "scalar add/sub/bitwise node has incomplete printable rhs operand facts"};
     }
     std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << *rhs << ", "
+    out << mnemonic << " " << *result << ", " << rhs->name << ", "
         << scalar_immediate_name(*lhs_immediate);
     lines.push_back(out.str());
   } else if (lhs_is_immediate && rhs_is_immediate) {
@@ -1109,7 +1376,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   } else {
     return {.lines = std::nullopt,
             .diagnostic =
-                "scalar sub with an immediate lhs and register rhs is not printable"};
+                "scalar sub/bitwise with an immediate lhs and register rhs is not printable"};
   }
   if (alu.post_sign_extend_result_bits.has_value()) {
     const auto extended_result =
@@ -1750,6 +2017,23 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
             make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
         const auto rhs =
             make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
+        const auto operand_is_memory = [](const std::optional<OperandRecord>& operand) {
+          if (!operand.has_value()) {
+            return false;
+          }
+          return operand->kind == OperandKind::Memory;
+        };
+        if ((operand_is_memory(lhs) || operand_is_memory(rhs)) &&
+            binary->opcode != bir::BinaryOpcode::Add &&
+            binary->opcode != bir::BinaryOpcode::Sub &&
+            binary->opcode != bir::BinaryOpcode::And &&
+            binary->opcode != bir::BinaryOpcode::Or &&
+            binary->opcode != bir::BinaryOpcode::Xor &&
+            binary->opcode != bir::BinaryOpcode::Mul &&
+            binary->opcode != bir::BinaryOpcode::SDiv &&
+            binary->opcode != bir::BinaryOpcode::SRem) {
+          return std::nullopt;
+        }
         if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||
             !rhs.has_value() || !is_scalar_alu_publication_opcode(binary->opcode)) {
           return std::nullopt;

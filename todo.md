@@ -8,54 +8,72 @@ Current Step Title: Repair Side-Effecting Expression Result Publication
 
 ## Just Finished
 
-Step 2 sampled the remaining `src/00164.c` side-effecting expression surface
-after the `src/00202.c` repair. The sample shows Step 2 is not complete:
-`src/00202.c` now passes, but `src/00164.c` still fails before the Step 3
-control/select cases because the assignment-like `c + d` value is not
-published for either the plain call argument or `(y = c + d)`.
+Step 2 repaired the first assignment-like `src/00164.c` scalar `add`
+publication/order primitive while preserving `src/00202.c`. AArch64 now
+computes `c + d`, publishes the frame-slot result before the first variadic
+call argument, and keeps the register result live for the following
+`store_local` assignment.
 
-Prepared-code evidence for `src/00164.c`:
+The continuation extended the same publication path to prepared scalar
+bitwise and signed arithmetic chains: fallback scalar lowering can now
+materialize prepared frame-slot operands for `and`/`or`/`xor` and
+`mul`/`sdiv`/`srem`, and before-call argument moves can consume an already
+emitted scalar register instead of reloading that value from a logical spill
+slot. Generated assembly now reaches the later `00164` bitwise/arithmetic
+forms and emits native operations such as:
 
-```text
-%t1 = bir.load_local i32 %lv.c
-%t2 = bir.load_local i32 %lv.d
-%t3 = bir.add i32 %t1, %t2
-%t4 = bir.call i32 printf(ptr @.str0, i32 %t3)
-%t6 = bir.load_local i32 %lv.c
-%t7 = bir.load_local i32 %lv.d
-%t8 = bir.add i32 %t6, %t7
-bir.store_local %lv.y, i32 %t8
-%t9 = bir.call i32 printf(ptr @.str0, i32 %t8)
+```asm
+ldr w9, [sp, #20]
+ldr w10, [sp, #20]
+orr w9, w9, w10
+...
+ldr w9, [sp, #8]
+ldr w10, [sp, #12]
+and w9, w9, w10
+...
+eor w9, w9, w9
+...
+mul w9, w20, w10
+sdiv w9, w9, w20
 ```
 
-Prepared metadata says `%t3` is a frame-slot value consumed as the first
-`printf` argument from `stack+32`, and `%t8` is a register value with a
-prepared store-local memory access for `%lv.y`.
-
-Generated AArch64 currently emits:
+Generated AArch64 now emits the first two `c + d` forms as:
 
 ```asm
 ldr w13, [sp, #8]
+ldr w10, [sp, #12]
+add w9, w13, w10
+str w9, [sp, #32]
 mov x0, x20
+ldr w1, [sp, #32]
 bl printf
-mov x13, x0
+ldr w9, [sp, #8]
+ldr w10, [sp, #12]
+add w13, w9, w10
 str w13, [sp, #24]
 mov x0, x20
 mov x1, x13
 bl printf
 ```
 
-That sequence loads only `c`, never materializes `c + d` into `%t3`/`x1`, and
-stores the first `printf` return value into `y`'s local slot before the second
-print. The runtime confirms the first two lines are still wrong:
-expected `134`, `134`; actual garbage, `12`.
+The focused proof still fails overall because `00164` now reaches an
+in-block compare/select materialization boundary after the first six passing
+lines. In `logic.end.100`, the emitted `orr` for `%t103` is followed by
+unlowered `%t104 = ne %t103, 0` and a large in-block `%t106 = select ...`
+chain; the following `printf` still consumes stale `x13`. Later comparison
+arguments (`a == a`, `a == b`, `a != a`, `a != b`) and arithmetic call results
+also still require the same compare/select or expression-chain result
+publication, rather than another add/bitwise frame-slot source repair.
+`00202` remains passing.
 
 ## Suggested Next
 
-Stay in Step 2 for one more code packet: repair AArch64 publication/order for
-prepared scalar `add` results whose consumers include both a frame-slot
-variadic call argument and a following `store_local` assignment result, using
-`src/00164.c` plus already-green `src/00202.c` as the proof subset.
+Hand the remaining `00164` failure to the compare/select materialization owner
+or split Step 3: the exact first blocker is `%t104 = bir.ne i32 %t103, 0`
+followed by `%t106 = bir.select ...` in prepared block `logic.end.100`. The
+current Step 2 scalar publication slice can compute and publish the direct
+bitwise/arithmetic operations, but it does not own lowering in-block select
+trees or compare-result materialization.
 
 Proposed proof command:
 
@@ -65,18 +83,17 @@ Proposed proof command:
 
 ## Watchouts
 
-- Do not fold the `src/00183.c` conditional-expression gap into the next Step 2
-  packet; it is still the Step 3 block-entry/out-of-SSA
-  `select_materialization` half of the publication boundary.
-- `00164` has later logical/select, compare, bitwise, and arithmetic symptoms,
-  but the first actionable Step 2 bug is earlier: the `c + d` result for
-  `%t3`/`%t8` is not computed/published before its call-argument and
-  assignment consumers.
-- The first callsite metadata wants `arg1 bank=gpr from=frame_slot:stack+32 to=x1`;
-  current assembly does not emit the frame-slot publication or the `x1`
-  materialization for that argument.
-- The prepared store-local access for `%t8` targets `%lv.y`; current assembly
-  instead stores `x0` from the previous `printf` call to `y`'s slot.
+- Do not fold broad `src/00183.c` conditional-expression work into this Step 2
+  packet. The remaining `00164` blocker is the same class of in-block
+  compare/select materialization, and should be owned by the Step 3 route.
+- The initial `c + d` publication/order bug is repaired. Do not rework that
+  path unless a broader proof shows a real regression.
+- The focused proof still reports `00164` as `RUNTIME_MISMATCH`; current output
+  has the first six expected lines passing (`134`, `134`, `0`, `1`, `1`, `1`)
+  before the first stale select result.
+- Frame-slot call-argument sources now prefer prepared memory-access facts
+  when present, and only fall back to the value-home stack offset for
+  published scalar results such as `%t3` that have no separate load access.
 - Keep pointer/address-heavy cases `src/00172.c` and `src/00217.c` deferred
   unless the same scalar side-effect/control publication primitive owns them.
 - Do not touch expected outputs, allowlists, unsupported classifications,
@@ -85,14 +102,26 @@ Proposed proof command:
 
 ## Proof
 
-Ran the delegated focused sample exactly under `/tmp`:
+Ran the delegated focused proof exactly:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > /tmp/c4c_aarch64_side_effect_step2_00164_sample.log 2>&1
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
 Result: failed overall, 1/2 passing. `00202` passed. `00164` remains
-`RUNTIME_MISMATCH`.
+`RUNTIME_MISMATCH`, but materially advanced: the first six expected outputs
+now pass, scalar `or`/`and`/`xor` and `mul`/`sdiv` are emitted, and direct
+before-call moves can use emitted scalar registers. The first remaining bad
+form is the in-block `%t104` compare plus `%t106` select chain in
+`logic.end.100`.
+
+Because shared AArch64 backend code changed, also ran:
+
+```sh
+ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure > /tmp/c4c_aarch64_side_effect_step2_00164_backend_aarch64.log 2>&1
+```
+
+Result: passed, 27/27.
 
 Stale-process check:
 
@@ -102,9 +131,9 @@ pgrep -af '^/workspaces/c4c/build-aarch64-scan/c_testsuite_aarch64_backend/' || 
 
 Result: no generated runtime process remained.
 
-Additional artifacts:
+Additional check: `git diff --check` passed.
 
-- `/tmp/c4c_aarch64_side_effect_step2_00164_sample.log`
-- `/tmp/c4c_aarch64_side_effect_step2_00164_prepared.txt`
-- `/tmp/c4c_aarch64_side_effect_step2_00164_mir.txt`
-- `/tmp/c4c_aarch64_side_effect_step2_00164_direct.s`
+Log paths:
+
+- `test_after.log`
+- `/tmp/c4c_aarch64_side_effect_step2_00164_backend_aarch64.log`
