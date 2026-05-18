@@ -3,7 +3,9 @@
 #include "mir.hpp"
 
 #include <cstddef>
+#include <sstream>
 #include <string>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -38,6 +40,13 @@ struct TargetInstructionPrintResult {
     std::string diagnostic);
 [[nodiscard]] std::string describe_print_context(const MachinePrintContext& context);
 
+[[nodiscard]] inline std::string machine_block_label(c4c::FunctionNameId function_name,
+                                                     c4c::BlockLabelId block_label) {
+  std::ostringstream out;
+  out << ".LBB" << function_name << "_" << block_label;
+  return out.str();
+}
+
 template <typename TargetInstruction>
 class TargetInstructionPrinter {
  public:
@@ -54,8 +63,22 @@ template <typename TargetInstruction>
     const TargetInstructionPrinter<TargetInstruction>& target_printer,
     std::size_t function_index = 0) {
   std::string assembly;
+  std::unordered_set<c4c::BlockLabelId> successor_target_labels;
+  for (const auto& block : function.blocks) {
+    for (const auto& successor : block.successors) {
+      if (successor.target_label != c4c::kInvalidBlockLabel) {
+        successor_target_labels.insert(successor.target_label);
+      }
+    }
+  }
   for (std::size_t block_index = 0; block_index < function.blocks.size(); ++block_index) {
     const auto& block = function.blocks[block_index];
+    if (function.function_name != c4c::kInvalidFunctionName &&
+        block.block_label != c4c::kInvalidBlockLabel &&
+        successor_target_labels.find(block.block_label) != successor_target_labels.end()) {
+      assembly += machine_block_label(function.function_name, block.block_label);
+      assembly += ":\n";
+    }
     for (std::size_t instruction_index = 0; instruction_index < block.instructions.size();
          ++instruction_index) {
       const MachinePrintContext context{

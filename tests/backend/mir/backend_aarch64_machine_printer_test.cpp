@@ -1441,6 +1441,65 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
   return 0;
 }
 
+int selected_branch_target_requires_matching_block_label_definition() {
+  const auto branch = aarch64_codegen::make_branch_instruction(
+      aarch64_codegen::BranchInstructionRecord{
+          .target =
+              aarch64_codegen::BranchTargetOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .block_label = c4c::BlockLabelId{8},
+                  .function_name = c4c::FunctionNameId{2},
+              },
+      });
+
+  auto store_address = frame_slot(24);
+  store_address.stored_value_id = prepare::PreparedValueId{22};
+  store_address.stored_value_name = c4c::ValueNameId{23};
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = store_address,
+          .value = aarch64_codegen::make_register_operand(xreg(10)),
+          .value_type = bir::TypeKind::I64,
+      });
+
+  mir::MachineFunction<aarch64_codegen::InstructionRecord> function;
+  function.function_name = c4c::FunctionNameId{2};
+  auto& entry = function.blocks.emplace_back();
+  entry.block_label = c4c::BlockLabelId{3};
+  entry.index = 0;
+  entry.instructions.push_back(
+      mir::MachineInstruction<aarch64_codegen::InstructionRecord>{.target = branch});
+  entry.successors.push_back(mir::MachineBlockSuccessor{
+      .target_label = c4c::BlockLabelId{8},
+      .kind = mir::MachineBlockSuccessorKind::Unconditional,
+  });
+  auto& target = function.blocks.emplace_back();
+  target.block_label = c4c::BlockLabelId{8};
+  target.index = 1;
+  target.instructions.push_back(
+      mir::MachineInstruction<aarch64_codegen::InstructionRecord>{.target = store});
+
+  const auto result =
+      mir::print_machine_function(function, aarch64_codegen::MachineInstructionPrinter{});
+  if (!result.ok) {
+    return fail("expected branch target block function to print: " + result.diagnostic);
+  }
+  if (result.assembly.find("    b .LBB2_8\n") == std::string::npos) {
+    return fail("expected branch instruction to reference target block label .LBB2_8");
+  }
+  if (result.assembly.find(".LBB2_8:\n") == std::string::npos) {
+    return fail(
+        "expected MIR/AArch64 printer to define target block label .LBB2_8 before target block");
+  }
+  const auto label_position = result.assembly.find(".LBB2_8:\n");
+  const auto store_position = result.assembly.find("    str x10, [sp, #24]\n");
+  if (store_position == std::string::npos || label_position > store_position) {
+    return fail("expected target block label definition before target block instruction stream");
+  }
+  return 0;
+}
+
 int selected_structured_memory_subset_prints_loads_and_stores() {
   auto load_address = frame_slot(32);
   load_address.result_value_id = prepare::PreparedValueId{24};
@@ -5277,6 +5336,10 @@ int main() {
     return result;
   }
   if (const int result = selected_branch_and_store_nodes_print_without_semantic_roundtrip();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_branch_target_requires_matching_block_label_definition();
       result != 0) {
     return result;
   }
