@@ -10,50 +10,52 @@ Current Step Title: Extend Across Control And Boundary Consumers
 
 ## Just Finished
 
-Step 3 repaired the focused fused-compare branch/control immediate publication
-primitive. The prepared control-flow facts for both remaining loop
-representatives carried authoritative scalar immediate compare operands, but
-AArch64 fused-compare printing rebuilt nonzero immediates with
-`immediate_bits=0`, so generated control flow compared against zero.
+Step 3 finished the focused starter subset by repairing loop-carried scalar
+frame-slot publication for `src/00161.c`.
 
-`src/backend/mir/aarch64/codegen/comparison.cpp` now routes fused-compare
-immediate operands through the shared scalar immediate builder, preserving the
-semantic immediate value and source identity instead of reconstructing a stale
-unsigned immediate locally.
-
-For `src/00156.c`, prepared control flow says:
+Prepared BIR already named the missing authority:
 
 ```text
-branch_condition for.cond.1 kind=fused_compare condition=%t1 compare=sle i32 %t0, 10
+%t6 = bir.add i32 %t4, %t5
+bir.store_local %lv.a, i32 %t6
+storage %t6 value_id=6 encoding=frame_slot bank=gpr spill_slot=slot#3+stack12 width=1 slot_id=#3 stack_offset=12
+access block=block_1 inst_index=7 base=frame_slot stored=%t6 frame_slot=#0 offset=0 size=4 align=4 base_plus_offset=yes
 ```
 
-Generated AArch64 now emits the authoritative loop bound and `00156.c` passes:
+`src/backend/mir/aarch64/codegen/alu.cpp` now treats a prepared scalar ALU
+result whose home/storage is a frame slot as a real publication target: it
+computes the result through a spill-authority scratch register and emits the
+authoritative stack-slot store. `src/backend/mir/aarch64/codegen/memory.cpp`
+and `machine_printer.cpp` now let a following scalar local store consume that
+prepared frame-slot value by loading it from the prepared stack address and
+storing it to the destination local slot.
+
+Generated AArch64 for `src/00161.c` now publishes `%t6 = t + p` and updates
+local `a` before the loop-control compare:
 
 ```asm
+ldr w13, [sp, #8]
+ldr w20, [sp, #4]
+add w9, w13, w20
+str w9, [sp, #12]
+ldr w9, [sp, #12]
+str w9, [sp]
+...
 ldr w13, [sp]
-cmp w13, #10
-b.le .LBB89_3
+cmp w13, #100
 ```
 
-For `src/00161.c`, prepared control flow says:
-
-```text
-branch_condition dowhile.cond.1 kind=fused_compare condition=%t9 compare=slt i32 %t8, 100
-```
-
-Generated AArch64 also now emits `cmp w13, #100`, advancing the branch
-predicate from stale zero. `00161.c` still times out because the loop-carried
-scalar `a = t + p` publication is missing before the compare: the generated
-body loads `t` and `p`, but does not publish/store the `%t6 = add %t4, %t5`
-result to local `a`.
+The focused starter subset now passes all six representatives: `00009`,
+`00012`, `00056`, `00156`, `00161`, and `00211`.
 
 ## Suggested Next
 
-Continue Step 3 with `src/00161.c` as a loop-carried scalar publication packet:
-repair prepared scalar ALU results whose authoritative storage is a frame slot
-feeding a local store/control value. The current evidence centers on `%t6 =
-bir.add i32 %t4, %t5`, prepared as `storage %t6 frame_slot ... offset=12`, with
-move obligations immediately before `bir.store_local %lv.a, i32 %t6`.
+Ask the supervisor for acceptance-level validation for the current focused
+AArch64 scalar authority slice. The starter subset is green, but the route has
+changed return publication, scalar call-argument placement, branch/control
+immediates, scalar ALU publication, and frame-slot local-store publication, so
+broader AArch64 backend proof is the next coherent packet before close or
+handoff.
 
 ## Watchouts
 
@@ -73,9 +75,10 @@ move obligations immediately before `bir.store_local %lv.a, i32 %t6`.
 - `src/00156.c` now passes because fused-compare immediate operands preserve
   nonzero semantic constants; keep this as branch/control immediate authority,
   not a filename-shaped loop special case.
-- `src/00161.c` no longer has a stale branch immediate; its remaining timeout
-  is the missing loop-carried scalar add publication for `%t6`, so the next
-  packet should not keep reworking fused branch comparison unless this regresses.
+- `src/00161.c` now passes because the prepared scalar add `%t6` publishes to
+  its frame-slot storage and the subsequent local store consumes that prepared
+  frame-slot value; keep this as scalar frame-slot publication, not a Fibonacci
+  or loop-shape shortcut.
 - Prepared storage plans can name logical spill slots that are not current
   printable frame slots. For future frame-slot publication work, prefer
   prepared addressing plus stack-layout resolution when the value is produced by
@@ -90,10 +93,8 @@ Ran focused scalar subset exactly as delegated:
 { cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00009|00012|00056|00156|00161|00211)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: failed overall with 5/6 passing. `00009`, `00012`, `00056`, `00156`,
-and `00211` passed. `00161` timed out after the branch immediate advanced to
-`#100`, exposing the remaining loop-carried scalar add publication gap. Proof
-log: `test_after.log`.
+Result: passed, 6/6. `00009`, `00012`, `00056`, `00156`, `00161`, and `00211`
+all passed. Proof log: `test_after.log`.
 
 Required process check:
 

@@ -746,6 +746,7 @@ struct ScalarAluRecord {
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   bir::TypeKind result_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
+  std::optional<std::int64_t> result_stack_offset_bytes;
   OperandRecord lhs;
   OperandRecord rhs;
   std::optional<unsigned> post_zero_extend_result_bits;

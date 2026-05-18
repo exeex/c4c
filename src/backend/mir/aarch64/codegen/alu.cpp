@@ -385,6 +385,40 @@ namespace mir = c4c::backend::mir;
   };
 }
 
+[[nodiscard]] std::optional<RegisterOperand> make_scalar_spill_scratch_operand(
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedStoragePlanValue& storage,
+    bir::TypeKind type) {
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      storage.encoding != prepare::PreparedStorageEncodingKind::FrameSlot) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_storage_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  auto scratch = abi::gp_register(scratches.front().index, *expected_view);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *scratch,
+      .role = RegisterOperandRole::SpillAuthority,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = register_class_from_bank(storage.bank),
+      .prepared_bank = storage.bank,
+      .expected_view = expected_view,
+      .contiguous_width = storage.contiguous_width,
+      .occupied_register_references = occupied_register_references(*scratch),
+      .occupied_registers = occupied_register_views(*scratch),
+  };
+}
+
 [[nodiscard]] std::optional<OperandRecord> make_immediate_scalar_operand(
     const bir::Value& value) {
   if (value.kind != bir::Value::Kind::Immediate) {
@@ -1056,6 +1090,20 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     extend << "sxtw " << *extended_result << ", " << *result;
     lines.push_back(extend.str());
   }
+  if (alu.result_stack_offset_bytes.has_value()) {
+    if (*alu.result_stack_offset_bytes < 0 || *alu.result_stack_offset_bytes > 4095) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub stack publication offset is not printable"};
+    }
+    std::ostringstream store;
+    store << "str " << *result << ", [sp";
+    if (*alu.result_stack_offset_bytes != 0) {
+      store << ", #" << *alu.result_stack_offset_bytes;
+    }
+    store << "]";
+    lines.push_back(store.str());
+  }
   return {.lines = std::move(lines), .diagnostic = {}};
 }
 
@@ -1302,6 +1350,46 @@ PreparedScalarAluRecordError make_prepared_scalar_result_register_operand(
   return PreparedScalarAluRecordError::None;
 }
 
+PreparedScalarAluRecordError make_prepared_scalar_result_operand(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& result,
+    RegisterOperand& out,
+    std::optional<std::int64_t>& result_stack_offset_bytes) {
+  if (result.kind != bir::Value::Kind::Named || result.name.empty()) {
+    return PreparedScalarAluRecordError::UnsupportedResultValue;
+  }
+
+  const auto* result_home = find_prepared_scalar_value_home(names, value_locations, result);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return PreparedScalarAluRecordError::MissingResultValueHome;
+  }
+  const auto* result_storage = find_prepared_scalar_storage(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return PreparedScalarAluRecordError::MissingResultStorage;
+  }
+  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register) {
+    return make_prepared_scalar_result_register_operand(
+        names, value_locations, storage_plan, result, out);
+  }
+  if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      result_storage->stack_offset_bytes.has_value()) {
+    const auto scratch =
+        make_scalar_spill_scratch_operand(*result_home, *result_storage, result.type);
+    if (!scratch.has_value()) {
+      return PreparedScalarAluRecordError::RegisterConversionFailed;
+    }
+    out = *scratch;
+    result_stack_offset_bytes =
+        static_cast<std::int64_t>(*result_storage->stack_offset_bytes);
+    return PreparedScalarAluRecordError::None;
+  }
+  return PreparedScalarAluRecordError::UnsupportedResultStorage;
+}
+
 ScalarInstructionRecord make_scalar_alu_instruction_record(ScalarAluRecord alu) {
   return ScalarInstructionRecord{
       .result_value_id = alu.result_value_id,
@@ -1348,8 +1436,14 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
   }
 
   RegisterOperand result_register;
-  if (const auto error = make_prepared_scalar_result_register_operand(
-          names, value_locations, storage_plan, binary.result, result_register);
+  std::optional<std::int64_t> result_stack_offset_bytes;
+  if (const auto error = make_prepared_scalar_result_operand(
+          names,
+          value_locations,
+          storage_plan,
+          binary.result,
+          result_register,
+          result_stack_offset_bytes);
       error != PreparedScalarAluRecordError::None) {
     return scalar_alu_record_error(error);
   }
@@ -1403,6 +1497,7 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
               .result_value_name = result_register.value_name,
               .result_type = binary.result.type,
               .result_register = result_register,
+              .result_stack_offset_bytes = result_stack_offset_bytes,
               .lhs = lhs,
               .rhs = rhs,
               .post_zero_extend_result_bits = post_zero_extend_result_bits,

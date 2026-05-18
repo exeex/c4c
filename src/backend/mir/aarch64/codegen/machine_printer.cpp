@@ -738,6 +738,30 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
     out << mnemonic << " " << register_name(*value) << ", " << address;
     return target_printed({out.str()});
   }
+  const auto* source_memory = std::get_if<MemoryOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Memory && source_memory != nullptr) {
+    if (source_memory->support != MemoryOperandSupportKind::Prepared ||
+        !source_memory->can_use_base_plus_offset ||
+        source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        source_memory->size_bytes != memory.address.size_bytes) {
+      return target_unsupported(bad_header(instruction) +
+                                "stack-slot store source is not printable");
+    }
+    const auto source_address = memory_address(*source_memory);
+    const auto scratch = immediate_store_scratch_register(memory);
+    if (source_address.empty() || !scratch.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "stack-slot store source scratch is not printable");
+    }
+    std::vector<std::string> lines;
+    std::ostringstream load;
+    load << "ldr " << abi::register_name(*scratch) << ", " << source_address;
+    lines.push_back(load.str());
+    std::ostringstream store;
+    store << mnemonic << " " << abi::register_name(*scratch) << ", " << address;
+    lines.push_back(store.str());
+    return target_printed(std::move(lines));
+  }
   const auto* frame_slot = std::get_if<FrameSlotOperand>(&memory.value->payload);
   if (memory.value->kind == OperandKind::FrameSlot && frame_slot != nullptr) {
     const auto scratch = local_address_store_scratch_register();

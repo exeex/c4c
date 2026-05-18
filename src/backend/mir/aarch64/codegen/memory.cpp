@@ -1335,7 +1335,8 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
       prepare::find_prepared_value_home(value_locations, *operand.record->stored_value_id);
   if (stored_home == nullptr ||
       stored_home->value_name != *operand.record->stored_value_name ||
-      stored_home->kind != prepare::PreparedValueHomeKind::Register) {
+      (stored_home->kind != prepare::PreparedValueHomeKind::Register &&
+       stored_home->kind != prepare::PreparedValueHomeKind::StackSlot)) {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingStoredValueHome);
   }
@@ -1345,6 +1346,36 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
   if (stored_storage == nullptr ||
       stored_storage->value_name != *operand.record->stored_value_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingStoredStorage);
+  }
+  if (stored_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      stored_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      stored_storage->stack_offset_bytes.has_value()) {
+    return PreparedMemoryInstructionRecordResult{
+        .record =
+            MemoryInstructionRecord{
+                .memory_kind = MemoryInstructionKind::Store,
+                .address = *operand.record,
+                .value =
+                    make_memory_operand(MemoryOperand{
+                        .support = MemoryOperandSupportKind::Prepared,
+                        .function_name = operand.record->function_name,
+                        .block_label = operand.record->block_label,
+                        .instruction_index = operand.record->instruction_index,
+                        .result_value_id = stored_home->value_id,
+                        .result_value_name = stored_home->value_name,
+                        .base_kind = MemoryBaseKind::FrameSlot,
+                        .frame_slot_id = stored_storage->slot_id,
+                        .byte_offset =
+                            static_cast<std::int64_t>(*stored_storage->stack_offset_bytes),
+                        .byte_offset_is_prepared_snapshot = true,
+                        .size_bytes = operand.record->size_bytes,
+                        .align_bytes = operand.record->align_bytes,
+                        .can_use_base_plus_offset = true,
+                    }),
+                .value_type = stored_value.type,
+            },
+        .error = PreparedMemoryOperandRecordError::None,
+    };
   }
   if (stored_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
     return memory_instruction_record_error(
