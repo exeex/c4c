@@ -305,6 +305,25 @@ namespace mir = c4c::backend::mir;
     }
     converted = abi::convert_prepared_register(
         *storage.register_name, storage.bank, prepared_class, expected_view);
+    if (!converted.has_value() && converted.error.has_value() &&
+        converted.error->kind ==
+            abi::PreparedRegisterConversionErrorKind::RegisterViewMismatch &&
+        storage.bank == prepare::PreparedRegisterBank::Gpr &&
+        (*expected_view == abi::RegisterView::W ||
+         *expected_view == abi::RegisterView::X)) {
+      const auto parsed = abi::parse_aarch64_register_name(*storage.register_name);
+      if (parsed.has_value() &&
+          parsed->bank == abi::RegisterBank::GeneralPurpose) {
+        const auto retargeted = abi::gp_register(parsed->index, *expected_view);
+        if (retargeted.has_value()) {
+          converted = abi::convert_prepared_register(
+              std::string(abi::register_name(*retargeted)),
+              storage.bank,
+              prepared_class,
+              expected_view);
+        }
+      }
+    }
   }
   if (!converted.has_value()) {
     return std::nullopt;

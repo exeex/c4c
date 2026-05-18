@@ -374,6 +374,56 @@ int prepared_scalar_alu_registers_prefer_storage_register_placement() {
   return 0;
 }
 
+int prepared_i32_scalar_alu_accepts_abi_x_register_parameter_spellings() {
+  auto fixture = make_i64_fixture();
+  fixture.locations.value_homes[0].register_name = "x0";
+  fixture.locations.value_homes[1].register_name = "x1";
+  fixture.locations.value_homes[2].register_name = "x13";
+  fixture.storage.values[0] =
+      register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "x0");
+  fixture.storage.values[1] =
+      register_storage(prepare::PreparedValueId{11}, fixture.rhs_name, "x1");
+  fixture.storage.values[2] =
+      register_storage(prepare::PreparedValueId{12}, fixture.result_name, "x13");
+
+  const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      binary(bir::BinaryOpcode::Sub, bir::TypeKind::I32));
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+      !result.record->scalar_alu.has_value() ||
+      !result.record->result_register.has_value()) {
+    return fail("expected I32 ALU parameters with ABI X spellings to prepare");
+  }
+
+  const auto& alu = *result.record->scalar_alu;
+  const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
+  const auto* rhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.rhs.payload);
+  if (lhs == nullptr || rhs == nullptr ||
+      result.record->result_register->reg != aarch64_abi::w_register(13) ||
+      lhs->reg != aarch64_abi::w_register(0) ||
+      rhs->reg != aarch64_abi::w_register(1) ||
+      result.record->result_register->expected_view != aarch64_abi::RegisterView::W ||
+      lhs->expected_view != aarch64_abi::RegisterView::W ||
+      rhs->expected_view != aarch64_abi::RegisterView::W ||
+      lhs->occupied_registers != std::vector<std::string_view>{"w0"} ||
+      rhs->occupied_registers != std::vector<std::string_view>{"w1"}) {
+    return fail("expected I32 ALU to select W views from ABI X parameter spellings");
+  }
+
+  const auto machine = aarch64_codegen::make_scalar_instruction(*result.record);
+  if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      machine.uses.size() != 2 || machine.defs.size() != 1 ||
+      machine.uses[0].reg != aarch64_abi::w_register(0) ||
+      machine.uses[1].reg != aarch64_abi::w_register(1) ||
+      machine.defs.front().reg != aarch64_abi::w_register(13)) {
+    return fail("expected selected I32 ALU node to carry W-register def/use facts");
+  }
+  return 0;
+}
+
 int prepared_scalar_unary_records_preserve_i32_i64_register_facts() {
   for (const auto type : {bir::TypeKind::I32, bir::TypeKind::I64}) {
     auto fixture = make_i64_fixture();
@@ -970,17 +1020,6 @@ int unsupported_and_incomplete_facts_fail_closed() {
     return fail("expected unsupported operand storage to fail closed");
   }
 
-  fixture = make_i64_fixture();
-  fixture.locations.value_homes[0].register_name = "x1";
-  fixture.storage.values[0].register_name = "x1";
-  const auto view_mismatch = aarch64_codegen::make_prepared_scalar_alu_record(
-      fixture.names, fixture.locations, fixture.storage, binary(bir::BinaryOpcode::Add, bir::TypeKind::I32));
-  if (view_mismatch.record.has_value() ||
-      view_mismatch.error !=
-          aarch64_codegen::PreparedScalarAluRecordError::RegisterConversionFailed) {
-    return fail("expected prepared register view mismatch to fail closed");
-  }
-
   return 0;
 }
 
@@ -996,6 +1035,10 @@ int main() {
     return status;
   }
   if (const int status = prepared_scalar_alu_registers_prefer_storage_register_placement();
+      status != 0) {
+    return status;
+  }
+  if (const int status = prepared_i32_scalar_alu_accepts_abi_x_register_parameter_spellings();
       status != 0) {
     return status;
   }
