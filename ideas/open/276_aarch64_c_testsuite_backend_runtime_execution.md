@@ -117,6 +117,25 @@ Existing gap:
 - A broader AArch64 backend c-testsuite scan can be run after the focused proof
   to produce actionable follow-up evidence.
 
+## Lifecycle Parking Note
+
+Plan-owner review on 2026-05-18 rejected closure because the current host has
+no configured `C_TESTSUITE_AARCH64_BACKEND_RUNNER`, so the focused smoke cases
+reach the runtime boundary as `[RUNTIME_UNAVAILABLE]` but do not run and match
+expected output. Runtime-unavailable remains a blocker, not a pass, and the
+route must not be claimed as backend capability repair.
+
+The active runbook was deactivated after completing route registration and
+failure-inventory work. Re-activate this idea when an AArch64 host or runner is
+available, then rerun the focused smoke route and a broader AArch64 backend
+c-testsuite scan to decide whether the runtime execution criteria are actually
+satisfied.
+
+The latest broader inventory selected 220 `aarch64_backend` tests and grouped
+the failures as 121 `[RUNTIME_UNAVAILABLE]`, 85 `[FRONTEND_FAIL]`, and 14
+`[BACKEND_FAIL]`. Non-runtime capability repairs should be split into focused
+follow-up ideas rather than folded into this route-readiness plan.
+
 ## Reviewer Reject Signals
 
 Reject the route or slice if it:
