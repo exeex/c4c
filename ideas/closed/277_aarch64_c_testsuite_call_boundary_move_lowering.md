@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite Call-Boundary Move Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -55,6 +56,22 @@ than as more route-registration or classification churn.
 - The AArch64 c-testsuite backend subset shows the targeted failure family is
   reduced or reclassified to the next truthful owner layer without counting
   `[RUNTIME_UNAVAILABLE]` as pass evidence.
+
+## Closure Notes
+
+Closed after Step 6 of the active runbook. Focused backend proof passed for the
+symbol-address call-boundary move form, and the broader AArch64 backend
+c-testsuite scan reported zero occurrences of the old diagnostic:
+
+`deferred_unsupported: call-boundary move node requires prepared register source and destination`
+
+The broad scan still failed overall because this host lacks an AArch64 runtime
+runner and because separate frontend/backend capability families remain. Those
+remaining blockers were not counted as runtime pass evidence and are outside
+this idea's acceptance criteria.
+
+Durable follow-up: undefined `.LBB...` temporary label emission is tracked
+separately in `ideas/open/278_aarch64_c_testsuite_undefined_temporary_labels.md`.
 
 ## Reviewer Reject Signals
 
