@@ -8,37 +8,25 @@ Current Step Title: Repair Core Pointer-Derived Lvalue Address Publication
 
 ## Just Finished
 
-Step 2 first local-address publication repair completed. Local pointer slot
-loads/stores now publish local frame-slot and local subobject addresses as
-pointer-valued BIR definitions, and prepared/AArch64 lowering can materialize
-frame-slot pointer values with `sp`-relative address instructions.
+Step 2 cross-route regression repair completed. x86 backend-route semantic BIR
+now keeps the pre-`69c6b83b5` generic `bir.load_local ptr %lv.*` shape instead
+of publishing local pointer loads as `bir.add ptr %lv.*, 0`. The AArch64
+frame-slot publication path remains enabled only for AArch64 lowering, which
+preserves the `00032.c` improvement without changing x86 semantic BIR.
 
-Generated-assembly evidence:
-
-- `00032.c` now passes. The old out-of-frame pointer reloads such as
-  `[sp, #64]`, `[sp, #72]`, and stale pointer stores are gone from the passing
-  generated assembly. Local pointer publications use `mov xN, sp`/`add xN, sp,
-  #offset` before storing or consuming the pointer local.
-- `00130.c` partially improves: `p = arr` and `q = &arr[1][3]` now publish
-  `sp`-relative local addresses (`mov x20, sp`, `add x13, sp, #1`) instead of
-  leaving those pointer values wholly unmaterialized. It still fails because a
-  later local subobject value consumer uses stale `w19` after the address is
-  materialized, so the next local packet needs to carry the subobject address
-  into the scalar load/value consumer rather than stopping at pointer storage.
-- `00180.c` still materializes the base local address for the first call
-  (`mov x20, sp` before `strcpy`) but `printf("%s", &a[1])` still reloads from
-  the saved-register spill area (`ldr w1, [sp, #16]`) instead of passing
-  `sp + 1`. This needs a follow-up call-argument/subobject publication packet.
-- `00217.c` remains a global/runtime pointer case: `data` is still loaded from
-  a corrupted local pointer slot before `printf`, and the compound update still
-  lowers directly to `t+4` instead of preserving the runtime pointer-derived
-  address through load-compute-store.
+Route boundary found: once the synthetic pointer SSA definitions are removed
+from common semantic BIR, cases such as `00032.c` contain pointer names like
+`%t5`/`%t7` only as stored values, with no BIR-side definition that prealloc can
+soundly use to infer frame-slot provenance across CFG blocks. A linear
+prealloc reconstruction would be route-unsafe, so this slice keeps generic x86
+semantic BIR stable and limits the publication to AArch64 where the current
+frame-slot materialization support consumes it.
 
 ## Suggested Next
 
 Execute a narrow follow-up local subobject consumer packet for `00130.c` and
-`00180.c`: carry the newly published local frame/subobject pointer address into
-scalar local subobject loads and address-valued call arguments, including
+`00180.c`: carry the AArch64-published local frame/subobject pointer address
+into scalar local subobject loads and address-valued call arguments, including
 nonzero local byte offsets such as `sp + 1`.
 
 ## Watchouts
@@ -46,6 +34,13 @@ nonzero local byte offsets such as `sp + 1`.
 - Do not repair this by naming the four tests or rewriting expectations. The
   address fact must become an authoritative value/materialization that ordinary
   load/store/call consumers can use.
+- Do not reintroduce common semantic BIR pointer publications for x86; the
+  regression subset is specifically guarding `%t0 = bir.load_local ptr %lv.p`
+  and related load-local forms.
+- Prealloc cannot currently recover undefined pointer SSA provenance such as
+  `%t5` in `00032.c` from BIR alone without a CFG-aware provenance fact. Avoid a
+  linear scan reconstruction unless a later packet adds real dominance/CFG
+  authority.
 - `00130.c` proves the first publication layer is not enough: the address is
   now materialized, but a scalar subobject load still consumes a stale register.
 - `00180.c` needs the call-argument route to publish local subobject address
@@ -60,11 +55,12 @@ nonzero local byte offsets such as `sp + 1`.
 Ran the delegated proof:
 
 ```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
+{ ctest --test-dir build -R 'backend_codegen_route_x86_64_(local_pointer_deref|variadic_double_bytes|inline_asm_(input_local_ptr|output_ptr|output_readwrite_ptr))_observe_semantic_bir' --output-on-failure && cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00032|00130|00180|00217)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-`test_after.log` shows strict pass-count improvement over `test_before.log`:
-`00032.c` now passes; `00130.c`, `00180.c`, and `00217.c` still fail as
-described above. `git diff --check` passed. Stale-process check found no stale
-`ctest`, `c4cll`, `qemu`, or build/test process beyond the check command
-itself.
+`test_after.log` records that all five x86 semantic BIR regression tests pass
+and `c_testsuite_aarch64_backend_src_00032_c` passes. The delegated command
+still exits nonzero because `00130.c`, `00180.c`, and `00217.c` remain the
+known follow-up failures. `git diff --check` passed. Stale-process check found
+no stale `ctest`, `c4cll`, `qemu`, or build/test process beyond the check
+command itself.
