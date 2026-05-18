@@ -35,7 +35,9 @@ rewrites as progress.
 
 ## Current Targets
 
-- AArch64 backend route for `00004.c` and `00005.c`.
+- AArch64 backend route for `00004.c`.
+- Residual classification for `00005.c` after address-exposed pointer storage
+  is repaired.
 - Address-exposed local storage, pointer value materialization, load/store
   address formation, and prepared memory operand consumption.
 - Regression proof for idea 278 focused cases: `00001.c`, `00002.c`, and
@@ -77,8 +79,8 @@ load/store address formation, or prepared memory operand consumption.
   files.
 - Treat a change as route drift if its main effect is making only `00004.c` or
   `00005.c` pass without repairing address-exposed local or pointer semantics.
-- Keep `00006.c` branch/loop control evidence out of this plan except as a
-  follow-up pointer to idea 282.
+- Keep `00005.c` and `00006.c` branch/loop control evidence out of this plan
+  except as follow-up pointers to idea 282.
 
 ## Steps
 
@@ -136,17 +138,22 @@ overfit.
 
 Actions:
 
-- Run the focused AArch64 backend route for `00004.c` and `00005.c`.
+- Run the focused AArch64 backend route for `00004.c`.
 - Rerun `00001.c`, `00002.c`, and `00003.c` to prove idea 278 remains green.
 - Run focused backend memory/pointer operand coverage that exercises the same
   semantic rule outside the exact c-testsuite filenames where practical.
+- Classify `00005.c` only far enough to decide whether the remaining failure is
+  still address-exposed pointer storage or belongs to branch/control follow-up
+  idea 282.
 - Confirm no LLVM IR fallback was used and no expectations were weakened.
 - Preserve exact proof output in `test_after.log`.
 
 Completion check:
 
-- `00004.c` and `00005.c` advance through the AArch64 backend runtime route
-  without expectation weakening, and idea 278 proof cases remain green.
+- `00004.c` advances through the AArch64 backend runtime route without
+  expectation weakening, idea 278 proof cases remain green, and any remaining
+  `00005.c` failure is either proven address/pointer scope or split to idea
+  282 as branch/control scope.
 
 ### Step 4: Review Residual Scope
 
