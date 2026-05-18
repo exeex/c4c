@@ -6,6 +6,7 @@
 #include "src/target_profile.hpp"
 
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <variant>
@@ -108,6 +109,15 @@ prepare::PreparedRegisterPlacement call_result_gpr(std::size_t slot_index) {
   return prepare::PreparedRegisterPlacement{
       .bank = prepare::PreparedRegisterBank::Gpr,
       .pool = prepare::PreparedRegisterSlotPool::CallResult,
+      .slot_index = slot_index,
+      .contiguous_width = 1,
+  };
+}
+
+prepare::PreparedRegisterPlacement call_argument_gpr(std::size_t slot_index) {
+  return prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallArgument,
       .slot_index = slot_index,
       .contiguous_width = 1,
   };
@@ -349,6 +359,92 @@ prepare::PreparedBirModule prepared_with_saved_register_direct_call_then_return(
       .frame_size_bytes = 0,
       .frame_alignment_bytes = 16,
       .saved_callee_registers = {prepared_saved_x19(0)},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_direct_call_immediate_argument_then_return() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("return.call.imm");
+  const auto entry_label = prepared.names.block_labels.intern("return.call.imm.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("return.call.imm.entry");
+  const auto callee_link = prepared.names.link_names.intern("takes_i32");
+  const auto arg_placement = call_argument_gpr(0);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "return.call.imm",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "return.call.imm.entry",
+          .insts = {bir::CallInst{
+              .callee = "takes_i32",
+              .callee_link_name_id = callee_link,
+              .args = {bir::Value::immediate_i32(7)},
+              .arg_types = {bir::TypeKind::I32},
+              .arg_abi = {bir::CallArgAbiInfo{
+                  .type = bir::TypeKind::I32,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+                  .primary_class = bir::AbiValueClass::Integer,
+                  .passed_in_register = true,
+              }},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeCall,
+          .block_index = 0,
+          .instruction_index = 0,
+          .abi_bindings = {prepare::PreparedAbiBinding{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .destination_register_placement = arg_placement,
+          }},
+      }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"takes_i32"},
+          .arguments = {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 0,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+              .source_literal = bir::Value::immediate_i32(7),
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_placement = arg_placement,
+          }},
+      }},
   });
   return prepared;
 }
@@ -811,6 +907,77 @@ int module_build_preserves_link_register_around_non_leaf_return() {
   return 0;
 }
 
+int module_build_materializes_scalar_immediate_before_direct_call() {
+  auto prepared = prepared_with_direct_call_immediate_argument_then_return();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected immediate-argument direct-call module to build");
+  }
+
+  const auto& instructions =
+      result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() < 3) {
+    return fail("expected immediate argument move, direct call, and return");
+  }
+  const aarch64_codegen::CallBoundaryMoveInstructionRecord* move = nullptr;
+  const aarch64_codegen::CallInstructionRecord* call = nullptr;
+  std::size_t move_index = instructions.size();
+  std::size_t call_index = instructions.size();
+  for (std::size_t index = 0; index < instructions.size(); ++index) {
+    if (move == nullptr) {
+      move = std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+          &instructions[index].target.payload);
+      if (move != nullptr) {
+        move_index = index;
+      }
+    }
+    if (call == nullptr) {
+      call = std::get_if<aarch64_codegen::CallInstructionRecord>(
+          &instructions[index].target.payload);
+      if (call != nullptr) {
+        call_index = index;
+      }
+    }
+  }
+  if (move == nullptr ||
+      move_index >= call_index ||
+      instructions[move_index].target.family !=
+          aarch64_codegen::InstructionFamily::CallBoundary ||
+      instructions[move_index].target.opcode !=
+          aarch64_codegen::MachineOpcode::CallBoundaryMove ||
+      instructions[move_index].target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !move->source_immediate.has_value() ||
+      move->source_immediate->type != bir::TypeKind::I32 ||
+      move->source_immediate->signed_value != 7 ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_abi::w_register(0) ||
+      move->destination_register->prepared_bank != prepare::PreparedRegisterBank::Gpr ||
+      move->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move->move.destination_abi_index != std::optional<std::size_t>{0}) {
+    return fail("expected scalar immediate argument to materialize into AAPCS64 w0");
+  }
+  if (call == nullptr ||
+      instructions[call_index].target.opcode != aarch64_codegen::MachineOpcode::DirectCall ||
+      !call->direct_callee.has_value() ||
+      call->direct_callee_label != "takes_i32") {
+    return fail("expected direct call to follow selected immediate argument move");
+  }
+  bool saw_return_after_call = false;
+  for (std::size_t index = call_index + 1; index < instructions.size(); ++index) {
+    if (std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+            instructions[index].target.payload)) {
+      saw_return_after_call = true;
+      break;
+    }
+  }
+  if (!saw_return_after_call) {
+    return fail("expected return terminator after immediate argument direct call");
+  }
+  return 0;
+}
+
 int module_build_retains_return_abi_for_memory_load_result() {
   auto prepared = prepared_with_return_selected_memory_load_value();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -960,6 +1127,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_preserves_link_register_around_non_leaf_return();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_materializes_scalar_immediate_before_direct_call();
       status != 0) {
     return status;
   }

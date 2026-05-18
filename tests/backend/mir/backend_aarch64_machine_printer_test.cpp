@@ -3865,6 +3865,64 @@ int selected_call_boundary_register_move_prints_prepared_mov() {
                          "call-boundary register-move drift guard");
 }
 
+int selected_call_boundary_immediate_argument_prints_prepared_mov() {
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .abi_bindings =
+          {
+              prepare::PreparedAbiBinding{
+                  .destination_kind =
+                      prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"x0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x0"},
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = prepare::PreparedMoveResolution{
+              .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_abi_index = std::size_t{0},
+              .destination_register_name = std::string{"x0"},
+              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+          },
+          .source_immediate =
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 7,
+                  .unsigned_value = 7,
+              },
+          .destination_register = wreg(0),
+          .source_bundle = &call_boundary_bundle,
+      });
+
+  const auto result = print_common_instruction_nodes({move});
+  if (!result.ok) {
+    return fail("expected call-boundary immediate argument move to print: " +
+                result.diagnostic);
+  }
+  const auto move_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(move);
+  const std::string expected = "    " + std::string(move_mnemonic) + " w0, #7\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    mov w0, #7\n",
+                         "call-boundary immediate argument drift guard");
+}
+
 int selected_after_call_result_register_move_prints_prepared_mov() {
   const prepare::PreparedMoveBundle call_boundary_bundle{
       .function_name = c4c::FunctionNameId{2},
@@ -5547,6 +5605,11 @@ int main() {
     return result;
   }
   if (const int result = selected_call_boundary_register_move_prints_prepared_mov();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_call_boundary_immediate_argument_prints_prepared_mov();
       result != 0) {
     return result;
   }

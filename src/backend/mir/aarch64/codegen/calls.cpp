@@ -270,6 +270,50 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<ImmediateOperand> make_scalar_call_argument_immediate(
+    const bir::Value& value,
+    std::optional<prepare::PreparedValueId> source_value_id) {
+  ImmediateKind immediate_kind = ImmediateKind::SignedInteger;
+  if (value.type == bir::TypeKind::I1) {
+    immediate_kind = ImmediateKind::Boolean;
+  }
+
+  switch (value.type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+      return ImmediateOperand{
+          .kind = immediate_kind,
+          .type = value.type,
+          .signed_value = value.immediate,
+          .unsigned_value = value.immediate_bits != 0U
+                                ? value.immediate_bits
+                                : static_cast<std::uint64_t>(value.immediate),
+          .source_value_id = source_value_id,
+      };
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<abi::RegisterView> scalar_integer_register_view(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return abi::RegisterView::W;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return abi::RegisterView::X;
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -497,6 +541,111 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     return std::nullopt;
   }
 
+  return make_call_boundary_machine_instruction(
+      context,
+      instruction_index,
+      make_call_boundary_move_instruction(std::move(move_record)));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_immediate_binding(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedAbiBinding& binding,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (bundle.phase != prepare::PreparedMovePhase::BeforeCall ||
+      binding.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      binding.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      !binding.destination_abi_index.has_value() ||
+      !binding.destination_register_name.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* argument = [&]() -> const prepare::PreparedCallArgumentPlan* {
+    for (const auto& candidate : call_plan.arguments) {
+      if (candidate.arg_index == *binding.destination_abi_index &&
+          candidate.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
+          candidate.source_literal.has_value() &&
+          candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr) {
+        return &candidate;
+      }
+    }
+    return nullptr;
+  }();
+  if (argument == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto source_immediate =
+      make_scalar_call_argument_immediate(*argument->source_literal,
+                                          argument->source_value_id);
+  const auto expected_view =
+      scalar_integer_register_view(argument->source_literal->type);
+  if (!source_immediate.has_value() || !expected_view.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 immediate call-argument move requires a scalar integer literal");
+    return std::nullopt;
+  }
+
+  auto destination = make_register_operand_from_prepared_authority(
+      binding.destination_register_name,
+      binding.destination_register_placement.has_value()
+          ? binding.destination_register_placement
+          : argument->destination_register_placement,
+      argument->destination_register_bank,
+      RegisterOperandRole::CallAbi,
+      argument->source_value_id,
+      c4c::kInvalidValueName,
+      binding.destination_contiguous_width,
+      binding.destination_occupied_register_names.empty()
+          ? argument->destination_occupied_register_names
+          : binding.destination_occupied_register_names,
+      expected_view,
+      diagnostics,
+      context,
+      instruction_index);
+  if (!destination.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedMoveResolution synthetic_move{
+      .from_value_id = argument->source_value_id.value_or(prepare::PreparedValueId{0}),
+      .to_value_id = argument->source_value_id.value_or(prepare::PreparedValueId{0}),
+      .destination_kind = binding.destination_kind,
+      .destination_storage_kind = binding.destination_storage_kind,
+      .destination_abi_index = binding.destination_abi_index,
+      .destination_register_name = binding.destination_register_name,
+      .destination_contiguous_width = binding.destination_contiguous_width,
+      .destination_occupied_register_names = binding.destination_occupied_register_names,
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+      .reason = "call_arg_immediate_to_register",
+      .destination_register_placement = binding.destination_register_placement,
+  };
+
+  CallBoundaryMoveInstructionRecord move_record{
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .phase = bundle.phase,
+      .authority_kind = bundle.authority_kind,
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .source_parallel_copy_predecessor_label =
+          bundle.source_parallel_copy_predecessor_label,
+      .source_parallel_copy_successor_label =
+          bundle.source_parallel_copy_successor_label,
+      .move = std::move(synthetic_move),
+      .source_immediate = source_immediate,
+      .destination_register = *destination,
+      .source_bundle = &bundle,
+  };
   return make_call_boundary_machine_instruction(
       context,
       instruction_index,
@@ -800,6 +949,13 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
   for (const auto& move : bundle->moves) {
     if (auto instruction =
             lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+      lowered.push_back(std::move(*instruction));
+    }
+  }
+  for (const auto& binding : bundle->abi_bindings) {
+    if (auto instruction =
+            lower_before_call_immediate_binding(
+                context, call_plan, *bundle, binding, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));
     }
   }
@@ -1212,7 +1368,8 @@ std::vector<MachineEffectResource> effects_from_operands(
 
 MachineNodeStatusRecord call_boundary_move_selection_status(
     const CallBoundaryMoveInstructionRecord& instruction) {
-  if (instruction.source_bundle == nullptr || instruction.source_move == nullptr ||
+  if (instruction.source_bundle == nullptr ||
+      (instruction.source_move == nullptr && !instruction.source_immediate.has_value()) ||
       instruction.function_name == c4c::kInvalidFunctionName) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
@@ -1238,7 +1395,7 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .diagnostic =
             "call-boundary move node is outside the selected register call-boundary move subset"};
   }
-  if (!instruction.source_register.has_value() ||
+  if ((!instruction.source_register.has_value() && !instruction.source_immediate.has_value()) ||
       !instruction.destination_register.has_value()) {
     const bool selected_f128_constant_argument_move =
         selected_register_argument_move &&
@@ -1263,6 +1420,16 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
     if (selected_f128_constant_argument_move) {
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary move node requires prepared register source and destination"};
+  }
+  if (instruction.source_immediate.has_value() &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
+  if (!instruction.source_register.has_value()) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
@@ -1350,6 +1517,10 @@ InstructionRecord make_call_boundary_move_instruction(
   }
   if (instruction.source_register.has_value()) {
     const auto source = make_register_operand(*instruction.source_register);
+    operands.push_back(source);
+    uses.push_back(effect_from_operand(source));
+  } else if (instruction.source_immediate.has_value()) {
+    const auto source = make_immediate_operand(*instruction.source_immediate);
     operands.push_back(source);
     uses.push_back(effect_from_operand(source));
   } else if (instruction.move.from_value_id != 0) {
@@ -1502,11 +1673,13 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
 mir::TargetInstructionPrintResult print_call_boundary_move(
     const InstructionRecord& instruction,
     const CallBoundaryMoveInstructionRecord& move) {
-  if (move.source_bundle == nullptr || move.source_move == nullptr) {
+  if (move.source_bundle == nullptr ||
+      (move.source_move == nullptr && !move.source_immediate.has_value())) {
     return target_unsupported(bad_header(instruction) +
                               "call-boundary move node is missing prepared move provenance");
   }
-  if (!move.source_register.has_value() || !move.destination_register.has_value()) {
+  if ((!move.source_register.has_value() && !move.source_immediate.has_value()) ||
+      !move.destination_register.has_value()) {
     return target_unsupported(
         bad_header(instruction) +
         "call-boundary move node requires prepared register source and destination");
@@ -1517,8 +1690,12 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
                               "call-boundary move mnemonic is not printable");
   }
   std::ostringstream out;
-  out << mnemonic << " " << register_name(*move.destination_register) << ", "
-      << register_name(*move.source_register);
+  out << mnemonic << " " << register_name(*move.destination_register) << ", ";
+  if (move.source_register.has_value()) {
+    out << register_name(*move.source_register);
+  } else {
+    out << "#" << move.source_immediate->signed_value;
+  }
   return target_printed({out.str()});
 }
 
