@@ -3,75 +3,63 @@
 Status: Active
 Source Idea Path: ideas/open/289_aarch64_function_pointer_indirect_call_values.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Expand to Global Initializers and Returned Function Pointers
+Current Step ID: 4
+Current Step Title: Validate Attributed Function-Pointer Cast Overlap
 
 # Current Packet
 
 ## Just Finished
 
-Completed the Step 3 structured symbol-spelling hardening packet for the
-global/static initializer and returned function-pointer repair.
+Executed Step 4, "Validate Attributed Function-Pointer Cast Overlap", against
+`tests/c/external/c-testsuite/src/00210.c`.
 
-Supervisor acceptance proof has accepted Step 3 for this function-pointer
-owner: the `00089` global/static function-pointer initializer route is
-resolved, and the `00124` returned function-pointer route reaches the selected
-callee through an indirect call. `00124` is not claimed green because its
-remaining runtime-nonzero result is the already separated scalar
-parameter/ALU blocker.
-
-Hardened the current implementation so semantic `LinkNameId` spelling is the
-authority when available:
-
-- symbol-pointer returns now prefer
-  `module.names.link_names.spelling(pointer_symbol_link_name_id)` and only use
-  the display name as a compatibility fallback.
-- global/static function-pointer initializer emission now prefers
-  `module.names.link_names.spelling(initializer_symbol_name_id)` or
-  `pointer_symbol_link_name_id` before falling back to stale display text.
-
-Added drift-resistant backend coverage where the display text is intentionally
-stale while the `LinkNameId` spelling is authoritative:
-
-- `backend_aarch64_return_lowering` verifies returned symbol-pointer records
-  and `.xword <symbol>` global initializer emission use the structured spelling
-  rather than stale display strings.
-- `backend_aarch64_machine_printer` remains covered for selected
-  symbol-pointer returns printing `adrp/add x0` before `ret`.
-- `backend_lir_to_bir_notes` remains covered for direct function-pointer return
-  values preserving structured `LinkNameId` identity.
-
-The hardened surfaces cover the Step 3 implementation that makes `00089`
-preserve indirect calls and initialize the global function-pointer field:
+No function-pointer value/callee loss remains in this case. Semantic BIR lowers
+both attributed casts to indirect calls through `@actual_function`, prepared
+call plans preserve the indirect callee in `x20`, and generated AArch64 uses
+`blr x20` for both calls:
 
 ```asm
-go:
-    adrp x0, anon
-    add x0, x0, :lo12:anon
-    ret
-s:
-    .xword zero
+adrp x20, actual_function
+add x20, x20, :lo12:actual_function
+blr x20
+...
+adrp x20, actual_function
+add x20, x20, :lo12:actual_function
+blr x20
 ```
 
-They also cover the `00124` function-pointer return path that returns the
-selected function pointer through the ABI return register and keeps the
-caller-side indirect call:
+The remaining `00210` mismatch is a separate backend call-argument/register
+authority issue. Prepared BIR says each `printf` receives the string address as
+argument 0:
+
+```text
+arg0 bank=gpr from=symbol_address:@.str0 to=x0
+storage @.str0 register bank=gpr placement=gpr:callee_saved#1/w1 reg=x21
+```
+
+Generated AArch64 materializes `.str0` into `x21`, but the following
+call-boundary move passes `x20` as `printf`'s format argument:
 
 ```asm
-f1:
-    adrp x0, f2
-    add x0, x0, :lo12:f2
-    ret
-main:
-    blr x13
+adrp x21, .str0
+add x21, x21, :lo12:.str0
+mov x0, x20
+mov x1, x13
+bl printf
 ```
+
+The mismatch is explained by the AArch64 prepared-register conversion surface:
+`callee_saved#1` maps to `x20` in the current conversion helper, while the
+prepared call/storage facts for this function name the authoritative register
+as `x21`. That register placement/spelling disagreement affects the `printf`
+format pointer after the function-pointer calls are already correct.
 
 ## Suggested Next
 
-Delegate a separate scalar AArch64 parameter/ALU packet before treating
-`src/00124.c` as fully green: `f2` is reached through the returned function
-pointer, but its body subtracts stale callee-saved registers instead of the
-incoming ABI argument registers.
+Delegate a separate AArch64 prepared-register call-boundary packet for
+symbol-address call arguments: when prepared storage names an explicit source
+register, call-argument moves should not let a conflicting placement-derived
+callee-saved register override that spelling.
 
 ## Watchouts
 
@@ -84,82 +72,43 @@ incoming ABI argument registers.
 - Preserve direct-call behavior and existing aligned frame behavior.
 - Keep non-bus runtime failures from the wider sample outside this route unless
   they are proven to share the same function-pointer indirect-call owner.
-- `src/00089.c` now passes under the delegated proof.
-- `src/00124.c` no longer segfaults from a bad returned function-pointer
-  callee. The latest delegated proof exits `8`; generated `f1` returns `f2`
-  via `x0`, and `main` performs `blr x13`, but generated `f2` still computes
-  `sub w0, w19, w20` instead of using its incoming `w0`/`w1` parameters.
-  Treat that as a separate scalar parameter/ALU lowering owner unless the
-  supervisor intentionally broadens this source idea.
+- `src/00089.c` remains accepted for the Step 3 function-pointer owner.
+- `src/00124.c` remains separated on the scalar parameter/ALU blocker:
+  generated `f1` returns `f2` via `x0`, and `main` performs `blr x13`, but
+  generated `f2` still computes with stale callee-saved registers instead of
+  incoming `w0`/`w1` parameters.
+- `src/00210.c` is blocked outside the function-pointer owner by a general
+  AArch64 call-argument register-authority mismatch for the `printf` format
+  string: prepared facts say `.str0` is in `x21`, but the emitted move uses
+  `x20`.
 - Do not convert indirect calls to named direct calls; the repaired shape still
   uses `blr`.
 
 ## Proof
 
-Built the focused backend test targets:
+Inspected `00210` with semantic and prepared backend dumps:
 
 ```sh
-cmake --build build --target backend_aarch64_return_lowering_test backend_aarch64_machine_printer_test backend_lir_to_bir_notes_test
+build-aarch64-scan/c4cll --target aarch64-linux-gnu --dump-bir tests/c/external/c-testsuite/src/00210.c
+build-aarch64-scan/c4cll --target aarch64-linux-gnu --dump-prepared-bir tests/c/external/c-testsuite/src/00210.c
 ```
 
-Result: passed.
+Result: semantic BIR and prepared call plans preserve the attributed
+function-pointer casts as callable indirect callees. The remaining mismatch is
+the prepared-register call-boundary issue described above.
 
-Ran the focused backend tests:
+Ran the delegated Step 4 proof exactly:
 
 ```sh
-ctest --test-dir build --output-on-failure -R '^(backend_aarch64_return_lowering|backend_aarch64_machine_printer|backend_lir_to_bir_notes)$'
+{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00210_c$'; } > test_after.log 2>&1
 ```
 
-Result: passed 3/3.
-
-Ran the delegated backend proof subset:
-
-```sh
-ctest --test-dir build -j --output-on-failure -R '^backend_'
-```
-
-Result: passed 139/139.
-
-Ran the delegated Step 3 owner proof exactly:
-
-```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00089_c$|^c_testsuite_aarch64_backend_src_00124_c$'; } > test_after.log 2>&1
-```
-
-Result: selected 2 tests. `c_testsuite_aarch64_backend_src_00089_c` passed.
-`c_testsuite_aarch64_backend_src_00124_c` failed with `exit=8` after the
-function-pointer return/callee path was repaired; `test_after.log` is the
-canonical proof log.
-
-Supervisor acceptance proof for the completed Step 3 function-pointer slice:
-
-```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
-```
-
-Result: passed; resolved `00089` with no new failures.
-
-```sh
-cmake --build --preset default
-```
-
-Result: passed.
-
-```sh
-ctest --test-dir build -j --output-on-failure -R '^backend_'
-```
-
-Result: passed 139/139 on clean rerun.
-
-```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan --output-on-failure -R '^c_testsuite_aarch64_backend_src_00(087|089)_c$|^c_testsuite_aarch64_backend_src_00124_c$'; } > /tmp/c4c_fnptr_step3_owner_subset.log 2>&1
-```
-
-Result: `00087` passed, `00089` passed, and `00124` failed
-runtime-nonzero from the already separated scalar parameter/ALU blocker.
-Step 3 is accepted for the function-pointer owner without claiming `00124`
-fully green.
+Result: selected 1 test. `c_testsuite_aarch64_backend_src_00210_c` failed with
+`[RUNTIME_MISMATCH]`: expected two `42` lines, actual output is garbage bytes
+from passing the function address as `printf`'s format pointer. `test_after.log`
+is the canonical proof log for this Step 4 packet.
 
 Transient inspection artifacts used:
-- `/tmp/00089.step3.s`
-- `/tmp/00124.step3.s`
+- `/tmp/00210.bir`
+- `/tmp/00210.prepared`
+- `/tmp/00210.mir`
