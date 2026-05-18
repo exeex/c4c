@@ -1,8 +1,9 @@
 # AArch64 Backend Result Register Runtime Nonzero
 
-Status: Open, inactive after result-register owner repair
+Status: Closed
 Created: 2026-05-18
 Discovered From: ideas/open/276_aarch64_c_testsuite_backend_runtime_execution.md
+Closed: 2026-05-18
 
 ## Lifecycle Handoff
 
@@ -84,6 +85,26 @@ contract for the result-register fix.
   still pass through the same backend assembly runtime route.
 - Any remaining non-result-register backend failures discovered during proof
   are recorded as separate follow-up ideas rather than folded into this one.
+
+## Closure Notes
+
+Closed during post-close lifecycle cleanup. The source idea's own lifecycle
+handoff records that commit `d298e1945` repaired the result-register owner:
+return expression values are retargeted into the prepared AArch64 ABI return
+register, and `00003.c` advanced beyond the original `sub w19, w0, #4; ret`
+failure.
+
+The later local-operand, pointer/address, branch-control, route-readiness, and
+`00007.c` loop-control follow-ups were tracked and closed separately. Current
+close-gate evidence keeps the result-register route green: focused
+`backend_aarch64_return_lowering` passes, and
+`c_testsuite_aarch64_backend_src_(00001|00002|00003)_c` pass through the
+AArch64 backend runtime route without expectation weakening.
+
+Close-time regression guard passed with matching-scope logs:
+`test_before.log` and `test_after.log` both cover the focused AArch64 backend
+subset plus `c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006|00007)_c`,
+with 7 passed, 0 failed, and no new failures in the parsed final CTest summary.
 
 ## Reviewer Reject Signals
 
