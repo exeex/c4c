@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/284_aarch64_c_testsuite_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: Step 1
-Current Step Title: Refresh Post-292 Inventory
+Current Step ID: Step 2
+Current Step Title: Select the Next Semantic Owner
 
 # Current Packet
 
