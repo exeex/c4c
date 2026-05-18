@@ -253,6 +253,10 @@ c4c::TargetProfile riscv_target_profile() {
   return c4c::target_profile_from_triple("riscv64-unknown-linux-gnu");
 }
 
+c4c::TargetProfile aarch64_target_profile() {
+  return c4c::target_profile_from_triple("aarch64-linux-gnu");
+}
+
 prepare::PreparedBirModule prepare_module(const bir::Module& module) {
   prepare::PrepareOptions options;
   options.run_legalize = true;
@@ -269,6 +273,16 @@ prepare::PreparedBirModule prepare_riscv_module(const bir::Module& module) {
   options.run_liveness = true;
   options.run_regalloc = true;
   return prepare::prepare_semantic_bir_module_with_options(module, riscv_target_profile(), options);
+}
+
+prepare::PreparedBirModule prepare_aarch64_module(const bir::Module& module) {
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+  return prepare::prepare_semantic_bir_module_with_options(
+      module, aarch64_target_profile(), options);
 }
 
 void set_register_group_override(prepare::PreparedBirModule& prepared,
@@ -2647,6 +2661,92 @@ bir::Module make_variadic_nested_dynamic_stack_call_module() {
   function.blocks.push_back(std::move(restore_outer));
   module.functions.push_back(std::move(function));
   return module;
+}
+
+bir::Module make_aarch64_scalar_parameter_subtract_module() {
+  bir::Module module;
+  module.target_triple = "aarch64-linux-gnu";
+
+  bir::Function function;
+  function.name = "scalar_param_sub";
+  function.return_type = bir::TypeKind::I32;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "%p.c",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I32,
+      .name = "%p.b",
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Sub,
+      .result = bir::Value::named(bir::TypeKind::I32, "%t0"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%p.c"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%p.b"),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%t0")};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int check_aarch64_scalar_parameter_homes_and_storage_contract() {
+  const auto prepared = prepare_aarch64_module(make_aarch64_scalar_parameter_subtract_module());
+  const auto* locations =
+      prepare::find_prepared_value_location_function(prepared, "scalar_param_sub");
+  const auto* storage_plan = find_storage_plan_function(prepared, "scalar_param_sub");
+  if (locations == nullptr || storage_plan == nullptr) {
+    return fail("aarch64 scalar parameter contract: missing value homes or storage plan");
+  }
+
+  const auto* lhs_home = prepare::find_prepared_value_home(prepared.names, *locations, "%p.c");
+  const auto* rhs_home = prepare::find_prepared_value_home(prepared.names, *locations, "%p.b");
+  const auto* result_home = prepare::find_prepared_value_home(prepared.names, *locations, "%t0");
+  const auto* lhs_storage = find_storage_value(prepared, *storage_plan, "%p.c");
+  const auto* rhs_storage = find_storage_value(prepared, *storage_plan, "%p.b");
+  const auto* result_storage = find_storage_value(prepared, *storage_plan, "%t0");
+
+  if (lhs_home == nullptr || rhs_home == nullptr || result_home == nullptr ||
+      lhs_storage == nullptr || rhs_storage == nullptr || result_storage == nullptr) {
+    return fail("aarch64 scalar parameter contract: missing parameter/result facts");
+  }
+  if (lhs_home->kind != prepare::PreparedValueHomeKind::Register ||
+      rhs_home->kind != prepare::PreparedValueHomeKind::Register ||
+      result_home->kind != prepare::PreparedValueHomeKind::Register ||
+      lhs_home->register_name != std::optional<std::string>{"x0"} ||
+      rhs_home->register_name != std::optional<std::string>{"x1"} ||
+      result_home->register_name != std::optional<std::string>{"x13"}) {
+    return fail("aarch64 scalar parameter contract: value homes lost ABI register authority");
+  }
+  if (lhs_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      rhs_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      lhs_storage->bank != prepare::PreparedRegisterBank::Gpr ||
+      rhs_storage->bank != prepare::PreparedRegisterBank::Gpr ||
+      result_storage->bank != prepare::PreparedRegisterBank::Gpr ||
+      lhs_storage->register_name != std::optional<std::string>{"x0"} ||
+      rhs_storage->register_name != std::optional<std::string>{"x1"} ||
+      result_storage->register_name != std::optional<std::string>{"x13"} ||
+      lhs_storage->occupied_register_names != std::vector<std::string>{"x0"} ||
+      rhs_storage->occupied_register_names != std::vector<std::string>{"x1"} ||
+      result_storage->occupied_register_names != std::vector<std::string>{"x13"}) {
+    return fail("aarch64 scalar parameter contract: storage plan lost ABI register authority");
+  }
+  if (lhs_storage->register_placement.has_value() ||
+      rhs_storage->register_placement.has_value() ||
+      !result_storage->register_placement.has_value()) {
+    return fail("aarch64 scalar parameter contract: parameter storage should be spelling-authoritative while result storage keeps placement authority");
+  }
+  return 0;
 }
 
 int check_fixed_frame_contract() {
@@ -5408,6 +5508,9 @@ int check_aapcs64_variadic_entry_helper_family_frame_contract() {
 }  // namespace
 
 int main() {
+  if (const int rc = check_aarch64_scalar_parameter_homes_and_storage_contract(); rc != 0) {
+    return rc;
+  }
   if (const int rc = check_fixed_frame_contract(); rc != 0) {
     return rc;
   }

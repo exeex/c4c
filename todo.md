@@ -3,18 +3,30 @@
 Status: Active
 Source Idea Path: ideas/open/290_aarch64_scalar_parameter_alu_authority.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Establish Scalar Parameter ALU Failure
+Current Step ID: 2
+Current Step Title: Repair Parameter Home Publication
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 1, "Establish Scalar Parameter ALU Failure", for
-`tests/c/external/c-testsuite/src/00124.c` without implementation changes.
+Executed Step 2, "Repair Parameter Home Publication", for the `00124` scalar
+parameter inputs. No prealloc implementation repair was needed: focused
+coverage proves parameter homes and storage are already authoritative for the
+`%p.c` and `%p.b` inputs.
 
-The failure is localized to scalar parameter/ALU operand authority in the
-called function `f2`, not to function-pointer value/callee handling.
+Added a focused backend prealloc contract test in
+`tests/backend/bir/backend_prepare_frame_stack_call_contract_test.cpp`. The
+test prepares a small AArch64 two-parameter `i32` subtract function and asserts:
+
+- `%p.c` publishes a register home and storage in `x0`.
+- `%p.b` publishes a register home and storage in `x1`.
+- the scalar result publishes a register home and storage in `x13`.
+- parameter storage is spelling-authoritative and does not depend on a stale
+  placement override.
+
+The original `00124` failure therefore remains localized past parameter
+home/storage publication, at AArch64 scalar ALU consumption.
 
 Semantic BIR for `f2` is correct:
 
@@ -68,25 +80,22 @@ main:
 
 Likely backend surfaces for the repair are:
 
-- `src/backend/prealloc/regalloc/value_homes.cpp` for parameter home authority
-  from ABI registers.
-- `src/backend/prealloc/regalloc/storage.cpp` and
-  `src/backend/prealloc/storage_plans.cpp` for parameter storage records.
-- `src/backend/prealloc/regalloc/consumer_moves.cpp` for the
-  `before_instruction` consumer moves that currently mention `%p.c` and `%p.b`
-  feeding `%t0`.
 - `src/backend/mir/aarch64/codegen/alu.cpp` for prepared scalar ALU operand
   selection.
 - `src/backend/mir/aarch64/codegen/operands.cpp` and
   `src/backend/mir/aarch64/codegen/instruction.cpp` for typed prepared
   register operands and fallback behavior.
+- `src/backend/prealloc/regalloc/consumer_moves.cpp` remains a possible
+  context surface for the `before_instruction` consumer moves, but the Step 2
+  parameter home/storage facts themselves are now covered and do not appear
+  malformed.
 
 ## Suggested Next
 
-Implement a focused AArch64 scalar ALU authority repair so prepared parameter
-homes/storage for `%p.c` and `%p.b` drive the emitted `sub` operands. The
-expected `f2` shape is `sub w0, w0, w1` or an equivalent sequence that consumes
-incoming `w0`/`w1` before returning the scalar result.
+Execute Step 3 by repairing AArch64 scalar ALU operand consumption so prepared
+parameter homes/storage for `%p.c` and `%p.b` drive the emitted `sub`
+operands. The expected `f2` shape is `sub w0, w0, w1` or an equivalent sequence
+that consumes incoming `w0`/`w1` before returning the scalar result.
 
 ## Watchouts
 
@@ -100,6 +109,8 @@ incoming `w0`/`w1` before returning the scalar result.
   parameter name, or one arithmetic expression.
 - The emitted `sub w0, w19, w20` conflicts with prepared facts that name
   `%p.c` as `x0` and `%p.b` as `x1`.
+- Do not change parameter publication in Step 3 unless a new focused test
+  contradicts the Step 2 prealloc contract test.
 - Keep the `00210` call-argument/register-authority blocker separate.
 
 ## Proof
@@ -113,10 +124,27 @@ Baseline proof was already captured in `test_before.log` with:
 Result: `c_testsuite_aarch64_backend_src_00124_c` failed
 `[RUNTIME_NONZERO] exit=216`.
 
-No new proof rerun was needed for this localization packet, so `test_after.log`
-was not rewritten.
+The exact `00124` narrow proof was not rerun in this Step 2 packet, so
+`test_after.log` was not rewritten.
 
-Inspection commands used:
+Step 2 focused test target:
+
+```sh
+cmake --build build --target backend_prepare_frame_stack_call_contract_test
+ctest --test-dir build --output-on-failure -R '^backend_prepare_frame_stack_call_contract$'
+```
+
+Result: passed.
+
+Delegated backend proof subset:
+
+```sh
+ctest --test-dir build -j --output-on-failure -R '^backend_'
+```
+
+Result: passed 139/139.
+
+Step 1 inspection commands used:
 
 ```sh
 build-aarch64-scan/c4cll --target aarch64-linux-gnu --dump-bir tests/c/external/c-testsuite/src/00124.c > /tmp/00124.scalar.bir
