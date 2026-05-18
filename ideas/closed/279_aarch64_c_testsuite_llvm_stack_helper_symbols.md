@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite LLVM Stack Helper Symbols
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -65,3 +66,15 @@ Reject the route or slice if it:
 - reintroduces the completed undefined `.LBB...` temporary-label failure mode;
 - broadly rewrites unrelated ABI, call, or frontend lowering paths to mask this
   helper-symbol family.
+
+## Completion Notes
+
+Closed after focused backend proof passed and the broad AArch64 backend scan
+reported zero remaining unresolved `llvm.stacksave`,
+`llvm.dynamic_alloca.*`, or `llvm.stackrestore` references. The representative
+`00207.c` case now reaches the next truthful owner layer as an explicit
+dynamic-stack unsupported diagnostic instead of unresolved helper calls.
+
+`[RUNTIME_UNAVAILABLE]` results were not counted as pass evidence. Full
+AArch64 dynamic-stack lowering remains a separate capability family tracked by
+`ideas/open/280_aarch64_dynamic_stack_lowering.md`.
