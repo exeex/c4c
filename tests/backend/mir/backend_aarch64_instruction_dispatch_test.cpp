@@ -3077,6 +3077,20 @@ prepare::PreparedBirModule prepared_with_frame_slot_load(bool include_storage = 
   const auto bir_entry_label =
       prepared.module.names.block_labels.intern("dispatch.load.entry");
   const auto result_name = prepared.names.value_names.intern("%loaded");
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{20},
+              .object_id = prepare::PreparedObjectId{20},
+              .function_name = function_name,
+              .offset_bytes = 0,
+              .size_bytes = 16,
+              .align_bytes = 16,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.load",
@@ -4384,6 +4398,20 @@ prepare::PreparedBirModule prepared_with_store(StoreDispatchFixtureKind kind,
   const auto stored_name = prepared.names.value_names.intern("%stored");
   const auto pointer_name = prepared.names.value_names.intern("%ptr");
   const auto global_name = prepared.names.link_names.intern("g.store");
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{21},
+              .object_id = prepare::PreparedObjectId{21},
+              .function_name = function_name,
+              .offset_bytes = 0,
+              .size_bytes = 16,
+              .align_bytes = 16,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
 
   bir::Inst store_inst;
   prepare::PreparedAddress address;

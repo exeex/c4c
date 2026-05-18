@@ -8,8 +8,19 @@ Current Step Title: Repair Address-Exposed Local Or Pointer Lowering
 
 ## Just Finished
 
-Step 2 repaired the owned AArch64 prepared memory slice for address-exposed
-local pointer stores:
+Step 2 fix-back repaired the `backend_aarch64_instruction_dispatch` regression
+introduced by the address-exposed local pointer repair while preserving the
+semantic repair.
+
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` now gives the
+affected dispatch load/store fixtures explicit prepared stack-layout slot
+snapshots. That matches the implementation contract added in the local pointer
+repair: real AArch64 memory lowering now consumes authoritative prepared
+frame-slot offsets before selecting printable memory nodes. The fixture update
+does not weaken the expected selected load/store contract; it supplies the
+authority the implementation now requires.
+
+The preserved Step 2 repair remains:
 
 - `src/backend/mir/aarch64/codegen/memory.cpp` now resolves frame-slot memory
   operands against the prepared stack layout during real lowering, so distinct
@@ -25,7 +36,8 @@ local pointer stores:
   covers the printable local-address store form and preserves the existing
   non-trivial immediate store `w9/x9` scratch materialization contract.
 
-Generated assembly evidence after the repair:
+Generated assembly evidence after the fix-back still shows the local pointer
+repair:
 
 ```asm
 # build-aarch64-scan/c_testsuite_aarch64_backend/src/00004.c.s
@@ -55,9 +67,9 @@ mov w0, #1
 ret
 ```
 
-The original address-exposed local owner is repaired: `%lv.x`, `%lv.p`, and
-`%lv.pp` no longer all alias at `[sp]`, and `p = &x` / `pp = &p` store frame
-addresses rather than unrelated value registers.
+The original address-exposed local owner remains repaired: `%lv.x`, `%lv.p`,
+and `%lv.pp` no longer all alias at `[sp]`, and `p = &x` / `pp = &p` store
+frame addresses rather than unrelated value registers.
 
 ## Suggested Next
 
@@ -83,6 +95,9 @@ set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j -
 - The Step 2 address/pointer repair is not proved by runtime pass evidence yet:
   it is proved by focused backend tests and generated assembly inspection, while
   runtime still fails at the next owner layer.
+- The stale baseline candidate was rejected after the dispatch regression
+  fix-back; the delegated proof still exits nonzero only because `00004.c` and
+  `00005.c` expose next owner runtime failures.
 - Preserve reserved MIR scratch `x9` for both immediate materialization and
   local-address materialization; do not use indirect-call scratch `x16/x17`.
 
@@ -95,6 +110,7 @@ set -o pipefail; { cmake --build --preset default && ctest --test-dir build -j -
 ```
 
 Result: FAIL, command exited 8. The backend focused subset passed:
+`backend_aarch64_instruction_dispatch`,
 `backend_aarch64_memory_operand_records`,
 `backend_aarch64_prepared_memory_operand_records`,
 `backend_aarch64_memory_operand_contract`,
