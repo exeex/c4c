@@ -163,6 +163,16 @@ Durable inventory findings to preserve:
   timeout/hang cases (`src/00132.c`, `src/00173.c`, `src/00220.c`), and
   compile-stage printer gaps. The active lifecycle state switched to
   `ideas/open/292_aarch64_scalar_expression_control_value_authority.md`.
+- After scalar expression/control-value authority completed, the starter
+  representatives `src/00009.c`, `src/00012.c`, `src/00056.c`, `src/00156.c`,
+  `src/00161.c`, and `src/00211.c` passed and
+  `ideas/open/292_aarch64_scalar_expression_control_value_authority.md` moved
+  to `ideas/closed/292_aarch64_scalar_expression_control_value_authority.md`.
+  Broad timeout-protected AArch64 backend validation still had unresolved
+  failures, separated into pointer/aggregate, timeout, printer/admission,
+  floating/conversion/string, and side-effect control buckets. This umbrella
+  inventory should reactivate for one more classification pass and choose the
+  next focused semantic owner instead of closing as complete.
 
 ## Reviewer Reject Signals
 
