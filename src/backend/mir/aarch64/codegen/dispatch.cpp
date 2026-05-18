@@ -825,6 +825,9 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));
+      } else if (auto lowered = lower_scalar_control_value_instruction(
+              context, inst, instruction_index, scalar_state, diagnostics)) {
+        block.instructions.push_back(std::move(*lowered));
       } else {
         auto lowered_i128_transport =
             lower_i128_transport_instruction(context, inst, instruction_index, diagnostics);

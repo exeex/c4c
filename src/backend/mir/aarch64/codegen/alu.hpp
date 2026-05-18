@@ -89,5 +89,12 @@ void record_emitted_scalar_register(BlockScalarLoweringState& state,
     std::size_t instruction_index,
     BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics);
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_control_value_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics);
 
 }  // namespace c4c::backend::aarch64::codegen

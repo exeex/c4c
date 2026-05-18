@@ -184,6 +184,38 @@ namespace mir = c4c::backend::mir;
   return opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
 }
 
+[[nodiscard]] bool is_scalar_compare_opcode(bir::BinaryOpcode opcode) {
+  return is_compare_predicate(opcode);
+}
+
+[[nodiscard]] std::optional<std::string_view> scalar_compare_condition(
+    bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Eq:
+      return "eq";
+    case bir::BinaryOpcode::Ne:
+      return "ne";
+    case bir::BinaryOpcode::Slt:
+      return "lt";
+    case bir::BinaryOpcode::Sle:
+      return "le";
+    case bir::BinaryOpcode::Sgt:
+      return "gt";
+    case bir::BinaryOpcode::Sge:
+      return "ge";
+    case bir::BinaryOpcode::Ult:
+      return "lo";
+    case bir::BinaryOpcode::Ule:
+      return "ls";
+    case bir::BinaryOpcode::Ugt:
+      return "hi";
+    case bir::BinaryOpcode::Uge:
+      return "hs";
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] bool is_scalar_alu_publication_opcode(bir::BinaryOpcode opcode) {
   return is_scalar_alu_integer_opcode(opcode) || opcode == bir::BinaryOpcode::Mul ||
          opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::SRem;
@@ -810,6 +842,270 @@ namespace mir = c4c::backend::mir;
     }
   }
   return make_named_scalar_operand(value, context, diagnostics);
+}
+
+[[nodiscard]] std::optional<OperandRecord> make_control_publication_operand(
+    const bir::Value& value,
+    const module::BlockLoweringContext& context,
+    const BlockScalarLoweringState& scalar_state) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return make_immediate_scalar_operand(value);
+  }
+  const auto* home = find_named_value_home(value, context.function);
+  if (home == nullptr) {
+    return std::nullopt;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, home->value_name);
+  if (emitted.has_value()) {
+    return make_register_operand(*emitted);
+  }
+  if (home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+    auto source = make_prepared_scalar_load_source(context, *home);
+    if (source.has_value() && context.control_flow_block != nullptr &&
+        source->block_label == context.control_flow_block->block_label) {
+      return make_memory_operand(*source);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] PreparedScalarAluRecordError control_prepared_scalar_result_operand(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    const bir::Value& result,
+    RegisterOperand& out,
+    std::optional<std::int64_t>& result_stack_offset_bytes) {
+  if (result.kind != bir::Value::Kind::Named || result.name.empty()) {
+    return PreparedScalarAluRecordError::UnsupportedResultValue;
+  }
+  const auto* result_home = find_prepared_scalar_value_home(names, value_locations, result);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return PreparedScalarAluRecordError::MissingResultValueHome;
+  }
+  const auto* result_storage = find_prepared_scalar_storage(storage_plan, result_home->value_id);
+  if (result_storage == nullptr || result_storage->value_name != result_home->value_name) {
+    return PreparedScalarAluRecordError::MissingResultStorage;
+  }
+  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register) {
+    const auto result_register = make_prepared_scalar_register_operand(
+        *result_home, *result_storage, result.type, RegisterOperandRole::StoragePlan);
+    if (!result_register.has_value()) {
+      return PreparedScalarAluRecordError::RegisterConversionFailed;
+    }
+    out = *result_register;
+    return PreparedScalarAluRecordError::None;
+  }
+  if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      result_storage->stack_offset_bytes.has_value()) {
+    const auto scratch =
+        make_scalar_spill_scratch_operand(*result_home, *result_storage, result.type);
+    if (!scratch.has_value()) {
+      return PreparedScalarAluRecordError::RegisterConversionFailed;
+    }
+    out = *scratch;
+    result_stack_offset_bytes =
+        static_cast<std::int64_t>(*result_storage->stack_offset_bytes);
+    return PreparedScalarAluRecordError::None;
+  }
+  return PreparedScalarAluRecordError::UnsupportedResultStorage;
+}
+
+struct MaterializedControlSource {
+  std::string name;
+  std::optional<RegisterOperand> occupied_register;
+};
+
+[[nodiscard]] std::optional<MaterializedControlSource> materialize_control_register_source(
+    const OperandRecord& operand,
+    abi::RegisterView view,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied) {
+  if (operand.kind == OperandKind::Register) {
+    const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+    if (reg == nullptr) {
+      return std::nullopt;
+    }
+    const auto name = scalar_gp_register_name_with_view(*reg, view);
+    if (!name.has_value()) {
+      return std::nullopt;
+    }
+    return MaterializedControlSource{.name = *name, .occupied_register = *reg};
+  }
+  if (operand.kind == OperandKind::Memory) {
+    const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
+    if (memory == nullptr || memory->support != MemoryOperandSupportKind::Prepared ||
+        memory->base_kind != MemoryBaseKind::FrameSlot ||
+        !memory->can_use_base_plus_offset ||
+        !memory->byte_offset_is_prepared_snapshot) {
+      return std::nullopt;
+    }
+    const auto scratch = scalar_gp_scratch_register(view, occupied);
+    const auto address = memory_address(*memory);
+    if (!scratch.has_value() || address.empty()) {
+      return std::nullopt;
+    }
+    const std::string name = abi::register_name(scratch->reg);
+    std::ostringstream load;
+    load << "ldr " << name << ", " << address;
+    lines.push_back(load.str());
+    return MaterializedControlSource{.name = name, .occupied_register = *scratch};
+  }
+  if (operand.kind == OperandKind::Immediate) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+    if (immediate == nullptr) {
+      return std::nullopt;
+    }
+    const auto scratch = scalar_gp_scratch_register(view, occupied);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    const std::string name = abi::register_name(scratch->reg);
+    std::ostringstream move;
+    move << "mov " << name << ", " << scalar_immediate_name(*immediate);
+    lines.push_back(move.str());
+    return MaterializedControlSource{.name = name, .occupied_register = *scratch};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<MaterializedControlSource> materialize_control_compare_rhs(
+    const OperandRecord& operand,
+    abi::RegisterView view,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied) {
+  if (operand.kind == OperandKind::Immediate) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+    if (immediate == nullptr || immediate->signed_value < 0 ||
+        immediate->signed_value > 4095) {
+      return std::nullopt;
+    }
+    return MaterializedControlSource{
+        .name = scalar_immediate_name(*immediate),
+        .occupied_register = std::nullopt,
+    };
+  }
+  return materialize_control_register_source(operand, view, lines, std::move(occupied));
+}
+
+[[nodiscard]] module::MachineInstruction make_control_publication_assembler(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::vector<std::string> lines) {
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += lines[index];
+  }
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .inline_asm_template = std::move(asm_text),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_compare_publication(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (!is_scalar_compare_opcode(binary.opcode) ||
+      context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      binary.result.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto condition = scalar_compare_condition(binary.opcode);
+  const auto operand_view = scalar_register_view(binary.operand_type);
+  if (!condition.has_value() || !operand_view.has_value()) {
+    return std::nullopt;
+  }
+  RegisterOperand result_register;
+  std::optional<std::int64_t> result_stack_offset_bytes;
+  if (control_prepared_scalar_result_operand(context.function.prepared->names,
+                                             *context.function.value_locations,
+                                             *context.function.storage_plan,
+                                             binary.result,
+                                             result_register,
+                                             result_stack_offset_bytes) !=
+      PreparedScalarAluRecordError::None) {
+    return std::nullopt;
+  }
+  const auto result = scalar_gp_register_name_with_view(
+      result_register, scalar_register_view(binary.result.type).value_or(*operand_view));
+  if (!result.has_value()) {
+    return std::nullopt;
+  }
+  (void)diagnostics;
+  auto lhs_operand =
+      make_control_publication_operand(binary.lhs, context, scalar_state);
+  auto rhs_operand =
+      make_control_publication_operand(binary.rhs, context, scalar_state);
+  if (!lhs_operand.has_value() || !rhs_operand.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  const auto lhs = materialize_control_register_source(
+      *lhs_operand, *operand_view, lines, {});
+  if (!lhs.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<const RegisterOperand*> rhs_occupied{&result_register};
+  if (lhs->occupied_register.has_value()) {
+    rhs_occupied.push_back(&*lhs->occupied_register);
+  }
+  const auto rhs = materialize_control_compare_rhs(
+      *rhs_operand, *operand_view, lines, std::move(rhs_occupied));
+  if (!rhs.has_value()) {
+    return std::nullopt;
+  }
+  std::ostringstream cmp;
+  cmp << "cmp " << lhs->name << ", " << rhs->name;
+  lines.push_back(cmp.str());
+  std::ostringstream cset;
+  cset << "cset " << *result << ", " << *condition;
+  lines.push_back(cset.str());
+  (void)result_stack_offset_bytes;
+  record_emitted_scalar_register(scalar_state,
+                                 result_register.value_name,
+                                 result_register);
+  return make_control_publication_assembler(context, instruction_index, std::move(lines));
 }
 
 [[nodiscard]] std::optional<ImmediateOperand> authoritative_immediate_storage(
@@ -2087,6 +2383,19 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
               .instruction_index = instruction_index,
           },
   };
+}
+
+std::optional<module::MachineInstruction> lower_scalar_control_value_instruction(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+    return lower_scalar_compare_publication(
+        context, *binary, instruction_index, scalar_state, diagnostics);
+  }
+  return std::nullopt;
 }
 
 }  // namespace c4c::backend::aarch64::codegen
