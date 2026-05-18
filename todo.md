@@ -1,24 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Runtime And Nearby Coverage
+Current Step ID: 4
+Current Step Title: Review Residual Scope
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 broader AArch64 backend scan proof was attempted with the delegated
-command. The focused backend subset still passes, and the owned runtime smoke
-cases `00001.c`, `00002.c`, and `00003.c` still pass through the AArch64
-backend route. The broader scan is not closure-ready: it exposed runtime
-failures in `00004.c` and `00005.c`, then blocked on a runtime hang in
-`00006.c`.
+Step 4 plan-owner residual-scope review split the broad-scan failures exposed
+by Step 3 into distinct follow-up source ideas instead of expanding idea 278:
+
+- `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
+  owns the `00004.c`/`00005.c` address-exposed local/pointer runtime-nonzero
+  family.
+- `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md` owns the
+  `00006.c` loop/branch control runtime hang family.
+
+Idea 278 source scope appears satisfied by the committed local materialization
+repair: the focused backend subset passes, and the owned runtime smoke cases
+`00001.c`, `00002.c`, and `00003.c` pass through the AArch64 backend route.
+The later broad-scan failures are not the same immediate scalar local
+store/load materialization owner.
+
+Closure is not accepted in this lifecycle packet because the existing
+canonical proof logs are not a valid close-gate pair. `test_before.log`
+contains the focused backend subset plus the focused `00001.c`/`00002.c`/
+`00003.c` route, while `test_after.log` contains the focused backend subset
+plus a different 220-test broad scan that stops at `00006.c`. The regression
+guard script exits PASS only because it parses different final CTest summaries
+from mismatched scopes, so the pair is invalid under the regression-guard
+scope rule.
 
 Changed files:
 
 - `todo.md`
-- `test_after.log`
+- `ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
+- `ideas/open/282_aarch64_loop_branch_control_runtime_hang.md`
 
 Observed broad-scan results before the proof was stopped:
 
@@ -57,20 +75,21 @@ main:
     ret
 ```
 
-The Step 2 local-materialization repair remains proven for the owned case, but
-idea 278 is not ready for closure review on this broad scan. The next owner
-layers are broader than the completed scalar local immediate store/load slice:
-`00004.c`/`00005.c` point at address-exposed local/pointer semantics, and
-`00006.c` points at branch/loop control lowering that emits an unconditional
-self-loop.
+The Step 2 local-materialization repair remains proven for the owned case. The
+next owner layers are broader than the completed scalar local immediate
+store/load slice: `00004.c`/`00005.c` point at address-exposed local/pointer
+semantics, and `00006.c` points at branch/loop control lowering that emits an
+unconditional self-loop.
 
 ## Suggested Next
 
-Open a follow-up lifecycle decision instead of closing idea 278. The smallest
-next packet should localize the first broad-scan owner layer from the Step 3
-proof, starting with `00004.c`/`00005.c` address-exposed local pointer
-semantics or, if the supervisor chooses loop control first, `00006.c`
-conditional branch/loop lowering.
+Provide or regenerate matching-scope close-gate logs for idea 278, then rerun
+plan-owner closure. If closure is accepted, activate
+`ideas/open/281_aarch64_address_exposed_local_pointer_runtime_nonzero.md`
+first because it is the first broad-scan blocker after the repaired
+`00001.c`/`00002.c`/`00003.c` path. Keep
+`ideas/open/282_aarch64_loop_branch_control_runtime_hang.md` open as the
+separate `00006.c` follow-up.
 
 ```sh
 set -o pipefail; { cmake --build --preset default && cmake -S . -B build-aarch64-scan -DENABLE_C4C_BACKEND=ON -DENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN=ON -DC_TESTSUITE_AARCH64_BACKEND_RUNNER="${C_TESTSUITE_AARCH64_BACKEND_RUNNER}" && cmake --build build-aarch64-scan --target c4cll -j && ctest --test-dir build-aarch64-scan --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00004|00005|00006)_c$'; } 2>&1 | tee test_after.log
@@ -106,3 +125,15 @@ failed `[RUNTIME_NONZERO] exit=1`; `00006.c` hung at runtime for several
 minutes and the proof process was stopped manually to avoid leaving a live test
 session. This is not `[RUNTIME_UNAVAILABLE]` and is not pass evidence. Proof
 log: `test_after.log`.
+
+Close-gate check attempted without touching proof logs:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: script exited PASS, but the logs are rejected for closure because they
+are different scopes. `test_before.log` ends with the focused 3-test
+`00001.c`/`00002.c`/`00003.c` route; `test_after.log` ends in the 220-test
+broad scan stopped at `00006.c`. No proof logs were modified in this
+plan-owner packet.
