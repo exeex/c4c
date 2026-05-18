@@ -336,6 +336,58 @@ lower_scalar_call_argument_producers(
          *source_home.register_name == *destination_home.register_name;
 }
 
+[[nodiscard]] bool is_current_block_join_parallel_copy_source(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst) {
+  if (context.function.value_locations == nullptr ||
+      context.control_flow_block == nullptr) {
+    return false;
+  }
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr ||
+      binary->result.kind != bir::Value::Kind::Named ||
+      binary->result.name.empty()) {
+    return false;
+  }
+  const auto result_value_name = prepared_named_value_id(context, binary->result);
+  if (!result_value_name.has_value()) {
+    return false;
+  }
+  const auto* result_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *result_value_name);
+  if (result_home == nullptr || result_home->value_name == c4c::kInvalidValueName) {
+    return false;
+  }
+  for (const auto& bundle : context.function.value_locations->move_bundles) {
+    if (bundle.phase != prepare::PreparedMovePhase::BlockEntry ||
+        bundle.authority_kind != prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy ||
+        bundle.source_parallel_copy_successor_label !=
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label}) {
+      continue;
+    }
+    for (const auto& move : bundle.moves) {
+      if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+          move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+          move.source_immediate_i32.has_value() ||
+          move.from_value_id != result_home->value_id ||
+          move.from_value_id == move.to_value_id) {
+        continue;
+      }
+      const auto* destination_home =
+          prepare::find_prepared_value_home(*context.function.value_locations,
+                                            move.to_value_id);
+      if (destination_home != nullptr &&
+          prepared_edge_select_source_is_destination_register(*result_home,
+                                                             *destination_home)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::vector<module::MachineInstruction>
 lower_predecessor_select_parallel_copy_sources(
     const module::BlockLoweringContext& context,
@@ -1192,6 +1244,8 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (auto lowered = lower_scalar_cast_instruction(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
+      } else if (is_current_block_join_parallel_copy_source(context, inst)) {
+        continue;
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));

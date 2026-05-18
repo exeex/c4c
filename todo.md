@@ -8,53 +8,45 @@ Current Step Title: Repair Control-Selected Expression Publication
 
 ## Just Finished
 
-Step 3 repaired the remaining `00164` arithmetic publication reuse after the
-fixed logical/select boundary. The call-boundary path now materializes same-block
-scalar ALU producers for named call arguments when the authoritative value has
-not yet been emitted, then retargets the synthetic materialization result to the
-prepared result register named by the value home. This keeps the repair tied to
-call-argument publication instead of enabling every `BeforeInstruction` move.
+Step 3 finished the focused starter subset by repairing `00183`
+conditional-expression result publication while preserving `00164` and `00202`.
+The AArch64 control-publication path now lowers prepared scalar `select`
+results by comparing the selected predicate, materializing same-block scalar
+producer values into non-overlapping registers, and publishing the selected
+value into the prepared result register. The dispatch path also skips
+coalesced out-of-SSA join-transfer source producers in the successor block when
+the prepared predecessor parallel copy has already made source and destination
+share the selected register, preventing stale recomputation from overwriting the
+published result.
 
-Generated-code evidence for `00164`: after the fixed eleventh print for
-`a != b && c != d`, both `a + b * c / f` call arguments now compute the final
-add into `%t162`/`%t171`'s prepared register `w21` before `printf` consumes it,
-while `x20` remains the format-string register:
+Generated-code evidence for `00183`: the final call argument now computes both
+arms and selects into `%t21`'s prepared register `w13` before `printf` consumes
+it:
 
 ```asm
 ldr w10, [sp]
-add w21, w10, w9
+mov w13, #3
+mul w13, w10, w13
+csel w13, w9, w13, lt
 mov x0, x20
-mov x1, x21
+mov x1, x13
 ```
 
-The focused subset still fails overall because `00183` remains the known
-runtime mismatch, while `00164` and `00202` now pass. `00164` now prints all
-expected lines, including the first eleven preserved lines, compare pair
-`1, 0` / `0, 1`, and arithmetic lines 12 and 13 as `1916`, `1916`.
+The focused subset now passes all three starter reps. `00183` prints the final
+five loop iterations as `15`, `18`, `21`, `24`, `27`, and the proof preserved
+the previously passing `00164` and `00202`.
 
 ## Suggested Next
 
-Continue Step 3 with `00183`, which remains the only failing test in the focused
-starter subset. The next packet should repair the conditional-expression result
-publication that still prints `25`, `36`, `49`, `64`, `81` for the final five
-loop iterations instead of `15`, `18`, `21`, `24`, `27`, while preserving the
-now-passing `00164` and `00202`.
-
-Proposed proof command:
-
-```sh
-{ cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
-```
+Continue Step 3 or ask the supervisor whether the starter subset is ready to
+move to Step 4 boundary sampling with `00169` plus the preserved starter reps.
 
 ## Watchouts
 
-- A broad attempt to emit every `PreparedMovePhase::BeforeInstruction` bundle
-  regressed the first-six-line `00164` contract. Keep the next slice tied to
-  explicit predecessor parallel-copy or join-transfer authority.
-- A broad attempt to allow prepared-load-source operands for all control
-  publication fixed line 11 but regressed line 3 from `0` to `1`. The landed
-  path deliberately gates that reload behind the synthetic edge-publication
-  call from `lower_predecessor_select_parallel_copy_sources`.
+- The repair remains tied to explicit scalar control/select publication and
+  coalesced out-of-SSA join-transfer authority. Do not broaden this into
+  enabling every `PreparedMovePhase::BeforeInstruction` bundle; that previously
+  regressed the first-six-line `00164` contract.
 - The implemented edge hook currently handles the bounded shape needed by
   `%t106`: an out-of-SSA predecessor block-entry bundle with a named scalar
   compare source defined in the successor join prefix, and only when source and
@@ -63,17 +55,12 @@ Proposed proof command:
   value needs non-coalesced edge publication, add an explicit prepared-register
   move after source lowering rather than assuming the source home is the
   destination.
+- The new select publication path handles scalar same-block binary producers
+  for selected values and relies on `csel` after a predicate `cmp`; inserted
+  materialization must not clobber condition flags before `csel`.
 - Prepared memory access instruction indexes can lag the compacted prepared BIR
   block indexes; the scalar fallback now reloads by prepared result value name
   when ordinary memory lowering misses an un-emitted register-home load.
-- `00183` is still unchanged by this slice and remains the broader
-  conditional-expression target for Step 3 after the `00164` select boundary is
-  owned.
-- A broad attempt to make scalar ALU register conversion prefer explicit
-  register names over placements fixed `00164` locally but regressed `00183` by
-  computing the loop increment in `w21` while the store still consumed `w20`.
-  The landed patch keeps the explicit-name override local to synthetic
-  call-argument materialization.
 - Do not touch expected outputs, allowlists, unsupported classifications,
   timeout policy, runner behavior, CTest registration, or build/test
   infrastructure.
@@ -86,13 +73,8 @@ Ran the delegated proof exactly:
 { cmake --build build-aarch64-scan --target c4cll && ctest --test-dir build-aarch64-scan -R 'c_testsuite_aarch64_backend_src_(00164|00183|00202)_c$' -j 4 --timeout 5 --output-on-failure; } > test_after.log 2>&1
 ```
 
-Result: failed overall at the focused scan subset with strict pass-count
-improvement over `test_before.log`. The scan subset is now 2/3 passing:
-`00164` passed, `00202` passed, and `00183` remains `RUNTIME_MISMATCH`.
-`test_before.log` was 1/3 passing with `00164` printing stale arithmetic lines
-`2`, `2`; `test_after.log` has `00164` passing with lines 12 and 13 fixed to
-`1916`, `1916`. `00183` remains unchanged at actual `0`, `1`, `4`, `9`, `16`,
-`25`, `36`, `49`, `64`, `81`.
+Result: passed. `test_after.log` shows `100% tests passed, 0 tests failed out
+of 3` for `00164`, `00183`, and `00202`.
 
 Stale-process check:
 
