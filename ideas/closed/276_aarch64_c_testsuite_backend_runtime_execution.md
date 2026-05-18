@@ -1,7 +1,8 @@
 # AArch64 C-Testsuite Backend Runtime Execution
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
+Closed: 2026-05-18
 
 ## Intent
 
@@ -116,6 +117,28 @@ Existing gap:
   assembler/link failure remain distinct failure classes.
 - A broader AArch64 backend c-testsuite scan can be run after the focused proof
   to produce actionable follow-up evidence.
+
+## Closure Notes
+
+Closed after the route-readiness reactivation and Step 3 split review. The
+focused AArch64 backend runtime route is green through
+`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c`:
+the route emits backend AArch64 assembly, assembles/links with clang, runs the
+binary, and compares expected output without LLVM IR fallback, expectation
+weakening, unsupported reclassification, allowlist changes, or runner edits.
+
+The broader registered AArch64 backend scan selected 220 tests and then
+blocked at `00007.c` with `[RUNTIME_HANG]` after passing `00001.c` through
+`00006.c`. Generated `.s` and `.bin` artifacts exist for `00007.c`, so the
+route reached backend assembly generation and clang assembler/link; the
+remaining blocker is a backend loop/control capability gap, not route
+infrastructure. That follow-up is tracked by
+`ideas/open/283_aarch64_for_loop_control_runtime_hang.md`.
+
+Close-time regression guard passed with matching-scope logs:
+`test_before.log` and `test_after.log` both cover
+`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c`,
+with 6 passed, 0 failed, and no new failures.
 
 ## Lifecycle Parking Note
 
