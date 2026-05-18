@@ -78,6 +78,30 @@ check for stale generated-runtime processes afterward.
 - The active lifecycle state switches from this umbrella idea to a focused
   repair idea before implementation work begins.
 
+## Deactivation Note
+
+2026-05-18: Inventory runbook completed its split point and was deactivated as
+the active implementation target. The first focused repair idea created from
+the inventory is
+`ideas/open/285_aarch64_backend_nonleaf_call_frame_lr_preservation.md`.
+
+Durable inventory findings to preserve:
+
+- The 212-case AArch64 backend c-testsuite scan classified as 46 `PASS`, 49
+  `FRONTEND_FAIL`, 87 `RUNTIME_NONZERO`, 7 `RUNTIME_MISMATCH`, and 23
+  `TIMEOUT`, with no `BACKEND_FAIL` bucket.
+- The timeout family should not be treated as ordinary runtime mismatch work.
+  All 23 timeout cases had generated assembly containing at least one `bl`
+  call, and inspected generated functions did not save/restore `x30` before
+  `ret`.
+- Initial timeout probes are `00100.c`, `00116.c`, and `00121.c` because they
+  avoid stdio and isolate non-leaf function calls returning through a
+  clobbered link register.
+- Compound timeout cases should remain quarantined until the non-leaf
+  link-register owner no longer masks their behavior. Secondary risks include
+  string-literal/variadic calls, loop predicates, short-circuit control flow,
+  local stack slots, aggregates/pointers, static globals, and goto behavior.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
