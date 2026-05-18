@@ -107,7 +107,25 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
   const prepare::PreparedRegisterPlacement caller_temp{
       .bank = prepare::PreparedRegisterBank::Gpr,
       .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
-      .slot_index = 9,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement caller_temp_out_of_prealloc_pool{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = 1,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement caller_float_temp{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedRegisterPlacement caller_vector_temp{
+      .bank = prepare::PreparedRegisterBank::Vreg,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = 0,
       .contiguous_width = 1,
   };
   const prepare::PreparedRegisterPlacement callee_saved{
@@ -130,7 +148,15 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
   const auto temp = aarch64_abi::convert_prepared_register(
       caller_temp,
       prepare::PreparedRegisterClass::General,
-      aarch64_abi::RegisterView::X);
+      aarch64_abi::RegisterView::W);
+  const auto float_temp = aarch64_abi::convert_prepared_register(
+      caller_float_temp,
+      prepare::PreparedRegisterClass::Float,
+      aarch64_abi::RegisterView::S);
+  const auto vector_temp = aarch64_abi::convert_prepared_register(
+      caller_vector_temp,
+      prepare::PreparedRegisterClass::Vector,
+      aarch64_abi::RegisterView::V);
   const auto saved = aarch64_abi::convert_prepared_register(
       callee_saved,
       prepare::PreparedRegisterClass::General,
@@ -143,8 +169,23 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
   if (!arg.has_value() || arg.reg != aarch64_abi::w_register(2)) {
     return fail("expected AArch64 to map structured call-argument placement to w2");
   }
-  if (!temp.has_value() || temp.reg != aarch64_abi::x_register(9)) {
-    return fail("expected AArch64 to map caller-saved placement slot 9 to x9");
+  if (!temp.has_value() || temp.reg != aarch64_abi::w_register(13)) {
+    return fail("expected AArch64 to map prepared caller-saved GPR slot 0 to w13");
+  }
+  if (!float_temp.has_value() ||
+      float_temp.reg != aarch64_abi::fp_simd_register(13, aarch64_abi::RegisterView::S)) {
+    return fail("expected AArch64 to map prepared caller-saved FPR slot 0 to s13");
+  }
+  if (!vector_temp.has_value() ||
+      vector_temp.reg != aarch64_abi::fp_simd_register(13, aarch64_abi::RegisterView::V)) {
+    return fail("expected AArch64 to map prepared caller-saved vector slot 0 to v13");
+  }
+  if (!failed_with(aarch64_abi::convert_prepared_register(
+                       caller_temp_out_of_prealloc_pool,
+                       prepare::PreparedRegisterClass::General,
+                       aarch64_abi::RegisterView::W),
+                   aarch64_abi::PreparedRegisterConversionErrorKind::UnknownRegisterName)) {
+    return fail("expected AArch64 prepared caller-saved slots outside the prealloc pool to fail closed");
   }
   if (!saved.has_value() || saved.reg != aarch64_abi::x_register(20)) {
     return fail("expected AArch64 to map callee-saved placement slot 1 to x20");

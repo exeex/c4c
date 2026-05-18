@@ -197,6 +197,26 @@ std::optional<RegisterReference> call_abi_register(
   return std::nullopt;
 }
 
+std::optional<RegisterReference> prepared_caller_saved_register(
+    const prepare::PreparedRegisterPlacement& placement) {
+  if (placement.slot_index != 0 || placement.contiguous_width != 1) {
+    return std::nullopt;
+  }
+
+  switch (placement.bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+      return x_register(13);
+    case prepare::PreparedRegisterBank::Fpr:
+      return d_register(13);
+    case prepare::PreparedRegisterBank::Vreg:
+      return v_register(13);
+    case prepare::PreparedRegisterBank::AggregateAddress:
+    case prepare::PreparedRegisterBank::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 std::optional<RegisterReference> placement_register(
     const prepare::PreparedRegisterPlacement& placement) {
   switch (placement.pool) {
@@ -208,16 +228,7 @@ std::optional<RegisterReference> placement_register(
       }
       return call_abi_register(placement);
     case prepare::PreparedRegisterSlotPool::CallerSaved:
-      switch (placement.bank) {
-        case prepare::PreparedRegisterBank::Gpr:
-        case prepare::PreparedRegisterBank::AggregateAddress:
-          return indexed_register(caller_saved_gp_registers(), placement.slot_index);
-        case prepare::PreparedRegisterBank::Fpr:
-        case prepare::PreparedRegisterBank::Vreg:
-          return indexed_register(caller_saved_fp_simd_registers(), placement.slot_index);
-        case prepare::PreparedRegisterBank::None:
-          return std::nullopt;
-      }
+      return prepared_caller_saved_register(placement);
       break;
     case prepare::PreparedRegisterSlotPool::CalleeSaved:
       switch (placement.bank) {
