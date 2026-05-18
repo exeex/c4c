@@ -540,7 +540,6 @@ namespace mir = c4c::backend::mir;
     const prepare::PreparedValueHome& home) {
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
-      home.kind != prepare::PreparedValueHomeKind::StackSlot ||
       home.value_name == c4c::kInvalidValueName) {
     return std::nullopt;
   }
@@ -835,7 +834,7 @@ namespace mir = c4c::backend::mir;
   if (emitted.has_value()) {
     return make_register_operand(*emitted);
   }
-  if (home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+  if (home != nullptr) {
     auto source = make_prepared_scalar_load_source(context, *home);
     if (source.has_value()) {
       return make_memory_operand(*source);
@@ -1600,6 +1599,10 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   const bool lhs_requires_register_source = lhs_is_register || lhs_is_memory;
   const bool rhs_requires_register_source = rhs_is_register || rhs_is_memory;
   if (lhs_requires_register_source && rhs_requires_register_source) {
+    std::vector<const RegisterOperand*> lhs_occupied;
+    if (rhs_is_register) {
+      lhs_occupied.push_back(rhs_register);
+    }
     std::vector<const RegisterOperand*> rhs_occupied;
     if (scalar.result_register.has_value()) {
       rhs_occupied.push_back(&*scalar.result_register);
@@ -1609,7 +1612,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     }
     const auto lhs = materialize_source(
         scalar.inputs[0], lhs_register, lhs_memory, nullptr,
-        {});
+        std::move(lhs_occupied));
     if (lhs.has_value() && lhs->scratch.has_value()) {
       rhs_occupied.push_back(&*lhs->scratch);
     }
@@ -1816,7 +1819,26 @@ void record_emitted_scalar_register(BlockScalarLoweringState& state,
   if (value_name == c4c::kInvalidValueName) {
     return;
   }
+  for (auto it = state.emitted_registers.begin();
+       it != state.emitted_registers.end();) {
+    if (it->first != value_name && scalar_registers_alias(it->second, reg)) {
+      it = state.emitted_registers.erase(it);
+    } else {
+      ++it;
+    }
+  }
   state.emitted_registers[value_name] = std::move(reg);
+}
+
+void clear_call_clobbered_emitted_scalar_registers(BlockScalarLoweringState& state) {
+  for (auto it = state.emitted_registers.begin();
+       it != state.emitted_registers.end();) {
+    if (abi::is_caller_saved(it->second.reg)) {
+      it = state.emitted_registers.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 std::optional<ImmediateOperand> make_scalar_immediate_operand(

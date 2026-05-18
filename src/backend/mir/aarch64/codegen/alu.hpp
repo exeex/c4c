@@ -83,6 +83,7 @@ make_prepared_scalar_unary_instruction_record(
 void record_emitted_scalar_register(BlockScalarLoweringState& state,
                                     c4c::ValueNameId value_name,
                                     RegisterOperand reg);
+void clear_call_clobbered_emitted_scalar_registers(BlockScalarLoweringState& state);
 [[nodiscard]] std::optional<module::MachineInstruction> lower_scalar_instruction(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,

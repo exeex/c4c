@@ -915,10 +915,12 @@ InstructionDispatchResult dispatch_prepared_block(
         if (auto lowered = lower_call_instruction(
                 context, *call, instruction_index, diagnostics)) {
           block.instructions.push_back(std::move(*lowered));
+          clear_call_clobbered_emitted_scalar_registers(scalar_state);
           if (call_plan != nullptr) {
             auto after_call_moves =
                 lower_after_call_moves(context, *call_plan, instruction_index, diagnostics);
             for (auto& after_call_move : after_call_moves) {
+              record_call_boundary_destination(after_call_move);
               block.instructions.push_back(std::move(after_call_move));
             }
           }

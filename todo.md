@@ -8,46 +8,46 @@ Current Step Title: Repair Control-Selected Expression Publication
 
 ## Just Finished
 
-Step 3 materially advanced the `00164` `%t106` select publication boundary by
-using the prepared out-of-SSA parallel-copy edge authority for
-`logic.rhs.end.99 -> logic.end.100`. The AArch64 dispatch now recognizes a
-predecessor-terminator select-materialization copy whose source is a named
-same-successor scalar compare, duplicates the required successor-prefix scalar
-definition on that predecessor edge, and publishes the compare into the
-prepared destination register before branching to the join. This avoids reading
-the arbitrary `%t104` register home in the predecessor and leaves unrelated
-before-instruction move bundles disabled.
+Step 3 materially advanced the next `00164` stale publication after `%t106` by
+repairing scalar value-home freshness across the eighth-line expression
+`a | b ^ c & d`. The AArch64 scalar state now evicts older value names when a
+new value is published into the same physical register, clears caller-saved
+scalar publications after ordinary calls, and records after-call prepared move
+destinations back into the scalar state. The scalar fallback also treats an
+un-emitted register-home value as reloadable when prepared memory facts identify
+the defining load source, and its memory-source scratch choice avoids clobbering
+a still-needed register operand.
 
-Reviewer refinement: the helper now proves the selected source home and the
-parallel-copy destination home are coalesced to the same prepared register
-before accepting the edge publication. It also clears any dependency-prefix
-lowering if the selected source compare itself cannot be lowered, so the helper
-does not return a partial predecessor dependency without the selected source.
-
-Generated-code evidence for `00164`: `.LBB89_36` now emits the prepared
-`%t104 -> %t106` edge source before the branch to `.LBB89_37`:
+Generated-code evidence for `00164`: after the `%t106` print, the eighth output
+expression now reloads the source locals and produces the expected `46` instead
+of OR-ing stale `x13`:
 
 ```asm
-ldr w9, [sp, #20]
-ldr w10, [sp, #20]
-orr w9, w9, w10
-str w9, [sp, #140]
-cmp w9, #0
-cset w13, ne
+ldr w9, [sp, #8]
+ldr w10, [sp, #12]
+and w9, w9, w10
+str w9, [sp, #160]
+ldr w10, [sp, #4]
+eor w9, w10, w9
+str w9, [sp, #164]
+ldr w10, [sp]
+orr w9, w10, w9
+str w9, [sp, #168]
 ```
 
 The focused subset still fails overall with known remaining `00164` and `00183`
 runtime mismatches, while `00202` passes. `00164` now preserves and advances the
-front of the output to `134`, `134`, `0`, `1`, `1`, `1`, `1`; the first-six-line
-contract is preserved, and the compare pair remains `1, 0` and `0, 1`.
+front of the output to `134`, `134`, `0`, `1`, `1`, `1`, `1`, `46`; the compare
+pair remains `1, 0` and `0, 1`. The next `00164` stale value is now the
+eleventh line, expected `1`.
 
 ## Suggested Next
 
-Continue Step 3 at the next `00164` stale select-chain use after `%t106`. The
-next packet should extend the same prepared predecessor-edge publication model
-to the later `00164` join value that currently prints the eighth line as a
-stale register value instead of `46`, without enabling all
-`BeforeInstruction` moves globally.
+Continue Step 3 at the next `00164` stale select-chain use after the eighth-line
+repair. The next packet should target the eleventh output line, expected `1`,
+where `a != b && c != d` still prints a stale call/result register value. Keep
+the fix tied to prepared join-transfer, parallel-copy, or scalar publication
+authority rather than enabling all `BeforeInstruction` moves globally.
 
 Proposed proof command:
 
@@ -66,6 +66,9 @@ Proposed proof command:
   destination prepared homes name the same register. If the next stale value
   needs non-coalesced edge publication, add an explicit prepared-register move
   after source lowering rather than assuming the source home is the destination.
+- Prepared memory access instruction indexes can lag the compacted prepared BIR
+  block indexes; the scalar fallback now reloads by prepared result value name
+  when ordinary memory lowering misses an un-emitted register-home load.
 - `00183` is still unchanged by this slice and remains the broader
   conditional-expression target for Step 3 after the `00164` select boundary is
   owned.
@@ -83,17 +86,9 @@ Ran the delegated proof exactly:
 
 Result: failed overall at the focused scan subset. The scan subset remains 1/3
 passing: `00202` passed; `00164` and `00183` remain `RUNTIME_MISMATCH`. `00164`
-advanced from the baseline first stale `%t106` line to actual output starting
-`134`, `134`, `0`, `1`, `1`, `1`, `1`, then a later stale select-chain value;
-the compare pair lines remain `1, 0` and `0, 1`.
-
-Additional validation:
-
-```sh
-ctest --test-dir build -R '^backend_aarch64_' -j 8 --output-on-failure > /tmp/c4c_aarch64_side_effect_step3_edge_select_backend_aarch64.log 2>&1
-```
-
-Result: passed 27/27.
+advanced to actual output starting `134`, `134`, `0`, `1`, `1`, `1`, `1`, `46`;
+the compare pair lines remain `1, 0` and `0, 1`. The next stale `00164` line is
+the eleventh line, expected `1`, actual stale register value.
 
 Stale-process check:
 
@@ -108,4 +103,3 @@ Additional check: `git diff --check` passed.
 Log paths:
 
 - `test_after.log`
-- `/tmp/c4c_aarch64_side_effect_step3_edge_select_backend_aarch64.log`
