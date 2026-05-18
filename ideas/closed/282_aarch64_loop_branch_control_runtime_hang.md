@@ -1,8 +1,9 @@
 # AArch64 Loop Branch Control Runtime Hang
 
-Status: Open
+Status: Closed
 Created: 2026-05-18
 Discovered From: ideas/open/278_aarch64_backend_local_operand_materialization_runtime_nonzero.md
+Closed: 2026-05-18
 
 ## Intent
 
@@ -69,6 +70,24 @@ comparison-to-branch emission, not folded into ideas 278 or 281.
   operand materialization.
 - Any remaining later runtime failure is classified truthfully and split rather
   than hidden behind timeout, expectation, or runner changes.
+
+## Closure Notes
+
+Closed after Step 4 proof and close-gate review. Commit `f0b415a88` repaired
+the supported fused compare branch printing path so `00005.c` no longer falls
+through the wrong first-`if` return path and `00006.c` no longer hangs in an
+unconditional loop self-branch.
+
+The matching close-gate proof kept the prior routes green:
+`c_testsuite_aarch64_backend_src_(00001|00002|00003|00004|00005|00006)_c`
+all pass through the AArch64 backend runtime route, and the seven focused
+AArch64 backend tests covering branch control, instruction dispatch, return
+lowering, memory operand records/contracts, and operand resolution pass.
+
+Close-time regression guard passed with matching-scope logs:
+`test_before.log` and `test_after.log` both cover the seven focused AArch64
+backend tests plus the six focused AArch64 backend c-testsuite cases, with 6
+passed, 0 failed, and no new failures in the parsed final CTest summary.
 
 ## Reviewer Reject Signals
 
