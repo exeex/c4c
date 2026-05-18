@@ -155,6 +155,45 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   });
 }
 
+[[nodiscard]] bool is_dynamic_alloca_helper(std::string_view callee) {
+  constexpr std::string_view kPrefix = "llvm.dynamic_alloca.";
+  return callee.substr(0, kPrefix.size()) == kPrefix;
+}
+
+[[nodiscard]] std::optional<prepare::PreparedDynamicStackOpKind>
+dynamic_stack_helper_kind(std::string_view callee) {
+  if (callee == "llvm.stacksave") {
+    return prepare::PreparedDynamicStackOpKind::StackSave;
+  }
+  if (is_dynamic_alloca_helper(callee)) {
+    return prepare::PreparedDynamicStackOpKind::DynamicAlloca;
+  }
+  if (callee == "llvm.stackrestore") {
+    return prepare::PreparedDynamicStackOpKind::StackRestore;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const prepare::PreparedDynamicStackOp* find_dynamic_stack_op(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    prepare::PreparedDynamicStackOpKind kind) {
+  if (context.function.dynamic_stack_plan == nullptr) {
+    return nullptr;
+  }
+  const c4c::BlockLabelId block_label =
+      context.control_flow_block != nullptr ? context.control_flow_block->block_label
+                                            : c4c::kInvalidBlockLabel;
+  for (const auto& op : context.function.dynamic_stack_plan->operations) {
+    if (op.kind == kind && op.instruction_index == instruction_index &&
+        (op.block_label == block_label || op.block_label == c4c::kInvalidBlockLabel ||
+         block_label == c4c::kInvalidBlockLabel)) {
+      return &op;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] module::MachineInstruction make_bir_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -175,6 +214,72 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] InstructionRecord make_dynamic_stack_rejection_record(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::string_view diagnostic) {
+  return InstructionRecord{
+      .family = InstructionFamily::Frame,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::FrameSetup,
+      .selection =
+          MachineNodeStatusRecord{
+              .status = MachineNodeSelectionStatus::DeferredUnsupported,
+              .diagnostic = diagnostic,
+          },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::FrameSetup},
+      .payload = FrameInstructionRecord{},
+  };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction> reject_dynamic_stack_helper_call(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call_inst,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  const auto kind = dynamic_stack_helper_kind(call_inst.callee);
+  if (!kind.has_value()) {
+    return std::nullopt;
+  }
+
+  std::string_view message;
+  const auto* op = find_dynamic_stack_op(context, instruction_index, *kind);
+  if (op == nullptr) {
+    message =
+        "AArch64 dynamic-stack helper lowering requires prepared dynamic-stack operation authority";
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+        context,
+        instruction_index,
+        std::string{message});
+    return make_bir_machine_instruction(
+        context, instruction_index, make_dynamic_stack_rejection_record(
+                                        context, instruction_index, message));
+  }
+
+  message =
+      "AArch64 dynamic-stack helper lowering is not implemented; prepared dynamic-stack "
+      "operations are rejected before unresolved helper calls reach machine output";
+  append_call_diagnostic(
+      diagnostics,
+      module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+      context,
+      instruction_index,
+      std::string{message});
+  return make_bir_machine_instruction(
+      context, instruction_index, make_dynamic_stack_rejection_record(
+                                      context, instruction_index, message));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction> lower_call_instruction(
@@ -280,6 +385,12 @@ InstructionDispatchResult dispatch_prepared_block(
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+        if (auto rejected = reject_dynamic_stack_helper_call(
+                context, *call, instruction_index, diagnostics)) {
+          block.instructions.push_back(std::move(*rejected));
+          ++result.visited_operations;
+          continue;
+        }
         if (call->inline_asm.has_value() ||
             has_prepared_inline_asm_carrier(context, instruction_index)) {
           if (auto lowered = lower_inline_asm_instruction(

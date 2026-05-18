@@ -167,6 +167,139 @@ prepare::PreparedBirModule prepared_with_direct_call_plan() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_dynamic_stack_helper_calls() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.dynamic_stack");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.dynamic_stack.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.dynamic_stack.entry");
+  const auto saved_ptr_name = prepared.names.value_names.intern("%saved.sp");
+  const auto count_name = prepared.names.value_names.intern("%count");
+  const auto allocated_ptr_name = prepared.names.value_names.intern("%vla.ptr");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.dynamic_stack",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.dynamic_stack.entry",
+          .insts = {bir::CallInst{
+                        .result = bir::Value::named(bir::TypeKind::Ptr, "%saved.sp"),
+                        .callee = "llvm.stacksave",
+                        .return_type = bir::TypeKind::Ptr,
+                    },
+                    bir::CallInst{
+                        .result = bir::Value::named(bir::TypeKind::Ptr, "%vla.ptr"),
+                        .callee = "llvm.dynamic_alloca.i8",
+                        .args = {bir::Value::named(bir::TypeKind::I64, "%count")},
+                        .arg_types = {bir::TypeKind::I64},
+                        .return_type = bir::TypeKind::Ptr,
+                    },
+                    bir::CallInst{
+                        .callee = "llvm.stackrestore",
+                        .args = {bir::Value::named(bir::TypeKind::Ptr, "%saved.sp")},
+                        .arg_types = {bir::TypeKind::Ptr},
+                        .return_type = bir::TypeKind::Void,
+                    }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.dynamic_stack_plan.functions.push_back(prepare::PreparedDynamicStackPlanFunction{
+      .function_name = function_name,
+      .requires_stack_save_restore = true,
+      .operations =
+          {prepare::PreparedDynamicStackOp{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .instruction_index = 0,
+               .kind = prepare::PreparedDynamicStackOpKind::StackSave,
+               .result_value_name = saved_ptr_name,
+           },
+           prepare::PreparedDynamicStackOp{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .instruction_index = 1,
+               .kind = prepare::PreparedDynamicStackOpKind::DynamicAlloca,
+               .result_value_name = allocated_ptr_name,
+               .operand_value_name = count_name,
+               .allocation_type_text = "i8",
+               .element_size_bytes = 1,
+               .element_align_bytes = 1,
+           },
+           prepare::PreparedDynamicStackOp{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .instruction_index = 2,
+               .kind = prepare::PreparedDynamicStackOpKind::StackRestore,
+               .operand_value_name = saved_ptr_name,
+           }},
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 16,
+      .has_dynamic_stack = true,
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+                    .block_index = 0,
+                    .instruction_index = 0,
+                    .wrapper_kind =
+                        prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                    .direct_callee_name = std::string{"llvm.stacksave"},
+                },
+                prepare::PreparedCallPlan{
+                    .block_index = 0,
+                    .instruction_index = 1,
+                    .wrapper_kind =
+                        prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                    .direct_callee_name = std::string{"llvm.dynamic_alloca.i8"},
+                    .arguments = {prepare::PreparedCallArgumentPlan{
+                        .instruction_index = 1,
+                        .arg_index = 0,
+                        .value_bank = prepare::PreparedRegisterBank::Gpr,
+                        .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                        .source_value_id = prepare::PreparedValueId{44},
+                        .source_register_name = std::string{"x0"},
+                        .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                        .destination_register_name = std::string{"x0"},
+                        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                    }},
+                },
+                prepare::PreparedCallPlan{
+                    .block_index = 0,
+                    .instruction_index = 2,
+                    .wrapper_kind =
+                        prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+                    .direct_callee_name = std::string{"llvm.stackrestore"},
+                    .arguments = {prepare::PreparedCallArgumentPlan{
+                        .instruction_index = 2,
+                        .arg_index = 0,
+                        .value_bank = prepare::PreparedRegisterBank::Gpr,
+                        .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                        .source_value_id = prepare::PreparedValueId{45},
+                        .source_register_name = std::string{"x0"},
+                        .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                        .destination_register_name = std::string{"x0"},
+                        .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                    }},
+                }},
+  });
+  return prepared;
+}
+
 enum class InlineAsmCarrierFixtureKind {
   Complete,
   SupportedTemplateModifier,
@@ -5503,6 +5636,77 @@ int block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed() {
   return 0;
 }
 
+int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
+  auto prepared = prepared_with_dynamic_stack_helper_calls();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  if (function_context.dynamic_stack_plan == nullptr ||
+      function_context.dynamic_stack_plan->operations.size() != 3 ||
+      !function_context.dynamic_stack_plan->requires_stack_save_restore) {
+    return fail("expected fixture to carry prepared dynamic-stack helper authority");
+  }
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 3 || !result.visited_terminator) {
+    return fail("expected dynamic-stack helper fixture to visit all retained helper calls");
+  }
+
+  bool emitted_unresolved_helper_call = false;
+  bool emitted_dynamic_stack_rejection = false;
+  for (const auto& instruction : block.instructions) {
+    const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+        &instruction.target.payload);
+    if (call != nullptr &&
+        (call->direct_callee_label == "llvm.stacksave" ||
+         call->direct_callee_label == "llvm.dynamic_alloca.i8" ||
+         call->direct_callee_label == "llvm.stackrestore")) {
+      emitted_unresolved_helper_call = true;
+    }
+    if (instruction.target.selection.status ==
+            aarch64_module::codegen::MachineNodeSelectionStatus::DeferredUnsupported &&
+        instruction.target.selection.diagnostic.find("AArch64 dynamic-stack helper") !=
+            std::string::npos) {
+      emitted_dynamic_stack_rejection = true;
+    }
+  }
+
+  if (diagnostics.empty()) {
+    return fail("expected dynamic-stack helper rejection diagnostic during lowering");
+  }
+  if (emitted_unresolved_helper_call) {
+    return fail(
+        "expected dynamic-stack rejection to occur before unresolved LLVM helper "
+        "calls reach machine output");
+  }
+  if (!emitted_dynamic_stack_rejection) {
+    return fail(
+        "expected dynamic-stack helper rejection to be represented as a fail-closed "
+        "machine node, not only a side-channel diagnostic");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (printed.ok) {
+    return fail(
+        "expected fail-closed AArch64 dynamic-stack helper route to stop before "
+        "assembly output");
+  }
+  if (printed.diagnostic.find("AArch64 dynamic-stack helper") == std::string::npos ||
+      printed.diagnostic.find("deferred_unsupported") == std::string::npos) {
+    return fail("expected printable failure to name the AArch64 dynamic-stack rejection: " +
+                printed.diagnostic);
+  }
+  return 0;
+}
+
 prepare::PreparedBirModule prepared_with_scalar_fp_unary_fabs_intrinsic(
     bir::TypeKind type = bir::TypeKind::F64,
     prepare::PreparedIntrinsicCarrierKind carrier_kind =
@@ -9612,6 +9816,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved();
       status != 0) {
     return status;
   }
