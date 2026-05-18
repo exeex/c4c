@@ -179,6 +179,9 @@ prepare::PreparedBirModule prepared_with_dynamic_stack_helper_calls() {
   const auto saved_ptr_name = prepared.names.value_names.intern("%saved.sp");
   const auto count_name = prepared.names.value_names.intern("%count");
   const auto allocated_ptr_name = prepared.names.value_names.intern("%vla.ptr");
+  constexpr prepare::PreparedValueId kSavedPtrValue{41};
+  constexpr prepare::PreparedValueId kCountValue{42};
+  constexpr prepare::PreparedValueId kAllocatedPtrValue{43};
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.dynamic_stack",
@@ -251,6 +254,54 @@ prepare::PreparedBirModule prepared_with_dynamic_stack_helper_calls() {
       .frame_alignment_bytes = 16,
       .has_dynamic_stack = true,
   });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = kSavedPtrValue,
+                  .function_name = function_name,
+                  .value_name = saved_ptr_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x20"},
+                  .target_register_identity =
+                      prepare::PreparedTargetRegisterIdentity{
+                          .target_arch = c4c::TargetArch::Aarch64,
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .register_class = prepare::PreparedRegisterClass::General,
+                          .physical_index = 20,
+                      },
+              },
+              prepare::PreparedValueHome{
+                  .value_id = kCountValue,
+                  .function_name = function_name,
+                  .value_name = count_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x0"},
+                  .target_register_identity =
+                      prepare::PreparedTargetRegisterIdentity{
+                          .target_arch = c4c::TargetArch::Aarch64,
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .register_class = prepare::PreparedRegisterClass::General,
+                          .physical_index = 0,
+                      },
+              },
+              prepare::PreparedValueHome{
+                  .value_id = kAllocatedPtrValue,
+                  .function_name = function_name,
+                  .value_name = allocated_ptr_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x13"},
+                  .target_register_identity =
+                      prepare::PreparedTargetRegisterIdentity{
+                          .target_arch = c4c::TargetArch::Aarch64,
+                          .bank = prepare::PreparedRegisterBank::Gpr,
+                          .register_class = prepare::PreparedRegisterClass::General,
+                          .physical_index = 13,
+                      },
+              },
+          },
+  });
   prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
       .function_name = function_name,
       .calls = {prepare::PreparedCallPlan{
@@ -271,7 +322,7 @@ prepare::PreparedBirModule prepared_with_dynamic_stack_helper_calls() {
                         .arg_index = 0,
                         .value_bank = prepare::PreparedRegisterBank::Gpr,
                         .source_encoding = prepare::PreparedStorageEncodingKind::Register,
-                        .source_value_id = prepare::PreparedValueId{44},
+                        .source_value_id = kCountValue,
                         .source_register_name = std::string{"x0"},
                         .source_register_bank = prepare::PreparedRegisterBank::Gpr,
                         .destination_register_name = std::string{"x0"},
@@ -289,8 +340,8 @@ prepare::PreparedBirModule prepared_with_dynamic_stack_helper_calls() {
                         .arg_index = 0,
                         .value_bank = prepare::PreparedRegisterBank::Gpr,
                         .source_encoding = prepare::PreparedStorageEncodingKind::Register,
-                        .source_value_id = prepare::PreparedValueId{45},
-                        .source_register_name = std::string{"x0"},
+                        .source_value_id = kSavedPtrValue,
+                        .source_register_name = std::string{"x20"},
                         .source_register_bank = prepare::PreparedRegisterBank::Gpr,
                         .destination_register_name = std::string{"x0"},
                         .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
@@ -5636,8 +5687,42 @@ int block_dispatch_keeps_intrinsic_spelling_without_carrier_fail_closed() {
   return 0;
 }
 
-int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
+bool block_emits_unresolved_dynamic_stack_helper_call(
+    const aarch64_module::MachineBlock& block) {
+  for (const auto& instruction : block.instructions) {
+    const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+        &instruction.target.payload);
+    if (call != nullptr &&
+        (call->direct_callee_label == "llvm.stacksave" ||
+         call->direct_callee_label == "llvm.dynamic_alloca.i8" ||
+         call->direct_callee_label == "llvm.stackrestore")) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void set_dynamic_stack_count_home_register(prepare::PreparedBirModule& prepared,
+                                           std::string register_name,
+                                           std::size_t physical_index) {
+  auto& value_home = prepared.value_locations.functions.front().value_homes[1];
+  value_home.register_name = std::move(register_name);
+  value_home.target_register_identity =
+      prepare::PreparedTargetRegisterIdentity{
+          .target_arch = c4c::TargetArch::Aarch64,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .register_class = prepare::PreparedRegisterClass::General,
+          .physical_index = physical_index,
+      };
+  auto& argument =
+      prepared.call_plans.functions.front().calls[1].arguments.front();
+  argument.source_register_name = value_home.register_name;
+  argument.source_register_placement.reset();
+}
+
+int dynamic_stack_helper_calls_missing_prepared_authority_fail_closed() {
   auto prepared = prepared_with_dynamic_stack_helper_calls();
+  prepared.dynamic_stack_plan.functions.clear();
   const auto& function_cf = prepared.control_flow.functions.front();
   const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
@@ -5645,10 +5730,8 @@ int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
   const auto block_context =
       aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
 
-  if (function_context.dynamic_stack_plan == nullptr ||
-      function_context.dynamic_stack_plan->operations.size() != 3 ||
-      !function_context.dynamic_stack_plan->requires_stack_save_restore) {
-    return fail("expected fixture to carry prepared dynamic-stack helper authority");
+  if (function_context.dynamic_stack_plan != nullptr) {
+    return fail("expected unsupported dynamic-stack fixture to omit prepared authority");
   }
 
   aarch64_module::MachineBlock block;
@@ -5660,21 +5743,12 @@ int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
     return fail("expected dynamic-stack helper fixture to visit all retained helper calls");
   }
 
-  bool emitted_unresolved_helper_call = false;
   bool emitted_dynamic_stack_rejection = false;
   for (const auto& instruction : block.instructions) {
-    const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
-        &instruction.target.payload);
-    if (call != nullptr &&
-        (call->direct_callee_label == "llvm.stacksave" ||
-         call->direct_callee_label == "llvm.dynamic_alloca.i8" ||
-         call->direct_callee_label == "llvm.stackrestore")) {
-      emitted_unresolved_helper_call = true;
-    }
     if (instruction.target.selection.status ==
             aarch64_module::codegen::MachineNodeSelectionStatus::DeferredUnsupported &&
-        instruction.target.selection.diagnostic.find("AArch64 dynamic-stack helper") !=
-            std::string::npos) {
+        instruction.target.selection.diagnostic.find(
+            "requires prepared dynamic-stack operation authority") != std::string::npos) {
       emitted_dynamic_stack_rejection = true;
     }
   }
@@ -5682,7 +5756,7 @@ int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
   if (diagnostics.empty()) {
     return fail("expected dynamic-stack helper rejection diagnostic during lowering");
   }
-  if (emitted_unresolved_helper_call) {
+  if (block_emits_unresolved_dynamic_stack_helper_call(block)) {
     return fail(
         "expected dynamic-stack rejection to occur before unresolved LLVM helper "
         "calls reach machine output");
@@ -5704,6 +5778,134 @@ int dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved() {
     return fail("expected printable failure to name the AArch64 dynamic-stack rejection: " +
                 printed.diagnostic);
   }
+  return 0;
+}
+
+int dynamic_stack_supported_helper_calls_lower_to_target_owned_output() {
+  auto prepared = prepared_with_dynamic_stack_helper_calls();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  if (function_context.dynamic_stack_plan == nullptr ||
+      function_context.dynamic_stack_plan->operations.size() != 3 ||
+      !function_context.dynamic_stack_plan->requires_stack_save_restore ||
+      function_context.value_locations == nullptr ||
+      function_context.value_locations->value_homes.size() != 3) {
+    return fail("expected fixture to carry supported prepared dynamic-stack authority");
+  }
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  const auto printed = print_route_block(function_cf.function_name, block);
+
+  if (result.visited_operations != 3 || !result.visited_terminator) {
+    return fail("expected supported dynamic-stack fixture to visit all retained helpers");
+  }
+  if (!diagnostics.empty()) {
+    return fail("expected supported prepared dynamic-stack helpers to lower without "
+                "diagnostics; first diagnostic: " +
+                diagnostics.entries.front().message +
+                "; printer diagnostic: " + printed.diagnostic);
+  }
+  if (block_emits_unresolved_dynamic_stack_helper_call(block)) {
+    return fail(
+        "expected supported dynamic-stack lowering to avoid unresolved LLVM helper "
+        "calls in machine output");
+  }
+  if (!printed.ok) {
+    return fail("expected supported dynamic-stack lowering to print target-owned "
+                "AArch64 output: " +
+                printed.diagnostic);
+  }
+  if (printed.assembly.find("llvm.stacksave") != std::string::npos ||
+      printed.assembly.find("llvm.dynamic_alloca") != std::string::npos ||
+      printed.assembly.find("llvm.stackrestore") != std::string::npos) {
+    return fail("expected supported dynamic-stack assembly to contain no unresolved "
+                "LLVM helper references");
+  }
+  if (printed.assembly.find("sp") == std::string::npos ||
+      printed.assembly.find("x20") == std::string::npos ||
+      printed.assembly.find("x13") == std::string::npos) {
+    return fail("expected supported dynamic-stack assembly to materialize saved stack "
+                "pointer and allocation-result register behavior");
+  }
+
+  auto scratch_overlap_prepared = prepared_with_dynamic_stack_helper_calls();
+  set_dynamic_stack_count_home_register(scratch_overlap_prepared, "x17", 17);
+  const auto& overlap_function_cf =
+      scratch_overlap_prepared.control_flow.functions.front();
+  const auto& overlap_block_cf = overlap_function_cf.blocks.front();
+  const auto overlap_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          scratch_overlap_prepared,
+          scratch_overlap_prepared.target_profile,
+          overlap_function_cf);
+  const auto overlap_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          overlap_function_context, overlap_block_cf, 0);
+  aarch64_module::MachineBlock overlap_block;
+  aarch64_module::ModuleLoweringDiagnostics overlap_diagnostics;
+  const auto overlap_result = aarch64_codegen::dispatch_prepared_block(
+      overlap_block_context, overlap_block, overlap_diagnostics);
+  const auto overlap_printed =
+      print_route_block(overlap_function_cf.function_name, overlap_block);
+  if (overlap_result.visited_operations != 3 || !overlap_result.visited_terminator ||
+      !overlap_diagnostics.empty() || !overlap_printed.ok) {
+    return fail("expected x17 dynamic-stack count home to lower without diagnostics: " +
+                overlap_printed.diagnostic);
+  }
+  const auto preserved_count = overlap_printed.assembly.find("mov x16, x17");
+  const auto reused_scratch = overlap_printed.assembly.find("mov x17, sp");
+  if (preserved_count == std::string::npos || reused_scratch == std::string::npos ||
+      preserved_count > reused_scratch ||
+      overlap_printed.assembly.find("sub x17, x17, x16") == std::string::npos) {
+    return fail("expected dynamic alloca count in x17 to be preserved before x17 "
+                "is reused for stack-pointer computation");
+  }
+
+  auto unsafe_stack_home_prepared = prepared_with_dynamic_stack_helper_calls();
+  auto& unsafe_count_home =
+      unsafe_stack_home_prepared.value_locations.functions.front().value_homes[1];
+  unsafe_count_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  unsafe_count_home.register_name.reset();
+  unsafe_count_home.target_register_identity.reset();
+  unsafe_count_home.slot_id = prepare::PreparedFrameSlotId{5};
+  unsafe_count_home.offset_bytes = std::size_t{16};
+  unsafe_count_home.size_bytes = std::size_t{8};
+  unsafe_count_home.align_bytes = std::size_t{8};
+  unsafe_stack_home_prepared.frame_plan.functions.front()
+      .uses_frame_pointer_for_fixed_slots = false;
+  const auto& unsafe_function_cf =
+      unsafe_stack_home_prepared.control_flow.functions.front();
+  const auto& unsafe_block_cf = unsafe_function_cf.blocks.front();
+  const auto unsafe_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          unsafe_stack_home_prepared,
+          unsafe_stack_home_prepared.target_profile,
+          unsafe_function_cf);
+  const auto unsafe_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          unsafe_function_context, unsafe_block_cf, 0);
+  aarch64_module::MachineBlock unsafe_block;
+  aarch64_module::ModuleLoweringDiagnostics unsafe_diagnostics;
+  const auto unsafe_result = aarch64_codegen::dispatch_prepared_block(
+      unsafe_block_context, unsafe_block, unsafe_diagnostics);
+  if (unsafe_result.visited_operations != 3 || !unsafe_result.visited_terminator ||
+      unsafe_diagnostics.empty() ||
+      unsafe_diagnostics.entries.front().message.find("stable frame-pointer base") ==
+          std::string::npos ||
+      unsafe_block.instructions[1].target.selection.diagnostic.find(
+          "stable frame-pointer base") == std::string::npos) {
+    return fail("expected dynamic stack-slot count home without stable frame-pointer "
+                "base to fail closed before invalid assembly");
+  }
+
   return 0;
 }
 
@@ -9820,7 +10022,12 @@ int main() {
     return status;
   }
   if (const int status =
-          dynamic_stack_helper_calls_do_not_reach_machine_output_unresolved();
+          dynamic_stack_helper_calls_missing_prepared_authority_fail_closed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          dynamic_stack_supported_helper_calls_lower_to_target_owned_output();
       status != 0) {
     return status;
   }
