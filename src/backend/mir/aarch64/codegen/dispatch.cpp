@@ -111,6 +111,221 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return matches(binary->lhs) || matches(binary->rhs);
 }
 
+[[nodiscard]] std::optional<c4c::ValueNameId> prepared_named_value_id(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.function.prepared == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  return prepare::resolve_prepared_value_name_id(context.function.prepared->names,
+                                                 value.name);
+}
+
+[[nodiscard]] std::optional<RegisterOperand> make_named_prepared_result_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.function.value_locations == nullptr) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home =
+      prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_register_view(value.type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() ||
+      parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::gp_register(parsed->index, *expected_view);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *viewed,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = expected_view,
+  };
+}
+
+[[nodiscard]] bool emitted_scalar_value_available(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto value_name = prepared_named_value_id(context, value);
+  return value_name.has_value() &&
+         find_emitted_scalar_register(scalar_state, *value_name).has_value();
+}
+
+[[nodiscard]] bool is_scalar_call_argument_producer_opcode(bir::BinaryOpcode opcode) {
+  switch (opcode) {
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::SDiv:
+    case bir::BinaryOpcode::SRem:
+      return true;
+    case bir::BinaryOpcode::UDiv:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return false;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::size_t> find_same_block_scalar_producer(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto* binary =
+        std::get_if<bir::BinaryInst>(&context.bir_block->insts[candidate_index]);
+    if (binary == nullptr) {
+      continue;
+    }
+    if (binary->result.kind == bir::Value::Kind::Named &&
+        binary->result.name == value_name &&
+        is_scalar_call_argument_producer_opcode(binary->opcode)) {
+      return candidate_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool materialize_scalar_call_argument_value(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    std::vector<module::MachineInstruction>& lowered,
+    std::vector<std::string_view>& active_values) {
+  if (value.kind != bir::Value::Kind::Named || value.name.empty() ||
+      emitted_scalar_value_available(context, value, scalar_state)) {
+    return true;
+  }
+  for (const auto active : active_values) {
+    if (active == value.name) {
+      return false;
+    }
+  }
+  const auto producer_index =
+      find_same_block_scalar_producer(context, value.name, before_instruction_index);
+  if (!producer_index.has_value() || context.bir_block == nullptr) {
+    return true;
+  }
+  const auto* binary = std::get_if<bir::BinaryInst>(&context.bir_block->insts[*producer_index]);
+  if (binary == nullptr ||
+      !is_scalar_call_argument_producer_opcode(binary->opcode)) {
+    return true;
+  }
+
+  active_values.push_back(value.name);
+  const bool lhs_ready =
+      materialize_scalar_call_argument_value(context,
+                                             binary->lhs,
+                                             *producer_index,
+                                             scalar_state,
+                                             diagnostics,
+                                             lowered,
+                                             active_values);
+  const bool rhs_ready =
+      materialize_scalar_call_argument_value(context,
+                                             binary->rhs,
+                                             *producer_index,
+                                             scalar_state,
+                                             diagnostics,
+                                             lowered,
+                                             active_values);
+  active_values.pop_back();
+  if (!lhs_ready || !rhs_ready) {
+    return false;
+  }
+  if (emitted_scalar_value_available(context, value, scalar_state)) {
+    return true;
+  }
+  if (auto instruction = lower_scalar_instruction(context,
+                                                  context.bir_block->insts[*producer_index],
+                                                  *producer_index,
+                                                  scalar_state,
+                                                  diagnostics)) {
+    const auto expected_result =
+        make_named_prepared_result_register(context, binary->result);
+    if (expected_result.has_value()) {
+      if (auto* scalar =
+              std::get_if<ScalarInstructionRecord>(&instruction->target.payload)) {
+        scalar->result_register = *expected_result;
+        if (scalar->scalar_alu.has_value()) {
+          scalar->scalar_alu->result_register = *expected_result;
+        }
+        record_emitted_scalar_register(scalar_state,
+                                       expected_result->value_name,
+                                       *expected_result);
+      }
+    }
+    lowered.push_back(std::move(*instruction));
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+lower_scalar_call_argument_producers(
+    const module::BlockLoweringContext& context,
+    const bir::CallInst& call,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  std::vector<module::MachineInstruction> lowered;
+  for (const auto& argument : call.args) {
+    std::vector<std::string_view> active_values;
+    if (!materialize_scalar_call_argument_value(context,
+                                                argument,
+                                                instruction_index,
+                                                scalar_state,
+                                                diagnostics,
+                                                lowered,
+                                                active_values)) {
+      return {};
+    }
+  }
+  return lowered;
+}
+
 [[nodiscard]] bool prepared_edge_select_source_is_destination_register(
     const prepare::PreparedValueHome& source_home,
     const prepare::PreparedValueHome& destination_home) {
@@ -894,6 +1109,15 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         const auto* call_plan = find_prepared_call_plan(context, instruction_index);
         if (call_plan != nullptr) {
+          auto argument_producers =
+              lower_scalar_call_argument_producers(context,
+                                                   *call,
+                                                   instruction_index,
+                                                   scalar_state,
+                                                   diagnostics);
+          for (auto& argument_producer : argument_producers) {
+            block.instructions.push_back(std::move(argument_producer));
+          }
           auto materialized_addresses =
               lower_address_materializations(context, instruction_index, diagnostics);
           for (auto& materialized : materialized_addresses) {
