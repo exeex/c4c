@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/293_aarch64_side_effect_control_value_publication_authority.md
 Source Plan Path: plan.md
-Current Step ID: Step 3
-Current Step Title: Repair Control-Selected Expression Publication
+Current Step ID: Step 4
+Current Step Title: Validate Boundary and Broader Sampling
 
 # Current Packet
 
