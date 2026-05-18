@@ -3,8 +3,8 @@
 Status: Active
 Source Idea Path: ideas/open/287_aarch64_string_global_address_external_call_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Sample Related Mismatch Cases and Decide Closure
+Current Step ID: 5
+Current Step Title: Repair Static/Global Data Pointer Materialization
 
 # Current Packet
 
@@ -40,10 +40,15 @@ Owner split:
 
 ## Suggested Next
 
-Do not close this source idea as exhausted yet. Ask plan-owner/reviewer to
-decide whether the still-visible `00197` static/global data materialization and
-`00206` `%s` string-literal external-call pointer failures belong in the active
-runbook or should be split into one or more focused follow-on ideas.
+Continue the active runbook. Step 5 now owns `00197` as a focused
+static/global data materialization packet. Step 6 now owns `00206` as a
+focused `%s` string-literal direct external-call pointer packet.
+
+Suggested Step 5 proof should start narrow on `src/00197.c`, then include the
+already-green starter owner subset when practical. Do not create follow-on
+ideas for the other sampled failures from this lifecycle action; they remain
+separate owners outside this active source idea until the supervisor chooses to
+open them explicitly.
 
 ## Watchouts
 
@@ -57,7 +62,8 @@ runbook or should be split into one or more focused follow-on ideas.
 - `src/00132.c` remains intentionally excluded here because it is
   timeout-sensitive overlap evidence.
 - `00197` and `00206` are the only sampled failures that keep the
-  string/global address materialization/direct external-call owner visible.
+  string/global address materialization/direct external-call owner visible;
+  they now have explicit active runbook steps.
 - Keep broad aggregate ABI/HFA returns, broad variadic ABI completeness,
   `_Generic`, wide chars, and function-pointer casts out of this route.
 

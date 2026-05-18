@@ -30,6 +30,8 @@ filename/literal-specific shortcuts.
 - `tests/c/external/c-testsuite/src/00131.c`
 - `tests/c/external/c-testsuite/src/00154.c`
 - `tests/c/external/c-testsuite/src/00161.c`
+- `tests/c/external/c-testsuite/src/00197.c`
+- `tests/c/external/c-testsuite/src/00206.c`
 - `tests/c/external/c-testsuite/src/00211.c`
 
 ## Current Targets
@@ -41,6 +43,7 @@ filename/literal-specific shortcuts.
   external calls, especially stdio calls such as `printf`.
 - Starter proof cases: `src/00125.c`, `src/00131.c`, `src/00154.c`,
   `src/00161.c`, and `src/00211.c`.
+- Post-sampling remaining owner cases: `src/00197.c` and `src/00206.c`.
 
 ## Non-Goals
 
@@ -156,3 +159,57 @@ Actions:
 
 Completion check: broader related-case proof supports closure of this focused
 idea, or `todo.md` records the exact remaining source-idea gap.
+
+### Step 5: Repair Static/Global Data Pointer Materialization
+
+Goal: Fix the remaining sampled global/static data address or value
+materialization failure without broadening into unrelated scalar/local-state
+owners.
+
+Primary target: `tests/c/external/c-testsuite/src/00197.c`.
+
+Actions:
+
+- Inspect the generated AArch64 for `src/00197.c` and identify whether the
+  wrong values come from missing static/global data address materialization,
+  incorrect load-from-address emission, or argument-register setup for the
+  external print call.
+- Repair only the semantic path for global/static data values that flow as
+  pointer or print-call operands within this source idea's backend owner.
+- Keep loop, branch, recursion, switch, conditional-expression,
+  scalar/local-state, aggregate ABI, and internal direct-call issues out of
+  this step unless they are proven to be merely downstream of the same
+  global/static address materialization defect.
+- Build and run the supervisor-selected narrow proof for `src/00197.c`, plus
+  the already-green starter owner subset when practical.
+
+Completion check: `src/00197.c` no longer prints address-shaped incorrect
+values for the owned static/global data path, or `todo.md` records the exact
+remaining non-owner blocker that prevents this step from closing.
+
+### Step 6: Repair `%s` String-Literal External-Call Pointer Arguments
+
+Goal: Fix the remaining sampled string-literal pointer argument segfault for a
+direct external call.
+
+Primary target: `tests/c/external/c-testsuite/src/00206.c`.
+
+Actions:
+
+- Inspect the generated AArch64 for `src/00206.c` and identify where the
+  `%s` argument should receive a materialized string-literal address before
+  the external `printf` call.
+- Repair the general string-literal pointer argument path for direct external
+  calls; do not add a `printf`, `%s`, literal-spelling, or filename-specific
+  shortcut.
+- Re-run the supervisor-selected proof for `src/00206.c`, then re-run the
+  owner subset including `00125`, `00131`, `00154`, `00197`, `00206`, and
+  `00211` when the narrow proof is green.
+- If the failure reduces to a different semantic owner, record that in
+  `todo.md` and ask for lifecycle review instead of folding broad unrelated
+  work into this idea.
+
+Completion check: `src/00206.c` no longer segfaults from the owned
+string-literal direct external-call pointer path, and the focused owner subset
+supports either source-idea closure review or a clearly documented separate
+blocker.
