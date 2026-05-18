@@ -113,6 +113,33 @@ prepare::PreparedRegisterPlacement call_result_gpr(std::size_t slot_index) {
   };
 }
 
+prepare::PreparedValueHome register_home(prepare::PreparedValueId value_id,
+                                         c4c::FunctionNameId function_name,
+                                         c4c::ValueNameId value_name,
+                                         const char* register_name) {
+  return prepare::PreparedValueHome{
+      .value_id = value_id,
+      .function_name = function_name,
+      .value_name = value_name,
+      .kind = prepare::PreparedValueHomeKind::Register,
+      .register_name = register_name,
+  };
+}
+
+prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId value_id,
+                                                   c4c::ValueNameId value_name,
+                                                   const char* register_name) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::Register,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .register_name = register_name,
+      .occupied_register_names = {register_name},
+  };
+}
+
 prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
   prepare::PreparedBirModule prepared = prepared_with_return_block();
 
@@ -173,6 +200,62 @@ prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
           .encoding = prepare::PreparedStorageEncodingKind::Immediate,
           .immediate_i32 = 5,
       }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_return_selected_register_scalar_value() {
+  prepare::PreparedBirModule prepared = prepared_with_return_block();
+
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto result_name = prepared.names.value_names.intern("%sum");
+  const auto function_link_name = prepared.module.names.link_names.intern("return.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("return.entry");
+
+  bir::Block entry;
+  entry.label = "return.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Add,
+      .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(2),
+      .rhs = bir::Value::immediate_i32(3),
+  });
+  entry.terminator =
+      bir::ReturnTerminator{.value = bir::Value::named(bir::TypeKind::I32, "%sum")};
+
+  bir::Function function;
+  function.name = "return.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::I32;
+  function.blocks.push_back(std::move(entry));
+  prepared.module.functions.push_back(std::move(function));
+
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {register_home(prepare::PreparedValueId{7},
+                                    function_name,
+                                    result_name,
+                                    "x19")},
+      .move_bundles = {prepare::PreparedMoveBundle{
+          .function_name = function_name,
+          .phase = prepare::PreparedMovePhase::BeforeReturn,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves = {prepare::PreparedMoveResolution{
+              .from_value_id = prepare::PreparedValueId{7},
+              .to_value_id = prepare::PreparedValueId{7},
+              .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_contiguous_width = 1,
+              .destination_register_placement = call_result_gpr(0),
+          }},
+      }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {register_storage(prepare::PreparedValueId{7}, result_name, "x19")},
   });
   return prepared;
 }
@@ -467,6 +550,36 @@ int module_build_selects_scalar_result_before_return() {
   return 0;
 }
 
+int module_build_retains_return_abi_for_register_scalar_result() {
+  auto prepared = prepared_with_return_selected_register_scalar_value();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected register-backed return-selected scalar module to build");
+  }
+  const auto& instructions = result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() != 2 ||
+      instructions[0].target.family != aarch64_module::codegen::InstructionFamily::Scalar ||
+      instructions[1].target.family != aarch64_module::codegen::InstructionFamily::Return) {
+    return fail("expected scalar result and return instructions for register-backed value");
+  }
+  const auto* scalar = std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+      &instructions[0].target.payload);
+  const auto* ret = std::get_if<aarch64_module::codegen::ReturnInstructionRecord>(
+      &instructions[1].target.payload);
+  const auto* ret_reg =
+      ret != nullptr && ret->value.has_value()
+          ? std::get_if<aarch64_module::codegen::RegisterOperand>(&ret->value->payload)
+          : nullptr;
+  if (scalar == nullptr || ret_reg == nullptr ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->reg != aarch64_abi::w_register(0) ||
+      ret_reg->reg != aarch64_abi::w_register(0) ||
+      ret_reg->value_id != prepare::PreparedValueId{7}) {
+    return fail("expected register-backed scalar return to honor FunctionReturnAbi w0");
+  }
+  return 0;
+}
+
 int module_build_selects_scalar_chain_before_return() {
   auto prepared = prepared_with_return_selected_scalar_chain();
   const auto result = aarch64_codegen::compile_prepared_module(prepared);
@@ -566,6 +679,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_selects_scalar_result_before_return();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_build_retains_return_abi_for_register_scalar_result();
       status != 0) {
     return status;
   }
