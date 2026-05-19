@@ -341,6 +341,28 @@ Focused owner closure 2026-05-19:
   reopen idea 301 without generated-code or diagnostic evidence that
   contradicts the memory-store operand materialization closure boundary.
 
+Post-301 split 2026-05-19:
+
+- Step 2 of the active umbrella runbook classified the committed post-301
+  backend-regex residual inventory from accepted `test_before.log`: 352
+  selected tests, 300 passed, and 52 failed. No fresh broad runtime rerun was
+  performed during this lifecycle split.
+- The best next focused owner is idea 302,
+  `ideas/open/302_aarch64_scalar_machine_node_operand_forms.md`, covering the
+  scalar machine-node operand-form residuals `00064`, `00139`, and `00205`.
+- The split is based on direct compile-stage diagnostics showing selected
+  scalar `div`, scalar `mul`, and scalar `logical_shift_right` unsigned
+  reduction nodes reaching AArch64 machine printing without structured
+  operands the printer accepts.
+- The focused owner is separate from closed fused compare-branch owner 296,
+  scalar immediate owner 299, scalar-cast owner 300, and memory-store owner
+  301.
+- Assembly legality/materialization singletons `00104` and `00182`, the
+  call-boundary move gap `00140`, `lir_to_bir` residuals `00204` and `00216`,
+  runtime nonzero/mismatch/crash buckets, and timeout/output-storm cases remain
+  parked under this umbrella until narrow probes justify separate owners.
+- Active implementation should move to idea 302 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

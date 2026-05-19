@@ -1,183 +1,153 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar Machine Node Operand Forms Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/302_aarch64_scalar_machine_node_operand_forms.md
+Supersedes: ideas/open/295_backend_regex_failure_family_inventory.md active umbrella route for this focused owner
 
 ## Purpose
 
-Use the main-build `ctest -R backend` result as an umbrella inventory, then
-split focused repair ideas only when a residual failure group points to a
-semantic backend capability instead of one testcase shape.
+Repair the AArch64 backend path where scalar arithmetic and reduction machine
+nodes reach assembly printing without structured operands the printer accepts.
 
 ## Goal
 
-Classify the post-301 backend-regex residual failures and either split the
-next focused semantic owner or record why no focused owner is ready.
+Make the focused scalar `div`, scalar `mul`, and scalar
+`logical_shift_right` unsigned-reduction cases print through valid AArch64
+operand forms without testcase-specific shortcuts.
 
 ## Core Rule
 
-This umbrella is for classification and lifecycle splitting only. Do not
-implement fixes while this plan is active.
+Treat this as a semantic scalar machine-node operand-form repair. Do not
+change expectations, allowlists, unsupported classifications, timeout policy,
+runner behavior, or CTest registration to claim progress.
 
 ## Read First
 
-- Source idea: `ideas/open/295_backend_regex_failure_family_inventory.md`
+- Source idea: `ideas/open/302_aarch64_scalar_machine_node_operand_forms.md`
+- Split source: `ideas/open/295_backend_regex_failure_family_inventory.md`
 - Accepted broad proof baseline: `test_before.log`
-- Latest accepted backend-regex state after idea 301: 352 selected, 300
-  passed, 52 failed
-- Main build tree: `/workspaces/c4c/build`
-- Backend regex command:
-  `cd /workspaces/c4c/build && ctest -j10 -R backend --output-on-failure`
+- Focused c-testsuite cases: `00064`, `00139`, `00205`
+- Closed owner boundaries to respect: ideas 296, 299, 300, and 301
 
-## Current Scope
+## Current Targets
 
-- Reconstruct or refresh the current backend-regex failure inventory.
-- Separate local backend/unit failures from `c_testsuite_aarch64_backend_*`
-  failures.
-- Classify remaining frontend/backend diagnostics, runtime nonzero,
-  runtime mismatch/crash, and timeout buckets.
-- Compare any candidate owner against closed owners 285 through 301 before
-  splitting.
-- Create focused `ideas/open/*.md` files only for semantic repair families.
-- Switch lifecycle state to a focused owner before any implementation starts.
+- Scalar `div` operand forms in `c_testsuite_aarch64_backend_src_00064_c`.
+- Scalar `mul` operand forms in `c_testsuite_aarch64_backend_src_00139_c`.
+- Scalar `logical_shift_right` unsigned-reduction operand forms in
+  `c_testsuite_aarch64_backend_src_00205_c`.
 
 ## Non-Goals
 
-- Do not edit implementation files or tests under this umbrella.
-- Do not change expectations, allowlists, unsupported classifications, timeout
-  policy, runner behavior, or CTest registration.
+- Do not merge assembly legality/materialization singletons `00104` or `00182`
+  into this owner without generated-code evidence.
+- Do not merge call-boundary move `00140` into this owner.
+- Do not merge `lir_to_bir` residuals `00204` or `00216` into this owner.
+- Do not merge runtime nonzero, runtime mismatch/crash, timeout, output-storm,
+  libc, floating, ABI, aggregate, pointer, string, or control-flow buckets into
+  this owner.
 - Do not reopen closed owners 285 through 301 from counts alone.
-- Do not treat all `ctest -R backend` failures as one repair bucket.
-- Do not match exact testcase names, emitted instruction strings, or narrow
-  diagnostics as a substitute for semantic ownership.
-- Do not run broad runtime scans without timeout awareness and stale-process
-  cleanup.
+- Do not match only c-testsuite filenames or exact diagnostic strings.
 
 ## Working Model
 
-- The backend regex is an imprecise selector that includes local backend tests
-  plus external AArch64 c-testsuite backend runtime tests.
-- Counts are inventory evidence, not repair proof.
-- A focused split needs a shared backend capability, a bounded test family,
-  explicit out-of-scope residuals, and reviewer reject signals.
-- Timeout or output-storm cases should be quarantined, deferred, or split into
-  a hang-specific owner rather than mixed into ordinary runtime repair.
+- The focused failures are compile-stage machine-node operand-form failures,
+  not runtime-output classification.
+- The repair should ensure selected scalar arithmetic/reduction nodes publish
+  operands in the structured forms required by the AArch64 printer.
+- A valid slice may improve one form at a time, but acceptance for this owner
+  needs the full focused three-case subset classified and proved.
 
 ## Execution Rules
 
-- Keep routine classification notes in `todo.md`.
-- Edit this plan only if the umbrella route or step ordering needs repair.
-- Edit the source idea only for durable deactivation notes or newly discovered
-  source-intent changes.
-- When a focused owner is split, switch lifecycle state away from this umbrella
-  before code edits begin.
-- Use `test_after.log` only when the supervisor explicitly asks for a fresh
-  proof artifact; otherwise do not churn canonical logs during lifecycle-only
-  classification.
+- Start each implementation packet by inspecting the current diagnostics or
+  generated machine-node route for the delegated focused case set.
+- Prefer semantic lowering, selection, operand publication, or materialization
+  over printer-only string handling.
+- Keep changes scoped to scalar arithmetic/reduction operand forms unless the
+  generated-code evidence proves a shared helper boundary.
+- Record fresh build proof and the focused c-testsuite subset in `todo.md`
+  before asking for broader backend-regex acceptance.
+- Report remaining residual buckets separately from this owner.
 
 ## Steps
 
-### Step 1: Reconstruct the Post-301 Inventory
+### Step 1: Inspect Focused Operand Diagnostics
 
-Goal: establish the active residual set from accepted proof before choosing a
-focused split.
+Goal: identify exactly which scalar machine-node operands reach printing in an
+unsupported form.
 
-Primary target: `test_before.log`
-
-Actions:
-
-- Parse the backend-regex proof summary and confirm the accepted state is 352
-  selected, 300 passed, and 52 failed.
-- Extract the failing test names and classify whether any failures are local
-  backend/unit tests or all are `c_testsuite_aarch64_backend_*`.
-- Preserve the current inventory in `todo.md` without editing the source idea.
-
-Completion check:
-
-- `todo.md` records the current failure list, pass/fail counts, and top-level
-  source split.
-
-### Step 2: Classify Residual Families
-
-Goal: group the 52 residual failures by observable failure mode and likely
-semantic backend owner.
-
-Primary target: backend-regex failure output in `test_before.log`
+Primary target: focused backend c-testsuite cases `00064`, `00139`, and
+`00205`
 
 Actions:
 
-- Separate frontend/backend diagnostic failures from runtime nonzero,
-  runtime mismatch/crash, and timeout cases.
-- For each non-runtime diagnostic bucket, identify the shared backend
-  capability if one is visible.
-- For runtime buckets, record what extra generated-code or narrower proof
-  would be needed before a semantic owner can be split.
-- Keep standalone timeout cases separate unless there is direct evidence for a
-  shared hang-specific owner.
+- Run or inspect the focused cases enough to capture the active diagnostics.
+- Trace the selected scalar `div`, `mul`, and `logical_shift_right` nodes to
+  the operand forms handed to the AArch64 printer.
+- Identify whether each failure should be repaired by selection,
+  materialization, operand publication, or printer admission.
 
 Completion check:
 
-- `todo.md` has a classified residual table with owner candidates, parked
-  buckets, and evidence gaps.
+- `todo.md` records the active diagnostic for each focused case and names the
+  shared implementation surface or the reason the packet must split.
 
-### Step 3: Check Closed-Owner Boundaries
+### Step 2: Repair Scalar Arithmetic Operand Forms
 
-Goal: avoid reopening recently closed AArch64 owners without contradicting
-proof evidence.
+Goal: publish or materialize printable operands for the scalar arithmetic
+forms without testcase-shaped matching.
 
-Primary target: closed-owner closure notes already summarized in idea 295
+Primary target: scalar `div` and scalar `mul` operand routes
 
 Actions:
 
-- Compare candidate buckets against the closure boundaries for ideas 285
-  through 301.
-- Reject any candidate whose only evidence is a remaining count or testcase
-  name that overlaps a closed owner.
-- Require generated-code, diagnostic, or proof evidence before proposing a
-  reopened owner.
+- Repair the semantic path that leaves scalar arithmetic operands
+  unstructured.
+- Keep the implementation general for the affected scalar node forms.
+- Build and prove the relevant focused subset selected by the supervisor.
 
 Completion check:
 
-- `todo.md` states whether the candidate owner is new, parked, or a legitimate
-  reopen candidate with supporting evidence.
+- `00064` and `00139` no longer fail from the old scalar arithmetic
+  operand-form diagnostics, and no expectation or runner contract changed.
 
-### Step 4: Split or Park the Next Owner
+### Step 3: Repair Unsigned-Reduction Shift Operand Forms
 
-Goal: produce the next focused lifecycle target or explicitly defer when no
-semantic owner is ready.
+Goal: publish or materialize printable operands for the scalar
+`logical_shift_right` unsigned-reduction route.
 
-Primary target: `ideas/open/`
+Primary target: focused case `00205`
 
 Actions:
 
-- If a crisp semantic owner is found, create one focused
-  `ideas/open/*.md` file with scope, out-of-scope residuals, acceptance
-  criteria, and concrete reviewer reject signals.
-- Add a durable deactivation note to idea 295 only when switching away from
-  the umbrella.
-- If no owner is ready, leave the umbrella active and record the blocker and
-  needed probe in `todo.md`.
+- Trace the unsigned-reduction path to the unsupported shift operand.
+- Repair the shared operand-form handling without absorbing unrelated runtime
+  or `lir_to_bir` buckets.
+- Build and prove the focused subset selected by the supervisor.
 
 Completion check:
 
-- Either a focused owner is ready for lifecycle switch, or `todo.md` explains
-  why classification must continue before splitting.
+- `00205` no longer fails from the old scalar
+  `logical_shift_right`/unsigned-reduction operand-form diagnostic, and the
+  focused subset has fresh proof.
 
-### Step 5: Lifecycle Switch Before Implementation
+### Step 4: Focused Closure Proof
 
-Goal: ensure implementation starts only under a focused repair idea.
+Goal: show the focused scalar operand-form owner is complete and ready for
+broader supervisor validation.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea under
-`ideas/open/`
+Primary target: focused c-testsuite subset plus supervisor-selected broader
+backend proof
 
 Actions:
 
-- Deactivate the umbrella only after preserving durable owner decisions in
-  idea 295.
-- Activate the focused owner into a new `plan.md` and aligned `todo.md`.
-- Do not include implementation edits in the lifecycle switch.
+- Rebuild after the implementation slice.
+- Run the focused three-case backend c-testsuite subset.
+- Run broader backend-regex proof only when the supervisor selects it.
+- Summarize remaining residuals separately from this owner.
 
 Completion check:
 
-- Active lifecycle state points to the focused owner, not idea 295, before any
-  code-changing executor packet is delegated.
+- The old focused scalar machine-node operand-form diagnostics are absent from
+  `00064`, `00139`, and `00205`; proof is recorded in `todo.md`; no excluded
+  bucket is claimed as solved without evidence.
