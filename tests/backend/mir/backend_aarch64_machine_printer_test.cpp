@@ -6049,16 +6049,12 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
   const auto va_start_result =
       aarch64_codegen::print_machine_instruction_line_payloads(va_start_call);
   if (!va_start_result.ok || va_start_result.instruction_lines.size() != 5 ||
-      va_start_result.instruction_lines[0].find("va.start dest=value#14:register:x2") ==
-          std::string::npos ||
-      va_start_result.instruction_lines[1].find("slot#5 stack+16") == std::string::npos ||
-      va_start_result.instruction_lines[2].find("overflow_slot#6 overflow_stack+208") ==
-          std::string::npos ||
-      va_start_result.instruction_lines[3] !=
-          "va.start.field kind=gp_offset offset=0 size=4" ||
-      va_start_result.instruction_lines[4] !=
-          "va.start.field kind=overflow_arg_area offset=8 size=8") {
-    return fail("expected variadic entry helper call to print prepared va_start records");
+      va_start_result.instruction_lines[0] != "add x9, sp, #208" ||
+      va_start_result.instruction_lines[1] != "str x9, [x2, #8]" ||
+      va_start_result.instruction_lines[2] != "movz w9, #65480" ||
+      va_start_result.instruction_lines[3] != "movk w9, #65535, lsl #16" ||
+      va_start_result.instruction_lines[4] != "str w9, [x2]") {
+    return fail("expected variadic entry helper call to lower va_start to legal assembly");
   }
 
   const prepare::PreparedCallPlan prepared_va_arg_call{

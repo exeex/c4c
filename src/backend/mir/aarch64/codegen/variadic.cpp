@@ -1,5 +1,7 @@
 #include "variadic.hpp"
+#include "machine_printer.hpp"
 
+#include <cstdint>
 #include <sstream>
 #include <string>
 #include <utility>
@@ -393,6 +395,186 @@ make_variadic_aggregate_va_arg_record(
   return out.str();
 }
 
+[[nodiscard]] std::optional<unsigned> parse_x_register_index(
+    const std::optional<std::string>& name) {
+  if (!name.has_value() || name->size() < 2 || (*name)[0] != 'x') {
+    return std::nullopt;
+  }
+  unsigned index = 0;
+  for (std::size_t pos = 1; pos < name->size(); ++pos) {
+    const char ch = (*name)[pos];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    index = index * 10U + static_cast<unsigned>(ch - '0');
+  }
+  return index <= 30U ? std::optional<unsigned>{index} : std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> va_start_scratch_register(
+    const prepare::PreparedValueHome& destination) {
+  const auto destination_index = parse_x_register_index(destination.register_name);
+  if (!destination_index.has_value()) {
+    return std::nullopt;
+  }
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (scratch.index != *destination_index) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] const prepare::PreparedVariadicVaListField* find_va_list_field(
+    const VariadicVaStartRecord& va_start,
+    prepare::PreparedVariadicVaListFieldKind kind) {
+  for (const auto& field : va_start.va_list_fields) {
+    if (field.kind == kind) {
+      return &field;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::string va_list_field_address(
+    std::string_view destination_register,
+    const prepare::PreparedVariadicVaListField& field) {
+  std::ostringstream out;
+  out << "[" << destination_register;
+  if (field.offset_bytes != 0) {
+    out << ", #" << field.offset_bytes;
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::vector<std::string> materialize_stack_address_lines(
+    abi::RegisterReference scratch,
+    std::size_t stack_offset_bytes) {
+  const std::string scratch_name = abi::register_name(scratch);
+  if (stack_offset_bytes <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(stack_offset_bytes)};
+  }
+  auto lines = materialize_integer_constant_lines(
+      scratch, static_cast<std::uint64_t>(stack_offset_bytes), 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+bool append_va_start_pointer_field_store(
+    std::vector<std::string>& lines,
+    const VariadicVaStartRecord& va_start,
+    prepare::PreparedVariadicVaListFieldKind kind,
+    std::size_t stack_offset_bytes,
+    abi::RegisterReference scratch,
+    std::string_view destination_register) {
+  const auto* field = find_va_list_field(va_start, kind);
+  if (field == nullptr) {
+    return true;
+  }
+  if (field->size_bytes != 8) {
+    return false;
+  }
+  auto address_lines = materialize_stack_address_lines(scratch, stack_offset_bytes);
+  if (address_lines.empty()) {
+    return false;
+  }
+  lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+  lines.push_back("str " + std::string{abi::register_name(scratch)} + ", " +
+                  va_list_field_address(destination_register, *field));
+  return true;
+}
+
+bool append_va_start_i32_field_store(std::vector<std::string>& lines,
+                                     const VariadicVaStartRecord& va_start,
+                                     prepare::PreparedVariadicVaListFieldKind kind,
+                                     std::ptrdiff_t value,
+                                     abi::RegisterReference scratch,
+                                     std::string_view destination_register) {
+  const auto* field = find_va_list_field(va_start, kind);
+  if (field == nullptr) {
+    return true;
+  }
+  if (field->size_bytes != 4) {
+    return false;
+  }
+  const auto scratch_w = abi::w_register(scratch.index);
+  auto value_lines = materialize_integer_constant_lines(
+      scratch_w, static_cast<std::uint32_t>(value), 32);
+  if (value_lines.empty()) {
+    return false;
+  }
+  lines.insert(lines.end(), value_lines.begin(), value_lines.end());
+  lines.push_back("str " + std::string{abi::register_name(scratch_w)} + ", " +
+                  va_list_field_address(destination_register, *field));
+  return true;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>> print_va_start_lowering_lines(
+    const VariadicVaStartRecord& va_start) {
+  if (va_start.destination_va_list.kind != prepare::PreparedValueHomeKind::Register ||
+      !va_start.destination_va_list.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratch = va_start_scratch_register(va_start.destination_va_list);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string destination_register = *va_start.destination_va_list.register_name;
+  std::vector<std::string> lines;
+  const auto gp_top_stack_offset =
+      va_start.register_save_area_stack_offset_bytes +
+      va_start.register_save_area_gp_offset_bytes +
+      va_start.saved_gp_register_count * va_start.register_save_area_gp_slot_size_bytes;
+  const auto fp_top_stack_offset =
+      va_start.register_save_area_stack_offset_bytes +
+      va_start.register_save_area_fp_offset_bytes +
+      va_start.saved_fp_register_count * va_start.register_save_area_fp_slot_size_bytes;
+
+  if (!append_va_start_pointer_field_store(
+          lines,
+          va_start,
+          prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
+          va_start.overflow_area_base_stack_offset_bytes,
+          *scratch,
+          destination_register) ||
+      !append_va_start_pointer_field_store(
+          lines,
+          va_start,
+          prepare::PreparedVariadicVaListFieldKind::GpRegisterSaveArea,
+          gp_top_stack_offset,
+          *scratch,
+          destination_register) ||
+      !append_va_start_pointer_field_store(
+          lines,
+          va_start,
+          prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea,
+          fp_top_stack_offset,
+          *scratch,
+          destination_register) ||
+      !append_va_start_i32_field_store(
+          lines,
+          va_start,
+          prepare::PreparedVariadicVaListFieldKind::GpOffset,
+          va_start.initial_gp_offset_bytes,
+          *scratch,
+          destination_register) ||
+      !append_va_start_i32_field_store(
+          lines,
+          va_start,
+          prepare::PreparedVariadicVaListFieldKind::FpOffset,
+          va_start.initial_fp_offset_bytes,
+          *scratch,
+          destination_register)) {
+    return std::nullopt;
+  }
+  return lines;
+}
+
 }  // namespace
 
 std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(
@@ -632,51 +814,14 @@ std::optional<mir::TargetInstructionPrintResult> print_variadic_call(
     }
 
     const auto& va_start = *call.variadic_va_start;
-    std::vector<std::string> lines;
-    {
-      std::ostringstream out;
-      out << mnemonic << " dest="
-          << prepared_value_home_name(va_start.destination_va_list)
-          << " named_gp=" << va_start.named_gp_register_count
-          << " named_fp=" << va_start.named_fp_register_count
-          << " va_list_size=" << va_start.va_list_size_bytes
-          << " va_list_align=" << va_start.va_list_align_bytes
-          << " scratch_registers=" << va_start.scratch_register_count
-          << " scratch_stack=" << va_start.scratch_stack_bytes;
-      lines.push_back(out.str());
+    auto lines = print_va_start_lowering_lines(va_start);
+    if (!lines.has_value()) {
+      return target_unsupported(
+          bad_header +
+          "va_start helper lowering requires register destination and valid "
+          "AAPCS64 va_list field sizes");
     }
-    {
-      std::ostringstream out;
-      out << "va.start.rsa slot#" << va_start.register_save_area_slot_id
-          << " stack+" << va_start.register_save_area_stack_offset_bytes
-          << " size=" << va_start.register_save_area_size_bytes
-          << " align=" << va_start.register_save_area_align_bytes
-          << " gp_offset=" << va_start.register_save_area_gp_offset_bytes
-          << " fp_offset=" << va_start.register_save_area_fp_offset_bytes
-          << " gp_slot=" << va_start.register_save_area_gp_slot_size_bytes
-          << " fp_slot=" << va_start.register_save_area_fp_slot_size_bytes
-          << " saved_gp=" << va_start.saved_gp_register_count
-          << " saved_fp=" << va_start.saved_fp_register_count;
-      lines.push_back(out.str());
-    }
-    {
-      std::ostringstream out;
-      out << "va.start.initial_offsets gp=" << va_start.initial_gp_offset_bytes
-          << " fp=" << va_start.initial_fp_offset_bytes
-          << " overflow_slot#" << va_start.overflow_area_base_slot_id
-          << " overflow_stack+" << va_start.overflow_area_base_stack_offset_bytes
-          << " overflow_align=" << va_start.overflow_area_align_bytes;
-      lines.push_back(out.str());
-    }
-    for (const auto& field : va_start.va_list_fields) {
-      std::ostringstream out;
-      out << "va.start.field kind="
-          << prepare::prepared_variadic_va_list_field_kind_name(field.kind)
-          << " offset=" << field.offset_bytes
-          << " size=" << field.size_bytes;
-      lines.push_back(out.str());
-    }
-    return target_printed(std::move(lines));
+    return target_printed(std::move(*lines));
   }
 
   if (call.variadic_entry_helper ==

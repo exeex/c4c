@@ -1,53 +1,40 @@
 Status: Active
 Source Idea Path: ideas/open/317_aarch64_variadic_va_start_helper_lowering.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Va Start Helper Payloads
+Current Step ID: 2
+Current Step Title: Lower Va Start To Legal AArch64 Assembly
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Localize Va Start Helper Payloads complete. The missing fact is not
-upstream variadic metadata: `00204.c` reaches selected AArch64 printing with a
-structured `VariadicVaStartRecord`, but
-`src/backend/mir/aarch64/codegen/variadic.cpp::print_variadic_call` prints that
-record as raw helper payload text (`va.start`, `va.start.rsa`,
-`va.start.initial_offsets`, and `va.start.field`) instead of legal AArch64
-stores.
+Step 2 - Lower Va Start To Legal AArch64 Assembly complete. The
+`PreparedVariadicEntryHelperKind::VaStart` printer path now consumes the
+selected `VariadicVaStartRecord` and emits legal AArch64 instructions instead
+of raw helper payload text.
 
-The representative `myprintf` helper payload is:
+The lowering initializes the destination `va_list` fields from the prepared
+AAPCS64 layout:
 
-- destination `va_list`: `%lv.ap` / value#2051 in register `x13`
-- register save area: slot #2569, stack+672, size 192, align 16, GP base 0, FP
-  base 64, GP slot 8, FP slot 16, saved GP 7, saved FP 8
-- initial offsets: GP -56, FP -128
-- overflow base: slot #2570, stack+864, align 8
-- AAPCS64 `va_list` fields: `overflow_arg_area@0:8`,
-  `gp_register_save_area@8:8`, `fp_register_save_area@16:8`,
-  `gp_offset@24:4`, `fp_offset@28:4`
-- helper resources: one scratch register, zero scratch stack
+- materializes `overflow_arg_area` from the prepared overflow stack base
+- materializes `gp_register_save_area` as the GP register-save-area top
+- materializes `fp_register_save_area` as the FP register-save-area top
+- stores the prepared signed initial GP and FP offsets as 32-bit fields
+- uses a reserved MIR scratch register that does not alias the destination
+  `va_list` register
 
-Owning code surface for the repair:
-
-- `src/backend/mir/aarch64/codegen/variadic.cpp::print_variadic_call`, in the
-  `PreparedVariadicEntryHelperKind::VaStart` branch that currently builds raw
-  text lines from `VariadicVaStartRecord`
-- `src/backend/mir/aarch64/codegen/variadic.cpp::make_variadic_va_start_record`
-  and `src/backend/mir/aarch64/codegen/instruction.hpp::VariadicVaStartRecord`
-  are already the selected-record carrier and should be preserved as the
-  structured source facts
-- `src/backend/prealloc/variadic_entry_plans.cpp` is the upstream AAPCS64
-  metadata producer and is not the current missing-lowering owner
+Focused local coverage in `backend_aarch64_machine_printer` now expects legal
+`add`/`movz`/`movk`/`str` output for a selected `va_start` helper and no raw
+`va.start` payload lines. Target-instruction and instruction-dispatch coverage
+continue to preserve the selected-record/provenance facts, and the prepared
+dump guardrails remain unchanged.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: replace the `VaStart` raw text printer branch
-with legal AArch64 selected output that initializes the destination `va_list`.
-The repair should materialize stack-relative addresses for the overflow area,
-GP register-save area, and FP register-save area, then store those pointers and
-the signed GP/FP offsets into the field offsets provided by
-`VariadicVaStartRecord::va_list_fields`.
+Execute Step 4 from `plan.md`: validate and classify the remaining focused
+residual. The `va_start` owner has advanced `00204.c` past raw helper text; the
+current first bad fact is the already-split scalar ALU immediate materialization
+residual `mov w9, #503808`, owned by idea 318.
 
 ## Watchouts
 
@@ -57,17 +44,12 @@ the signed GP/FP offsets into the field offsets provided by
   this owner.
 - Preserve prepared variadic metadata guardrails while replacing raw helper
   text in generated assembly.
-- Existing local coverage currently proves selection/printing of the raw
-  helper records: `backend_aarch64_target_instruction_records`,
-  `backend_aarch64_instruction_dispatch`, and
-  `backend_aarch64_machine_printer`. Step 2 should update or add
-  `backend_aarch64_machine_printer` coverage so `va_start` output is legal
-  assembly and contains no raw `va.start` payload lines, without weakening the
-  prepared handoff/dump tests.
-- `test_before.log` shows the focused baseline still has 10/11 passing tests:
-  only `c_testsuite_aarch64_backend_src_00204_c` fails, first on raw
-  `va.start` lines and later on the scalar immediate residual
-  `mov w9, #503808` owned by idea 318.
+- The `VaStart` lowering only initializes `va_list` fields from existing
+  prepared metadata; it does not attempt scalar ALU immediate materialization,
+  frame-layout repair, frame adjustment, or stack-slot memory spelling.
+- `test_after.log` contains no raw `va.start` assembler diagnostics. The only
+  remaining focused failure is the known `mov w9, #503808` scalar immediate
+  residual.
 
 ## Proof
 
@@ -77,13 +59,10 @@ Focused proof command for this owner:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'
 ```
 
-This packet is localization-only and owns no implementation files. The same
-focused proof was run after the `todo.md` update and written to
-`test_after.log`; build succeeded, 11 tests ran, 10 passed, and only
-`c_testsuite_aarch64_backend_src_00204_c` failed. The failure matches the
-current baseline: first raw `va.start` helper lines at
-`build/c_testsuite_aarch64_backend/src/00204.c.s:4611-4618`, then the later
-known scalar immediate `mov w9, #503808` residual owned by idea 318. This proof
-remains sufficient for the current baseline because it includes build proof,
-the local AArch64 selection/printer tests, prepared handoff guardrails, focused
-BIR/prepared dumps for `00204.c`, and the external `00204.c` representative.
+The focused proof was run after implementation and written to `test_after.log`.
+Build succeeded; 11 tests ran; 10 passed. The local AArch64 selection/printer
+tests, prepared handoff guardrails, and focused BIR/prepared dumps passed.
+`c_testsuite_aarch64_backend_src_00204_c` advanced past the raw `va.start`
+assembler failures and now fails only at
+`build/c_testsuite_aarch64_backend/src/00204.c.s:8502` on
+`mov w9, #503808`, the known scalar immediate residual owned by idea 318.
