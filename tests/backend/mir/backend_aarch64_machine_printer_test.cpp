@@ -32,6 +32,17 @@ int expect_equal(std::string_view actual, std::string_view expected, std::string
   return 0;
 }
 
+std::string join_lines(const std::vector<std::string>& lines) {
+  std::string joined;
+  for (const auto& line : lines) {
+    if (!joined.empty()) {
+      joined += "\\n";
+    }
+    joined += line;
+  }
+  return joined;
+}
+
 int expect_assembly(std::string_view actual,
                     std::string_view expected_from_helpers,
                     std::string_view expected_canonical,
@@ -3806,7 +3817,7 @@ int selected_scalar_add_with_immediate_operands_prints_structured_add() {
   return 0;
 }
 
-int selected_scalar_add_sub_reject_nonencodable_immediates() {
+int selected_scalar_add_sub_materializes_nonencodable_immediates() {
   const auto add_out_of_range = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
@@ -3827,10 +3838,12 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
       }));
   const auto out_of_range_result =
       aarch64_codegen::print_machine_instruction_line_payloads(add_out_of_range);
-  if (out_of_range_result.ok ||
-      out_of_range_result.diagnostic.find("plain #imm encoding range 0..4095") ==
-          std::string::npos) {
-    return fail("expected scalar add with out-of-range immediate to fail closed");
+  if (!out_of_range_result.ok ||
+      out_of_range_result.instruction_lines.size() != 2 ||
+      out_of_range_result.instruction_lines[0] != "mov w9, #4096" ||
+      out_of_range_result.instruction_lines[1] != "add w0, w1, w9") {
+    return fail("expected scalar add with out-of-range immediate to materialize rhs: " +
+                join_lines(out_of_range_result.instruction_lines));
   }
 
   const auto sub_negative = aarch64_codegen::make_scalar_instruction(
@@ -3853,10 +3866,12 @@ int selected_scalar_add_sub_reject_nonencodable_immediates() {
       }));
   const auto negative_result =
       aarch64_codegen::print_machine_instruction_line_payloads(sub_negative);
-  if (negative_result.ok ||
-      negative_result.diagnostic.find("plain #imm encoding range 0..4095") ==
-          std::string::npos) {
-    return fail("expected scalar sub with negative immediate to fail closed");
+  if (!negative_result.ok ||
+      negative_result.instruction_lines.size() != 2 ||
+      negative_result.instruction_lines[0] != "mov w9, #-1" ||
+      negative_result.instruction_lines[1] != "sub w0, w1, w9") {
+    return fail("expected scalar sub with negative immediate to materialize rhs: " +
+                join_lines(negative_result.instruction_lines));
   }
 
   return 0;
@@ -5021,7 +5036,7 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
     return fail("expected selected scalar without destination register to fail closed");
   }
 
-  const auto scalar_with_unprintable_sub_operands = aarch64_codegen::make_scalar_instruction(
+  const auto scalar_with_materialized_sub_lhs = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
           .operation = aarch64_codegen::ScalarAluOperationKind::Sub,
@@ -5039,14 +5054,15 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
           .rhs = aarch64_codegen::make_register_operand(xreg(2)),
           .supported_integer_operation = true,
       }));
-  const auto scalar_with_unprintable_sub_operands_result =
+  const auto scalar_with_materialized_sub_lhs_result =
       aarch64_codegen::print_machine_instruction_line_payloads(
-          scalar_with_unprintable_sub_operands);
-  if (scalar_with_unprintable_sub_operands_result.ok ||
-      scalar_with_unprintable_sub_operands_result.diagnostic.find(
-          "scalar sub with an immediate lhs and register rhs is not printable") ==
-          std::string::npos) {
-    return fail("expected selected scalar with unprintable sub operands to fail closed");
+          scalar_with_materialized_sub_lhs);
+  if (!scalar_with_materialized_sub_lhs_result.ok ||
+      scalar_with_materialized_sub_lhs_result.instruction_lines.size() != 2 ||
+      scalar_with_materialized_sub_lhs_result.instruction_lines[0] != "mov x9, #1" ||
+      scalar_with_materialized_sub_lhs_result.instruction_lines[1] != "sub x0, x9, x2") {
+    return fail("expected selected scalar sub with immediate lhs to materialize lhs: " +
+                join_lines(scalar_with_materialized_sub_lhs_result.instruction_lines));
   }
 
   auto load_address = frame_slot(48);
@@ -5882,7 +5898,7 @@ int main() {
       result != 0) {
     return result;
   }
-  if (const int result = selected_scalar_add_sub_reject_nonencodable_immediates();
+  if (const int result = selected_scalar_add_sub_materializes_nonencodable_immediates();
       result != 0) {
     return result;
   }

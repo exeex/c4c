@@ -55,8 +55,8 @@ namespace mir = c4c::backend::mir;
 }
 
 [[nodiscard]] bool is_plain_logical_immediate(const ImmediateOperand& operand) {
-  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= 0 &&
-         operand.signed_value <= 4095;
+  (void)operand;
+  return false;
 }
 
 [[nodiscard]] bool scalar_alu_operation_accepts_immediate(
@@ -1778,15 +1778,6 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                 "scalar add/sub/bitwise memory operands require prepared frame-slot sources"};
   }
   const auto& alu = *scalar.scalar_alu;
-  if ((lhs_is_immediate &&
-       !scalar_alu_operation_accepts_immediate(alu.operation, *lhs_immediate)) ||
-      (rhs_is_immediate &&
-       !scalar_alu_operation_accepts_immediate(alu.operation, *rhs_immediate))) {
-    return {.lines = std::nullopt,
-            .diagnostic =
-                "scalar add/sub/bitwise immediate operand is outside the plain #imm encoding range 0..4095"};
-  }
-
   std::string_view mnemonic = machine_instruction_primary_printer_mnemonic(instruction);
   if (instruction.opcode == MachineOpcode::And) {
     mnemonic = "and";
@@ -1838,6 +1829,7 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
           const RegisterOperand* reg,
           const MemoryOperand* memory,
           const ImmediateOperand* immediate,
+          bool allow_plain_immediate,
           std::vector<const RegisterOperand*> occupied)
           -> std::optional<MaterializedScalarSource> {
     if (operand.kind == OperandKind::Register && reg != nullptr) {
@@ -1865,9 +1857,61 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
     }
     if (operand.kind == OperandKind::Immediate && immediate != nullptr) {
-      return MaterializedScalarSource{.name = scalar_immediate_name(*immediate)};
+      if (allow_plain_immediate &&
+          scalar_alu_operation_accepts_immediate(alu.operation, *immediate)) {
+        return MaterializedScalarSource{.name = scalar_immediate_name(*immediate)};
+      }
+      const auto scratch = scalar_gp_scratch_register(*result_view, occupied);
+      if (!scratch.has_value()) {
+        return std::nullopt;
+      }
+      const std::string scratch_name = abi::register_name(scratch->reg);
+      std::ostringstream move;
+      move << "mov " << scratch_name << ", " << scalar_immediate_name(*immediate);
+      lines.push_back(move.str());
+      return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
     }
     return std::nullopt;
+  };
+
+  const auto materialize_lhs_immediate_into_result =
+      [&](const ImmediateOperand& immediate) -> bool {
+    std::ostringstream move;
+    move << "mov " << *result << ", " << scalar_immediate_name(immediate);
+    lines.push_back(move.str());
+    return true;
+  };
+
+  const auto materialize_rhs_immediate_for_existing_lhs =
+      [&](const ImmediateOperand& immediate,
+          std::string_view lhs_name,
+          std::vector<const RegisterOperand*> occupied)
+          -> std::optional<MaterializedScalarSource> {
+    if (scalar_alu_operation_accepts_immediate(alu.operation, immediate)) {
+      return MaterializedScalarSource{.name = scalar_immediate_name(immediate)};
+    }
+    if (scalar.result_register.has_value()) {
+      occupied.push_back(&*scalar.result_register);
+    }
+    const auto scratch = scalar_gp_scratch_register(*result_view, occupied);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    const std::string scratch_name = abi::register_name(scratch->reg);
+    if (scratch_name == lhs_name) {
+      return std::nullopt;
+    }
+    std::ostringstream move;
+    move << "mov " << scratch_name << ", " << scalar_immediate_name(immediate);
+    lines.push_back(move.str());
+    return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
+  };
+
+  const auto append_binary_alu =
+      [&](std::string_view lhs_name, std::string_view rhs_name) {
+    std::ostringstream out;
+    out << mnemonic << " " << *result << ", " << lhs_name << ", " << rhs_name;
+    lines.push_back(out.str());
   };
 
   const bool lhs_requires_register_source = lhs_is_register || lhs_is_memory;
@@ -1886,43 +1930,59 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     }
     const auto lhs = materialize_source(
         scalar.inputs[0], lhs_register, lhs_memory, nullptr,
+        false,
         std::move(lhs_occupied));
     if (lhs.has_value() && lhs->scratch.has_value()) {
       rhs_occupied.push_back(&*lhs->scratch);
     }
     const auto rhs = materialize_source(
-        scalar.inputs[1], rhs_register, rhs_memory, nullptr, std::move(rhs_occupied));
+        scalar.inputs[1],
+        rhs_register,
+        rhs_memory,
+        nullptr,
+        false,
+        std::move(rhs_occupied));
     if (!lhs.has_value() || !rhs.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
                   "scalar add/sub/bitwise node has incomplete printable register or memory operand facts"};
     }
-    std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << lhs->name << ", " << rhs->name;
-    lines.push_back(out.str());
+    append_binary_alu(lhs->name, rhs->name);
   } else if ((lhs_is_register || lhs_is_memory) && rhs_is_immediate) {
     const auto lhs = materialize_source(
         scalar.inputs[0],
         lhs_register,
         lhs_memory,
         nullptr,
+        false,
         {});
     if (!lhs.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
                 "scalar add/sub/bitwise node has incomplete printable lhs operand facts"};
     }
-    std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << lhs->name << ", "
-        << scalar_immediate_name(*rhs_immediate);
-    lines.push_back(out.str());
-  } else if (lhs_is_immediate && (rhs_is_register || rhs_is_memory) &&
-             instruction.opcode == MachineOpcode::Add) {
+    std::vector<const RegisterOperand*> occupied;
+    if (lhs_register != nullptr) {
+      occupied.push_back(lhs_register);
+    }
+    if (lhs->scratch.has_value()) {
+      occupied.push_back(&*lhs->scratch);
+    }
+    const auto rhs =
+        materialize_rhs_immediate_for_existing_lhs(*rhs_immediate, lhs->name, std::move(occupied));
+    if (!rhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub/bitwise node has no scratch register for materialized rhs immediate"};
+    }
+    append_binary_alu(lhs->name, rhs->name);
+  } else if (lhs_is_immediate && (rhs_is_register || rhs_is_memory)) {
     const auto rhs = materialize_source(
         scalar.inputs[1],
         rhs_register,
         rhs_memory,
         nullptr,
+        false,
         scalar.result_register.has_value()
             ? std::vector<const RegisterOperand*>{&*scalar.result_register}
             : std::vector<const RegisterOperand*>{});
@@ -1931,21 +1991,50 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
               .diagnostic =
                 "scalar add/sub/bitwise node has incomplete printable rhs operand facts"};
     }
-    std::ostringstream out;
-    out << mnemonic << " " << *result << ", " << rhs->name << ", "
-        << scalar_immediate_name(*lhs_immediate);
-    lines.push_back(out.str());
+    if (instruction.opcode == MachineOpcode::Add &&
+        scalar_alu_operation_accepts_immediate(alu.operation, *lhs_immediate)) {
+      append_binary_alu(rhs->name, scalar_immediate_name(*lhs_immediate));
+    } else {
+      std::vector<const RegisterOperand*> occupied;
+      if (scalar.result_register.has_value()) {
+        occupied.push_back(&*scalar.result_register);
+      }
+      if (rhs_register != nullptr) {
+        occupied.push_back(rhs_register);
+      }
+      if (rhs->scratch.has_value()) {
+        occupied.push_back(&*rhs->scratch);
+      }
+      const auto lhs = materialize_source(
+          scalar.inputs[0],
+          nullptr,
+          nullptr,
+          lhs_immediate,
+          false,
+          std::move(occupied));
+      if (!lhs.has_value()) {
+        return {.lines = std::nullopt,
+                .diagnostic =
+                    "scalar add/sub/bitwise node has no scratch register for materialized lhs immediate"};
+      }
+      append_binary_alu(lhs->name, rhs->name);
+    }
   } else if (lhs_is_immediate && rhs_is_immediate) {
-    const auto move_mnemonic =
-        machine_printer_mnemonic_kind_name(MachinePrinterMnemonicKind::Move);
-    std::ostringstream move_line;
-    move_line << move_mnemonic << " " << *result << ", "
-              << scalar_immediate_name(*lhs_immediate);
-    lines.push_back(move_line.str());
-    std::ostringstream add_line;
-    add_line << mnemonic << " " << *result << ", " << *result << ", "
-             << scalar_immediate_name(*rhs_immediate);
-    lines.push_back(add_line.str());
+    materialize_lhs_immediate_into_result(*lhs_immediate);
+    const auto result_register = scalar.result_register.has_value()
+                                     ? &*scalar.result_register
+                                     : nullptr;
+    const auto rhs = materialize_rhs_immediate_for_existing_lhs(
+        *rhs_immediate,
+        *result,
+        result_register != nullptr ? std::vector<const RegisterOperand*>{result_register}
+                                   : std::vector<const RegisterOperand*>{});
+    if (!rhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar add/sub/bitwise node has no scratch register for materialized immediate pair"};
+    }
+    append_binary_alu(*result, rhs->name);
   } else {
     if (lhs_is_immediate && (rhs_is_register || rhs_is_memory) &&
         instruction.opcode == MachineOpcode::Sub) {
