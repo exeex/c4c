@@ -8,29 +8,39 @@ Current Step Title: Repair Semantic Admission Or Prepared Handoff
 
 ## Just Finished
 
-Step 2 runtime pointer-phi repair complete: scalar pointer phi lowering now
-publishes a runtime `PointerAddressMap` entry for phi results when the incoming
-pointer facts have the same address shape. Opaque runtime pointers with raw
-`i8` spelling and plain pointer SSA lanes merge into an opaque phi-base address
-fact, while typed/layout pointer facts still require matching shape and missing
-structured lanes remain fail-closed.
+Step 2 localization complete for the new `00204.c` `stdarg`
+scalar/local-memory residual after the pointer-phi repair.
 
-Fresh proof shows `c_testsuite_aarch64_backend_src_00204_c` advanced past the
-old `myprintf` load-family residual at `load ptr, ptr %t244`. The new observed
-`00204.c` residual is later, in `stdarg`: `semantic lir_to_bir function
-'stdarg' failed in scalar/local-memory semantic family`.
+The exact first-bad fact is the first fixed-size aggregate staging memcpy in
+`stdarg`:
 
-`c_testsuite_aarch64_backend_src_00216_c` remains at the previously observed
-`semantic lir_to_bir function 'test_zero_init' failed in alloca local-memory
-semantic family` residual.
+```llvm
+%t3 = load %struct.s9, ptr @s9
+%t4 = alloca [2 x i64]
+call void @llvm.memcpy.p0.p0.i64(ptr %t4, ptr @s9, i64 9, i1 false)
+```
+
+The failing lowering function is
+`src/backend/bir/lir_to_bir/memory/intrinsics.cpp::lower_memory_memcpy_inst`.
+It rejects this direct LIR `memcpy` before reaching
+`try_lower_immediate_local_memcpy` because the direct path currently requires
+both `dst` and `src` operands to be SSA values; here `dst=%t4` is SSA but
+`src=@s9` is a global. The later `load [2 x i64], ptr %t4` and variadic
+`myprintf` call are not yet the first bad facts.
+
+Classification: this remains in idea 312 scope. It is still semantic
+`lir_to_bir` local-memory admission/prepared-handoff work for the representative
+`00204.c` path, before generated AArch64 artifacts exist. No lifecycle split is
+needed for this residual.
 
 ## Suggested Next
 
-Execute the next Step 2 localization slice for the new `00204.c` `stdarg`
-scalar/local-memory residual. Start around the fixed-size aggregate staging
-sequence in `stdarg` (`load %struct.s9`, `alloca [2 x i64]`, memcpy, then
-`load [2 x i64]`) and determine whether this is still semantic local-memory
-handoff or should be split away from idea 312.
+Execute the next Step 2 semantic repair: teach direct `LirMemcpyOp` lowering to
+admit a global source operand for immediate local-memory copies when the
+destination is an SSA local slot/view and the global has structured linear
+addressing facts. Preserve existing fail-closed behavior for unsupported global
+storage, volatile copies, non-immediate sizes, and unrelated runtime `memcpy`
+calls.
 
 ## Watchouts
 
@@ -45,6 +55,9 @@ handoff or should be split away from idea 312.
   residual after this slice.
 - The new `00204.c` residual is in `stdarg`, not `myprintf`; do not treat it as
   proof that the pointer-phi preservation failed.
+- The first bad fact is the direct intrinsic memcpy with global source
+  `src=@s9`, not the following `load [2 x i64], ptr %t4` or the later variadic
+  `myprintf` call.
 - Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
   not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
   guardrails, but they do not prove the AArch64 `myprintf` failure path.
@@ -64,7 +77,10 @@ representative c-testsuite AArch64 tests still fail:
 
 - `c_testsuite_aarch64_backend_src_00204_c`: advanced past the old `myprintf`
   load-family residual and now reports `semantic lir_to_bir function 'stdarg'
-  failed in scalar/local-memory semantic family`
+  failed in scalar/local-memory semantic family`; localized first bad fact is
+  `lower_memory_memcpy_inst` rejecting
+  `llvm.memcpy.p0.p0.i64(ptr %t4, ptr @s9, i64 9, false)` because the direct
+  memcpy path does not admit a global source operand
 - `c_testsuite_aarch64_backend_src_00216_c`: now reports `semantic lir_to_bir
   function 'test_zero_init' failed in alloca local-memory semantic family`
 
