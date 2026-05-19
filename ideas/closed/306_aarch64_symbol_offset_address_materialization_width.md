@@ -1,8 +1,24 @@
 # AArch64 Symbol+Offset Address Materialization Register-Width Legality
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+
+## Closure Notes
+
+Closed after the focused regression guard for
+`^c_testsuite_aarch64_backend_src_(00050|00176|00182)_c$` passed against the
+valid pre-fix baseline from detached commit `3d4b11762`: before was 0/3,
+after was 1/3, `c_testsuite_aarch64_backend_src_00050_c` resolved, and no new
+failing tests appeared.
+
+The source idea's owner is satisfied because the focused generated assembly no
+longer emits the old AArch64 legality mode where symbol+offset address
+formation uses `adrp wN` or a `wN` memory base. The remaining focused failures
+are separate residuals: `00176.c` now reaches a runtime mismatch, and
+`00182.c` fails on the unrelated large-immediate assembler form
+`mov x0, #1234567`.
 
 ## Goal
 
