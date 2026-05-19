@@ -1,64 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/324_aarch64_variadic_frame_formal_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Frame And Formal Publication
+Current Step ID: 4
+Current Step Title: Validate And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the AArch64 variadic frame/formal publication faults localized
-in Step 1 and then refined the repair after reviewer feedback.
+Step 4 reran the focused proof and classified the remaining post-Step-2
+runtime residual for idea 324.
 
-Implemented:
+The original frame/formal publication blockers are repaired in the refreshed
+generated artifact `build/c_testsuite_aarch64_backend/src/00204.c.s`:
 
-- Regalloc stack-slot allocation now starts from the current function frame
-  extent instead of the module-global frame size.
-- Regalloc publishes assigned stack homes as function-local frame slots, so
-  later variadic helper frame slots cannot overlap them and frame planning can
-  size the active function from the same homes that call preservation consumes.
-- `populate_frame_plan()` now includes assigned regalloc stack homes in
-  `PreparedFramePlanFunction::frame_size_bytes` and frame-slot order.
-- Variadic fixed-formal value homes report their assigned live home when
-  regalloc rehomes them, instead of continuing to report stale ABI entry
-  registers.
-- AArch64 dispatch publishes fixed-formal stack homes at variadic function
-  entry before inline variadic helper lowering.
-- Entry fixed-formal publication now uses typed store widths:
-  `strb` for `I1`/`I8`, `strh` for `I16`, `str` with `W`/`X` register views
-  for `I32`/`I64`/`Ptr`, and `str` with `S`/`D` register views for
-  `F32`/`F64`.
-- AArch64 dispatch suppresses normal before-call ABI moves for inline variadic
-  entry helpers, so `llvm.va_start.p0` no longer clobbers fixed formals through
-  ordinary call-argument movement before helper lowering.
-- Focused backend coverage now proves fixed-formal publication order and typed
-  store width before inline `va_start` lowering, plus frame-plan coverage for
-  regalloc stack homes consumed by call preservation.
-
-Fresh generated evidence in `build/c_testsuite_aarch64_backend/src/00204.c.s`:
-
-- `myprintf` now allocates `1408` bytes and its prior out-of-frame access
-  family such as `[sp, #9696]` is absent from `myprintf`.
-- `%p.format` is published with `str x0, [sp, #624]` before `va_start`.
+- `myprintf` allocates `1408` bytes, and the prior `myprintf` out-of-frame
+  access family such as `[sp, #9696]` is absent.
+- `%p.format` is published before variadic setup with
+  `str x0, [sp, #624]`.
 - `myprintf` no longer emits the bad entry `mov x0, x21`.
-- The variadic register-save area now starts at `stack+1136`, so it no longer
+- `va_start` still materializes a writable local `va_list` at
+  `add x21, sp, #1328` before field stores through `[x21]`.
+- The variadic register-save area begins at `stack+1136`, so it no longer
   overlaps `%p.format` at `stack+624`.
 - Raw `va.arg.aggregate*` helper text remains absent.
+- Aggregate/floating consumers still use executable source selection and
+  `FpOffset` progression through `[x21, #28]` with overflow fallback labels.
 
-The focused external representative still fails with
-`[RUNTIME_NONZERO] exit=Segmentation fault`, now with empty captured
-stdout/stderr in this proof run. The remaining fault is no longer the localized
-frame/formal publication issue: generated stack references observed in the
-current artifacts are covered by their emitted frame sizes, and the entry
-fixed-formal clobber is gone.
+The remaining `c_testsuite_aarch64_backend_src_00204_c` failure is still
+`[RUNTIME_NONZERO] exit=Segmentation fault`, but the first generated-output
+evidence no longer points at idea 324's frame-size or fixed-formal publication
+owner. Instead, `myprintf` now reads ordinary local/value homes that are not
+published in the current function before first use:
+
+- The format cursor is seeded with a pointer to `%p.format` via
+  `add x9, sp, #624; str x9, [sp]`, but the loop immediately tests
+  `cmp w13, #0` without a preceding local load that defines `w13`.
+- The first matcher path reads pattern and printf operands from local homes
+  such as `[sp, #640]`, `[sp, #648]`, `[sp, #656]`, `[sp, #664]`,
+  `[sp, #672]`, `[sp, #680]`, `[sp, #688]`, `[sp, #704]`, and `[sp, #712]`
+  without same-function stores to those homes in `myprintf`.
+- Scalar/overflow state for some vararg paths reads homes such as
+  `[sp, #520]` and `[sp, #632]` before a same-function initialization store.
+
+Classification: the residual is outside idea 324 as originally scoped. Frame
+coverage, fixed-formal publication, `va_start` destination materialization,
+raw-helper lowering, and HFA/aggregate `va_arg` source/progression remain
+intact. The next owner should be AArch64 ordinary local/value-home
+initialization and constant/pattern operand publication in variadic functions,
+with emphasis on publishing local homes before generated control-flow and
+matcher/printf operands consume them.
 
 ## Suggested Next
 
-Run Step 3 or lifecycle classification at supervisor discretion. The next
-packet should classify the remaining external runtime segfault as the next
-owner after verifying the current generated failure is not another
-frame/formal publication defect.
+Ask the plan owner to close or retire idea 324 and activate a follow-up owner
+for AArch64 local/value-home initialization and constant/pattern operand
+publication in variadic functions.
 
 ## Watchouts
 
@@ -70,11 +67,16 @@ frame/formal publication defect.
 - HFA/floating aggregate consumers should keep FP register-save-area source
   selection with `FpOffset` progression and overflow fallback unless generated
   evidence proves that path still owns the first bad fact.
+- The next owner should not reopen frame sizing or fixed-formal publication
+  unless fresh generated output again shows an uncovered stack reference or a
+  fixed formal consumed before publication.
+- The current local-home evidence is not a license to special-case
+  `myprintf`, format strings, stack offsets, or `00204.c`; repair should be a
+  general AArch64 local/value publication rule.
 - Do not special-case `00204.c`, `stdarg`, `myprintf`, `format`, `x0`, `x21`,
   one local, one stack slot, one offset, or one emitted instruction sequence.
 - Do not weaken expectations, unsupported classifications, CTest registration,
   runner behavior, timeout policy, proof-log policy, or prior guardrails.
-- Raw `va.arg.aggregate*` text is still absent.
 - The current generated `stdarg` function contains large temporary HFA/vector
   stack traffic, but its prologue uses a large register-mediated frame
   adjustment that covers the observed offsets. Do not treat those large offsets
@@ -86,7 +88,7 @@ frame/formal publication defect.
 
 ## Proof
 
-Ran the delegated Step 2 focused proof into `test_after.log`:
+Ran the delegated Step 4 focused proof into `test_after.log`:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'`
 
@@ -96,9 +98,3 @@ backend tests passed. The only failure is
 `[RUNTIME_NONZERO] exit=Segmentation fault`.
 
 Proof log path: `test_after.log`.
-
-Supplementary owned coverage run:
-
-`ctest --test-dir build -j --output-on-failure -R '^backend_prepare_frame_stack_call_contract$'`
-
-Passed: 1/1.
