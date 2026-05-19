@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/311_aarch64_selected_call_boundary_move_preparation_printing.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Selected Call-Boundary Move Admission
+Current Step ID: 2
+Current Step Title: Publish AArch64 Stack Call-Argument Destination Offsets
 
 # Current Packet
 
@@ -21,14 +21,13 @@ function 0 block 0 instruction 3.
 
 ## Suggested Next
 
-Decide whether this focused route should first grow AArch64 stack call-argument
-destination support or split that prerequisite to the prealloc call ABI owner.
-The first implementation target is
+Execute Step 2 in `plan.md`: publish AArch64 stack call-argument destination
+offsets from the prealloc call ABI path. The first implementation target is
 `src/backend/prealloc/regalloc/call_return_abi.cpp`:
 `call_arg_destination_stack_offset_bytes` is currently x86_64-only, so AArch64
-byval/stack call arguments cannot publish the prepared destination stack offset
-needed before AArch64 codegen can lower or reject the stack-slot call-boundary
-move semantically.
+byval/stack call arguments cannot publish the prepared
+`destination_stack_offset_bytes` fact needed before AArch64 codegen can lower
+or reject the stack-slot call-boundary move semantically.
 
 ## Watchouts
 

@@ -119,28 +119,40 @@ Completion check:
   the first implementation target, or records the exact prerequisite owner
   that must be split before this route can proceed.
 
-### Step 2: Repair Prepared Source/Destination Publication
+### Step 2: Publish AArch64 Stack Call-Argument Destination Offsets
 
-Goal: make supported call-boundary move records carry the structured facts
-needed for selected-node admission.
+Goal: make AArch64 stack-slot call arguments publish the destination stack
+offset fact needed before call-boundary move preparation can select or
+semantically reject the move.
 
-Primary target: AArch64 call-boundary move preparation and value-move bundle
-handoff code
+Primary targets: `src/backend/prealloc/regalloc/call_return_abi.cpp` and the
+AArch64 call-argument plan/value-move handoff that feeds
+`lower_before_call_move`
 
 Actions:
 
-- Repair the producer or handoff path that loses prepared source/destination
-  facts for the localized supported move shape.
+- Teach `call_arg_destination_stack_offset_bytes` to publish the AArch64
+  stack call-argument destination offset for byval/stack-slot call arguments,
+  without weakening the existing x86_64 path.
+- Add or adjust focused backend coverage proving the prepared AArch64 call
+  argument plan or call-boundary move record carries
+  `destination_stack_offset_bytes` for the localized supported stack-slot
+  argument shape.
+- Repair only the producer/handoff path that loses this destination fact; do
+  not add testcase-shaped matching for `00140.c`, `struct foo`, or argument 0.
 - Keep unsupported cases `DeferredUnsupported` with specific diagnostics.
 - Do not mark a move selected until the printer can consume both the prepared
   source and prepared destination.
-- Keep the change narrow to call-boundary move preparation/selection.
+- If the offset fact is published but stack-slot call-boundary moves still
+  need a distinct AArch64 lowering/printing rule, record that residual in
+  `todo.md` for the next step instead of bypassing the printer gate.
 
 Completion check:
 
-- Focused record or dispatch tests prove the repaired move record is selected
-  with printable source and destination data, while incomplete records still
-  fail closed.
+- Focused backend tests prove AArch64 byval/stack call arguments carry
+  `destination_stack_offset_bytes` through the prepared plan or move record,
+  and the focused proof no longer fails from an absent destination stack
+  offset fact.
 
 ### Step 3: Prove Machine-Printer Semantics
 
