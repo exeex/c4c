@@ -188,6 +188,23 @@ Deactivation 2026-05-19 post-296 inventory result:
   GEP/store/load forms, not filename matching or expectation, unsupported,
   runner, timeout, or CTest-registration changes.
 
+Step 4 split 2026-05-19:
+
+- Focused idea 298,
+  `ideas/open/298_lir_to_bir_global_pointer_aggregate_projection.md`, is open
+  as the residual semantic `lir_to_bir` global/pointer/aggregate projection
+  owner.
+- The split uses accepted broad backend-regex baseline `test_before.log`: 352
+  selected, 291 passed, and 61 failed.
+- The new owner covers global scalar-array GEPs `00176` and `00181`,
+  pointer-value/parameter GEPs `00182` and `00209`, global dynamic aggregate
+  member GEPs `00195` and `00205`, bootstrap/global aggregate semantics
+  `00204`, and `00216` as a pointer-parameter/flexible-array aggregate
+  projection boundary case.
+- Machine-printer residuals, runtime nonzero/mismatch buckets, and the
+  standalone `00220` timeout remain separate inventory buckets unless future
+  generated-code or diagnostic evidence proves a shared semantic owner.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
