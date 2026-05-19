@@ -560,6 +560,32 @@ Step 4 split 2026-05-19:
   evidence justifies another focused split.
 - Active implementation should move to idea 311 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 311,
+  `ideas/closed/311_aarch64_selected_call_boundary_move_preparation_printing.md`,
+  is closed as complete for AArch64 selected call-boundary move preparation,
+  source/destination fact preservation, selected-node admission, and
+  machine-printer consumption.
+- The accepted focused proof covered
+  `backend_aarch64_target_instruction_records`,
+  `backend_aarch64_machine_printer`,
+  `backend_aarch64_instruction_dispatch`, and
+  `c_testsuite_aarch64_backend_src_00140_c`; all four tests passed.
+- The old generic selected-register-subset rejection and the intermediate
+  stack-copy residual for `00140.c` are gone by the accepted focused proof.
+- Close-time non-decreasing regression guard over the matching focused
+  `test_before.log` / `test_after.log` pair passed with 4 passed before and 4
+  passed after.
+- No current `00140.c` residual returns to this umbrella. Remaining direct-call
+  shuffle, direct vararg, address-of-local, runtime nonzero/mismatch/crash,
+  timeout/output-storm, other machine-printer or prepared-node residuals such
+  as `00164.c` and `00214.c`, and semantic `lir_to_bir` residuals remain
+  parked until a later inventory pass justifies another focused split.
+- The next lifecycle pass should re-inventory or classify the remaining
+  backend-regex buckets without reopening closed owners 285 through 311 unless
+  generated-code or proof evidence contradicts their closure boundaries.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -570,5 +596,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 310 without generated-code or
+- reopens recently closed owners 285 through 311 without generated-code or
   proof evidence that contradicts their closure boundary.
