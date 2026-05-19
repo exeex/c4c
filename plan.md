@@ -1,31 +1,34 @@
-# AArch64 Scalar ALU Immediate Materialization Runbook
+# AArch64 HFA Aggregate Argument Runtime Runbook
 
 Status: Active
-Source Idea: ideas/open/318_aarch64_scalar_alu_immediate_materialization.md
-Activated from: idea 317 closure after Step 4 residual classification
+Source Idea: ideas/open/319_aarch64_hfa_aggregate_argument_runtime.md
+Activated from: idea 318 closure after Step 4 residual classification
 
 ## Purpose
 
-Repair AArch64 scalar ALU immediate paths so non-encodable constants are
-materialized through legal instruction sequences before arithmetic operations.
+Repair the next `00204.c` runtime blocker by localizing and fixing the AArch64
+ABI argument path that corrupts early `Arguments:` HFA, floating,
+long-double, or aggregate output before the scalar arithmetic section runs.
 
 ## Goal
 
-Make scalar ALU helpers handle constants such as `503808` without emitting
-illegal single-instruction `mov` forms, while preserving direct encodable
-immediate and register-register paths.
+Make the implicated argument class pass through AArch64 call and callee
+lowering correctly, while preserving the assembler-blocker repairs from ideas
+314, 315, 317, and 318.
 
 ## Core Rule
 
-Progress must be a general scalar ALU immediate materialization capability. Do
-not reopen variadic `va_start` helper lowering, large frame adjustment
-materialization, stack-slot memory spelling, frame-layout consistency,
-semantic admission, expectations, unsupported classifications, runners,
-timeout policy, proof-log contents, or CTest registration.
+Progress must be a general AArch64 ABI argument handling capability. Do not
+reopen scalar ALU immediate materialization, raw `va_start` helper lowering,
+large frame adjustment materialization, stack-slot memory spelling,
+frame-layout consistency, semantic admission, expectations, unsupported
+classifications, runners, timeout policy, proof-log contents, or CTest
+registration.
 
 ## Read First
 
-- `ideas/open/318_aarch64_scalar_alu_immediate_materialization.md`
+- `ideas/open/319_aarch64_hfa_aggregate_argument_runtime.md`
+- `ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md`
 - `ideas/closed/317_aarch64_variadic_va_start_helper_lowering.md`
 - `ideas/closed/315_aarch64_large_frame_adjustment_materialization.md`
 - `ideas/closed/314_aarch64_large_stack_offset_addressing.md`
@@ -39,10 +42,13 @@ timeout policy, proof-log contents, or CTest registration.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - `00204.c`: generated assembly contains illegal scalar ALU materialization
-    in `subim503808`: `mov w9, #503808`.
-- Suspected owner surface:
-  - `src/backend/mir/aarch64/codegen/alu.cpp`
+  - `00204.c` fails at runtime with `RUNTIME_NONZERO` / `Segmentation fault`
+    during early `Arguments:` output.
+  - Printed floating/HFA/aggregate values are corrupted before execution
+    reaches `Return values:`, `stdarg:`, `MOVI:`, or `opi()`.
+- Initial suspected owner family:
+  - AArch64 ABI classification and argument lowering for HFA, floating,
+    long-double, or aggregate arguments.
 - Prior-owner guardrails:
   - `backend_lir_to_bir_notes`
   - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
@@ -56,110 +62,111 @@ timeout policy, proof-log contents, or CTest registration.
 
 ## Non-Goals
 
+- Do not reopen idea 318's scalar ALU immediate materialization owner.
 - Do not reopen idea 317's raw `va_start` helper-text lowering owner.
 - Do not reopen idea 315's large frame setup and teardown materialization
   owner.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication
   spelling owner.
-- Do not repair idea 316's frame-slot/frame-layout consistency residual.
+- Do not repair idea 316's frame-slot/frame-layout consistency residual unless
+  localization proves the runtime corruption is the same ABI fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
-- Do not rely on filenames, function names, literal `503808`, diagnostics,
-  scratch-register names, or c-testsuite numbers.
+- Do not rely on filenames, c-testsuite numbers, one printed output line, one
+  function name, one register, or one stack slot.
 
 ## Working Model
 
-Idea 317 moved `00204.c` past raw variadic helper text. The next assembler
-blocker is an illegal scalar constant materialization in arithmetic helper
-code. The owner should route non-encodable constants through the target's
-legal integer materialization sequence before the ALU operation, while keeping
-encodable immediates and register-register operations on their existing direct
-paths.
+The representative now gets past earlier assembler blockers and executes into
+`pcs()`. The latest stdout reaches the `Arguments:` section, then prints
+implausible floating and long-double values before crashing. Since `opi()` and
+`subim503808` run later, the next first bad fact should be localized around
+argument classification, argument marshaling, or callee-side argument
+materialization for the earliest corrupted HFA, floating, long-double, or
+aggregate value.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the exact scalar ALU path before editing code.
-- Prefer local backend coverage for non-encodable and encodable ALU constants
-  before relying on the external c-testsuite representative.
+- Localize the earliest corrupted runtime value before editing code.
+- Prefer structured ABI or backend tests for the implicated argument class
+  before relying only on the external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff, variadic,
-  frame, or printer coverage to improve counts.
-- If the representative advances to frame-layout consistency, runtime
-  mismatch, linker behavior, timeout, or another non-ALU blocker, record the
-  new first bad fact and return it to lifecycle classification unless
-  generated-code evidence proves this owner owns it.
+  frame, printer, or scalar ALU coverage to improve counts.
+- If the representative advances to a later non-argument runtime mismatch,
+  linker behavior, timeout, or another blocker, record the new first bad fact
+  and return it to lifecycle classification unless generated-code evidence
+  proves this owner owns it.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
-  or the implementation touches shared target-machine behavior broadly.
+  or the implementation touches shared ABI machinery broadly.
 
 ## Ordered Steps
 
-### Step 1: Localize Scalar ALU Immediate Path
+### Step 1: Localize Earliest Argument Corruption
 
-Goal: identify the concrete code path that emits illegal single-instruction
-materialization for non-encodable scalar ALU constants.
+Goal: identify the first corrupted `Arguments:` value and the AArch64 ABI
+classification or lowering path that owns it.
 
-Primary target: `src/backend/mir/aarch64/codegen/alu.cpp`.
+Primary target: generated `00204.c` artifacts and the AArch64 ABI argument
+classification/lowering surfaces.
 
 Actions:
 
-- Inspect generated `00204.c` assembly around `subim503808` and any nearby
-  selected records or printer traces that identify the source operation.
-- Inspect scalar ALU helper paths enough to distinguish encodable immediates,
-  register-register operations, and scratch-register constant publication.
-- Compare existing machine-printer, dispatch, and target-instruction coverage
-  against the missing non-encodable constant contract.
+- Compare expected `00204.c` `Arguments:` output with the observed runtime
+  output to find the earliest mismatched value.
+- Trace the corresponding function parameter through generated assembly,
+  selected records, and call/callee lowering.
+- Distinguish HFA, scalar floating, long-double, and aggregate argument paths.
 - Record in `todo.md` the owning code surface, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the missing scalar ALU immediate materialization fact, the
-  owning code surface, representative tests, and the smallest focused proof
-  command for the repair.
+- `todo.md` names the earliest corrupted argument fact, the owning code
+  surface, representative tests, and the smallest focused proof command for
+  the repair.
 
-### Step 2: Materialize Non-Encodable ALU Constants
+### Step 2: Repair The Owned Argument Path
 
-Goal: route scalar ALU constants that cannot be printed as direct immediates
-through legal AArch64 materialization sequences before arithmetic use.
+Goal: fix the localized AArch64 argument path generally for the implicated ABI
+class.
 
 Primary target: code surface identified by Step 1.
 
 Actions:
 
-- Implement a narrow materialization path for non-encodable scalar ALU
-  constants.
-- Preserve direct encodable immediate and register-register paths.
-- Reuse existing target constant materialization helpers when available.
-- Avoid variadic helper, frame adjustment, frame-layout, runner, expectation,
-  and timeout changes.
+- Implement the narrow ABI argument repair for the localized class.
+- Preserve unrelated argument classes and existing scalar/integer direct paths.
+- Reuse existing structured ABI records and lowering helpers when available.
+- Avoid variadic helper text, frame adjustment, stack-offset spelling, scalar
+  ALU, runner, expectation, and timeout changes.
 
 Completion check:
 
-- Focused backend proof shows illegal scalar ALU immediates such as
-  `mov w9, #503808` no longer reach generated assembly, or `todo.md` records
-  the next first bad fact with evidence.
+- Focused proof shows the original argument corruption is gone, or `todo.md`
+  records the next first bad fact with evidence.
 
-### Step 3: Add Focused Backend Coverage
+### Step 3: Add Focused ABI Coverage
 
-Goal: make scalar ALU immediate materialization observable in local backend
+Goal: make the repaired argument class observable in local backend or ABI
 tests.
 
-Primary target: existing AArch64 ALU, printer, dispatch, or target-instruction
-tests that already cover adjacent scalar arithmetic behavior.
+Primary target: existing AArch64 ABI, call-lowering, instruction dispatch, or
+printer tests that already cover adjacent argument behavior.
 
 Actions:
 
-- Add or extend coverage for at least one non-encodable 32-bit scalar ALU
-  constant.
-- Preserve coverage proving encodable immediates remain on the direct path.
-- Assert the materialization contract rather than one incidental generated
-  line, scratch register, or function name.
+- Add or extend coverage for the implicated HFA, floating, long-double, or
+  aggregate argument class.
+- Preserve coverage for adjacent unaffected argument classes.
+- Assert the ABI contract rather than one incidental register, stack slot, or
+  output line unless the ABI requires that location.
 
 Completion check:
 
-- Local backend coverage exercises both non-encodable materialization and
-  preservation of existing direct behavior.
+- Local coverage exercises the repaired class and verifies adjacent behavior
+  remains stable.
 
 ### Step 4: Validate And Classify Residuals
 
@@ -169,15 +176,14 @@ Primary target: supervisor-selected focused proof scope.
 
 Actions:
 
-- Run a focused proof including build, local AArch64 backend coverage,
-  prior-owner guardrails from ideas 314, 315, and 317, and the `00204.c`
+- Run a focused proof including build, local AArch64 ABI/backend coverage,
+  prior-owner guardrails from ideas 314, 315, 317, and 318, and the `00204.c`
   c-testsuite representative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if illegal scalar ALU immediates still
-  reach generated assembly.
+- Do not claim this owner complete if the same early argument corruption
+  remains.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current illegal `mov w9, #503808`
-  assembler diagnostic is gone, or the remaining blocker is explicitly
-  localized for the next packet.
+- `todo.md` records fresh proof. The current early `Arguments:` corruption is
+  gone, or the remaining blocker is explicitly localized for the next packet.

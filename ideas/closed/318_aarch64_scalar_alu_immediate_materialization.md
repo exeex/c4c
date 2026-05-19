@@ -1,8 +1,9 @@
 # AArch64 Scalar Alu Immediate Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/315_aarch64_large_frame_adjustment_materialization.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -61,6 +62,21 @@ legal materialization helper sequence.
   blockers are cleared, or any later first-bad fact is classified outside this
   owner.
 - Fresh build and focused CTest proof are recorded before closure.
+
+## Closure Notes
+
+Idea 318 is complete. The focused proof advances past the former assembler
+diagnostic: generated `subim503808` no longer emits illegal
+`mov w9, #503808`, and instead materializes the constant through legal
+`movz`/`movk` instructions before the scalar `sub`.
+
+The remaining focused `00204.c` failure is runtime-only:
+`RUNTIME_NONZERO` / `Segmentation fault` during early `Arguments:` output.
+The output shows corrupted floating/HFA/aggregate argument values before
+execution reaches `Return values:`, `stdarg:`, `MOVI:`, or the `opi()` scalar
+helper section that contains `subim503808`. That first bad fact is outside
+this scalar ALU immediate materialization owner and is tracked by
+`ideas/open/319_aarch64_hfa_aggregate_argument_runtime.md`.
 
 ## Reviewer Reject Signals
 
