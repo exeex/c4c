@@ -80,6 +80,34 @@ std::string rendered_call_signature_param_type(const c4c::hir::Module& mod,
   return llvm_value_ty(mod, param_ts);
 }
 
+bool is_aarch64_fixed_hfa_param(const c4c::hir::Module& mod, const TypeSpec& ts) {
+  using namespace c4c::codegen::llvm_helpers;
+  return llvm_target_is_aarch64(mod.target_profile) &&
+         !llvm_target_is_apple(mod.target_profile) &&
+         classify_aarch64_hfa(mod, ts).has_value();
+}
+
+void append_call_signature_param(LirCallSignature& out,
+                                 const c4c::hir::Module& mod,
+                                 LirModule* lir_module,
+                                 const TypeSpec& param_ts) {
+  if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)
+                           ? classify_aarch64_hfa(mod, param_ts)
+                           : std::nullopt;
+      hfa.has_value()) {
+    for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+      out.fixed_param_types.push_back(hfa->elem_ty);
+      out.fixed_param_type_refs.push_back(LirTypeRef(hfa->elem_ty));
+    }
+    return;
+  }
+  const std::string rendered_type =
+      rendered_call_signature_param_type(mod, lir_module, param_ts);
+  out.fixed_param_types.push_back(rendered_type);
+  out.fixed_param_type_refs.push_back(
+      lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+}
+
 LirCallSignature lir_call_signature_from_fn_ptr_sig(const c4c::hir::Module& mod,
                                                     LirModule* lir_module,
                                                     const FnPtrSig& sig) {
@@ -97,11 +125,7 @@ LirCallSignature lir_call_signature_from_fn_ptr_sig(const c4c::hir::Module& mod,
   out.fixed_param_type_refs.reserve(param_count);
   for (size_t index = 0; index < param_count; ++index) {
     const TypeSpec param_ts = sig_param_type(sig, index);
-    const std::string rendered_type =
-        rendered_call_signature_param_type(mod, lir_module, param_ts);
-    out.fixed_param_types.push_back(rendered_type);
-    out.fixed_param_type_refs.push_back(
-        lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+    append_call_signature_param(out, mod, lir_module, param_ts);
   }
   return out;
 }
@@ -129,11 +153,7 @@ LirCallSignature lir_call_signature_from_function(const c4c::hir::Module& mod,
   out.fixed_param_type_refs.reserve(fn.params.size());
   for (const auto& param : fn.params) {
     const TypeSpec& param_ts = param.type.spec;
-    const std::string rendered_type =
-        rendered_call_signature_param_type(mod, lir_module, param_ts);
-    out.fixed_param_types.push_back(rendered_type);
-    out.fixed_param_type_refs.push_back(
-        lir_call_type_ref(rendered_type, lir_module, mod, param_ts));
+    append_call_signature_param(out, mod, lir_module, param_ts);
   }
   return out;
 }

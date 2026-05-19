@@ -110,6 +110,8 @@ int expect_raw_direct_call_without_metadata_still_lowers();
 int expect_metadata_rich_direct_call_without_signature_fails_closed();
 int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix();
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
+int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
+int expect_aarch64_variadic_hfa_call_uses_fp_lanes();
 int expect_structured_incoming_byval_param_materializes_from_type_ref();
 int expect_aarch64_crc32w_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_load_intrinsic_carries_bir_semantics();
@@ -124,6 +126,8 @@ int expect_metadata_rich_incoming_byval_param_without_struct_id_fails_closed();
 int expect_metadata_rich_incoming_byval_param_without_byval_flag_fails_closed();
 int expect_non_aarch64_metadata_rich_incoming_byval_param_without_struct_id_uses_legacy_layout();
 int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
+int expect_mixed_scalar_and_aggregate_params_materialize_late_aggregate_param();
+int expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff();
 int expect_structured_signature_return_materializes_sret_from_type_ref();
 int expect_metadata_rich_signature_return_without_struct_id_fails_closed();
 int expect_signature_return_with_mismatched_struct_id_fails_closed();
@@ -3077,6 +3081,187 @@ int expect_direct_call_structured_byval_signature_mismatch_fails_closed() {
   return 0;
 }
 
+LirModule make_aarch64_direct_hfa_fp_lane_call_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_hfa_sink");
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_hfa_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "aarch64_direct_hfa_fp_lane_call";
+  function.signature_text = "define void @aarch64_direct_hfa_fp_lane_call()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_hfa_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(float, float)",
+      .args_str = "float 0x3FF19999A0000000, float 0x40019999A0000000",
+      .arg_type_refs = {lir::LirTypeRef("float"), lir::LirTypeRef("float")},
+      .callee_signature = void_call_signature({"float", "float"}),
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "float",
+              .operand = LirOperand("0x3FF19999A0000000"),
+              .type_ref = lir::LirTypeRef("float"),
+          },
+          lir::LirCallArg{
+              .type = "float",
+              .operand = LirOperand("0x40019999A0000000"),
+              .type_ref = lir::LirTypeRef("float"),
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_direct_hfa_fp_lane_call_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 fixed HFA direct-call fixture should lower scalar FP ABI lanes");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "aarch64_direct_hfa_fp_lane_call" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (!call->is_indirect && call->callee == "semantic_hfa_sink" &&
+          call->arg_types.size() == 2 &&
+          call->arg_types[0] == TypeKind::F32 &&
+          call->arg_types[1] == TypeKind::F32 &&
+          call->arg_abi.size() == 2 &&
+          !call->arg_abi[0].byval_copy &&
+          !call->arg_abi[1].byval_copy) {
+        return 0;
+      }
+    }
+  }
+  return fail("AArch64 fixed HFA call should be represented as FP lanes, not ptr byval");
+}
+
+LirModule make_aarch64_variadic_hfa_fp_lane_call_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_variadic_hfa_sink");
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_variadic_hfa_sink";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "void";
+  callee.return_type = lir::LirTypeRef("void");
+  module.extern_decls.push_back(std::move(callee));
+
+  LirFunction function;
+  function.name = "aarch64_variadic_hfa_fp_lane_call";
+  function.signature_text = "define void @aarch64_variadic_hfa_fp_lane_call(ptr %fmt)";
+  function.params.emplace_back("%fmt", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = lir::LirTypeRef("void");
+  signature.fixed_param_types = {"ptr"};
+  signature.fixed_param_type_refs = {lir::LirTypeRef("ptr")};
+  signature.is_variadic = true;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand(""),
+      .return_type = "void",
+      .callee = LirOperand("@stale_variadic_hfa_sink"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "(ptr, ...)",
+      .args_str = "ptr %fmt, float 0x3FF19999A0000000, float 0x40019999A0000000",
+      .arg_type_refs = {lir::LirTypeRef("ptr"), lir::LirTypeRef("float"),
+                        lir::LirTypeRef("float")},
+      .callee_signature = signature,
+      .structured_args = {
+          lir::LirCallArg{
+              .type = "ptr",
+              .operand = LirOperand("%fmt"),
+              .type_ref = lir::LirTypeRef("ptr"),
+          },
+          lir::LirCallArg{
+              .type = "float",
+              .operand = LirOperand("0x3FF19999A0000000"),
+              .type_ref = lir::LirTypeRef("float"),
+          },
+          lir::LirCallArg{
+              .type = "float",
+              .operand = LirOperand("0x40019999A0000000"),
+              .type_ref = lir::LirTypeRef("float"),
+          },
+      },
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_variadic_hfa_call_uses_fp_lanes() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_variadic_hfa_fp_lane_call_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 variadic HFA call fixture should lower scalar FP ABI lanes");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "aarch64_variadic_hfa_fp_lane_call" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (!call->is_indirect && call->callee == "semantic_variadic_hfa_sink" &&
+          call->is_variadic &&
+          call->arg_types.size() == 3 &&
+          call->arg_types[0] == TypeKind::Ptr &&
+          call->arg_types[1] == TypeKind::F32 &&
+          call->arg_types[2] == TypeKind::F32 &&
+          call->arg_abi.size() == 3 &&
+          !call->arg_abi[1].byval_copy &&
+          !call->arg_abi[2].byval_copy &&
+          call->arg_abi[1].primary_class == c4c::backend::bir::AbiValueClass::Sse &&
+          call->arg_abi[2].primary_class == c4c::backend::bir::AbiValueClass::Sse) {
+        return 0;
+      }
+    }
+  }
+  return fail("AArch64 variadic HFA call should be represented as FP lanes");
+}
+
 LirModule make_direct_call_symbol_identity_boundary_module(bool structured_metadata,
                                                            c4c::LinkNameId override_callee_id) {
   LirModule module;
@@ -4072,6 +4257,187 @@ int expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_la
       !result.module->functions.front().params.front().is_byval ||
       result.module->functions.front().params.front().size_bytes != 8) {
     return fail("legacy incoming byval parameter did not lower through legacy layout");
+  }
+  return 0;
+}
+
+LirModule make_mixed_scalar_and_aggregate_param_materialization_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Payload = type { i32, i32 }");
+
+  const c4c::StructNameId payload_id = module.struct_names.intern("%struct.Payload");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = payload_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("i32")},
+                 lir::LirStructField{lir::LirTypeRef("i32")}},
+  });
+
+  c4c::TypeSpec float_type{};
+  float_type.base = c4c::TB_FLOAT;
+  c4c::TypeSpec payload_type{};
+  payload_type.base = c4c::TB_STRUCT;
+  payload_type.tag_text_id = module.link_name_texts->intern("Payload");
+
+  LirFunction function;
+  function.name = "mixed_scalar_and_aggregate_param_materialization";
+  function.signature_text =
+      "define void @mixed_scalar_and_aggregate_param_materialization(float %lane, %struct.Payload %payload)";
+  function.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%lane", .type = float_type, .is_byval = false});
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("float"));
+  function.signature_params.push_back(
+      lir::LirSignatureParam{.name = "%payload", .type = payload_type, .is_byval = false});
+  function.signature_param_type_refs.push_back(
+      lir::LirTypeRef::struct_type("%struct.Payload", payload_id));
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.payload"),
+      .type_str = "%struct.Payload",
+      .align = 4,
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "%struct.Payload",
+      .val = LirOperand("%payload"),
+      .ptr = LirOperand("%lv.payload"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_mixed_scalar_and_aggregate_params_materialize_late_aggregate_param() {
+  auto result = try_lower_to_bir_with_options(
+      make_mixed_scalar_and_aggregate_param_materialization_module(),
+      BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("mixed scalar plus aggregate params should materialize late aggregate param");
+  }
+  if (result.module->functions.empty() || result.module->functions.front().params.size() != 2) {
+    return fail("mixed scalar plus aggregate fixture should lower both params");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.params[0].type != TypeKind::F32 ||
+      function.params[1].type != TypeKind::Ptr ||
+      !function.params[1].is_byval ||
+      function.params[1].size_bytes != 8 ||
+      function.params[1].align_bytes != 4) {
+    return fail("late aggregate param after scalar lanes should keep byval ABI facts");
+  }
+
+  bool saw_offset_zero = false;
+  bool saw_offset_four = false;
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+      if (load == nullptr || !load->address.has_value() ||
+          load->address->base_kind !=
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue ||
+          load->address->base_value.name != "%payload") {
+        continue;
+      }
+      if (load->address->byte_offset == 0 && load->address->size_bytes == 4) {
+        saw_offset_zero = true;
+      }
+      if (load->address->byte_offset == 4 && load->address->size_bytes == 4) {
+        saw_offset_four = true;
+      }
+    }
+  }
+  if (!saw_offset_zero || !saw_offset_four) {
+    return fail("late aggregate param materialization should copy both structured leaves");
+  }
+  return 0;
+}
+
+LirModule make_aarch64_hfa_va_arg_aggregate_helper_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Hfa = type { float }");
+
+  const c4c::StructNameId hfa_id = module.struct_names.intern("%struct.Hfa");
+  const lir::LirTypeRef hfa_ref = lir::LirTypeRef::struct_type("%struct.Hfa", hfa_id);
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("float")}},
+  });
+
+  LirFunction function;
+  function.name = "aarch64_hfa_va_arg_aggregate_helper";
+  function.signature_text = "define void @aarch64_hfa_va_arg_aggregate_helper(ptr %ap)";
+  function.params.emplace_back("%ap", c4c::TypeSpec{.base = c4c::TB_VOID, .ptr_level = 1});
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirVaArgOp{
+      .result = LirOperand("%hfa"),
+      .ap_ptr = LirOperand("%ap"),
+      .type_str = hfa_ref,
+  });
+  entry.insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.hfa"),
+      .type_str = hfa_ref,
+      .align = 4,
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = hfa_ref,
+      .val = LirOperand("%hfa"),
+      .ptr = LirOperand("%lv.hfa"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_hfa_va_arg_aggregate_helper_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 HFA va_arg aggregate helper handoff should lower semantically");
+  }
+  if (result.module->functions.empty()) {
+    return fail("AArch64 HFA va_arg aggregate helper fixture should lower one function");
+  }
+
+  bool saw_va_arg_aggregate = false;
+  bool saw_hfa_store = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call != nullptr && call->callee == "llvm.va_arg.aggregate" &&
+          call->arg_abi.size() == 2 &&
+          call->arg_abi[0].sret_pointer &&
+          call->arg_abi[0].size_bytes == 4 &&
+          call->arg_abi[0].align_bytes == 4) {
+        saw_va_arg_aggregate = true;
+      }
+      const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+      if (store != nullptr && store->slot_name == "%lv.hfa.0" &&
+          store->value.type == TypeKind::F32) {
+        saw_hfa_store = true;
+      }
+    }
+  }
+  if (!saw_va_arg_aggregate || !saw_hfa_store) {
+    return fail("AArch64 HFA va_arg should use aggregate helper and remain storeable as aggregate");
   }
   return 0;
 }
@@ -6020,6 +6386,16 @@ int main() {
       direct_structured_byval_mismatch_status != 0) {
     return direct_structured_byval_mismatch_status;
   }
+  if (const int aarch64_hfa_call_status =
+          expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
+      aarch64_hfa_call_status != 0) {
+    return aarch64_hfa_call_status;
+  }
+  if (const int aarch64_variadic_hfa_call_status =
+          expect_aarch64_variadic_hfa_call_uses_fp_lanes();
+      aarch64_variadic_hfa_call_status != 0) {
+    return aarch64_variadic_hfa_call_status;
+  }
 
   if (const int missing_direct_link_name_status =
           expect_metadata_rich_direct_call_without_link_name_id_fails_closed();
@@ -6143,6 +6519,18 @@ int main() {
           expect_legacy_incoming_byval_param_without_signature_type_ref_uses_legacy_layout();
       legacy_incoming_byval_status != 0) {
     return legacy_incoming_byval_status;
+  }
+
+  if (const int mixed_scalar_aggregate_param_status =
+          expect_mixed_scalar_and_aggregate_params_materialize_late_aggregate_param();
+      mixed_scalar_aggregate_param_status != 0) {
+    return mixed_scalar_aggregate_param_status;
+  }
+
+  if (const int hfa_va_arg_status =
+          expect_aarch64_hfa_va_arg_uses_aggregate_helper_handoff();
+      hfa_va_arg_status != 0) {
+    return hfa_va_arg_status;
   }
 
   if (const int structured_signature_return_status =

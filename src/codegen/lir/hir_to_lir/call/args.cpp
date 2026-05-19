@@ -62,6 +62,13 @@ LirTypeRef lir_call_type_ref(const std::string& rendered_text, LirModule* lir_mo
                                : LirTypeRef::struct_type(rendered_text, name_id);
 }
 
+bool is_aarch64_fixed_hfa_arg(const c4c::hir::Module& mod, const TypeSpec* fixed_param_ts) {
+  if (!fixed_param_ts) return false;
+  return llvm_target_is_aarch64(mod.target_profile) &&
+         !llvm_target_is_apple(mod.target_profile) &&
+         classify_aarch64_hfa(mod, *fixed_param_ts).has_value();
+}
+
 }  // namespace
 
 bool StmtEmitter::callee_needs_va_list_by_value_copy(const CallTargetInfo& call_target,
@@ -137,6 +144,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
   std::string arg;
   const bool is_fixed_byval_aggregate =
       fixed_param_ts && amd64_fixed_aggregate_byval(mod_, *fixed_param_ts);
+  const bool is_fixed_aarch64_hfa = is_aarch64_fixed_hfa_arg(mod_, fixed_param_ts);
   if (is_fixed_byval_aggregate &&
       get_expr(call.args[arg_index]).type.category == ValueCategory::LValue) {
     TypeSpec obj_ts{};
@@ -172,7 +180,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                      target_fn->params[0].type.spec.array_rank == 0;
     if (!has_void_param_list && arg_index < target_fn->params.size()) {
       out_arg_ts = target_fn->params[arg_index].type.spec;
-      if (!is_fixed_byval_aggregate) {
+      if (!is_fixed_byval_aggregate && !is_fixed_aarch64_hfa) {
         arg = coerce(ctx, arg, arg_ts, out_arg_ts);
       }
     } else if (target_fn->attrs.variadic && !is_variadic_aggregate) {
@@ -182,7 +190,7 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     const bool has_void_pl = sig_has_void_param_list(*callee_fn_ptr_sig);
     if (!has_void_pl && arg_index < sig_param_count(*callee_fn_ptr_sig)) {
       out_arg_ts = sig_param_type(*callee_fn_ptr_sig, arg_index);
-      if (!is_fixed_byval_aggregate) {
+      if (!is_fixed_byval_aggregate && !is_fixed_aarch64_hfa) {
         arg = coerce(ctx, arg, arg_ts, out_arg_ts);
       }
     } else if (sig_is_variadic(*callee_fn_ptr_sig) && !is_variadic_aggregate) {
@@ -233,25 +241,27 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
       return prepare_amd64_variadic_aggregate_arg(ctx, arg_ts, obj_ptr, payload_sz, amd64_state);
     }
 
-    module_->need_memcpy = true;
     if (llvm_target_is_aarch64(mod_.target_profile) &&
         !llvm_target_is_apple(mod_.target_profile)) {
       if (const auto hfa = classify_aarch64_hfa(mod_, arg_ts)) {
-        const std::string coerced_ty =
-            "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
         const std::string tmp_addr = fresh_tmp(ctx);
-        emit_lir_op(ctx,
-                    lir::LirAllocaOp{tmp_addr, coerced_ty, {}, hfa->aggregate_align});
-        emit_lir_op(ctx, lir::LirMemcpyOp{tmp_addr, obj_ptr, std::to_string(hfa->aggregate_size),
-                                          false});
-        const std::string packed = fresh_tmp(ctx);
-        emit_lir_op(ctx, lir::LirLoadOp{packed, coerced_ty, tmp_addr});
-        return {{{coerced_ty + " alignstack(" + std::to_string(std::max(8, hfa->aggregate_align)) +
-                      ")",
-                  packed}},
-                false};
+        emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, llvm_value_ty(mod_, arg_ts), {},
+                                          hfa->aggregate_align});
+        emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, arg_ts), arg, tmp_addr});
+        PreparedCallArg out;
+        for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+          const std::string lane_ptr = fresh_tmp(ctx);
+          emit_lir_op(ctx,
+                      lir::LirGepOp{lane_ptr, "i8", tmp_addr, false,
+                                    {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
+          const std::string lane = fresh_tmp(ctx);
+          emit_lir_op(ctx, lir::LirLoadOp{lane, hfa->elem_ty, lane_ptr});
+          out.args.push_back({hfa->elem_ty, lane, LirTypeRef(hfa->elem_ty)});
+        }
+        return out;
       }
     }
+    module_->need_memcpy = true;
     if (payload_sz > 16) {
       return {{{"ptr", obj_ptr}}, false};
     }
@@ -272,6 +282,25 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     const std::string packed = fresh_tmp(ctx);
     emit_lir_op(ctx, lir::LirLoadOp{packed, std::string("[2 x i64]"), tmp_addr});
     return {{{"[2 x i64]", packed}}, false};
+  }
+
+  if (is_fixed_aarch64_hfa) {
+    const auto hfa = classify_aarch64_hfa(mod_, out_arg_ts);
+    if (!hfa.has_value()) return {{}, true};
+    const std::string obj_ptr = fresh_tmp(ctx);
+    emit_lir_op(ctx, lir::LirAllocaOp{obj_ptr, llvm_value_ty(mod_, out_arg_ts), {}, 0});
+    emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, out_arg_ts), arg, obj_ptr});
+    PreparedCallArg out;
+    for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+      const std::string lane_ptr = fresh_tmp(ctx);
+      emit_lir_op(ctx,
+                  lir::LirGepOp{lane_ptr, "i8", obj_ptr, false,
+                                {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
+      const std::string lane = fresh_tmp(ctx);
+      emit_lir_op(ctx, lir::LirLoadOp{lane, hfa->elem_ty, lane_ptr});
+      out.args.push_back({hfa->elem_ty, lane, LirTypeRef(hfa->elem_ty)});
+    }
+    return out;
   }
 
   if (is_fixed_byval_aggregate) {

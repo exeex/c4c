@@ -8,6 +8,17 @@ namespace c4c::codegen::lir {
 namespace llvm_cc = c4c::codegen::llvm_backend;
 using namespace stmt_emitter_detail;
 
+namespace {
+
+bool is_aarch64_fixed_hfa_type(const hir::Module& mod, const TypeSpec& ts) {
+  using namespace c4c::codegen::llvm_helpers;
+  return llvm_target_is_aarch64(mod.target_profile) &&
+         !llvm_target_is_apple(mod.target_profile) &&
+         stmt_emitter_detail::classify_aarch64_hfa(mod, ts).has_value();
+}
+
+}  // namespace
+
 namespace stmt_emitter_detail {
 
 static int align_to_bytes(int value, int align) {
@@ -888,20 +899,35 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const FnPtrSig& sig)
   std::ostringstream out;
   out << "(";
   const bool void_param_list = sig_has_void_param_list(sig);
+  bool first_param = true;
   for (size_t i = 0; i < sig_param_count(sig); ++i) {
     if (void_param_list) break;
-    if (i) out << ", ";
     const TypeSpec param_ts = sig_param_type(sig, i);
-    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+    if (const auto hfa = is_aarch64_fixed_hfa_type(mod, param_ts)
+                             ? classify_aarch64_hfa(mod, param_ts)
+                             : std::nullopt;
+        hfa.has_value()) {
+      for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+        if (!first_param) out << ", ";
+        first_param = false;
+        out << hfa->elem_ty;
+      }
+    } else if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << "ptr";
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << "i32";
     } else {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << llvm_value_ty(mod, param_ts);
     }
   }
   if (sig_is_variadic(sig)) {
-    if (sig_param_count(sig) > 0 && !void_param_list) out << ", ";
+    if (!first_param) out << ", ";
     out << "...";
   }
   out << ")";
@@ -925,20 +951,35 @@ std::string llvm_fn_type_suffix_str(const hir::Module& mod, const Function& fn) 
                                fn.params[0].type.spec.base == TB_VOID &&
                                fn.params[0].type.spec.ptr_level == 0 &&
                                fn.params[0].type.spec.array_rank == 0;
+  bool first_param = true;
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (void_param_list) break;
-    if (i) out << ", ";
     const TypeSpec& param_ts = fn.params[i].type.spec;
-    if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+    if (const auto hfa = is_aarch64_fixed_hfa_type(mod, param_ts)
+                             ? classify_aarch64_hfa(mod, param_ts)
+                             : std::nullopt;
+        hfa.has_value()) {
+      for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+        if (!first_param) out << ", ";
+        first_param = false;
+        out << hfa->elem_ty;
+      }
+    } else if (amd64_fixed_aggregate_byval(mod, param_ts)) {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << "ptr";
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << "i32";
     } else {
+      if (!first_param) out << ", ";
+      first_param = false;
       out << llvm_value_ty(mod, param_ts);
     }
   }
   if (fn.attrs.variadic) {
-    if (!fn.params.empty() && !void_param_list) out << ", ";
+    if (!first_param) out << ", ";
     out << "...";
   }
   out << ")";
@@ -1023,41 +1064,15 @@ static TypeSpec field_decl_ts(const HirStructField& f) {
   return ts;
 }
 
-std::optional<HirRecordOwnerKey> abi_aggregate_owner_key_from_type(const TypeSpec& ts) {
-  if (ts.record_def && ts.record_def->kind == NK_STRUCT_DEF) {
-    const TextId declaration_text_id = ts.record_def->unqualified_text_id;
-    if (declaration_text_id != kInvalidText) {
-      NamespaceQualifier ns_qual;
-      ns_qual.context_id = ts.record_def->namespace_context_id;
-      ns_qual.is_global_qualified = ts.record_def->is_global_qualified;
-      if (ts.record_def->qualifier_text_ids && ts.record_def->n_qualifier_segments > 0) {
-        ns_qual.segment_text_ids.assign(
-            ts.record_def->qualifier_text_ids,
-            ts.record_def->qualifier_text_ids + ts.record_def->n_qualifier_segments);
-      }
-      const HirRecordOwnerKey owner_key =
-          make_hir_record_owner_key(ns_qual, declaration_text_id);
-      if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-    }
-  }
-
-  if (ts.tag_text_id == kInvalidText) return std::nullopt;
-  NamespaceQualifier ns_qual;
-  ns_qual.context_id = ts.namespace_context_id;
-  ns_qual.is_global_qualified = ts.is_global_qualified;
-  if (ts.qualifier_text_ids && ts.n_qualifier_segments > 0) {
-    ns_qual.segment_text_ids.assign(ts.qualifier_text_ids,
-                                    ts.qualifier_text_ids + ts.n_qualifier_segments);
-  }
-  const HirRecordOwnerKey owner_key = make_hir_record_owner_key(ns_qual, ts.tag_text_id);
-  if (hir_record_owner_key_has_complete_metadata(owner_key)) return owner_key;
-  return std::nullopt;
+std::optional<HirRecordOwnerKey> abi_aggregate_owner_key_from_type(
+    const Module& mod, const TypeSpec& ts) {
+  return c4c::codegen::llvm_helpers::typespec_aggregate_owner_key(ts, mod);
 }
 
 const HirStructDef* lookup_abi_struct_layout(const Module& mod, const TypeSpec& ts) {
   if (ts.base != TB_STRUCT && ts.base != TB_UNION) return nullptr;
   if (const std::optional<HirRecordOwnerKey> owner_key =
-          abi_aggregate_owner_key_from_type(ts)) {
+          abi_aggregate_owner_key_from_type(mod, ts)) {
     if (const HirStructDef* structured_decl =
             mod.find_struct_def_by_owner_structured(*owner_key)) {
       return structured_decl;
@@ -1076,7 +1091,7 @@ StructNameId abi_aggregate_structured_name_id(const Module& mod,
     return kInvalidStructName;
   }
   const std::optional<HirRecordOwnerKey> owner_key =
-      abi_aggregate_owner_key_from_type(ts);
+      abi_aggregate_owner_key_from_type(mod, ts);
   if (!owner_key) return kInvalidStructName;
   const SymbolName* structured_tag = mod.find_struct_def_tag_by_owner(*owner_key);
   if (!structured_tag || structured_tag->empty()) return kInvalidStructName;
@@ -1099,7 +1114,7 @@ static bool collect_aarch64_hfa_elements(const Module& mod, const TypeSpec& ts,
     }
     return true;
   }
-  if (ts.base == TB_FLOAT || ts.base == TB_DOUBLE) {
+  if (ts.base == TB_FLOAT || ts.base == TB_DOUBLE || ts.base == TB_LONGDOUBLE) {
     if (*elem_count == 0) {
       *elem_base = ts.base;
     } else if (*elem_base != ts.base) {
@@ -1140,7 +1155,7 @@ std::optional<Aarch64HomogeneousFpAggregateInfo> classify_aarch64_hfa(
   elem_ts.base = elem_base;
   info.elem_ty = llvm_ty(elem_ts);
   info.elem_count = elem_count;
-  info.elem_size = (elem_base == TB_FLOAT) ? 4 : 8;
+  info.elem_size = elem_base == TB_FLOAT ? 4 : (elem_base == TB_DOUBLE ? 8 : 16);
   info.aggregate_size = std::max(1, sd->size_bytes);
   info.aggregate_align = std::max(1, object_align_bytes(mod, ts));
   return info;

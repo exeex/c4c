@@ -7,7 +7,6 @@ namespace c4c::backend {
 using lir_to_bir_detail::compute_aggregate_type_layout;
 using lir_to_bir_detail::lookup_backend_aggregate_type_layout_result;
 using lir_to_bir_detail::lookup_backend_aggregate_type_ref_layout_result;
-using lir_to_bir_detail::lower_integer_type;
 using lir_to_bir_detail::type_size_bytes;
 
 namespace {
@@ -216,7 +215,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
       break;
     }
     const auto normalized_type = normalize_aggregate_param_type(parsed_param.type);
-    if (lower_integer_type(normalized_type).has_value()) {
+    if (lower_scalar_or_function_pointer_type(normalized_type).has_value()) {
       continue;
     }
     std::string name =

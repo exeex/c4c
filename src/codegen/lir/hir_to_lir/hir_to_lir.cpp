@@ -34,6 +34,50 @@ std::string emitted_link_name(const c4c::hir::Module& mod, c4c::LinkNameId id,
   return resolved.empty() ? std::string(fallback) : std::string(resolved);
 }
 
+LirTypeRef lir_signature_type_ref(const std::string& rendered_text,
+                                  LirModule* lir_module,
+                                  const c4c::hir::Module& mod,
+                                  const TypeSpec& type);
+
+bool is_aarch64_fixed_hfa_param(const c4c::hir::Module& mod, const TypeSpec& ts) {
+  using namespace c4c::codegen::llvm_helpers;
+  return llvm_target_is_aarch64(mod.target_profile) &&
+         !llvm_target_is_apple(mod.target_profile) &&
+         stmt_emitter_detail::classify_aarch64_hfa(mod, ts).has_value();
+}
+
+TypeSpec aarch64_hfa_lane_type(const stmt_emitter_detail::Aarch64HomogeneousFpAggregateInfo& hfa) {
+  TypeSpec lane{};
+  if (hfa.elem_ty == "float") {
+    lane.base = TB_FLOAT;
+  } else if (hfa.elem_ty == "double") {
+    lane.base = TB_DOUBLE;
+  } else {
+    lane.base = TB_LONGDOUBLE;
+  }
+  return lane;
+}
+
+std::string aarch64_hfa_lane_name(std::string_view base_name, int lane_index) {
+  return std::string(base_name) + ".hfa" + std::to_string(lane_index);
+}
+
+void append_aarch64_hfa_signature_params(const c4c::hir::Module& mod,
+                                         const TypeSpec& param_ts,
+                                         std::string_view pname,
+                                         LirModule* lir_module,
+                                         LirFunction& lir_fn) {
+  const auto hfa = stmt_emitter_detail::classify_aarch64_hfa(mod, param_ts);
+  if (!hfa.has_value()) return;
+  const TypeSpec lane_ts = aarch64_hfa_lane_type(*hfa);
+  for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+    lir_fn.signature_params.push_back(
+        {aarch64_hfa_lane_name(pname, lane_index), lane_ts, false});
+    lir_fn.signature_param_type_refs.push_back(
+        lir_signature_type_ref(hfa->elem_ty, lir_module, mod, lane_ts));
+  }
+}
+
 TypeSpec lir_owned_type_spec(const c4c::hir::Module& mod, TypeSpec type,
                              LirModule* lir_module) {
   if (!lir_module) return type;
@@ -250,12 +294,16 @@ void populate_signature_type_refs(const c4c::hir::Module& mod,
   for (const auto& param : fn.params) {
     const TypeSpec param_ts =
         lir_owned_type_spec(mod, param.type.spec, lir_module);
+    const std::string pname = "%p." + sanitize_llvm_ident(param.name);
+    if (is_aarch64_fixed_hfa_param(mod, param.type.spec)) {
+      append_aarch64_hfa_signature_params(mod, param.type.spec, pname, lir_module, lir_fn);
+      continue;
+    }
     const bool is_byval_signature_param =
         llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod);
     lir_fn.signature_params.push_back(
-        {"%p." + sanitize_llvm_ident(param.name), param_ts,
-         is_byval_signature_param});
+        {pname, param_ts, is_byval_signature_param});
     lir_fn.signature_param_type_refs.push_back(lir_signature_type_ref(
         rendered_signature_param_type(mod, lir_module, param.type.spec), lir_module,
         mod, param.type.spec));
@@ -781,16 +829,31 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
     const std::string decl_kw = fn.linkage.is_weak ? "declare extern_weak " : "declare ";
     sig_out << decl_kw << llvm_visibility(fn.linkage.visibility) << ret_ty << " "
             << llvm_global_sym(emitted_name) << "(";
+    bool first_param = true;
     for (size_t i = 0; i < fn.params.size(); ++i) {
       if (void_param_list) break;
-      if (i) sig_out << ", ";
       const TypeSpec& param_ts = fn.params[i].type.spec;
-      if (llvm_target_is_amd64_sysv(mod.target_profile) &&
+      if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)
+                               ? stmt_emitter_detail::classify_aarch64_hfa(mod, param_ts)
+                               : std::nullopt;
+          hfa.has_value()) {
+        for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+          if (!first_param) sig_out << ", ";
+          first_param = false;
+          sig_out << hfa->elem_ty;
+        }
+      } else if (llvm_target_is_amd64_sysv(mod.target_profile) &&
           llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
+        if (!first_param) sig_out << ", ";
+        first_param = false;
         sig_out << rendered_signature_param_type(mod, lir_module, param_ts);
       } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+        if (!first_param) sig_out << ", ";
+        first_param = false;
         sig_out << "i32";
       } else {
+        if (!first_param) sig_out << ", ";
+        first_param = false;
         sig_out << rendered_signature_param_type(mod, lir_module, param_ts);
       }
     }
@@ -817,18 +880,33 @@ std::string build_fn_signature(const c4c::hir::Module& mod,
           << llvm_global_sym(emitted_name) << "(";
 
   // Parameters
+  bool first_param = true;
   for (size_t i = 0; i < fn.params.size(); ++i) {
     if (void_param_list) break;
-    if (i) sig_out << ", ";
     const TypeSpec& param_ts = fn.params[i].type.spec;
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
-    if (llvm_target_is_amd64_sysv(mod.target_profile) &&
+    if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)
+                             ? stmt_emitter_detail::classify_aarch64_hfa(mod, param_ts)
+                             : std::nullopt;
+        hfa.has_value()) {
+      for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+        if (!first_param) sig_out << ", ";
+        first_param = false;
+        sig_out << hfa->elem_ty << " " << aarch64_hfa_lane_name(pname, lane_index);
+      }
+    } else if (llvm_target_is_amd64_sysv(mod.target_profile) &&
         llvm_cc::amd64_fixed_aggregate_passed_byval(param_ts, mod)) {
+      if (!first_param) sig_out << ", ";
+      first_param = false;
       sig_out << rendered_signature_param_type(mod, lir_module, param_ts)
               << " " << pname;
     } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+      if (!first_param) sig_out << ", ";
+      first_param = false;
       sig_out << "i32 " << pname << ".abi";
     } else {
+      if (!first_param) sig_out << ", ";
+      first_param = false;
       sig_out << rendered_signature_param_type(mod, lir_module, param_ts)
               << " " << pname;
     }
@@ -1058,6 +1136,9 @@ void hoist_allocas(c4c::codegen::FnCtx& ctx, const c4c::hir::Module& mod,
         llvm_cc::amd64_fixed_aggregate_passed_byval(param.type.spec, mod)) {
       continue;
     }
+    if (is_aarch64_fixed_hfa_param(mod, param.type.spec)) {
+      continue;
+    }
     const std::string slot = "%lv.param." + sanitize_llvm_ident(param.name);
     const std::string pname = "%p." + sanitize_llvm_ident(param.name);
     ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
@@ -1129,7 +1210,25 @@ c4c::codegen::FnCtx init_fn_ctx(const c4c::hir::Module& mod,
     const std::string pname = "%p." + sanitize_llvm_ident(fn.params[i].name);
     ctx.param_slots[static_cast<uint32_t>(i)] = pname;
     const TypeSpec& param_ts = fn.params[i].type.spec;
-    if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
+    if (const auto hfa = is_aarch64_fixed_hfa_param(mod, param_ts)
+                             ? stmt_emitter_detail::classify_aarch64_hfa(mod, param_ts)
+                             : std::nullopt;
+        hfa.has_value()) {
+      const std::string slot = "%lv.param." + sanitize_llvm_ident(fn.params[i].name);
+      ctx.param_slots[static_cast<uint32_t>(i) + 0x80000000u] = slot;
+      ctx.alloca_insts.push_back(
+          LirAllocaOp{slot, stmt_emitter_detail::llvm_alloca_ty(mod, param_ts), "",
+                      object_align_bytes(mod, lir_module, param_ts)});
+      for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
+        const std::string lane_ptr =
+            slot + ".hfa.ptr." + std::to_string(lane_index);
+        const std::string lane_name = aarch64_hfa_lane_name(pname, lane_index);
+        ctx.alloca_insts.push_back(
+            LirGepOp{lane_ptr, "i8", slot, false,
+                     {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
+        ctx.alloca_insts.push_back(LirStoreOp{hfa->elem_ty, lane_name, lane_ptr});
+      }
+    } else if (llvm_cc::aarch64_fixed_vector_passed_as_i32(param_ts, mod)) {
       ctx.alloca_insts.push_back(
           LirCastOp{pname, LirCastKind::Bitcast, LirTypeRef("i32"), pname + ".abi",
                     LirTypeRef(stmt_emitter_detail::llvm_value_ty(mod, param_ts))});

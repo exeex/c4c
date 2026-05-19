@@ -203,96 +203,14 @@ std::string StmtEmitter::emit_rval_payload(FnCtx& ctx, const VaArgExpr& v, const
   if (llvm_target_is_amd64_sysv(mod_.target_profile)) {
     return emit_amd64_va_arg(ctx, res_ts, res_ty, ap_ptr);
   }
-  if (const auto hfa = classify_aarch64_hfa(mod_, res_ts)) {
-    const LirTypeRef va_list_tag_ty = lir_va_list_tag_type_ref(module_);
-    const int stack_align = std::max(8, hfa->aggregate_align);
-    const int stack_slot_bytes = round_up_to(hfa->aggregate_size, stack_align);
-    const std::string reg_tmp_ty =
-        "[" + std::to_string(hfa->elem_count) + " x " + hfa->elem_ty + "]";
-
-    const std::string offs_ptr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirGepOp{offs_ptr, va_list_tag_ty, ap_ptr, false,
-                                   {"i32 0", "i32 4"}});
-    const std::string offs = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{offs, std::string("i32"), offs_ptr});
-
-    const std::string stack_lbl = fresh_lbl(ctx, "vaarg.fp.stack.");
-    const std::string reg_try_lbl = fresh_lbl(ctx, "vaarg.fp.regtry.");
-    const std::string reg_lbl = fresh_lbl(ctx, "vaarg.fp.reg.");
-    const std::string join_lbl = fresh_lbl(ctx, "vaarg.fp.join.");
-
-    const std::string is_stack0 = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCmpOp{is_stack0, false, "sge", "i32", offs, "0"});
-    emit_condbr_and_open_lbl(ctx, is_stack0, stack_lbl, reg_try_lbl, reg_try_lbl);
-    const std::string next_offs = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirBinOp{next_offs, "add", "i32", offs,
-                                   std::to_string(hfa->elem_count * 16)});
-    emit_lir_op(ctx, lir::LirStoreOp{std::string("i32"), next_offs, offs_ptr});
-    const std::string use_reg = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirCmpOp{use_reg, false, "sle", "i32", next_offs, "0"});
-    emit_condbr_and_open_lbl(ctx, use_reg, reg_lbl, stack_lbl, reg_lbl);
-
-    const std::string vr_top_ptr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirGepOp{vr_top_ptr, va_list_tag_ty, ap_ptr, false,
-                                   {"i32 0", "i32 2"}});
-    const std::string vr_top = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{vr_top, std::string("ptr"), vr_top_ptr});
-    const std::string reg_addr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirGepOp{reg_addr, "i8", vr_top, false, {"i32 " + offs}});
-
-    const std::string reg_tmp = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirAllocaOp{reg_tmp, reg_tmp_ty, {}, hfa->aggregate_align});
-    for (int i = 0; i < hfa->elem_count; ++i) {
-      const std::string lane_src = (i == 0) ? reg_addr : fresh_tmp(ctx);
-      if (i != 0) {
-        emit_lir_op(ctx, lir::LirGepOp{lane_src, "i8", reg_addr, false,
-                                       {"i64 " + std::to_string(i * 16)}});
-      }
-      const std::string lane_val = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirLoadOp{lane_val, hfa->elem_ty, lane_src});
-      const std::string lane_dst = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirGepOp{lane_dst, reg_tmp_ty, reg_tmp, false,
-                                     {"i64 0", "i64 " + std::to_string(i)}});
-      emit_lir_op(ctx, lir::LirStoreOp{hfa->elem_ty, lane_val, lane_dst});
-    }
-    emit_br_and_open_lbl(ctx, join_lbl, stack_lbl);
-
-    const std::string stack_ptr_ptr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirGepOp{stack_ptr_ptr, va_list_tag_ty, ap_ptr, false,
-                                   {"i32 0", "i32 0"}});
-    const std::string stack_ptr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{stack_ptr, std::string("ptr"), stack_ptr_ptr});
-    std::string aligned_stack_ptr = stack_ptr;
-    if (stack_align > 1) {
-      const std::string stack_i = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{stack_i, lir::LirCastKind::PtrToInt, "ptr", stack_ptr,
-                                      "i64"});
-      const std::string plus_mask = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{plus_mask, "add", "i64", stack_i,
-                                     std::to_string(stack_align - 1)});
-      const std::string masked = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirBinOp{masked, "and", "i64", plus_mask,
-                                     std::to_string(-stack_align)});
-      aligned_stack_ptr = fresh_tmp(ctx);
-      emit_lir_op(ctx, lir::LirCastOp{aligned_stack_ptr, lir::LirCastKind::IntToPtr, "i64",
-                                      masked, "ptr"});
-    }
-    const std::string stack_next = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirGepOp{stack_next, "i8", aligned_stack_ptr, false,
-                                   {"i64 " + std::to_string(stack_slot_bytes)}});
-    emit_lir_op(ctx, lir::LirStoreOp{std::string("ptr"), stack_next, stack_ptr_ptr});
-    emit_fallthrough_lbl(ctx, join_lbl);
-
-    const std::string src_ptr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirPhiOp{
-                         src_ptr, "ptr", {{reg_tmp, reg_lbl}, {aligned_stack_ptr, stack_lbl}}});
-    const std::string tmp_addr = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirAllocaOp{tmp_addr, res_ty, {}, hfa->aggregate_align});
-    module_->need_memcpy = true;
-    emit_lir_op(
-        ctx, lir::LirMemcpyOp{tmp_addr, src_ptr, std::to_string(hfa->aggregate_size), false});
+  if (classify_aarch64_hfa(mod_, res_ts)) {
     const std::string out = fresh_tmp(ctx);
-    emit_lir_op(ctx, lir::LirLoadOp{out, res_ty, tmp_addr});
+    const StructNameId structured_name_id =
+        vaarg_aggregate_structured_name_id(mod_, module_, res_ts);
+    const LirTypeRef out_ty = structured_name_id == kInvalidStructName
+                                  ? LirTypeRef(res_ty)
+                                  : LirTypeRef::struct_type(res_ty, structured_name_id);
+    emit_lir_op(ctx, lir::LirVaArgOp{out, ap_ptr, out_ty});
     return out;
   }
   if (is_named_aggregate) {
