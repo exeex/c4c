@@ -1,10 +1,13 @@
 #include "f128.hpp"
 #include "calls.hpp"
 #include "comparison.hpp"
+#include "machine_printer.hpp"
 #include "memory.hpp"
 
 #include <cstddef>
+#include <cstdint>
 #include <limits>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <string_view>
@@ -182,14 +185,120 @@ std::optional<std::string> f128_reserved_scratch_q_register_name() {
   return abi::register_name(*q_scratch);
 }
 
-std::optional<std::string> f128_memory_backed_carrier_address(
+std::optional<abi::RegisterReference> f128_reserved_scratch_address_register() {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  return abi::x_register(scratch.index);
+}
+
+bool f128_frame_slot_direct_offset_is_encodable(const MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot || address.byte_offset < 0 ||
+      address.size_bytes != 16) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(address.byte_offset);
+  return offset % address.size_bytes == 0 && offset / address.size_bytes <= 4095U;
+}
+
+std::vector<std::string> f128_materialize_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot || address.byte_offset < 0) {
+    return {};
+  }
+  const auto offset = static_cast<std::uint64_t>(address.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  if (offset <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+std::string f128_relocation_operand(std::string_view label, std::int64_t byte_offset) {
+  std::string operand{label};
+  if (byte_offset > 0) {
+    operand += "+";
+    operand += std::to_string(byte_offset);
+  } else if (byte_offset < 0) {
+    operand += std::to_string(byte_offset);
+  }
+  return operand;
+}
+
+std::vector<std::string> f128_materialize_symbol_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& memory) {
+  if (memory.symbol_label.empty()) {
+    return {};
+  }
+  const std::string scratch_name = abi::register_name(scratch);
+  const std::string reloc = f128_relocation_operand(memory.symbol_label, memory.byte_offset);
+  return {
+      "adrp " + scratch_name + ", " + reloc,
+      "add " + scratch_name + ", " + scratch_name + ", :lo12:" + reloc,
+  };
+}
+
+struct F128PrintableAddress {
+  std::vector<std::string> lines;
+  std::string address;
+};
+
+std::optional<F128PrintableAddress> f128_printable_memory_address(
+    const MemoryOperand& memory) {
+  if (memory.base_kind == MemoryBaseKind::FrameSlot) {
+    if (f128_frame_slot_direct_offset_is_encodable(memory)) {
+      const auto direct = memory_address(memory);
+      if (direct.empty()) {
+        return std::nullopt;
+      }
+      return F128PrintableAddress{.lines = {}, .address = direct};
+    }
+    const auto scratch = f128_reserved_scratch_address_register();
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    auto lines = f128_materialize_frame_slot_address_lines(*scratch, memory);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    return F128PrintableAddress{
+        .lines = std::move(lines),
+        .address = "[" + std::string{abi::register_name(*scratch)} + "]"};
+  }
+  if (memory.base_kind == MemoryBaseKind::Symbol) {
+    const auto scratch = f128_reserved_scratch_address_register();
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    auto lines = f128_materialize_symbol_address_lines(*scratch, memory);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    return F128PrintableAddress{
+        .lines = std::move(lines),
+        .address = "[" + std::string{abi::register_name(*scratch)} + "]"};
+  }
+
+  const auto direct = memory_address(memory);
+  if (direct.empty()) {
+    return std::nullopt;
+  }
+  return F128PrintableAddress{.lines = {}, .address = direct};
+}
+
+std::optional<MemoryOperand> f128_memory_backed_carrier_memory(
     const F128TransportRecord& transport) {
   if (!transport.slot_id.has_value() || !transport.stack_offset_bytes.has_value() ||
       *transport.stack_offset_bytes >
           static_cast<std::size_t>(std::numeric_limits<std::int64_t>::max())) {
     return std::nullopt;
   }
-  const MemoryOperand carrier_memory{
+  return MemoryOperand{
       .surface = RecordSurfaceKind::RecordOnly,
       .support = MemoryOperandSupportKind::Prepared,
       .function_name = transport.function_name,
@@ -204,11 +313,6 @@ std::optional<std::string> f128_memory_backed_carrier_address(
       .address_space = bir::AddressSpace::Default,
       .can_use_base_plus_offset = true,
   };
-  const auto address = memory_address(carrier_memory);
-  if (address.empty()) {
-    return std::nullopt;
-  }
-  return address;
 }
 
 std::optional<std::string> f128_scalar_fp_register_name(
@@ -774,15 +878,21 @@ mir::TargetInstructionPrintResult print_f128_transport(
     const F128TransportRecord& transport) {
   if (transport.carrier_kind == prepare::PreparedF128CarrierKind::MemoryBacked) {
     const auto scratch = f128_reserved_scratch_q_register_name();
-    const auto carrier_address = f128_memory_backed_carrier_address(transport);
-    if (!scratch.has_value() || !carrier_address.has_value()) {
+    const auto carrier_memory = f128_memory_backed_carrier_memory(transport);
+    if (!scratch.has_value() || !carrier_memory.has_value()) {
+      return target_unsupported(
+          f128_bad_header(instruction) +
+          "f128 memory-backed transport requires printable carrier frame-slot authority");
+    }
+    const auto carrier_address = f128_printable_memory_address(*carrier_memory);
+    if (!carrier_address.has_value()) {
       return target_unsupported(
           f128_bad_header(instruction) +
           "f128 memory-backed transport requires printable carrier frame-slot authority");
     }
     if (transport.transport_kind == F128TransportKind::CarrierSnapshot) {
       std::ostringstream out;
-      out << "// f128 carrier " << *carrier_address;
+      out << "// f128 carrier " << carrier_address->address;
       return target_printed({out.str()});
     }
     if (!transport.memory.has_value()) {
@@ -793,20 +903,24 @@ mir::TargetInstructionPrintResult print_f128_transport(
       return target_unsupported(f128_bad_header(instruction) +
                                 "f128 memory transport requires 16-byte memory facts");
     }
-    const auto address = memory_address(*transport.memory);
-    if (address.empty()) {
+    const auto memory_address = f128_printable_memory_address(*transport.memory);
+    if (!memory_address.has_value()) {
       return target_unsupported(f128_bad_header(instruction) +
                                 "f128 memory transport address is not printable");
     }
     std::vector<std::string> lines;
     if (transport.transport_kind == F128TransportKind::LoadFromMemory) {
-      lines.push_back("ldr " + *scratch + ", " + address);
-      lines.push_back("str " + *scratch + ", " + *carrier_address);
+      lines.insert(lines.end(), memory_address->lines.begin(), memory_address->lines.end());
+      lines.push_back("ldr " + *scratch + ", " + memory_address->address);
+      lines.insert(lines.end(), carrier_address->lines.begin(), carrier_address->lines.end());
+      lines.push_back("str " + *scratch + ", " + carrier_address->address);
       return target_printed(std::move(lines));
     }
     if (transport.transport_kind == F128TransportKind::StoreToMemory) {
-      lines.push_back("ldr " + *scratch + ", " + *carrier_address);
-      lines.push_back("str " + *scratch + ", " + address);
+      lines.insert(lines.end(), carrier_address->lines.begin(), carrier_address->lines.end());
+      lines.push_back("ldr " + *scratch + ", " + carrier_address->address);
+      lines.insert(lines.end(), memory_address->lines.begin(), memory_address->lines.end());
+      lines.push_back("str " + *scratch + ", " + memory_address->address);
       return target_printed(std::move(lines));
     }
     return target_unsupported(f128_bad_header(instruction) +
@@ -836,19 +950,19 @@ mir::TargetInstructionPrintResult print_f128_transport(
     return target_unsupported(f128_bad_header(instruction) +
                               "f128 memory transport requires 16-byte memory facts");
   }
-  const auto address = memory_address(*transport.memory);
-  if (address.empty()) {
+  const auto address = f128_printable_memory_address(*transport.memory);
+  if (!address.has_value()) {
     return target_unsupported(f128_bad_header(instruction) +
                               "f128 memory transport address is not printable");
   }
-  std::ostringstream out;
+  std::vector<std::string> lines = address->lines;
   if (transport.transport_kind == F128TransportKind::LoadFromMemory) {
-    out << "ldr " << *reg << ", " << address;
-    return target_printed({out.str()});
+    lines.push_back("ldr " + *reg + ", " + address->address);
+    return target_printed(std::move(lines));
   }
   if (transport.transport_kind == F128TransportKind::StoreToMemory) {
-    out << "str " << *reg << ", " << address;
-    return target_printed({out.str()});
+    lines.push_back("str " + *reg + ", " + address->address);
+    return target_printed(std::move(lines));
   }
   return target_unsupported(f128_bad_header(instruction) +
                             "f128 transport kind is outside the printable subset");

@@ -3875,6 +3875,104 @@ int selected_f128_memory_backed_transport_prints_through_reserved_scratch() {
                          "f128 memory-backed transport scratch printer");
 }
 
+int selected_large_f128_memory_backed_transport_materializes_frame_slot_addresses() {
+  auto load_record = aarch64_codegen::F128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 5,
+      .value_id = prepare::PreparedValueId{95},
+      .value_name = c4c::ValueNameId{95},
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .slot_id = prepare::PreparedFrameSlotId{8},
+      .stack_offset_bytes = std::size_t{80000},
+      .memory = f128_frame_slot(70000),
+      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+  };
+  auto store_record = load_record;
+  store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
+  store_record.instruction_index = 6;
+  store_record.value_id = prepare::PreparedValueId{96};
+  store_record.value_name = c4c::ValueNameId{96};
+  store_record.memory = f128_frame_slot(70016);
+
+  const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
+  const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
+  const auto result = print_common_instruction_nodes({load, store});
+  if (!result.ok) {
+    return fail("expected large f128 memory-backed transport to materialize addresses: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    movz x9, #4464\n"
+      "    movk x9, #1, lsl #16\n"
+      "    add x9, sp, x9\n"
+      "    ldr q16, [x9]\n"
+      "    movz x9, #14464\n"
+      "    movk x9, #1, lsl #16\n"
+      "    add x9, sp, x9\n"
+      "    str q16, [x9]\n"
+      "    movz x9, #14464\n"
+      "    movk x9, #1, lsl #16\n"
+      "    add x9, sp, x9\n"
+      "    ldr q16, [x9]\n"
+      "    movz x9, #4480\n"
+      "    movk x9, #1, lsl #16\n"
+      "    add x9, sp, x9\n"
+      "    str q16, [x9]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "large f128 memory-backed transport address materialization");
+}
+
+int selected_f128_symbol_memory_backed_transport_materializes_symbol_address() {
+  auto symbol_memory = f128_frame_slot(0);
+  symbol_memory.base_kind = aarch64_codegen::MemoryBaseKind::Symbol;
+  symbol_memory.frame_slot_id = std::nullopt;
+  symbol_memory.symbol_name = c4c::LinkNameId{39};
+  symbol_memory.symbol_label = "hfa34";
+  symbol_memory.byte_offset = 16;
+
+  auto load_record = aarch64_codegen::F128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 7,
+      .value_id = prepare::PreparedValueId{97},
+      .value_name = c4c::ValueNameId{97},
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .slot_id = prepare::PreparedFrameSlotId{9},
+      .stack_offset_bytes = std::size_t{64},
+      .memory = symbol_memory,
+      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+  };
+
+  const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
+  const auto result = print_common_instruction_nodes({load});
+  if (!result.ok) {
+    return fail("expected f128 symbol memory-backed transport to materialize address: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    adrp x9, hfa34+16\n"
+      "    add x9, x9, :lo12:hfa34+16\n"
+      "    ldr q16, [x9]\n"
+      "    str q16, [sp, #64]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "f128 symbol memory-backed transport address materialization");
+}
+
 int selected_f128_compare_and_cast_helpers_print_from_structured_records() {
   const auto compare = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
       printable_f128_comparison_helper());
@@ -6713,6 +6811,16 @@ int main() {
   }
   if (const int result =
           selected_f128_memory_backed_transport_prints_through_reserved_scratch();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_large_f128_memory_backed_transport_materializes_frame_slot_addresses();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_f128_symbol_memory_backed_transport_materializes_symbol_address();
       result != 0) {
     return result;
   }

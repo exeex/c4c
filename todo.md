@@ -1,51 +1,43 @@
 Status: Active
 Source Idea Path: ideas/open/320_aarch64_f128_transport_addressability.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize F128 Transport Address Shape
+Current Step ID: 2
+Current Step Title: Repair F128 Transport Addressability
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the `00204.c` AArch64 failure to the `f128_transport` machine
-printer path. The focused proof still fails at machine function 0, block 0,
-machine instruction 758:
+Step 2 repaired the localized F128 transport addressability gap in
+`src/backend/mir/aarch64/codegen/f128.cpp`. `print_f128_transport()` now prints
+16-byte F128 transport memory operands through a local printable-address helper:
 
-`family=f128_transport opcode=f128_transport: f128 memory transport address is
-not printable`.
+- direct `[sp, #offset]` for encodable 16-byte frame slots
+- reserved GP scratch address materialization for large frame-slot offsets
+- reserved GP scratch symbol address materialization for F128 symbol-memory
+  transports
+- the same address helper for memory-backed carrier slots before moving through
+  reserved scratch `q16`
 
-The generated AArch64 prepared dump for `stdarg` shows the implicated transport
-family as 16-byte `f128` local-memory copies through prepared F128 carriers.
-The representative shape at the current instruction neighborhood is:
+Focused local coverage was added to
+`tests/backend/mir/backend_aarch64_machine_printer_test.cpp` for large
+memory-backed F128 frame-slot transports and symbol-memory F128 transports. The
+representative no longer fails with
+`f128 memory transport address is not printable`.
 
-- BIR: `%t262.aggregate.copy.16 = bir.load_local f128 %t261.16`
-- prepared memory access: `access block=entry inst_index=758 base=frame_slot
-  result=%t262.aggregate.copy.16 frame_slot=#1986 offset=0 size=16 align=16
-  base_plus_offset=yes`
-- source frame slot: `slot #1986 ... offset=2832 size=16 align=16`
-- destination carrier: `f128_carrier %t262.aggregate.copy.16 value_id=2712
-  kind=memory_backed size=16 align=16 bank=fpr class=float width=1
-  slot_id=#3022 stack_offset=13600`
-
-The owning code surface is `src/backend/mir/aarch64/codegen/f128.cpp`,
-especially `print_f128_transport()` and its helper
-`f128_memory_backed_carrier_address()`. The construction path is
-`src/backend/mir/aarch64/codegen/memory.cpp::lower_f128_transport_instruction()`
-through `make_prepared_f128_carrier_transport_record()`, but the selected record
-is present; the failure is at final address spelling/materialization. The
-printer currently calls the plain `memory_address()` helper for the transport
-memory operand, while adjacent machine-printer paths use
-`printable_memory_address()` / frame-slot scratch materialization for large or
-non-direct frame-slot addresses.
+New first bad fact after the repair: `c_testsuite_aarch64_backend_src_00204_c`
+now reaches generated assembly validation and fails because raw
+`va.arg.aggregate`, `va.arg.aggregate.source`, and
+`va.arg.aggregate.progress` note/helper text is emitted into
+`build/c_testsuite_aarch64_backend/src/00204.c.s`; the assembler reports
+`unexpected token in argument list` beginning at those lines.
 
 ## Suggested Next
 
-Execute Step 2 of `plan.md`: repair `print_f128_transport()` so 16-byte F128
-memory transports can print or materialize prepared frame-slot addresses through
-the same general scratch-address path used by adjacent AArch64 memory printers.
-Add focused `backend_aarch64_machine_printer` coverage for a memory-backed F128
-carrier load/store whose transport memory is a nontrivial frame slot.
+Classify the new `va.arg.aggregate` raw helper-text assembler residual before
+continuing idea 320. It appears outside F128 transport addressability and likely
+belongs to the AArch64 aggregate `va_arg` helper printer/lowering surface, not
+to F128 memory transport spelling.
 
 ## Watchouts
 
@@ -66,6 +58,9 @@ carrier load/store whose transport memory is a nontrivial frame slot.
   transport to symbol-address transport.
 - Avoid a named `00204.c` or `%t262` fix. The repair should be a general
   `F128TransportRecord` addressability/materialization rule.
+- The raw `va.arg.aggregate` residual is not a reason to reopen
+  `f128_transport`; the focused proof advanced past the exact F128 printer
+  diagnostic.
 
 ## Proof
 
@@ -76,5 +71,6 @@ Ran the exact delegated proof command and wrote output to `test_after.log`:
 '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'`
 
 Build succeeded. The focused CTest subset ran 11 tests: 10 passed, and the only
-failure was the expected baseline `c_testsuite_aarch64_backend_src_00204_c`
-`f128_transport address is not printable` failure.
+failure was `c_testsuite_aarch64_backend_src_00204_c`, now at raw
+`va.arg.aggregate` assembly text. `backend_aarch64_machine_printer` passed with
+the new F128 transport addressability coverage.
