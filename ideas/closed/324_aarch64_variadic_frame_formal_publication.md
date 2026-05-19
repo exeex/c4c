@@ -1,8 +1,9 @@
 # AArch64 Variadic Frame And Formal Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/323_aarch64_vararg_consumption_source_progression.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -94,3 +95,18 @@ Reject the route if it:
   frame/formal fault;
 - adds only external c-testsuite coverage without focused backend assertions
   for frame-size coverage and fixed-formal preservation.
+
+## Closure Note
+
+Idea 324 is complete. The implemented frame/formal publication repair makes
+generated `myprintf` allocate a frame covering its emitted homes, removes the
+prior `[sp, #9696]` out-of-frame family, publishes `%p.format` with
+`str x0, [sp, #624]`, removes the bad entry `mov x0, x21`, and preserves
+`va_start` destination materialization before field stores.
+
+The remaining `00204.c` runtime segfault is outside this idea's scope. Fresh
+generated-output evidence points to ordinary local/value-home initialization
+and constant/pattern operand publication in variadic functions: `myprintf`
+reads homes such as `[sp, #640]`, `[sp, #648]`, and `[sp, #656]`, and compares
+`w13`, before same-function publication of those values. That residual is
+tracked by `ideas/open/325_aarch64_variadic_local_value_home_publication.md`.
