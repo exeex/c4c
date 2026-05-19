@@ -225,6 +225,16 @@ void populate_frame_plan(PreparedBirModule& prepared) {
     if (const auto* regalloc_function = find_regalloc_function(prepared.regalloc, function_name_id);
         regalloc_function != nullptr) {
       for (const auto& value : regalloc_function->values) {
+        if (value.assigned_stack_slot.has_value()) {
+          plan.frame_size_bytes =
+              std::max(plan.frame_size_bytes,
+                       value.assigned_stack_slot->offset_bytes +
+                           value.assigned_stack_slot->size_bytes.value_or(0));
+          plan.frame_alignment_bytes =
+              std::max(plan.frame_alignment_bytes,
+                       value.assigned_stack_slot->align_bytes.value_or(1));
+          plan.frame_slot_order.push_back(value.assigned_stack_slot->slot_id);
+        }
         if (!value.assigned_register.has_value() ||
             !is_callee_saved_register_assignment(prepared.target_profile, value)) {
           continue;
@@ -316,6 +326,9 @@ void populate_frame_plan(PreparedBirModule& prepared) {
                 }
                 return lhs < rhs;
               });
+    plan.frame_slot_order.erase(std::unique(plan.frame_slot_order.begin(),
+                                            plan.frame_slot_order.end()),
+                                plan.frame_slot_order.end());
     plan.saved_callee_registers = std::move(saved_registers);
 
     plan.uses_frame_pointer_for_fixed_slots =

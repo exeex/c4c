@@ -12,9 +12,11 @@
 #include "i128_ops.hpp"
 #include "inline_asm.hpp"
 #include "intrinsics.hpp"
+#include "machine_printer.hpp"
 #include "memory.hpp"
 #include "returns.hpp"
 #include "variadic.hpp"
+#include "../../../prealloc/target_register_profile.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -2901,6 +2903,196 @@ materialize_missing_frame_slot_call_arguments(
   return lowered;
 }
 
+[[nodiscard]] std::optional<abi::RegisterView> entry_formal_register_view(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return abi::RegisterView::W;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return abi::RegisterView::X;
+    case bir::TypeKind::F32:
+      return abi::RegisterView::S;
+    case bir::TypeKind::F64:
+      return abi::RegisterView::D;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> entry_formal_store_opcode(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return "strb";
+    case bir::TypeKind::I16:
+      return "strh";
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
+      return "str";
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> entry_formal_source_register(
+    const c4c::TargetProfile& target_profile,
+    const bir::Param& param,
+    std::size_t param_index) {
+  if (!param.abi.has_value()) {
+    return std::nullopt;
+  }
+  const auto register_name =
+      prepare::call_arg_destination_register_name(target_profile, *param.abi, param_index);
+  const auto expected_view = entry_formal_register_view(param.type);
+  if (!register_name.has_value() || !expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*register_name);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  if (parsed->bank == abi::RegisterBank::GeneralPurpose) {
+    return abi::gp_register(parsed->index, *expected_view);
+  }
+  if (parsed->bank == abi::RegisterBank::FpSimd) {
+    return abi::fp_simd_register(parsed->index, *expected_view);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::string> entry_formal_store_lines(
+    abi::RegisterReference source,
+    bir::TypeKind type,
+    std::size_t stack_offset_bytes) {
+  const auto opcode = entry_formal_store_opcode(type);
+  if (!opcode.has_value()) {
+    return {};
+  }
+  const std::string source_name{abi::register_name(source)};
+  std::vector<std::string> lines;
+  if (stack_offset_bytes <= 4095U) {
+    std::string line = std::string{*opcode} + " " + source_name + ", [sp";
+    if (stack_offset_bytes != 0U) {
+      line += ", #";
+      line += std::to_string(stack_offset_bytes);
+    }
+    line += "]";
+    lines.push_back(std::move(line));
+    return lines;
+  }
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  lines = materialize_integer_constant_lines(scratch, stack_offset_bytes, 64);
+  lines.push_back("add " + std::string{abi::register_name(scratch)} +
+                  ", sp, " + std::string{abi::register_name(scratch)});
+  lines.push_back(std::string{*opcode} + " " + source_name + ", [" +
+                  std::string{abi::register_name(scratch)} + "]");
+  return lines;
+}
+
+[[nodiscard]] module::MachineInstruction make_entry_formal_publication_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t param_index,
+    std::vector<std::string> lines) {
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += lines[index];
+  }
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = param_index,
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = std::move(asm_text),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = param_index,
+          },
+  };
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction> lower_entry_formal_publications(
+    const module::BlockLoweringContext& context) {
+  std::vector<module::MachineInstruction> lowered;
+  if (context.block_index != 0 || context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.bir_function == nullptr ||
+      !context.function.bir_function->is_variadic) {
+    return lowered;
+  }
+  for (std::size_t param_index = 0;
+       param_index < context.function.bir_function->params.size();
+       ++param_index) {
+    const auto& param = context.function.bir_function->params[param_index];
+    if (param.is_varargs || param.is_sret || param.is_byval) {
+      continue;
+    }
+    const auto value_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, param.name);
+    if (!value_name.has_value()) {
+      continue;
+    }
+    const auto* home =
+        prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
+    if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !home->offset_bytes.has_value()) {
+      continue;
+    }
+    const auto source = entry_formal_source_register(
+        context.function.prepared->target_profile, param, param_index);
+    if (!source.has_value()) {
+      continue;
+    }
+    lowered.push_back(make_entry_formal_publication_instruction(
+        context,
+        param_index,
+        entry_formal_store_lines(*source, param.type, *home->offset_bytes)));
+  }
+  return lowered;
+}
+
 }  // namespace
 
 module::BlockLoweringContext make_block_lowering_context(
@@ -3031,6 +3223,9 @@ InstructionDispatchResult dispatch_prepared_block(
     }
     return false;
   };
+  for (auto& entry_formal : lower_entry_formal_publications(context)) {
+    block.instructions.push_back(std::move(entry_formal));
+  }
   for (auto& block_entry_move : lower_value_moves(
            context,
            prepare::PreparedMovePhase::BlockEntry,
@@ -3070,6 +3265,8 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         const auto* call_plan = find_prepared_call_plan(context, instruction_index);
         if (call_plan != nullptr) {
+          const bool inline_variadic_entry_helper =
+              variadic_entry_helper_kind(call->callee).has_value();
           auto argument_producers =
               lower_scalar_call_argument_producers(context,
                                                    *call,
@@ -3082,7 +3279,9 @@ InstructionDispatchResult dispatch_prepared_block(
           auto materialized_addresses =
               lower_address_materializations(context, instruction_index, diagnostics);
           auto before_call_moves =
-              lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);
+              inline_variadic_entry_helper
+                  ? std::vector<module::MachineInstruction>{}
+                  : lower_before_call_moves(context, *call_plan, instruction_index, diagnostics);
           for (auto& before_call_move : before_call_moves) {
             retarget_call_boundary_source_to_emitted_scalar(before_call_move);
           }
@@ -3123,10 +3322,12 @@ InstructionDispatchResult dispatch_prepared_block(
               block.instructions.push_back(std::move(before_call_move));
             }
           }
-          for (auto& materialized_argument :
-               materialize_missing_frame_slot_call_arguments(
-                   context, *call_plan, instruction_index, scalar_state)) {
-            block.instructions.push_back(std::move(materialized_argument));
+          if (!inline_variadic_entry_helper) {
+            for (auto& materialized_argument :
+                 materialize_missing_frame_slot_call_arguments(
+                     context, *call_plan, instruction_index, scalar_state)) {
+              block.instructions.push_back(std::move(materialized_argument));
+            }
           }
         }
         if (auto lowered = lower_call_instruction(

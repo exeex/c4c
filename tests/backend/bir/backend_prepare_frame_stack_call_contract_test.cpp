@@ -5,6 +5,7 @@
 #include "src/backend/prealloc/prepared_printer.hpp"
 #include "src/target_profile.hpp"
 
+#include <algorithm>
 #include <cstdlib>
 #include <initializer_list>
 #include <iostream>
@@ -3447,8 +3448,13 @@ int check_saved_register_slot_placement_carrier_contract() {
 
 int check_stack_cross_call_preservation_contract() {
   const auto prepared = prepare_module(make_stack_cross_call_preservation_contract_module());
+  const auto function_id =
+      prepared.names.function_names.find("stack_cross_call_preservation_contract");
   const auto* call_plans =
       find_call_plans_function(prepared, "stack_cross_call_preservation_contract");
+  const auto* frame_plan = function_id == c4c::kInvalidFunctionName
+                               ? nullptr
+                               : prepare::find_prepared_frame_plan(prepared, function_id);
   const auto* storage_plan =
       find_storage_plan_function(prepared, "stack_cross_call_preservation_contract");
   if (call_plans == nullptr || call_plans->calls.size() != 1) {
@@ -3480,6 +3486,16 @@ int check_stack_cross_call_preservation_contract() {
       preserved->register_name.has_value() || preserved->register_bank.has_value() ||
       preserved->callee_saved_save_index.has_value()) {
     return fail("stack cross-call preservation contract: call_plans lost direct frame-slot authority");
+  }
+  if (frame_plan == nullptr || !preserved->slot_id.has_value() ||
+      !preserved->stack_offset_bytes.has_value() ||
+      !preserved->stack_size_bytes.has_value() ||
+      frame_plan->frame_size_bytes <
+          *preserved->stack_offset_bytes + *preserved->stack_size_bytes ||
+      std::find(frame_plan->frame_slot_order.begin(),
+                frame_plan->frame_slot_order.end(),
+                *preserved->slot_id) == frame_plan->frame_slot_order.end()) {
+    return fail("stack cross-call preservation contract: frame plan must cover regalloc stack homes consumed by call preservation");
   }
   const std::string prepared_dump = prepare::print(prepared);
   const std::string preserved_summary =

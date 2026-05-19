@@ -48,6 +48,19 @@ PreparedValueHome classify_prepared_value_home(
           param.is_byval) {
         continue;
       }
+      if (function->is_variadic && value.assigned_stack_slot.has_value()) {
+        home.kind = PreparedValueHomeKind::StackSlot;
+        home.slot_id = value.assigned_stack_slot->slot_id;
+        home.offset_bytes = value.assigned_stack_slot->offset_bytes;
+        home.size_bytes = value.assigned_stack_slot->size_bytes;
+        home.align_bytes = value.assigned_stack_slot->align_bytes;
+        return home;
+      }
+      if (function->is_variadic && value.assigned_register.has_value()) {
+        home.kind = PreparedValueHomeKind::Register;
+        home.register_name = value.assigned_register->register_name;
+        return home;
+      }
       if (const auto register_name =
               call_arg_destination_register_name(target_profile, *param.abi, param_index);
           register_name.has_value()) {

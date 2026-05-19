@@ -965,6 +965,72 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
   return prepared;
 }
 
+bir::CallArgAbiInfo register_arg_abi(bir::TypeKind type,
+                                     std::size_t size_bytes,
+                                     std::size_t align_bytes,
+                                     bir::AbiValueClass primary_class) {
+  return bir::CallArgAbiInfo{
+      .type = type,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .primary_class = primary_class,
+      .passed_in_register = true,
+  };
+}
+
+prepare::PreparedBirModule prepared_with_variadic_entry_formal_stack_homes() {
+  auto prepared = prepared_with_variadic_entry_helper_call(true, true, true);
+  auto& function = prepared.module.functions.front();
+  auto& value_homes = prepared.value_locations.functions.front().value_homes;
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+
+  function.params.clear();
+  value_homes.clear();
+
+  auto add_param = [&](bir::TypeKind type,
+                       std::string name,
+                       std::size_t size_bytes,
+                       std::size_t align_bytes,
+                       bir::AbiValueClass abi_class,
+                       std::size_t stack_offset_bytes,
+                       std::size_t slot_id,
+                       std::size_t value_id) {
+    const auto value_name = prepared.names.value_names.intern(name);
+    function.params.push_back(bir::Param{
+        .type = type,
+        .name = std::move(name),
+        .size_bytes = size_bytes,
+        .align_bytes = align_bytes,
+        .abi = register_arg_abi(type, size_bytes, align_bytes, abi_class),
+    });
+    value_homes.push_back(prepare::PreparedValueHome{
+        .value_id = prepare::PreparedValueId{value_id},
+        .function_name = function_name,
+        .value_name = value_name,
+        .kind = prepare::PreparedValueHomeKind::StackSlot,
+        .slot_id = prepare::PreparedFrameSlotId{slot_id},
+        .offset_bytes = stack_offset_bytes,
+        .size_bytes = size_bytes,
+        .align_bytes = align_bytes,
+    });
+  };
+
+  add_param(bir::TypeKind::I1, "fixed.i1", 1, 1, bir::AbiValueClass::Integer, 16, 21, 31);
+  add_param(bir::TypeKind::I8, "fixed.i8", 1, 1, bir::AbiValueClass::Integer, 17, 22, 32);
+  add_param(bir::TypeKind::I16, "fixed.i16", 2, 2, bir::AbiValueClass::Integer, 18, 23, 33);
+  add_param(bir::TypeKind::I32, "fixed.i32", 4, 4, bir::AbiValueClass::Integer, 20, 24, 34);
+  add_param(bir::TypeKind::I64, "fixed.i64", 8, 8, bir::AbiValueClass::Integer, 24, 25, 35);
+  add_param(bir::TypeKind::Ptr, "fixed.ptr", 8, 8, bir::AbiValueClass::Integer, 32, 26, 36);
+  add_param(bir::TypeKind::F32, "fixed.f32", 4, 4, bir::AbiValueClass::Sse, 40, 27, 37);
+  add_param(bir::TypeKind::F64, "fixed.f64", 8, 8, bir::AbiValueClass::Sse, 48, 28, 38);
+
+  auto& entry_plan = prepared.variadic_entry_plans.functions.front();
+  entry_plan.named_parameter_count = function.params.size();
+  entry_plan.named_register_counts.gp = 6;
+  entry_plan.named_register_counts.fp = 2;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_scalar_va_arg_helper_call() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -7773,6 +7839,68 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
   return 0;
 }
 
+int variadic_entry_fixed_formals_publish_typed_stack_homes_before_helper() {
+  auto prepared = prepared_with_variadic_entry_formal_stack_homes();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      !result.visited_terminator || result.emitted_instructions != 10 ||
+      block.instructions.size() != 10) {
+    return fail("expected fixed-formal publication, va_start helper, and return without diagnostics");
+  }
+
+  const std::array<std::string_view, 8> expected_publications = {
+      "strb w0, [sp, #16]",
+      "strb w1, [sp, #17]",
+      "strh w2, [sp, #18]",
+      "str w3, [sp, #20]",
+      "str x4, [sp, #24]",
+      "str x5, [sp, #32]",
+      "str s6, [sp, #40]",
+      "str d7, [sp, #48]",
+  };
+  for (std::size_t index = 0; index < expected_publications.size(); ++index) {
+    const auto* publication =
+        std::get_if<aarch64_module::codegen::AssemblerInstructionRecord>(
+            &block.instructions[index].target.payload);
+    if (publication == nullptr ||
+        block.instructions[index].target.family !=
+            aarch64_module::codegen::InstructionFamily::Assembler ||
+        block.instructions[index].target.selection.status !=
+            aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+        !publication->has_inline_asm_payload ||
+        publication->inline_asm_template != expected_publications[index]) {
+      return fail("expected typed fixed-formal stack publication before va_start helper");
+    }
+  }
+
+  const auto* va_start =
+      std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+          &block.instructions[8].target.payload);
+  if (va_start == nullptr ||
+      block.instructions[8].target.opcode !=
+          aarch64_module::codegen::MachineOpcode::VariadicVaStart ||
+      !va_start->variadic_va_start.has_value()) {
+    return fail("expected inline va_start helper after all fixed-formal publications");
+  }
+  if (!std::holds_alternative<aarch64_module::codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator after fixed-formal publication route");
+  }
+  return 0;
+}
+
 int scalar_va_arg_dispatch_reports_missing_prepared_access_plan() {
   auto prepared = prepared_with_scalar_va_arg_helper_call();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -11084,6 +11212,11 @@ int main() {
   }
   if (const int status =
           variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          variadic_entry_fixed_formals_publish_typed_stack_homes_before_helper();
       status != 0) {
     return status;
   }
