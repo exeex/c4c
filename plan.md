@@ -1,49 +1,36 @@
-# AArch64 Variadic HFA And Floating Residual Runbook
+# AArch64 Fixed Formal Entry Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
-Activated from: idea 325 closure after HFA/floating residual classification
+Source Idea: ideas/open/327_aarch64_fixed_formal_entry_publication.md
+Activated from: idea 326 Step 4 adjacent-owner classification
 
 ## Purpose
 
-Repair the next `00204.c` runtime blocker by classifying and fixing the
-AArch64 HFA/floating value corruption that remains after local/value-home
-publication repairs, including pre-consumer global data emission when the first
-bad fact proves the value is already wrong before variadic/HFA transport.
+Repair the AArch64 entry-time handoff for fixed function parameters whose
+prepared homes differ from their AAPCS64 incoming argument registers.
 
 ## Goal
 
-Make generated AArch64 HFA/floating values preserve the expected runtime data
-through their first classified owner: global initializer emission when the
-object is read from a data label, or call-boundary transport,
-register-save-area or overflow selection, lane materialization, and consumer
-reads when those paths own the first bad fact.
+Ensure each fixed formal is published from its ABI incoming location into its
+assigned prepared home before generated code can load, store, or otherwise
+consume that formal.
 
 ## Core Rule
 
-Progress must be a general AArch64 HFA/floating variadic capability. Do not
-reopen local/value-home publication, frame/formal publication,
-aggregate/floating `va_arg`, `va_start` destination publication, aggregate
-helper text lowering, F128 transport addressability, scalar ALU immediate
-materialization, frame adjustment materialization, stack-slot memory spelling,
-semantic admission, expectations, unsupported classifications, runners,
-timeout policy, proof-log contents, or CTest registration unless generated-code
-evidence proves that surface owns the current HFA/floating first bad fact.
+Progress must be a general AArch64 fixed-formal entry publication capability.
+Do not special-case `00204.c`, `myprintf`, `%p.format`, `x0`, `x13`, one
+register, one stack slot, one pointer type, or one emitted prologue sequence.
+Do not reopen HFA/floating variadic consume, global initializer, fixed HFA
+argument, fixed HFA return, local/value-home, frame-layout, runner,
+expectation, unsupported, or proof-log behavior unless fresh generated-code
+evidence proves that surface owns the current first bad fact.
 
 ## Read First
 
+- `ideas/open/327_aarch64_fixed_formal_entry_publication.md`
 - `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`
 - `ideas/closed/325_aarch64_variadic_local_value_home_publication.md`
 - `ideas/closed/324_aarch64_variadic_frame_formal_publication.md`
-- `ideas/closed/323_aarch64_vararg_consumption_source_progression.md`
-- `ideas/closed/322_aarch64_va_start_destination_address_materialization.md`
-- `ideas/closed/321_aarch64_aggregate_va_arg_helper_lowering.md`
-- `ideas/closed/320_aarch64_f128_transport_addressability.md`
-- `ideas/closed/319_aarch64_hfa_aggregate_argument_runtime.md`
-- `ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md`
-- `ideas/closed/317_aarch64_variadic_va_start_helper_lowering.md`
-- `ideas/closed/315_aarch64_large_frame_adjustment_materialization.md`
-- `ideas/closed/314_aarch64_large_stack_offset_addressing.md`
 - `todo.md`
 - generated AArch64 artifacts for `00204.c` under
   `build/c_testsuite_aarch64_backend/src/`
@@ -53,191 +40,157 @@ evidence proves that surface owns the current HFA/floating first bad fact.
 
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
-- Current residual fact:
-  - after global initializer emission, fixed HFA argument lanes, and fixed HFA
-    return lanes were repaired, `00204.c` advances past semantic LIR-to-BIR and
-    backend assembly/linking, then exits at runtime with `RUNTIME_NONZERO` /
-    `Segmentation fault` before producing output.
-- Repaired owners to preserve:
-  - AArch64 `F32`/`F64` scalar and aggregate global initializer emission for
-    HFA globals such as `hfa11` through `hfa24`
-  - fixed HFA argument call-lane lowering into scalar FPR ABI lanes
-  - fixed HFA return and call-result lane classification, materialization, and
-    AArch64 ABI FPR publication for lane 0 and lane 1+
-- Follow-on suspected owner family:
-  - aggregate/floating `va_arg` source selection and progression
-  - floating register-save-area or overflow-area addressing
-  - generated runtime control-flow or call-target address materialization
-  - HFA lane materialization and call-boundary transport
-  - generated consumer reads for HFA/floating values
-- Prior-owner guardrails:
-  - `backend_lir_to_bir_notes`
-  - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
-  - `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff`
-  - `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
-  - `backend_cli_dump_bir_focus_function_filters_00204`
-  - `backend_cli_dump_prepared_bir_focus_function_filters_00204`
-  - `backend_cli_dump_prepared_bir_focus_block_entry_00204`
-  - `backend_aarch64_machine_printer`
-  - `backend_aarch64_instruction_dispatch`
-  - `backend_aarch64_target_instruction_records`
+- Current first bad fact:
+  - `stdarg` calls `myprintf("%9s ...", ...)` with the fixed `format`
+    pointer in AAPCS64 incoming `x0`
+  - prepared AArch64 storage assigns `%p.format` to `register:x13`
+  - generated `myprintf` stores or consumes the `x13`-derived value before any
+    `x0 -> x13` or `x0 -> [home]` publication
+  - runtime then reaches `ldrb w9, [x10]` with `x10 = 0`
+- Prior-owner guardrails to preserve:
+  - semantic `myprintf(ptr %p.format, ...)` BIR handoff
+  - prepared-BIR focus and AArch64 publication dumps for `00204.c`
+  - local/value-home publication coverage from idea 325
+  - frame/formal coverage from idea 324
+  - HFA global initializer, fixed HFA argument, and fixed HFA return coverage
+    from idea 326 execution
 
 ## Non-Goals
 
-- Do not reopen idea 325's local/value-home publication owner unless generated
-  evidence again shows an unpublished ordinary local, constant, pattern
-  operand, branch condition, call operand, or predecessor/join source.
-- Do not reopen idea 324's frame-size coverage or fixed-formal publication
-  owner unless generated evidence again shows uncovered stack references or
-  clobbered fixed formals.
-- Do not reopen idea 322's `va_start` destination address publication owner.
-- Do not reopen idea 321's aggregate `va_arg` helper text lowering owner.
-- Do not reopen idea 320's F128 transport addressability owner.
-- Do not reopen idea 318's scalar ALU immediate materialization owner.
-- Do not reopen idea 315's large frame setup and teardown materialization
-  owner.
-- Do not reopen idea 314's stack-slot memory or scalar stack-publication
-  spelling owner.
-- Do not repair idea 316's frame-slot/frame-layout consistency residual unless
-  generated evidence proves it is the same vararg consumer fault.
+- Do not repair HFA/floating `va_arg` source selection, register-save-area
+  progression, overflow-area progression, or HFA lane materialization unless
+  the representative gets past fixed-formal publication and fresh evidence
+  reaches those paths.
+- Do not reopen global initializer emission, fixed HFA argument lanes, fixed
+  HFA return lanes, local/value-home publication, `va_start` destination
+  publication, aggregate helper text lowering, F128 transport, scalar ALU
+  immediate materialization, large frame adjustment, or stack-slot spelling
+  without direct generated-code evidence.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
-- Do not fix unrelated global initializer emission or runtime mismatches.
-  AArch64 `F32`/`F64` global initializer emission for HFA globals is in scope
-  because Step 1 localized it as the current first bad fact before HFA consume.
+- Do not claim completion from classification alone; generated code must
+  publish fixed formals before first use.
 
 ## Working Model
 
-The representative now gets past prior assembler blockers, scalar immediate
-materialization, raw helper text, large stack/frame materialization, F128
-transport addressability, aggregate `va_arg` helper lowering, `va_start`
-destination publication, frame/formal publication, local/value-home
-publication, HFA global initializer emission, fixed HFA argument lanes, and
-fixed HFA return lanes. The next first bad fact is runtime execution:
-the linked AArch64 backend binary exits with `Segmentation fault` before
-producing output. Step 4 should classify the segfault from generated artifacts
-and runtime evidence before reopening any repaired HFA/floating owner.
+Prepared AArch64 lowering can assign a BIR fixed parameter to a home that is
+not its ABI incoming argument register. Function-entry code must bridge that
+choice by copying or storing from the AAPCS64 incoming location into the
+prepared home before local stores, cursor setup, or first-use loads consume the
+formal. The current representative exposes this with `%p.format`: incoming
+`x0` is valid at entry, but assigned `x13` is never initialized before the
+format loop dereferences the resulting cursor.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the exact HFA/floating value, lane, source area, prepared record,
-  global initializer, call-boundary move, and emitted stack/register sequence
-  before editing code.
-- Prefer focused backend coverage for the classified HFA/floating owner before
-  relying only on the external c-testsuite representative.
+- Localize the parameter's semantic BIR formal, prepared storage record, ABI
+  incoming location, assigned home, and first generated consumer before editing
+  code.
+- Prefer focused backend coverage for entry publication before relying on the
+  external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff,
-  frame/formal publication, `va_start` destination publication, aggregate
-  helper lowering, F128 transport, aggregate `va_arg` source/progression,
-  scalar ALU, local/value-home publication, runner, or expectation coverage.
-- If the representative advances to another runtime mismatch, timeout, or
-  blocker after the repaired global-data, HFA argument, and HFA return owners,
-  record the new first bad fact and return it to lifecycle classification
-  unless generated-code evidence proves a repaired owner still owns it.
+  frame/formal publication, local/value-home publication, HFA argument/return,
+  global data emission, runner, expectation, or proof-log coverage.
+- If `00204.c` advances past the null dereference, record the next first bad
+  fact in `todo.md` and return it to lifecycle classification if it belongs to
+  another owner.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
   or the implementation touches shared backend helper/printer behavior broadly.
 
 ## Ordered Steps
 
-### Step 1: Localize HFA/Floating First Bad Fact
+### Step 1: Localize Fixed Formal Entry Publication Gap
 
-Goal: identify the exact HFA/floating value path that produces `0.0` instead
-of `11.1` for `fa_hfa11(hfa11)`.
+Goal: identify the exact AArch64 parameter handoff records and emitted code
+that leave a fixed formal unpublished before first use.
 
-Primary target: generated `00204.c` artifacts and AArch64 HFA/floating
-prepared records, call-lane, `va_arg`, register-save-area, overflow-area, and
-consumer surfaces.
+Primary target: prepared AArch64 storage, function-entry codegen, and
+generated `00204.c` artifacts for `myprintf`.
 
 Actions:
 
-- Trace where the expected `11.1` HFA lane is passed, saved, selected,
-  materialized, and consumed.
-- Map the first corrupted emitted value back to prepared records, machine
-  records, dispatch paths, helper state, and printer output.
-- Distinguish HFA call-lane lowering, aggregate/floating `va_arg` selection or
-  progression, register-save-area addressing, overflow-area addressing, lane
-  materialization, and unrelated local publication responsibilities.
+- Trace `%p.format` from semantic BIR formal through prepared storage and into
+  generated AArch64 prologue or first-use code.
+- Map the ABI incoming location (`x0` for the first fixed pointer formal) and
+  assigned prepared home (`register:x13` in the current evidence).
+- Identify whether the missing bridge belongs to prepared value-home/regalloc
+  handling, function-entry parameter publication, or instruction emission.
 - Record in `todo.md` the owning code surfaces, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the bad HFA/floating record/path, owning code surfaces,
-  representative tests, and smallest focused proof command.
+- `todo.md` names the fixed formal, ABI incoming location, assigned home,
+  first consumer, owning code surfaces, representative tests, and smallest
+  focused proof command.
 
-### Step 2: Repair Classified HFA/Floating Owner
+### Step 2: Repair General Fixed Formal Entry Publication
 
-Goal: make the Step 1 classified AArch64 HFA/floating owner preserve and
-consume the expected values.
+Goal: publish fixed parameters from AAPCS64 incoming locations into assigned
+prepared homes before first use.
 
-Primary target: AArch64 `F32`/`F64` global initializer emission for scalar and
-aggregate HFA globals, unless fresh evidence during the packet proves the first
-bad fact moved to a different Step 1-classified owner.
+Primary target: AArch64 prepared/codegen function-entry parameter publication.
 
 Actions:
 
-- Implement general AArch64 data emission for `F32`/`F64` scalar global
-  initializers and aggregate initializer elements, including HFA globals such
-  as `hfa11` through `hfa24`.
-- Verify that direct calls, returns, and later variadic HFA loads read the
-  emitted source bytes before investigating call-lane, `va_arg`,
-  register-save-area, overflow-area, lane materialization, or consumer repair.
-- Reuse existing AArch64 frame-slot, stack-offset, register, scratch,
-  prepared-home, address materialization, and data-emission helpers when
-  available.
-- Preserve unrelated local/value-home, frame/formal, `va_start`, aggregate
-  helper text, F128 transport, scalar ALU, runner, expectation, and timeout
-  behavior.
+- Implement a general bridge from each fixed formal's ABI incoming location to
+  its assigned prepared home when those locations differ.
+- Cover register homes and stack or memory homes as the existing prepared-home
+  model requires.
+- Preserve variadic register-save-area setup and local/value-home publication
+  behavior; the entry publication must not clobber saved variadic state.
+- Reuse existing AArch64 register, stack-slot, prepared-home, address
+  materialization, and move/store helpers when available.
 
 Completion check:
 
-- Focused proof shows the classified HFA/floating values survive through their
-  generated path, or `todo.md` records the next first bad fact with evidence.
+- Focused proof shows ordinary fixed formals are published from ABI incoming
+  locations to assigned homes before first use, without regressing adjacent
+  publication guardrails.
 
-### Step 3: Add Focused HFA/Floating Coverage
+### Step 3: Add Focused Entry Publication Coverage
 
-Goal: make the repaired HFA/floating behavior observable in local backend
-tests.
+Goal: make the repaired fixed-formal entry contract observable in local
+backend tests.
 
-Primary target: existing AArch64 machine-printer, variadic, instruction
-dispatch, frame, call-lane, `va_arg`, or prepared-BIR tests that already cover
-adjacent variadic function behavior.
+Primary target: existing AArch64 prepared-BIR, machine-printer, instruction
+dispatch, function prologue, or focused `00204.c` dump tests.
 
 Actions:
 
-- Add or extend coverage proving HFA/floating values are selected,
-  materialized, transported, and consumed through the repaired owner.
-- Add or extend coverage for the exact source area, lane, call-boundary move,
-  or consumer path identified in Step 1.
-- Preserve adjacent scalar, local publication, aggregate helper, `va_start`,
-  aggregate `va_arg`, and ordinary memory helper behavior.
+- Add or extend focused coverage for a variadic callee with an ordinary fixed
+  pointer formal assigned to non-ABI storage.
+- Assert the generated or prepared output includes publication from the ABI
+  incoming location into the assigned home before first use.
+- Preserve adjacent scalar, aggregate, variadic register-save-area,
+  local/value-home, and frame/formal coverage.
 
 Completion check:
 
-- Local coverage exercises the repaired HFA/floating contract and verifies
-  adjacent behavior remains stable.
+- Local coverage fails without the entry-publication repair and passes with
+  the repair.
 
-### Step 4: Validate And Classify Residuals
+### Step 4: Validate Representative And Classify Residuals
 
-Goal: prove the owner result and classify any new focused residual.
+Goal: prove the fixed-formal entry repair on the focused representative and
+classify any newly exposed first bad fact.
 
-Primary target: supervisor-selected focused proof scope, with immediate focus
-on the `00204.c` generated-code/runtime `Segmentation fault`.
+Primary target: supervisor-selected focused proof scope including `00204.c`.
 
 Actions:
 
-- Run a focused proof including build, local AArch64 helper/backend coverage,
-  prior-owner guardrails from ideas 314, 315, 317, 318, 319, 320, 321, and
-  322, 323, 324, and 325, and the `00204.c` c-testsuite representative.
-- Classify whether the segfault is still an HFA/floating generated-code owner
-  under idea 326 or a distinct adjacent initiative that should be split before
-  implementation continues.
+- Run a focused proof including build, local AArch64 backend coverage,
+  prior-owner guardrails, and `c_testsuite_aarch64_backend_src_00204_c`.
+- Confirm generated `myprintf` no longer consumes an unpublished `%p.format`
+  value before first use.
+- If `00204.c` still fails, classify whether the next first bad fact belongs
+  to idea 326's HFA/floating residual path or another distinct initiative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if generated code still corrupts or drops
-  HFA/floating values in the classified path.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current HFA/floating blocker is gone, or
-  the remaining blocker is explicitly localized for the next packet.
+- `todo.md` records fresh proof. The `%p.format` entry-publication fault is
+  gone, and any remaining blocker is explicitly localized for the next
+  lifecycle decision.

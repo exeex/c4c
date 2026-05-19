@@ -80,3 +80,19 @@ Reject the route if it:
   owner;
 - adds only external c-testsuite proof without focused backend assertions for
   the repaired HFA/floating behavior.
+
+## Lifecycle Handoff
+
+2026-05-19: Step 4 classified the current `00204.c` segmentation fault as an
+adjacent fixed-formal entry publication issue rather than a remaining
+HFA/floating owner under this idea. Generated-code and LLDB evidence show the
+`myprintf` fixed pointer formal `%p.format` is assigned to AArch64 storage
+`x13`, while the AAPCS64 callsite passes the incoming argument in `x0`; the
+callee reaches first use without publishing `x0` into the prepared home and
+dereferences a null cursor.
+
+This idea remains open and parked until the fixed-formal entry publication
+owner is repaired. After that repair, resume this idea only if fresh
+`00204.c` evidence again reaches an HFA/floating corruption path, variadic
+floating register-save-area or overflow-area issue, HFA lane materialization
+issue, or another generated-code owner within the original scope.
