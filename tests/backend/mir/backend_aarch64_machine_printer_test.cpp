@@ -6426,23 +6426,28 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       aarch64_codegen::print_machine_instruction_line_payloads(
           aggregate_va_arg_call);
   if (!aggregate_va_arg_result.ok ||
-      aggregate_va_arg_result.instruction_lines.size() != 3 ||
-      aggregate_va_arg_result.instruction_lines[0].find(
-          "va.arg.aggregate source=overflow_arg_area va_list=value#18:register:x4 destination_payload=value#19:stack_slot:slot#9:offset+32") ==
-          std::string::npos ||
-      aggregate_va_arg_result.instruction_lines[0].find(
-          "payload_size=24 payload_align=8 copy_size=24 copy_align=8") ==
-          std::string::npos ||
-      aggregate_va_arg_result.instruction_lines[1].find(
-          "field=overflow_arg_area field_offset=8 payload_offset=0 slot_size=24") ==
-          std::string::npos ||
-      aggregate_va_arg_result.instruction_lines[2].find(
-          "progress field=overflow_arg_area field_offset=8 stride=24") ==
-          std::string::npos ||
-      aggregate_va_arg_result.instruction_lines[2].find(
-          "overflow_slot#6 overflow_stack+208") == std::string::npos) {
+      aggregate_va_arg_result.instruction_lines.size() != 14 ||
+      aggregate_va_arg_result.instruction_lines[0] != "ldr x9, [x4, #8]" ||
+      aggregate_va_arg_result.instruction_lines[1] != "ldr x9, [x9]" ||
+      aggregate_va_arg_result.instruction_lines[2] != "str x9, [sp, #32]" ||
+      aggregate_va_arg_result.instruction_lines[3] != "ldr x9, [x4, #8]" ||
+      aggregate_va_arg_result.instruction_lines[4] != "add x9, x9, #8" ||
+      aggregate_va_arg_result.instruction_lines[5] != "ldr x9, [x9]" ||
+      aggregate_va_arg_result.instruction_lines[6] != "str x9, [sp, #40]" ||
+      aggregate_va_arg_result.instruction_lines[7] != "ldr x9, [x4, #8]" ||
+      aggregate_va_arg_result.instruction_lines[8] != "add x9, x9, #16" ||
+      aggregate_va_arg_result.instruction_lines[9] != "ldr x9, [x9]" ||
+      aggregate_va_arg_result.instruction_lines[10] != "str x9, [sp, #48]" ||
+      aggregate_va_arg_result.instruction_lines[11] != "ldr x9, [x4, #8]" ||
+      aggregate_va_arg_result.instruction_lines[12] != "add x9, x9, #24" ||
+      aggregate_va_arg_result.instruction_lines[13] != "str x9, [x4, #8]") {
     return fail(
-        "expected aggregate va_arg helper call to print prepared access-plan records");
+        "expected aggregate va_arg helper call to lower payload copy to executable assembly");
+  }
+  for (const auto& line : aggregate_va_arg_result.instruction_lines) {
+    if (line.find("va.arg.aggregate") != std::string::npos) {
+      return fail("expected aggregate va_arg helper lowering to omit raw helper text");
+    }
   }
 
   const prepare::PreparedCallPlan prepared_va_copy_call{

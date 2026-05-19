@@ -575,6 +575,245 @@ bool append_va_start_i32_field_store(std::vector<std::string>& lines,
   return lines;
 }
 
+[[nodiscard]] std::string register_indirect_address(std::string_view base,
+                                                    std::size_t offset_bytes) {
+  std::ostringstream out;
+  out << "[" << base;
+  if (offset_bytes != 0) {
+    out << ", #" << offset_bytes;
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] bool unsigned_scaled_offset_is_encodable(std::size_t offset_bytes,
+                                                       std::size_t width_bytes) {
+  if (width_bytes == 0) {
+    return false;
+  }
+  return offset_bytes % width_bytes == 0 && offset_bytes / width_bytes <= 4095U;
+}
+
+[[nodiscard]] bool unsigned_byte_offset_is_encodable(std::size_t offset_bytes) {
+  return offset_bytes <= 4095U;
+}
+
+[[nodiscard]] bool unsigned_memory_offset_is_encodable(std::size_t offset_bytes,
+                                                       std::size_t width_bytes) {
+  if (width_bytes == 1) {
+    return unsigned_byte_offset_is_encodable(offset_bytes);
+  }
+  return unsigned_scaled_offset_is_encodable(offset_bytes, width_bytes);
+}
+
+[[nodiscard]] std::string stack_address(std::size_t offset_bytes) {
+  return register_indirect_address("sp", offset_bytes);
+}
+
+[[nodiscard]] std::vector<std::size_t> aggregate_copy_chunks(
+    std::size_t size_bytes) {
+  std::vector<std::size_t> chunks;
+  std::size_t remaining = size_bytes;
+  while (remaining >= 8) {
+    chunks.push_back(8);
+    remaining -= 8;
+  }
+  if (remaining >= 4) {
+    chunks.push_back(4);
+    remaining -= 4;
+  }
+  while (remaining > 0) {
+    chunks.push_back(1);
+    --remaining;
+  }
+  return chunks;
+}
+
+[[nodiscard]] std::string_view aggregate_copy_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+[[nodiscard]] std::string_view aggregate_copy_store_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
+[[nodiscard]] abi::RegisterReference aggregate_copy_data_register(
+    abi::RegisterReference scratch,
+    std::size_t width_bytes) {
+  if (width_bytes == 1 || width_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  return abi::x_register(scratch.index);
+}
+
+bool append_add_unsigned_immediate(std::vector<std::string>& lines,
+                                   abi::RegisterReference destination,
+                                   abi::RegisterReference scratch,
+                                   std::size_t value) {
+  if (value == 0) {
+    return true;
+  }
+  const std::string destination_name = abi::register_name(destination);
+  if (value <= 4095U) {
+    lines.push_back("add " + destination_name + ", " + destination_name +
+                    ", #" + std::to_string(value));
+    return true;
+  }
+  auto materialized = materialize_integer_constant_lines(
+      scratch, static_cast<std::uint64_t>(value), 64);
+  if (materialized.empty()) {
+    return false;
+  }
+  lines.insert(lines.end(), materialized.begin(), materialized.end());
+  lines.push_back("add " + destination_name + ", " + destination_name +
+                  ", " + std::string{abi::register_name(scratch)});
+  return true;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+materialize_aggregate_destination_address_lines(abi::RegisterReference scratch,
+                                                std::size_t stack_offset_bytes) {
+  auto lines = materialize_stack_address_lines(scratch, stack_offset_bytes);
+  if (lines.empty()) {
+    return std::nullopt;
+  }
+  return lines;
+}
+
+bool append_aggregate_source_address_lines(std::vector<std::string>& lines,
+                                           const VariadicAggregateVaArgRecord& va_arg,
+                                           abi::RegisterReference source_scratch,
+                                           abi::RegisterReference add_scratch,
+                                           std::size_t copy_offset_bytes) {
+  if (va_arg.source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
+      !va_arg.source_va_list.register_name.has_value()) {
+    return false;
+  }
+  if (va_arg.source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::OverflowArgArea &&
+      va_arg.source_class !=
+          prepare::PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea) {
+    return false;
+  }
+  const std::string source_name = abi::register_name(source_scratch);
+  lines.push_back("ldr " + source_name + ", " +
+                  register_indirect_address(*va_arg.source_va_list.register_name,
+                                            va_arg.source_field_offset_bytes));
+  return append_add_unsigned_immediate(lines,
+                                       source_scratch,
+                                       add_scratch,
+                                       va_arg.source_payload_offset_bytes +
+                                           copy_offset_bytes);
+}
+
+bool append_aggregate_destination_store(std::vector<std::string>& lines,
+                                        const VariadicAggregateVaArgRecord& va_arg,
+                                        abi::RegisterReference address_scratch,
+                                        abi::RegisterReference data_register,
+                                        std::size_t width_bytes,
+                                        std::size_t copy_offset_bytes) {
+  if (va_arg.destination_payload_home.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !va_arg.destination_payload_home.offset_bytes.has_value()) {
+    return false;
+  }
+  const auto stack_offset =
+      *va_arg.destination_payload_home.offset_bytes + copy_offset_bytes;
+  const auto store_mnemonic = aggregate_copy_store_mnemonic(width_bytes);
+  if (store_mnemonic.empty()) {
+    return false;
+  }
+  if (unsigned_memory_offset_is_encodable(stack_offset, width_bytes)) {
+    lines.push_back(std::string{store_mnemonic} + " " +
+                    std::string{abi::register_name(data_register)} + ", " +
+                    stack_address(stack_offset));
+    return true;
+  }
+  auto address_lines =
+      materialize_aggregate_destination_address_lines(address_scratch, stack_offset);
+  if (!address_lines.has_value()) {
+    return false;
+  }
+  lines.insert(lines.end(), address_lines->begin(), address_lines->end());
+  lines.push_back(std::string{store_mnemonic} + " " +
+                  std::string{abi::register_name(data_register)} + ", [" +
+                  std::string{abi::register_name(address_scratch)} + "]");
+  return true;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg) {
+  if (va_arg.copy_size_bytes == 0 || va_arg.progression_stride_bytes == 0 ||
+      va_arg.scratch_register_count < 2) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  const auto source_scratch = abi::x_register(scratches[0].index);
+  const auto address_scratch = abi::x_register(scratches[1].index);
+  std::vector<std::string> lines;
+  std::size_t copy_offset = 0;
+  for (const auto width_bytes : aggregate_copy_chunks(va_arg.copy_size_bytes)) {
+    const auto load_mnemonic = aggregate_copy_load_mnemonic(width_bytes);
+    if (load_mnemonic.empty() ||
+        !append_aggregate_source_address_lines(lines,
+                                               va_arg,
+                                               source_scratch,
+                                               address_scratch,
+                                               copy_offset)) {
+      return std::nullopt;
+    }
+    const auto data_register =
+        aggregate_copy_data_register(source_scratch, width_bytes);
+    lines.push_back(std::string{load_mnemonic} + " " +
+                    std::string{abi::register_name(data_register)} + ", [" +
+                    std::string{abi::register_name(source_scratch)} + "]");
+    if (!append_aggregate_destination_store(lines,
+                                            va_arg,
+                                            address_scratch,
+                                            data_register,
+                                            width_bytes,
+                                            copy_offset)) {
+      return std::nullopt;
+    }
+    copy_offset += width_bytes;
+  }
+
+  if (va_arg.source_va_list.kind != prepare::PreparedValueHomeKind::Register ||
+      !va_arg.source_va_list.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const std::string source_name = abi::register_name(source_scratch);
+  lines.push_back("ldr " + source_name + ", " +
+                  register_indirect_address(*va_arg.source_va_list.register_name,
+                                            va_arg.progression_field_offset_bytes));
+  if (!append_add_unsigned_immediate(lines,
+                                     source_scratch,
+                                     address_scratch,
+                                     va_arg.progression_stride_bytes)) {
+    return std::nullopt;
+  }
+  lines.push_back("str " + source_name + ", " +
+                  register_indirect_address(*va_arg.source_va_list.register_name,
+                                            va_arg.progression_field_offset_bytes));
+  return lines;
+}
+
 }  // namespace
 
 std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper_kind(
@@ -904,53 +1143,15 @@ std::optional<mir::TargetInstructionPrintResult> print_variadic_call(
     }
 
     const auto& va_arg = *call.variadic_aggregate_va_arg;
-    std::vector<std::string> lines;
-    {
-      std::ostringstream out;
-      out << mnemonic << " source="
-          << prepare::prepared_variadic_aggregate_va_arg_source_class_name(
-                 va_arg.source_class)
-          << " va_list=" << prepared_value_home_name(va_arg.source_va_list)
-          << " destination_payload="
-          << prepared_value_home_name(va_arg.destination_payload_home)
-          << " payload_size=" << va_arg.payload_size_bytes
-          << " payload_align=" << va_arg.payload_align_bytes
-          << " copy_size=" << va_arg.copy_size_bytes
-          << " copy_align=" << va_arg.copy_align_bytes
-          << " scratch_registers=" << va_arg.scratch_register_count
-          << " scratch_stack=" << va_arg.scratch_stack_bytes;
-      lines.push_back(out.str());
+    auto lines = print_aggregate_va_arg_lowering_lines(va_arg);
+    if (!lines.has_value()) {
+      return target_unsupported(
+          bad_header +
+          "aggregate va_arg helper lowering requires register va_list source, "
+          "stack-slot destination payload, two scratch registers, and supported "
+          "prepared source class");
     }
-    {
-      std::ostringstream out;
-      out << "va.arg.aggregate.source field="
-          << prepare::prepared_variadic_va_list_field_kind_name(va_arg.source_field)
-          << " field_offset=" << va_arg.source_field_offset_bytes
-          << " payload_offset=" << va_arg.source_payload_offset_bytes
-          << " slot_size=" << va_arg.source_slot_size_bytes
-          << " rsa_slot#" << va_arg.register_save_area_slot_id
-          << " rsa_stack+" << va_arg.register_save_area_stack_offset_bytes
-          << " rsa_size=" << va_arg.register_save_area_size_bytes
-          << " rsa_align=" << va_arg.register_save_area_align_bytes
-          << " gp_base=" << va_arg.register_save_area_gp_offset_bytes
-          << " fp_base=" << va_arg.register_save_area_fp_offset_bytes
-          << " gp_slot=" << va_arg.register_save_area_gp_slot_size_bytes
-          << " fp_slot=" << va_arg.register_save_area_fp_slot_size_bytes;
-      lines.push_back(out.str());
-    }
-    {
-      std::ostringstream out;
-      out << "va.arg.aggregate.progress field="
-          << prepare::prepared_variadic_va_list_field_kind_name(
-                 va_arg.progression_field)
-          << " field_offset=" << va_arg.progression_field_offset_bytes
-          << " stride=" << va_arg.progression_stride_bytes
-          << " overflow_slot#" << va_arg.overflow_area_base_slot_id
-          << " overflow_stack+" << va_arg.overflow_area_base_stack_offset_bytes
-          << " overflow_align=" << va_arg.overflow_area_align_bytes;
-      lines.push_back(out.str());
-    }
-    return target_printed(std::move(lines));
+    return target_printed(std::move(*lines));
   }
 
   if (call.variadic_entry_helper ==
