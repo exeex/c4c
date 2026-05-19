@@ -1,6 +1,6 @@
 # AArch64 HFA Aggregate Argument Runtime
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md
 
@@ -63,6 +63,23 @@ problem, not scalar ALU immediate materialization.
 - If `00204.c` advances to a later first bad fact outside argument handling,
   that residual is classified into a separate owner instead of being folded
   into this idea.
+
+## Closure Note
+
+Closed: 2026-05-19
+
+The fixed HFA aggregate argument path, caller-side variadic HFA lane handoff,
+and callee-side aggregate `va_arg` helper handoff advanced the representative
+past the original early `Arguments:` corruption and segmentation fault. The
+remaining focused failure is now an AArch64 `f128_transport` machine-printer
+addressability blocker:
+
+`cannot print AArch64 machine node family=f128_transport opcode=f128_transport:
+f128 memory transport address is not printable`
+
+That residual is outside this idea's ABI argument classification and lowering
+owner and is represented by
+`ideas/open/320_aarch64_f128_transport_addressability.md`.
 
 ## Reviewer Reject Signals
 

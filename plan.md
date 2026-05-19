@@ -1,33 +1,34 @@
-# AArch64 HFA Aggregate Argument Runtime Runbook
+# AArch64 F128 Transport Addressability Runbook
 
 Status: Active
-Source Idea: ideas/open/319_aarch64_hfa_aggregate_argument_runtime.md
-Activated from: idea 318 closure after Step 4 residual classification
+Source Idea: ideas/open/320_aarch64_f128_transport_addressability.md
+Activated from: idea 319 closure after Step 4 residual classification
 
 ## Purpose
 
-Repair the next `00204.c` runtime blocker by localizing and fixing the AArch64
-ABI argument path that corrupts early `Arguments:` HFA, floating,
-long-double, or aggregate output before the scalar arithmetic section runs.
+Repair the next `00204.c` backend blocker by localizing and fixing the AArch64
+`f128_transport` machine-node addressability path that currently prevents the
+machine printer from spelling an `fp128` memory transport.
 
 ## Goal
 
-Make the implicated argument class pass through AArch64 call and callee
-lowering correctly, while preserving the assembler-blocker repairs from ideas
-314, 315, 317, and 318.
+Make `f128_transport` memory addresses printable or materializable through a
+general AArch64 backend rule, while preserving the HFA/aggregate argument ABI
+repairs from idea 319 and the earlier assembler-blocker repairs.
 
 ## Core Rule
 
-Progress must be a general AArch64 ABI argument handling capability. Do not
-reopen scalar ALU immediate materialization, raw `va_start` helper lowering,
-large frame adjustment materialization, stack-slot memory spelling,
-frame-layout consistency, semantic admission, expectations, unsupported
-classifications, runners, timeout policy, proof-log contents, or CTest
-registration.
+Progress must be a general AArch64 `fp128` transport/addressability capability.
+Do not reopen HFA argument ABI lowering, scalar ALU immediate materialization,
+raw `va_start` helper lowering, large frame adjustment materialization,
+stack-slot memory spelling, frame-layout consistency, semantic admission,
+expectations, unsupported classifications, runners, timeout policy, proof-log
+contents, or CTest registration.
 
 ## Read First
 
-- `ideas/open/319_aarch64_hfa_aggregate_argument_runtime.md`
+- `ideas/open/320_aarch64_f128_transport_addressability.md`
+- `ideas/closed/319_aarch64_hfa_aggregate_argument_runtime.md`
 - `ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md`
 - `ideas/closed/317_aarch64_variadic_va_start_helper_lowering.md`
 - `ideas/closed/315_aarch64_large_frame_adjustment_materialization.md`
@@ -42,13 +43,14 @@ registration.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - `00204.c` fails at runtime with `RUNTIME_NONZERO` / `Segmentation fault`
-    during early `Arguments:` output.
-  - Printed floating/HFA/aggregate values are corrupted before execution
-    reaches `Return values:`, `stdarg:`, `MOVI:`, or `opi()`.
+  - `00204.c` reaches the AArch64 machine-node printer and fails with
+    `cannot print AArch64 machine node family=f128_transport
+    opcode=f128_transport: f128 memory transport address is not printable`.
 - Initial suspected owner family:
-  - AArch64 ABI classification and argument lowering for HFA, floating,
-    long-double, or aggregate arguments.
+  - `src/backend/mir/aarch64/codegen/instruction.cpp`
+  - `src/backend/prealloc/special_carriers.cpp`
+  - `src/backend/mir/aarch64/codegen/calls.cpp`
+  - AArch64 machine-printer address materialization helpers
 - Prior-owner guardrails:
   - `backend_lir_to_bir_notes`
   - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
@@ -62,6 +64,8 @@ registration.
 
 ## Non-Goals
 
+- Do not reopen idea 319's HFA, floating, long-double, or aggregate ABI
+  argument classification and lowering owner.
 - Do not reopen idea 318's scalar ALU immediate materialization owner.
 - Do not reopen idea 317's raw `va_start` helper-text lowering owner.
 - Do not reopen idea 315's large frame setup and teardown materialization
@@ -69,104 +73,103 @@ registration.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication
   spelling owner.
 - Do not repair idea 316's frame-slot/frame-layout consistency residual unless
-  localization proves the runtime corruption is the same ABI fault.
+  generated evidence proves the `f128_transport` blocker is the same fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
-- Do not rely on filenames, c-testsuite numbers, one printed output line, one
-  function name, one register, or one stack slot.
+- Do not fix global initializer emission unless it becomes the next first bad
+  fact after this owner advances.
 
 ## Working Model
 
-The representative now gets past earlier assembler blockers and executes into
-`pcs()`. The latest stdout reaches the `Arguments:` section, then prints
-implausible floating and long-double values before crashing. Since `opi()` and
-`subim503808` run later, the next first bad fact should be localized around
-argument classification, argument marshaling, or callee-side argument
-materialization for the earliest corrupted HFA, floating, long-double, or
-aggregate value.
+The representative now gets past prior assembler blockers and the HFA/aggregate
+argument ABI corruption. The next first bad fact occurs when a generated
+`f128_transport` machine node tries to move an `fp128` value through memory and
+the AArch64 printer rejects its address as unprintable. The repair should find
+where that transport address is represented and either produce a printable
+memory operand or materialize the address through an established scratch path.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the earliest corrupted runtime value before editing code.
-- Prefer structured ABI or backend tests for the implicated argument class
-  before relying only on the external c-testsuite representative.
-- Preserve prior-owner guardrails; do not weaken prepared handoff, variadic,
-  frame, printer, or scalar ALU coverage to improve counts.
-- If the representative advances to a later non-argument runtime mismatch,
-  linker behavior, timeout, or another blocker, record the new first bad fact
-  and return it to lifecycle classification unless generated-code evidence
-  proves this owner owns it.
+- Localize the exact `f128_transport` node and address shape before editing
+  code.
+- Prefer focused backend coverage for the implicated transport/addressability
+  path before relying only on the external c-testsuite representative.
+- Preserve prior-owner guardrails; do not weaken prepared handoff, HFA ABI,
+  variadic, frame, printer, or scalar ALU coverage to improve counts.
+- If the representative advances to global initializer emission, runtime
+  mismatch, timeout, or another blocker, record the new first bad fact and
+  return it to lifecycle classification unless generated-code evidence proves
+  this owner owns it.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
-  or the implementation touches shared ABI machinery broadly.
+  or the implementation touches shared backend addressability broadly.
 
 ## Ordered Steps
 
-### Step 1: Localize Earliest Argument Corruption
+### Step 1: Localize F128 Transport Address Shape
 
-Goal: identify the first corrupted `Arguments:` value and the AArch64 ABI
-classification or lowering path that owns it.
+Goal: identify the exact `f128_transport` node, memory address shape, and
+AArch64 backend surface that owns the unprintable address.
 
-Primary target: generated `00204.c` artifacts and the AArch64 ABI argument
-classification/lowering surfaces.
+Primary target: generated `00204.c` artifacts and the AArch64
+`f128_transport` transport/carrier/printer surfaces.
 
 Actions:
 
-- Compare expected `00204.c` `Arguments:` output with the observed runtime
-  output to find the earliest mismatched value.
-- Trace the corresponding function parameter through generated assembly,
-  selected records, and call/callee lowering.
-- Distinguish HFA, scalar floating, long-double, and aggregate argument paths.
+- Trace the failing instruction index from the generated artifact to the
+  machine-node record and the address operand.
+- Distinguish transport record construction, carrier selection, call-boundary
+  move handling, and final printer address spelling.
 - Record in `todo.md` the owning code surface, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the earliest corrupted argument fact, the owning code
-  surface, representative tests, and the smallest focused proof command for
-  the repair.
+- `todo.md` names the failing address shape, owning code surface,
+  representative tests, and smallest focused proof command.
 
-### Step 2: Repair The Owned Argument Path
+### Step 2: Repair F128 Transport Addressability
 
-Goal: fix the localized AArch64 argument path generally for the implicated ABI
-class.
+Goal: fix the localized `f128_transport` addressability path generally.
 
 Primary target: code surface identified by Step 1.
 
 Actions:
 
-- Implement the narrow ABI argument repair for the localized class.
-- Preserve unrelated argument classes and existing scalar/integer direct paths.
-- Reuse existing structured ABI records and lowering helpers when available.
-- Avoid variadic helper text, frame adjustment, stack-offset spelling, scalar
-  ALU, runner, expectation, and timeout changes.
+- Implement the narrow transport/addressability repair for `fp128` memory
+  moves.
+- Reuse existing AArch64 memory operand, scratch address materialization, or
+  carrier helpers when available.
+- Preserve unrelated argument ABI, scalar ALU, variadic helper, frame, runner,
+  expectation, and timeout behavior.
 
 Completion check:
 
-- Focused proof shows the original argument corruption is gone, or `todo.md`
-  records the next first bad fact with evidence.
+- Focused proof shows the original `f128 memory transport address is not
+  printable` failure is gone, or `todo.md` records the next first bad fact with
+  evidence.
 
-### Step 3: Add Focused ABI Coverage
+### Step 3: Add Focused Transport Coverage
 
-Goal: make the repaired argument class observable in local backend or ABI
-tests.
+Goal: make the repaired `f128_transport` addressability path observable in
+local backend tests.
 
-Primary target: existing AArch64 ABI, call-lowering, instruction dispatch, or
-printer tests that already cover adjacent argument behavior.
+Primary target: existing AArch64 machine-printer, instruction dispatch,
+carrier, or call-boundary tests that already cover adjacent transport behavior.
 
 Actions:
 
-- Add or extend coverage for the implicated HFA, floating, long-double, or
-  aggregate argument class.
-- Preserve coverage for adjacent unaffected argument classes.
-- Assert the ABI contract rather than one incidental register, stack slot, or
-  output line unless the ABI requires that location.
+- Add or extend coverage for the implicated `f128_transport` memory address
+  shape.
+- Preserve adjacent scalar, vector, and ordinary memory transport behavior.
+- Assert the backend addressability contract rather than one incidental
+  testcase name or instruction index.
 
 Completion check:
 
-- Local coverage exercises the repaired class and verifies adjacent behavior
-  remains stable.
+- Local coverage exercises the repaired `f128_transport` path and verifies
+  adjacent behavior remains stable.
 
 ### Step 4: Validate And Classify Residuals
 
@@ -176,14 +179,15 @@ Primary target: supervisor-selected focused proof scope.
 
 Actions:
 
-- Run a focused proof including build, local AArch64 ABI/backend coverage,
-  prior-owner guardrails from ideas 314, 315, 317, and 318, and the `00204.c`
-  c-testsuite representative.
+- Run a focused proof including build, local AArch64 transport/backend
+  coverage, prior-owner guardrails from ideas 314, 315, 317, 318, and 319, and
+  the `00204.c` c-testsuite representative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if the same early argument corruption
-  remains.
+- Do not claim this owner complete if the same `f128_transport`
+  addressability failure remains.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current early `Arguments:` corruption is
-  gone, or the remaining blocker is explicitly localized for the next packet.
+- `todo.md` records fresh proof. The current `f128_transport` addressability
+  blocker is gone, or the remaining blocker is explicitly localized for the
+  next packet.
