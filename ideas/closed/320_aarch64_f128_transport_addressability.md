@@ -1,6 +1,6 @@
 # AArch64 F128 Transport Addressability
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/319_aarch64_hfa_aggregate_argument_runtime.md
 
@@ -85,3 +85,13 @@ Reject the route if it:
   `f128_transport` addressability;
 - adds coverage that only checks the external c-testsuite representative while
   omitting focused backend coverage for the repaired transport path.
+
+## Closure Note
+
+Closed on 2026-05-19. The AArch64 `f128_transport` printer/addressability
+blocker is repaired and focused backend coverage exists for the materialized
+address path. The representative `00204.c` now advances past the prior
+`family=f128_transport` / `f128 memory transport address is not printable`
+failure. The remaining focused failure is raw `va.arg.aggregate` helper text
+reaching assembly, which belongs to the separate AArch64 aggregate `va_arg`
+helper lowering owner.

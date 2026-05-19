@@ -1,33 +1,36 @@
-# AArch64 F128 Transport Addressability Runbook
+# AArch64 Aggregate Va Arg Helper Lowering Runbook
 
 Status: Active
-Source Idea: ideas/open/320_aarch64_f128_transport_addressability.md
-Activated from: idea 319 closure after Step 4 residual classification
+Source Idea: ideas/open/321_aarch64_aggregate_va_arg_helper_lowering.md
+Activated from: idea 320 closure after Step 4 residual classification
 
 ## Purpose
 
-Repair the next `00204.c` backend blocker by localizing and fixing the AArch64
-`f128_transport` machine-node addressability path that currently prevents the
-machine printer from spelling an `fp128` memory transport.
+Repair the next `00204.c` backend blocker by lowering AArch64 aggregate
+`va_arg` helper machine records into executable assembly instead of printing
+raw descriptive helper text.
 
 ## Goal
 
-Make `f128_transport` memory addresses printable or materializable through a
-general AArch64 backend rule, while preserving the HFA/aggregate argument ABI
-repairs from idea 319 and the earlier assembler-blocker repairs.
+Make `PreparedVariadicEntryHelperKind::VaArgAggregate` /
+`VariadicVaArgAggregate` produce executable AArch64 source selection,
+aggregate copy, and `va_list` progression code while preserving prior backend
+repairs.
 
 ## Core Rule
 
-Progress must be a general AArch64 `fp128` transport/addressability capability.
-Do not reopen HFA argument ABI lowering, scalar ALU immediate materialization,
-raw `va_start` helper lowering, large frame adjustment materialization,
-stack-slot memory spelling, frame-layout consistency, semantic admission,
-expectations, unsupported classifications, runners, timeout policy, proof-log
-contents, or CTest registration.
+Progress must be a general AArch64 aggregate `va_arg` helper lowering
+capability. Do not reopen F128 transport addressability, HFA argument ABI
+lowering, scalar ALU immediate materialization, raw `va_start` helper
+lowering, frame adjustment materialization, stack-slot memory spelling,
+frame-layout consistency, semantic admission, expectations, unsupported
+classifications, runners, timeout policy, proof-log contents, or CTest
+registration.
 
 ## Read First
 
-- `ideas/open/320_aarch64_f128_transport_addressability.md`
+- `ideas/open/321_aarch64_aggregate_va_arg_helper_lowering.md`
+- `ideas/closed/320_aarch64_f128_transport_addressability.md`
 - `ideas/closed/319_aarch64_hfa_aggregate_argument_runtime.md`
 - `ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md`
 - `ideas/closed/317_aarch64_variadic_va_start_helper_lowering.md`
@@ -43,14 +46,14 @@ contents, or CTest registration.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - `00204.c` reaches the AArch64 machine-node printer and fails with
-    `cannot print AArch64 machine node family=f128_transport
-    opcode=f128_transport: f128 memory transport address is not printable`.
+  - generated assembly contains un-commented `va.arg.aggregate`,
+    `va.arg.aggregate.source`, and `va.arg.aggregate.progress` lines that the
+    assembler rejects as unexpected tokens.
 - Initial suspected owner family:
-  - `src/backend/mir/aarch64/codegen/instruction.cpp`
-  - `src/backend/prealloc/special_carriers.cpp`
-  - `src/backend/mir/aarch64/codegen/calls.cpp`
-  - AArch64 machine-printer address materialization helpers
+  - `src/backend/mir/aarch64/codegen/variadic.cpp`
+  - `PreparedVariadicEntryHelperKind::VaArgAggregate`
+  - `MachinePrinterMnemonicKind::VariadicVaArgAggregate`
+  - aggregate copy/address helpers used by AArch64 machine printing
 - Prior-owner guardrails:
   - `backend_lir_to_bir_notes`
   - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
@@ -64,6 +67,7 @@ contents, or CTest registration.
 
 ## Non-Goals
 
+- Do not reopen idea 320's F128 transport addressability owner.
 - Do not reopen idea 319's HFA, floating, long-double, or aggregate ABI
   argument classification and lowering owner.
 - Do not reopen idea 318's scalar ALU immediate materialization owner.
@@ -73,102 +77,102 @@ contents, or CTest registration.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication
   spelling owner.
 - Do not repair idea 316's frame-slot/frame-layout consistency residual unless
-  generated evidence proves the `f128_transport` blocker is the same fault.
+  generated evidence proves it is the same aggregate `va_arg` lowering fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
 - Do not fix global initializer emission unless it becomes the next first bad
-  fact after this owner advances.
+  fact after aggregate `va_arg` helper lowering is repaired.
 
 ## Working Model
 
-The representative now gets past prior assembler blockers and the HFA/aggregate
-argument ABI corruption. The next first bad fact occurs when a generated
-`f128_transport` machine node tries to move an `fp128` value through memory and
-the AArch64 printer rejects its address as unprintable. The repair should find
-where that transport address is represented and either produce a printable
-memory operand or materialize the address through an established scratch path.
+The representative now gets past prior assembler blockers, HFA/aggregate
+argument ABI corruption, scalar immediate materialization, raw `va_start`
+text, large stack/frame materialization, and F128 transport addressability.
+The next first bad fact occurs when the AArch64 variadic helper printer emits
+aggregate `va_arg` records as descriptive text. The repair should replace
+those records with executable AArch64 code that selects the correct source,
+copies the aggregate object, and advances the `va_list` state.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the exact `f128_transport` node and address shape before editing
-  code.
-- Prefer focused backend coverage for the implicated transport/addressability
-  path before relying only on the external c-testsuite representative.
+- Localize the exact aggregate helper records and required source/progress
+  semantics before editing code.
+- Prefer focused backend coverage for the helper output before relying only on
+  the external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff, HFA ABI,
-  variadic, frame, printer, or scalar ALU coverage to improve counts.
+  F128 transport, frame, printer, scalar ALU, runner, or expectation coverage.
 - If the representative advances to global initializer emission, runtime
   mismatch, timeout, or another blocker, record the new first bad fact and
   return it to lifecycle classification unless generated-code evidence proves
   this owner owns it.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
-  or the implementation touches shared backend addressability broadly.
+  or the implementation touches shared backend helper/printer behavior broadly.
 
 ## Ordered Steps
 
-### Step 1: Localize F128 Transport Address Shape
+### Step 1: Localize Aggregate Va Arg Helper Records
 
-Goal: identify the exact `f128_transport` node, memory address shape, and
-AArch64 backend surface that owns the unprintable address.
+Goal: identify the exact helper records, data fields, and AArch64 printer
+surface that currently emit raw `va.arg.aggregate` text.
 
-Primary target: generated `00204.c` artifacts and the AArch64
-`f128_transport` transport/carrier/printer surfaces.
+Primary target: generated `00204.c` artifacts and
+`src/backend/mir/aarch64/codegen/variadic.cpp`.
 
 Actions:
 
-- Trace the failing instruction index from the generated artifact to the
-  machine-node record and the address operand.
-- Distinguish transport record construction, carrier selection, call-boundary
-  move handling, and final printer address spelling.
-- Record in `todo.md` the owning code surface, representative tests, and the
+- Trace the raw `va.arg.aggregate` lines from generated assembly back to the
+  prepared variadic helper entries and machine mnemonic.
+- Distinguish source selection, aggregate copy, and `va_list` progression
+  responsibilities.
+- Record in `todo.md` the owning code surfaces, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the failing address shape, owning code surface,
+- `todo.md` names the raw helper record shapes, owning code surfaces,
   representative tests, and smallest focused proof command.
 
-### Step 2: Repair F128 Transport Addressability
+### Step 2: Lower Aggregate Va Arg Helper Output
 
-Goal: fix the localized `f128_transport` addressability path generally.
+Goal: replace raw aggregate `va_arg` helper text with executable AArch64 code.
 
 Primary target: code surface identified by Step 1.
 
 Actions:
 
-- Implement the narrow transport/addressability repair for `fp128` memory
-  moves.
-- Reuse existing AArch64 memory operand, scratch address materialization, or
-  carrier helpers when available.
-- Preserve unrelated argument ABI, scalar ALU, variadic helper, frame, runner,
+- Implement the narrow aggregate helper lowering for source selection,
+  aggregate copy, and progression.
+- Reuse existing AArch64 memory, copy, scratch, and address materialization
+  helpers when available.
+- Preserve unrelated F128 transport, argument ABI, scalar ALU, frame, runner,
   expectation, and timeout behavior.
 
 Completion check:
 
-- Focused proof shows the original `f128 memory transport address is not
-  printable` failure is gone, or `todo.md` records the next first bad fact with
-  evidence.
+- Focused proof shows raw `va.arg.aggregate` helper text is gone from emitted
+  assembly, or `todo.md` records the next first bad fact with evidence.
 
-### Step 3: Add Focused Transport Coverage
+### Step 3: Add Focused Aggregate Va Arg Coverage
 
-Goal: make the repaired `f128_transport` addressability path observable in
-local backend tests.
+Goal: make aggregate `va_arg` helper lowering observable in local backend
+tests.
 
-Primary target: existing AArch64 machine-printer, instruction dispatch,
-carrier, or call-boundary tests that already cover adjacent transport behavior.
+Primary target: existing AArch64 machine-printer, variadic, instruction
+dispatch, or prepared-BIR tests that already cover adjacent variadic helper
+behavior.
 
 Actions:
 
-- Add or extend coverage for the implicated `f128_transport` memory address
-  shape.
-- Preserve adjacent scalar, vector, and ordinary memory transport behavior.
-- Assert the backend addressability contract rather than one incidental
-  testcase name or instruction index.
+- Add or extend coverage for aggregate `va_arg` helper output.
+- Assert executable AArch64 output and absence of raw helper mnemonics.
+- Preserve adjacent scalar, HFA, `va_start`, and ordinary memory helper
+  behavior.
 
 Completion check:
 
-- Local coverage exercises the repaired `f128_transport` path and verifies
+- Local coverage exercises aggregate `va_arg` helper lowering and verifies
   adjacent behavior remains stable.
 
 ### Step 4: Validate And Classify Residuals
@@ -179,15 +183,15 @@ Primary target: supervisor-selected focused proof scope.
 
 Actions:
 
-- Run a focused proof including build, local AArch64 transport/backend
-  coverage, prior-owner guardrails from ideas 314, 315, 317, 318, and 319, and
-  the `00204.c` c-testsuite representative.
+- Run a focused proof including build, local AArch64 helper/backend coverage,
+  prior-owner guardrails from ideas 314, 315, 317, 318, 319, and 320, and the
+  `00204.c` c-testsuite representative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if the same `f128_transport`
-  addressability failure remains.
+- Do not claim this owner complete if raw aggregate `va_arg` helper text
+  remains in emitted assembly.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current `f128_transport` addressability
-  blocker is gone, or the remaining blocker is explicitly localized for the
-  next packet.
+- `todo.md` records fresh proof. The current raw `va.arg.aggregate` helper
+  text blocker is gone, or the remaining blocker is explicitly localized for
+  the next packet.
