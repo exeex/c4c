@@ -1,8 +1,9 @@
 # AArch64 C-Testsuite 00205 Value Materialization Residual
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -67,6 +68,20 @@ timeout repair is preserved without silently expanding idea 304.
 - No expectation, allowlist, unsupported classification, timeout policy,
   runner behavior, proof-log policy, or CTest registration change is used as
   capability progress.
+
+## Closure Notes
+
+Closed after the prepared direct-global value-materialization residual was
+classified and repaired for AArch64 call consumption. The final focused proof
+recorded in `todo.md` at commit `2606b9390` passed `00064`, `00139`, and
+`00205`; `00205` completed quickly, the high stack-home reads `[sp, #632]`,
+`[sp, #1064]`, `[sp, #1352]`, and `[sp, #1496]` were absent, and legal
+`sxtw x9, w13` spelling remained preserved.
+
+Close-gate validation used matching broader backend canonical logs from
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`. The regression
+guard passed with `--allow-non-decreasing-passed`: before 139/139, after
+139/139, no new failures, and no slow tests.
 
 ## Reviewer Reject Signals
 
