@@ -25,6 +25,13 @@ fails in `store local-memory semantic family`, `00216` still fails in
 
 ## Suggested Next
 
+Plan-owner route decision: keep idea 297 active on Step 3. Do not close the
+idea yet, because `00046` remains a direct local-memory store subobject
+admission residual inside the source idea's store/load boundary criteria. Do
+not switch or split for `00216`, `00218`, or the reclassified global/pointer
+projection GEP residuals in this lifecycle pass; record them as later
+owner-candidate evidence unless the supervisor explicitly selects that route.
+
 Keep the next packet focused on `00046` if the supervisor wants to continue
 Step 3 store/load boundaries: scalar stores through local aggregate/union byte
 subobjects still need to route through addressable local subobject provenance
@@ -76,12 +83,19 @@ call-boundary move printer failure as a later non-local-memory backend packet.
 
 ## Proof
 
+Lifecycle decision proof note: close was not attempted, so no close guard was
+run. The active focused boundary baseline available in this worktree is
+`test_before.log`, where `backend_lir_to_bir_notes` passes and residuals are
+`00046` store local-memory, `00140` AArch64 call-boundary move printer, `00216`
+GEP local-memory, and `00218` load local-memory. `test_after.log` is not
+present in the current worktree, and this lifecycle pass did not recreate or
+modify proof logs.
+
 Ran exactly:
 
 `cmake --build build --target c4cll backend_lir_to_bir_notes_test && ctest --test-dir build -R '^(backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_(00046|00140|00216|00218)_c)$' --output-on-failure | tee test_after.log`
 
-Result: build passed and `backend_lir_to_bir_notes` passed. The focused
-c-testsuite subset still fails overall, with `test_after.log` preserving the
-proof. Residuals: `00046` store local-memory, `00140` now AArch64
-call-boundary move printer failure, `00216` GEP local-memory, `00218` load
-local-memory.
+Prior executor-recorded result: build passed and `backend_lir_to_bir_notes`
+passed. The focused c-testsuite subset still failed overall. Residuals:
+`00046` store local-memory, `00140` now AArch64 call-boundary move printer
+failure, `00216` GEP local-memory, `00218` load local-memory.
