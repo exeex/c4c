@@ -89,6 +89,11 @@ namespace {
   return std::nullopt;
 }
 
+[[nodiscard]] std::string scalar_cast_immediate_name(
+    const ImmediateOperand& operand) {
+  return "#" + std::to_string(operand.signed_value);
+}
+
 [[nodiscard]] std::optional<abi::RegisterView> floating_register_view(
     bir::TypeKind type) {
   switch (type) {
@@ -696,12 +701,6 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
         diagnostic_prefix,
         "scalar cast node requires a supported integer source/result width"));
   }
-  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
-  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
-    return target_unsupported(diagnostic(
-        diagnostic_prefix,
-        "scalar cast node requires a structured register source operand"));
-  }
   const auto result_view = integer_register_view(*result_bits);
   if (!result_view.has_value()) {
     return target_unsupported(diagnostic(
@@ -713,6 +712,38 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
     return target_unsupported(diagnostic(
         diagnostic_prefix,
         "scalar cast node destination is not a printable GPR register"));
+  }
+
+  std::vector<std::string> lines;
+  std::optional<RegisterOperand> materialized_source_register;
+  const auto* source_register = std::get_if<RegisterOperand>(&cast.source.payload);
+  if (cast.source.kind != OperandKind::Register || source_register == nullptr) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&cast.source.payload);
+    if (cast.source.kind == OperandKind::Immediate && immediate != nullptr) {
+      abi::RegisterView materialized_view = abi::RegisterView::W;
+      if (cast.operation == ScalarCastOperationKind::SignExtend && *source_bits == 1U) {
+        materialized_view = *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X;
+      } else if (cast.operation == ScalarCastOperationKind::ZeroExtend) {
+        materialized_view = *result_bits <= 32U ? abi::RegisterView::W : abi::RegisterView::X;
+      }
+      const auto materialized_name =
+          register_name_with_view(*scalar.result_register, materialized_view);
+      if (!materialized_name.has_value()) {
+        return target_unsupported(diagnostic(
+            diagnostic_prefix,
+            "scalar cast node cannot materialize immediate source into a GPR register"));
+      }
+      std::ostringstream materialize;
+      materialize << "mov " << *materialized_name << ", "
+                  << scalar_cast_immediate_name(*immediate);
+      lines.push_back(materialize.str());
+      materialized_source_register = *scalar.result_register;
+      source_register = &*materialized_source_register;
+    } else {
+      return target_unsupported(diagnostic(
+          diagnostic_prefix,
+          "scalar cast node requires a structured register source operand"));
+    }
   }
 
   std::ostringstream out;
@@ -749,7 +780,8 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
         }
         out << mnemonic << " " << *result << ", " << *source;
       }
-      return target_printed({out.str()});
+      lines.push_back(out.str());
+      return target_printed(std::move(lines));
     }
     case ScalarCastOperationKind::ZeroExtend: {
       const auto source = register_name_with_view(
@@ -765,7 +797,8 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
       } else {
         out << "ubfx " << *result << ", " << *source << ", #0, #" << *source_bits;
       }
-      return target_printed({out.str()});
+      lines.push_back(out.str());
+      return target_printed(std::move(lines));
     }
     case ScalarCastOperationKind::Truncate: {
       if (*result_bits > 32U) {
@@ -785,7 +818,8 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
         const std::uint64_t mask = (std::uint64_t{1} << *result_bits) - 1U;
         out << "and " << *result << ", " << *source << ", #" << mask;
       }
-      return target_printed({out.str()});
+      lines.push_back(out.str());
+      return target_printed(std::move(lines));
     }
     case ScalarCastOperationKind::FloatExtend:
     case ScalarCastOperationKind::FloatTruncate:

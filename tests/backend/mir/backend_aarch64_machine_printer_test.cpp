@@ -3893,7 +3893,7 @@ int selected_scalar_add_sub_materializes_nonencodable_immediates() {
 }
 
 int selected_simple_integer_casts_reject_missing_or_unsupported_facts() {
-  const auto missing_source = aarch64_codegen::make_scalar_instruction(
+  const auto materialized_source = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
           .operation = aarch64_codegen::ScalarCastOperationKind::SignExtend,
@@ -3910,12 +3910,14 @@ int selected_simple_integer_casts_reject_missing_or_unsupported_facts() {
           }),
           .supported_simple_integer_cast = true,
       }));
-  const auto missing_source_result =
-      aarch64_codegen::print_machine_instruction_line_payloads(missing_source);
-  if (missing_source_result.ok ||
-      missing_source_result.diagnostic.find("structured register source operand") ==
-          std::string::npos) {
-    return fail("expected simple integer cast without source register to fail closed");
+  const auto materialized_source_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(materialized_source);
+  if (!materialized_source_result.ok ||
+      materialized_source_result.instruction_lines.size() != 2 ||
+      materialized_source_result.instruction_lines[0] != "mov w0, #1" ||
+      materialized_source_result.instruction_lines[1] != "sxtw x0, w0") {
+    return fail("expected simple integer cast immediate source to materialize: " +
+                join_lines(materialized_source_result.instruction_lines));
   }
 
   const auto unsupported_type = aarch64_codegen::make_scalar_instruction(
