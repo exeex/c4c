@@ -1,33 +1,36 @@
-# AArch64 Vararg Consumption Source And Progression Runbook
+# AArch64 Variadic Frame And Formal Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/323_aarch64_vararg_consumption_source_progression.md
-Activated from: idea 322 closure after Step 4 residual classification
+Source Idea: ideas/open/324_aarch64_variadic_frame_formal_publication.md
+Activated from: idea 323 closure after Step 4 residual classification
 
 ## Purpose
 
-Repair the next `00204.c` runtime blocker by fixing AArch64 `va_arg`
-source selection, value transport, and `va_list` progression after `va_start`
-has initialized a real local `va_list` object.
+Repair the next `00204.c` runtime blocker by fixing AArch64 variadic function
+frame-slot publication and fixed-formal preservation after prior `va_start`
+and `va_arg` lowering repairs.
 
 ## Goal
 
-Make AArch64 vararg consumption load and advance from the correct initialized
-`va_list` source for aggregate, floating, and long-double consumers.
+Make generated AArch64 variadic functions allocate stack frames that cover all
+emitted local/spill slots and preserve incoming fixed formals before variadic
+setup or loop code reuses argument registers.
 
 ## Core Rule
 
-Progress must be a general AArch64 `va_arg` consumption capability. Do not
-reopen `va_start` destination publication, aggregate helper text lowering, F128
-transport addressability, HFA argument call-lane lowering, scalar ALU immediate
+Progress must be a general AArch64 variadic frame/local/formal publication
+capability. Do not reopen aggregate `va_arg` source/progression, `va_start`
+destination publication, aggregate helper text lowering, F128 transport
+addressability, HFA argument call-lane lowering, scalar ALU immediate
 materialization, frame adjustment materialization, stack-slot memory spelling,
 semantic admission, expectations, unsupported classifications, runners,
 timeout policy, proof-log contents, or CTest registration unless generated-code
-evidence proves that surface owns the current consumer fault.
+evidence proves that surface owns the current frame/formal fault.
 
 ## Read First
 
-- `ideas/open/323_aarch64_vararg_consumption_source_progression.md`
+- `ideas/open/324_aarch64_variadic_frame_formal_publication.md`
+- `ideas/closed/323_aarch64_vararg_consumption_source_progression.md`
 - `ideas/closed/322_aarch64_va_start_destination_address_materialization.md`
 - `ideas/closed/321_aarch64_aggregate_va_arg_helper_lowering.md`
 - `ideas/closed/320_aarch64_f128_transport_addressability.md`
@@ -46,14 +49,14 @@ evidence proves that surface owns the current consumer fault.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - generated `myprintf` reaches scalar and string varargs, then emits corrupt
-    long-double/floating output and segfaults while consuming the initialized
-    `va_list`.
+  - generated `myprintf` allocates only `896` bytes but later references stack
+    slots such as `[sp, #9696]`, and it clobbers the incoming format pointer
+    with `mov x0, x21` before the format loop.
 - Initial suspected owner family:
-  - AArch64 variadic `va_arg` prepared access plans and helper records
-  - `src/backend/mir/aarch64/codegen/variadic.cpp`
-  - source selection, value copy/load, alignment, and progression helpers for
-    aggregate, floating, and long-double consumers
+  - AArch64 frame-size accounting and local stack-slot publication
+  - fixed formal argument publication/preservation for variadic functions
+  - prepared homes, frame slots, and machine-printer lowering for AArch64
+    variadic function entries
 - Prior-owner guardrails:
   - `backend_lir_to_bir_notes`
   - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
@@ -67,14 +70,14 @@ evidence proves that surface owns the current consumer fault.
 
 ## Non-Goals
 
-- Do not reopen idea 322's `va_start` destination address publication owner
-  unless generated evidence proves the materialized address is the wrong
-  writable object.
+- Do not reopen idea 323's aggregate/floating `va_arg` source selection or
+  `FpOffset` progression owner unless generated evidence proves those paths
+  still own the first bad fact.
+- Do not reopen idea 322's `va_start` destination address publication owner.
 - Do not reopen idea 321's aggregate `va_arg` helper text lowering owner.
 - Do not reopen idea 320's F128 transport addressability owner.
 - Do not reopen idea 319's HFA argument call-lane owner except where current
-  consumer-side source/progression evidence requires HFA or floating retrieval
-  rules.
+  frame/formal evidence directly requires it.
 - Do not reopen idea 318's scalar ALU immediate materialization owner.
 - Do not reopen idea 315's large frame setup and teardown materialization
   owner.
@@ -85,7 +88,8 @@ evidence proves that surface owns the current consumer fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
 - Do not fix global initializer emission or unrelated runtime mismatches unless
-  they become the next first bad fact after `va_arg` consumption is repaired.
+  they become the next first bad fact after frame/formal publication is
+  repaired.
 
 ## Working Model
 
@@ -93,22 +97,24 @@ The representative now gets past prior assembler blockers, HFA/aggregate
 argument ABI corruption, scalar immediate materialization, raw helper text,
 large stack/frame materialization, F128 transport addressability, aggregate
 `va_arg` helper lowering, and `va_start` destination publication. The next
-first bad fact occurs during vararg consumption: initialized `va_list` fields
-are read and advanced, scalar/string output appears, and long-double/floating
-values corrupt before a segfault. The repair should localize which consumer
-source selection, value transport, or progression rule is wrong and fix that
-rule generally.
+first bad fact is frame/formal correctness in generated `myprintf`: emitted
+stack-slot offsets exceed the allocated frame, and the incoming fixed formal
+for the format string is not reliably preserved before the format loop. The
+repair should localize whether prepared homes, frame-size computation,
+stack-slot publication, formal preservation, or printer lowering owns that
+fault and fix that rule generally.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the exact consumer record, access plan, and emitted load/progression
-  sequence before editing code.
-- Prefer focused backend coverage for the vararg consumption contract
-  before relying only on the external c-testsuite representative.
+- Localize the exact frame slot, formal home, prepared record, and emitted
+  stack/register sequence before editing code.
+- Prefer focused backend coverage for frame-size coverage and fixed-formal
+  preservation before relying only on the external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff, `va_start`
-  destination publication, aggregate helper lowering, F128 transport, frame,
-  printer, scalar ALU, runner, or expectation coverage.
+  destination publication, aggregate helper lowering, F128 transport,
+  aggregate `va_arg` source/progression, frame, printer, scalar ALU, runner,
+  or expectation coverage.
 - If the representative advances to global initializer emission, runtime
   mismatch, timeout, or another blocker, record the new first bad fact and
   return it to lifecycle classification unless generated-code evidence proves
@@ -119,74 +125,77 @@ rule generally.
 
 ## Ordered Steps
 
-### Step 1: Localize Vararg Consumption Fault
+### Step 1: Localize Frame And Formal Publication Fault
 
-Goal: identify the exact post-`va_start` `va_arg` consumer path that corrupts
-long-double/floating output or advances the `va_list` incorrectly.
+Goal: identify the exact frame-size, stack-slot, local-publication, or
+fixed-formal preservation path that emits out-of-frame accesses or clobbers the
+incoming format pointer.
 
 Primary target: generated `00204.c` artifacts and
-`src/backend/mir/aarch64/codegen/variadic.cpp`.
+AArch64 frame/formal publication surfaces.
 
 Actions:
 
-- Trace the generated `myprintf` consumer sequence after the repaired
-  `va_start` initialization.
-- Map failing loads, copies, alignment, and progression updates back to
-  prepared access plans, machine records, and printer helpers.
-- Distinguish source selection, value transport, and `va_list` progression
-  responsibilities.
+- Trace the generated `myprintf` entry, frame allocation, fixed-formal
+  publication, and first out-of-frame stack references.
+- Map oversized stack offsets and the `mov x0, x21` formal clobber back to
+  prepared homes, frame slots, machine records, and printer helpers.
+- Distinguish frame-size accounting, local stack-slot publication, spill-slot
+  materialization, and fixed-formal preservation responsibilities.
 - Record in `todo.md` the owning code surfaces, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the bad consumer record/path, owning code surfaces,
+- `todo.md` names the bad frame/formal record/path, owning code surfaces,
   representative tests, and smallest focused proof command.
 
-### Step 2: Repair Consumer Source And Progression
+### Step 2: Repair Frame And Formal Publication
 
-Goal: make the localized `va_arg` consumer use the correct initialized source,
-copy/load the value correctly, and advance the `va_list` according to AAPCS64.
+Goal: make generated AArch64 variadic functions allocate enough frame space
+for emitted stack slots and preserve incoming fixed formals before generated
+user code consumes them.
 
 Primary target: code surface identified by Step 1.
 
 Actions:
 
-- Implement the localized source selection, value transport, alignment, or
-  progression repair.
-- Reuse existing AArch64 access-plan, frame-slot, stack-offset, register,
-  scratch, and address materialization helpers when available.
-- Preserve unrelated `va_start`, aggregate helper text, F128 transport,
-  argument ABI, scalar ALU, frame, runner, expectation, and timeout behavior.
+- Implement the localized frame-size, local-publication, spill-home, or
+  fixed-formal preservation repair.
+- Reuse existing AArch64 frame-slot, stack-offset, register, scratch,
+  prepared-home, and address materialization helpers when available.
+- Preserve unrelated `va_start`, aggregate helper text, aggregate `va_arg`,
+  F128 transport, argument ABI, scalar ALU, runner, expectation, and timeout
+  behavior.
 
 Completion check:
 
-- Focused proof shows the localized consumer path emits correct executable
-  source/progression code, or `todo.md` records the next first bad fact with
-  evidence.
+- Focused proof shows emitted stack references are inside the allocated frame
+  and fixed formals remain available to generated user code, or `todo.md`
+  records the next first bad fact with evidence.
 
-### Step 3: Add Focused Vararg Consumer Coverage
+### Step 3: Add Focused Frame And Formal Coverage
 
-Goal: make the repaired `va_arg` consumer behavior observable in local backend
-tests.
+Goal: make the repaired frame/local/formal behavior observable in local
+backend tests.
 
 Primary target: existing AArch64 machine-printer, variadic, instruction
-dispatch, or prepared-BIR tests that already cover adjacent variadic helper
-behavior.
+dispatch, frame, or prepared-BIR tests that already cover adjacent variadic
+function behavior.
 
 Actions:
 
-- Add or extend coverage for the repaired aggregate/floating/long-double
-  consumer path.
-- Assert source selection, value movement, and `va_list` progression are
-  observable and executable.
-- Preserve adjacent scalar, HFA, aggregate helper, `va_start`, and ordinary
-  memory helper behavior.
+- Add or extend coverage for frame allocation covering emitted stack slots in
+  a variadic function.
+- Add or extend coverage proving incoming fixed formals are preserved or
+  published before variadic setup and loop code can reuse argument registers.
+- Preserve adjacent scalar, HFA, aggregate helper, `va_start`, aggregate
+  `va_arg`, and ordinary memory helper behavior.
 
 Completion check:
 
-- Local coverage exercises the repaired consumer contract and verifies adjacent
-  behavior remains stable.
+- Local coverage exercises the repaired frame/formal contract and verifies
+  adjacent behavior remains stable.
 
 ### Step 4: Validate And Classify Residuals
 
@@ -198,12 +207,13 @@ Actions:
 
 - Run a focused proof including build, local AArch64 helper/backend coverage,
   prior-owner guardrails from ideas 314, 315, 317, 318, 319, 320, 321, and
-  322, and the `00204.c` c-testsuite representative.
+  322 and 323, and the `00204.c` c-testsuite representative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if the localized consumer still reads,
-  copies, or advances from the wrong source.
+- Do not claim this owner complete if generated code still references stack
+  slots outside the allocated frame or consumes clobbered fixed formals before
+  publication.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current vararg consumer blocker is gone,
-  or the remaining blocker is explicitly localized for the next packet.
+- `todo.md` records fresh proof. The current frame/formal blocker is gone, or
+  the remaining blocker is explicitly localized for the next packet.

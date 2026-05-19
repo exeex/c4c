@@ -1,6 +1,6 @@
 # AArch64 Vararg Consumption Source And Progression
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/322_aarch64_va_start_destination_address_materialization.md
 
@@ -71,6 +71,21 @@ address publication.
   proof.
 - If `00204.c` advances to another first bad fact outside vararg consumption
   source/progression, the residual is classified into a separate owner.
+
+## Closure Note
+
+Closed on 2026-05-19. AArch64 aggregate HFA/floating `va_arg` consumers now
+use executable FP register-save-area source selection, lane-sized value
+movement, `FpOffset` progression, and overflow fallback. Raw
+`va.arg.aggregate*` text remains absent, and the repaired `va_start`
+destination sequence remains intact.
+
+The remaining `c_testsuite_aarch64_backend_src_00204_c` failure is outside
+vararg consumption source/progression. Generated `myprintf` allocates an
+`896` byte frame but later references stack slots such as `[sp, #9696]`, and
+it overwrites the incoming format pointer with `mov x0, x21` before the format
+loop. That residual is represented by
+`ideas/open/324_aarch64_variadic_frame_formal_publication.md`.
 
 ## Reviewer Reject Signals
 
