@@ -193,6 +193,22 @@ std::optional<abi::RegisterReference> stack_source_store_scratch_register(
   return std::nullopt;
 }
 
+std::optional<abi::RegisterReference> symbol_stack_source_store_scratch_register(
+    const MemoryInstructionRecord& memory) {
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2) {
+    return std::nullopt;
+  }
+  if (memory.address.size_bytes == 1 || memory.address.size_bytes == 2 ||
+      memory.address.size_bytes == 4) {
+    return abi::w_register(scratches[1].index);
+  }
+  if (memory.address.size_bytes == 8) {
+    return abi::x_register(scratches[1].index);
+  }
+  return std::nullopt;
+}
+
 std::string_view stack_source_load_mnemonic(std::size_t width_bytes) {
   switch (width_bytes) {
     case 1:
@@ -979,6 +995,31 @@ mir::TargetInstructionPrintResult print_symbol_memory(const InstructionRecord& i
   if (memory.value->kind == OperandKind::Register && value != nullptr) {
     std::ostringstream store;
     store << mnemonic << " " << register_name(*value) << ", " << address;
+    lines.push_back(store.str());
+    return target_printed(std::move(lines));
+  }
+  const auto* source_memory = std::get_if<MemoryOperand>(&memory.value->payload);
+  if (memory.value->kind == OperandKind::Memory && source_memory != nullptr) {
+    if (source_memory->support != MemoryOperandSupportKind::Prepared ||
+        !source_memory->can_use_base_plus_offset ||
+        source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        source_memory->size_bytes != memory.address.size_bytes) {
+      return target_unsupported(bad_header(instruction) +
+                                "symbol stack-slot store source is not printable");
+    }
+    const auto source_address = memory_address(*source_memory);
+    const auto value_scratch = symbol_stack_source_store_scratch_register(memory);
+    const auto load_mnemonic = stack_source_load_mnemonic(memory.address.size_bytes);
+    if (source_address.empty() || !value_scratch.has_value() || load_mnemonic.empty()) {
+      return target_unsupported(bad_header(instruction) +
+                                "symbol stack-slot store source scratch is not printable");
+    }
+    std::ostringstream load;
+    load << load_mnemonic << " " << abi::register_name(*value_scratch) << ", "
+         << source_address;
+    lines.push_back(load.str());
+    std::ostringstream store;
+    store << mnemonic << " " << abi::register_name(*value_scratch) << ", " << address;
     lines.push_back(store.str());
     return target_printed(std::move(lines));
   }

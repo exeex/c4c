@@ -1898,6 +1898,47 @@ int selected_byte_stack_source_store_materializes_through_scratch() {
                          "byte stack-source store materialization printer");
 }
 
+int selected_symbol_stack_source_store_materializes_through_value_scratch() {
+  auto destination = frame_slot(0);
+  destination.base_kind = aarch64_codegen::MemoryBaseKind::Symbol;
+  destination.frame_slot_id = std::nullopt;
+  destination.symbol_name = c4c::LinkNameId{34};
+  destination.symbol_label = "g.symbol_store";
+  destination.byte_offset = 8;
+  destination.size_bytes = 4;
+  destination.align_bytes = 4;
+  destination.stored_value_id = prepare::PreparedValueId{35};
+  destination.stored_value_name = c4c::ValueNameId{36};
+
+  auto source = frame_slot(48);
+  source.size_bytes = 4;
+  source.align_bytes = 4;
+  source.result_value_id = prepare::PreparedValueId{37};
+  source.result_value_name = c4c::ValueNameId{38};
+
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = destination,
+          .value = aarch64_codegen::make_memory_operand(source),
+          .value_type = bir::TypeKind::I32,
+      });
+
+  const auto result = print_common_instruction_nodes({store});
+  if (!result.ok) {
+    return fail("expected symbol stack-source store to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    adrp x9, g.symbol_store+8\n"
+      "    add x9, x9, :lo12:g.symbol_store+8\n"
+      "    ldr w10, [sp, #48]\n"
+      "    str w10, [x9]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "symbol stack-source store materialization printer");
+}
+
 int selected_atomic_load_store_and_fence_print_from_structured_records() {
   auto load_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Load,
                                         0,
@@ -5833,6 +5874,11 @@ int main() {
     return result;
   }
   if (const int result = selected_byte_stack_source_store_materializes_through_scratch();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_symbol_stack_source_store_materializes_through_value_scratch();
       result != 0) {
     return result;
   }
