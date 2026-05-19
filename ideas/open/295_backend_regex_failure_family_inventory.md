@@ -533,6 +533,33 @@ Focused owner closure 2026-05-19:
   backend-regex buckets without reopening closed owners 285 through 309 unless
   generated-code or proof evidence contradicts their closure boundaries.
 
+Step 4 split 2026-05-19:
+
+- Step 3 of the active umbrella runbook classified the fresh focused
+  `test_after.log` evidence for `c_testsuite_aarch64_backend_src_00140_c`.
+  That test fails at the AArch64 machine-node printer with
+  `FRONTEND_FAIL` and the diagnostic `printer requires selected machine node,
+  got deferred_unsupported: call-boundary move node is outside the selected
+  register call-boundary move subset`.
+- No `build/c_testsuite_aarch64_backend/src/00140.c.s` artifact exists, so
+  this split is compile/printer-stage selected-node admission and prepared
+  move publication, not emitted assembly spelling.
+- The focused owner split is idea 311,
+  `ideas/open/311_aarch64_selected_call_boundary_move_preparation_printing.md`,
+  covering AArch64 selected call-boundary move preparation, source/destination
+  fact preservation, selected-node admission, and machine-printer consumption.
+- The recommended proof scope is
+  `backend_aarch64_target_instruction_records`,
+  `backend_aarch64_machine_printer`,
+  `backend_aarch64_instruction_dispatch`, and
+  `c_testsuite_aarch64_backend_src_00140_c`.
+- Remaining direct-call shuffle, direct vararg, address-of-local, runtime
+  nonzero/mismatch/crash, timeout/output-storm, other machine-printer or
+  prepared-node residuals such as `00164.c` and `00214.c`, and semantic
+  `lir_to_bir` residuals remain parked under this umbrella until separate
+  evidence justifies another focused split.
+- Active implementation should move to idea 311 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -543,5 +570,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 309 without generated-code or
+- reopens recently closed owners 285 through 310 without generated-code or
   proof evidence that contradicts their closure boundary.

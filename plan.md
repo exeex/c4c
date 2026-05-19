@@ -1,178 +1,190 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Selected Call-Boundary Move Preparation Printing Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated from: remaining open umbrella inventory after focused idea 309 closed
+Source Idea: ideas/open/311_aarch64_selected_call_boundary_move_preparation_printing.md
+Activated from: ideas/open/295_backend_regex_failure_family_inventory.md Step 4 split
 
 ## Purpose
 
-Continue the backend-regex umbrella inventory after the closed focused AArch64
-owners, using the post-309 evidence as the starting point for the next
-classification pass.
+Execute the focused owner split from umbrella idea 295 for AArch64 selected
+call-boundary move preparation and printer admission.
 
 ## Goal
 
-Classify the remaining backend-regex failures well enough to split the next
-focused semantic repair idea, or record why no focused owner is ready.
+Make supported prepared call-boundary move records selected and printable only
+when they carry structured prepared source and destination facts.
 
 ## Core Rule
 
-This umbrella runbook is inventory and classification only. Do not implement
-repairs or improve counts by changing expectations, allowlists, unsupported
-classifications, CTest registration, timeout policy, runner behavior, proof
-logs, or testcase-specific matching.
+Do not improve this route by suppressing diagnostics, weakening tests, or
+marking call-boundary move records selected without printable prepared
+source/destination data. Progress must repair the semantic handoff from
+prepared call-boundary facts to selected AArch64 machine nodes.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- `test_before.log` and `test_after.log`, noting that the current canonical
-  proof logs are the focused idea 309 closure logs, not a fresh broad
-  backend-regex inventory
-- Generated AArch64 artifacts under `build/c_testsuite_aarch64_backend/` when
-  needed for classification
-- Closed-owner boundaries 285 through 309 only as historical context when a
-  residual appears to overlap a completed owner
+- `ideas/open/311_aarch64_selected_call_boundary_move_preparation_printing.md`
+- `todo.md`
+- `test_after.log` for the current `00140.c` frontend/printer failure
+- `tests/c/external/c-testsuite/src/00140.c`
+- `src/backend/mir/aarch64/codegen/calls.cpp`
+- `src/backend/mir/aarch64/codegen/calls.hpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `tests/backend/mir/backend_aarch64_target_instruction_records_test.cpp`
+- `tests/backend/mir/backend_aarch64_machine_printer_test.cpp`
+- `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
 
 ## Current Scope
 
-- Main-build backend regex inventory from `/workspaces/c4c/build`
-- Local backend/unit/CLI failures if any remain in the backend regex scope
-- `c_testsuite_aarch64_backend_*` compile, assembler, runtime, mismatch,
-  crash, timeout, and output-storm residuals
-- Candidate focused owner splits for semantic backend capability gaps
-- Remaining direct-call shuffle, direct vararg, address-of-local, timeout,
-  runtime mismatch/crash, machine-printer/prepared-node, and semantic
-  `lir_to_bir` residual buckets parked by idea 295
+- AArch64 `CallBoundaryMoveInstructionRecord` preparation and selection
+  status.
+- Prepared source and destination facts from value homes, call argument plans,
+  ABI bindings, and value-move bundles.
+- Machine-printer handling for selected call-boundary moves.
+- Focused proof targets:
+  `backend_aarch64_target_instruction_records`,
+  `backend_aarch64_machine_printer`,
+  `backend_aarch64_instruction_dispatch`, and
+  `c_testsuite_aarch64_backend_src_00140_c`.
 
 ## Non-Goals
 
-- No implementation edits under this umbrella.
-- No expectation, allowlist, unsupported, registration, timeout, runner,
-  proof-log, or CTest-registration edits.
-- No reopening closed owners 285 through 309 from failing counts alone.
-- No monolithic repair owner for all `ctest -R backend` failures.
-- No broad runtime rerun without timeout handling and stale-process cleanup.
+- No expectation, allowlist, unsupported-classification, CTest registration,
+  runner, timeout-policy, proof-log, or test-contract edits.
+- No diagnostic suppression or selected-printer gate bypass.
+- No filename, argument-index, `struct foo`, source-shape, or emitted-mnemonic
+  shortcuts.
+- No reopening closed owners 285 through 310 from counts alone.
+- No direct-call shuffle, direct vararg, address-of-local, runtime
+  nonzero/mismatch/crash, timeout/output-storm, unrelated machine-printer, or
+  semantic `lir_to_bir` repairs under this focused owner.
 
 ## Working Model
 
-- Idea 309 closed the `00189.c` indirect-call callee and argument
-  preservation owner. The focused proof moved
-  `c_testsuite_aarch64_backend_src_00189_c` from a segfault to passing.
-- No residual from the focused indirect-call owner returns to this umbrella.
-  Treat direct-call shuffle, direct vararg, address-of-local, timeout, runtime
-  mismatch/crash, machine-printer/prepared-node, and semantic `lir_to_bir`
-  buckets as separate parked classification targets until evidence proves a
-  shared semantic owner.
-- The latest broad backend-regex inventory recorded before idea 309 selected
-  352 tests, passed 306, and failed 46, all under
-  `c_testsuite_aarch64_backend_*`. Treat that as historical context until a
-  supervisor-delegated fresh broad capture or accepted broad log is available.
-- Supervisor broad local backend validation after idea 309 passed
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` at 139/139,
-  but that is not a fresh broad `ctest -R backend` inventory.
-- Separate source buckets before proposing owner splits: local backend tests,
-  AArch64 compile/machine-printer failures, assembler failures, semantic
-  `lir_to_bir` admission failures, runtime nonzero exits, runtime mismatches
-  or crashes, timeouts, and output storms.
-- A focused split must name a semantic owner and the evidence for that owner.
-  Shared filenames, shared pass-count movement, or one diagnostic string alone
-  is not enough.
+- The observed failure is before assembly emission: no
+  `build/c_testsuite_aarch64_backend/src/00140.c.s` exists.
+- The printer sees a call-boundary move machine node whose selection status is
+  `DeferredUnsupported` with the diagnostic that the node is outside the
+  selected register call-boundary move subset.
+- The producer path already has a semantic gate through
+  `call_boundary_move_selection_status`. The repair should make the right
+  prepared records satisfy that gate, while preserving fail-closed behavior
+  for unsupported or incomplete records.
+- `00140.c` is pressure evidence for prepared call-boundary moves involving
+  aggregate/pointer/variadic direct-call setup. It is not the implementation
+  key.
 
 ## Execution Rules
 
-- Keep routine classification notes in `todo.md`.
-- If a focused semantic owner is found, create a separate `ideas/open/*.md`
-  owner and switch lifecycle state before implementation begins.
-- If the best result is still uncertain, leave idea 295 active and record the
-  blocking evidence gap in `todo.md`.
-- Preserve closed-owner boundaries. Reopen or supersede a closed owner only
-  with generated-code or proof evidence that contradicts its closure boundary.
-- For any broad runtime proof, use bounded commands with stale-process cleanup
-  as directed by the supervisor.
+- Start with backend record and printer coverage before relying on the
+  c-testsuite probe.
+- Keep `todo.md` updated with the current packet, proof command, and observed
+  residuals.
+- Preserve fail-closed diagnostics for unselected, unsupported, or incomplete
+  call-boundary move nodes.
+- If localization proves a prerequisite producer-fact owner outside AArch64
+  selected call-boundary move preparation, stop and ask the supervisor to
+  split lifecycle state instead of broadening this plan.
+- Use the supervisor-provided proof scope unless the supervisor delegates a
+  broader validation command.
 
 ## Ordered Steps
 
-### Step 1: Reconstruct Post-309 Backend-Regex Context
+### Step 1: Localize Selected Call-Boundary Move Admission
 
-Goal: establish the usable residual context after focused idea 309.
+Goal: identify why the `00140.c` call-boundary move record reaches the printer
+as `DeferredUnsupported`.
 
-Primary targets: `ideas/open/295_backend_regex_failure_family_inventory.md`,
-`test_before.log`, and `test_after.log`
-
-Actions:
-
-- Read the post-309 closure note in idea 295 and the focused idea 309 proof
-  logs.
-- Record that `00189.c` no longer returns to the umbrella inventory because
-  the indirect-call preservation focused owner is closed with focused proof.
-- Determine whether the next classification packet can proceed from existing
-  accepted evidence or needs a supervisor-delegated fresh bounded
-  `ctest -R backend` capture.
-- Do not run a fresh broad backend regex command unless the supervisor
-  explicitly assigns that proof command.
-
-Completion check:
-
-- `todo.md` records the current post-309 classification context, what evidence
-  source was used, and whether a fresh broad capture is required before Step 2.
-
-### Step 2: Classify Residual Buckets
-
-Goal: separate residuals by failure source and likely semantic owner.
-
-Primary target: `build/c_testsuite_aarch64_backend/`
+Primary targets: `src/backend/mir/aarch64/codegen/calls.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch.cpp`, and the three focused backend
+test files
 
 Actions:
 
-- For compile or machine-printer failures, inspect diagnostics and generated
-  artifacts needed to identify the failing operation shape.
-- For assembler failures, inspect emitted assembly enough to name the illegal
-  operand, relocation, or address form.
-- For runtime nonzero, mismatch, crash, timeout, or output-storm failures,
-  keep them distinct unless generated-code evidence proves a shared backend
-  capability.
-- Compare likely overlaps against closed owners 285 through 309 before
-  proposing any reopen or related split.
+- Reproduce or inspect the current `00140.c` failure from `test_after.log`
+  without editing expectations or generated artifacts.
+- Trace the failing call-boundary move from record construction through
+  `call_boundary_move_selection_status` and printer admission.
+- Identify the missing or mismatched prepared move fact: source kind/storage,
+  destination kind/storage, prepared source register/frame-slot fact, prepared
+  destination register fact, op kind, or phase.
+- Add or adjust focused backend tests only when they describe the semantic
+  selected call-boundary move shape needed for the repair.
 
 Completion check:
 
-- `todo.md` contains a bucketed residual list with evidence notes for each
-  candidate family and explicit parked buckets for uncertain cases.
+- `todo.md` records the localized missing prepared source/destination fact and
+  the first implementation target, or records the exact prerequisite owner
+  that must be split before this route can proceed.
 
-### Step 3: Choose the Next Focused Owner
+### Step 2: Repair Prepared Source/Destination Publication
 
-Goal: decide whether a tractable semantic repair family is ready to split.
+Goal: make supported call-boundary move records carry the structured facts
+needed for selected-node admission.
+
+Primary target: AArch64 call-boundary move preparation and value-move bundle
+handoff code
 
 Actions:
 
-- Prefer the crispest bucket with a shared semantic backend capability and
-  narrow proof surface.
-- Reject testcase-shaped owners, exact filename matching, instruction-string
-  matching, and expectation-only progress.
-- If no owner is ready, record the missing evidence and the next narrow probe
-  needed for classification.
+- Repair the producer or handoff path that loses prepared source/destination
+  facts for the localized supported move shape.
+- Keep unsupported cases `DeferredUnsupported` with specific diagnostics.
+- Do not mark a move selected until the printer can consume both the prepared
+  source and prepared destination.
+- Keep the change narrow to call-boundary move preparation/selection.
 
 Completion check:
 
-- Either a focused owner candidate is named with tests, semantic scope,
-  boundaries, and proof command guidance, or `todo.md` explains why the
-  umbrella must stay active for more classification.
+- Focused record or dispatch tests prove the repaired move record is selected
+  with printable source and destination data, while incomplete records still
+  fail closed.
 
-### Step 4: Split and Switch Before Implementation
+### Step 3: Prove Machine-Printer Semantics
 
-Goal: create lifecycle state for implementation only after classification.
+Goal: prove the selected call-boundary move can be printed by the AArch64
+machine printer without weakening printer gates.
+
+Primary target: `backend_aarch64_machine_printer`
 
 Actions:
 
-- When Step 3 identifies a focused semantic owner, create a new
-  `ideas/open/*.md` file with goal, scope, out-of-scope items, acceptance
-  criteria, and reviewer reject signals.
-- Add a durable deactivation note to idea 295 summarizing the split decision,
-  proof scope, and remaining parked buckets.
-- Switch active lifecycle state from this umbrella to the focused owner before
-  any implementation work begins.
+- Extend printer coverage for the selected call-boundary move shape repaired
+  in Step 2.
+- Preserve tests that reject non-selected or incomplete call-boundary move
+  records.
+- Inspect emitted printer output only as evidence of structured operand
+  consumption, not as a hard-coded implementation target.
 
 Completion check:
 
-- Active lifecycle state no longer points to idea 295 when implementation is
-  ready to start, and idea 295 preserves the remaining inventory context.
+- `backend_aarch64_machine_printer` passes with both positive selected-node
+  coverage and fail-closed negative coverage.
+
+### Step 4: Run Focused Proof and Classify Residuals
+
+Goal: prove the focused owner and report any remaining `00140.c` residual
+outside the old printer diagnostic.
+
+Actions:
+
+- Run:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00140_c)$' > test_after.log 2>&1
+```
+
+- Confirm the old `DeferredUnsupported` selected call-boundary move printer
+  diagnostic is gone.
+- If `00140.c` reaches assembly or runtime and exposes a distinct residual,
+  record that residual in `todo.md` without absorbing it into this owner.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
+
+Completion check:
+
+- `test_after.log` contains the focused proof result, `todo.md` records the
+  outcome, and any remaining residual is classified separately from selected
+  call-boundary move preparation/printing.
