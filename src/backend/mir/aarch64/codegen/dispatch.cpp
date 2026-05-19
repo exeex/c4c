@@ -1441,6 +1441,26 @@ void retarget_pointer_store_value_to_emitted_scalar(
   return std::nullopt;
 }
 
+[[nodiscard]] bool is_byval_formal_value_name(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.bir_function == nullptr) {
+    return false;
+  }
+  const std::string_view name =
+      prepare::prepared_value_name(context.function.prepared->names, value_name);
+  if (name.empty()) {
+    return false;
+  }
+  for (const auto& param : context.function.bir_function->params) {
+    if (param.is_byval && param.name == name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] bool emit_prepared_pointer_value_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,
@@ -1484,6 +1504,17 @@ void retarget_pointer_store_value_to_emitted_scalar(
   }
   if (pointer_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       pointer_home->offset_bytes.has_value()) {
+    if (is_byval_formal_value_name(context, *access->address.pointer_value_name)) {
+      const auto offset =
+          static_cast<std::int64_t>(*pointer_home->offset_bytes) +
+          access->address.byte_offset;
+      if (offset < 0) {
+        return false;
+      }
+      lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                      frame_slot_address(static_cast<std::size_t>(offset)));
+      return true;
+    }
     lines.push_back("ldr " + *address + ", " +
                     frame_slot_address(*pointer_home->offset_bytes));
   } else if (pointer_home->kind == prepare::PreparedValueHomeKind::Register &&
@@ -2655,6 +2686,119 @@ lower_store_global_value_publication(
     const module::MachineInstruction& lowered_memory) {
   const auto* store = std::get_if<bir::StoreGlobalInst>(&inst);
   if (store == nullptr || store->value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&lowered_memory.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      !memory_record->value.has_value() ||
+      memory_record->value->kind != OperandKind::Register) {
+    return std::nullopt;
+  }
+  const auto* target_register =
+      std::get_if<RegisterOperand>(&memory_record->value->payload);
+  if (target_register == nullptr ||
+      !abi::is_gp_register(target_register->reg) ||
+      abi::is_reserved_mir_scratch(target_register->reg)) {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::vector<std::string> lines;
+  auto value = store->value;
+  if (!emit_value_publication_to_register(context,
+                                          value,
+                                          instruction_index,
+                                          target_register->reg.index,
+                                          scratches.front().index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryRead},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = [&] {
+            std::string text;
+            for (std::size_t index = 0; index < lines.size(); ++index) {
+              if (index != 0) {
+                text += '\n';
+              }
+              text += lines[index];
+            }
+            return text;
+          }(),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
+[[nodiscard]] bool store_local_value_is_byval_frame_slot_load(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index) {
+  if (store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, store.value.name, instruction_index);
+  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
+  if (load == nullptr) {
+    return false;
+  }
+  const auto producer_index = producer_instruction_index(context, producer);
+  const auto* access = producer_index.has_value()
+                           ? prepared_memory_access(context, *producer_index)
+                           : nullptr;
+  return access != nullptr &&
+         access->address.base_kind == prepare::PreparedAddressBaseKind::PointerValue &&
+         access->address.pointer_value_name.has_value() &&
+         access->address.can_use_base_plus_offset &&
+         is_byval_formal_value_name(context, *access->address.pointer_value_name);
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_store_local_value_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const module::MachineInstruction& lowered_memory) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      !store_local_value_is_byval_frame_slot_load(context, *store, instruction_index)) {
     return std::nullopt;
   }
   const auto* memory_record =
@@ -3938,6 +4082,125 @@ lower_missing_fused_compare_operand_publications(
   return lines;
 }
 
+void append_entry_formal_byte_store(std::vector<std::string>& lines,
+                                    abi::RegisterReference byte_source,
+                                    std::size_t stack_offset_bytes) {
+  const std::string source_name{abi::register_name(byte_source)};
+  if (stack_offset_bytes <= 4095U) {
+    std::string line = "strb " + source_name + ", [sp";
+    if (stack_offset_bytes != 0U) {
+      line += ", #";
+      line += std::to_string(stack_offset_bytes);
+    }
+    line += "]";
+    lines.push_back(std::move(line));
+    return;
+  }
+
+  const auto address_scratch = abi::reserved_mir_scratch_gp_registers()[1];
+  const std::string address_name{abi::register_name(address_scratch)};
+  auto address_lines =
+      materialize_integer_constant_lines(address_scratch, stack_offset_bytes, 64);
+  lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+  lines.push_back("add " + address_name + ", sp, " + address_name);
+  lines.push_back("strb " + source_name + ", [" + address_name + "]");
+}
+
+[[nodiscard]] std::vector<std::string> entry_formal_byval_aggregate_store_lines(
+    const bir::Param& param,
+    abi::RegisterReference source,
+    std::size_t stack_offset_bytes) {
+  if (!param.abi.has_value() || param.type != bir::TypeKind::Ptr ||
+      !param.abi->byval_copy || !param.abi->passed_in_register ||
+      param.abi->primary_class != bir::AbiValueClass::Integer ||
+      !abi::is_gp_register(source) || param.size_bytes == 0U) {
+    return {};
+  }
+
+  const std::size_t lane_count = (param.size_bytes + 7U) / 8U;
+  if (lane_count == 0U || lane_count > 2U ||
+      source.index + lane_count > 8U) {
+    return {};
+  }
+
+  const auto value_scratch = abi::reserved_mir_scratch_gp_registers()[0];
+  const auto value_scratch_w =
+      abi::gp_register(value_scratch.index, abi::RegisterView::W);
+  if (!value_scratch_w.has_value()) {
+    return {};
+  }
+
+  std::vector<std::string> lines;
+  for (std::size_t byte_index = 0; byte_index < param.size_bytes; ++byte_index) {
+    const std::size_t lane_index = byte_index / 8U;
+    const std::size_t lane_byte = byte_index % 8U;
+    const auto lane_x =
+        abi::gp_register(static_cast<std::uint8_t>(source.index + lane_index),
+                         abi::RegisterView::X);
+    const auto lane_w =
+        abi::gp_register(static_cast<std::uint8_t>(source.index + lane_index),
+                         abi::RegisterView::W);
+    if (!lane_x.has_value() || !lane_w.has_value()) {
+      return {};
+    }
+
+    abi::RegisterReference byte_source = *lane_w;
+    if (lane_byte != 0U) {
+      lines.push_back("lsr " + std::string{abi::register_name(value_scratch)} +
+                      ", " + std::string{abi::register_name(*lane_x)} +
+                      ", #" + std::to_string(lane_byte * 8U));
+      byte_source = *value_scratch_w;
+    }
+    append_entry_formal_byte_store(lines,
+                                   byte_source,
+                                   stack_offset_bytes + byte_index);
+  }
+  return lines;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> entry_formal_destination_register(
+    const prepare::PreparedValueHome& home,
+    bir::TypeKind type) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto view = entry_formal_register_view(type);
+  if (!view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home.register_name);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+  if (parsed->bank == abi::RegisterBank::GeneralPurpose) {
+    return abi::gp_register(parsed->index, *view);
+  }
+  if (parsed->bank == abi::RegisterBank::FpSimd) {
+    return abi::fp_simd_register(parsed->index, *view);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::string> entry_formal_register_move_lines(
+    abi::RegisterReference source,
+    abi::RegisterReference destination) {
+  if (source.bank != destination.bank) {
+    return {};
+  }
+  if (source.index == destination.index) {
+    return {};
+  }
+  const std::string source_name{abi::register_name(source)};
+  const std::string destination_name{abi::register_name(destination)};
+  const bool scalar_fp_register_move =
+      source.bank == abi::RegisterBank::FpSimd &&
+      (source.view == abi::RegisterView::S || source.view == abi::RegisterView::D) &&
+      source.view == destination.view;
+  return {std::string{scalar_fp_register_move ? "fmov" : "mov"} + " " +
+          destination_name + ", " + source_name};
+}
+
 [[nodiscard]] module::MachineInstruction make_entry_formal_publication_instruction(
     const module::BlockLoweringContext& context,
     std::size_t param_index,
@@ -3993,15 +4256,14 @@ lower_missing_fused_compare_operand_publications(
   std::vector<module::MachineInstruction> lowered;
   if (context.block_index != 0 || context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
-      context.function.bir_function == nullptr ||
-      !context.function.bir_function->is_variadic) {
+      context.function.bir_function == nullptr) {
     return lowered;
   }
   for (std::size_t param_index = 0;
        param_index < context.function.bir_function->params.size();
        ++param_index) {
     const auto& param = context.function.bir_function->params[param_index];
-    if (param.is_varargs || param.is_sret || param.is_byval) {
+    if (param.is_varargs || param.is_sret) {
       continue;
     }
     const auto value_name = prepare::resolve_prepared_value_name_id(
@@ -4011,8 +4273,7 @@ lower_missing_fused_compare_operand_publications(
     }
     const auto* home =
         prepare::find_prepared_value_home(*context.function.value_locations, *value_name);
-    if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::StackSlot ||
-        !home->offset_bytes.has_value()) {
+    if (home == nullptr) {
       continue;
     }
     const auto source = entry_formal_source_register(
@@ -4020,10 +4281,28 @@ lower_missing_fused_compare_operand_publications(
     if (!source.has_value()) {
       continue;
     }
+    std::vector<std::string> lines;
+    if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+        home->offset_bytes.has_value()) {
+      if (param.is_byval) {
+        lines = entry_formal_byval_aggregate_store_lines(param,
+                                                         *source,
+                                                         *home->offset_bytes);
+      } else {
+        lines = entry_formal_store_lines(*source, param.type, *home->offset_bytes);
+      }
+    } else if (!param.is_byval &&
+               home->kind == prepare::PreparedValueHomeKind::Register) {
+      const auto destination = entry_formal_destination_register(*home, param.type);
+      if (destination.has_value()) {
+        lines = entry_formal_register_move_lines(*source, *destination);
+      }
+    }
+    if (lines.empty()) {
+      continue;
+    }
     lowered.push_back(make_entry_formal_publication_instruction(
-        context,
-        param_index,
-        entry_formal_store_lines(*source, param.type, *home->offset_bytes)));
+        context, param_index, std::move(lines)));
   }
   return lowered;
 }
@@ -4387,6 +4666,11 @@ InstructionDispatchResult dispatch_prepared_block(
           if (lowered_ordinary_memory.instruction.has_value()) {
             retarget_pointer_store_value_to_emitted_scalar(
                 context, inst, scalar_state, *lowered_ordinary_memory.instruction);
+            if (auto value_publication =
+                    lower_store_local_value_publication(
+                        context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
+              block.instructions.push_back(std::move(*value_publication));
+            }
             if (auto value_publication =
                     lower_store_global_value_publication(
                         context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
