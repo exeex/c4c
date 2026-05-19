@@ -179,6 +179,8 @@ prepared_variadic_aggregate_va_arg_source_class_name(
 struct PreparedVariadicAggregateVaArgAccessPlan {
   PreparedVariadicAggregateVaArgSourceClass source_class =
       PreparedVariadicAggregateVaArgSourceClass::Unknown;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
   std::size_t payload_size_bytes = 0;
   std::size_t payload_align_bytes = 0;
   std::optional<PreparedValueHome> destination_payload_home;
@@ -191,6 +193,10 @@ struct PreparedVariadicAggregateVaArgAccessPlan {
   std::optional<PreparedVariadicVaListFieldKind> progression_field;
   std::optional<std::size_t> progression_field_offset_bytes;
   std::optional<std::size_t> progression_stride_bytes;
+  std::optional<std::size_t> overflow_source_field_offset_bytes;
+  std::optional<std::size_t> overflow_stride_bytes;
+  std::optional<std::size_t> register_save_lane_count;
+  std::optional<std::size_t> register_save_lane_size_bytes;
 };
 
 [[nodiscard]] inline bool

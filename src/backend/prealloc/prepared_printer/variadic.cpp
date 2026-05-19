@@ -275,6 +275,20 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
           if (plan.progression_stride_bytes.has_value()) {
             out << ":progression_stride=" << *plan.progression_stride_bytes;
           }
+          if (plan.overflow_source_field_offset_bytes.has_value()) {
+            out << ":overflow_source_field=overflow_arg_area@"
+                << *plan.overflow_source_field_offset_bytes;
+          }
+          if (plan.overflow_stride_bytes.has_value()) {
+            out << ":overflow_stride=" << *plan.overflow_stride_bytes;
+          }
+          if (plan.register_save_lane_count.has_value()) {
+            out << ":register_save_lanes=" << *plan.register_save_lane_count;
+          }
+          if (plan.register_save_lane_size_bytes.has_value()) {
+            out << ":register_save_lane_size="
+                << *plan.register_save_lane_size_bytes;
+          }
         }
       }
       out << "\n";

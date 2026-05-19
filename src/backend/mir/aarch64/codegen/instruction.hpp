@@ -1503,6 +1503,9 @@ struct VariadicScalarVaArgRecord {
 struct VariadicAggregateVaArgRecord {
   prepare::PreparedVariadicAggregateVaArgSourceClass source_class =
       prepare::PreparedVariadicAggregateVaArgSourceClass::Unknown;
+  std::size_t function_name_id = 0;
+  std::size_t block_index = 0;
+  std::size_t instruction_index = 0;
   std::size_t payload_size_bytes = 0;
   std::size_t payload_align_bytes = 0;
   prepare::PreparedValueHome source_va_list;
@@ -1518,6 +1521,10 @@ struct VariadicAggregateVaArgRecord {
       prepare::PreparedVariadicVaListFieldKind::OverflowArgArea;
   std::size_t progression_field_offset_bytes = 0;
   std::size_t progression_stride_bytes = 0;
+  std::size_t overflow_source_field_offset_bytes = 0;
+  std::size_t overflow_stride_bytes = 0;
+  std::size_t register_save_lane_count = 0;
+  std::size_t register_save_lane_size_bytes = 0;
   prepare::PreparedFrameSlotId register_save_area_slot_id = 0;
   std::size_t register_save_area_stack_offset_bytes = 0;
   std::size_t register_save_area_size_bytes = 0;
