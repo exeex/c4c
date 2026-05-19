@@ -1,7 +1,8 @@
 # AArch64 Scalar Cast Machine Printer Forms
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -65,6 +66,29 @@ rewrite.
 - Fresh build proof and the focused c-testsuite backend subset are recorded.
 - Any broader backend-regex proof reports remaining residual buckets separately
   from this owner.
+
+## Closure Note
+
+Closed 2026-05-19 after Step 4 scalar-cast printer proof.
+
+- Focused proof covered `00035`, `00105`, `00126`, `00134`, `00135`,
+  `00151`, and `00208`.
+- The old scalar-cast printer diagnostics are absent from the focused proof and
+  the broad backend-regex proof: unsupported `zero_extend` forms,
+  `sign_extend`, `scalar cast node requires a structured register source
+  operand`, and related structured-source admission failures no longer appear.
+- Focused residuals are outside this owner by current evidence: `00035` and
+  `00151` fail with `RUNTIME_NONZERO exit=1`, and `00208` fails with
+  `RUNTIME_NONZERO exit=Segmentation fault`.
+- Broader backend-regex proof is `ctest --test-dir build -j10 -R backend
+  --output-on-failure`, selecting 352 tests with 298 passing and 54 failing.
+  Current residual buckets are frontend failures, one backend failure, runtime
+  nonzero/mismatch or crash residuals, and timeouts; none are claimed as
+  scalar-cast printer blockers without fresh generated-code evidence.
+- Close-time regression guard used matching `test_before.log` and
+  `test_after.log` backend-regex logs. Because `test_before.log` had already
+  been rolled to the current 298/54 state, closure used the non-decreasing
+  guard mode and passed with no new failures.
 
 ## Reviewer Reject Signals
 

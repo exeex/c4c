@@ -276,6 +276,25 @@ Post-299 split 2026-05-19:
   classification or separate focused splits.
 - Active implementation should move to idea 300 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 300,
+  `ideas/closed/300_aarch64_scalar_cast_machine_printer_forms.md`, is closed
+  as complete for the AArch64 scalar-cast machine-printer forms owner.
+- The accepted focused proof covers `00035`, `00105`, `00126`, `00134`,
+  `00135`, `00151`, and `00208`; the old scalar-cast printer diagnostics for
+  unsupported `zero_extend` forms and unstructured `sign_extend` sources are
+  absent.
+- Current focused residuals are runtime residuals, not scalar-cast printer
+  blockers by current evidence: `00035` and `00151` are `RUNTIME_NONZERO
+  exit=1`, and `00208` is `RUNTIME_NONZERO exit=Segmentation fault`.
+- Broad backend-regex proof now reports 352 selected tests, 298 passed, and 54
+  failed, with no old scalar-cast printer diagnostics in the broad log.
+- Remaining frontend, backend, runtime nonzero, runtime mismatch/crash, and
+  timeout buckets stay parked under this umbrella for later classification or
+  focused splits. Do not reopen idea 300 without generated-code or diagnostic
+  evidence that contradicts the scalar-cast printer closure boundary.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
