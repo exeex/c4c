@@ -10,34 +10,25 @@ Current Step Title: Check Store/Load Boundaries
 
 ## Just Finished
 
-Step 3 implementation packet completed the direct local-memory scalar subobject
-load admission repair selected for `00046`. Scalar loads through local
-aggregate byte-array subobjects now mirror the accepted store path: when the
-pointer is a tracked `i8` local pointer-array view and the scalar access fits
-within the byte slots, lowering emits an addressed local load instead of
-failing on the exact local-slot type mismatch.
+Step 3 diagnosis packet reclassified the remaining `00216` GEP residual outside
+idea 297's local-memory admission owner. The first rejected GEP in `foo` is
+`%t381 = getelementptr %struct.W, ptr %p.w, i32 0, i32 0`, which comes from the
+`w->t.s` path over function parameter `%p.w`, not from a local alloca/local
+slot. The LLVM route shows `%struct.W = type { %struct.V, [0 x %struct.S] }`,
+so this residual is a pointer-parameter aggregate projection case involving a
+flexible-array-shaped pointee layout, not a Step 3 local store/load boundary.
 
-Proof moved `00046` past the old `load local-memory semantic family` blocker
-and it now passes in the focused AArch64 c-testsuite subset. `00140` remains at
-the AArch64 call-boundary move printer failure and `00216` remains at the GEP
-local-memory residual in `foo`. `00218` also moved past its load local-memory
-residual and now reaches a later AArch64 scalar bitwise-immediate printer
-failure.
+No semantic local-memory code change was made for `00216`; forcing one here
+would drift into pointer-parameter/flexible-array aggregate GEP admission rather
+than repairing the active local-memory owner.
 
 ## Suggested Next
 
-Lifecycle decision: keep idea 297 active on Step 3. Do not close yet and do not
-advance to Step 4 proof until `00216` is repaired or classified outside the
-local-memory admission owner. The direct local aggregate/union byte-subobject
-load/store lane represented by `00046` is now repaired and passing, and `00140`
-plus `00218` are classified as later AArch64 printer residuals outside
-local-memory admission.
-
-Next bounded packet: diagnose and repair or reclassify the remaining in-owner
-Step 3 residual, `00216`, which still fails in `foo` at the GEP local-memory
-semantic family. Keep the packet focused on semantic local-memory admission;
-split only if fresh diagnosis proves `00216` belongs to a distinct owner rather
-than the active local-memory store/load boundary work.
+Lifecycle decision: Step 3's focused boundary cases are now either passing or
+classified outside idea 297: `00046` passes, `00140` and `00218` are later
+AArch64 printer residuals, and `00216` is pointer-parameter/flexible-array
+aggregate GEP admission. The next coherent packet is Step 4 focused-owner proof
+or lifecycle review for closing/retiring this runbook, at supervisor discretion.
 
 ## Watchouts
 
@@ -62,8 +53,10 @@ than the active local-memory store/load boundary work.
   the first blocker; after this packet it reaches a later AArch64
   call-boundary move printer failure.
 - `00216` no longer proves the old aggregate load boundary as the first
-  blocker; after this packet it reaches a later GEP-family local-memory
-  blocker in `foo`.
+  blocker; its first rejected GEP is over function parameter `%p.w` with
+  pointee type `%struct.W = { %struct.V, [0 x %struct.S] }`, so treat it as a
+  later pointer-parameter/flexible-array aggregate projection owner, not as
+  local-memory admission under idea 297.
 - `00046` no longer proves the old direct local-memory store or load subobject
   admission residual; after this packet it passes in the focused AArch64
   c-testsuite subset.
@@ -93,5 +86,7 @@ Ran exactly:
 Result: build passed and `backend_lir_to_bir_notes` passed. The focused
 c-testsuite subset still fails overall as expected for residual boundary work.
 Fresh residuals in `test_after.log`: `00046` passed, `00140` remains AArch64
-call-boundary move printer, `00216` remains GEP local-memory, and `00218` moved
-to an AArch64 scalar bitwise-immediate printer failure.
+call-boundary move printer, `00216` remains reported by the coarse GEP
+local-memory diagnostic but is reclassified by first-GEP evidence as
+pointer-parameter/flexible-array aggregate projection, and `00218` remains an
+AArch64 scalar bitwise-immediate printer failure.
