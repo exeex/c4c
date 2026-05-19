@@ -53,6 +53,11 @@ struct LocalMemsetScalarSlot {
   std::size_t size_bytes = 0;
 };
 
+struct LocalMemsetLeafStore {
+  std::string slot_name;
+  bir::Value value;
+};
+
 }  // namespace
 
 std::optional<BirFunctionLowerer::AggregateTypeLayout>
@@ -256,12 +261,16 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
       return false;
     }
 
+    std::vector<LocalMemsetLeafStore> stores;
     std::size_t covered_bytes = 0;
     for (const auto& [byte_offset, slot_name] : leaf_slots) {
       if (covered_bytes == fill_size_bytes) {
         break;
       }
       if (byte_offset != covered_bytes) {
+        if (fill_byte == 0 && byte_offset >= fill_size_bytes) {
+          break;
+        }
         return false;
       }
 
@@ -278,13 +287,22 @@ bool BirFunctionLowerer::try_lower_immediate_local_memset(
       if (!fill_value.has_value()) {
         return false;
       }
-      lowered_insts->push_back(bir::StoreLocalInst{
+      stores.push_back(LocalMemsetLeafStore{
           .slot_name = slot_name,
           .value = *fill_value,
       });
       covered_bytes += slot_size;
     }
-    return covered_bytes == fill_size_bytes;
+    if (covered_bytes != fill_size_bytes && fill_byte != 0) {
+      return false;
+    }
+    for (const auto& store : stores) {
+      lowered_insts->push_back(bir::StoreLocalInst{
+          .slot_name = store.slot_name,
+          .value = store.value,
+      });
+    }
+    return true;
   };
 
   if (const auto aggregate_it = local_aggregate_slots.find(std::string(dst_operand));

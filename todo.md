@@ -8,9 +8,15 @@ Current Step Title: Repair Semantic Admission Or Prepared Handoff
 
 ## Just Finished
 
-Step 2 `00216.c` alloca/local-memory residual localized. The concrete source
-construct is `test_zero_init`'s zero-initialized local aggregate with a
-zero-length array member:
+Step 2 zero-sized/flexible trailing aggregate storage repair complete. Local
+aggregate slot declaration now permits zero-sized array layouts to contribute
+no scalar leaves instead of rejecting the aggregate, while still rejecting
+invalid layouts, missing alignment, and zero-sized non-array layouts. Immediate
+local `memset` lowering now preflights all scalar leaf stores before emission
+and allows only zero-byte fills to cover an unrepresented trailing suffix.
+
+This repairs the concrete `00216.c` `test_zero_init` zero-initialized local
+aggregate with a zero-length array member:
 
 ```c
 struct SEC { struct SEA a; int r[0]; };
@@ -31,24 +37,23 @@ call void @llvm.memset.p0.i64(ptr %lv.c, i8 0, i64 20, i1 false)
 store i32 5, ptr %t3
 ```
 
-Minimal probes show `%struct.SEB` with `int r[1]` lowers, while `%struct.SEC`
-with `int r[0]` and `%struct.SED` with `int r[]` both fail before BIR dump with
-the same `test_zero_init` alloca local-memory family diagnostic. The narrow
-repair surface is semantic local-memory coverage for aggregate storage that has
-zero-sized trailing array/flexible-array members: `declare_local_aggregate_slots`
-and/or immediate local `memset` coverage need to represent or tolerate the tail
-padding bytes between the scalar leaves and the aggregate storage size. This
-remains inside idea 312 semantic local-memory prepared-handoff scope; it is not
-an AArch64 printer/runtime issue.
+Focused proof shows `00216.c` now advances past semantic `lir_to_bir` and
+prepared handoff to backend assembly validation. The new `00216.c` first-bad
+fact is out-of-scope AArch64 stack-offset assembly:
+
+```asm
+ldr x13, [sp, #1644]
+```
+
+The assembler reports `index must be an integer in range [-256, 255]` at
+`build/c_testsuite_aarch64_backend/src/00216.c.s:1514:19`.
 
 ## Suggested Next
 
-Execute the narrow Step 2 semantic repair for zero-sized trailing aggregate
-storage coverage. Keep the change fail-closed and general: handle local
-aggregate storage where the declared layout size exceeds scalar leaf coverage
-because of zero-length or flexible trailing array members, so immediate zero
-fills such as `memset(ptr %lv.c, 0, 20)` can lower without requiring a
-testcase-specific exception.
+Stop treating `00216.c` as blocked on Step 2 semantic local-memory admission:
+it now reaches backend assembly validation and fails on an AArch64 stack offset
+range issue. The remaining `00204.c` representative also remains out-of-scope
+for Step 2 semantic local-memory, at `f128_transport` printer authority.
 
 ## Watchouts
 
@@ -72,14 +77,11 @@ testcase-specific exception.
 - The fixed-size local aggregate/array load path now plans all load/store pairs
   before emitting instructions; keep it fail-closed on source coverage, target
   leaf coverage, and source/target type mismatches.
-- `00216.c`'s visible ctest family is `alloca local-memory`, but the localized
-  failing operation after `%lv.c` declaration is the immediate zero `memset`
-  over 20 bytes of `%struct.SEC`; the scalar leaves only cover the 16-byte
-  `struct SEA a` prefix because `int r[0]` contributes no scalar leaf at the
-  tail.
-- `%struct.SEB` with `int r[1]` is not the first bad shape; a minimal `SEB`
-  probe lowers. `%struct.SEC` and `%struct.SED` minimal probes fail before BIR
-  dump with the same local-memory diagnostic.
+- `00216.c` no longer fails in `alloca local-memory`; the current failure is
+  backend AArch64 assembly validation for an out-of-range `[sp, #1644]` load.
+- The zero-sized/flexible trailing aggregate repair is intentionally limited:
+  zero-count arrays may contribute no scalar local slots, and only zero-filled
+  unrepresented trailing bytes may be skipped by immediate local memset.
 - Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
   not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
   guardrails, but they do not prove the AArch64 `myprintf` failure path.
@@ -106,9 +108,10 @@ representative c-testsuite AArch64 tests still fail:
 - `c_testsuite_aarch64_backend_src_00204_c`: advanced past the direct
   global-source memcpy residual and `load [2 x i64], ptr %t4`; it now reaches
   the machine-node printer and fails on `family=f128_transport`
-- `c_testsuite_aarch64_backend_src_00216_c`: still reports `semantic
-  lir_to_bir function 'test_zero_init' failed in alloca local-memory semantic
-  family`; localized to `%struct.SEC` zero-length trailing array storage
-  coverage for the immediate zero `memset`
+- `c_testsuite_aarch64_backend_src_00216_c`: advanced past semantic
+  `lir_to_bir` and prepared handoff; it now fails backend assembly validation
+  at `build/c_testsuite_aarch64_backend/src/00216.c.s:1514:19` with
+  `ldr x13, [sp, #1644]` because the immediate stack offset exceeds the
+  accepted range
 
 Proof log: `test_after.log`.

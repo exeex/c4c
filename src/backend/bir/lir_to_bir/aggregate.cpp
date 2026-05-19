@@ -289,7 +289,8 @@ bool BirFunctionLowerer::append_local_aggregate_scalar_slots(std::string_view ty
                                                      type_decls_,
                                                      structured_layouts_);
   if (layout.kind == AggregateTypeLayout::Kind::Invalid ||
-      layout.size_bytes == 0 || layout.align_bytes == 0) {
+      layout.align_bytes == 0 ||
+      (layout.kind != AggregateTypeLayout::Kind::Array && layout.size_bytes == 0)) {
     return false;
   }
 
