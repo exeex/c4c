@@ -8,14 +8,25 @@ Current Step Title: Reconstruct Post-306 Backend-Regex Inventory
 
 ## Just Finished
 
-Lifecycle activation created this umbrella inventory runbook after focused
-idea 306 closed. No implementation work has been performed in this packet.
+Step 1: Reconstruct Post-306 Backend-Regex Inventory completed from the
+accepted `test_before.log` without rerunning tests. The log selected 3 tests,
+with 1 pass and 2 failures:
+
+- Passed: `c_testsuite_aarch64_backend_src_00050_c`
+- Failed: `c_testsuite_aarch64_backend_src_00176_c`
+- Failed: `c_testsuite_aarch64_backend_src_00182_c`
+
+The two residual focused failures are `00176.c` and `00182.c`. This log is the
+accepted focused post-306 close proof for
+`^c_testsuite_aarch64_backend_src_(00050|00176|00182)_c$`; it does not cover a
+broad backend-regex inventory and is not sufficient by itself for umbrella
+classification of the broader backend family.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: reconstruct the post-306 backend-regex residual
-inventory from the accepted `test_before.log` unless the supervisor delegates a
-fresh bounded backend-regex proof command.
+Supervisor choice: either capture a fresh broad backend-regex inventory with
+stale-process safeguards, or classify only the focused residuals `00176.c` and
+`00182.c` as a scoped continuation from the accepted close proof.
 
 ## Watchouts
 
@@ -28,4 +39,6 @@ fresh bounded backend-regex proof command.
 
 ## Proof
 
-Lifecycle-only activation. No build or test proof was run.
+No tests were rerun for this packet. Proof was read-only reconstruction from
+the existing accepted `test_before.log`; no `test_after.log` was produced or
+modified.
