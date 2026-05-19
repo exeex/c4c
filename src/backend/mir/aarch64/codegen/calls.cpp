@@ -219,6 +219,21 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
          carrier->constant_payload.has_value();
 }
 
+[[nodiscard]] std::optional<abi::RegisterView> scalar_fp_view_from_register_name(
+    const std::optional<std::string>& register_name) {
+  if (!register_name.has_value() || register_name->empty()) {
+    return std::nullopt;
+  }
+  switch (register_name->front()) {
+    case 's':
+      return abi::RegisterView::S;
+    case 'd':
+      return abi::RegisterView::D;
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
     const std::optional<std::string>& register_name,
     const std::optional<prepare::PreparedRegisterPlacement>& placement,
@@ -954,6 +969,14 @@ make_value_stack_move_instruction(
       argument->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
       complete_full_width_f128_carrier(source_f128_carrier);
+  const bool selected_scalar_fpr_argument_move =
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
+      argument->source_register_bank == prepare::PreparedRegisterBank::Fpr &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Fpr &&
+      binding != nullptr &&
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      scalar_fp_view_from_register_name(binding->destination_register_name).has_value();
   const bool selected_f128_constant_argument_move =
       argument != nullptr &&
       argument->value_bank == prepare::PreparedRegisterBank::Vreg &&
@@ -996,7 +1019,8 @@ make_value_stack_move_instruction(
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
       source_home->register_name.has_value() && argument != nullptr &&
-      (selected_gpr_argument_move || selected_f128_argument_move) &&
+      (selected_gpr_argument_move || selected_scalar_fpr_argument_move ||
+       selected_f128_argument_move) &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
     if (argument->source_register_name.has_value() &&
@@ -1021,9 +1045,16 @@ make_value_stack_move_instruction(
     }
     const auto expected_view =
         selected_f128_argument_move ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
-                                    : std::nullopt;
+        : selected_scalar_fpr_argument_move
+            ? scalar_fp_view_from_register_name(binding->destination_register_name)
+            : std::nullopt;
+    const auto source_register_name =
+        selected_scalar_fpr_argument_move &&
+                argument->source_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : source_home->register_name;
     auto source = make_register_operand_from_prepared_authority(
-        source_home->register_name,
+        source_register_name,
         argument->source_register_placement,
         argument->source_register_bank,
         RegisterOperandRole::CallAbi,
@@ -2448,6 +2479,16 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
       instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
   }
+  const bool selected_scalar_fpr_register_move =
+      instruction.source_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr &&
+      (instruction.source_register->expected_view == abi::RegisterView::S ||
+       instruction.source_register->expected_view == abi::RegisterView::D) &&
+      instruction.source_register->expected_view ==
+          instruction.destination_register->expected_view;
+  if (selected_scalar_fpr_register_move) {
+    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+  }
   const auto* f128_carrier =
       instruction.source_f128_carrier != nullptr
           ? instruction.source_f128_carrier
@@ -2465,7 +2506,7 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =
-            "call-boundary move node requires prepared GPR registers or structured f128 q-register authority"};
+            "call-boundary move node requires prepared GPR registers, scalar FPR registers, or structured f128 q-register authority"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -2880,7 +2921,15 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
     }
   }
   std::ostringstream out;
-  out << mnemonic << " " << register_name(*move.destination_register) << ", ";
+  const bool scalar_fp_register_move =
+      move.source_register.has_value() &&
+      abi::is_fp_simd_register(move.source_register->reg) &&
+      abi::is_fp_simd_register(move.destination_register->reg) &&
+      (move.source_register->reg.view == abi::RegisterView::S ||
+       move.source_register->reg.view == abi::RegisterView::D) &&
+      move.source_register->reg.view == move.destination_register->reg.view;
+  out << (scalar_fp_register_move ? "fmov" : mnemonic) << " "
+      << register_name(*move.destination_register) << ", ";
   if (move.source_register.has_value()) {
     out << register_name(*move.source_register);
   } else {

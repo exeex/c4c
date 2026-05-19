@@ -4853,6 +4853,57 @@ int selected_call_boundary_register_move_prints_prepared_mov() {
                          "call-boundary register-move drift guard");
 }
 
+int selected_call_boundary_scalar_fpr_argument_move_prints_prepared_fmov() {
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{70},
+                  .to_value_id = prepare::PreparedValueId{70},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"s0"},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+          },
+      .abi_bindings =
+          {
+              prepare::PreparedAbiBinding{
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"s0"},
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_register = sreg(13),
+          .destination_register = sreg(0),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+
+  const auto result = print_common_instruction_nodes({move});
+  if (!result.ok) {
+    return fail("expected scalar FPR call-boundary move to print: " + result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    fmov s0, s13\n",
+                         "    fmov s0, s13\n",
+                         "fixed HFA scalar FPR call-lane publication");
+}
+
 int selected_call_boundary_immediate_argument_prints_prepared_mov() {
   const prepare::PreparedMoveBundle call_boundary_bundle{
       .function_name = c4c::FunctionNameId{2},
@@ -6901,6 +6952,11 @@ int main() {
     return result;
   }
   if (const int result = selected_call_boundary_register_move_prints_prepared_mov();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_call_boundary_scalar_fpr_argument_move_prints_prepared_fmov();
       result != 0) {
     return result;
   }

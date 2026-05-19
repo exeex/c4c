@@ -8,41 +8,42 @@ Current Step Title: Repair Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the owned AArch64 global data emission path in
-`src/backend/mir/aarch64/codegen/asm_emitter.cpp`: `F32` immediate
-initializers now emit `.word` IEEE bit-pattern data and `F64` immediate
-initializers now emit `.xword` IEEE bit-pattern data. The same directive path
-is used for scalar globals and aggregate initializer elements, so HFA-shaped
-globals are covered generally rather than by named-case matching.
+Step 2 repaired AArch64 fixed HFA/floating call-lane publication in
+`src/backend/mir/aarch64/codegen/calls.cpp`: scalar FPR call-boundary argument
+moves are now selected when prepared call ownership says a lane in a non-ABI
+FPR must be published into the classified ABI FPR, and the printer emits
+`fmov` for scalar `s`/`d` FPR register-to-register call-boundary moves.
 
-Focused backend coverage in `backend_aarch64_instruction_dispatch` now builds
-a prepared AArch64 module with scalar `F32`/`F64` globals and aggregate
-`F32`/`F64` initializer elements, then verifies the printed assembly contains
-real data and no deferred global-data marker.
+Focused backend coverage now proves the record and printer contracts:
+`backend_aarch64_target_instruction_records` selects a scalar FPR
+`CallArgumentAbi` move such as `s13 -> s0`, and
+`backend_aarch64_machine_printer` prints that selected move as
+`fmov s0, s13`.
 
-Fresh `00204.c` generated assembly now emits real data for `hfa11` through
-`hfa24`; for example `hfa11` emits `.word 1093769626`, `hfa12` emits two
-`.word` values, and `hfa21` through `hfa24` emit `.xword` values. The
-representative still fails at runtime. The new first bad fact is no longer
-global initializer data: the direct `fa_hfa11(hfa11)` producer loads `hfa11`
-into `s13` but reaches `bl fa_hfa11` without moving/publishing that lane into
-the ABI argument register `s0`, while `fa_hfa11` consumes `s0`.
+Fresh `00204.c` generated assembly now publishes the fixed HFA float lanes
+before direct calls: the `fa_hfa11(hfa11)` path loads the lane through `s13`
+and now emits `fmov s0, s13` immediately before `bl fa_hfa11`; the wider
+`fa_hfa12`/`fa_hfa13`/`fa_hfa14` float-lane calls similarly publish into
+`s0`/`s1`/`s2` as needed.
 
 ## Suggested Next
 
-Next packet should repair direct fixed HFA floating call-lane publication for
-AArch64: when a fixed HFA argument lane is loaded or materialized in a
-non-ABI FPR such as `s13`, the call-boundary lowering must move it into the
-classified ABI argument register such as `s0` before the call.
+Next packet should investigate fixed HFA return classification/publication on
+AArch64. Fresh generated BIR still lowers functions such as `fr_hfa11` as
+`ptr sret(size=4, align=4)` and generated assembly uses stack/pointer return
+storage instead of publishing HFA return lanes through ABI FPRs such as `s0`.
 
 ## Watchouts
 
 - Do not reopen global initializer lowering unless fresh evidence shows missing
   BIR initializer data. Current generated assembly proves the AArch64 emitter
   now materializes `F32`/`F64` HFA global data.
-- The next observed bad call path is not variadic: `arg` loads `hfa11` and
-  directly calls `fa_hfa11`, so fixed-argument HFA lane publication should be
-  checked before register-save-area, overflow-area, or `va_arg` progression.
+- The direct fixed-HFA argument path now emits scalar FPR publication before
+  `bl`; reopen it only if a fresh generated callsite again reaches a fixed HFA
+  callee without `s`/`d` ABI FPR publication.
+- The remaining visible HFA-family bad fact is not the fixed argument call
+  lane: fixed HFA returns such as `fr_hfa11` are still represented as sret
+  pointer returns in BIR/generated assembly.
 - Preserve prior repairs: large stack offsets, large frame adjustments,
   `va_start` helper lowering, scalar ALU immediates, HFA argument lanes, F128
   transport, aggregate helper text lowering, `va_start` destination
@@ -54,10 +55,9 @@ classified ABI argument register such as `s0` before the call.
   `%t15` predecessor/join source publication are fixed and now have focused
   local coverage.
 - The remaining runtime representative failure is still
-  `RUNTIME_NONZERO`/segmentation fault after printing substantial output.
-  After the global-data repair, the first HFA float argument still prints
-  `0.0` instead of `11.1` because the producer never moves the loaded lane into
-  `s0` before `bl fa_hfa11`.
+  `RUNTIME_NONZERO`/segmentation fault. The delegated CTest capture reported
+  no stdout/stderr payload for the failing run, so use generated BIR/assembly
+  facts rather than output text alone for the next first-bad-fact pass.
 - Do not special-case `00204.c`, `stdarg`, `myprintf`, the format loop, one
   HFA shape, one float literal, one stack slot, one register, one offset, or
   one emitted instruction sequence.
@@ -79,7 +79,8 @@ tests `backend_aarch64_machine_printer`,
 `backend_aarch64_instruction_dispatch`, and
 `backend_aarch64_target_instruction_records` passed. The representative
 `c_testsuite_aarch64_backend_src_00204_c` still fails with
-`RUNTIME_NONZERO`/segmentation fault after the first bad fact moved from
-missing global data to missing fixed-HFA call-lane publication into `s0`.
+`RUNTIME_NONZERO`/segmentation fault after the fixed-HFA call-lane publication
+repair; fresh generated assembly confirms `fmov s0, s13` before
+`bl fa_hfa11`.
 
 Proof log: `test_after.log`.
