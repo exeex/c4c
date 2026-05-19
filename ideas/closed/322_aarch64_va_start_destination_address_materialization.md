@@ -1,6 +1,6 @@
 # AArch64 Va Start Destination Address Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/321_aarch64_aggregate_va_arg_helper_lowering.md
 
@@ -67,6 +67,21 @@ lowering.
 - If `00204.c` advances to another first bad fact outside `va_start`
   destination materialization, the residual is classified into a separate
   owner.
+
+## Closure Note
+
+Closed on 2026-05-19. AArch64 `VaStart` lowering now carries and materializes
+a writable local `va_list` destination address before emitting field stores.
+The focused generated representative shows `add x21, sp, #816` before the
+`str ... [x21]` `va_start` field stores, and the focused backend coverage in
+the delegated proof passed. Raw `va.arg.aggregate*` helper text remains absent.
+
+The remaining `c_testsuite_aarch64_backend_src_00204_c` failure now occurs
+later while consuming an initialized `va_list`: scalar and string varargs are
+printed, then long-double/floating output is corrupted before a segmentation
+fault. That residual is outside `va_start` destination publication and is
+represented by
+`ideas/open/323_aarch64_vararg_consumption_source_progression.md`.
 
 ## Reviewer Reject Signals
 
