@@ -1939,6 +1939,180 @@ int selected_symbol_stack_source_store_materializes_through_value_scratch() {
                          "symbol stack-source store materialization printer");
 }
 
+int selected_stack_call_argument_store_prints_from_prepared_stack_facts() {
+  auto destination = frame_slot(0);
+  destination.size_bytes = 8;
+  destination.align_bytes = 8;
+  destination.stored_value_id = prepare::PreparedValueId{40};
+  destination.stored_value_name = c4c::ValueNameId{41};
+
+  auto source = frame_slot(32);
+  source.size_bytes = 8;
+  source.align_bytes = 8;
+  source.result_value_id = prepare::PreparedValueId{40};
+  source.result_value_name = c4c::ValueNameId{41};
+
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = destination,
+          .value = aarch64_codegen::make_memory_operand(source),
+          .value_type = bir::TypeKind::I64,
+      });
+
+  const auto result = print_common_instruction_nodes({store});
+  if (!result.ok) {
+    return fail("expected selected stack call-argument store to print: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr x9, [sp, #32]\n"
+      "    str x9, [sp]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "stack call-argument store printer");
+}
+
+int selected_aggregate_stack_copy_prints_from_prepared_memory_operands() {
+  const auto source_base = xreg(20);
+  const aarch64_codegen::MemoryOperand source{
+      .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+      .support = aarch64_codegen::MemoryOperandSupportKind::Prepared,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 4,
+      .result_value_id = prepare::PreparedValueId{42},
+      .result_value_name = c4c::ValueNameId{43},
+      .base_kind = aarch64_codegen::MemoryBaseKind::PointerValue,
+      .base_register = source_base,
+      .pointer_value_name = c4c::ValueNameId{43},
+      .pointer_value_id = prepare::PreparedValueId{42},
+      .byte_offset = 0,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .address_space = bir::AddressSpace::Default,
+      .can_use_base_plus_offset = true,
+  };
+
+  auto destination = frame_slot(0);
+  destination.surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode;
+  destination.instruction_index = 4;
+  destination.size_bytes = 16;
+  destination.align_bytes = 8;
+  destination.stored_value_id = prepare::PreparedValueId{42};
+  destination.stored_value_name = c4c::ValueNameId{43};
+
+  const auto source_operand = aarch64_codegen::make_memory_operand(source);
+  const auto destination_operand = aarch64_codegen::make_memory_operand(destination);
+  const auto copy = aarch64_codegen::InstructionRecord{
+      .family = aarch64_codegen::InstructionFamily::Assembler,
+      .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+      .opcode = aarch64_codegen::MachineOpcode::Unspecified,
+      .selection =
+          aarch64_codegen::MachineNodeStatusRecord{
+              .status = aarch64_codegen::MachineNodeSelectionStatus::Selected},
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 4,
+      .operands = {source_operand, destination_operand},
+      .side_effects = {aarch64_codegen::MachineSideEffectKind::MemoryRead,
+                       aarch64_codegen::MachineSideEffectKind::MemoryWrite,
+                       aarch64_codegen::MachineSideEffectKind::InlineAssembly},
+      .payload =
+          aarch64_codegen::AssemblerInstructionRecord{
+              .operands = {source_operand, destination_operand},
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template =
+                  "ldr x9, [x20]\n"
+                  "str x9, [sp]\n"
+                  "ldr x9, [x20, #8]\n"
+                  "str x9, [sp, #8]",
+          },
+  };
+
+  const auto result = print_common_instruction_nodes({copy});
+  if (!result.ok) {
+    return fail("expected selected aggregate stack-copy node to print: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr x9, [x20]\n"
+      "    str x9, [sp]\n"
+      "    ldr x9, [x20, #8]\n"
+      "    str x9, [sp, #8]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "aggregate stack-copy printer");
+}
+
+int call_boundary_stack_printer_shapes_fail_closed_when_not_selected() {
+  auto destination = frame_slot(0);
+  destination.size_bytes = 8;
+  destination.align_bytes = 8;
+  destination.stored_value_id = prepare::PreparedValueId{44};
+  destination.stored_value_name = c4c::ValueNameId{45};
+
+  auto source = frame_slot(32);
+  source.size_bytes = 8;
+  source.align_bytes = 8;
+  source.result_value_id = prepare::PreparedValueId{44};
+  source.result_value_name = c4c::ValueNameId{45};
+
+  auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = destination,
+          .value = aarch64_codegen::make_memory_operand(source),
+          .value_type = bir::TypeKind::I64,
+      });
+  store.selection =
+      aarch64_codegen::MachineNodeStatusRecord{
+          .status =
+              aarch64_codegen::MachineNodeSelectionStatus::DeferredUnsupported,
+          .diagnostic =
+              "call-boundary stack argument move requires AArch64 stack-copy lowering"};
+  const auto store_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(store);
+  if (store_result.ok ||
+      store_result.diagnostic.find("printer requires selected machine node") ==
+          std::string::npos ||
+      store_result.diagnostic.find(
+          "call-boundary stack argument move requires AArch64 stack-copy lowering") ==
+          std::string::npos) {
+    return fail("expected unselected stack call-argument store shape to fail closed");
+  }
+
+  const auto aggregate_copy = aarch64_codegen::InstructionRecord{
+      .family = aarch64_codegen::InstructionFamily::Assembler,
+      .surface = aarch64_codegen::RecordSurfaceKind::MachineInstructionNode,
+      .opcode = aarch64_codegen::MachineOpcode::Unspecified,
+      .selection =
+          aarch64_codegen::MachineNodeStatusRecord{
+              .status = aarch64_codegen::MachineNodeSelectionStatus::Selected},
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 4,
+      .payload =
+          aarch64_codegen::AssemblerInstructionRecord{
+              .has_inline_asm_payload = false,
+              .side_effects = true,
+          },
+  };
+  const auto aggregate_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(aggregate_copy);
+  if (aggregate_result.ok ||
+      aggregate_result.diagnostic.find("assembler node is missing inline-asm payload") ==
+          std::string::npos) {
+    return fail("expected incomplete aggregate stack-copy assembler shape to fail closed");
+  }
+
+  return 0;
+}
+
 int selected_atomic_load_store_and_fence_print_from_structured_records() {
   auto load_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Load,
                                         0,
@@ -6099,6 +6273,21 @@ int main() {
   }
   if (const int result =
           selected_symbol_stack_source_store_materializes_through_value_scratch();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_stack_call_argument_store_prints_from_prepared_stack_facts();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_aggregate_stack_copy_prints_from_prepared_memory_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          call_boundary_stack_printer_shapes_fail_closed_when_not_selected();
       result != 0) {
     return result;
   }
