@@ -35,11 +35,20 @@ option(ENABLE_CPP_EASTL_EXTERNAL_TESTS
 option(ENABLE_C_TESTSUITE_BACKEND_TESTS
     "Register c-testsuite backend execution tests such as x86_backend/aarch64_backend"
     OFF)
+string(TOLOWER "${CMAKE_HOST_SYSTEM_PROCESSOR}" C4C_TEST_HOST_CPU)
+set(C4C_ENABLE_AARCH64_BACKEND_SCAN_DEFAULT OFF)
+if(ENABLE_C4C_BACKEND AND
+   (C4C_TEST_HOST_CPU STREQUAL "aarch64" OR C4C_TEST_HOST_CPU STREQUAL "arm64"))
+  set(C4C_ENABLE_AARCH64_BACKEND_SCAN_DEFAULT ON)
+endif()
+
 option(ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN
     "Register explicit c-testsuite AArch64 backend scan tests independent of host backend selection"
-    OFF)
+    ${C4C_ENABLE_AARCH64_BACKEND_SCAN_DEFAULT})
 set(C_TESTSUITE_AARCH64_BACKEND_RUNNER "" CACHE STRING
     "Optional command used to run AArch64 c-testsuite backend binaries on non-AArch64 hosts")
+set(C_TESTSUITE_AARCH64_BACKEND_TEST_TIMEOUT_SEC "5" CACHE STRING
+    "CTest timeout (seconds) for a single AArch64 backend c-testsuite test")
 
 if(ENABLE_C_TESTSUITE_AARCH64_BACKEND_SCAN AND NOT ENABLE_C4C_BACKEND)
   message(FATAL_ERROR

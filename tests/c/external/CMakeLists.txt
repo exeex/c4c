@@ -62,6 +62,10 @@ if(CLANG_EXECUTABLE AND C_TESTSUITE_ROOT AND EXISTS "${C_TESTSUITE_ROOT}")
         endif()
       endif()
       set_tests_properties("${backend_test_name}" PROPERTIES LABELS "${backend_labels}")
+      if(backend_label STREQUAL "aarch64_backend")
+        set_tests_properties("${backend_test_name}" PROPERTIES
+          TIMEOUT "${C_TESTSUITE_AARCH64_BACKEND_TEST_TIMEOUT_SEC}")
+      endif()
     endfunction()
 
     file(STRINGS "${C_TESTSUITE_ALLOWLIST}" C_TESTSUITE_ALLOWLIST_RAW)
