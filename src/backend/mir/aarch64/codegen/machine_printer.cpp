@@ -324,7 +324,53 @@ std::optional<std::string> compare_operand_spelling(const OperandRecord& operand
   return std::nullopt;
 }
 
+std::optional<const RegisterOperand*> compare_register_operand(
+    const OperandRecord& operand) {
+  if (operand.kind != OperandKind::Register) {
+    return std::nullopt;
+  }
+  const auto* reg = std::get_if<RegisterOperand>(&operand.payload);
+  if (reg == nullptr || !abi::is_gp_register(reg->reg)) {
+    return std::nullopt;
+  }
+  return reg;
+}
+
+std::optional<const ImmediateOperand*> compare_immediate_operand(
+    const OperandRecord& operand) {
+  if (operand.kind != OperandKind::Immediate) {
+    return std::nullopt;
+  }
+  const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+  if (immediate == nullptr) {
+    return std::nullopt;
+  }
+  return immediate;
+}
+
+std::uint64_t immediate_materialization_value(const ImmediateOperand& immediate) {
+  if (immediate.kind == ImmediateKind::UnsignedInteger) {
+    return immediate.unsigned_value;
+  }
+  return static_cast<std::uint64_t>(immediate.signed_value);
+}
+
+std::optional<abi::RegisterReference> compare_branch_scratch_register(
+    abi::RegisterView view,
+    const RegisterOperand& compare_reg) {
+  for (auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (scratch.index == compare_reg.reg.index &&
+        scratch.bank == compare_reg.reg.bank) {
+      continue;
+    }
+    scratch.view = view;
+    return scratch;
+  }
+  return std::nullopt;
+}
+
 struct CompareBranchPrintOperands {
+  std::vector<std::string> setup_lines;
   std::string lhs;
   std::string rhs;
   bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
@@ -339,6 +385,7 @@ std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
   auto rhs = compare_operand_spelling(rhs_operand, compare_type, false);
   if (lhs.has_value() && rhs.has_value()) {
     return CompareBranchPrintOperands{
+        .setup_lines = {},
         .lhs = *lhs,
         .rhs = *rhs,
         .predicate = predicate,
@@ -350,10 +397,55 @@ std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
   const auto swapped_predicate = swapped_compare_predicate(predicate);
   if (lhs.has_value() && rhs.has_value() && swapped_predicate.has_value()) {
     return CompareBranchPrintOperands{
+        .setup_lines = {},
         .lhs = *lhs,
         .rhs = *rhs,
         .predicate = *swapped_predicate,
     };
+  }
+
+  const auto view = compare_register_view(compare_type);
+  const auto width = integer_type_bit_width(compare_type);
+  if (!view.has_value() || !width.has_value()) {
+    return std::nullopt;
+  }
+
+  if (const auto reg = compare_register_operand(lhs_operand);
+      reg.has_value()) {
+    if (const auto immediate = compare_immediate_operand(rhs_operand);
+        immediate.has_value()) {
+      const auto scratch = compare_branch_scratch_register(*view, **reg);
+      if (!scratch.has_value()) {
+        return std::nullopt;
+      }
+      auto setup = materialize_integer_constant_lines(
+          *scratch, immediate_materialization_value(**immediate), *width);
+      return CompareBranchPrintOperands{
+          .setup_lines = std::move(setup),
+          .lhs = *compare_operand_spelling(lhs_operand, compare_type, true),
+          .rhs = abi::register_name(*scratch),
+          .predicate = predicate,
+      };
+    }
+  }
+
+  if (const auto reg = compare_register_operand(rhs_operand);
+      reg.has_value() && swapped_predicate.has_value()) {
+    if (const auto immediate = compare_immediate_operand(lhs_operand);
+        immediate.has_value()) {
+      const auto scratch = compare_branch_scratch_register(*view, **reg);
+      if (!scratch.has_value()) {
+        return std::nullopt;
+      }
+      auto setup = materialize_integer_constant_lines(
+          *scratch, immediate_materialization_value(**immediate), *width);
+      return CompareBranchPrintOperands{
+          .setup_lines = std::move(setup),
+          .lhs = *compare_operand_spelling(rhs_operand, compare_type, true),
+          .rhs = abi::register_name(*scratch),
+          .predicate = *swapped_predicate,
+      };
+    }
   }
 
   return std::nullopt;
@@ -525,9 +617,11 @@ mir::TargetInstructionPrintResult print_fused_compare_branch(
   false_branch_line << "b "
                     << block_label(targets.false_target.function_name,
                                    targets.false_target.block_label);
-  return target_printed({compare_line.str(),
-                         true_branch_line.str(),
-                         false_branch_line.str()});
+  std::vector<std::string> lines = operands->setup_lines;
+  lines.push_back(compare_line.str());
+  lines.push_back(true_branch_line.str());
+  lines.push_back(false_branch_line.str());
+  return target_printed(std::move(lines));
 }
 
 std::optional<abi::RegisterView> floating_register_view(bir::TypeKind type) {
