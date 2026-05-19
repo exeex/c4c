@@ -1002,6 +1002,15 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      result_plan != nullptr &&
+      result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
+    return std::nullopt;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       (!move_record.source_register.has_value() ||
        !move_record.destination_register.has_value())) {
     append_call_diagnostic(

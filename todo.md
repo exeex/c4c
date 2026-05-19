@@ -8,44 +8,42 @@ Current Step Title: Repair Callee and Argument Preservation
 
 ## Just Finished
 
-Idea 310 closed after proving the prerequisite producer fact for indirect-call
-string arguments. The focused `00189.c` prepared dump now publishes
-`address_materialization block=entry inst_index=4 kind=string_constant
-result=@.str1 text=.str1 ...`, so idea 309 can resume without asking AArch64
-lowering to guess string identity from assembly, source shape, or argument
-position.
+Plan Step 2 repaired the remaining AArch64 indirect-call preservation path for
+`00189.c`. Dispatch now retargets ordinary symbol-load results back to the
+explicit prepared register home, keeps call results available from the ABI
+result register for the next call setup, orders before-call moves so live source
+registers are consumed before destination clobbers, and rematerializes
+frame-slot call arguments from same-block producers when the frame-slot home
+would be stale. The focused assembly now loads `fprintfptr` into the same
+register used by `blr`, moves the nested result out of `x0` before setting the
+outer `x0`, and reloads `stdout` into `x0` before the final indirect call.
 
 ## Suggested Next
 
-Resume `plan.md` Step 2. Re-check the focused `00189.c` prepared facts and
-current AArch64 assembly, then inspect the remaining `fprintfptr`
-callee/register preservation boundary before choosing the smallest semantic
-call-lowering repair.
+Supervisor can review and commit this Step 2 slice, then proceed to Step 3
+focused runtime proof/close evaluation if no broader validation is requested.
 
 ## Watchouts
 
-- Treat the `.str1` prepared fact as repaired; do not reopen the producer route
-  unless new evidence shows prepared output lost that fact again.
-- The known remaining hazard is the `fprintfptr` callee register placement
-  mismatch: prepared storage previously named `%t0` as `reg=x21`, while
-  ordinary non-GOT `load_global` lowering loaded `fprintfptr` as `x20`.
-- Also verify whether the nested result or outer-call argument homes overlap
-  saved-register storage or stale prepared homes before finalizing the repair.
-- Do not broaden into direct multi-argument shuffle, direct vararg aliasing,
-  address-of-local direct-call preparation, expectations, allowlists,
-  unsupported classifications, runner policy, CTest registration, timeout
-  policy, proof logs, or test contracts.
+The repaired path intentionally avoids relying on the stale stack homes observed
+for `stdout` and the nested call result. The stack/save-slot overlap still looks
+like a lower-level prepared-frame boundary, but this packet did not broaden into
+stack-layout ownership because the AArch64 call-boundary lowering can preserve
+the live values from authoritative producer and ABI-register facts.
 
 ## Proof
 
-Close-time lifecycle proof for idea 310:
+Delegated proof ran from the repo root:
 
-- `test_after.log` contains the focused prepared-BIR check showing `.str1`
-  publication for `00189.c`.
-- Supervisor-reported broader backend validation:
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
+- `cmake --build --preset default`
+- `ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00189_c)$' > test_after.log 2>&1`
+
+Result: `test_after.log` reports 5/5 passing, including
+`c_testsuite_aarch64_backend_src_00189_c`. This improves over the captured
+baseline where 4/5 passed and `00189.c` segfaulted.
+
+Supervisor validation after review:
+
+- `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log` passed, resolving the focused `00189.c` failure.
+- `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
   139/139.
-- Plan-owner close gate ran
-  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
-  and passed with 1/1 before and 1/1 after. The semantic close signal is the
-  post-CTest prepared-BIR materialization check moving from absent to present.

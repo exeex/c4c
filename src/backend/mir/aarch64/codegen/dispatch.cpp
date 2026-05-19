@@ -1135,6 +1135,46 @@ void record_memory_result(BlockScalarLoweringState& scalar_state,
                                  *memory_record->result_register);
 }
 
+void retarget_memory_result_to_prepared_home(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction) {
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Load ||
+      memory_record->address.base_kind != MemoryBaseKind::Symbol ||
+      !memory_record->result_value_id.has_value() ||
+      !memory_record->result_register.has_value() ||
+      context.function.value_locations == nullptr) {
+    return;
+  }
+
+  const auto* home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *memory_record->result_value_id);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return;
+  }
+
+  const auto expected_view = memory_record->result_register->expected_view;
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() ||
+      parsed->bank != memory_record->result_register->reg.bank) {
+    return;
+  }
+  auto viewed = *parsed;
+  if (expected_view.has_value()) {
+    viewed.view = *expected_view;
+  }
+  memory_record->result_register->reg = viewed;
+  memory_record->result_register->value_id = home->value_id;
+  memory_record->result_register->value_name = home->value_name;
+  memory_record->result_register->occupied_register_references = {viewed};
+  memory_record->result_register->occupied_registers = {abi::register_name(viewed)};
+}
+
 void retarget_pointer_store_value_to_materialized_address(
     module::MachineInstruction& instruction,
     const RegisterOperand& materialized_address) {
@@ -1784,6 +1824,14 @@ materialize_direct_global_select_chain_call_argument(
                                                 value,
                                                 before_instruction_index)) {
     return std::nullopt;
+  }
+  if (context.function.value_locations != nullptr) {
+    const auto* home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          *value_name);
+    if (home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      return std::nullopt;
+    }
   }
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   if (scratches.size() < 2U) {
@@ -2558,6 +2606,301 @@ dynamic_stack_helper_kind(std::string_view callee) {
                                          diagnostics);
 }
 
+[[nodiscard]] std::optional<bir::Value> instruction_result_value(
+    const bir::Inst& inst) {
+  return std::visit(
+      [](const auto& typed_inst) -> std::optional<bir::Value> {
+        using T = std::decay_t<decltype(typed_inst)>;
+        if constexpr (std::is_same_v<T, bir::BinaryInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CastInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::SelectInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::LoadLocalInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::LoadGlobalInst>) {
+          return typed_inst.result;
+        } else if constexpr (std::is_same_v<T, bir::CallInst>) {
+          return typed_inst.result;
+        }
+        return std::nullopt;
+      },
+      inst);
+}
+
+[[nodiscard]] std::optional<bir::Value> find_bir_value_for_prepared_name(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    const auto result = instruction_result_value(context.bir_block->insts[index - 1]);
+    if (!result.has_value()) {
+      continue;
+    }
+    const auto prepared_name = prepared_named_value_id(context, *result);
+    if (prepared_name == std::optional<c4c::ValueNameId>{value_name}) {
+      return result;
+    }
+  }
+  if (before_instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  if (const auto* call =
+          std::get_if<bir::CallInst>(&context.bir_block->insts[before_instruction_index]);
+      call != nullptr) {
+    for (const auto& argument : call->args) {
+      const auto prepared_name = prepared_named_value_id(context, argument);
+      if (prepared_name == std::optional<c4c::ValueNameId>{value_name}) {
+        return argument;
+      }
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_call_boundary_source_to_destination(
+    const module::BlockLoweringContext& context,
+    module::MachineInstruction& instruction,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr ||
+      !move_record->source_memory.has_value() ||
+      !move_record->destination_register.has_value() ||
+      !move_record->source_memory->result_value_name.has_value() ||
+      move_record->source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+      find_emitted_scalar_register(
+          scalar_state, *move_record->source_memory->result_value_name).has_value() ||
+      !abi::is_gp_register(move_record->destination_register->reg)) {
+    return std::nullopt;
+  }
+
+  const auto source_value =
+      find_bir_value_for_prepared_name(
+          context, *move_record->source_memory->result_value_name, instruction_index);
+  if (!source_value.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  const std::uint8_t target_index = move_record->destination_register->reg.index;
+  const std::uint8_t scratch_index =
+      scratches.front().index == target_index && scratches.size() > 1
+          ? scratches[1].index
+          : scratches.front().index;
+  if (scratch_index == target_index) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          *source_value,
+                                          instruction_index,
+                                          target_index,
+                                          scratch_index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  RegisterOperand emitted = *move_record->destination_register;
+  emitted.value_id = move_record->source_memory->result_value_id;
+  emitted.value_name = *move_record->source_memory->result_value_name;
+  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
+void record_call_result_source_register(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    BlockScalarLoweringState& scalar_state) {
+  if (!call_plan.result.has_value() ||
+      !call_plan.result->destination_value_id.has_value() ||
+      !call_plan.result->source_register_name.has_value() ||
+      call_plan.result->source_register_bank != prepare::PreparedRegisterBank::Gpr ||
+      context.function.value_locations == nullptr) {
+    return;
+  }
+  const auto* home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        *call_plan.result->destination_value_id);
+  if (home == nullptr) {
+    return;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(
+      *call_plan.result->source_register_name);
+  if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return;
+  }
+  auto viewed = *parsed;
+  if (call_plan.result->source_register_placement.has_value()) {
+    if (const auto converted =
+            abi::convert_prepared_register(*call_plan.result->source_register_placement,
+                                           prepare::PreparedRegisterClass::General,
+                                           parsed->view);
+        converted.reg.has_value()) {
+      viewed = *converted.reg;
+    }
+  }
+  record_emitted_scalar_register(
+      scalar_state,
+      home->value_name,
+      RegisterOperand{
+          .reg = viewed,
+          .role = RegisterOperandRole::CallAbi,
+          .value_id = home->value_id,
+          .value_name = home->value_name,
+          .prepared_class = prepare::PreparedRegisterClass::General,
+          .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+          .expected_view = viewed.view,
+          .contiguous_width = call_plan.result->source_contiguous_width,
+          .occupied_register_references = {viewed},
+          .occupied_registers = {abi::register_name(viewed)},
+      });
+}
+
+[[nodiscard]] bool move_source_aliases_destination(
+    const module::MachineInstruction& source_instruction,
+    const module::MachineInstruction& destination_instruction) {
+  const auto* source =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&source_instruction.target.payload);
+  const auto* destination =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&destination_instruction.target.payload);
+  return source != nullptr &&
+         destination != nullptr &&
+         source->source_register.has_value() &&
+         destination->destination_register.has_value() &&
+         registers_alias(*source->source_register, *destination->destination_register);
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+order_before_call_moves_for_source_preservation(
+    std::vector<module::MachineInstruction> moves) {
+  std::vector<module::MachineInstruction> ordered;
+  ordered.reserve(moves.size());
+  while (!moves.empty()) {
+    auto selected = moves.begin();
+    for (auto candidate = moves.begin(); candidate != moves.end(); ++candidate) {
+      const bool protects_live_source =
+          std::any_of(moves.begin(), moves.end(), [&](const auto& other) {
+            return &other != &*candidate &&
+                   move_source_aliases_destination(*candidate, other);
+          });
+      if (protects_live_source) {
+        selected = candidate;
+        break;
+      }
+    }
+    ordered.push_back(std::move(*selected));
+    moves.erase(selected);
+  }
+  return ordered;
+}
+
+[[nodiscard]] std::vector<module::MachineInstruction>
+materialize_missing_frame_slot_call_arguments(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  std::vector<module::MachineInstruction> lowered;
+  if (context.function.value_locations == nullptr) {
+    return lowered;
+  }
+  for (const auto& argument : call_plan.arguments) {
+    if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+        !argument.source_value_id.has_value() ||
+        argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+      continue;
+    }
+    const auto* home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          *argument.source_value_id);
+    if (home == nullptr ||
+        find_emitted_scalar_register(scalar_state, home->value_name).has_value()) {
+      continue;
+    }
+    const auto source_value =
+        find_bir_value_for_prepared_name(context, home->value_name, instruction_index);
+    if (!source_value.has_value()) {
+      continue;
+    }
+    const auto expected_view = scalar_view_for_type(source_value->type);
+    if (!expected_view.has_value()) {
+      continue;
+    }
+    const auto prepared_class = prepare::PreparedRegisterClass::General;
+    abi::PreparedRegisterConversionResult converted;
+    if (argument.destination_register_placement.has_value()) {
+      converted =
+          abi::convert_prepared_register(*argument.destination_register_placement,
+                                         prepared_class,
+                                         expected_view);
+    } else if (argument.destination_register_name.has_value()) {
+      converted =
+          abi::convert_prepared_register(*argument.destination_register_name,
+                                         argument.destination_register_bank,
+                                         prepared_class,
+                                         expected_view);
+    } else {
+      continue;
+    }
+    if (!converted.reg.has_value()) {
+      continue;
+    }
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    if (scratches.empty()) {
+      continue;
+    }
+    const std::uint8_t target_index = converted.reg->index;
+    const std::uint8_t scratch_index =
+        scratches.front().index == target_index && scratches.size() > 1
+            ? scratches[1].index
+            : scratches.front().index;
+    if (scratch_index == target_index) {
+      continue;
+    }
+    std::vector<std::string> lines;
+    if (!emit_value_publication_to_register(context,
+                                            *source_value,
+                                            instruction_index,
+                                            target_index,
+                                            scratch_index,
+                                            lines) ||
+        lines.empty()) {
+      continue;
+    }
+    RegisterOperand emitted{
+        .reg = *converted.reg,
+        .role = RegisterOperandRole::CallAbi,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .prepared_class = prepared_class,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = expected_view,
+        .contiguous_width = argument.destination_contiguous_width,
+        .occupied_register_references = {*converted.reg},
+        .occupied_registers = {abi::register_name(*converted.reg)},
+    };
+    record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+    if (auto materialized =
+            make_select_chain_materialization_instruction(
+                context, instruction_index, std::move(lines))) {
+      lowered.push_back(std::move(*materialized));
+    }
+  }
+  return lowered;
+}
+
 }  // namespace
 
 module::BlockLoweringContext make_block_lowering_context(
@@ -2609,6 +2952,7 @@ InstructionDispatchResult dispatch_prepared_block(
                                      *move_record->destination_register);
     }
   };
+
   auto retarget_call_boundary_source_to_emitted_scalar =
       [&](module::MachineInstruction& instruction) {
     auto* move_record =
@@ -2750,6 +3094,7 @@ InstructionDispatchResult dispatch_prepared_block(
             if (move_record != nullptr &&
                 source_register_conflicts_with_materialized_address(
                     *move_record, materialized_addresses)) {
+              record_call_boundary_destination(before_call_move);
               block.instructions.push_back(std::move(before_call_move));
             } else {
               deferred_before_call_moves.push_back(std::move(before_call_move));
@@ -2765,9 +3110,23 @@ InstructionDispatchResult dispatch_prepared_block(
             }
             block.instructions.push_back(std::move(materialized));
           }
-          for (auto& before_call_move : deferred_before_call_moves) {
+          for (auto& before_call_move :
+               order_before_call_moves_for_source_preservation(
+                   std::move(deferred_before_call_moves))) {
             retarget_call_boundary_source_to_emitted_scalar(before_call_move);
-            block.instructions.push_back(std::move(before_call_move));
+            if (auto materialized =
+                    materialize_call_boundary_source_to_destination(
+                        context, before_call_move, instruction_index, scalar_state)) {
+              block.instructions.push_back(std::move(*materialized));
+            } else {
+              record_call_boundary_destination(before_call_move);
+              block.instructions.push_back(std::move(before_call_move));
+            }
+          }
+          for (auto& materialized_argument :
+               materialize_missing_frame_slot_call_arguments(
+                   context, *call_plan, instruction_index, scalar_state)) {
+            block.instructions.push_back(std::move(materialized_argument));
           }
         }
         if (auto lowered = lower_call_instruction(
@@ -2775,6 +3134,7 @@ InstructionDispatchResult dispatch_prepared_block(
           block.instructions.push_back(std::move(*lowered));
           clear_call_clobbered_emitted_scalar_registers(scalar_state);
           if (call_plan != nullptr) {
+            record_call_result_source_register(context, *call_plan, scalar_state);
             auto after_call_moves =
                 lower_after_call_moves(context, *call_plan, instruction_index, diagnostics);
             for (auto& after_call_move : after_call_moves) {
@@ -2841,6 +3201,8 @@ InstructionDispatchResult dispatch_prepared_block(
                        lower_memory_instruction(context, inst, instruction_index, diagnostics);
                    lowered_ordinary_memory.handled) {
           if (lowered_ordinary_memory.instruction.has_value()) {
+            retarget_memory_result_to_prepared_home(
+                context, *lowered_ordinary_memory.instruction);
             record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
             block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
           }
@@ -2878,6 +3240,7 @@ InstructionDispatchResult dispatch_prepared_block(
             lower_f128_transport_instruction(context, inst, instruction_index, diagnostics);
         if (lowered_memory.handled) {
           if (lowered_memory.instruction.has_value()) {
+            retarget_memory_result_to_prepared_home(context, *lowered_memory.instruction);
             record_memory_result(scalar_state, *lowered_memory.instruction);
             block.instructions.push_back(std::move(*lowered_memory.instruction));
           }
@@ -2892,6 +3255,8 @@ InstructionDispatchResult dispatch_prepared_block(
                         context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
               block.instructions.push_back(std::move(*value_publication));
             }
+            retarget_memory_result_to_prepared_home(
+                context, *lowered_ordinary_memory.instruction);
             record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
             block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
           }
