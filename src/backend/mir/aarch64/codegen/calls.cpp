@@ -504,6 +504,61 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_frame_slot_call_argument_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      source_home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+  const prepare::PreparedAddressMaterialization* selected = nullptr;
+  for (const auto& materialization : addressing->address_materializations) {
+    if (materialization.block_label == context.control_flow_block->block_label &&
+        materialization.inst_index <= instruction_index &&
+        materialization.kind == prepare::PreparedAddressMaterializationKind::FrameSlot &&
+        materialization.result_value_name == source_home.value_name &&
+        materialization.frame_slot_id.has_value()) {
+      if (selected != nullptr && selected->inst_index == materialization.inst_index) {
+        return std::nullopt;
+      }
+      if (selected != nullptr && selected->inst_index > materialization.inst_index) {
+        continue;
+      }
+      selected = &materialization;
+    }
+  }
+  if (selected == nullptr) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = selected->function_name,
+      .block_label = selected->block_label,
+      .instruction_index = selected->inst_index,
+      .result_value_id = argument.source_value_id,
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = selected->frame_slot_id,
+      .byte_offset = selected->byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = source_home.size_bytes.value_or(8),
+      .align_bytes = source_home.align_bytes.value_or(8),
+      .address_space = selected->address_space,
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallArgumentPlan& argument,
@@ -601,6 +656,176 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] std::optional<std::string_view> value_move_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return std::string_view{"ldrb"};
+    case 2:
+      return std::string_view{"ldrh"};
+    case 4:
+    case 8:
+      return std::string_view{"ldr"};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> value_move_store_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return std::string_view{"strb"};
+    case 2:
+      return std::string_view{"strh"};
+    case 4:
+    case 8:
+      return std::string_view{"str"};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> value_move_scratch_register(
+    std::size_t width_bytes) {
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  if (width_bytes == 1 || width_bytes == 2 || width_bytes == 4) {
+    return abi::w_register(scratches.front().index);
+  }
+  if (width_bytes == 8) {
+    return abi::x_register(scratches.front().index);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> value_move_frame_slot_address(
+    const prepare::PreparedValueHome& home) {
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home.offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  std::ostringstream out;
+  out << "[sp";
+  if (*home.offset_bytes != 0) {
+    out << ", #" << *home.offset_bytes;
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_value_stack_move_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedValueHome& destination_home,
+    const prepare::PreparedValueHome* source_home,
+    std::size_t instruction_index) {
+  const auto width_bytes =
+      destination_home.size_bytes.value_or(source_home != nullptr
+                                               ? source_home->size_bytes.value_or(4)
+                                               : 4);
+  const auto store_mnemonic = value_move_store_mnemonic(width_bytes);
+  const auto destination = value_move_frame_slot_address(destination_home);
+  if (!store_mnemonic.has_value() || !destination.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  std::string value_register;
+  if (move.source_immediate_i32.has_value()) {
+    const auto scratch = value_move_scratch_register(width_bytes);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    value_register = std::string{abi::register_name(*scratch)};
+    auto materialized = materialize_integer_constant_lines(
+        *scratch,
+        static_cast<std::uint64_t>(
+            static_cast<std::uint32_t>(*move.source_immediate_i32)),
+        width_bytes == 8 ? 64U : 32U);
+    if (materialized.empty()) {
+      return std::nullopt;
+    }
+    lines.insert(lines.end(), materialized.begin(), materialized.end());
+  } else if (source_home != nullptr &&
+             source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+             source_home->offset_bytes.has_value()) {
+    const auto scratch = value_move_scratch_register(width_bytes);
+    const auto load_mnemonic = value_move_load_mnemonic(width_bytes);
+    const auto source = value_move_frame_slot_address(*source_home);
+    if (!scratch.has_value() || !load_mnemonic.has_value() || !source.has_value()) {
+      return std::nullopt;
+    }
+    value_register = std::string{abi::register_name(*scratch)};
+    lines.push_back(std::string{*load_mnemonic} + " " + value_register + ", " +
+                    *source);
+  } else if (source_home != nullptr &&
+             source_home->kind == prepare::PreparedValueHomeKind::Register &&
+             source_home->register_name.has_value()) {
+    const auto parsed = abi::parse_aarch64_register_name(*source_home->register_name);
+    if (!parsed.has_value() ||
+        parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      return std::nullopt;
+    }
+    const auto source_reg = width_bytes == 8 ? abi::x_register(parsed->index)
+                                            : abi::w_register(parsed->index);
+    value_register = std::string{abi::register_name(source_reg)};
+  } else {
+    return std::nullopt;
+  }
+  lines.push_back(std::string{*store_mnemonic} + " " + value_register + ", " +
+                  *destination);
+
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += lines[index];
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .defs = {MachineEffectResource{
+          .kind = MachineEffectResourceKind::PreparedValue,
+          .value_id = destination_home.value_id,
+          .value_name = destination_home.value_name,
+      }},
+      .uses = source_home != nullptr
+                  ? std::vector<MachineEffectResource>{MachineEffectResource{
+                        .kind = MachineEffectResourceKind::PreparedValue,
+                        .value_id = source_home->value_id,
+                        .value_name = source_home->value_name,
+                    }}
+                  : std::vector<MachineEffectResource>{},
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index,
+                                                std::move(target));
 }
 
 [[nodiscard]] module::MachineInstruction make_aggregate_stack_copy_instruction(
@@ -847,8 +1072,13 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    auto source = make_frame_slot_call_argument_source(
+    auto address_source = make_frame_slot_call_argument_address_source(
         context, *argument, *source_home, instruction_index);
+    auto source =
+        address_source.has_value()
+            ? address_source
+            : make_frame_slot_call_argument_source(
+                  context, *argument, *source_home, instruction_index);
     const auto destination_register_placement =
         binding != nullptr && binding->destination_register_placement.has_value()
             ? binding->destination_register_placement
@@ -873,7 +1103,9 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                            : move.destination_contiguous_width,
         binding != nullptr ? binding->destination_occupied_register_names
                            : move.destination_occupied_register_names,
-        source.has_value()
+        address_source.has_value()
+            ? std::optional<abi::RegisterView>{abi::RegisterView::X}
+            : source.has_value()
             ? scalar_integer_register_view_from_size(source->size_bytes)
             : std::nullopt,
         diagnostics,
@@ -889,6 +1121,7 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       return std::nullopt;
     }
     move_record.source_memory = *source;
+    move_record.source_memory_materializes_address = address_source.has_value();
     move_record.destination_register = *destination;
   }
 
@@ -1603,14 +1836,32 @@ std::vector<module::MachineInstruction> lower_value_moves(
 
   for (const auto& move : bundle->moves) {
     if (move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
       continue;
     }
     const auto* destination_home =
         prepare::find_prepared_value_home(*context.function.value_locations,
                                           move.to_value_id);
-    if (destination_home == nullptr ||
+    if (destination_home == nullptr) {
+      continue;
+    }
+    const auto* source_home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          move.from_value_id);
+    if (move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+        destination_home->kind == prepare::PreparedValueHomeKind::StackSlot) {
+      if (auto stack_move = make_value_stack_move_instruction(
+              context,
+              *bundle,
+              move,
+              *destination_home,
+              source_home,
+              instruction_index)) {
+        lowered.push_back(std::move(*stack_move));
+      }
+      continue;
+    }
+    if (move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
         destination_home->kind != prepare::PreparedValueHomeKind::Register) {
       continue;
     }
@@ -1635,9 +1886,6 @@ std::vector<module::MachineInstruction> lower_value_moves(
       continue;
     }
 
-    const auto* source_home =
-        prepare::find_prepared_value_home(*context.function.value_locations,
-                                          move.from_value_id);
     CallBoundaryMoveInstructionRecord move_record{
         .function_name = context.function.control_flow->function_name,
         .phase = phase,
@@ -2416,7 +2664,9 @@ InstructionRecord make_call_boundary_move_instruction(
   } else if (instruction.source_memory.has_value()) {
     const auto source = make_memory_operand(*instruction.source_memory);
     operands.push_back(source);
-    uses.push_back(effect_from_operand(source));
+    if (!instruction.source_memory_materializes_address) {
+      uses.push_back(effect_from_operand(source));
+    }
   } else if (instruction.source_immediate.has_value()) {
     const auto source = make_immediate_operand(*instruction.source_immediate);
     operands.push_back(source);
@@ -2593,6 +2843,15 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
       return target_unsupported(
           bad_header(instruction) +
           "call-boundary frame-slot move requires a prepared frame-slot address");
+    }
+    if (move.source_memory_materializes_address) {
+      const auto lines = materialize_call_boundary_frame_slot_address_lines(
+          move.destination_register->reg, *move.source_memory);
+      if (lines.empty()) {
+        return target_unsupported(bad_header(instruction) +
+                                  "call-boundary frame-slot address is not printable");
+      }
+      return target_printed(lines);
     }
     const auto lines = print_call_boundary_frame_slot_load_lines(move);
     if (!lines.has_value()) {

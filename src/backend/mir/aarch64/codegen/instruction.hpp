@@ -1415,6 +1415,7 @@ struct CallBoundaryMoveInstructionRecord {
   std::optional<ImmediateOperand> source_immediate;
   std::optional<RegisterOperand> source_register;
   std::optional<MemoryOperand> source_memory;
+  bool source_memory_materializes_address = false;
   std::optional<RegisterOperand> destination_register;
   std::optional<c4c::backend::bir::Value::F128Payload> source_f128_constant_payload;
   const prepare::PreparedF128Carrier* source_f128_carrier = nullptr;

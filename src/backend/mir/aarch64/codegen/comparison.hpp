@@ -1,5 +1,6 @@
 #pragma once
 
+#include "alu.hpp"
 #include "../module/module.hpp"
 
 #include <cstddef>
@@ -37,7 +38,8 @@ lower_prepared_branch_terminator(const module::BlockLoweringContext& context,
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_prepared_conditional_branch_terminator(
     const module::BlockLoweringContext& context,
-    module::ModuleLoweringDiagnostics& diagnostics);
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const BlockScalarLoweringState* scalar_state = nullptr);
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_prepared_i128_compare_instruction(
     const module::BlockLoweringContext& context,

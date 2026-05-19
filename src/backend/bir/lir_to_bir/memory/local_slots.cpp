@@ -1607,7 +1607,31 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
   }
   if (const auto pointer_slot_it = local_pointer_slot_addresses.find(slot);
       pointer_slot_it != local_pointer_slot_addresses.end()) {
-    (*pointer_value_addresses)[result] = pointer_slot_it->second;
+    if (context_.target_profile.arch == c4c::TargetArch::Aarch64) {
+      // Loading a mutable pointer slot produces the current runtime pointer
+      // value. The slot may have been initialized from another SSA value, but
+      // after a store/reload cycle follow-on AArch64 GEPs must use the loaded
+      // value as their base for local-home publication.
+      (*pointer_value_addresses)[result] = PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, result),
+          .value_type = pointer_slot_it->second.value_type,
+          .byte_offset = 0,
+          .dynamic_element_count = pointer_slot_it->second.dynamic_element_count,
+          .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
+          .storage_type_text = pointer_slot_it->second.storage_type_text,
+          .type_text = pointer_slot_it->second.type_text,
+      };
+    } else {
+      const bool preserve_loaded_pointer_provenance =
+          local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
+      if (!preserve_loaded_pointer_provenance && pointer_slot_it->second.byte_offset == 0 &&
+          pointer_slot_it->second.base_value.kind == bir::Value::Kind::Named) {
+        (*value_aliases)[result] = pointer_slot_it->second.base_value;
+        (*pointer_value_addresses)[result] = pointer_slot_it->second;
+        return true;
+      }
+      (*pointer_value_addresses)[result] = pointer_slot_it->second;
+    }
   }
 
   lowered_insts->push_back(bir::LoadLocalInst{

@@ -310,17 +310,16 @@ void rewrite_string_pointer_args_for_call_pairs(
     const StringPointerAliasMap& string_aliases,
     const std::unordered_map<c4c::TextId, const bir::StringConstant*>& string_constants_by_name_id,
     bir::Module* lowered_module) {
-  if (lir_calls.size() != lowered_calls.size()) {
+  if (lir_calls.empty() || lowered_calls.empty()) {
     return;
   }
 
-  for (std::size_t call_index = 0; call_index < lir_calls.size(); ++call_index) {
-    const auto parsed_call = parse_call_for_string_pointer_rewrite(*lir_calls[call_index], kind);
+  auto rewrite_call = [&](const c4c::codegen::lir::LirCallOp& lir_call,
+                          bir::CallInst& lowered_call) {
+    const auto parsed_call = parse_call_for_string_pointer_rewrite(lir_call, kind);
     if (!parsed_call.has_value()) {
-      continue;
+      return;
     }
-
-    auto& lowered_call = *lowered_calls[call_index];
     const auto arg_count =
         std::min(std::min(parsed_call->param_types.size(), parsed_call->args.size()),
                  lowered_call.args.size());
@@ -359,6 +358,33 @@ void rewrite_string_pointer_args_for_call_pairs(
       rewritten_name.append(resolved_name);
       lowered_call.args[arg_index] = bir::Value::named(bir::TypeKind::Ptr, rewritten_name);
     }
+  };
+
+  if (lir_calls.size() == lowered_calls.size()) {
+    for (std::size_t call_index = 0; call_index < lir_calls.size(); ++call_index) {
+      rewrite_call(*lir_calls[call_index], *lowered_calls[call_index]);
+    }
+    return;
+  }
+
+  std::unordered_map<std::string, bir::CallInst*> lowered_by_result;
+  lowered_by_result.reserve(lowered_calls.size());
+  for (auto* lowered_call : lowered_calls) {
+    if (lowered_call != nullptr && lowered_call->result.has_value() &&
+        lowered_call->result->kind == bir::Value::Kind::Named) {
+      lowered_by_result.emplace(lowered_call->result->name, lowered_call);
+    }
+  }
+  for (const auto* lir_call : lir_calls) {
+    if (lir_call == nullptr ||
+        lir_call->result.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      continue;
+    }
+    const auto lowered_it = lowered_by_result.find(lir_call->result.str());
+    if (lowered_it == lowered_by_result.end()) {
+      continue;
+    }
+    rewrite_call(*lir_call, *lowered_it->second);
   }
 }
 

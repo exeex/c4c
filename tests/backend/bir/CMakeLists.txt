@@ -391,6 +391,22 @@ set_tests_properties(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff
 )
 
 add_test(
+  NAME backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=aarch64-linux-gnu
+          -DDUMP_FLAG=--dump-prepared-bir
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=prepared.module target=aarch64-linux-gnu route=semantic_bir_shared|%t22 = bir.add ptr %t21, 1|%t24 = bir.add ptr %t23, 1|%t34 = bir.add ptr %t31, -1|bir.call i32 match(ptr %lv.s, ptr @.str30)|arg1 bank=gpr from=symbol_address:@.str30 to=x1|branch_condition logic.end.8 kind=fused_compare condition=%t20 compare=ne i32 %t19, 0|branch_condition block_66 kind=fused_compare condition=%t30 compare=ne i32 %t29, 0|join_transfer logic.end.8 result=%t19 kind=phi_edge carrier=select_materialization|incoming [logic.rhs.end.7] -> %t15|address_materialization block=vaarg.join.14 inst_index=29 kind=frame_slot result=%lv.t7.0"
+          "-DFORBIDDEN_SNIPPETS=match(ptr %lv.s, ptr %t5)|x86 route summary|x86 route trace"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(
+  backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication
+  PROPERTIES LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

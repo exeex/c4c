@@ -12,6 +12,7 @@
 #include "regalloc/storage.hpp"
 #include "regalloc/value_homes.hpp"
 #include "regalloc/values.hpp"
+#include "dynamic_stack.hpp"
 #include "target_register_profile.hpp"
 #include "stack_layout/stack_layout.hpp"
 
@@ -60,11 +61,17 @@ using regalloc_detail::value_priority;
 using regalloc_detail::weighted_use_score;
 
 void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
-                                  std::size_t start_point) {
+                                  std::size_t start_point,
+                                  bool preserve_call_boundary_pressure) {
   active.erase(std::remove_if(active.begin(),
                               active.end(),
-                              [start_point](const ActiveRegisterAssignment& assignment) {
-                                return assignment.end_point < start_point;
+                              [start_point, preserve_call_boundary_pressure](
+                                  const ActiveRegisterAssignment& assignment) {
+                                if (assignment.end_point < start_point) {
+                                  return true;
+                                }
+                                return !preserve_call_boundary_pressure &&
+                                       assignment.end_point == start_point;
                               }),
                active.end());
 }
@@ -91,6 +98,25 @@ void expire_completed_assignments(std::vector<ActiveRegisterAssignment>& active,
     next = std::max(next, slot.slot_id + 1U);
   }
   return next;
+}
+
+[[nodiscard]] bool function_has_dynamic_stack_operation(const bir::Function* function) {
+  if (function == nullptr) {
+    return false;
+  }
+  for (const auto& block : function->blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* call = std::get_if<bir::CallInst>(&inst);
+      if (call == nullptr) {
+        continue;
+      }
+      if (call->callee == "llvm.stacksave" || call->callee == "llvm.stackrestore" ||
+          is_dynamic_alloca_call(call->callee)) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 [[nodiscard]] PreparedObjectId next_stack_object_id(const PreparedStackLayout& stack_layout) {
@@ -496,6 +522,7 @@ void BirPreAlloc::run_regalloc() {
     regalloc_function.constraints.reserve(liveness_function.values.size());
     const auto* function =
         find_bir_function(prepared_.module, prepared_.names, liveness_function.function_name);
+    const bool has_dynamic_stack = function_has_dynamic_stack_operation(function);
 
     for (const auto& liveness_value : liveness_function.values) {
       const PreparedRegisterClass register_class = resolve_register_class(prepared_, liveness_value);
@@ -642,7 +669,13 @@ void BirPreAlloc::run_regalloc() {
           continue;
         }
 
-        expire_completed_assignments(active_assignments, value.live_interval->start_point);
+        const bool starts_at_call_point =
+            std::find(liveness_function.call_points.begin(),
+                      liveness_function.call_points.end(),
+                      value.live_interval->start_point) != liveness_function.call_points.end();
+        expire_completed_assignments(active_assignments,
+                                     value.live_interval->start_point,
+                                     starts_at_call_point || !has_dynamic_stack);
         const auto candidate_spans = register_pool_for_value(value);
         if (const auto chosen_register = choose_register_span(active_assignments, candidate_spans);
             chosen_register.has_value()) {
