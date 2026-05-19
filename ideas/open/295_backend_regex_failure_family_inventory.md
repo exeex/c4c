@@ -407,6 +407,30 @@ Focused owner closure 2026-05-19:
   residuals remain parked under this umbrella until a narrow probe justifies a
   focused owner split.
 
+Post-306 split 2026-05-19:
+
+- Step 1 and Step 2 of the active umbrella runbook reconstructed and
+  classified the accepted post-306 backend-regex inventory from
+  `test_before.log` without rerunning tests: 352 selected, 306 passed, and 46
+  failed.
+- All 46 residual failures are `c_testsuite_aarch64_backend_*` tests; local
+  backend/unit/CLI tests selected by `-R backend` passed.
+- The best next focused owner is idea 307,
+  `ideas/open/307_aarch64_large_scalar_immediate_materialization.md`, covering
+  the AArch64 large scalar immediate assembler residual in `00182.c`.
+- The split is based on concrete assembler-legality evidence: generated
+  assembly emits `mov x0, #1234567`, which is not a legal single-instruction
+  AArch64 immediate move form and should be materialized through legal scalar
+  constant-lowering behavior.
+- `00189.c` remains parked as a distinct externally binding symbol/PIC
+  relocation bucket involving non-PIC relocation against `stdout`.
+- Machine-printer/prepared-node residuals (`00140`, `00164`, `00214`),
+  semantic `lir_to_bir` admission residuals (`00204`, `00216`), runtime
+  nonzero, runtime mismatch/crash, output-storm, and timeout buckets remain
+  parked under this umbrella for later classification or separate focused
+  splits.
+- Active implementation should move to idea 307 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
