@@ -677,6 +677,87 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       return false;
     }
     if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      const auto append_local_array_aggregate_load =
+          [&]() -> std::optional<bool> {
+        struct LocalArrayAggregateLoadElement {
+          std::string source_slot;
+          std::string target_slot;
+          std::size_t byte_offset = 0;
+        };
+
+        const auto array_it = local_array_slots_.find(load.ptr.str());
+        if (array_it == local_array_slots_.end()) {
+          return std::nullopt;
+        }
+        if (aggregate_layout->kind != AggregateTypeLayout::Kind::Array) {
+          return false;
+        }
+        const auto element_layout =
+            lookup_scalar_byte_offset_layout(aggregate_layout->element_type_text,
+                                             type_decls_,
+                                             &structured_layouts_);
+        const auto element_size = type_size_bytes(array_it->second.element_type);
+        if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+            element_layout.scalar_type != array_it->second.element_type || element_size == 0 ||
+            element_layout.size_bytes != element_size ||
+            aggregate_layout->array_count > array_it->second.element_slots.size()) {
+          return false;
+        }
+
+        std::vector<LocalArrayAggregateLoadElement> elements;
+        elements.reserve(aggregate_layout->array_count);
+        for (std::size_t index = 0; index < aggregate_layout->array_count; ++index) {
+          const auto& source_slot = array_it->second.element_slots[index];
+          const auto source_slot_type_it = local_slot_types_.find(source_slot);
+          if (source_slot_type_it == local_slot_types_.end() ||
+              source_slot_type_it->second != array_it->second.element_type) {
+            return false;
+          }
+          elements.push_back(LocalArrayAggregateLoadElement{
+              .source_slot = source_slot,
+              .byte_offset = index * element_size,
+          });
+        }
+
+        if (!declare_local_aggregate_slots(
+                load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+          return false;
+        }
+        const auto aggregate_it = local_aggregate_slots_.find(load.result.str());
+        if (aggregate_it == local_aggregate_slots_.end()) {
+          return false;
+        }
+
+        for (auto& element : elements) {
+          const auto target_slot_it = aggregate_it->second.leaf_slots.find(element.byte_offset);
+          if (target_slot_it == aggregate_it->second.leaf_slots.end()) {
+            return false;
+          }
+          const auto target_slot_type_it = local_slot_types_.find(target_slot_it->second);
+          if (target_slot_type_it == local_slot_types_.end() ||
+              target_slot_type_it->second != array_it->second.element_type) {
+            return false;
+          }
+          element.target_slot = target_slot_it->second;
+        }
+
+        for (const auto& element : elements) {
+          const std::string temp_name =
+              load.result.str() + ".array.aggregate.load." + std::to_string(element.byte_offset);
+          lowered_insts->push_back(bir::LoadLocalInst{
+              .result = bir::Value::named(array_it->second.element_type, temp_name),
+              .slot_name = element.source_slot,
+          });
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = element.target_slot,
+              .value = bir::Value::named(array_it->second.element_type, temp_name),
+          });
+        }
+
+        aggregate_value_aliases_[load.result.str()] = load.result.str();
+        return true;
+      };
+
       if (const auto addressed_ptr_it = pointer_value_addresses_.find(load.ptr.str());
           addressed_ptr_it != pointer_value_addresses_.end()) {
         const auto addressed_layout =
@@ -731,6 +812,10 @@ bool BirFunctionLowerer::lower_memory_load_inst(
         }
         aggregate_value_aliases_[load.result.str()] = load.result.str();
         return true;
+      }
+      if (const auto local_array_load = append_local_array_aggregate_load();
+          local_array_load.has_value()) {
+        return *local_array_load;
       }
       if (local_aggregate_slots_.find(load.ptr.str()) == local_aggregate_slots_.end()) {
         return false;
