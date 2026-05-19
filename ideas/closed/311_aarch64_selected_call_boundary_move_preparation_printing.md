@@ -1,8 +1,29 @@
 # AArch64 Selected Call-Boundary Move Preparation Printing
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+
+## Closure Notes
+
+The focused owner is complete. Recent implementation slices repaired AArch64
+stack call-argument destination offset publication, selected scalar
+frame-slot-to-stack call-boundary moves, aggregate/byval stack-copy lowering
+from prepared source addresses into outgoing call stack slots, and machine
+printer coverage for the repaired selected-node shapes.
+
+Close proof used the supervisor-selected focused scope:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00140_c)$'
+```
+
+`test_after.log` records all four focused tests passing, including
+`c_testsuite_aarch64_backend_src_00140_c`. The old selected call-boundary move
+`DeferredUnsupported` diagnostic and the later aggregate stack-copy residual
+are both gone. Close-time regression guard over the same focused scope passed
+with non-decreasing results and no new failures.
 
 ## Goal
 
