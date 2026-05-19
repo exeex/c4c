@@ -513,6 +513,26 @@ Post-308 split 2026-05-19:
   under this umbrella for later classification.
 - Active implementation should move to idea 309 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 309,
+  `ideas/closed/309_aarch64_indirect_call_argument_preservation.md`, is
+  closed as complete for AArch64 indirect-call callee and argument
+  preservation.
+- The accepted focused proof moved from 4/5 with
+  `c_testsuite_aarch64_backend_src_00189_c` segfaulting in `test_before.log`
+  to 5/5 passing in `test_after.log`; close-time regression guard passed on
+  that matching focused scope.
+- Supervisor broad local backend validation also passed
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` at 139/139.
+- No residual from the focused indirect-call owner returns to this umbrella.
+  Direct-call shuffle, direct vararg, address-of-local, timeout, runtime
+  mismatch/crash, machine-printer/prepared-node, and semantic `lir_to_bir`
+  residual buckets remain under this umbrella for later classification.
+- The next lifecycle pass should re-inventory or classify the remaining
+  backend-regex buckets without reopening closed owners 285 through 309 unless
+  generated-code or proof evidence contradicts their closure boundaries.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -523,5 +543,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 308 without generated-code or
+- reopens recently closed owners 285 through 309 without generated-code or
   proof evidence that contradicts their closure boundary.
