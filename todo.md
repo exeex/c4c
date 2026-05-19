@@ -1,43 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/320_aarch64_f128_transport_addressability.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair F128 Transport Addressability
+Current Step ID: 4
+Current Step Title: Validate And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the localized F128 transport addressability gap in
-`src/backend/mir/aarch64/codegen/f128.cpp`. `print_f128_transport()` now prints
-16-byte F128 transport memory operands through a local printable-address helper:
+Step 4 classified the post-Step-2 residual. The remaining
+`c_testsuite_aarch64_backend_src_00204_c` failure is outside idea 320's
+`f128_transport` addressability owner.
 
-- direct `[sp, #offset]` for encodable 16-byte frame slots
-- reserved GP scratch address materialization for large frame-slot offsets
-- reserved GP scratch symbol address materialization for F128 symbol-memory
-  transports
-- the same address helper for memory-backed carrier slots before moving through
-  reserved scratch `q16`
+Concrete evidence:
 
-Focused local coverage was added to
-`tests/backend/mir/backend_aarch64_machine_printer_test.cpp` for large
-memory-backed F128 frame-slot transports and symbol-memory F128 transports. The
-representative no longer fails with
-`f128 memory transport address is not printable`.
+- The focused proof no longer reports `family=f128_transport`,
+  `opcode=f128_transport`, or `f128 memory transport address is not printable`.
+- `test_before.log` and the refreshed `test_after.log` both show the only
+  failing test is `c_testsuite_aarch64_backend_src_00204_c`, now at raw
+  `va.arg.aggregate` assembler text.
+- The generated assembly at
+  `build/c_testsuite_aarch64_backend/src/00204.c.s` contains un-commented lines
+  such as `va.arg.aggregate source=overflow_arg_area ...`,
+  `va.arg.aggregate.source ...`, and `va.arg.aggregate.progress ...` among
+  otherwise ordinary AArch64 instructions.
+- The assembler rejects those lines with `unexpected token in argument list`.
+- The printing source is the selected aggregate variadic helper path:
+  `src/backend/mir/aarch64/codegen/variadic.cpp::print_variadic_call()` for
+  `PreparedVariadicEntryHelperKind::VaArgAggregate`. That function currently
+  returns descriptive record text for `va.arg.aggregate` instead of executable
+  AArch64 lowering. The mnemonic comes from
+  `MachinePrinterMnemonicKind::VariadicVaArgAggregate`, not from
+  `F128TransportRecord` or `print_f128_transport()`.
 
-New first bad fact after the repair: `c_testsuite_aarch64_backend_src_00204_c`
-now reaches generated assembly validation and fails because raw
-`va.arg.aggregate`, `va.arg.aggregate.source`, and
-`va.arg.aggregate.progress` note/helper text is emitted into
-`build/c_testsuite_aarch64_backend/src/00204.c.s`; the assembler reports
-`unexpected token in argument list` beginning at those lines.
+Classification: idea 320 is complete for the current owner. The raw
+`va.arg.aggregate` residual should be split into a new lifecycle owner for
+AArch64 aggregate `va_arg` helper lowering/printing, not folded into F128
+transport addressability.
 
 ## Suggested Next
 
-Classify the new `va.arg.aggregate` raw helper-text assembler residual before
-continuing idea 320. It appears outside F128 transport addressability and likely
-belongs to the AArch64 aggregate `va_arg` helper printer/lowering surface, not
-to F128 memory transport spelling.
+Ask the plan owner to close idea 320 and create/activate a follow-up idea for
+AArch64 aggregate `va_arg` helper lowering so `VariadicVaArgAggregate` machine
+nodes emit executable copy/progression code instead of raw record text.
 
 ## Watchouts
 
@@ -61,16 +66,19 @@ to F128 memory transport spelling.
 - The raw `va.arg.aggregate` residual is not a reason to reopen
   `f128_transport`; the focused proof advanced past the exact F128 printer
   diagnostic.
+- Do not claim idea 320 owns aggregate `va_arg` runtime semantics. Its completed
+  owner is F128 memory transport addressability; aggregate `va_arg` lowering is
+  a separate variadic helper capability.
 
 ## Proof
 
-Ran the exact delegated proof command and wrote output to `test_after.log`:
+Reran the exact delegated proof command and wrote output to `test_after.log`:
 
 `cmake --build --preset default && ctest --test-dir build -j
 --output-on-failure -R
 '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'`
 
 Build succeeded. The focused CTest subset ran 11 tests: 10 passed, and the only
-failure was `c_testsuite_aarch64_backend_src_00204_c`, now at raw
-`va.arg.aggregate` assembly text. `backend_aarch64_machine_printer` passed with
-the new F128 transport addressability coverage.
+failure was `c_testsuite_aarch64_backend_src_00204_c`, at raw
+`va.arg.aggregate` assembly text. The F128 transport addressability failure is
+gone.
