@@ -122,7 +122,7 @@ Durable inventory findings to preserve:
 - `ctest -R backend` is an imprecise regex selector. It includes local backend
   unit/CLI tests and external AArch64 c-testsuite runtime tests, so failures
   must be classified before repair work starts.
-- Recently closed AArch64 owners 285 through 294 remain valid unless a new
+- Recently closed AArch64 owners 285 through 296 remain valid unless a new
   generated-code or proof artifact contradicts their closure boundary.
 - Timeout/hang/runtime-output-storm cases remain environment-sensitive. Broad
   runtime scans require timeout plus stale-process cleanup before their logs are
@@ -166,6 +166,28 @@ Focused owner closure 2026-05-19:
   backend-regex buckets without reopening closed owners 285 through 296 unless
   generated-code or proof evidence contradicts their closure boundaries.
 
+Deactivation 2026-05-19 post-296 inventory result:
+
+- The refreshed backend-regex inventory after closed owner 296 selected 352
+  tests: 290 passed and 62 failed.
+- All 62 refreshed failures are `c_testsuite_aarch64_backend_*` tests.
+- Failure buckets are 19 machine-printer failures, 14 `lir_to_bir` admission
+  failures, 28 runtime failures, and 1 timeout.
+- Closed AArch64 owners 285 through 296 remain valid by current evidence; no
+  refreshed failure contradicts their closure boundaries without separate
+  generated-code or proof evidence.
+- The next focused split is `lir_to_bir` local-memory admission, centered on
+  the 9 GEP local-memory cases `00143`, `00157`, `00176`, `00181`, `00182`,
+  `00185`, `00195`, `00205`, and `00209`, with store/load boundary checks
+  `00046`, `00140`, `00216`, and `00218`.
+- `00204` is preserved as a separate bootstrap global aggregate/array
+  semantics gate and should not be folded into the local-memory owner without
+  evidence.
+- Implementation work should move to the focused local-memory admission owner,
+  where progress means semantic `lir_to_bir` admission for local-memory
+  GEP/store/load forms, not filename matching or expectation, unsupported,
+  runner, timeout, or CTest-registration changes.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -176,5 +198,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 294 without generated-code or
+- reopens recently closed owners 285 through 296 without generated-code or
   proof evidence that contradicts their closure boundary.

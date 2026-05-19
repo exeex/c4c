@@ -1,105 +1,110 @@
-# Backend Regex Failure Family Inventory
+# LIR To BIR Local Memory Admission
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/297_lir_to_bir_local_memory_admission.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Use the main-build `ctest -R backend` result as an umbrella inventory and split
-focused repair owners only when a failure group points to a semantic backend
-capability.
+Repair the semantic `lir_to_bir` admission path for local-memory address
+formation and local-memory load/store boundaries reached by AArch64
+c-testsuite backend cases.
 
 ## Goal
 
-Classify the remaining backend-regex failures after the completed fused
-compare-branch owner and decide the next focused repair idea, without turning
-the umbrella inventory into implementation work.
+Make local-memory GEP/store/load forms admissible through `lir_to_bir` without
+filename-specific shortcuts or changes to expectations, runner behavior,
+unsupported classifications, timeout policy, allowlists, or CTest
+registration.
 
 ## Core Rule
 
-Inventory and split semantic owners. Do not implement fixes in this umbrella
-runbook, and do not claim progress through expectation, allowlist,
-unsupported-classification, timeout, runner, or CTest-registration changes.
+Progress must be a semantic local-memory admission repair. Do not claim
+progress through named c-testsuite cases, emitted-diagnostic matching,
+expectation rewrites, unsupported downgrades, runner changes, timeout policy,
+allowlists, or CTest-registration changes.
 
 ## Read First
 
+- `ideas/open/297_lir_to_bir_local_memory_admission.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
 - `todo.md`
-- `ideas/closed/296_aarch64_fused_compare_branch_operand_forms.md`
-- Current close proof in `test_before.log`
+- Current focused evidence in `test_after.log`
 
 ## Current Targets
 
-- Main build backend-regex failures from `/workspaces/c4c/build`.
-- Remaining AArch64 c-testsuite backend buckets after focused owner 296.
-- Residuals currently known from focused owner 296:
-  `00200` runtime mismatch, and `00207`, `00214`, `00215` scalar add/xor
-  immediate printer limits.
+- Local-memory GEP admission cases: `00143`, `00157`, `00176`, `00181`,
+  `00182`, `00185`, `00195`, `00205`, `00209`.
+- Store local-memory boundary checks: `00046`, `00140`.
+- Load local-memory boundary checks: `00216`, `00218`.
+- Focused proof should use the supervisor-selected backend c-testsuite subset
+  for these cases plus build or compile proof appropriate to the touched code.
 
 ## Non-Goals
 
-- Do not implement backend fixes in this umbrella plan.
-- Do not treat `ctest -R backend` as one monolithic repair bucket.
-- Do not reopen closed AArch64 owners 285 through 296 from failing counts alone.
-- Do not match exact c-testsuite filenames, local test names, or emitted
-  instruction strings instead of identifying semantic owners.
-- Do not run broad runtime tests without stale-process cleanup and timeout
-  precautions.
+- Do not absorb `00204`; it is a separate bootstrap global aggregate/array
+  semantics gate unless new evidence proves the same local-memory rule owns it.
+- Do not repair unrelated runtime mismatch, timeout/hang, or machine-printer
+  failures from the umbrella inventory.
+- Do not broaden into frontend, HIR, LIR, BIR, runtime, or AArch64 printer
+  rewrites beyond what local-memory `lir_to_bir` admission requires.
+- Do not weaken any test contract or move a supported path to unsupported.
 
 ## Working Model
 
-Idea 295 is the umbrella inventory for the backend-regex surface. Focused idea
-296 closed the fused compare-branch operand-form owner after improving the
-focused scope to 23/27. The next useful step is to refresh or classify the
-remaining backend-regex buckets and split a new focused owner only if the
-evidence supports a real semantic capability.
+The refreshed post-296 backend-regex inventory has 62 failures, all AArch64
+c-testsuite backend tests. The 14-case `lir_to_bir` admission bucket contains a
+coherent local-memory family: 9 GEP cases plus store/load boundary checks.
+`00204` remains outside this owner as a global aggregate/array bootstrap gate.
 
 ## Execution Rules
 
-- Keep classification findings in `todo.md` unless a durable focused split or
-  deactivation note is needed.
-- Create a new `ideas/open/*.md` before implementation starts for any focused
-  semantic owner.
-- Preserve closed-owner boundaries unless generated-code or proof evidence
-  contradicts them.
-- Keep canonical proof logs as `test_before.log` and `test_after.log`; do not
-  leave extra root-level `.log` files.
+- Start with diagnosis of the admission rejection path before editing.
+- Generalize from local-memory GEP/store/load semantics, not from c-testsuite
+  filenames.
+- Keep residuals classified by failure source if a focused case moves past
+  `lir_to_bir` admission into another backend failure.
+- Preserve canonical proof logs as `test_before.log` and `test_after.log`;
+  do not leave extra root-level `.log` files.
+- Escalate back to lifecycle review if evidence shows this owner is actually a
+  global aggregate/array bootstrap issue, runtime issue, timeout issue, or
+  machine-printer issue.
 
 ## Steps
 
-### Step 1: Refresh The Remaining Backend Surface
+### Step 1: Isolate The Admission Failure
 
-Capture or review the supervisor-selected backend-regex evidence from the main
-build tree, with timeout and stale-process precautions if broad runtime tests
-are run.
+Inspect representative local-memory GEP, store, and load failures to identify
+the exact `lir_to_bir` rejection path and the IR shape it rejects.
 
-Completion check: `todo.md` records the command or accepted existing evidence,
-the selected count, pass/fail count, and current failing test list.
+Completion check: `todo.md` records the observed rejection, representative
+cases, and the semantic local-memory form the implementation must admit.
 
-### Step 2: Classify Remaining Failures
+### Step 2: Repair Local-Memory GEP Admission
 
-Separate local backend/unit failures from external AArch64 c-testsuite
-failures, then group the external failures by failure source: machine-printer,
-`lir_to_bir` admission, runtime mismatch, timeout/hang, or another observed
-owner.
+Implement the narrow semantic admission change for GEP-derived local-memory
+addresses, using existing lowering and BIR representation patterns where
+possible.
 
-Completion check: `todo.md` records the grouped inventory and explicitly notes
-whether any evidence contradicts closed owners 285 through 296.
+Completion check: the focused GEP cases either pass or move past the old
+`lir_to_bir` local-memory rejection into clearly classified later failures.
 
-### Step 3: Choose The Next Focused Owner
+### Step 3: Check Store/Load Boundaries
 
-Select the highest-value tractable semantic owner, or record why no focused
-owner is ready to split.
+Run the store/load boundary checks against the same admission rule and repair
+only local-memory admission gaps that share the focused semantic owner.
 
-Completion check: either a new `ideas/open/*.md` focused owner exists with
-reviewer reject signals, or `todo.md` explains why the umbrella inventory is
-blocked or needs another evidence pass.
+Completion check: `00046`, `00140`, `00216`, and `00218` are either passing,
+classified as fixed by the same rule, or documented as residual failures
+outside this owner.
 
-### Step 4: Switch Away Before Implementation
+### Step 4: Prove The Focused Owner
 
-If a focused owner is split, deactivate this umbrella runbook and activate the
-focused owner before any implementation work starts.
+Run the supervisor-selected focused backend c-testsuite subset plus fresh build
+or compile proof for the touched code. Escalate to a broader backend check if
+the implementation touches shared `lir_to_bir` behavior beyond local-memory
+admission.
 
-Completion check: lifecycle state points at the focused source idea, and
-`ideas/open/295_backend_regex_failure_family_inventory.md` has a compact
-durable deactivation note preserving the owner decision and remaining buckets.
+Completion check: proof results are recorded in `todo.md`, no forbidden
+expectation/unsupported/runner/timeout/allowlist/CTest changes are present, and
+residual focused failures are classified by their current failure source.
