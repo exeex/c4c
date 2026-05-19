@@ -23,7 +23,7 @@ std::optional<std::pair<std::size_t, std::string_view>> parse_integer_array_laye
   }
 
   const auto count = parse_i64(text.substr(1, x_pos - 1));
-  if (!count.has_value() || *count <= 0) {
+  if (!count.has_value() || *count < 0) {
     return std::nullopt;
   }
 

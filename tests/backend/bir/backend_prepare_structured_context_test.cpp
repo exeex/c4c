@@ -596,6 +596,50 @@ int check_aggregate_projection_prefers_structured_layout_table() {
   return 0;
 }
 
+int check_zero_length_array_layout_supports_flexible_member_projection() {
+  using c4c::backend::resolve_aggregate_child_index_projection;
+  using c4c::backend::lir_to_bir_detail::AggregateTypeLayout;
+  using c4c::backend::lir_to_bir_detail::build_type_decl_map;
+  using c4c::backend::lir_to_bir_detail::compute_aggregate_type_layout;
+
+  const auto decls = build_type_decl_map({
+      "%struct.S = type { i8, i8, [2 x i8] }",
+      "%struct.T = type { [16 x i8], i8 }",
+      "%struct.V = type { %struct.S, %struct.T, i8 }",
+      "%struct.W = type { %struct.V, [0 x %struct.S] }",
+  });
+
+  const auto zero_array = compute_aggregate_type_layout("[0 x %struct.S]", decls);
+  if (zero_array.kind != AggregateTypeLayout::Kind::Array ||
+      zero_array.array_count != 0 ||
+      zero_array.size_bytes != 0 ||
+      zero_array.align_bytes != 1 ||
+      zero_array.element_type_text != "%struct.S") {
+    return fail("zero-length aggregate array layout was not preserved");
+  }
+
+  const auto wrapper = compute_aggregate_type_layout("%struct.W", decls);
+  if (wrapper.kind != AggregateTypeLayout::Kind::Struct ||
+      wrapper.fields.size() != 2 ||
+      wrapper.size_bytes != 22 ||
+      wrapper.fields[0].byte_offset != 0 ||
+      wrapper.fields[1].byte_offset != 22) {
+    return fail("flexible-member wrapper layout did not preserve fixed prefix");
+  }
+
+  const auto fixed_prefix_projection =
+      resolve_aggregate_child_index_projection("%struct.W", 0, decls);
+  if (!fixed_prefix_projection.has_value() ||
+      fixed_prefix_projection->child_type_text != "%struct.V" ||
+      fixed_prefix_projection->child_start_byte_offset != 0 ||
+      fixed_prefix_projection->child_layout.kind != AggregateTypeLayout::Kind::Struct ||
+      fixed_prefix_projection->child_layout.size_bytes != 22) {
+    return fail("flexible-member wrapper did not project its fixed aggregate prefix");
+  }
+
+  return 0;
+}
+
 int check_aggregate_initializer_prefers_structured_layout_table() {
   using c4c::backend::lir_to_bir_detail::BackendStructuredLayoutTable;
   using c4c::backend::lir_to_bir_detail::GlobalAddress;
@@ -1127,6 +1171,10 @@ int main() {
     return status;
   }
   if (const int status = check_aggregate_projection_prefers_structured_layout_table();
+      status != 0) {
+    return status;
+  }
+  if (const int status = check_zero_length_array_layout_supports_flexible_member_projection();
       status != 0) {
     return status;
   }
