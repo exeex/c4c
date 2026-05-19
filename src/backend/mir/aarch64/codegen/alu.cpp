@@ -1006,16 +1006,21 @@ struct MaterializedControlSource {
       if (memory->symbol_label.empty()) {
         return std::nullopt;
       }
+      const auto address_name =
+          scalar_gp_register_name_with_view(*scratch, abi::RegisterView::X);
+      if (!address_name.has_value()) {
+        return std::nullopt;
+      }
       const std::string reloc =
           relocation_operand(memory->symbol_label, memory->byte_offset);
       std::ostringstream page;
-      page << "adrp " << name << ", " << reloc;
+      page << "adrp " << *address_name << ", " << reloc;
       lines.push_back(page.str());
       std::ostringstream low;
-      low << "add " << name << ", " << name << ", :lo12:" << reloc;
+      low << "add " << *address_name << ", " << *address_name << ", :lo12:" << reloc;
       lines.push_back(low.str());
       std::ostringstream load;
-      load << "ldr " << name << ", [" << name << "]";
+      load << "ldr " << name << ", [" << *address_name << "]";
       lines.push_back(load.str());
     } else {
       return std::nullopt;
@@ -1105,16 +1110,21 @@ struct MaterializedControlSource {
       if (memory->symbol_label.empty()) {
         return false;
       }
+      const auto address = scalar_gp_scratch_register(abi::RegisterView::X, occupied);
+      if (!address.has_value()) {
+        return false;
+      }
+      const std::string address_name = abi::register_name(address->reg);
       const std::string reloc =
           relocation_operand(memory->symbol_label, memory->byte_offset);
       std::ostringstream page;
-      page << "adrp " << target << ", " << reloc;
+      page << "adrp " << address_name << ", " << reloc;
       lines.push_back(page.str());
       std::ostringstream low;
-      low << "add " << target << ", " << target << ", :lo12:" << reloc;
+      low << "add " << address_name << ", " << address_name << ", :lo12:" << reloc;
       lines.push_back(low.str());
       std::ostringstream load;
-      load << "ldr " << target << ", [" << target << "]";
+      load << "ldr " << target << ", [" << address_name << "]";
       lines.push_back(load.str());
       return true;
     }
