@@ -1,6 +1,6 @@
 # AArch64 Aggregate Va Arg Helper Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/320_aarch64_f128_transport_addressability.md
 
@@ -64,6 +64,18 @@ emission, runners, or test expectations.
   proof.
 - If `00204.c` advances to another first bad fact outside aggregate `va_arg`
   helper lowering, the residual is classified into a separate owner.
+
+## Closure Note
+
+Closed on 2026-05-19. The AArch64 aggregate `va_arg` helper records are now
+lowered into executable source selection, payload copy, and `va_list`
+progression output. The focused representative no longer emits raw
+`va.arg.aggregate`, `va.arg.aggregate.source`, or
+`va.arg.aggregate.progress` text and now reaches runtime. The remaining
+focused failure is a segmentation fault from `myprintf` `va_start` stores
+through `x21` before `x21` is materialized as a writable local `va_list`
+address. That residual is outside aggregate `va_arg` helper lowering and is
+represented by `ideas/open/322_aarch64_va_start_destination_address_materialization.md`.
 
 ## Reviewer Reject Signals
 

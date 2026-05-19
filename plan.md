@@ -1,35 +1,33 @@
-# AArch64 Aggregate Va Arg Helper Lowering Runbook
+# AArch64 Va Start Destination Address Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/321_aarch64_aggregate_va_arg_helper_lowering.md
-Activated from: idea 320 closure after Step 4 residual classification
+Source Idea: ideas/open/322_aarch64_va_start_destination_address_materialization.md
+Activated from: idea 321 closure after Step 4 residual classification
 
 ## Purpose
 
-Repair the next `00204.c` backend blocker by lowering AArch64 aggregate
-`va_arg` helper machine records into executable assembly instead of printing
-raw descriptive helper text.
+Repair the next `00204.c` runtime blocker by ensuring AArch64 `va_start`
+field stores write through a materialized local `va_list` destination address.
 
 ## Goal
 
-Make `PreparedVariadicEntryHelperKind::VaArgAggregate` /
-`VariadicVaArgAggregate` produce executable AArch64 source selection,
-aggregate copy, and `va_list` progression code while preserving prior backend
-repairs.
+Make AArch64 `VaStart` lowering materialize or publish the writable local
+`va_list` destination before storing `__stack`, `__gr_top`, `__vr_top`,
+`__gr_offs`, and `__vr_offs` fields.
 
 ## Core Rule
 
-Progress must be a general AArch64 aggregate `va_arg` helper lowering
-capability. Do not reopen F128 transport addressability, HFA argument ABI
-lowering, scalar ALU immediate materialization, raw `va_start` helper
-lowering, frame adjustment materialization, stack-slot memory spelling,
-frame-layout consistency, semantic admission, expectations, unsupported
-classifications, runners, timeout policy, proof-log contents, or CTest
-registration.
+Progress must be a general AArch64 `va_start` destination address
+materialization capability. Do not reopen aggregate `va_arg` helper lowering,
+F128 transport addressability, HFA argument ABI lowering, scalar ALU immediate
+materialization, frame adjustment materialization, stack-slot memory spelling,
+semantic admission, expectations, unsupported classifications, runners,
+timeout policy, proof-log contents, or CTest registration.
 
 ## Read First
 
-- `ideas/open/321_aarch64_aggregate_va_arg_helper_lowering.md`
+- `ideas/open/322_aarch64_va_start_destination_address_materialization.md`
+- `ideas/closed/321_aarch64_aggregate_va_arg_helper_lowering.md`
 - `ideas/closed/320_aarch64_f128_transport_addressability.md`
 - `ideas/closed/319_aarch64_hfa_aggregate_argument_runtime.md`
 - `ideas/closed/318_aarch64_scalar_alu_immediate_materialization.md`
@@ -46,14 +44,16 @@ registration.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - generated assembly contains un-commented `va.arg.aggregate`,
-    `va.arg.aggregate.source`, and `va.arg.aggregate.progress` lines that the
-    assembler rejects as unexpected tokens.
+  - generated `myprintf` reaches runtime but segfaults because `va_start`
+    field stores use `x21` before that register is materialized as a writable
+    local `va_list` address.
 - Initial suspected owner family:
   - `src/backend/mir/aarch64/codegen/variadic.cpp`
-  - `PreparedVariadicEntryHelperKind::VaArgAggregate`
-  - `MachinePrinterMnemonicKind::VariadicVaArgAggregate`
-  - aggregate copy/address helpers used by AArch64 machine printing
+  - `make_variadic_va_start_record()`
+  - `print_va_start_lowering_lines()`
+  - `homes.destination_va_list`
+  - frame-slot and address materialization helpers used by AArch64 machine
+    printing
 - Prior-owner guardrails:
   - `backend_lir_to_bir_notes`
   - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
@@ -67,41 +67,45 @@ registration.
 
 ## Non-Goals
 
+- Do not reopen idea 321's aggregate `va_arg` helper source, copy, or
+  progression lowering owner.
 - Do not reopen idea 320's F128 transport addressability owner.
 - Do not reopen idea 319's HFA, floating, long-double, or aggregate ABI
   argument classification and lowering owner.
 - Do not reopen idea 318's scalar ALU immediate materialization owner.
-- Do not reopen idea 317's raw `va_start` helper-text lowering owner.
 - Do not reopen idea 315's large frame setup and teardown materialization
   owner.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication
   spelling owner.
 - Do not repair idea 316's frame-slot/frame-layout consistency residual unless
-  generated evidence proves it is the same aggregate `va_arg` lowering fault.
+  generated evidence proves it is the same `va_start` destination publication
+  fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
-- Do not fix global initializer emission unless it becomes the next first bad
-  fact after aggregate `va_arg` helper lowering is repaired.
+- Do not fix global initializer emission, later runtime mismatches, or later
+  `stdarg` progression faults unless they become the next first bad fact after
+  `va_start` destination materialization is repaired.
 
 ## Working Model
 
 The representative now gets past prior assembler blockers, HFA/aggregate
-argument ABI corruption, scalar immediate materialization, raw `va_start`
-text, large stack/frame materialization, and F128 transport addressability.
-The next first bad fact occurs when the AArch64 variadic helper printer emits
-aggregate `va_arg` records as descriptive text. The repair should replace
-those records with executable AArch64 code that selects the correct source,
-copies the aggregate object, and advances the `va_list` state.
+argument ABI corruption, scalar immediate materialization, raw helper text,
+large stack/frame materialization, F128 transport addressability, and aggregate
+`va_arg` helper lowering. The next first bad fact occurs when the AArch64
+`va_start` helper stores fields through a destination register that has not
+been published as the address of the local `va_list` object. The repair should
+make the `VaStart` record or printer carry and materialize the actual writable
+destination address before field stores execute.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the exact aggregate helper records and required source/progress
-  semantics before editing code.
-- Prefer focused backend coverage for the helper output before relying only on
-  the external c-testsuite representative.
+- Localize the exact `VaStart` destination representation before editing code.
+- Prefer focused backend coverage for the destination materialization contract
+  before relying only on the external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff, HFA ABI,
-  F128 transport, frame, printer, scalar ALU, runner, or expectation coverage.
+  aggregate `va_arg`, F128 transport, frame, printer, scalar ALU, runner, or
+  expectation coverage.
 - If the representative advances to global initializer emission, runtime
   mismatch, timeout, or another blocker, record the new first bad fact and
   return it to lifecycle classification unless generated-code evidence proves
@@ -112,52 +116,53 @@ copies the aggregate object, and advances the `va_list` state.
 
 ## Ordered Steps
 
-### Step 1: Localize Aggregate Va Arg Helper Records
+### Step 1: Localize Va Start Destination Publication
 
-Goal: identify the exact helper records, data fields, and AArch64 printer
-surface that currently emit raw `va.arg.aggregate` text.
+Goal: identify the exact `VaStart` records, destination homes, and AArch64
+printer surface that currently store through an unmaterialized register.
 
 Primary target: generated `00204.c` artifacts and
 `src/backend/mir/aarch64/codegen/variadic.cpp`.
 
 Actions:
 
-- Trace the raw `va.arg.aggregate` lines from generated assembly back to the
-  prepared variadic helper entries and machine mnemonic.
-- Distinguish source selection, aggregate copy, and `va_list` progression
-  responsibilities.
+- Trace the generated `myprintf` `va_start` stores back to prepared variadic
+  helper entries, `homes.destination_va_list`, and the machine printer record.
+- Distinguish record construction, register allocation, frame-slot
+  publication, and final field-store emission responsibilities.
 - Record in `todo.md` the owning code surfaces, representative tests, and the
   smallest focused proof command for the repair.
 
 Completion check:
 
-- `todo.md` names the raw helper record shapes, owning code surfaces,
-  representative tests, and smallest focused proof command.
+- `todo.md` names the unmaterialized destination record shape, owning code
+  surfaces, representative tests, and smallest focused proof command.
 
-### Step 2: Lower Aggregate Va Arg Helper Output
+### Step 2: Materialize Va Start Destination Address
 
-Goal: replace raw aggregate `va_arg` helper text with executable AArch64 code.
+Goal: ensure `VaStart` field stores use a real writable local `va_list`
+address.
 
 Primary target: code surface identified by Step 1.
 
 Actions:
 
-- Implement the narrow aggregate helper lowering for source selection,
-  aggregate copy, and progression.
-- Reuse existing AArch64 memory, copy, scratch, and address materialization
-  helpers when available.
-- Preserve unrelated F128 transport, argument ABI, scalar ALU, frame, runner,
-  expectation, and timeout behavior.
+- Implement destination address materialization or publication for `VaStart`.
+- Reuse existing AArch64 frame-slot, stack-offset, register, scratch, and
+  address materialization helpers when available.
+- Preserve unrelated aggregate `va_arg`, F128 transport, argument ABI, scalar
+  ALU, frame, runner, expectation, and timeout behavior.
 
 Completion check:
 
-- Focused proof shows raw `va.arg.aggregate` helper text is gone from emitted
-  assembly, or `todo.md` records the next first bad fact with evidence.
+- Focused proof shows `VaStart` field stores are based on a materialized local
+  `va_list` address, or `todo.md` records the next first bad fact with
+  evidence.
 
-### Step 3: Add Focused Aggregate Va Arg Coverage
+### Step 3: Add Focused Va Start Destination Coverage
 
-Goal: make aggregate `va_arg` helper lowering observable in local backend
-tests.
+Goal: make `va_start` destination address materialization observable in local
+backend tests.
 
 Primary target: existing AArch64 machine-printer, variadic, instruction
 dispatch, or prepared-BIR tests that already cover adjacent variadic helper
@@ -165,14 +170,16 @@ behavior.
 
 Actions:
 
-- Add or extend coverage for aggregate `va_arg` helper output.
-- Assert executable AArch64 output and absence of raw helper mnemonics.
-- Preserve adjacent scalar, HFA, `va_start`, and ordinary memory helper
+- Add or extend coverage for `VaStart` lowering with a local `va_list`
+  destination.
+- Assert field stores use a materialized address and do not rely on an
+  uninitialized destination register.
+- Preserve adjacent scalar, HFA, aggregate `va_arg`, and ordinary memory helper
   behavior.
 
 Completion check:
 
-- Local coverage exercises aggregate `va_arg` helper lowering and verifies
+- Local coverage exercises `va_start` destination materialization and verifies
   adjacent behavior remains stable.
 
 ### Step 4: Validate And Classify Residuals
@@ -184,14 +191,14 @@ Primary target: supervisor-selected focused proof scope.
 Actions:
 
 - Run a focused proof including build, local AArch64 helper/backend coverage,
-  prior-owner guardrails from ideas 314, 315, 317, 318, 319, and 320, and the
-  `00204.c` c-testsuite representative.
+  prior-owner guardrails from ideas 314, 315, 317, 318, 319, 320, and 321, and
+  the `00204.c` c-testsuite representative.
 - Record pass/fail results and first bad facts in `todo.md`.
-- Do not claim this owner complete if raw aggregate `va_arg` helper text
-  remains in emitted assembly.
+- Do not claim this owner complete if `VaStart` field stores still use an
+  unmaterialized destination register.
 
 Completion check:
 
-- `todo.md` records fresh proof. The current raw `va.arg.aggregate` helper
-  text blocker is gone, or the remaining blocker is explicitly localized for
-  the next packet.
+- `todo.md` records fresh proof. The current unmaterialized `va_start`
+  destination blocker is gone, or the remaining blocker is explicitly
+  localized for the next packet.
