@@ -3967,6 +3967,103 @@ int selected_scalar_add_sub_materializes_nonencodable_immediates() {
   return 0;
 }
 
+int selected_scalar_mul_div_rem_materializes_immediate_operands() {
+  const auto div_pair = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::SDiv,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{50},
+          .result_value_name = c4c::ValueNameId{51},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(13),
+          .lhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 6,
+          }),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 2,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto div_result = aarch64_codegen::print_machine_instruction_line_payloads(div_pair);
+  if (!div_result.ok ||
+      div_result.instruction_lines.size() != 3 ||
+      div_result.instruction_lines[0] != "mov w9, #6" ||
+      div_result.instruction_lines[1] != "mov w13, #2" ||
+      div_result.instruction_lines[2] != "sdiv w13, w9, w13") {
+    return fail("expected scalar div with immediate operands to materialize both sides: " +
+                join_lines(div_result.instruction_lines));
+  }
+
+  const auto mul_immediate_lhs = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Mul,
+          .source_binary_opcode = bir::BinaryOpcode::Mul,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{52},
+          .result_value_name = c4c::ValueNameId{53},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(20),
+          .lhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 2,
+          }),
+          .rhs = aarch64_codegen::make_register_operand(wreg(13)),
+          .supported_integer_operation = true,
+      }));
+  const auto mul_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(mul_immediate_lhs);
+  if (!mul_result.ok ||
+      mul_result.instruction_lines.size() != 2 ||
+      mul_result.instruction_lines[0] != "mov w9, #2" ||
+      mul_result.instruction_lines[1] != "mul w20, w9, w13") {
+    return fail("expected scalar mul with immediate lhs to materialize lhs: " +
+                join_lines(mul_result.instruction_lines));
+  }
+
+  const auto rem_pair = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::SRem,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{54},
+          .result_value_name = c4c::ValueNameId{55},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 7,
+          }),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 3,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto rem_result = aarch64_codegen::print_machine_instruction_line_payloads(rem_pair);
+  if (!rem_result.ok ||
+      rem_result.instruction_lines.size() != 4 ||
+      rem_result.instruction_lines[0] != "mov w9, #7" ||
+      rem_result.instruction_lines[1] != "mov w10, #3" ||
+      rem_result.instruction_lines[2] != "sdiv w0, w9, w10" ||
+      rem_result.instruction_lines[3] != "msub w0, w0, w10, w9") {
+    return fail("expected scalar rem with immediate operands to materialize both sides: " +
+                join_lines(rem_result.instruction_lines));
+  }
+
+  return 0;
+}
+
 int selected_simple_integer_casts_reject_missing_or_unsupported_facts() {
   const auto materialized_source = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
@@ -6000,6 +6097,11 @@ int main() {
     return result;
   }
   if (const int result = selected_scalar_add_sub_materializes_nonencodable_immediates();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_scalar_mul_div_rem_materializes_immediate_operands();
       result != 0) {
     return result;
   }
