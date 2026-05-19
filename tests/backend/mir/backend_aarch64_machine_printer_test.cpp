@@ -4315,6 +4315,35 @@ int selected_scalar_add_sub_materializes_nonencodable_immediates() {
                 join_lines(out_of_range_result.instruction_lines));
   }
 
+  const auto add_multi_chunk = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{148},
+          .result_value_name = c4c::ValueNameId{149},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+              .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+              .type = bir::TypeKind::I32,
+              .signed_value = 503808,
+          }),
+          .supported_integer_operation = true,
+      }));
+  const auto multi_chunk_result =
+      aarch64_codegen::print_machine_instruction_line_payloads(add_multi_chunk);
+  if (!multi_chunk_result.ok ||
+      multi_chunk_result.instruction_lines.size() != 3 ||
+      multi_chunk_result.instruction_lines[0] != "movz w9, #45056" ||
+      multi_chunk_result.instruction_lines[1] != "movk w9, #7, lsl #16" ||
+      multi_chunk_result.instruction_lines[2] != "add w0, w1, w9") {
+    return fail("expected scalar add with multi-chunk immediate to materialize rhs: " +
+                join_lines(multi_chunk_result.instruction_lines));
+  }
+
   const auto sub_negative = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,

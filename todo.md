@@ -1,64 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/318_aarch64_scalar_alu_immediate_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Scalar ALU Immediate Path
+Current Step ID: 2
+Current Step Title: Materialize Non-Encodable ALU Constants
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 - Localize Scalar ALU Immediate Path is complete. The missing fact is
-not operand selection or scratch-register choice; it is scalar ALU constant
-publication for non-encodable immediates. `00204.c` reaches `subim503808` with
-structured scalar add/sub operands and prints:
+Step 2 - Materialize Non-Encodable ALU Constants is complete. Scalar ALU
+fallback constants in `src/backend/mir/aarch64/codegen/alu.cpp` now preserve
+the existing direct `mov` path for small printable constants, but route larger
+fallback immediates through `materialize_integer_constant_lines(...)`.
 
-```asm
-mov w0, #0
-mov w9, #503808
-sub w0, w0, w9
-sub w0, w0, w0
-```
-
-The illegal line is emitted by `src/backend/mir/aarch64/codegen/alu.cpp` inside
-`make_scalar_alu_print_lines`, specifically the local immediate
-materialization helpers for scalar integer ALU sources:
+The implemented owner surface is `make_scalar_alu_print_lines`, specifically:
 
 - `materialize_source(...)` for immediate lhs or general immediate sources
 - `materialize_rhs_immediate_for_existing_lhs(...)` for non-encodable rhs
   immediates
 - `materialize_lhs_immediate_into_result(...)` for immediate/immediate pairs
 
-Those paths already distinguish direct encodable add/sub immediates via
-`scalar_alu_operation_accepts_immediate(...)`, but the fallback emits a single
-`mov <scratch-or-result>, #<imm>` line. That is legal for the existing local
-small cases such as `4096`, but not for larger constants such as `503808`.
-The repair should reuse the existing AArch64 constant sequence helper
-`materialize_integer_constant_lines(...)` instead of printing a raw `mov`
-fallback.
+Focused local coverage was added to
+`tests/backend/mir/backend_aarch64_machine_printer_test.cpp` in
+`selected_scalar_add_sub_materializes_nonencodable_immediates`. It now proves a
+multi-chunk scalar ALU fallback constant materializes as `movz`/`movk` before
+the ALU operation, while existing nearby coverage preserves direct encodable
+immediate behavior such as `add w0, w0, #3` and small fallback `mov` cases.
+
+The former `00204.c` bad site now prints legal materialization:
+
+```asm
+mov w0, #0
+movz w9, #45056
+movk w9, #7, lsl #16
+sub w0, w0, w9
+sub w0, w0, w0
+```
 
 ## Suggested Next
 
-Implement Step 2 - Materialize Non-Encodable ALU Constants in
-`src/backend/mir/aarch64/codegen/alu.cpp`. Keep direct encodable add/sub
-immediates on the current `#imm` path, but route non-encodable scalar ALU
-fallback constants through `materialize_integer_constant_lines(...)` before
-the ALU operation.
+Run Step 4 - Validate And Classify Residuals. The scalar ALU assembler blocker
+is gone; the focused representative now advances to runtime execution and
+fails with `RUNTIME_NONZERO` / `Segmentation fault`. Classify that first bad
+runtime fact before widening into any new implementation owner.
 
 ## Watchouts
 
-- Representative local coverage should extend
-  `tests/backend/mir/backend_aarch64_machine_printer_test.cpp`
-  `selected_scalar_add_sub_materializes_nonencodable_immediates` or a nearby
-  scalar ALU printer test with a value requiring multiple move-wide chunks
-  such as `503808`, while preserving direct encodable immediate behavior from
-  `selected_scalar_add_with_immediate_operands_prints_structured_add`.
-- `backend_aarch64_prepared_scalar_alu_records` already covers rematerialized
-  immediate source identity; the implementation packet should not alter that
-  selection contract unless the printer evidence proves it is necessary.
-- `backend_aarch64_instruction_dispatch` and the focused `00204` prepared/BIR
-  dump tests are guardrails for upstream lowering and prior owners, not the
-  primary code surface for this residual.
+- The current focused residual is no longer an assembler diagnostic. It is a
+  runtime segmentation fault from `c_testsuite_aarch64_backend_src_00204_c`
+  after printing many arguments and floating values.
+- Do not treat the runtime failure as scalar ALU immediate materialization
+  without generated-code evidence. The former illegal line at `subim503808`
+  has advanced to legal `movz`/`movk`.
+- `backend_aarch64_prepared_scalar_alu_records`, `backend_aarch64_instruction_dispatch`,
+  and the focused `00204` prepared/BIR dump tests remain guardrails for
+  upstream lowering and prior owners, not proof of ownership for the runtime
+  residual.
 - Do not reopen idea 317's raw `va_start` helper-text lowering owner.
 - Do not reopen idea 315's large frame setup/teardown materialization owner.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication owner.
@@ -77,7 +74,13 @@ Ran the delegated focused proof and wrote it to `test_after.log`:
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'
 ```
 
-Result: build succeeded; 11 tests ran; 10 passed. The only failure remains
-`c_testsuite_aarch64_backend_src_00204_c`, with the baseline assembler
-diagnostic at `build/c_testsuite_aarch64_backend/src/00204.c.s:8502`:
-`mov w9, #503808`.
+Result: build succeeded; 11 tests ran; 10 passed. The local backend guardrails,
+including `backend_aarch64_machine_printer`, passed. The only remaining
+failure is `c_testsuite_aarch64_backend_src_00204_c`, now advanced from the
+baseline assembler error to runtime `RUNTIME_NONZERO` with `exit=Segmentation
+fault`.
+
+Confirmed generated assembly at
+`build/c_testsuite_aarch64_backend/src/00204.c.s:8502` no longer contains
+`mov w9, #503808`; it contains `movz w9, #45056` plus
+`movk w9, #7, lsl #16`.

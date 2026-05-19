@@ -60,6 +60,11 @@ namespace mir = c4c::backend::mir;
   return false;
 }
 
+[[nodiscard]] bool is_plain_mov_immediate(const ImmediateOperand& operand) {
+  return operand.kind == ImmediateKind::SignedInteger && operand.signed_value >= -65536 &&
+         operand.signed_value <= 65535;
+}
+
 [[nodiscard]] bool scalar_alu_operation_accepts_immediate(
     ScalarAluOperationKind operation,
     const ImmediateOperand& operand) {
@@ -2158,6 +2163,26 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     std::optional<RegisterOperand> scratch;
   };
 
+  const auto append_materialized_integer_immediate =
+      [&](abi::RegisterReference destination, const ImmediateOperand& immediate) -> bool {
+    const std::string destination_name = abi::register_name(destination);
+    if (is_plain_mov_immediate(immediate)) {
+      std::ostringstream move;
+      move << "mov " << destination_name << ", " << scalar_immediate_name(immediate);
+      lines.push_back(move.str());
+      return true;
+    }
+    auto materialized = materialize_integer_constant_lines(
+        destination,
+        static_cast<std::uint64_t>(immediate.signed_value),
+        *result_view == abi::RegisterView::X ? 64U : 32U);
+    if (materialized.empty()) {
+      return false;
+    }
+    lines.insert(lines.end(), materialized.begin(), materialized.end());
+    return true;
+  };
+
   const auto materialize_source =
       [&](const OperandRecord& operand,
           const RegisterOperand* reg,
@@ -2212,9 +2237,9 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
         return std::nullopt;
       }
       const std::string scratch_name = abi::register_name(scratch->reg);
-      std::ostringstream move;
-      move << "mov " << scratch_name << ", " << scalar_immediate_name(*immediate);
-      lines.push_back(move.str());
+      if (!append_materialized_integer_immediate(scratch->reg, *immediate)) {
+        return std::nullopt;
+      }
       return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
     }
     return std::nullopt;
@@ -2222,10 +2247,12 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
 
   const auto materialize_lhs_immediate_into_result =
       [&](const ImmediateOperand& immediate) -> bool {
-    std::ostringstream move;
-    move << "mov " << *result << ", " << scalar_immediate_name(immediate);
-    lines.push_back(move.str());
-    return true;
+    const auto destination =
+        abi::gp_register(scalar.result_register->reg.index, *result_view);
+    if (!destination.has_value()) {
+      return false;
+    }
+    return append_materialized_integer_immediate(*destination, immediate);
   };
 
   const auto materialize_rhs_immediate_for_existing_lhs =
@@ -2247,9 +2274,9 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     if (scratch_name == lhs_name) {
       return std::nullopt;
     }
-    std::ostringstream move;
-    move << "mov " << scratch_name << ", " << scalar_immediate_name(immediate);
-    lines.push_back(move.str());
+    if (!append_materialized_integer_immediate(scratch->reg, immediate)) {
+      return std::nullopt;
+    }
     return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
   };
 
