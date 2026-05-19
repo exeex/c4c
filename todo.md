@@ -8,14 +8,24 @@ Current Step Title: Inspect Sign-Extension Route
 
 ## Just Finished
 
-Lifecycle switch only. Idea 302 is parked because the exposed `00205`
-`sxtw w9, w13` failure is outside its scalar arithmetic/reduction
-machine-node operand-form scope.
+Step 1 diagnostic completed for focused `00205`. The accepted baseline fails
+assembly at `build/c_testsuite_aarch64_backend/src/00205.c.s:29` with:
+`sxtw w9, w13`.
+
+The emitting surface is `src/backend/mir/aarch64/codegen/dispatch.cpp`,
+`lower_fused_compare_branch_from_emitted_cast(...)`. That helper recognizes a
+fusable branch compare fed by a same-block `SExt` cast, then synthesizes an
+inline assembler machine-node payload through
+`make_branch_compare_assembler_instruction(...)`. It currently forces the cast
+source, other compare operand, and extension result scratch/register through
+`abi::RegisterView::W`; for an `SExt i32 -> i64` this emits the illegal
+`sxtw` W-destination form and then compares W operands.
 
 ## Suggested Next
 
-Delegate Step 1: inspect the sign-extension route that emits `sxtw` with a W
-destination register, currently observed in `00205`.
+Delegate Step 2: repair
+`lower_fused_compare_branch_from_emitted_cast(...)` so sign-extension spelling
+and the following compare use register views derived from semantic widths.
 
 ## Watchouts
 
@@ -25,7 +35,16 @@ destination register, currently observed in `00205`.
 - Keep this owner scoped to AArch64 sign-extension width/spelling legality.
 - Do not change expectations, allowlists, unsupported classifications,
   timeout policy, runner behavior, CTest registration, or proof-log policy.
+- Semantic width rule for Step 2: `sxtw` is only legal as `sxtw Xd, Wn`.
+  The extension destination/scratch must use the widened result view
+  (`X` for 64-bit results, `W` only for <=32-bit `sxtb`/`sxth` results), while
+  the source operand remains the narrow W view. The compare emitted after the
+  extension must use the widened compare/result view for both operands; do not
+  repair this as printer-only string substitution.
 
 ## Proof
 
-No validation run by plan owner; lifecycle routing only.
+No new proof log was produced for this diagnostic-only packet, per delegation.
+Used existing `test_before.log` as the accepted baseline and inspected
+`build/c_testsuite_aarch64_backend/src/00205.c.s` plus AST-backed lookup of the
+dispatch helper. No `test_after.log` was created.
