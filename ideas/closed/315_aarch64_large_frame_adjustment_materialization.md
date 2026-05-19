@@ -62,6 +62,25 @@ teardown, not about selected stack-slot memory operands.
 - Existing idea 312, 313, and 314 focused guardrails remain green.
 - Fresh build and focused CTest proof are recorded before closure.
 
+## Completion Notes
+
+Closed on 2026-05-19. The focused proof for idea 315 no longer reports the
+original `frame_setup` immediate materialization diagnostic, and backend
+coverage now proves large frame setup and teardown materialization through legal
+selected instructions while preserving direct small-frame output.
+
+The remaining `00204.c` assembler residuals are outside this owner and were
+split into follow-up ideas:
+
+- `ideas/open/317_aarch64_variadic_va_start_helper_lowering.md` for raw
+  `va.start` helper payload text that reaches generated assembly.
+- `ideas/open/318_aarch64_scalar_alu_immediate_materialization.md` for illegal
+  scalar ALU immediate assembly such as `mov w9, #503808`.
+
+Close-time regression guard used the focused 315 proof command recorded in
+`todo.md`. Non-decreasing close mode passed at 10 passed / 1 failed before and
+10 passed / 1 failed after, with no new failing tests.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
