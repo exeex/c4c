@@ -257,6 +257,25 @@ Focused owner closure 2026-05-19:
   runtime mismatch, timeout, and other parked backend-regex buckets should be
   classified through this umbrella before another focused owner is split.
 
+Post-299 split 2026-05-19:
+
+- Step 1 of the active umbrella runbook reconstructed the committed post-299
+  backend-regex residual inventory from `test_before.log`: 352 selected tests,
+  294 passed, and 58 failed. No fresh broad runtime rerun was performed during
+  this lifecycle split.
+- The best next focused owner is idea 300,
+  `ideas/open/300_aarch64_scalar_cast_machine_printer_forms.md`, covering the
+  machine-printer/frontend scalar-cast residuals `00035`, `00105`, `00126`,
+  `00134`, `00135`, `00151`, and `00208`.
+- The split is based on shared scalar-cast diagnostics: `zero_extend` requires
+  supported integer source/result widths and `sign_extend` requires a
+  structured register source before printing.
+- Remaining symbol-store value printing, other machine-printer/frontend,
+  semantic `lir_to_bir`, invalid operand, runtime nonzero, runtime mismatch,
+  and timeout buckets remain parked under this umbrella for later
+  classification or separate focused splits.
+- Active implementation should move to idea 300 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -267,5 +286,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 296 without generated-code or
+- reopens recently closed owners 285 through 299 without generated-code or
   proof evidence that contradicts their closure boundary.
