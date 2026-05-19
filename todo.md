@@ -8,26 +8,61 @@ Current Step Title: Localize HFA/Floating First Bad Fact
 
 ## Just Finished
 
-Idea 325 is closed as complete. Commit `5001cecf6 repair AArch64 local value
-publication` repaired the Step 2/3 local/value-home publication owner and
-added focused local coverage. The remaining `00204.c` failure is classified as
-outside that owner: after fixed-size string argument cases,
-`fa_hfa11(hfa11)` prints `0.0` instead of `11.1`, followed by corrupted
-floating/HFA output and a later segmentation fault.
+Step 1 localized the first `00204.c` HFA/floating bad fact. The direct
+`fa_hfa11(hfa11)` path is already corrupted before the call-boundary consume:
+`arg` loads `hfa11` from the generated data label, stores/reloads it through
+local float homes, then calls `fa_hfa11`; `fa_hfa11` saves `s0`, reloads it,
+converts it with `fcvt d8, s13`, and prints the received lane. The bad value is
+therefore not first lost in `fa_hfa11`'s HFA argument consumer.
 
-New active idea: `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
-Active plan: Step 1, localize the HFA/floating first bad fact.
+The first bad record/path is the global float HFA object itself:
+`build/c_testsuite_aarch64_backend/src/00204.c.s` emits `hfa11:`,
+`hfa12:`, `hfa13:`, `hfa14:`, `hfa21:` through `hfa24:` with only
+`# global data emission deferred to behavior-recovery packet`, while `hfa31`
+and later long-double globals do emit bytes. Prepared output still records
+global-symbol loads from `hfa11` offset 0, including `arg`/`fa_hfa11`,
+`fr_hfa11`, and later variadic uses, so the generated load path is reading
+zero/uninitialized data from a missing F32/F64 global initializer emission.
+
+Owning code surfaces for Step 2 are AArch64 global data emission in
+`src/backend/mir/aarch64/codegen/asm_emitter.cpp`
+(`global_initializer_directive`, `emit_global_initializer`,
+`is_supported_scalar_global`, and aggregate initializer element emission) and,
+only if evidence requires it, BIR global initializer lowering in
+`src/backend/bir/lir_to_bir/global_initializers.cpp` /
+`src/backend/bir/lir_to_bir/globals.cpp`. The observed generated-code failure
+points first at the AArch64 emitter rejecting/deferring `F32`/`F64`
+initializer values, not at variadic register-save-area progression or HFA
+call-lane lowering.
 
 ## Suggested Next
 
-Localize where the expected `11.1` HFA value is lost or misrouted in generated
-AArch64 artifacts for `00204.c`. Distinguish HFA call-lane lowering,
-aggregate/floating `va_arg` source/progression, register-save-area addressing,
-overflow-area addressing, lane materialization, and consumer reads before
-editing code.
+Step 2 should repair AArch64 data emission for floating global initializers
+generally: emit correct bytes/directives for `F32`/`F64` scalar values and for
+aggregate initializer elements containing those types, then verify the first
+`hfa11` bytes materialize as the source value for direct calls, returns, and
+later variadic HFA loads.
+
+Smallest focused repair proof recommendation:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
 
 ## Watchouts
 
+- Do not treat the current `fa_hfa11(hfa11)` failure as proof that
+  register-save-area, overflow-area, `va_arg`, or HFA call-lane lowering is
+  wrong. The first observed bad fact is earlier: missing emitted data for
+  floating HFA globals.
+- The same missing-data surface covers `hfa11` through `hfa24` (`float` and
+  `double` HFA globals). Long-double HFA globals already emit raw bytes, so the
+  Step 2 change should be type-general without regressing FP80/F128-style byte
+  emission.
+- Representative tests for the repair are
+  `backend_aarch64_machine_printer`,
+  `backend_aarch64_instruction_dispatch`,
+  `backend_aarch64_target_instruction_records`, and
+  `c_testsuite_aarch64_backend_src_00204_c`; add focused local coverage around
+  AArch64 F32/F64 global initializer emission before relying only on the
+  external representative.
 - Preserve prior repairs: large stack offsets, large frame adjustments,
   `va_start` helper lowering, scalar ALU immediates, HFA argument lanes, F128
   transport, aggregate helper text lowering, `va_start` destination
@@ -55,11 +90,12 @@ editing code.
 
 ## Proof
 
-Close-time guard for idea 325 used existing matching focused logs:
-`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`
+Delegated proof run:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Result: passed with 6/7 passing before and after, no new failing tests, no
-pass-count decrease, and no new >30s tests. Strict-increase mode does not
-accept closure because the representative remains the sole failing CTest case,
-but the remaining failure is the newly classified HFA/floating residual now
-tracked by idea 326.
+Result: build was up to date; 9/10 focused tests passed. The sole failing test
+remains `c_testsuite_aarch64_backend_src_00204_c` with
+`RUNTIME_NONZERO`/segmentation fault and the known first bad output where
+`fa_hfa11(hfa11)` prints `0.0` instead of `11.1`.
+
+Proof log: `test_after.log`.
