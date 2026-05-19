@@ -1864,6 +1864,40 @@ int selected_structured_memory_subset_prints_loads_and_stores() {
                          "structured memory load/store printer drift guard");
 }
 
+int selected_byte_stack_source_store_materializes_through_scratch() {
+  auto destination = frame_slot(40);
+  destination.size_bytes = 1;
+  destination.align_bytes = 1;
+  destination.stored_value_id = prepare::PreparedValueId{26};
+  destination.stored_value_name = c4c::ValueNameId{27};
+
+  auto source = frame_slot(48);
+  source.size_bytes = 1;
+  source.align_bytes = 1;
+  source.result_value_id = prepare::PreparedValueId{28};
+  source.result_value_name = c4c::ValueNameId{29};
+
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = destination,
+          .value = aarch64_codegen::make_memory_operand(source),
+          .value_type = bir::TypeKind::I8,
+      });
+
+  const auto result = print_common_instruction_nodes({store});
+  if (!result.ok) {
+    return fail("expected 1-byte stack-source store to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    ldrb w9, [sp, #48]\n"
+      "    strb w9, [sp, #40]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "byte stack-source store materialization printer");
+}
+
 int selected_atomic_load_store_and_fence_print_from_structured_records() {
   auto load_record = base_atomic_record(aarch64_codegen::AtomicMemoryInstructionKind::Load,
                                         0,
@@ -5795,6 +5829,10 @@ int main() {
     return result;
   }
   if (const int result = selected_structured_memory_subset_prints_loads_and_stores();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_byte_stack_source_store_materializes_through_scratch();
       result != 0) {
     return result;
   }

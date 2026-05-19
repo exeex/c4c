@@ -180,6 +180,32 @@ std::optional<abi::RegisterReference> immediate_store_scratch_register(
   return std::nullopt;
 }
 
+std::optional<abi::RegisterReference> stack_source_store_scratch_register(
+    const MemoryInstructionRecord& memory) {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  if (memory.address.size_bytes == 1 || memory.address.size_bytes == 2 ||
+      memory.address.size_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  if (memory.address.size_bytes == 8) {
+    return abi::x_register(scratch.index);
+  }
+  return std::nullopt;
+}
+
+std::string_view stack_source_load_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 2:
+      return "ldrh";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
 std::optional<abi::RegisterReference> local_address_store_scratch_register() {
   const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
   return abi::x_register(scratch.index);
@@ -1027,14 +1053,15 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
                                 "stack-slot store source is not printable");
     }
     const auto source_address = memory_address(*source_memory);
-    const auto scratch = immediate_store_scratch_register(memory);
-    if (source_address.empty() || !scratch.has_value()) {
+    const auto scratch = stack_source_store_scratch_register(memory);
+    const auto load_mnemonic = stack_source_load_mnemonic(memory.address.size_bytes);
+    if (source_address.empty() || !scratch.has_value() || load_mnemonic.empty()) {
       return target_unsupported(bad_header(instruction) +
                                 "stack-slot store source scratch is not printable");
     }
     std::vector<std::string> lines;
     std::ostringstream load;
-    load << "ldr " << abi::register_name(*scratch) << ", " << source_address;
+    load << load_mnemonic << " " << abi::register_name(*scratch) << ", " << source_address;
     lines.push_back(load.str());
     std::ostringstream store;
     store << mnemonic << " " << abi::register_name(*scratch) << ", " << address;
