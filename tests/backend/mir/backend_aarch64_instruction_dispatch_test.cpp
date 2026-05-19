@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/aarch64/codegen/asm_emitter.hpp"
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
@@ -9720,6 +9721,60 @@ int module_build_lowers_simple_fixed_frame_around_function_stream() {
   return 0;
 }
 
+int module_print_emits_f32_f64_global_initializer_data() {
+  auto prepared = prepared_with_simple_fixed_frame();
+  prepared.module.globals.push_back(bir::Global{
+      .name = "scalar_f32",
+      .type = bir::TypeKind::F32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .initializer = bir::Value::immediate_f32_bits(0x4131999aU),
+  });
+  prepared.module.globals.push_back(bir::Global{
+      .name = "scalar_f64",
+      .type = bir::TypeKind::F64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .initializer = bir::Value::immediate_f64_bits(0x403519999999999aULL),
+  });
+  prepared.module.globals.push_back(bir::Global{
+      .name = "hfa12",
+      .size_bytes = 8,
+      .align_bytes = 4,
+      .initializer_elements =
+          {
+              bir::Value::immediate_f32_bits(0x4141999aU),
+              bir::Value::immediate_f32_bits(0x41433333U),
+          },
+  });
+  prepared.module.globals.push_back(bir::Global{
+      .name = "hfa22",
+      .size_bytes = 16,
+      .align_bytes = 8,
+      .initializer_elements =
+          {
+              bir::Value::immediate_f64_bits(0x403619999999999aULL),
+              bir::Value::immediate_f64_bits(0x4036333333333333ULL),
+          },
+  });
+
+  const auto assembly = aarch64_codegen::print_prepared_machine_nodes(prepared);
+  if (assembly.find("# global data emission deferred") != std::string::npos) {
+    return fail("expected F32/F64 global initializer data to avoid deferred emission");
+  }
+  if (assembly.find("scalar_f32:\n    .word 1093769626\n") == std::string::npos ||
+      assembly.find("scalar_f64:\n    .xword 4626632339690723738\n") ==
+          std::string::npos ||
+      assembly.find("hfa12:\n    .word 1094818202\n    .word 1094923059\n") ==
+          std::string::npos ||
+      assembly.find(
+          "hfa22:\n    .xword 4626913814667434394\n    .xword 4626941962165105459\n") ==
+          std::string::npos) {
+    return fail("expected scalar and aggregate F32/F64 globals to emit bit-pattern data");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_frame_slot_load_with_result_register() {
   auto prepared = prepared_with_frame_slot_load();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -11730,6 +11785,10 @@ int main() {
     return status;
   }
   if (const int status = module_build_lowers_simple_fixed_frame_around_function_stream();
+      status != 0) {
+    return status;
+  }
+  if (const int status = module_print_emits_f32_f64_global_initializer_data();
       status != 0) {
     return status;
   }

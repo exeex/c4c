@@ -8,61 +8,41 @@ Current Step Title: Repair Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 1 localized the first `00204.c` HFA/floating bad fact. The direct
-`fa_hfa11(hfa11)` path is already corrupted before the call-boundary consume:
-`arg` loads `hfa11` from the generated data label, stores/reloads it through
-local float homes, then calls `fa_hfa11`; `fa_hfa11` saves `s0`, reloads it,
-converts it with `fcvt d8, s13`, and prints the received lane. The bad value is
-therefore not first lost in `fa_hfa11`'s HFA argument consumer.
+Step 2 repaired the owned AArch64 global data emission path in
+`src/backend/mir/aarch64/codegen/asm_emitter.cpp`: `F32` immediate
+initializers now emit `.word` IEEE bit-pattern data and `F64` immediate
+initializers now emit `.xword` IEEE bit-pattern data. The same directive path
+is used for scalar globals and aggregate initializer elements, so HFA-shaped
+globals are covered generally rather than by named-case matching.
 
-The first bad record/path is the global float HFA object itself:
-`build/c_testsuite_aarch64_backend/src/00204.c.s` emits `hfa11:`,
-`hfa12:`, `hfa13:`, `hfa14:`, `hfa21:` through `hfa24:` with only
-`# global data emission deferred to behavior-recovery packet`, while `hfa31`
-and later long-double globals do emit bytes. Prepared output still records
-global-symbol loads from `hfa11` offset 0, including `arg`/`fa_hfa11`,
-`fr_hfa11`, and later variadic uses, so the generated load path is reading
-zero/uninitialized data from a missing F32/F64 global initializer emission.
+Focused backend coverage in `backend_aarch64_instruction_dispatch` now builds
+a prepared AArch64 module with scalar `F32`/`F64` globals and aggregate
+`F32`/`F64` initializer elements, then verifies the printed assembly contains
+real data and no deferred global-data marker.
 
-Owning code surfaces for Step 2 are AArch64 global data emission in
-`src/backend/mir/aarch64/codegen/asm_emitter.cpp`
-(`global_initializer_directive`, `emit_global_initializer`,
-`is_supported_scalar_global`, and aggregate initializer element emission) and,
-only if evidence requires it, BIR global initializer lowering in
-`src/backend/bir/lir_to_bir/global_initializers.cpp` /
-`src/backend/bir/lir_to_bir/globals.cpp`. The observed generated-code failure
-points first at the AArch64 emitter rejecting/deferring `F32`/`F64`
-initializer values, not at variadic register-save-area progression or HFA
-call-lane lowering.
+Fresh `00204.c` generated assembly now emits real data for `hfa11` through
+`hfa24`; for example `hfa11` emits `.word 1093769626`, `hfa12` emits two
+`.word` values, and `hfa21` through `hfa24` emit `.xword` values. The
+representative still fails at runtime. The new first bad fact is no longer
+global initializer data: the direct `fa_hfa11(hfa11)` producer loads `hfa11`
+into `s13` but reaches `bl fa_hfa11` without moving/publishing that lane into
+the ABI argument register `s0`, while `fa_hfa11` consumes `s0`.
 
 ## Suggested Next
 
-Step 2 should repair AArch64 data emission for floating global initializers
-generally: emit correct bytes/directives for `F32`/`F64` scalar values and for
-aggregate initializer elements containing those types, then verify the first
-`hfa11` bytes materialize as the source value for direct calls, returns, and
-later variadic HFA loads.
-
-Smallest focused repair proof recommendation:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
+Next packet should repair direct fixed HFA floating call-lane publication for
+AArch64: when a fixed HFA argument lane is loaded or materialized in a
+non-ABI FPR such as `s13`, the call-boundary lowering must move it into the
+classified ABI argument register such as `s0` before the call.
 
 ## Watchouts
 
-- Do not treat the current `fa_hfa11(hfa11)` failure as proof that
-  register-save-area, overflow-area, `va_arg`, or HFA call-lane lowering is
-  wrong. The first observed bad fact is earlier: missing emitted data for
-  floating HFA globals.
-- The same missing-data surface covers `hfa11` through `hfa24` (`float` and
-  `double` HFA globals). Long-double HFA globals already emit raw bytes, so the
-  Step 2 change should be type-general without regressing FP80/F128-style byte
-  emission.
-- Representative tests for the repair are
-  `backend_aarch64_machine_printer`,
-  `backend_aarch64_instruction_dispatch`,
-  `backend_aarch64_target_instruction_records`, and
-  `c_testsuite_aarch64_backend_src_00204_c`; add focused local coverage around
-  AArch64 F32/F64 global initializer emission before relying only on the
-  external representative.
+- Do not reopen global initializer lowering unless fresh evidence shows missing
+  BIR initializer data. Current generated assembly proves the AArch64 emitter
+  now materializes `F32`/`F64` HFA global data.
+- The next observed bad call path is not variadic: `arg` loads `hfa11` and
+  directly calls `fa_hfa11`, so fixed-argument HFA lane publication should be
+  checked before register-save-area, overflow-area, or `va_arg` progression.
 - Preserve prior repairs: large stack offsets, large frame adjustments,
   `va_start` helper lowering, scalar ALU immediates, HFA argument lanes, F128
   transport, aggregate helper text lowering, `va_start` destination
@@ -73,10 +53,11 @@ Smallest focused repair proof recommendation:
   `%lv.t7.0`, stale mutable pointer-local provenance, later branch exits, and
   `%t15` predecessor/join source publication are fixed and now have focused
   local coverage.
-- The remaining runtime representative failure is no longer a timeout. The
-  CTest case exits with `RUNTIME_NONZERO`/segmentation fault after printing
-  substantial output. The next first bad fact is the first HFA float argument
-  output: `fa_hfa11(hfa11)` prints `0.0` instead of `11.1`.
+- The remaining runtime representative failure is still
+  `RUNTIME_NONZERO`/segmentation fault after printing substantial output.
+  After the global-data repair, the first HFA float argument still prints
+  `0.0` instead of `11.1` because the producer never moves the loaded lane into
+  `s0` before `bl fa_hfa11`.
 - Do not special-case `00204.c`, `stdarg`, `myprintf`, the format loop, one
   HFA shape, one float literal, one stack slot, one register, one offset, or
   one emitted instruction sequence.
@@ -91,11 +72,14 @@ Smallest focused repair proof recommendation:
 ## Proof
 
 Delegated proof run:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Result: build was up to date; 9/10 focused tests passed. The sole failing test
-remains `c_testsuite_aarch64_backend_src_00204_c` with
-`RUNTIME_NONZERO`/segmentation fault and the known first bad output where
-`fa_hfa11(hfa11)` prints `0.0` instead of `11.1`.
+Result: build succeeded; 3/4 focused CTest tests passed. The focused backend
+tests `backend_aarch64_machine_printer`,
+`backend_aarch64_instruction_dispatch`, and
+`backend_aarch64_target_instruction_records` passed. The representative
+`c_testsuite_aarch64_backend_src_00204_c` still fails with
+`RUNTIME_NONZERO`/segmentation fault after the first bad fact moved from
+missing global data to missing fixed-HFA call-lane publication into `s0`.
 
 Proof log: `test_after.log`.

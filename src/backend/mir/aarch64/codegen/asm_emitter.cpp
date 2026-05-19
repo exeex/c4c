@@ -107,6 +107,9 @@ bool is_supported_scalar_global(const c4c::backend::bir::Global& global) {
     case c4c::backend::bir::TypeKind::I32:
     case c4c::backend::bir::TypeKind::I64:
     case c4c::backend::bir::TypeKind::Ptr:
+    case c4c::backend::bir::TypeKind::F64:
+      return true;
+    case c4c::backend::bir::TypeKind::F32:
       return true;
     default:
       return false;
@@ -123,7 +126,10 @@ std::string scalar_global_directive(const c4c::backend::bir::Global& global) {
       return ".word";
     case c4c::backend::bir::TypeKind::I64:
     case c4c::backend::bir::TypeKind::Ptr:
+    case c4c::backend::bir::TypeKind::F64:
       return ".xword";
+    case c4c::backend::bir::TypeKind::F32:
+      return ".word";
     default:
       return {};
   }
@@ -151,6 +157,10 @@ std::optional<std::string> global_initializer_directive(
     case c4c::backend::bir::TypeKind::I64:
     case c4c::backend::bir::TypeKind::Ptr:
       return ".xword " + std::to_string(value.immediate);
+    case c4c::backend::bir::TypeKind::F32:
+      return ".word " + std::to_string(static_cast<std::uint32_t>(value.immediate_bits));
+    case c4c::backend::bir::TypeKind::F64:
+      return ".xword " + std::to_string(value.immediate_bits);
     default:
       return std::nullopt;
   }
