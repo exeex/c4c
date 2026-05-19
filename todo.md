@@ -29,6 +29,9 @@ ctest -j10 -R backend --output-on-failure
 
 - Record pass/fail count and classify failures by source.
 - Check for stale runtime processes after the run.
+- Before switching away from this umbrella, write durable findings back into
+  `ideas/open/295_backend_regex_failure_family_inventory.md` under
+  `## Deactivation Note`, following the idea 284 style.
 
 ## Watchouts
 

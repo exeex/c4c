@@ -28,6 +28,9 @@ ctest -j10 -R backend
 212 are `c_testsuite_aarch64_backend_*`
 about 80 were observed failing
 ```
+- This plan should preserve durable split/closure notes back into
+  `ideas/open/295_backend_regex_failure_family_inventory.md`, following the
+  deactivation-note style used by idea 284.
 
 ## Steps
 
@@ -54,14 +57,24 @@ reopening or splitting any follow-up.
 Completion check: `todo.md` records which closed owners remain valid and which
 new owner candidates exist.
 
-### Step 4: Split Focused Ideas
+### Step 4: Record Durable Inventory Findings
+
+Update the source idea's deactivation note with the current inventory result,
+owner-boundary decisions, and remaining buckets. Keep transient logs in
+`todo.md`; only durable findings belong in the source idea.
+
+Completion check: `ideas/open/295_backend_regex_failure_family_inventory.md`
+contains a concise durable note that a later agent can use after this umbrella
+is deactivated and reactivated.
+
+### Step 5: Split Focused Ideas
 
 Create focused `ideas/open/*.md` files for tractable semantic repair families.
 
 Completion check: at least one focused idea exists, or `todo.md` explains why
 no semantic owner is ready.
 
-### Step 5: Switch To Focused Idea
+### Step 6: Switch To Focused Idea
 
 Deactivate this umbrella runbook and activate the highest-value focused repair
 idea.
