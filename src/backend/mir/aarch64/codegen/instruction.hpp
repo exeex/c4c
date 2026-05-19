@@ -1440,6 +1440,7 @@ struct CallBoundaryAbiBindingInstructionRecord {
 
 struct VariadicVaStartRecord {
   prepare::PreparedValueHome destination_va_list;
+  prepare::PreparedValueHome destination_va_list_address;
   std::size_t named_gp_register_count = 0;
   std::size_t named_fp_register_count = 0;
   std::size_t va_list_size_bytes = 0;

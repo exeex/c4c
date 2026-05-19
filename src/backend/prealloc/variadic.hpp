@@ -219,6 +219,7 @@ struct PreparedVariadicEntryHelperOperandHomes {
   std::size_t block_index = 0;
   std::size_t instruction_index = 0;
   std::optional<PreparedValueHome> destination_va_list;
+  std::optional<PreparedValueHome> destination_va_list_address;
   std::optional<PreparedValueHome> source_va_list;
   std::optional<PreparedValueHome> scalar_result;
   std::optional<PreparedValueHome> aggregate_destination_payload;

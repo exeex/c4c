@@ -120,6 +120,20 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
   return nullptr;
 }
 
+[[nodiscard]] std::string variadic_va_start_destination_source_kind(
+    const PreparedValueHome& destination) {
+  std::string source_kind = "aapcs64_variadic_va_start_destination.";
+  source_kind += std::to_string(destination.value_name);
+  return source_kind;
+}
+
+[[nodiscard]] std::string variadic_va_start_destination_slot_name(
+    const PreparedValueHome& destination) {
+  std::string slot_name = "__aapcs64_variadic_va_start_destination_";
+  slot_name += std::to_string(destination.value_name);
+  return slot_name;
+}
+
 PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
                                                 FunctionNameId function_name,
                                                 std::string_view slot_name,
@@ -158,6 +172,42 @@ PreparedFrameSlot& append_variadic_storage_slot(PreparedBirModule& prepared,
   prepared.stack_layout.frame_alignment_bytes =
       std::max(prepared.stack_layout.frame_alignment_bytes, align_bytes);
   return prepared.stack_layout.frame_slots.back();
+}
+
+[[nodiscard]] std::optional<PreparedValueHome> materialize_va_start_destination_home(
+    PreparedBirModule& prepared,
+    const PreparedVariadicEntryPlanFunction& function_plan,
+    const PreparedValueHome& destination) {
+  if (!function_plan.va_list_layout.size_bytes.has_value() ||
+      !function_plan.va_list_layout.align_bytes.has_value()) {
+    return std::nullopt;
+  }
+
+  const std::string source_kind =
+      variadic_va_start_destination_source_kind(destination);
+  const PreparedFrameSlot* slot =
+      find_variadic_storage_slot(prepared, function_plan.function_name, source_kind);
+  if (slot == nullptr) {
+    const std::string slot_name =
+        variadic_va_start_destination_slot_name(destination);
+    slot = &append_variadic_storage_slot(prepared,
+                                         function_plan.function_name,
+                                         slot_name,
+                                         source_kind,
+                                         *function_plan.va_list_layout.size_bytes,
+                                         *function_plan.va_list_layout.align_bytes);
+  }
+
+  return PreparedValueHome{
+      .value_id = destination.value_id,
+      .function_name = destination.function_name,
+      .value_name = destination.value_name,
+      .kind = PreparedValueHomeKind::StackSlot,
+      .slot_id = slot->slot_id,
+      .offset_bytes = slot->offset_bytes,
+      .size_bytes = slot->size_bytes,
+      .align_bytes = slot->align_bytes,
+  };
 }
 
 void populate_aapcs64_variadic_entry_abi_facts(
@@ -480,11 +530,20 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
           if (!call->args.empty()) {
             homes.destination_va_list =
                 prepared_home_for_named_value(prepared.names, value_locations, call->args[0]);
+            if (homes.destination_va_list.has_value()) {
+              homes.destination_va_list_address =
+                  materialize_va_start_destination_home(
+                      prepared, function_plan, *homes.destination_va_list);
+            }
           }
           require_variadic_helper_operand_home(function_plan,
                                                homes,
                                                homes.destination_va_list,
                                                "destination_va_list");
+          require_variadic_helper_operand_home(function_plan,
+                                               homes,
+                                               homes.destination_va_list_address,
+                                               "destination_va_list_address");
           break;
         case PreparedVariadicEntryHelperKind::VaArg:
           if (call->result.has_value()) {
@@ -689,9 +748,9 @@ void populate_variadic_entry_plans(PreparedBirModule& prepared) {
     if (prepared.target_profile.backend_abi == c4c::BackendAbiKind::Aapcs64) {
       populate_aapcs64_variadic_entry_abi_facts(function_plan);
       populate_aapcs64_variadic_entry_helper_resource_authority(function_plan);
+      attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
       populate_aapcs64_variadic_entry_helper_operand_home_authority(
           prepared, function, function_plan);
-      attach_aapcs64_variadic_entry_storage_authority(prepared, function_plan);
     }
 
     prepared.variadic_entry_plans.functions.push_back(std::move(function_plan));

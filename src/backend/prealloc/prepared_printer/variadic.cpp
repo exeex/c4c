@@ -176,6 +176,7 @@ void append_variadic_entry_plans(std::ostringstream& out, const PreparedBirModul
         }
       };
       append_home("dst_va_list", homes.destination_va_list);
+      append_home("dst_va_list_addr", homes.destination_va_list_address);
       append_home("src_va_list", homes.source_va_list);
       append_home("scalar_result", homes.scalar_result);
       append_home("aggregate_dst", homes.aggregate_destination_payload);

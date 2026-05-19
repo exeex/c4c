@@ -1036,6 +1036,17 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
               .kind = prepare::PreparedValueHomeKind::Register,
               .register_name = std::string{"x3"},
           },
+      .destination_va_list_address =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{44},
+              .function_name = c4c::FunctionNameId{9},
+              .value_name = c4c::ValueNameId{7},
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{7},
+              .offset_bytes = std::size_t{240},
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+          },
   };
   prepare::PreparedVariadicEntryPlanFunction variadic_entry{
       .function_name = c4c::FunctionNameId{9},
@@ -1142,6 +1153,8 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
       helper_payload->source_variadic_helper_operand_homes !=
           &variadic_entry.helper_operand_homes.front() ||
       !helper_payload->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
+      !helper_payload->source_variadic_helper_operand_homes
+           ->destination_va_list_address.has_value() ||
       helper_payload->source_variadic_entry->helper_resources.scratch_register_count !=
           std::optional<std::size_t>{1} ||
       helper_payload->source_variadic_entry->helper_resources.scratch_stack_bytes !=
@@ -1154,6 +1167,8 @@ int variadic_entry_helper_call_records_select_prepared_va_start() {
           prepare::PreparedFrameSlotId{5} ||
       helper_payload->variadic_va_start->overflow_area_base_slot_id !=
           prepare::PreparedFrameSlotId{6} ||
+      helper_payload->variadic_va_start->destination_va_list_address.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{7} ||
       helper_payload->variadic_va_start->va_list_fields.size() != 2 ||
       helper_call.defs.empty() ||
       !helper_payload->direct_callee.has_value() ||

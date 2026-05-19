@@ -944,6 +944,17 @@ prepare::PreparedBirModule prepared_with_variadic_entry_helper_call(
                               .destination_va_list =
                                   prepared.value_locations.functions.front()
                                       .value_homes.front(),
+                              .destination_va_list_address =
+                                  prepare::PreparedValueHome{
+                                      .value_id = prepare::PreparedValueId{4},
+                                      .function_name = function_name,
+                                      .value_name = ap_value,
+                                      .kind = prepare::PreparedValueHomeKind::StackSlot,
+                                      .slot_id = prepare::PreparedFrameSlotId{7},
+                                      .offset_bytes = std::size_t{240},
+                                      .size_bytes = std::size_t{32},
+                                      .align_bytes = std::size_t{8},
+                                  },
                           }}
                     : std::vector<prepare::PreparedVariadicEntryHelperOperandHomes>{},
             .missing_required_facts =
@@ -7742,12 +7753,18 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
       complete_call->source_variadic_entry->helper_resources.scratch_stack_bytes !=
           std::optional<std::size_t>{0} ||
       !complete_call->source_variadic_helper_operand_homes->destination_va_list.has_value() ||
+      !complete_call->source_variadic_helper_operand_homes
+           ->destination_va_list_address.has_value() ||
       complete_call->source_variadic_helper_operand_homes->destination_va_list->register_name !=
           std::optional<std::string>{"x3"} ||
+      complete_call->source_variadic_helper_operand_homes->destination_va_list_address->slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{7} ||
       complete_call->variadic_va_start->register_save_area_slot_id !=
           prepare::PreparedFrameSlotId{5} ||
       complete_call->variadic_va_start->overflow_area_base_slot_id !=
           prepare::PreparedFrameSlotId{6} ||
+      complete_call->variadic_va_start->destination_va_list_address.slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{7} ||
       complete_call->variadic_va_start->destination_va_list.register_name !=
           std::optional<std::string>{"x3"}) {
     return fail("expected selected va_start helper record to expose prepared storage, scratch, and operand-home authority");

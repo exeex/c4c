@@ -140,6 +140,7 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
     const prepare::PreparedVariadicEntryPlanFunction& entry,
     const prepare::PreparedVariadicEntryHelperOperandHomes& homes) {
   if (!homes.destination_va_list.has_value() ||
+      !homes.destination_va_list_address.has_value() ||
       !entry.named_register_counts.gp.has_value() ||
       !entry.named_register_counts.fp.has_value() ||
       !entry.va_list_layout.size_bytes.has_value() ||
@@ -167,6 +168,7 @@ void append_missing_variadic_entry_fact(std::vector<std::string>& missing,
 
   return VariadicVaStartRecord{
       .destination_va_list = *homes.destination_va_list,
+      .destination_va_list_address = *homes.destination_va_list_address,
       .named_gp_register_count = *entry.named_register_counts.gp,
       .named_fp_register_count = *entry.named_register_counts.fp,
       .va_list_size_bytes = *entry.va_list_layout.size_bytes,
@@ -516,7 +518,10 @@ bool append_va_start_i32_field_store(std::vector<std::string>& lines,
 [[nodiscard]] std::optional<std::vector<std::string>> print_va_start_lowering_lines(
     const VariadicVaStartRecord& va_start) {
   if (va_start.destination_va_list.kind != prepare::PreparedValueHomeKind::Register ||
-      !va_start.destination_va_list.register_name.has_value()) {
+      !va_start.destination_va_list.register_name.has_value() ||
+      va_start.destination_va_list_address.kind !=
+          prepare::PreparedValueHomeKind::StackSlot ||
+      !va_start.destination_va_list_address.offset_bytes.has_value()) {
     return std::nullopt;
   }
   const auto scratch = va_start_scratch_register(va_start.destination_va_list);
@@ -525,7 +530,18 @@ bool append_va_start_i32_field_store(std::vector<std::string>& lines,
   }
 
   const std::string destination_register = *va_start.destination_va_list.register_name;
+  const auto destination_index = parse_x_register_index(destination_register);
+  if (!destination_index.has_value()) {
+    return std::nullopt;
+  }
   std::vector<std::string> lines;
+  auto destination_lines = materialize_stack_address_lines(
+      abi::x_register(*destination_index),
+      *va_start.destination_va_list_address.offset_bytes);
+  if (destination_lines.empty()) {
+    return std::nullopt;
+  }
+  lines.insert(lines.end(), destination_lines.begin(), destination_lines.end());
   const auto gp_top_stack_offset =
       va_start.register_save_area_stack_offset_bytes +
       va_start.register_save_area_gp_offset_bytes +
@@ -893,7 +909,8 @@ bool variadic_helper_operand_homes_complete(
   };
   switch (homes.helper) {
     case prepare::PreparedVariadicEntryHelperKind::VaStart:
-      return homes.destination_va_list.has_value();
+      return homes.destination_va_list.has_value() &&
+             homes.destination_va_list_address.has_value();
     case prepare::PreparedVariadicEntryHelperKind::VaArg:
       return homes.scalar_result.has_value() && homes.source_va_list.has_value() &&
              scalar_access_plan_complete();

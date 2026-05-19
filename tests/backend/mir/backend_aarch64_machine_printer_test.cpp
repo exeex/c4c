@@ -6097,6 +6097,17 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
               .kind = prepare::PreparedValueHomeKind::Register,
               .register_name = std::string{"x2"},
           },
+      .destination_va_list_address =
+          prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{14},
+              .function_name = c4c::FunctionNameId{2},
+              .value_name = c4c::ValueNameId{4},
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{7},
+              .offset_bytes = std::size_t{240},
+              .size_bytes = std::size_t{32},
+              .align_bytes = std::size_t{8},
+          },
   };
   const prepare::PreparedVariadicEntryPlanFunction variadic_entry{
       .function_name = c4c::FunctionNameId{2},
@@ -6175,12 +6186,13 @@ int unsupported_surfaces_statuses_and_missing_operands_fail_closed() {
       });
   const auto va_start_result =
       aarch64_codegen::print_machine_instruction_line_payloads(va_start_call);
-  if (!va_start_result.ok || va_start_result.instruction_lines.size() != 5 ||
-      va_start_result.instruction_lines[0] != "add x9, sp, #208" ||
-      va_start_result.instruction_lines[1] != "str x9, [x2, #8]" ||
-      va_start_result.instruction_lines[2] != "movz w9, #65480" ||
-      va_start_result.instruction_lines[3] != "movk w9, #65535, lsl #16" ||
-      va_start_result.instruction_lines[4] != "str w9, [x2]") {
+  if (!va_start_result.ok || va_start_result.instruction_lines.size() != 6 ||
+      va_start_result.instruction_lines[0] != "add x2, sp, #240" ||
+      va_start_result.instruction_lines[1] != "add x9, sp, #208" ||
+      va_start_result.instruction_lines[2] != "str x9, [x2, #8]" ||
+      va_start_result.instruction_lines[3] != "movz w9, #65480" ||
+      va_start_result.instruction_lines[4] != "movk w9, #65535, lsl #16" ||
+      va_start_result.instruction_lines[5] != "str w9, [x2]") {
     return fail("expected variadic entry helper call to lower va_start to legal assembly");
   }
 

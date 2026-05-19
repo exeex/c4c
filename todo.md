@@ -8,56 +8,44 @@ Current Step Title: Materialize Va Start Destination Address
 
 ## Just Finished
 
-Step 2 could not be implemented within the delegated owned-file boundary.
+Step 2 implemented a general prepared AArch64 `va_start` destination address
+publication contract.
 
-The required address materialization primitive is missing before
-`src/backend/mir/aarch64/codegen/variadic.cpp` receives the printer record:
-the `VariadicVaStartRecord::destination_va_list` fact remains only a register
-value home, not a writable local `va_list` object address or a frame-slot base.
+The prepared variadic entry plan now publishes
+`PreparedVariadicEntryHelperOperandHomes::destination_va_list_address` for
+`VaStart` helpers. The fact is a real stack-slot home allocated from the
+prepared variadic storage authority using the destination `va_list` value
+identity and the AAPCS64 `va_list` layout size/alignment.
 
-Evidence from the focused prepared dump for `myprintf`:
+The AArch64 variadic record and printer now require that address fact. Before
+emitting `va_start` field stores, `print_va_start_lowering_lines()` materializes
+the published stack-slot address into the destination register, then stores
+`overflow_arg_area`, `gp_register_save_area`, `fp_register_save_area`,
+`gp_offset`, and `fp_offset` through that initialized base. This removes the
+prior dependence on an uninitialized destination register.
 
-- `helper_operand kind=va_start block=0 inst=0 dst_va_list=%lv.ap:register:reg=x21`
-  is the only destination fact copied into `VariadicVaStartRecord`.
-- The call argument plan for `llvm.va_start.p0` likewise records
-  `arg0 bank=gpr from=register:x21 to=x0`; it has no source frame slot or
-  computed-address materialization fact.
-- The local `va_list` storage is currently split across independent field
-  locals such as `%lv.ap.0`, `%lv.ap.8`, and `%lv.ap.24`, whose frame slots
-  are not contiguous in the prepared layout (`%lv.ap.0` at stack offset 24,
-  `%lv.ap.8` at stack offset 352, `%lv.ap.24` at stack offset 520 in the
-  representative dump).
-- No `address_materialization` record exists for `%lv.ap`; only unrelated
-  local addresses such as `%lv.s` are materialized.
-
-Given those facts, `variadic.cpp` can either keep storing through an
-uninitialized register or invent a testcase-shaped stack address. The general
-repair needs preparation/address-materialization ownership to publish a real
-contiguous writable `va_list` destination home, or to carry structured field
-homes for `va_start`/`va_arg` lowering. That producer is outside this packet's
-owned files.
+Focused backend coverage now requires and observes the new contract in the
+prepared helper homes, target instruction record selection, dispatch, and
+machine-printer output. The representative assembly contains no raw
+`va.arg.aggregate*` text and now shows the former destination register
+materialized before the `va_start` stores, e.g. `add x21, sp, #816` before the
+`str ... [x21, ...]` field writes in `build/c_testsuite_aarch64_backend/src/00204.c.s`.
 
 ## Suggested Next
 
-Delegate a plan/lifecycle repair or a widened implementation packet that owns
-the prepared variadic destination-home producer. The smallest coherent packet
-should add a general AArch64 `va_start` destination publication fact before MIR
-printing, either as a contiguous local `va_list` frame object address or as
-structured per-field homes shared by `va_start` and later `va_arg` helpers.
+Run Step 3 as a small coverage-hardening packet if the supervisor wants more
+local prepared-BIR assertions for the new `dst_va_list_addr` printed fact;
+otherwise classify the remaining external `00204.c` runtime segfault as the
+next first bad fact outside this step.
 
 ## Watchouts
 
-- Do not implement the repair in `variadic.cpp` by special-casing `x21`,
-  `myprintf`, `00204.c`, or the observed `%lv.ap.*` stack offsets. The current
-  printer record does not carry enough destination ownership to do this
-  generally.
-- A printer-only change that materializes `x21` from one observed frame offset
-  would be testcase overfit because the split `%lv.ap.*` fields are not a
-  contiguous `va_list` object in prepared state.
+- The remaining `c_testsuite_aarch64_backend_src_00204_c` failure is still a
+  runtime segfault, but it has advanced past the original `va_start` destination
+  address fault. The program prints all scalar/string arguments and then emits
+  corrupt long-double/floating output before the segfault.
 - `rg 'va\\.arg\\.aggregate' build/c_testsuite_aarch64_backend/src/00204.c.s`
   returns no matches after this packet.
-- The external representative now reaches runtime, so the prior raw helper
-  text assembler blocker is gone.
 - Do not reopen F128 transport addressability; that owner is closed.
 - Do not reopen aggregate `va_arg` helper lowering; that owner is closed.
 - Do not special-case `00204.c`, `stdarg`, `myprintf`, `x21`, one local
@@ -71,8 +59,8 @@ structured per-field homes shared by `va_start` and later `va_arg` helpers.
 
 ## Proof
 
-No code change was made, but the delegated focused proof was rerun to preserve
-the canonical proof log at `test_after.log`:
+The delegated focused proof was rerun to preserve the canonical proof log at
+`test_after.log`:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'
@@ -80,6 +68,6 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Result: build succeeded. CTest ran 11 tests: 10 passed and 1 failed. The only
 failure is `c_testsuite_aarch64_backend_src_00204_c`, still
-`[RUNTIME_NONZERO] exit=Segmentation fault`. The blocker is the missing
-prepared destination-home/address materialization primitive, not aggregate
-`va_arg` helper text.
+`[RUNTIME_NONZERO] exit=Segmentation fault`. The focused internal backend
+coverage in the subset passes; the remaining external failure is now later
+runtime corruption after `va_start` destination address materialization.
