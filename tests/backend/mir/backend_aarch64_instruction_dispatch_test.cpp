@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
@@ -8223,6 +8224,169 @@ int semantic_stack_call_argument_publishes_destination_offset() {
   return 0;
 }
 
+int semantic_stack_call_argument_keeps_narrow_stack_copy_gate() {
+  auto prepared = prepared_semantic_aarch64_stack_call_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      !diagnostics.empty()) {
+    return fail("expected stack call argument dispatch to keep move, call, and return");
+  }
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[0].target.payload);
+  if (move == nullptr ||
+      block.instructions[0].target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::DeferredUnsupported ||
+      block.instructions[0].target.selection.diagnostic !=
+          std::string_view(
+              "call-boundary stack argument move requires AArch64 stack-copy lowering")) {
+    return fail("expected stack call argument to keep a narrow deferred gate");
+  }
+  const auto* call =
+      std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (call == nullptr || call->direct_callee_label != "consume_byval") {
+    return fail("expected direct call to remain after stack-argument move");
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (printed.ok ||
+      printed.diagnostic.find(
+          "call-boundary stack argument move requires AArch64 stack-copy lowering") ==
+          std::string::npos ||
+      printed.diagnostic.find("outside the selected register call-boundary move subset") !=
+          std::string::npos) {
+    return fail("expected stack call argument printer gate to report narrow residual");
+  }
+  return 0;
+}
+
+int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
+  constexpr auto function_name = c4c::FunctionNameId{91};
+  constexpr auto block_label = c4c::BlockLabelId{92};
+  constexpr auto value_id = prepare::PreparedValueId{93};
+  constexpr auto value_name = c4c::ValueNameId{94};
+
+  prepare::PreparedBirModule prepared;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = value_id,
+              .function_name = function_name,
+              .value_name = value_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{5},
+              .offset_bytes = std::size_t{32},
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 4,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = value_id,
+                      .to_value_id = value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                  }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 4,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 4,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = value_id,
+              .source_slot_id = prepare::PreparedFrameSlotId{5},
+              .source_stack_offset_bytes = std::size_t{32},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_stack_offset_bytes = std::size_t{0},
+          }},
+  };
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 4, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected prepared frame-slot stack argument to lower to one store");
+  }
+  const auto* store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &lowered.front().target.payload);
+  const auto* source =
+      store != nullptr && store->value.has_value()
+          ? std::get_if<aarch64_module::codegen::MemoryOperand>(
+                &store->value->payload)
+          : nullptr;
+  if (store == nullptr ||
+      lowered.front().target.opcode != aarch64_module::codegen::MachineOpcode::Store ||
+      lowered.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      store->address.byte_offset != 0 ||
+      store->address.size_bytes != 8 ||
+      store->address.stored_value_id != std::optional<prepare::PreparedValueId>{value_id} ||
+      store->address.stored_value_name != value_name ||
+      source == nullptr ||
+      source->frame_slot_id != std::optional<prepare::PreparedFrameSlotId>{5} ||
+      source->byte_offset != 32 ||
+      source->size_bytes != 8) {
+    return fail("expected selected stack call argument store to preserve source and destination facts");
+  }
+  return 0;
+}
+
 int stack_home_symbol_address_argument_materializes_directly_to_call_register() {
   auto prepared = prepared_with_direct_variadic_call_stack_symbol_address_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -10859,6 +11023,16 @@ int main() {
   }
   if (const int status =
           semantic_stack_call_argument_publishes_destination_offset();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          semantic_stack_call_argument_keeps_narrow_stack_copy_gate();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_frame_slot_stack_call_argument_lowers_to_selected_store();
       status != 0) {
     return status;
   }

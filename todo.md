@@ -8,21 +8,22 @@ Current Step Title: Publish AArch64 Stack Call-Argument Destination Offsets
 
 ## Just Finished
 
-Step 2 published AArch64 stack call-argument destination offsets through
-`src/backend/prealloc/regalloc/call_return_abi.cpp` by allowing
-`call_arg_destination_stack_offset_bytes` to compute offsets for AArch64
-stack-slot call arguments. Focused AArch64 MIR coverage now prepares a semantic
-byval stack call argument and proves the prepared call argument plan, the
-before-call move, and the ABI binding all carry
-`destination_stack_offset_bytes=0`.
+Step 2 continued the AArch64 stack call-argument handoff in
+`src/backend/mir/aarch64/codegen/calls.cpp`. Prepared frame-slot source to
+stack-slot destination call-argument moves now lower as selected memory stores
+when the source copy width is a printer-supported 1, 4, or 8 byte scalar
+stack slot. Register aggregate-address to outgoing stack-slot call-argument
+moves now remain gated as unselected `CallBoundaryMoveInstructionRecord`s with
+a narrow stack-copy diagnostic instead of the old generic register-subset
+diagnostic.
 
 ## Suggested Next
 
-Execute the next Step 2 follow-on packet in the AArch64 codegen handoff:
-teach `lower_before_call_move` and the selected-machine-node printer path to
-handle or fail closed with a more specific diagnostic for prepared stack-slot
-call-argument moves whose source and destination stack offset facts are now
-present.
+Decide whether idea 311 should proceed to a semantic aggregate-address stack
+copy lowering packet or move to Step 3 printer semantics. The remaining
+semantic gap is real aggregate/byval memory copy lowering from a prepared
+aggregate address register to the outgoing call stack area; it is no longer the
+old generic selected-printer admission failure.
 
 ## Watchouts
 
@@ -30,13 +31,14 @@ present.
   gate.
 - Do not mark a call-boundary move selected without printable prepared source
   and destination facts.
-- The missing AArch64 destination stack offset publication is no longer the
-  current blocker. The remaining `00140.c` failure is that a stack-slot
-  call-argument move reaches the AArch64 machine printer as an unselected
-  `CallBoundaryMoveInstructionRecord`.
-- `lower_before_call_move` currently only selects register call-boundary moves;
-  stack-slot call-argument moves still need an AArch64 lowering contract or a
-  narrower fail-closed gate before printing.
+- The old printer residual
+  `call-boundary move node is outside the selected register call-boundary move subset`
+  is gone from the delegated proof.
+- The current residual for aggregate-address stack copies is:
+  `call-boundary stack argument move requires AArch64 stack-copy lowering`.
+- The scalar frame-slot to outgoing stack-slot path intentionally supports only
+  1, 4, and 8 byte stack slots because those are the currently printable
+  scratch load/store widths in the AArch64 memory printer.
 - Do not change expectations, allowlists, unsupported classifications,
   timeout policy, runner behavior, proof-log policy, or CTest registration.
 - Reject filename-only, `struct foo`-only, argument-index-only, source-shape,
@@ -56,19 +58,16 @@ cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(ba
 
 `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and
-`backend_aarch64_instruction_dispatch` passed, including new focused coverage
-for AArch64 stack call-argument `destination_stack_offset_bytes` publication.
-The focused proof still failed at `c_testsuite_aarch64_backend_src_00140_c`
-with the next stack-slot call-boundary lowering/printing residual:
-`DeferredUnsupported: call-boundary move node is outside the selected register
-call-boundary move subset`.
+`backend_aarch64_instruction_dispatch` passed. The focused C probe
+`c_testsuite_aarch64_backend_src_00140_c` failed with the distinct residual:
+`DeferredUnsupported: call-boundary stack argument move requires AArch64
+stack-copy lowering`. The old generic selected register call-boundary move
+diagnostic is gone. `test_after.log` contains the preserved proof output.
 
-The supervisor then ran a matching broader backend guard through the dirty-tree
-stash flow:
+The supervisor also ran:
 
 ```bash
-cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_before.log 2>&1
-cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_'
 ```
 
-Both canonical logs report 139/139 backend tests passed with no new failures.
+The broader backend bucket passed: 139/139 tests.

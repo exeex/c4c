@@ -327,6 +327,19 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<bir::TypeKind> scalar_integer_type_from_size(
+    std::size_t size_bytes) {
+  switch (size_bytes) {
+    case 1:
+      return bir::TypeKind::I8;
+    case 4:
+      return bir::TypeKind::I32;
+    case 8:
+      return bir::TypeKind::I64;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
@@ -386,8 +399,8 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
                                                          : argument.source_slot_id,
         .byte_offset = static_cast<std::int64_t>(*source_offset),
         .byte_offset_is_prepared_snapshot = true,
-        .size_bytes = 4,
-        .align_bytes = 4,
+        .size_bytes = source_home.size_bytes.value_or(4),
+        .align_bytes = source_home.align_bytes.value_or(4),
         .can_use_base_plus_offset = true,
     };
   }
@@ -419,6 +432,48 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       .align_bytes = source_access->address.align_bytes,
       .address_space = source_access->address_space,
       .is_volatile = source_access->is_volatile,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_stack_call_argument_destination(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedAbiBinding* binding,
+    const MemoryOperand& source,
+    std::size_t instruction_index) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      source.size_bytes == 0 ||
+      source_home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto destination_stack_offset =
+      binding != nullptr && binding->destination_stack_offset_bytes.has_value()
+          ? binding->destination_stack_offset_bytes
+          : (move.destination_stack_offset_bytes.has_value()
+                 ? move.destination_stack_offset_bytes
+                 : argument.destination_stack_offset_bytes);
+  if (!destination_stack_offset.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .stored_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{move.from_value_id},
+      .stored_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .byte_offset = static_cast<std::int64_t>(*destination_stack_offset),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = source.size_bytes,
+      .align_bytes = source.align_bytes,
       .can_use_base_plus_offset = true,
   };
 }
@@ -667,6 +722,59 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     }
     move_record.source_memory = *source;
     move_record.destination_register = *destination;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto source = make_frame_slot_call_argument_source(
+        context, *argument, *source_home, instruction_index);
+    if (!source.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 stack call-argument move requires a prepared frame-slot source");
+      return std::nullopt;
+    }
+    const auto value_type = scalar_integer_type_from_size(source->size_bytes);
+    if (!value_type.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 stack call-argument move lowering requires a 1, 4, or 8 byte prepared stack slot");
+      return std::nullopt;
+    }
+    const auto destination = make_stack_call_argument_destination(
+        context, *argument, *source_home, move, binding, *source, instruction_index);
+    if (!destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 stack call-argument move requires a prepared destination stack offset");
+      return std::nullopt;
+    }
+    return make_call_boundary_machine_instruction(
+        context,
+        instruction_index,
+        make_memory_instruction(MemoryInstructionRecord{
+            .memory_kind = MemoryInstructionKind::Store,
+            .address = *destination,
+            .value = make_memory_operand(*source),
+            .value_type = *value_type,
+        }));
   }
 
   if (selected_f128_constant_argument_move) {
@@ -1739,6 +1847,19 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
       instruction.move.destination_kind == prepare::PreparedMoveDestinationKind::Value &&
       instruction.move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool stack_argument_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeCall &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::StackSlot &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  if (stack_argument_move) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic =
+            "call-boundary stack argument move requires AArch64 stack-copy lowering"};
+  }
   if (!selected_register_argument_move && !selected_register_result_move &&
       !selected_value_register_move) {
     return MachineNodeStatusRecord{
