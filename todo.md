@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize HFA/Floating First Bad Fact
+Current Step ID: 2
+Current Step Title: Repair Classified HFA/Floating Owner
 
 # Current Packet
 

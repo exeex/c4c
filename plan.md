@@ -7,14 +7,17 @@ Activated from: idea 325 closure after HFA/floating residual classification
 ## Purpose
 
 Repair the next `00204.c` runtime blocker by classifying and fixing the
-AArch64 variadic HFA/floating argument corruption that remains after
-local/value-home publication repairs.
+AArch64 HFA/floating value corruption that remains after local/value-home
+publication repairs, including pre-consumer global data emission when the first
+bad fact proves the value is already wrong before variadic/HFA transport.
 
 ## Goal
 
-Make generated AArch64 variadic HFA/floating argument paths preserve the
-expected runtime values through call-boundary transport, register-save-area or
-overflow selection, lane materialization, and consumer reads.
+Make generated AArch64 HFA/floating values preserve the expected runtime data
+through their first classified owner: global initializer emission when the
+object is read from a data label, or call-boundary transport,
+register-save-area or overflow selection, lane materialization, and consumer
+reads when those paths own the first bad fact.
 
 ## Core Rule
 
@@ -54,7 +57,12 @@ evidence proves that surface owns the current HFA/floating first bad fact.
   - after fixed-size string argument cases, `fa_hfa11(hfa11)` prints `0.0`
     instead of `11.1`, followed by corrupted floating/HFA output and a later
     segmentation fault.
-- Initial suspected owner family:
+- Localized first owner:
+  - AArch64 global initializer emission currently defers `F32`/`F64` scalar
+    and aggregate elements for `hfa11` through `hfa24`, so direct calls,
+    returns, and later variadic HFA reads load missing global data before any
+    HFA consume path can preserve the source value.
+- Follow-on suspected owner family, only after global data is materialized:
   - HFA argument call-lane lowering
   - aggregate/floating `va_arg` source selection and progression
   - floating register-save-area or overflow-area addressing
@@ -92,9 +100,9 @@ evidence proves that surface owns the current HFA/floating first bad fact.
   generated evidence proves it is the same vararg consumer fault.
 - Do not change semantic admission, runners, timeout policy, expectations,
   unsupported classifications, CTest registration, or proof-log policy.
-- Do not fix global initializer emission or unrelated runtime mismatches unless
-  they become the next first bad fact after HFA/floating correctness is
-  repaired.
+- Do not fix unrelated global initializer emission or runtime mismatches.
+  AArch64 `F32`/`F64` global initializer emission for HFA globals is in scope
+  because Step 1 localized it as the current first bad fact before HFA consume.
 
 ## Working Model
 
@@ -102,26 +110,29 @@ The representative now gets past prior assembler blockers, scalar immediate
 materialization, raw helper text, large stack/frame materialization, F128
 transport addressability, aggregate `va_arg` helper lowering, `va_start`
 destination publication, frame/formal publication, and local/value-home
-publication. The next first bad fact is HFA/floating value corruption:
-`fa_hfa11(hfa11)` prints `0.0` instead of `11.1`. The repair should first
-prove which generated-code owner loses or misroutes that value, then fix that
-rule generally without weakening prior guardrails.
+publication. Step 1 localized the next first bad fact to missing emitted data
+for `F32`/`F64` HFA globals (`hfa11` through `hfa24`): `fa_hfa11(hfa11)`
+prints `0.0` instead of `11.1` because the source object already lacks its
+floating initializer bytes. Step 2 should repair that generated-code owner
+generally before reclassifying any later HFA call-lane, `va_arg`,
+register-save-area, overflow-area, lane-materialization, or consumer residual.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
 - Localize the exact HFA/floating value, lane, source area, prepared record,
-  call-boundary move, and emitted stack/register sequence before editing code.
-- Prefer focused backend coverage for HFA/floating transport before relying
-  only on the external c-testsuite representative.
+  global initializer, call-boundary move, and emitted stack/register sequence
+  before editing code.
+- Prefer focused backend coverage for the classified HFA/floating owner before
+  relying only on the external c-testsuite representative.
 - Preserve prior-owner guardrails; do not weaken prepared handoff,
   frame/formal publication, `va_start` destination publication, aggregate
   helper lowering, F128 transport, aggregate `va_arg` source/progression,
   scalar ALU, local/value-home publication, runner, or expectation coverage.
-- If the representative advances to global initializer emission, runtime
-  mismatch, timeout, or another blocker, record the new first bad fact and
-  return it to lifecycle classification unless generated-code evidence proves
-  this owner owns it.
+- If the representative advances to another runtime mismatch, timeout, or
+  blocker after `F32`/`F64` global data emission is repaired, record the new
+  first bad fact and return it to lifecycle classification unless
+  generated-code evidence proves this owner owns it.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
   or the implementation touches shared backend helper/printer behavior broadly.
@@ -156,17 +167,24 @@ Completion check:
 
 ### Step 2: Repair Classified HFA/Floating Owner
 
-Goal: make generated AArch64 variadic HFA/floating paths preserve and consume
-the expected values.
+Goal: make the Step 1 classified AArch64 HFA/floating owner preserve and
+consume the expected values.
 
-Primary target: code surface identified by Step 1.
+Primary target: AArch64 `F32`/`F64` global initializer emission for scalar and
+aggregate HFA globals, unless fresh evidence during the packet proves the first
+bad fact moved to a different Step 1-classified owner.
 
 Actions:
 
-- Implement the localized HFA/floating call-lane, `va_arg`, register-save-area,
-  overflow-area, lane materialization, or consumer repair.
+- Implement general AArch64 data emission for `F32`/`F64` scalar global
+  initializers and aggregate initializer elements, including HFA globals such
+  as `hfa11` through `hfa24`.
+- Verify that direct calls, returns, and later variadic HFA loads read the
+  emitted source bytes before investigating call-lane, `va_arg`,
+  register-save-area, overflow-area, lane materialization, or consumer repair.
 - Reuse existing AArch64 frame-slot, stack-offset, register, scratch,
-  prepared-home, and address materialization helpers when available.
+  prepared-home, address materialization, and data-emission helpers when
+  available.
 - Preserve unrelated local/value-home, frame/formal, `va_start`, aggregate
   helper text, F128 transport, scalar ALU, runner, expectation, and timeout
   behavior.
