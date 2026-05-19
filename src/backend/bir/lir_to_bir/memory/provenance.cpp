@@ -24,6 +24,32 @@ static LinkNameId link_name_id_for_global(
   return it == global_types.end() ? kInvalidLinkName : it->second.link_name_id;
 }
 
+static bool is_byte_storage_layout(const BirFunctionLowerer::AggregateTypeLayout& layout,
+                                   const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  if (layout.kind != BirFunctionLowerer::AggregateTypeLayout::Kind::Array ||
+      layout.size_bytes == 0) {
+    return false;
+  }
+  const auto element_layout = compute_aggregate_type_layout(layout.element_type_text, type_decls);
+  if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar) {
+    return element_layout.scalar_type == bir::TypeKind::I8;
+  }
+  return is_byte_storage_layout(element_layout, type_decls);
+}
+
+static bool can_cover_scalar_access_with_byte_storage(
+    std::int64_t byte_offset,
+    std::size_t access_size,
+    std::string_view type_text,
+    const BirFunctionLowerer::TypeDeclMap& type_decls) {
+  const auto layout = compute_aggregate_type_layout(type_text, type_decls);
+  if (!is_byte_storage_layout(layout, type_decls)) {
+    return false;
+  }
+  return static_cast<std::size_t>(byte_offset) <= layout.size_bytes &&
+         access_size <= layout.size_bytes - static_cast<std::size_t>(byte_offset);
+}
+
 static bool can_address_scalar_subobject(std::int64_t byte_offset,
                                          bir::TypeKind stored_type,
                                          std::string_view type_text,
@@ -51,6 +77,9 @@ static bool can_address_scalar_subobject(std::int64_t byte_offset,
     return access_type == bir::TypeKind::I8;
   }
   if (allow_opaque_ptr_base && byte_offset == 0 && (type_text.empty() || type_text == "ptr")) {
+    return true;
+  }
+  if (can_cover_scalar_access_with_byte_storage(byte_offset, access_size, type_text, type_decls)) {
     return true;
   }
 

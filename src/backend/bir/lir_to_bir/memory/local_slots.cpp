@@ -187,6 +187,49 @@ std::optional<std::vector<std::string>> collect_local_scalar_array_slots_impl(
   return element_slots;
 }
 
+std::optional<bool> try_lower_byte_array_base_store(
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (value_type == bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto array_base_it = local_pointer_array_bases.find(std::string(ptr_name));
+  if (array_base_it == local_pointer_array_bases.end()) {
+    return std::nullopt;
+  }
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0 || array_base_it->second.element_slots.empty() ||
+      array_base_it->second.base_index > array_base_it->second.element_slots.size() ||
+      slot_size > array_base_it->second.element_slots.size() - array_base_it->second.base_index) {
+    return false;
+  }
+  for (std::size_t index = array_base_it->second.base_index;
+       index < array_base_it->second.base_index + slot_size;
+       ++index) {
+    const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots[index]);
+    if (slot_type_it == local_slot_types.end() || slot_type_it->second != bir::TypeKind::I8) {
+      return false;
+    }
+  }
+  lowered_insts->push_back(bir::StoreLocalInst{
+      .slot_name = array_base_it->second.element_slots.front(),
+      .value = value,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = array_base_it->second.element_slots.front(),
+              .byte_offset = static_cast<std::int64_t>(array_base_it->second.base_index),
+              .size_bytes = slot_size,
+              .align_bytes = slot_size,
+          },
+  });
+  return true;
+}
+
 }  // namespace
 
 std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
@@ -545,8 +588,12 @@ bool BirFunctionLowerer::lower_memory_store_inst(
   }
   if (local_slot_store == LocalSlotStoreResult::Lowered) {
     const auto ptr_it = local_pointer_slots_.find(store.ptr.str());
+    const auto slot_type_it =
+        ptr_it == local_pointer_slots_.end() ? local_slot_types_.end()
+                                             : local_slot_types_.find(ptr_it->second);
     if (ptr_it != local_pointer_slots_.end() && *value_type != bir::TypeKind::Ptr &&
-        value->kind == bir::Value::Kind::Immediate) {
+        value->kind == bir::Value::Kind::Immediate && slot_type_it != local_slot_types_.end() &&
+        slot_type_it->second == *value_type) {
       local_scalar_slot_values_[ptr_it->second] = *value;
     } else {
       erase_local_scalar_slot_value(store.ptr.str());
@@ -933,6 +980,15 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
 
   const auto slot_it = local_slot_types.find(ptr_it->second);
   if (slot_it == local_slot_types.end() || slot_it->second != value_type) {
+    if (const auto byte_array_store = try_lower_byte_array_base_store(ptr_name,
+                                                                      value_type,
+                                                                      value,
+                                                                      local_pointer_array_bases,
+                                                                      local_slot_types,
+                                                                      lowered_insts);
+        byte_array_store.has_value()) {
+      return *byte_array_store ? LocalSlotStoreResult::Lowered : LocalSlotStoreResult::Failed;
+    }
     return LocalSlotStoreResult::Failed;
   }
 
