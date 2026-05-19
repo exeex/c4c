@@ -8,21 +8,47 @@ Current Step Title: Localize Missing Local-Memory Handoff Fact
 
 ## Just Finished
 
-Lifecycle switch complete: umbrella idea 295 Step 4 split a focused owner for
-residual AArch64 semantic `lir_to_bir` local-memory admission/prepared-module
-handoff represented by `00204.c` and `00216.c`.
+Step 1 localization complete: the current `00204.c` / `00216.c`
+semantic failures are both in the local-memory pointer-address handoff lane,
+but at adjacent surfaces.
+
+`00204.c` fails in AArch64 `myprintf` after target-specific `va_arg`
+expansion creates runtime pointer arithmetic over `struct __va_list_tag_`
+fields. The first missing fact is in
+`src/backend/bir/lir_to_bir/memory/addressing.cpp::lower_memory_gep_inst`:
+dynamic `i8` GEP from a runtime pointer currently requires a named dynamic
+offset to already be `i64`; the AArch64 `va_arg` path supplies an `i32`
+loaded offset such as the `__gr_offs` field, so the GEP does not publish the
+resulting `PointerAddress`/value alias fact and reports `gep local-memory
+semantic family`.
+
+`00216.c` fails later in `foo` on aggregate loads through pointer-derived
+subobject addresses, e.g. `getelementptr` from parameter pointers followed by
+`load %struct.S` / `load %struct.T` / `load %struct.in6_addr`. The owning
+surface is `src/backend/bir/lir_to_bir/memory/local_slots.cpp::lower_memory_load_inst`:
+aggregate load admission currently accepts local aggregate slots and globals,
+but not a `PointerAddressMap` runtime aggregate/subobject view already
+published by GEP. That leaves the semantic route without a prepared aggregate
+copy/load fact and reports `load local-memory semantic family`.
+
+Shared classification: both representatives are missing structured
+local-memory handoff over runtime pointer-address facts. They are not the same
+single instruction shape: `00204.c` needs dynamic byte-offset GEP to publish a
+runtime `PointerAddress` from an `i32` offset, while `00216.c` needs aggregate
+load lowering to consume an existing runtime `PointerAddress` as an aggregate
+copy source.
 
 ## Suggested Next
 
-Execute Step 1 from `plan.md`: localize the missing semantic or prepared
-handoff fact behind the current diagnostics:
+Execute Step 2 from `plan.md` in the smallest semantic slice: repair
+`lower_memory_gep_inst` so dynamic `i8` runtime-pointer GEP with a named
+non-`i64` integer offset, especially the AArch64 `va_arg` `i32` offset, is
+widened or otherwise normalized into a valid BIR pointer-add and publishes the
+same `PointerAddress`/value alias fact as the existing `i64` lane. Keep this
+general to typed integer offsets; do not match `00204.c`, `myprintf`, or
+`__va_list_tag_`.
 
-- `c_testsuite_aarch64_backend_src_00204_c`: `semantic lir_to_bir function
-  'myprintf' failed in gep local-memory semantic family`
-- `c_testsuite_aarch64_backend_src_00216_c`: `semantic lir_to_bir function
-  'foo' failed in load local-memory semantic family`
-
-Use this focused proof command when a packet needs validation:
+Use this focused proof command:
 
 ```bash
 cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$' > test_after.log 2>&1
@@ -35,11 +61,32 @@ cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(ba
   direct vararg, address-of-local, `00164.c`, or `00214.c` residuals without a
   separate split.
 - Do not reopen closed ideas 297, 298, or 311 from pass counts alone.
-- No implementation files, tests, proof logs, `ideas/closed/*`, or
-  `review/311_aggregate_stack_copy_review.md` were changed during activation.
+- `00204.c` and `00216.c` are adjacent but not identical repairs. If the GEP
+  publication slice advances `00204.c` while `00216.c` still fails with the
+  same load diagnostic, the next coherent packet is aggregate load consumption
+  from `PointerAddressMap` in `lower_memory_load_inst`, not an expectation or
+  runner change.
+- Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
+  not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
+  guardrails, but they do not prove the AArch64 `myprintf` failure path.
+- The existing untracked `review/311_aggregate_stack_copy_review.md` was left
+  untouched.
 
 ## Proof
 
-No validation run; this was lifecycle-only activation from the umbrella
-inventory. The focused owner is based on the existing Step 1 backend-regex
-evidence in `test_after.log`: 352 selected, 295 passed, and 57 failed.
+Ran the delegated proof:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$' > test_after.log 2>&1
+```
+
+Result: build succeeded; 6 focused backend dump/notes tests passed; the two
+representative c-testsuite AArch64 tests still fail with the localized
+semantic diagnostics:
+
+- `c_testsuite_aarch64_backend_src_00204_c`: `semantic lir_to_bir function
+  'myprintf' failed in gep local-memory semantic family`
+- `c_testsuite_aarch64_backend_src_00216_c`: `semantic lir_to_bir function
+  'foo' failed in load local-memory semantic family`
+
+Proof log: `test_after.log`.
