@@ -1,9 +1,10 @@
 # AArch64 C-Testsuite 00205 Timeout Residual
 
-Status: Open, parked after timeout repair
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/303_aarch64_sign_extension_assembler_legality.md
 Parked In Favor Of: ideas/open/305_aarch64_ctestsuite_00205_value_materialization_residual.md
+Closed: 2026-05-19
 
 ## Lifecycle Note
 
@@ -37,6 +38,16 @@ Full close was not accepted in this lifecycle packet because the packet
 explicitly prohibited touching proof logs and no matching `test_after.log`
 close-gate artifact was available. Keep this idea parked rather than active
 until a supervisor chooses a close-gate flow.
+
+Closed after Step 1 verification recorded in commit `4a0b18391`. The
+timeout-specific source intent is satisfied by commit `2d8bbf8c8`, which
+repaired the focused `00205` loop-bound compare timeout; `00205` now completes
+quickly, preserves conditional loop-header compares, and keeps legal
+`sxtw x9, w13` spelling. The later wrong-output/value-materialization residual
+was split to and closed under idea 305, and is not part of this timeout owner.
+Close-gate validation used matching canonical backend logs and passed with
+`--allow-non-decreasing-passed`: before 139/139, after 139/139, no new
+failures, and no slow tests.
 
 ## Goal
 
