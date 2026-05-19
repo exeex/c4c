@@ -1,6 +1,7 @@
 #include "lowering.hpp"
 
 #include <optional>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -32,6 +33,62 @@ constexpr std::string_view kModuleCapabilityBucketSummary =
     "indirect-call, and call-return) and explicit runtime or intrinsic "
     "families such as variadic, stack-state, absolute-value, memcpy, memset, "
     "and inline-asm placeholders";
+
+bool is_opaque_runtime_pointer_address(const PointerAddress& address) {
+  return address.value_type == bir::TypeKind::Void && address.byte_offset == 0 &&
+         address.dynamic_element_count == 0 && address.dynamic_element_stride_bytes == 0 &&
+         address.storage_type_text.empty() &&
+         (address.type_text.empty() || address.type_text == "i8" || address.type_text == "ptr");
+}
+
+bool same_runtime_pointer_address_shape(const PointerAddress& lhs, const PointerAddress& rhs) {
+  if (is_opaque_runtime_pointer_address(lhs) && is_opaque_runtime_pointer_address(rhs)) {
+    return true;
+  }
+  return lhs.value_type == rhs.value_type && lhs.byte_offset == rhs.byte_offset &&
+         lhs.dynamic_element_count == rhs.dynamic_element_count &&
+         lhs.dynamic_element_stride_bytes == rhs.dynamic_element_stride_bytes &&
+         lhs.storage_type_text == rhs.storage_type_text && lhs.type_text == rhs.type_text;
+}
+
+std::optional<PointerAddress> merge_runtime_pointer_phi_address(
+    const BirFunctionLowerer::PhiLoweringPlan& phi_plan,
+    const BirFunctionLowerer::PointerAddressMap& pointer_value_addresses) {
+  if (phi_plan.type != bir::TypeKind::Ptr || phi_plan.incomings.empty()) {
+    return std::nullopt;
+  }
+
+  std::optional<PointerAddress> merged_address;
+  bool saw_unmapped_runtime_pointer = false;
+  for (const auto& [_, incoming_operand] : phi_plan.incomings) {
+    if (incoming_operand.kind() != c4c::codegen::lir::LirOperandKind::SsaValue) {
+      return std::nullopt;
+    }
+    const auto incoming_address_it = pointer_value_addresses.find(incoming_operand.str());
+    if (incoming_address_it == pointer_value_addresses.end()) {
+      saw_unmapped_runtime_pointer = true;
+      continue;
+    }
+    if (!merged_address.has_value()) {
+      merged_address = incoming_address_it->second;
+      continue;
+    }
+    if (!same_runtime_pointer_address_shape(*merged_address, incoming_address_it->second)) {
+      return std::nullopt;
+    }
+  }
+  if (!merged_address.has_value() ||
+      (saw_unmapped_runtime_pointer && !is_opaque_runtime_pointer_address(*merged_address))) {
+    return std::nullopt;
+  }
+
+  merged_address->base_value = bir::Value::named(bir::TypeKind::Ptr, phi_plan.result_name);
+  merged_address->byte_offset = 0;
+  if (is_opaque_runtime_pointer_address(*merged_address)) {
+    merged_address->type_text.clear();
+  }
+  return merged_address;
+}
 
 int semantic_failure_note_rank(std::string_view message) {
   if (message.find("failed in runtime/intrinsic family") != std::string::npos ||
@@ -563,6 +620,10 @@ bool BirFunctionLowerer::lower_block_phi_insts(const c4c::codegen::lir::LirBlock
         .result = bir::Value::named(phi_plan.type, phi_plan.result_name),
         .incomings = std::move(incomings),
     });
+    if (auto phi_address = merge_runtime_pointer_phi_address(phi_plan, pointer_value_addresses_);
+        phi_address.has_value()) {
+      pointer_value_addresses_[phi_plan.result_name] = std::move(*phi_address);
+    }
   }
 
   return true;
