@@ -3,183 +3,124 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Failure Sources
+Current Step ID: 3
+Current Step Title: Compare Closed Owner Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified all 61 failures from accepted baseline `test_before.log`.
-All failures are AArch64 c-testsuite backend tests; no local backend/unit/CLI
-tests fail in the captured summary.
+Step 3 compared the Step 2 classified backend-regex buckets from accepted
+baseline `test_before.log` against closed owner artifacts for ideas 285
+through 297. The current baseline still has 61 failures: 22 machine-printer, 8
+`lir_to_bir` admission, 18 runtime nonzero, 12 runtime mismatch, and 1
+timeout/hang.
 
-Classified inventory:
+Closed owners that remain valid and should not be reopened from this capture:
 
-- Machine-printer frontend/prepared-module handoff failure: 22 tests.
-  Common evidence is `[FRONTEND_FAIL]` followed by `AArch64 backend assembly
-  route reached the machine-node printer, but printing failed: target
-  instruction spelling failed`. Exact tests:
-  - `1485 - c_testsuite_aarch64_backend_src_00024_c`: function 0 block 0,
-    `scalar opcode=sub` cannot be printed.
-  - `1497 - c_testsuite_aarch64_backend_src_00031_c`: function 0 block 4,
-    `scalar opcode=add`; immediate outside plain `#imm` range `0..4095`.
-  - `1503 - c_testsuite_aarch64_backend_src_00035_c`: function 0 block 0,
-    `scalar opcode=zero_extend`; cast node requires supported integer width.
-  - `1559 - c_testsuite_aarch64_backend_src_00064_c`: function 0 block 0,
-    `scalar opcode=div` cannot be printed.
-  - `1631 - c_testsuite_aarch64_backend_src_00104_c`: function 0 block 0,
-    `scalar opcode=xor`; immediate outside plain `#imm` range `0..4095`.
-  - `1633 - c_testsuite_aarch64_backend_src_00105_c`: function 0 block 3,
-    `scalar opcode=zero_extend`; cast node requires supported integer width.
-  - `1675 - c_testsuite_aarch64_backend_src_00126_c`: function 0 block 0,
-    `scalar opcode=zero_extend`; cast node requires supported integer width.
-  - `1691 - c_testsuite_aarch64_backend_src_00134_c`: function 0 block 0,
-    `scalar opcode=sign_extend`; cast node requires a structured register
-    source.
-  - `1693 - c_testsuite_aarch64_backend_src_00135_c`: function 0 block 0,
-    `scalar opcode=sign_extend`; cast node requires a structured register
-    source.
-  - `1701 - c_testsuite_aarch64_backend_src_00139_c`: function 0 block 0,
-    `scalar opcode=mul` cannot be printed.
-  - `1703 - c_testsuite_aarch64_backend_src_00140_c`: function 0 block 0,
-    `deferred_unsupported: call-boundary move node is outside the selected`
-    route; preserve as idea-297 printer residual.
-  - `1725 - c_testsuite_aarch64_backend_src_00151_c`: function 0 block 0,
-    `scalar opcode=zero_extend`; cast node requires supported integer width.
-  - `1709 - c_testsuite_aarch64_backend_src_00143_c`: function 0 block 19,
-    `scalar opcode=add`; immediate outside plain `#imm` range `0..4095`.
-  - `1769 - c_testsuite_aarch64_backend_src_00173_c`: function 0 block 0,
-    `memory opcode=store: stack-slot store source scratch is not printable`.
-  - `1797 - c_testsuite_aarch64_backend_src_00187_c`: function 0 block 4,
-    `memory opcode=store: stack-slot store source scratch is not printable`.
-  - `1811 - c_testsuite_aarch64_backend_src_00194_c`: function 0 block 5,
-    `memory opcode=store: stack-slot store source scratch is not printable`.
-  - `1835 - c_testsuite_aarch64_backend_src_00207_c`: function 0 block 3,
-    `scalar opcode=add`; immediate outside plain `#imm` range `0..4095`.
-  - `1837 - c_testsuite_aarch64_backend_src_00208_c`: function 0 block 6,
-    `scalar opcode=zero_extend`; cast node requires supported integer width.
-  - `1849 - c_testsuite_aarch64_backend_src_00214_c`: function 0 block 4,
-    `scalar opcode=xor`; immediate outside plain `#imm` range `0..4095`.
-  - `1851 - c_testsuite_aarch64_backend_src_00215_c`: function 0 block 7,
-    `scalar opcode=add`; immediate outside plain `#imm` range `0..4095`.
-  - `1857 - c_testsuite_aarch64_backend_src_00218_c`: function 0 block 0,
-    `scalar opcode=and`; immediate outside plain `#imm` range `0..4095`;
-    preserve as idea-297 printer residual.
-  - `1847 - c_testsuite_aarch64_backend_src_00213_c`: function 0 block 1,
-    `scalar opcode=add`; immediate outside plain `#imm` range `0..4095`.
+- 285 non-leaf LR preservation: still valid. Current failures are quick
+  runtime outcomes, printer/admission failures, or the separate `00220`
+  timeout; none show the old non-leaf `bl` plus bare `ret` timeout owner.
+- 286 scalar call value semantics: still valid. `00116` and `00159` closure
+  does not contradict this capture. `00159` is a runtime mismatch again, but
+  Step 3 has no generated-code proof that scalar direct-call ABI values
+  regressed.
+- 287 string/global address external call lowering: still valid. Current
+  string/stdio-looking residuals are runtime buckets without assembly evidence
+  that string/global pointer arguments are again unmaterialized.
+- 288 stack-frame SP alignment: still valid. The current bus-error/signal
+  cases, including `00089`, are not evidence of the old unaligned frame owner
+  without generated-frame proof; idea 288 already separated non-alignment
+  function-pointer and runtime owners.
+- 289 function-pointer indirect call values: still valid. `00089` is a
+  runtime signal in the current capture, but closure proved function-pointer
+  materialization for that representative; no fresh indirect-`blr` value-loss
+  evidence contradicts the boundary.
+- 290 scalar parameter ALU authority and 291 call-argument register authority:
+  still valid. Current failures do not show the specific stale incoming
+  parameter or prepared call-argument register contradiction from those
+  closures.
+- 292 scalar expression/control-value authority: still valid. Current runtime
+  nonzero/mismatch cases may be adjacent scalar/control symptoms, but the
+  baseline evidence is runner output only; reopening needs generated-code proof
+  that consumers are again reading stale scalar fallback registers.
+- 293 side-effect control-value publication authority: still valid. `00164`
+  and `00169` now appear in the current mismatch bucket, but Step 3 has no
+  generated-code contradiction of the focused closure. Treat them as residual
+  runtime evidence requiring inspection, not automatic reopen.
+- 294 pointer-derived address/lvalue lowering authority: still valid. Current
+  pointer/address-looking runtime mismatches and nonzero cases are adjacent,
+  but not enough to reopen the closed owner without generated address/lvalue
+  proof. The current `lir_to_bir` GEP admissions are frontend semantic
+  admission residuals, not the already-closed AArch64 runtime address/lvalue
+  lowering route.
+- 296 fused compare-branch operand forms: still valid. The current
+  machine-printer bucket no longer contains the old fused compare-branch
+  operand-form diagnostic. `00200` is a runtime nonzero/corrupted-output case,
+  and `00207`, `00214`, and `00215` are scalar immediate printer residuals as
+  recorded by the idea 296 closure.
+- 297 local-memory `lir_to_bir` admission: still valid. `00046` is passing in
+  the accepted baseline. `00140` and `00218` are printer residuals, and `00216`
+  remains pointer-parameter/flexible-array aggregate projection rather than
+  direct local-memory GEP admission. The remaining GEP admissions are the
+  residual global/pointer/aggregate projection owners already excluded by
+  idea 297.
 
-- Semantic `lir_to_bir` admission before prepared-module handoff: 8 tests.
-  Common evidence is `[FRONTEND_FAIL]` plus `requires semantic lir_to_bir
-  lowering before the prepared-module handoff`.
-  - GEP/local-memory semantic family: `1775 -
-    c_testsuite_aarch64_backend_src_00176_c` (`swap`), `1785 -
-    c_testsuite_aarch64_backend_src_00181_c` (`PrintAll`), `1787 -
-    c_testsuite_aarch64_backend_src_00182_c` (`print_led`), `1813 -
-    c_testsuite_aarch64_backend_src_00195_c` (`main`), `1839 -
-    c_testsuite_aarch64_backend_src_00209_c` (`f4`), `1831 -
-    c_testsuite_aarch64_backend_src_00205_c` (`main`), and `1853 -
-    c_testsuite_aarch64_backend_src_00216_c` (`foo`). Preserve `00216` as the
-    known pointer-parameter/flexible-array aggregate projection residual even
-    though the current coarse diagnostic says GEP local-memory.
-  - Bootstrap/global admission: `1863 -
-    c_testsuite_aarch64_backend_src_00204_c`; diagnostic says bootstrap
-    `lir_to_bir` only supports scalar integer/pointer globals, linear
-    integer-array globals, and aggregate-backed globals with honest
-    byte-address semantics.
+Idea 295 is the active umbrella inventory, not a closed owner artifact, so it
+has no closed boundary to compare here.
 
-- Runtime nonzero exit/signaled process: 18 tests. Evidence is
-  `[RUNTIME_NONZERO]` from the AArch64 backend runner, not frontend admission.
-  Most have empty `stdout+stderr`, so the observed source is generated-program
-  runtime failure rather than a printer or `lir_to_bir` block.
-  - Silent nonzero exit: `1563 -
-    c_testsuite_aarch64_backend_src_00066_c` (`exit=1`), `1645 -
-    c_testsuite_aarch64_backend_src_00111_c` (`exit=1`), `1531 -
-    c_testsuite_aarch64_backend_src_00050_c` (`exit=3`), `1661 -
-    c_testsuite_aarch64_backend_src_00119_c` (`exit=1`), `1647 -
-    c_testsuite_aarch64_backend_src_00112_c` (`exit=1`), `1595 -
-    c_testsuite_aarch64_backend_src_00086_c` (`exit=1`), `1627 -
-    c_testsuite_aarch64_backend_src_00102_c` (`exit=1`), `1649 -
-    c_testsuite_aarch64_backend_src_00113_c` (`exit=1`), `1665 -
-    c_testsuite_aarch64_backend_src_00121_c` (`exit=87`), `1669 -
-    c_testsuite_aarch64_backend_src_00123_c` (`exit=1`), `1697 -
-    c_testsuite_aarch64_backend_src_00137_c` (`exit=1`), `1699 -
-    c_testsuite_aarch64_backend_src_00138_c` (`exit=1`), and `1711 -
-    c_testsuite_aarch64_backend_src_00144_c` (`exit=1`).
-  - Runtime signal/crash: `1601 -
-    c_testsuite_aarch64_backend_src_00089_c` (`exit=Bus error`), `1763 -
-    c_testsuite_aarch64_backend_src_00170_c` (`exit=Segmentation fault`),
-    `1781 - c_testsuite_aarch64_backend_src_00179_c` (`exit=Segmentation
-    fault`), and `1801 - c_testsuite_aarch64_backend_src_00189_c`
-    (`exit=Segmentation fault`).
-  - Nonzero with corrupted output evidence: `1823 -
-    c_testsuite_aarch64_backend_src_00200_c` (`exit=27`), with repeated
-    `((short)((1))) -1301144306 -1301144306` in `stdout+stderr`.
+Adjacent-but-new residual owners visible from the Step 2 classification:
 
-- Runtime output mismatch: 12 tests. Evidence is `[RUNTIME_MISMATCH]` from the
-  backend runner, with expected/actual output recorded in the log.
-  - `1737 - c_testsuite_aarch64_backend_src_00157_c`: expected squares
-    `1..100`; actual contains large negative stack-looking values and zeros.
-  - `1741 - c_testsuite_aarch64_backend_src_00159_c`: expected `9`, `16`,
-    `a=1234`, `qfunc()`; actual has large negative numbers before `qfunc()`.
-  - `1759 - c_testsuite_aarch64_backend_src_00168_c`: expected factorial
-    sequence through `3628800`; actual is linear `1..10`.
-  - `1761 - c_testsuite_aarch64_backend_src_00169_c`: expected nested triples;
-    actual repeats a large negative middle field.
-  - `1751 - c_testsuite_aarch64_backend_src_00164_c`: output matches early,
-    then expected `1916` becomes a large negative value and `1915`.
-  - `1767 - c_testsuite_aarch64_backend_src_00172_c`: expected `12`, `34`,
-    `0`, `1`, `1`, `0`; actual includes large negative values.
-  - `1795 - c_testsuite_aarch64_backend_src_00186_c`: expected `->01<-`
-    through `->20<-`; actual only `->01<-`.
-  - `1793 - c_testsuite_aarch64_backend_src_00185_c`: expected indexed values
-    `0: 12` through `9: 9753` twice; actual zeros then repeated large negative
-    indices.
-  - `1773 - c_testsuite_aarch64_backend_src_00175_c`: expected char/int/float
-    promotion outputs for `a`, `b`, `c`; actual corrupted chars, negative ints,
-    and zero floats.
-  - `1771 - c_testsuite_aarch64_backend_src_00174_c`: expected float/math and
-    boolean rows; actual mostly zero floats and corrupted integer rows.
-  - `1809 - c_testsuite_aarch64_backend_src_00193_c`: expected `1`, `2`,
-    `out`, `3`; actual `out`, `out`, `out`.
-  - `1815 - c_testsuite_aarch64_backend_src_00196_c`: expected `fred/joe`
-    rows with `0/1`; actual includes large negative values and flipped
-    booleans.
-
-- Timeout/hang: 1 test. `1861 -
-  c_testsuite_aarch64_backend_src_00220_c` timed out after `5.01 sec`; no
-  failure diagnostic body was emitted before CTest reported `***Timeout`.
-
-Known boundary notes:
-- `1523 - c_testsuite_aarch64_backend_src_00046_c` is passing in
-  `test_before.log`; do not reopen its closed owner from this failure set.
-- `00140` and `00218` remain printer residuals in this capture.
-- `00216` remains the pointer-parameter/flexible-array aggregate projection
-  residual despite the current coarse GEP local-memory `lir_to_bir`
-  diagnostic.
+- Residual semantic `lir_to_bir` projection owner is the clearest Step 4 split:
+  global scalar-array GEPs `00176` and `00181`, pointer-value/parameter GEPs
+  `00182` and `00209`, global dynamic aggregate member GEPs `00195` and
+  `00205`, and bootstrap/global aggregate semantics `00204`. Keep `00216` as a
+  separate pointer-parameter/flexible-array aggregate projection boundary case
+  inside or next to this family, not as local-memory admission.
+- AArch64 machine-printer residuals are coherent but probably need a separate
+  printer idea rather than reopening 296 or 297. Subfamilies are scalar
+  opcodes not printable (`sub`, `div`, `mul`), integer cast nodes
+  (`zero_extend`, `sign_extend`), non-encodable scalar immediates for
+  `add`/`xor`/`and`, stack-slot store source scratch printing, and the
+  `00140` call-boundary move printer residual.
+- Runtime nonzero and runtime mismatch buckets remain observed outcomes only.
+  They include prior representative names from closed owners, but Step 3 lacks
+  generated assembly or proof evidence to assign them to a reopen or a focused
+  semantic owner. Treat these as inspection candidates after the compile-stage
+  residual owners are split.
+- `00220` timeout/hang is a standalone timeout owner candidate if the
+  supervisor wants hang quarantine before runtime inspection. Do not fold it
+  into runtime mismatch/nonzero or closed LR timeout work without fresh
+  evidence.
 
 ## Suggested Next
 
-Proceed to Step 3: compare these classified buckets against closed owner
-boundaries for ideas 285 through 297 before any split or reopen decision.
+Proceed to Step 4 by splitting the residual semantic `lir_to_bir`
+global/pointer/aggregate projection owner first. Suggested owner scope:
+global scalar-array GEP, pointer-value/parameter GEP, global aggregate member
+projection, bootstrap/global aggregate admission, and the `00216`
+pointer-parameter/flexible-array aggregate projection boundary. Keep printer
+residuals, runtime buckets, and `00220` timeout as separate follow-on owners
+unless new evidence proves a shared semantic rule.
 
 ## Watchouts
 
 - This is an umbrella inventory. Do not implement fixes before a focused owner
   is split and activated.
-- Preserve closed-owner boundaries for ideas 285 through 297 unless current
-  generated-code, proof, or diagnostic evidence contradicts them.
-- The fresh failing list is entirely `aarch64_backend c_testsuite`; no local
-  backend/unit/CLI failures appear in the CTest failure summary.
-- `c_testsuite_aarch64_backend_src_00220_c` timed out in the fresh run and
-  should be treated as a timeout/hang classification input, not folded into a
-  generic failure bucket without evidence.
+- Do not reopen ideas 285 through 297 from failing counts or recurring testcase
+  names alone. Reopen needs generated-code, proof, or diagnostic evidence that
+  contradicts a specific closure boundary.
+- `00159`, `00164`, `00169`, and `00089` appear again in runtime buckets, but
+  the current packet only inspected logs and closed artifacts. They are not
+  reopen evidence yet.
 - Treat residual global/pointer/aggregate GEP work, `00216`
-  pointer-parameter/flexible-array aggregate projection, and printer residuals
-  as classification inputs, not automatic new owners.
-- The runtime nonzero and runtime mismatch groups are observed runner outcomes
-  only. This packet did not inspect generated assembly deeply enough to claim a
-  semantic repair owner for those failures.
+  pointer-parameter/flexible-array aggregate projection, and machine-printer
+  residuals as separate classification inputs, not automatic combined owners.
+- The runtime nonzero and runtime mismatch groups need generated assembly or
+  narrower probes before Step 4 should split them into semantic owners.
+- `00220` timed out after `5.01 sec` in `test_before.log`; keep it quarantined
+  from broad runtime proof until a timeout-specific owner exists or the
+  supervisor delegates bounded hang inspection.
 - Do not change expectations, allowlists, unsupported classifications, timeout
   policy, runner behavior, CTest registration, implementation files, or
   canonical logs during lifecycle activation.
@@ -189,8 +130,7 @@ boundaries for ideas 285 through 297 before any split or reopen decision.
 
 ## Proof
 
-Inspection-only packet. Source of truth was accepted repo-root
-`test_before.log`; no tests were run and no canonical logs were modified.
-Classification accounts for all 61 failures in the CTest summary:
-22 machine-printer, 8 `lir_to_bir` admission, 18 runtime nonzero, 12 runtime
-mismatch, and 1 timeout.
+Inspection-only Step 3 packet. Sources inspected were accepted repo-root
+`test_before.log`, the Step 2 classification already recorded in `todo.md`,
+and closed idea artifacts `ideas/closed/285_*` through `ideas/closed/297_*`.
+No tests were run and no canonical logs were modified.
