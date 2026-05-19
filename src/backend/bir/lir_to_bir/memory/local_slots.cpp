@@ -677,6 +677,61 @@ bool BirFunctionLowerer::lower_memory_load_inst(
       return false;
     }
     if (load.ptr.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+      if (const auto addressed_ptr_it = pointer_value_addresses_.find(load.ptr.str());
+          addressed_ptr_it != pointer_value_addresses_.end()) {
+        const auto addressed_layout =
+            !addressed_ptr_it->second.type_text.empty()
+                ? lower_byval_aggregate_layout(addressed_ptr_it->second.type_text,
+                                               type_decls_,
+                                               &structured_layouts_)
+                : std::optional<AggregateTypeLayout>{};
+        if (!addressed_layout.has_value() ||
+            addressed_layout->size_bytes < aggregate_layout->size_bytes) {
+          return false;
+        }
+        if (!declare_local_aggregate_slots(
+                load.type_str.str(), load.result.str(), aggregate_layout->align_bytes)) {
+          return false;
+        }
+        const auto aggregate_it = local_aggregate_slots_.find(load.result.str());
+        if (aggregate_it == local_aggregate_slots_.end()) {
+          return false;
+        }
+
+        const auto leaf_slots = collect_sorted_leaf_slots(aggregate_it->second);
+        for (const auto& [byte_offset, slot_name] : leaf_slots) {
+          const auto slot_type_it = local_slot_types_.find(slot_name);
+          if (slot_type_it == local_slot_types_.end()) {
+            return false;
+          }
+          const auto slot_size = type_size_bytes(slot_type_it->second);
+          if (slot_size == 0) {
+            return false;
+          }
+
+          const std::string temp_name =
+              load.result.str() + ".pointer.aggregate.load." + std::to_string(byte_offset);
+          lowered_insts->push_back(bir::LoadLocalInst{
+              .result = bir::Value::named(slot_type_it->second, temp_name),
+              .slot_name = slot_name,
+              .address =
+                  bir::MemoryAddress{
+                      .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                      .base_value = addressed_ptr_it->second.base_value,
+                      .byte_offset = static_cast<std::int64_t>(
+                          addressed_ptr_it->second.byte_offset + byte_offset),
+                      .size_bytes = slot_size,
+                      .align_bytes = std::max(slot_size, aggregate_layout->align_bytes),
+                  },
+          });
+          lowered_insts->push_back(bir::StoreLocalInst{
+              .slot_name = slot_name,
+              .value = bir::Value::named(slot_type_it->second, temp_name),
+          });
+        }
+        aggregate_value_aliases_[load.result.str()] = load.result.str();
+        return true;
+      }
       if (local_aggregate_slots_.find(load.ptr.str()) == local_aggregate_slots_.end()) {
         return false;
       }

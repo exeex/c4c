@@ -8,29 +8,32 @@ Current Step Title: Repair Semantic Admission Or Prepared Handoff
 
 ## Just Finished
 
-Step 2 first semantic repair complete: `lower_memory_gep_inst` now normalizes
-named non-`i64` dynamic byte offsets in the raw `i8` runtime-pointer GEP lane
-by sign-extending supported integer offsets to `i64`, then publishing the same
-result value alias and `PointerAddress` fact as the existing `i64` lane.
+Step 2 runtime aggregate-load repair complete: `lower_memory_load_inst` now
+consumes an existing runtime `PointerAddressMap` aggregate/subobject view as an
+aggregate load source. It declares result aggregate slots, copies each scalar
+leaf from the prepared pointer-value address into the result slots, and
+publishes the aggregate result alias. The repair is shape/type based and does
+not match `00204.c`, `00216.c`, `myprintf`, or `foo`.
 
-The repair is type/shape based, not testcase based: it does not match
-`00204.c`, `myprintf`, or `__va_list_tag_`. Existing unsupported forms remain
-fail-closed when the offset is not a supported integer value.
+Fresh proof shows `c_testsuite_aarch64_backend_src_00216_c` advanced past the
+old `load local-memory semantic family` diagnostic in `foo`. Its current first
+bad fact is now `semantic lir_to_bir function 'test_zero_init' failed in alloca
+local-memory semantic family`.
 
-Fresh proof shows `c_testsuite_aarch64_backend_src_00204_c` advanced past the
-old `gep local-memory semantic family` diagnostic. Its current first bad fact
-is now the adjacent `load local-memory semantic family` diagnostic in
-`myprintf`. `c_testsuite_aarch64_backend_src_00216_c` remains at the known
-`load local-memory semantic family` diagnostic in `foo`.
+`c_testsuite_aarch64_backend_src_00204_c` remains on a load-family residual,
+but the localized missing fact is now more precise: in `myprintf`, the failing
+operation is `load ptr, ptr %t244`, where `%t244` is a phi of AArch64
+expanded-`va_arg` register and stack paths and has no `PointerAddressMap` entry.
+That phi-level runtime pointer-address preservation must happen before the
+follow-on aggregate memcpy/load source can be consumed.
 
 ## Suggested Next
 
-Execute the next Step 2 semantic slice: teach
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp::lower_memory_load_inst` to
-consume an existing runtime `PointerAddressMap` aggregate/subobject view as an
-aggregate load/copy source. This should target the shared current load
-diagnostic for `00204.c` and `00216.c`, without expanding into AArch64 codegen,
-printer, runner, expectation, or timeout behavior.
+Execute the next Step 2 semantic slice: preserve/merge runtime
+`PointerAddressMap` facts across same-shaped pointer phi nodes so the
+`00204.c` AArch64 expanded-`va_arg` phi `%t244` remains addressable for the
+subsequent pointer load. Keep the owner in semantic `lir_to_bir`; do not expand
+into AArch64 codegen, printer, runner, expectation, or timeout behavior.
 
 ## Watchouts
 
@@ -39,9 +42,11 @@ printer, runner, expectation, or timeout behavior.
   direct vararg, address-of-local, `00164.c`, or `00214.c` residuals without a
   separate split.
 - Do not reopen closed ideas 297, 298, or 311 from pass counts alone.
-- `00204.c` and `00216.c` are now both on load-family residuals. The next
-  packet should preserve that narrowed ownership and avoid reopening the fixed
-  GEP lane unless new evidence points back there.
+- `00216.c` is no longer on the load-family residual after this slice; its next
+  observed residual is alloca-family in `test_zero_init`.
+- `00204.c` is still on load-family, but not because the new aggregate load
+  consumer rejected an existing map. `%t244` has no runtime pointer-address map
+  entry after phi lowering.
 - Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
   not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
   guardrails, but they do not prove the AArch64 `myprintf` failure path.
@@ -57,12 +62,13 @@ cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(ba
 ```
 
 Result: build succeeded; 6 focused backend dump/notes tests passed. The two
-representative c-testsuite AArch64 tests still fail, but `00204.c` advanced
-past the old GEP local-memory diagnostic:
+representative c-testsuite AArch64 tests still fail:
 
-- `c_testsuite_aarch64_backend_src_00204_c`: now reports `semantic lir_to_bir
-  function 'myprintf' failed in load local-memory semantic family`
-- `c_testsuite_aarch64_backend_src_00216_c`: still reports `semantic
-  lir_to_bir function 'foo' failed in load local-memory semantic family`
+- `c_testsuite_aarch64_backend_src_00204_c`: still reports `semantic
+  lir_to_bir function 'myprintf' failed in load local-memory semantic family`;
+  localized first bad fact is `load ptr, ptr %t244` with no `PointerAddressMap`
+  entry for phi `%t244`
+- `c_testsuite_aarch64_backend_src_00216_c`: now reports `semantic lir_to_bir
+  function 'test_zero_init' failed in alloca local-memory semantic family`
 
 Proof log: `test_after.log`.
