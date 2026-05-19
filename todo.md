@@ -26,14 +26,18 @@ failure.
 
 ## Suggested Next
 
-Lifecycle decision: keep idea 297 active only if the supervisor wants to pursue
-the remaining Step 3 boundary classification. The direct local aggregate/union
-byte-subobject load/store lane represented by `00046` is now repaired and
-passing.
+Lifecycle decision: keep idea 297 active on Step 3. Do not close yet and do not
+advance to Step 4 proof until `00216` is repaired or classified outside the
+local-memory admission owner. The direct local aggregate/union byte-subobject
+load/store lane represented by `00046` is now repaired and passing, and `00140`
+plus `00218` are classified as later AArch64 printer residuals outside
+local-memory admission.
 
-Next bounded packet: classify the remaining focused Step 3 cases from fresh
-evidence. `00140` and `00218` are now printer residuals outside local-memory
-admission, while `00216` is still a GEP local-memory residual in `foo`.
+Next bounded packet: diagnose and repair or reclassify the remaining in-owner
+Step 3 residual, `00216`, which still fails in `foo` at the GEP local-memory
+semantic family. Keep the packet focused on semantic local-memory admission;
+split only if fresh diagnosis proves `00216` belongs to a distinct owner rather
+than the active local-memory store/load boundary work.
 
 ## Watchouts
 
