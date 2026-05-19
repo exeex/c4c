@@ -33,12 +33,20 @@ allowlists, or CTest-registration changes.
 
 ## Current Targets
 
-- Local-memory GEP admission cases: `00143`, `00157`, `00176`, `00181`,
-  `00182`, `00185`, `00195`, `00205`, `00209`.
-- Store local-memory boundary checks: `00046`, `00140`.
-- Load local-memory boundary checks: `00216`, `00218`.
+- Direct local-memory GEP admission has been repaired for the representative
+  dynamic scalar local-array cases `00143`, `00157`, and `00185`; these should
+  not be reopened as the old GEP admission blocker unless fresh evidence shows
+  the same local-memory rejection returned.
+- Current active local-memory boundary checks: store cases `00046`, `00140`
+  and load cases `00216`, `00218`.
+- Residual GEP admission cases `00176`, `00181`, `00182`, `00195`, `00205`,
+  and `00209` are now classified as global scalar-array, pointer-value, or
+  global aggregate projection work. They are not Step 3 targets for this
+  local-memory owner and should be split into a separate idea only when the
+  supervisor chooses that work next.
 - Focused proof should use the supervisor-selected backend c-testsuite subset
-  for these cases plus build or compile proof appropriate to the touched code.
+  for the active store/load boundary cases plus build or compile proof
+  appropriate to the touched code.
 
 ## Non-Goals
 
@@ -53,9 +61,11 @@ allowlists, or CTest-registration changes.
 ## Working Model
 
 The refreshed post-296 backend-regex inventory has 62 failures, all AArch64
-c-testsuite backend tests. The 14-case `lir_to_bir` admission bucket contains a
-coherent local-memory family: 9 GEP cases plus store/load boundary checks.
-`00204` remains outside this owner as a global aggregate/array bootstrap gate.
+c-testsuite backend tests. Direct dynamic scalar local-array GEP admission was
+the local-memory GEP repair inside this owner. The remaining GEP admissions
+diagnosed after that repair are adjacent global/pointer projection work, not
+direct local-memory GEPs. `00204` remains outside this owner as a global
+aggregate/array bootstrap gate.
 
 ## Execution Rules
 
@@ -86,8 +96,10 @@ Implement the narrow semantic admission change for GEP-derived local-memory
 addresses, using existing lowering and BIR representation patterns where
 possible.
 
-Completion check: the focused GEP cases either pass or move past the old
-`lir_to_bir` local-memory rejection into clearly classified later failures.
+Completion check: direct dynamic scalar local-array cases move past the old
+`lir_to_bir` local-memory rejection, and any still-failing GEP cases are
+classified by semantic owner instead of being retained as a local-memory GEP
+implementation target.
 
 ### Step 3: Check Store/Load Boundaries
 
@@ -95,8 +107,8 @@ Run the store/load boundary checks against the same admission rule and repair
 only local-memory admission gaps that share the focused semantic owner.
 
 Completion check: `00046`, `00140`, `00216`, and `00218` are either passing,
-classified as fixed by the same rule, or documented as residual failures
-outside this owner.
+classified as fixed by the same local-memory admission rule, or documented as
+residual failures outside this owner.
 
 ### Step 4: Prove The Focused Owner
 

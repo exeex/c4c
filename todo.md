@@ -3,18 +3,18 @@
 Status: Active
 Source Idea Path: ideas/open/297_lir_to_bir_local_memory_admission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Local-Memory GEP Admission
+Current Step ID: 3
+Current Step Title: Check Store/Load Boundaries
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classification-only packet analyzed the remaining GEP-family admissions
-after direct dynamic scalar local-array GEP repair. `test_before.log` still
-records `00176`, `00181`, `00182`, `00195`, `00205`, and `00209` as
-`gep local-memory semantic family`; the prior moved cases `00143`, `00157`,
-and `00185` are not part of the remaining GEP admission owner.
+Lifecycle review kept idea 297 active but moved the current pointer to Step 3.
+Step 2 is complete for the direct local-memory GEP owner: direct dynamic scalar
+local-array cases `00143`, `00157`, and `00185` moved past the old GEP
+admission blocker, and the remaining GEP-family admissions are now classified
+as adjacent global/pointer projection work rather than local-memory GEP work.
 
 Narrow `--codegen llvm` and `--dump-bir` diagnostics classify the residuals:
 
@@ -33,34 +33,32 @@ Narrow `--codegen llvm` and `--dump-bir` diagnostics classify the residuals:
   fields.
 
 Representative BIR dumps for `00176`, `00181`, and `00209` still stop before
-handoff with the same `gep local-memory semantic family` note, confirming this
-packet did not move or repair behavior.
+handoff with the same `gep local-memory semantic family` note, but lifecycle
+scope now treats that label as stale for these residuals. They should be split
+later under a global/pointer GEP owner instead of extending idea 297.
 
 ## Suggested Next
 
-Keep Step 2 for one bounded implementation packet: admit global dynamic
-scalar-array GEPs for scalar element globals represented as `getelementptr T,
-ptr @global, i64 %idx`, with `00176` as the primary representative and `00181`
-as the same-shape proof partner. The likely owner is the global pointer-slot
-branch in `lower_memory_gep_inst`, specifically the fallback around
-`resolve_global_dynamic_pointer_array_access`, `DynamicGlobalScalarArrayAccess`,
-and global type/array length lookup; it should publish semantic dynamic global
-scalar-array access instead of rejecting scalar element arrays.
+Execute Step 3 against the local-memory store/load boundary checks: `00046`,
+`00140`, `00216`, and `00218`. Diagnose whether each still shares the repaired
+local-memory admission rule or has moved to a residual outside this owner.
 
-Do not combine that with the pointer-parameter cases (`00182`, `00209`) or the
-global aggregate member cases (`00195`, `00205`) in the same packet.
+Do not implement global scalar-array GEPs (`00176`, `00181`),
+pointer-parameter/pointer-value GEPs (`00182`, `00209`), or global aggregate
+member GEPs (`00195`, `00205`) inside idea 297. Those should become a focused
+later split if the supervisor selects that route.
 
 ## Watchouts
 
 - Direct dynamic scalar local-array admission is no longer the blocker for
   representatives `00143`, `00157`, and `00185`; do not conflate their new
   machine/runtime failures with the old GEP admission failure.
-- Focused GEP local-memory cases still failing in GEP family: `00176`,
-  `00181`, `00182`, `00195`, `00205`, `00209`; classify them by semantic shape,
-  not as one local-array bucket.
-- `00176`/`00181` are the recommended next target because they share a plain
-  global scalar-array dynamic index and avoid pointer-parameter provenance and
-  nested aggregate projection.
+- Residual GEP-family cases still failing in the old diagnostic bucket:
+  `00176`, `00181`, `00182`, `00195`, `00205`, `00209`; keep them out of Step 3
+  unless a new source idea is activated.
+- `00176`/`00181` are likely the first later split target because they share a
+  plain global scalar-array dynamic index and avoid pointer-parameter
+  provenance and nested aggregate projection.
 - `00182` and `00209` likely belong to pointer-value GEP admission over pointer
   parameters or pointer-typed local slots; keep them separate from global array
   work.
@@ -84,8 +82,9 @@ global aggregate member cases (`00195`, `00205`) in the same packet.
 
 ## Proof
 
-Classification-only packet; per delegation, did not rerun broad backend regex
-and did not modify `test_before.log` or `test_after.log`.
+Lifecycle-only route review; per delegation, did not rerun broad backend regex,
+did not implement fixes, and did not modify `test_before.log` or
+`test_after.log`.
 
 Diagnostics run:
 
