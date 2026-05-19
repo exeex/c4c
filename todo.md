@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Classified HFA/Floating Owner
+Current Step ID: 4
+Current Step Title: Validate And Classify Residuals
 
 # Current Packet
 
@@ -31,12 +31,14 @@ FPR register returns with ABI publication such as `fmov s0, s13`.
 
 ## Suggested Next
 
-`00204.c` now advances past semantic LIR-to-BIR and backend assembly/linking.
-The current first bad fact is runtime execution: the linked AArch64 backend
-binary exits with `Segmentation fault` before producing output. Next packet
-should debug the generated-code/runtime fault without reopening fixed HFA
-return materialization unless fresh evidence points back to ABI lane
-publication.
+Advance to Step 4 residual classification. `00204.c` now advances past
+semantic LIR-to-BIR and backend assembly/linking. The current first bad fact is
+runtime execution: the linked AArch64 backend binary exits with
+`Segmentation fault` before producing output. Next packet should classify the
+generated-code/runtime fault first, then decide whether it remains under idea
+326's HFA/floating residual scope or needs a separate open idea. Do not reopen
+fixed global initializer emission, HFA argument lanes, or HFA return
+materialization unless fresh evidence points back to those owners.
 
 ## Watchouts
 

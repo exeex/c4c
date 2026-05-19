@@ -54,18 +54,20 @@ evidence proves that surface owns the current HFA/floating first bad fact.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current residual fact:
-  - after fixed-size string argument cases, `fa_hfa11(hfa11)` prints `0.0`
-    instead of `11.1`, followed by corrupted floating/HFA output and a later
-    segmentation fault.
-- Localized first owner:
-  - AArch64 global initializer emission currently defers `F32`/`F64` scalar
-    and aggregate elements for `hfa11` through `hfa24`, so direct calls,
-    returns, and later variadic HFA reads load missing global data before any
-    HFA consume path can preserve the source value.
-- Follow-on suspected owner family, only after global data is materialized:
-  - HFA argument call-lane lowering
+  - after global initializer emission, fixed HFA argument lanes, and fixed HFA
+    return lanes were repaired, `00204.c` advances past semantic LIR-to-BIR and
+    backend assembly/linking, then exits at runtime with `RUNTIME_NONZERO` /
+    `Segmentation fault` before producing output.
+- Repaired owners to preserve:
+  - AArch64 `F32`/`F64` scalar and aggregate global initializer emission for
+    HFA globals such as `hfa11` through `hfa24`
+  - fixed HFA argument call-lane lowering into scalar FPR ABI lanes
+  - fixed HFA return and call-result lane classification, materialization, and
+    AArch64 ABI FPR publication for lane 0 and lane 1+
+- Follow-on suspected owner family:
   - aggregate/floating `va_arg` source selection and progression
   - floating register-save-area or overflow-area addressing
+  - generated runtime control-flow or call-target address materialization
   - HFA lane materialization and call-boundary transport
   - generated consumer reads for HFA/floating values
 - Prior-owner guardrails:
@@ -109,13 +111,12 @@ evidence proves that surface owns the current HFA/floating first bad fact.
 The representative now gets past prior assembler blockers, scalar immediate
 materialization, raw helper text, large stack/frame materialization, F128
 transport addressability, aggregate `va_arg` helper lowering, `va_start`
-destination publication, frame/formal publication, and local/value-home
-publication. Step 1 localized the next first bad fact to missing emitted data
-for `F32`/`F64` HFA globals (`hfa11` through `hfa24`): `fa_hfa11(hfa11)`
-prints `0.0` instead of `11.1` because the source object already lacks its
-floating initializer bytes. Step 2 should repair that generated-code owner
-generally before reclassifying any later HFA call-lane, `va_arg`,
-register-save-area, overflow-area, lane-materialization, or consumer residual.
+destination publication, frame/formal publication, local/value-home
+publication, HFA global initializer emission, fixed HFA argument lanes, and
+fixed HFA return lanes. The next first bad fact is runtime execution:
+the linked AArch64 backend binary exits with `Segmentation fault` before
+producing output. Step 4 should classify the segfault from generated artifacts
+and runtime evidence before reopening any repaired HFA/floating owner.
 
 ## Execution Rules
 
@@ -130,9 +131,9 @@ register-save-area, overflow-area, lane-materialization, or consumer residual.
   helper lowering, F128 transport, aggregate `va_arg` source/progression,
   scalar ALU, local/value-home publication, runner, or expectation coverage.
 - If the representative advances to another runtime mismatch, timeout, or
-  blocker after `F32`/`F64` global data emission is repaired, record the new
-  first bad fact and return it to lifecycle classification unless
-  generated-code evidence proves this owner owns it.
+  blocker after the repaired global-data, HFA argument, and HFA return owners,
+  record the new first bad fact and return it to lifecycle classification
+  unless generated-code evidence proves a repaired owner still owns it.
 - Use narrow build plus focused CTest proof for implementation packets.
   Escalate to broader backend validation only when the supervisor requests it
   or the implementation touches shared backend helper/printer behavior broadly.
@@ -221,13 +222,17 @@ Completion check:
 
 Goal: prove the owner result and classify any new focused residual.
 
-Primary target: supervisor-selected focused proof scope.
+Primary target: supervisor-selected focused proof scope, with immediate focus
+on the `00204.c` generated-code/runtime `Segmentation fault`.
 
 Actions:
 
 - Run a focused proof including build, local AArch64 helper/backend coverage,
   prior-owner guardrails from ideas 314, 315, 317, 318, 319, 320, 321, and
   322, 323, 324, and 325, and the `00204.c` c-testsuite representative.
+- Classify whether the segfault is still an HFA/floating generated-code owner
+  under idea 326 or a distinct adjacent initiative that should be split before
+  implementation continues.
 - Record pass/fail results and first bad facts in `todo.md`.
 - Do not claim this owner complete if generated code still corrupts or drops
   HFA/floating values in the classified path.
