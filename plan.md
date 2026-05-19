@@ -1,125 +1,132 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar Immediate Materialize Or Encoding Fallback Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/299_aarch64_scalar_immediate_materialize_or_encoding_fallback.md
 Activated: 2026-05-19
 
 ## Purpose
 
-Use the main-build backend regex surface as an umbrella inventory, then split
-the next focused semantic owner before any implementation work starts.
+Repair the scalar AArch64 machine-printing path that receives non-encodable
+add/sub/bitwise immediates instead of a materialized register or structured
+printable fallback.
 
 ## Goal
 
-Classify the post-298 backend-regex residual failures well enough to create one
-focused repair idea, or record why no focused owner is ready.
+Make the focused scalar immediate residuals compile past the old
+machine-printer diagnostic without weakening test contracts or folding
+unrelated buckets into this owner.
 
 ## Core Rule
 
-Do not implement fixes in this umbrella plan. This plan exists to classify,
-split, and switch lifecycle state.
+Progress must come from semantic AArch64 lowering, operand normalization,
+materialization, or encoding fallback for scalar immediates, not from
+testcase-shaped matching or expectation changes.
 
 ## Read First
 
+- `ideas/open/299_aarch64_scalar_immediate_materialize_or_encoding_fallback.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
 - `ideas/closed/296_aarch64_fused_compare_branch_operand_forms.md`
 - `ideas/closed/297_lir_to_bir_local_memory_admission.md`
 - `ideas/closed/298_lir_to_bir_global_pointer_aggregate_projection.md`
-- `test_before.log`, when available, as the accepted focused close proof from
-  idea 298
+- `todo.md`
 
 ## Current Targets
 
-- Machine-printer residuals after ideas 296 through 298.
-- Runtime nonzero or mismatch buckets that still need generated assembly or
-  narrower probes.
-- Standalone timeout `00220`, only as a quarantine or hang-specific split.
+- Focused cases: `00031`, `00104`, `00143`, `00207`, `00213`, `00214`,
+  `00215`, and `00218`.
+- Scalar add/subtract and bitwise immediate operands that are outside the
+  valid AArch64 instruction-immediate encoding range.
+- Generated assembly or diagnostics proving constants are materialized or
+  selected through a valid printable fallback.
 
 ## Non-Goals
 
-- Do not edit implementation files.
-- Do not change test expectations, allowlists, unsupported classifications,
-  timeout policy, runner behavior, or CTest registration.
 - Do not reopen closed owners 285 through 298 from failing counts alone.
-- Do not treat the full backend regex as one monolithic repair owner.
-- Do not run broad runtime scans without timeout and stale-process cleanup.
+- Do not repair scalar casts, mul/div/rem, call-boundary moves, memory
+  store/symbol printing, runtime nonzero/mismatch cases, or timeout `00220`
+  under this plan unless new proof shows the same scalar immediate owner.
+- Do not change expectations, allowlists, unsupported classifications, timeout
+  policy, runner behavior, or CTest registration.
+- Do not add filename-specific or instruction-string-specific shortcuts.
+- Do not print invalid AArch64 immediates merely to get past the diagnostic.
 
 ## Working Model
 
-- The latest durable umbrella state says idea 298 is closed and idea 295 is
-  parked with residual machine-printer, runtime, and timeout buckets.
-- `ctest -R backend` is an imprecise selector. Classify failures before
-  deciding an implementation owner.
-- A focused owner needs generated-code, diagnostic, or proof evidence showing a
-  shared semantic failure family.
+- The post-298 inventory selected this owner because the focused cases share a
+  machine-printer symptom: selected scalar add/xor/and or nearby
+  add/sub/bitwise forms carry constants as plain immediates that the printer
+  cannot encode.
+- Valid repair routes include selecting an encodable immediate form when legal,
+  materializing non-encodable constants into registers, or routing through an
+  existing structured fallback that prints valid AArch64 assembly.
+- Runtime nonzero and mismatch buckets need generated assembly or narrower
+  probes before they can become focused owners.
 
 ## Execution Rules
 
-- Preserve routine classification findings in `todo.md`.
-- Update this plan only when the classification route changes.
-- Update the source idea only for durable deactivation, closure, or a new split
-  decision.
-- When a focused owner is split, create a new `ideas/open/*.md` with concrete
-  reviewer reject signals, then switch lifecycle state to that owner.
+- Keep routine progress and proof notes in `todo.md`.
+- Prefer small implementation packets with fresh build proof plus the focused
+  c-testsuite subset.
+- Escalate to broader backend-regex validation when the focused diagnostic
+  bucket changes or when the touched path affects shared scalar lowering.
+- Preserve residual bucket classification when reporting proof.
 
 ## Ordered Steps
 
-### Step 1: Reconstruct post-298 residual inventory
+### Step 1: Reproduce and localize the focused printer failures
 
-Goal: establish the current residual failure set after closed idea 298.
-
-Actions:
-
-- Inspect the accepted post-298 proof/log context provided by the supervisor,
-  especially `test_before.log` when it contains the focused close proof.
-- If the supervisor delegates a fresh inventory command, capture the backend
-  regex result from `/workspaces/c4c/build` with timeout and stale-process
-  cleanup appropriate for runtime tests.
-- Separate residuals into machine-printer, runtime nonzero/mismatch, timeout,
-  and any local backend/unit failures.
-- Record the current classification in `todo.md`.
-
-Completion check:
-
-- `todo.md` lists the residual buckets and states which bucket is the best
-  candidate for focused ownership, or why no bucket is ready.
-
-### Step 2: Identify the next semantic owner
-
-Goal: choose one focused repair family from the residual inventory.
+Goal: confirm the exact current diagnostic and selected operand shapes for the
+focused scalar immediate cases.
 
 Actions:
 
-- Prefer a bucket with multiple nearby failures sharing the same generated-code
-  or diagnostic symptom.
-- For runtime nonzero or mismatch buckets, require generated assembly or a
-  narrower probe before declaring the owner.
-- For machine-printer residuals, group by instruction/form semantics rather
-  than by testcase filename.
-- Treat timeout `00220` as a separate hang-specific owner or quarantine unless
-  evidence proves it belongs to another semantic family.
+- Run a narrow proof over `00031`, `00104`, `00143`, `00207`, `00213`,
+  `00214`, `00215`, and `00218` after a current build.
+- Capture enough generated assembly, diagnostics, or backend traces to show
+  which scalar add/sub/bitwise forms carry non-encodable immediates.
+- Separate true scalar immediate encoding failures from any case that has
+  moved to a different failure mode.
 
 Completion check:
 
-- A focused owner candidate has a named semantic capability, included cases,
-  out-of-scope cases, and proof scope.
+- `todo.md` records the focused cases, current failure modes, and the first
+  implementation surface to inspect.
 
-### Step 3: Split or park
+### Step 2: Repair scalar immediate lowering or fallback
 
-Goal: convert the classification decision into lifecycle state.
+Goal: ensure non-encodable scalar add/sub/bitwise constants are represented in
+a printable AArch64 form before machine printing.
 
 Actions:
 
-- If a focused owner is ready, create a new `ideas/open/*.md` with goal,
-  scope, proof expectations, and concrete reviewer reject signals.
-- Add a durable deactivation note to idea 295 describing the split decision,
-  proof/log basis, and remaining buckets.
-- Switch lifecycle state from this umbrella plan to the new focused owner
-  before implementation begins.
-- If no owner is ready, keep idea 295 active only long enough to record the
-  blocker in `todo.md`, then report the missing evidence needed.
+- Inspect the selector, operand normalization, materialization, and printer
+  path that handles scalar add/sub/bitwise immediates.
+- Preserve existing valid immediate forms when the constant is encodable.
+- For non-encodable constants, materialize to a register or route through an
+  existing structured fallback before printing.
+- Avoid broad AArch64 rewrites outside scalar immediate handling.
 
 Completion check:
 
-- Either lifecycle state is switched to a focused owner, or `todo.md` explains
-  why no activation/split is possible yet.
+- Representative focused cases reach valid generated assembly or a later
+  non-printer failure without the old non-encodable-immediate diagnostic.
+
+### Step 3: Prove focused and residual behavior
+
+Goal: validate the repair without hiding unrelated backend-regex residuals.
+
+Actions:
+
+- Run fresh build proof.
+- Run the focused c-testsuite backend subset for the eight target cases.
+- If the focused bucket improves, run the supervisor-selected broader backend
+  regex proof and classify remaining failures by bucket.
+- Record proof commands, pass/fail counts, and residual bucket movement in
+  `todo.md`.
+
+Completion check:
+
+- Focused proof is green or any remaining failures are classified outside the
+  original scalar immediate printer diagnostic, and broader proof has enough
+  classification for the supervisor to decide acceptance or the next split.

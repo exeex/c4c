@@ -215,6 +215,28 @@ Lifecycle switch 2026-05-19:
 - Re-activate this umbrella only for a later classification pass or for
   splitting another focused owner from those remaining buckets.
 
+Post-298 split 2026-05-19:
+
+- Focused idea 298 is closed as the `lir_to_bir`
+  global/pointer/aggregate-projection owner.
+- The committed post-298 backend-regex inventory records 352 selected tests,
+  60 residual failures, and no observed local backend/unit failures.
+- Residual buckets are 28 c-testsuite machine-printer/frontend failures, 18
+  runtime nonzero failures, 13 runtime mismatch failures, and standalone
+  timeout `00220`.
+- The next focused split is idea 299,
+  `ideas/open/299_aarch64_scalar_immediate_materialize_or_encoding_fallback.md`,
+  covering scalar add/sub/bitwise immediate materialization or encoding
+  fallback for machine printing.
+- The split owner is based on the largest crisp machine-printer diagnostic
+  bucket: `00031`, `00104`, `00143`, `00207`, `00213`, `00214`, `00215`, and
+  `00218`.
+- Remaining scalar cast, mul/div/rem, call-boundary, memory store
+  source/symbol, semantic `lir_to_bir`, unsigned reduction, runtime
+  nonzero/mismatch, and timeout buckets remain parked under this umbrella for
+  later classification or separate focused splits.
+- Active implementation should move to idea 299 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
