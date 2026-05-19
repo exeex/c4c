@@ -1,7 +1,8 @@
 # AArch64 Extern Data Symbol PIC Address Formation
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 
 ## Goal
 
@@ -90,3 +91,23 @@ Reject the route if it:
   `R_AARCH64_ADR_PREL_PG_HI21` against externally binding data symbols;
 - broadens implementation into unrelated runtime, timeout, `lir_to_bir`, or
   machine-printer/prepared-node buckets parked under the umbrella inventory.
+
+## Closure Note
+
+Closed after commit `397c30c04` completed the focused PIC-safe extern data
+symbol owner. AArch64 externally binding data globals now lower to
+`GotRequired`, the AArch64 `LoadGlobalInst` producer path emits GOT
+page/low12 materialization for those globals, and narrow LIR-to-BIR plus
+instruction-dispatch tests preserve direct local/internal behavior.
+
+Focused proof moved `c_testsuite_aarch64_backend_src_00189_c` past the old
+`R_AARCH64_ADR_PREL_PG_HI21` linker failure against `stdout@@GLIBC_2.17`; the
+generated assembly now uses `:got:stdout` / `:got_lo12:stdout` for the
+extern data access. The residual `00189.c` failure is now
+`RUNTIME_NONZERO exit=Segmentation fault`, which is outside this PIC address
+formation boundary and returns to the umbrella runtime/call-argument bucket.
+
+Close-time focused regression guard passed with matching
+`test_before.log` / `test_after.log` scope: 4 passed, 1 failed before and
+after, no new failing tests. Broader supervisor proof also passed
+`^backend_aarch64_` at 27/27.

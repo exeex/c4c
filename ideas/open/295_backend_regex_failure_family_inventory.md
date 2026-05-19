@@ -470,6 +470,24 @@ Post-307 split 2026-05-19:
   under this umbrella for later classification or separate focused splits.
 - Active implementation should move to idea 308 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 308,
+  `ideas/closed/308_aarch64_extern_data_symbol_pic_address_formation.md`, is
+  closed as complete for the AArch64 externally binding data-symbol/PIC-safe
+  address formation owner.
+- Commit `397c30c04` moved externally binding AArch64 data globals to
+  `GotRequired` and taught the AArch64 `LoadGlobalInst` producer path to emit
+  GOT page/low12 materialization for those globals while preserving direct
+  local/internal data-global address formation in focused backend tests.
+- The old `00189.c` failure mode,
+  `R_AARCH64_ADR_PREL_PG_HI21` against `stdout@@GLIBC_2.17`, is gone; the
+  generated assembly now uses `:got:stdout` / `:got_lo12:stdout`.
+- The remaining `00189.c` result is `RUNTIME_NONZERO exit=Segmentation fault`
+  and returns to this umbrella's runtime/call-argument classification path. Do
+  not reopen idea 308 unless generated-code evidence shows externally binding
+  data symbols again use direct non-PIC AArch64 relocation forms.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
