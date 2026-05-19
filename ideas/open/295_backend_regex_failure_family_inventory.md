@@ -488,6 +488,31 @@ Focused owner closure 2026-05-19:
   not reopen idea 308 unless generated-code evidence shows externally binding
   data symbols again use direct non-PIC AArch64 relocation forms.
 
+Post-308 split 2026-05-19:
+
+- Step 2 of the active umbrella runbook compared the residual `00189.c`
+  runtime segfault against runtime nonzero, crash, and mismatch neighbors using
+  accepted umbrella history and current generated AArch64 artifacts. No fresh
+  broad runtime rerun was performed during this lifecycle split.
+- No broader shared semantic owner is ready by current evidence. Nearby
+  call-boundary failures remain parked as distinct buckets: direct
+  multi-argument shuffle around `00181.c` and `00182.c`, direct vararg
+  aliasing around `00200.c`, and address-of-local direct-call argument
+  preparation around `00218.c`.
+- The focused owner split is idea 309,
+  `ideas/open/309_aarch64_indirect_call_argument_preservation.md`, covering
+  AArch64 indirect function-pointer callee and argument preservation across
+  nested call setup for `00189.c`.
+- The split is intentionally singleton but semantic: progress must preserve
+  the indirect callee through argument setup, place outer-call arguments in the
+  correct call registers after nested call setup, and avoid filename-specific
+  or instruction-string-specific fixes.
+- Runtime nonzero/mismatch/crash buckets outside this indirect-call shape,
+  timeout/output-storm cases, direct-call shuffle and vararg buckets, and
+  already parked machine-printer or semantic `lir_to_bir` residuals remain
+  under this umbrella for later classification.
+- Active implementation should move to idea 309 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

@@ -1,178 +1,163 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Indirect Call Argument Preservation Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated from: remaining open umbrella inventory after focused idea 308 closed
+Source Idea: ideas/open/309_aarch64_indirect_call_argument_preservation.md
+Activated from: idea 295 Step 3/4 split after runtime neighbor comparison
 
 ## Purpose
 
-Continue the backend-regex umbrella inventory after the closed focused AArch64
-owners, using the post-308 evidence as the starting point for the next
-classification pass.
+Repair the focused `00189.c` runtime segfault as a semantic AArch64
+indirect-call callee and argument-preservation bug, not as a broad
+call-lowering bucket.
 
 ## Goal
 
-Classify the remaining backend-regex failures well enough to split the next
-focused semantic repair idea, or record why no focused owner is ready.
+Make the focused indirect function-pointer call preserve its callee and outer
+arguments across nested call setup.
 
 ## Core Rule
 
-This umbrella runbook is inventory and classification only. Do not implement
-repairs or improve counts by changing expectations, allowlists, unsupported
-classifications, CTest registration, timeout policy, runner behavior,
-proof logs, or testcase-specific matching.
+Progress must come from semantic call-lowering repair. Do not improve counts by
+matching `00189.c`, rewriting expectations, allowlists, unsupported
+classifications, CTest registration, runner behavior, timeout policy, proof
+logs, or test contracts.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- `test_before.log`, noting that the current canonical proof log is the
-  focused post-308 proof for `00189.c`, not a fresh broad backend-regex
-  inventory
+- `ideas/open/309_aarch64_indirect_call_argument_preservation.md`
+- `ideas/open/295_backend_regex_failure_family_inventory.md`, especially the
+  latest deactivation note and Step 2 runtime-neighbor comparison
 - `tests/c/external/c-testsuite/src/00189.c`
-- Generated AArch64 artifacts under
-  `build/c_testsuite_aarch64_backend/src/00189.c.s`
-- Closed-owner boundaries 285 through 308 only as historical context when a
-  residual appears to overlap a completed owner
+- `build/c_testsuite_aarch64_backend/src/00189.c.s`
+- Closed owner 308 only as the boundary proving the old extern-data PIC
+  relocation failure is already repaired
 
 ## Current Scope
 
-- Main-build backend regex inventory from `/workspaces/c4c/build`
-- Local backend/unit/CLI failures if any remain in the backend regex scope
-- `c_testsuite_aarch64_backend_*` compile, assembler, runtime, mismatch,
-  crash, timeout, and output-storm residuals
-- Candidate focused owner splits for semantic backend capability gaps
-- The `00189.c` runtime segmentation fault, which returned to this umbrella
-  after idea 308 removed the old externally binding data-symbol PIC relocation
-  failure
+- Focused c-testsuite target `c_testsuite_aarch64_backend_src_00189_c`
+- AArch64 indirect function-pointer call setup in `00189.c`
+- Preservation of the indirect callee and outer-call arguments across nested
+  direct or indirect call setup
+- Narrow backend tests that can prove semantic indirect-call preservation if
+  the implementation needs local coverage
 
 ## Non-Goals
 
-- No implementation edits under this umbrella.
-- No expectation, allowlist, unsupported, registration, timeout, runner,
-  proof-log, or CTest-registration edits.
-- No reopening closed owners 285 through 308 from failing counts alone.
-- No monolithic repair owner for all `ctest -R backend` failures.
-- No broad runtime rerun without timeout handling and stale-process cleanup.
+- No direct multi-argument call shuffle owner for `00181.c` or `00182.c`.
+- No direct vararg aliasing/materialization owner for `00200.c`.
+- No address-of-local direct-call argument preparation owner for `00218.c`.
+- No timeout, output-storm, dynamic-stack/goto, string/pointer/store/control,
+  or unrelated runtime mismatch repairs.
+- No reopening closed owners 285 through 308 without new contradictory
+  generated-code or proof evidence.
+- No expectations, allowlists, unsupported classifications, runner policy,
+  timeout policy, CTest registration, proof-log, or test-contract edits.
 
 ## Working Model
 
-- Idea 308 closed the old `00189.c` linker failure:
-  `R_AARCH64_ADR_PREL_PG_HI21` against `stdout@@GLIBC_2.17`. Current
-  generated assembly uses GOT materialization for `stdout`.
-- The remaining `00189.c` result is `RUNTIME_NONZERO exit=Segmentation fault`.
-  The current assembly shows call-argument/call-target corruption candidates:
-  `fred` moves the first argument through `w0`, `main` loads `stdout` and a
-  function pointer, then overwrites argument/callee registers before
-  `blr x21`.
-- Treat `00189.c` as a runtime/call-argument classification packet, not as a
-  reopened extern-data-symbol/PIC owner.
-- The latest broad backend-regex inventory before post-308 focused work
-  recorded 352 selected tests, 306 passed, and 46 failed, all under
-  `c_testsuite_aarch64_backend_*`. Treat that as historical context until a
-  supervisor-delegated fresh broad capture or accepted broad log is available.
-- Separate source buckets before proposing owner splits: local backend tests,
-  AArch64 compile/machine-printer failures, assembler failures, semantic
-  `lir_to_bir` admission failures, runtime nonzero exits, runtime mismatches
-  or crashes, timeouts, and output storms.
-- A focused split must name a semantic owner and the evidence for that owner.
-  Shared filenames, shared pass-count movement, or one diagnostic string alone
-  is not enough.
+- Idea 308 removed the old `00189.c` link failure by routing externally
+  binding `stdout` through GOT materialization.
+- The residual failure is runtime segmentation fault. Current generated
+  assembly shows `main` loading `stdout` and a function pointer, then failing
+  to preserve the actual indirect callee and argument values before `blr x21`.
+- The source shape includes `fprintfptr(stdout, "%d\n", (*f)(24))`: the outer
+  indirect callee and fixed arguments must survive setup for the nested
+  `(*f)(24)` result that becomes a later vararg.
+- Neighbor classification parked direct-call bugs separately. Do not fold those
+  cases into this owner without a supervisor-approved lifecycle split.
 
 ## Execution Rules
 
-- Keep routine classification notes in `todo.md`.
-- If a focused semantic owner is found, create a separate `ideas/open/*.md`
-  owner and switch lifecycle state before implementation begins.
-- If the best result is still uncertain, leave idea 295 active and record the
-  blocking evidence gap in `todo.md`.
-- Preserve closed-owner boundaries. Reopen or supersede a closed owner only
-  with generated-code or proof evidence that contradicts its closure boundary.
-- For any broad runtime proof, use bounded commands with stale-process cleanup
-  as directed by the supervisor.
+- Keep routine implementation progress in `todo.md`.
+- Make the first code slice explain which call-lowering surface owns callee and
+  argument preservation; avoid broad rewrites until a narrow ownership point is
+  identified.
+- Add local tests only when they prove the semantic preservation rule and would
+  fail for the current bad lowering.
+- Preserve proof artifacts and lifecycle boundaries unless the supervisor
+  explicitly delegates a different proof/log policy.
 
 ## Ordered Steps
 
-### Step 1: Classify 00189 Runtime/Call-Argument Crash
+### Step 1: Locate the Indirect-Call Preservation Owner
 
-Goal: establish the semantic owner, if any, for the post-308 `00189.c`
-runtime segmentation fault.
+Goal: identify the backend lowering surface responsible for preserving the
+indirect callee and outer-call arguments across nested call setup.
 
-Primary targets: `tests/c/external/c-testsuite/src/00189.c`,
-`build/c_testsuite_aarch64_backend/src/00189.c.s`, and `test_before.log`
-
-Actions:
-
-- Confirm the old non-PIC relocation failure is absent from current generated
-  assembly and proof output.
-- Inspect the generated `00189.c` call sequence for argument preparation,
-  function-pointer call target preservation, varargs setup, and clobbered
-  caller-saved registers.
-- Compare the failure shape against parked runtime/call-boundary buckets from
-  idea 295 before naming a focused owner.
-- Do not edit implementation, tests, expectations, runner policy, CTest
-  registration, or proof logs.
-
-Completion check:
-
-- `todo.md` records whether `00189.c` is a focused call-argument/function-
-  pointer owner candidate, belongs to a broader runtime bucket, or needs a
-  narrower supervisor-approved probe before splitting.
-
-### Step 2: Reconcile With Remaining Runtime Buckets
-
-Goal: decide whether the `00189.c` evidence shares a semantic owner with other
-runtime nonzero, mismatch, or crash residuals.
-
-Primary target: `build/c_testsuite_aarch64_backend/`
+Primary targets: `tests/c/external/c-testsuite/src/00189.c`, generated
+`00189.c.s`, and the AArch64 call-lowering implementation surface.
 
 Actions:
 
-- Compare generated assembly or narrow diagnostics for likely call-boundary
-  neighbors before grouping them with `00189.c`.
-- Keep runtime mismatch, runtime nonzero, crash, timeout, and output-storm
-  cases separate unless generated-code evidence proves shared ownership.
-- Compare likely overlaps against closed owners 285 through 308 before
-  proposing any reopen or related split.
+- Confirm the current crash shape still matches clobbered indirect callee or
+  outer-call argument setup, not the closed extern-data PIC relocation owner.
+- Trace how the indirect callee value and each outer-call argument are assigned
+  physical call registers.
+- Identify whether the lowering needs a parallel-copy, temporary preservation,
+  call-sequence ordering, or value-liveness repair.
+- Do not edit expectations, allowlists, runner policy, CTest registration, or
+  proof logs.
 
 Completion check:
 
-- `todo.md` contains a bucketed runtime/call-boundary note with explicit parked
-  buckets for uncertain cases.
+- `todo.md` records the owned lowering surface, the failing value-preservation
+  path, and the narrow proof command the supervisor delegated.
 
-### Step 3: Choose the Next Focused Owner
+### Step 2: Repair Callee and Argument Preservation
 
-Goal: decide whether a tractable semantic repair family is ready to split.
+Goal: implement the smallest semantic repair that preserves the indirect
+callee and outer-call arguments until the final `blr`.
 
 Actions:
 
-- Prefer the crispest bucket with a shared semantic backend capability and
-  narrow proof surface.
-- Reject testcase-shaped owners, exact filename matching, instruction-string
-  matching, and expectation-only progress.
-- If no owner is ready, record the missing evidence and the next narrow probe
-  needed for classification.
+- Repair the chosen call-lowering surface without matching `00189.c` by name or
+  source shape.
+- Preserve existing direct-call behavior unless the same semantic helper
+  naturally owns it and the supervisor approves the scope.
+- Add or adjust focused backend tests when needed to lock indirect callee and
+  nested-call argument preservation.
 
 Completion check:
 
-- Either a focused owner candidate is named with tests, semantic scope,
-  boundaries, and proof command guidance, or `todo.md` explains why the
-  umbrella must stay active for more classification.
+- A fresh build or compile proof succeeds for the changed code.
+- The generated focused assembly no longer clobbers the indirect callee or
+  required outer-call arguments before `blr`.
 
-### Step 4: Split and Switch Before Implementation
+### Step 3: Prove the Focused Runtime Target
 
-Goal: create lifecycle state for implementation only after classification.
+Goal: prove the semantic repair against the focused c-testsuite target and
+adjacent call-boundary coverage selected by the supervisor.
 
 Actions:
 
-- When Step 3 identifies a focused semantic owner, create a new
-  `ideas/open/*.md` file with goal, scope, out-of-scope items, acceptance
-  criteria, and reviewer reject signals.
-- Add a durable deactivation note to idea 295 summarizing the split decision,
-  proof scope, and remaining parked buckets.
-- Switch active lifecycle state from this umbrella to the focused owner before
-  any implementation work begins.
+- Run the delegated focused c-testsuite proof for
+  `c_testsuite_aarch64_backend_src_00189_c`.
+- Run any delegated local backend/unit proof that covers indirect-call
+  preservation.
+- Record results in `todo.md` and canonical proof logs as directed by the
+  supervisor.
 
 Completion check:
 
-- Active lifecycle state no longer points to idea 295 when implementation is
-  ready to start, and idea 295 preserves the remaining inventory context.
+- `00189.c` no longer fails from the old indirect-call callee/argument
+  clobbering mode, or `todo.md` records the new residual boundary if a
+  different runtime failure remains.
+
+### Step 4: Completion Review
+
+Goal: decide whether the focused owner is complete or should return residuals
+to umbrella idea 295.
+
+Actions:
+
+- Compare the final behavior against this source idea's acceptance criteria and
+  reviewer reject signals.
+- If complete, ask the plan owner to close the focused idea after required
+  regression guard proof.
+- If residuals remain outside this owner, return only those residuals to idea
+  295 with a durable note.
+
+Completion check:
+
+- Lifecycle state is ready for close, or `todo.md` names the remaining blocker
+  and the correct umbrella bucket.
