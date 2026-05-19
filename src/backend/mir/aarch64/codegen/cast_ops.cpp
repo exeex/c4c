@@ -687,7 +687,9 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
   const auto result_bits = integer_type_bit_width(cast.result_type);
   if (!source_bits.has_value() || !result_bits.has_value() ||
       ((*source_bits >= *result_bits) &&
-       cast.operation != ScalarCastOperationKind::Truncate) ||
+       cast.operation != ScalarCastOperationKind::Truncate &&
+       !(cast.operation == ScalarCastOperationKind::ZeroExtend &&
+         *source_bits == *result_bits)) ||
       ((*source_bits <= *result_bits) &&
        cast.operation == ScalarCastOperationKind::Truncate)) {
     return target_unsupported(diagnostic(
@@ -758,7 +760,11 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
             diagnostic_prefix,
             "scalar zero-extend node source is not a printable GPR register"));
       }
-      out << "ubfx " << *result << ", " << *source << ", #0, #" << *source_bits;
+      if (*source_bits == *result_bits) {
+        out << "mov " << *result << ", " << *source;
+      } else {
+        out << "ubfx " << *result << ", " << *source << ", #0, #" << *source_bits;
+      }
       return target_printed({out.str()});
     }
     case ScalarCastOperationKind::Truncate: {

@@ -2576,8 +2576,22 @@ int selected_simple_integer_casts_print_from_structured_operands() {
           .source = aarch64_codegen::make_register_operand(xreg(5)),
           .supported_simple_integer_cast = true,
       }));
+  const auto promoted_truth_zext = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_cast_instruction_record(aarch64_codegen::ScalarCastRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarCastOperationKind::ZeroExtend,
+          .source_cast_opcode = bir::CastOpcode::ZExt,
+          .source_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{58},
+          .result_value_name = c4c::ValueNameId{59},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(6),
+          .source = aarch64_codegen::make_register_operand(wreg(7)),
+          .supported_simple_integer_cast = true,
+      }));
 
-  const auto result = print_common_instruction_nodes({sext, zext, trunc});
+  const auto result =
+      print_common_instruction_nodes({sext, zext, trunc, promoted_truth_zext});
   if (!result.ok) {
     return fail("expected simple integer casts to print from structured operands: " +
                 result.diagnostic);
@@ -2585,7 +2599,8 @@ int selected_simple_integer_casts_print_from_structured_operands() {
   const std::string expected =
       "    sxtw x0, w1\n"
       "    ubfx w2, w3, #0, #1\n"
-      "    mov w4, w5\n";
+      "    mov w4, w5\n"
+      "    mov w6, w7\n";
   return expect_assembly(result.assembly,
                          expected,
                          expected,
