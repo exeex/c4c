@@ -77,6 +77,7 @@ lir::LirCallSignature void_call_signature(
 LirModule make_admitted_scalar_float_globals_module();
 LirModule make_f128_scalar_constant_binop_fails_closed_module();
 LirModule make_admitted_scalar_i16_globals_module();
+int expect_aarch64_extern_data_global_uses_got_policy();
 LirModule make_admitted_aggregate_pointer_field_global_module();
 LirModule make_admitted_aggregate_zero_sized_member_global_module();
 LirModule make_admitted_aggregate_string_array_field_global_module();
@@ -258,6 +259,87 @@ int expect_admitted_scalar_i16_globals() {
       !value_global->initializer.has_value() ||
       *value_global->initializer != c4c::backend::bir::Value::immediate_i16(17)) {
     return fail("scalar i16 nonzero globals should lower into an admitted I16 BIR initializer lane");
+  }
+
+  return 0;
+}
+
+int expect_aarch64_extern_data_global_uses_got_policy() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+
+  LirGlobal extern_global;
+  extern_global.name = "external_data_symbol";
+  extern_global.link_name_id = module.link_names.intern("external_data_symbol");
+  extern_global.llvm_type = "ptr";
+  extern_global.is_extern_decl = true;
+  extern_global.align_bytes = 8;
+  module.globals.push_back(std::move(extern_global));
+
+  LirGlobal internal_global;
+  internal_global.name = "internal_data_symbol";
+  internal_global.link_name_id = module.link_names.intern("internal_data_symbol");
+  internal_global.is_internal = true;
+  internal_global.llvm_type = "i32";
+  internal_global.init_text = "i32 7";
+  internal_global.align_bytes = 4;
+  module.globals.push_back(std::move(internal_global));
+
+  LirGlobal owned_global;
+  owned_global.name = "owned_data_symbol";
+  owned_global.link_name_id = module.link_names.intern("owned_data_symbol");
+  owned_global.llvm_type = "i32";
+  owned_global.init_text = "i32 11";
+  owned_global.align_bytes = 4;
+  module.globals.push_back(std::move(owned_global));
+
+  LirFunction function;
+  function.name = "aarch64_extern_data_global_uses_got_policy";
+  function.signature_text = "define i32 @aarch64_extern_data_global_uses_got_policy()";
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.terminator = LirRet{
+      .value_str = "0",
+      .type_str = "i32",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("expected AArch64 extern-data policy fixture to lower");
+  }
+
+  const auto find_global = [&](std::string_view name) -> const c4c::backend::bir::Global* {
+    for (const auto& global : result.module->globals) {
+      if (global.name == name) {
+        return &global;
+      }
+    }
+    return nullptr;
+  };
+
+  const auto* extern_lowered = find_global("external_data_symbol");
+  if (extern_lowered == nullptr || !extern_lowered->is_extern ||
+      extern_lowered->address_materialization_policy !=
+          c4c::backend::bir::GlobalAddressMaterializationPolicy::GotRequired) {
+    return fail("AArch64 extern data globals should require GOT address materialization");
+  }
+
+  const auto* internal_lowered = find_global("internal_data_symbol");
+  if (internal_lowered == nullptr || internal_lowered->is_extern ||
+      internal_lowered->address_materialization_policy !=
+          c4c::backend::bir::GlobalAddressMaterializationPolicy::Direct) {
+    return fail("AArch64 internal data globals should keep direct address materialization");
+  }
+
+  const auto* owned_lowered = find_global("owned_data_symbol");
+  if (owned_lowered == nullptr || owned_lowered->is_extern ||
+      owned_lowered->address_materialization_policy !=
+          c4c::backend::bir::GlobalAddressMaterializationPolicy::Direct) {
+    return fail("AArch64 compiler-owned data globals should keep direct address materialization");
   }
 
   return 0;
@@ -6318,6 +6400,12 @@ int main() {
   if (const int scalar_i16_globals_status = expect_admitted_scalar_i16_globals();
       scalar_i16_globals_status != 0) {
     return scalar_i16_globals_status;
+  }
+
+  if (const int aarch64_extern_data_status =
+          expect_aarch64_extern_data_global_uses_got_policy();
+      aarch64_extern_data_status != 0) {
+    return aarch64_extern_data_status;
   }
 
   if (const int link_name_identity_status =

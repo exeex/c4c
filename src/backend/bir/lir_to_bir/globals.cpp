@@ -7,6 +7,10 @@ namespace {
 bir::GlobalAddressMaterializationPolicy lower_global_address_materialization_policy(
     const c4c::codegen::lir::LirGlobal& global,
     const c4c::TargetProfile& target_profile) {
+  if (target_profile.arch == c4c::TargetArch::Aarch64 && global.is_extern_decl &&
+      !global.is_internal) {
+    return bir::GlobalAddressMaterializationPolicy::GotRequired;
+  }
   if (target_profile.relocation_model == c4c::TargetRelocationModel::Static) {
     return bir::GlobalAddressMaterializationPolicy::Direct;
   }

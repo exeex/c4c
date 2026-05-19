@@ -1,75 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/308_aarch64_extern_data_symbol_pic_address_formation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate Symbol Binding Address Lowering
+Current Step ID: 2
+Current Step Title: Implement PIC-Safe External Data-Symbol Address Formation
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 located the direct `stdout` address path for `00189.c` without editing
-implementation files. The generated bad assembly is
-`build/c_testsuite_aarch64_backend/src/00189.c.s` lines 37-39:
-`adrp x10, stdout` / `add x10, x10, :lo12:stdout` / `ldr x9, [x10]`, matching
-the `test_before.log` linker failure for `R_AARCH64_ADR_PREL_PG_HI21` against
-externally binding `stdout@@GLIBC_2.17`.
+Step 2 implemented PIC-safe external data-symbol address formation across the
+semantic and remaining AArch64 producer paths owned by this packet.
 
-The semantic path is:
+`src/backend/bir/lir_to_bir/globals.cpp` now lowers AArch64
+`LirGlobal::is_extern_decl` data globals to
+`bir::GlobalAddressMaterializationPolicy::GotRequired` before the static
+relocation-model fallback, while internal and same-module compiler-owned data
+globals keep `Direct`.
 
-- builtin `stdio.h` declares `extern FILE *stdout;`
-  (`src/frontend/preprocessor/preprocessor.cpp`);
-- HIR-to-LIR records extern globals as `LirGlobal::is_extern_decl = true` and
-  static/internal globals as `LirGlobal::is_internal = true`
-  (`src/codegen/lir/hir_to_lir/hir_to_lir.cpp`);
-- BIR keeps the metadata as `bir::Global::is_extern`, `is_thread_local`, and
-  `address_materialization_policy` (`src/backend/bir/bir.hpp`);
-- `lower_global_address_materialization_policy` in
-  `src/backend/bir/lir_to_bir/globals.cpp` currently returns `Direct` for
-  target relocation model `Static` before checking external binding, returns
-  `Direct` for `global.is_internal`, and otherwise leaves the policy
-  `Unspecified`;
-- prepared addressing in
-  `append_direct_global_address_materialization`
-  (`src/backend/prealloc/stack_layout/coordinator.cpp`) maps
-  `GotRequired` to `PreparedAddressMaterializationKind::GotGlobal`, maps
-  direct/TLS cases to `DirectGlobal`/`TlsGlobal`, and only fails closed on
-  `Unspecified` when the target relocation model is non-static;
-- AArch64 selection maps `DirectGlobal` to `DirectPageLow12` and `GotGlobal`
-  to `GotPageLow12` in `selected_address_materialization_kind`
-  (`src/backend/mir/aarch64/codegen/globals.cpp`);
-- the final direct emitter is
-  `print_address_materialization_instruction`
-  (`src/backend/mir/aarch64/codegen/globals.cpp`), whose
-  `DirectPageLow12` path prints `adrp <reg>, <sym>` plus
-  `add <reg>, <reg>, :lo12:<sym>`, while `GotPageLow12` already prints
-  `adrp <reg>, :got:<sym>` plus
-  `ldr <reg>, [<reg>, :got_lo12:<sym>]`.
+`tests/backend/bir/backend_lir_to_bir_notes_test.cpp` now has a semantic
+regression proving an AArch64 extern data global gets `GotRequired` and both an
+internal global and a same-module owned global stay `Direct`.
 
-Existing coverage found:
+`src/backend/mir/aarch64/codegen/dispatch.cpp` now recognizes
+`bir::LoadGlobalInst` targets whose BIR global policy is `GotRequired` and
+emits `adrp <reg>, :got:<symbol>` / `ldr <reg>, [<reg>, :got_lo12:<symbol>]`
+before loading the data value. The same policy check is also used by the
+recursive call-argument value materializer so it no longer emits direct
+`adrp`/`:lo12:` for externally binding data globals.
 
-- `backend_prepare_stack_layout_test.cpp` already proves explicit
-  `GotRequired` becomes `PreparedAddressMaterializationKind::GotGlobal`, direct
-  local/global materialization remains `DirectGlobal`, TLS remains separate, and
-  PIC + `Unspecified` policy fails closed with a diagnostic.
-- `backend_aarch64_prepared_memory_operand_records_test.cpp` proves prepared
-  direct/GOT/TLS carriers preserve policy and identity into AArch64 records and
-  fail closed on missing or mismatched GOT policy.
-- `backend_aarch64_machine_printer_test.cpp` proves the direct
-  `adrp`/`:lo12:` printer path and the existing GOT printer path.
-- Gap: no current test appears to prove that a LIR/BIR extern data global such
-  as `stdout` is assigned `GotRequired` while local/internal compiler-owned
-  data remains direct, especially when the driver/test harness does not pass
-  `-fPIC` but the system linker defaults to PIE.
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` now covers
+both dispatch sides: a GOT-required extern data global load uses GOT
+page/low12 addressing, while a direct internal data global load keeps direct
+page/low12 addressing.
+
+The old `00189.c` relocation failure is gone. The generated assembly now
+contains `adrp x10, :got:stdout` / `ldr x10, [x10, :got_lo12:stdout]` /
+`ldr x9, [x10]` for the later `stdout` load, and no longer contains the old
+`adrp x10, stdout` / `add x10, x10, :lo12:stdout` sequence.
+
+New residual: `c_testsuite_aarch64_backend_src_00189_c` now links and runs, but
+fails at runtime with `Segmentation fault`. The visible route still has
+pre-existing call/argument lowering problems around the final indirect
+`fprintf` call (`mov x1, x20`, `ldr w2, [sp, #8]`, `blr x21`) that are separate
+from PIC-safe external data-symbol address formation.
 
 ## Suggested Next
 
-Execute Step 2 at the semantic policy point, not in the printer: add or adjust
-the predicate feeding `bir::Global::address_materialization_policy`, most
-likely `lower_global_address_materialization_policy`, so externally binding
-data globals (`LirGlobal::is_extern_decl` / `bir::Global::is_extern`, not
-`is_internal`, not TLS) get `GotRequired` for AArch64 dynamic/PIE-safe address
-formation while local/internal/compiler-owned globals keep `Direct`.
+Delegate a separate packet for the now-unmasked `00189.c` runtime failure in
+the AArch64 call/argument route. The immediate evidence is that the final
+indirect `fprintf` call is not receiving the expected argument/register setup
+after the relocation-safe `stdout` load.
 
 ## Watchouts
 
@@ -80,18 +60,34 @@ formation while local/internal/compiler-owned globals keep `Direct`.
 - Preserve legal direct local/internal symbol address formation.
 - Do not route string constants, labels, TLS, or same-module/internal function
   symbols through the external-data GOT rule.
-- The AArch64 c-testsuite runner invokes `c4cll` without `-fPIC`/`-fPIE`, while
-  the host `clang --target=aarch64-unknown-linux-gnu` link still rejected the
-  direct relocation as PIE/shared-object unsafe. Step 2 should account for that
-  semantic mismatch explicitly instead of relying only on the current
-  `TargetRelocationModel::Pic` gate.
-- Keep runtime, timeout, machine-printer/prepared-node, and `lir_to_bir`
-  admission buckets parked under umbrella idea 295.
+- The delegated proof now fails after link, at runtime. Do not conflate the new
+  segmentation fault with the fixed relocation issue.
+- `backend_aarch64_instruction_dispatch_test` was run directly and passes the
+  new GOT-required/direct-global dispatch coverage, but it is not part of the
+  supervisor-selected CTest regex.
 
 ## Proof
 
-No tests were rerun per packet instruction. Proof artifacts inspected:
-`test_before.log`, `build/c_testsuite_aarch64_backend/src/00189.c.s`, and
-read-only code/test inspection. No `test_after.log` was generated or modified
-because this was a localization-only packet with an explicit no-rerun proof
-contract.
+Build proof passed: `cmake --build --preset default`.
+
+Focused local test passed:
+`./build/tests/backend/mir/backend_aarch64_instruction_dispatch_test`.
+
+Delegated CTest proof was run exactly and preserved in `test_after.log`:
+`ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_prepare_stack_layout|backend_aarch64_prepared_memory_operand_records|backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00189_c)$' > test_after.log`.
+
+Result: 4/5 selected tests passed (`backend_lir_to_bir_notes`,
+`backend_prepare_stack_layout`, `backend_aarch64_prepared_memory_operand_records`,
+and `backend_aarch64_machine_printer`). `c_testsuite_aarch64_backend_src_00189_c`
+now fails at runtime with `[RUNTIME_NONZERO] ... exit=Segmentation fault`.
+The old `R_AARCH64_ADR_PREL_PG_HI21` relocation against `stdout@@GLIBC_2.17`
+is no longer present.
+
+Supervisor acceptance checks:
+
+- Non-decreasing regression guard passed:
+  `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+- Broader AArch64 backend unit sanity passed:
+  `ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_'`
+  selected 27 tests and passed 27/27.
+- `git diff --check` passed.

@@ -16,6 +16,7 @@
 #include "returns.hpp"
 #include "variadic.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -1186,6 +1187,18 @@ void retarget_pointer_store_value_to_emitted_scalar(
   return operand;
 }
 
+[[nodiscard]] std::string register_indirect_address(std::string_view base,
+                                                    std::size_t byte_offset) {
+  std::string address{"["};
+  address += base;
+  if (byte_offset != 0) {
+    address += ", #";
+    address += std::to_string(byte_offset);
+  }
+  address += "]";
+  return address;
+}
+
 [[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes) {
   std::string address{"[sp"};
   if (offset_bytes != 0) {
@@ -1301,6 +1314,55 @@ void retarget_pointer_store_value_to_emitted_scalar(
   return std::nullopt;
 }
 
+[[nodiscard]] const bir::Global* find_load_global_target(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global) {
+  if (context.function.prepared == nullptr) {
+    return nullptr;
+  }
+  const auto& globals = context.function.prepared->module.globals;
+  if (load_global.global_name_id != c4c::kInvalidLinkName) {
+    const auto it = std::find_if(
+        globals.begin(),
+        globals.end(),
+        [&](const bir::Global& global) {
+          return global.link_name_id == load_global.global_name_id;
+        });
+    if (it != globals.end()) {
+      return &*it;
+    }
+  }
+  if (load_global.global_name.empty()) {
+    return nullptr;
+  }
+  const auto it = std::find_if(
+      globals.begin(),
+      globals.end(),
+      [&](const bir::Global& global) {
+        return global.name == load_global.global_name;
+      });
+  return it == globals.end() ? nullptr : &*it;
+}
+
+[[nodiscard]] std::string load_global_symbol_label(
+    const module::BlockLoweringContext& context,
+    const bir::LoadGlobalInst& load_global,
+    const bir::Global* target_global) {
+  if (context.function.prepared != nullptr &&
+      load_global.global_name_id != c4c::kInvalidLinkName) {
+    const std::string_view semantic_name =
+        context.function.prepared->module.names.link_names.spelling(
+            load_global.global_name_id);
+    if (!semantic_name.empty()) {
+      return std::string{semantic_name};
+    }
+  }
+  if (target_global != nullptr && !target_global->name.empty()) {
+    return target_global->name;
+  }
+  return load_global.global_name;
+}
+
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1347,8 +1409,22 @@ void retarget_pointer_store_value_to_emitted_scalar(
     if (!address.has_value() || load_global->global_name.empty()) {
       return false;
     }
-    const auto symbol = relocation_operand(load_global->global_name,
-                                           load_global->byte_offset);
+    const bir::Global* target_global = find_load_global_target(context, *load_global);
+    const auto symbol_label = load_global_symbol_label(context, *load_global, target_global);
+    if (symbol_label.empty()) {
+      return false;
+    }
+    if (target_global != nullptr &&
+        target_global->address_materialization_policy ==
+            bir::GlobalAddressMaterializationPolicy::GotRequired) {
+      lines.push_back("adrp " + *address + ", :got:" + symbol_label);
+      lines.push_back("ldr " + *address + ", [" + *address + ", :got_lo12:" +
+                      symbol_label + "]");
+      lines.push_back("ldr " + *target + ", " +
+                      register_indirect_address(*address, load_global->byte_offset));
+      return true;
+    }
+    const auto symbol = relocation_operand(symbol_label, load_global->byte_offset);
     lines.push_back("adrp " + *address + ", " + symbol);
     lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
     lines.push_back("ldr " + *target + ", [" + *address + "]");
@@ -1625,6 +1701,74 @@ make_select_chain_materialization_instruction(
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_load_global_got_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadGlobalInst& load_global,
+    BlockScalarLoweringState& scalar_state) {
+  const bir::Global* target_global = find_load_global_target(context, load_global);
+  if (target_global == nullptr ||
+      target_global->address_materialization_policy !=
+          bir::GlobalAddressMaterializationPolicy::GotRequired) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, load_global.result);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+    return std::nullopt;
+  }
+  const auto result_view = scalar_view_for_type(load_global.result.type);
+  if (!result_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto prepared_result = make_named_prepared_result_register(context, load_global.result);
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  const auto result_register =
+      prepared_result.has_value()
+          ? std::optional<abi::RegisterReference>{prepared_result->reg}
+          : abi::gp_register(scratches.front().index, *result_view);
+  if (!result_register.has_value() ||
+      result_register->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto address_register =
+      abi::gp_register(result_register->index, abi::RegisterView::X);
+  const auto target_register =
+      abi::gp_register(result_register->index, *result_view);
+  if (!address_register.has_value() || !target_register.has_value()) {
+    return std::nullopt;
+  }
+  const std::string address = abi::register_name(*address_register);
+  const std::string target = abi::register_name(*target_register);
+  const auto symbol_label = load_global_symbol_label(context, load_global, target_global);
+  if (symbol_label.empty()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  lines.push_back("adrp " + address + ", :got:" + symbol_label);
+  lines.push_back("ldr " + address + ", [" + address + ", :got_lo12:" +
+                  symbol_label + "]");
+  lines.push_back("ldr " + target + ", " +
+                  register_indirect_address(address, load_global.byte_offset));
+
+  RegisterOperand emitted{
+      .reg = *target_register,
+      .role = prepared_result.has_value() ? prepared_result->role
+                                          : RegisterOperandRole::StoragePlan,
+      .value_name = *value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = result_view,
+  };
+  record_emitted_scalar_register(scalar_state, *value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -2687,6 +2831,23 @@ InstructionDispatchResult dispatch_prepared_block(
         }
         ++result.visited_operations;
         continue;
+      } else if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(&inst);
+                 load_global != nullptr) {
+        if (auto got_load =
+                make_load_global_got_materialization_instruction(
+                    context, instruction_index, *load_global, scalar_state)) {
+          block.instructions.push_back(std::move(*got_load));
+        } else if (auto lowered_ordinary_memory =
+                       lower_memory_instruction(context, inst, instruction_index, diagnostics);
+                   lowered_ordinary_memory.handled) {
+          if (lowered_ordinary_memory.instruction.has_value()) {
+            record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
+            block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
+          }
+        } else {
+          append_unsupported_instruction_diagnostic(
+              diagnostics, context, inst, instruction_index);
+        }
       } else if (auto lowered = lower_prepared_scalar_float_alu_instruction(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));

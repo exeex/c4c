@@ -1494,6 +1494,187 @@ prepare::PreparedBirModule prepared_with_direct_call_argument_register_move() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_load_global_call_argument(
+    bir::GlobalAddressMaterializationPolicy policy) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const bool got_required =
+      policy == bir::GlobalAddressMaterializationPolicy::GotRequired;
+  const std::string function_spelling =
+      got_required ? "dispatch.call.got.global.arg"
+                   : "dispatch.call.direct.global.arg";
+  const std::string entry_spelling = function_spelling + ".entry";
+  const std::string global_spelling =
+      got_required ? "external_data_symbol" : "internal_data_symbol";
+
+  const auto function_name = prepared.names.function_names.intern(function_spelling);
+  const auto entry_label = prepared.names.block_labels.intern(entry_spelling);
+  const auto bir_entry_label = prepared.module.names.block_labels.intern(entry_spelling);
+  const auto prepared_global_link = prepared.names.link_names.intern(global_spelling);
+  const auto bir_global_link = prepared.module.names.link_names.intern(global_spelling);
+  const auto callee_link = prepared.names.link_names.intern("consume_ptr");
+  const auto loaded_value_name = prepared.names.value_names.intern("%loaded.global");
+  constexpr prepare::PreparedValueId kLoadedValue{41};
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = global_spelling,
+      .link_name_id = bir_global_link,
+      .type = bir::TypeKind::Ptr,
+      .is_extern = got_required,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_materialization_policy = policy,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = function_spelling,
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = entry_spelling,
+          .insts = {bir::LoadGlobalInst{
+                        .result = bir::Value::named(bir::TypeKind::Ptr, "%loaded.global"),
+                        .global_name = global_spelling,
+                        .global_name_id = bir_global_link,
+                        .align_bytes = 8,
+                    },
+                    bir::CallInst{
+                        .callee = "consume_ptr",
+                        .callee_link_name_id = callee_link,
+                        .args = {bir::Value::named(bir::TypeKind::Ptr, "%loaded.global")},
+                        .arg_types = {bir::TypeKind::Ptr},
+                        .return_type = bir::TypeKind::Void,
+                        .calling_convention = bir::CallingConv::C,
+                    }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = kLoadedValue,
+                  .function_name = function_name,
+                  .value_name = loaded_value_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"x2"},
+              },
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeCall,
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = kLoadedValue,
+                              .to_value_id = kLoadedValue,
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"x0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                              .block_index = 0,
+                              .instruction_index = 1,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "call_arg_loaded_global_to_register",
+                          },
+                      },
+                  .abi_bindings =
+                      {
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"x0"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"x0"},
+                          },
+                      },
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = kLoadedValue,
+                  .value_name = loaded_value_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"x2"},
+                  .occupied_register_names = {"x2"},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 1,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_ptr"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 1,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Gpr,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                      .source_value_id = kLoadedValue,
+                      .source_register_name = std::string{"x2"},
+                      .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  },
+              },
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = entry_label,
+                  .inst_index = 0,
+                  .result_value_name = loaded_value_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                          .symbol_name = prepared_global_link,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_variadic_call_symbol_address_argument() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -7987,6 +8168,112 @@ int stack_home_symbol_address_argument_materializes_directly_to_call_register() 
   return 0;
 }
 
+int load_global_call_argument_uses_got_for_got_required_global() {
+  auto prepared = prepared_with_load_global_call_argument(
+      bir::GlobalAddressMaterializationPolicy::GotRequired);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      !diagnostics.empty()) {
+    return fail("expected GOT-required global load call route to select load/move/call/return");
+  }
+
+  const auto* got_load =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &block.instructions[0].target.payload);
+  const auto* move =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (got_load == nullptr || !got_load->has_inline_asm_payload ||
+      got_load->inline_asm_template.find("adrp x2, :got:external_data_symbol") ==
+          std::string::npos ||
+      got_load->inline_asm_template.find(
+          "ldr x2, [x2, :got_lo12:external_data_symbol]") ==
+          std::string::npos ||
+      got_load->inline_asm_template.find("ldr x2, [x2]") == std::string::npos) {
+    return fail("expected GOT-required global load to use GOT page/low12 materialization");
+  }
+  if (got_load->inline_asm_template.find(":lo12:external_data_symbol") !=
+      std::string::npos) {
+    return fail("GOT-required global load must not use direct :lo12: relocation");
+  }
+  if (move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_abi::x_register(2) ||
+      move->destination_register->reg != aarch64_abi::x_register(0)) {
+    return fail("expected call move to consume the GOT-materialized global value");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected GOT-required global route to print: " + printed.diagnostic);
+  }
+  if (printed.assembly.find("adrp x2, :got:external_data_symbol") ==
+          std::string::npos ||
+      printed.assembly.find("ldr x2, [x2, :got_lo12:external_data_symbol]") ==
+          std::string::npos ||
+      printed.assembly.find("adrp x2, external_data_symbol") !=
+          std::string::npos ||
+      printed.assembly.find(":lo12:external_data_symbol") != std::string::npos) {
+    return fail("expected printed GOT-required route to avoid direct external relocation");
+  }
+  return 0;
+}
+
+int load_global_call_argument_keeps_direct_for_direct_global() {
+  auto prepared = prepared_with_load_global_call_argument(
+      bir::GlobalAddressMaterializationPolicy::Direct);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      !diagnostics.empty()) {
+    return fail("expected direct global load call route to select load/move/call/return: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected direct global route to print: " + printed.diagnostic);
+  }
+  if (printed.assembly.find("adrp x9, internal_data_symbol") ==
+          std::string::npos ||
+      printed.assembly.find("add x9, x9, :lo12:internal_data_symbol") ==
+          std::string::npos ||
+      printed.assembly.find(":got:internal_data_symbol") != std::string::npos ||
+      printed.assembly.find(":got_lo12:internal_data_symbol") !=
+          std::string::npos) {
+    return fail("expected direct global route to preserve direct page/low12 relocation");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_result_move_after_direct_call() {
   auto prepared = prepared_with_direct_call_result_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -10469,6 +10756,16 @@ int main() {
   }
   if (const int status =
           stack_home_symbol_address_argument_materializes_directly_to_call_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          load_global_call_argument_uses_got_for_got_required_global();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          load_global_call_argument_keeps_direct_for_direct_global();
       status != 0) {
     return status;
   }
