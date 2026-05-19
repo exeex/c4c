@@ -128,6 +128,25 @@ Durable inventory findings to preserve:
   runtime scans require timeout plus stale-process cleanup before their logs are
   trusted.
 
+Deactivation 2026-05-19 inventory result:
+
+- The captured backend regex inventory selected 352 tests: 272 passed and 80
+  failed.
+- All 80 current failures are `c_testsuite_aarch64_backend_*` tests.
+- Failure buckets are 38 machine-printer failures, 14 `lir_to_bir` admission
+  failures, 27 runtime failures, and 1 timeout.
+- Closed AArch64 owners 285 through 294 remain valid by current evidence; no
+  current count alone reopens them without generated-code or proof evidence
+  that contradicts their closure boundaries.
+- The highest-value focused split is the 22-case fused compare-branch
+  machine-printer/lowering operand-form family:
+  `00030`, `00034`, `00037`, `00038`, `00041`, `00054`, `00055`, `00057`,
+  `00059`, `00076`, `00077`, `00085`, `00092`, `00093`, `00101`, `00127`,
+  `00200`, `00203`, `00207`, `00212`, `00214`, and `00215`.
+- Implementation work should move to the focused fused compare-branch owner,
+  where progress means semantic operand publication/printing for
+  compare-branch forms, not filename matching or expectation/runner changes.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
