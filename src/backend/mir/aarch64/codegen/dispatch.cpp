@@ -301,6 +301,13 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_direct_global_select_chain_call_argument(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    BlockScalarLoweringState& scalar_state);
+
 [[nodiscard]] bool materialize_scalar_call_argument_value(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -417,6 +424,14 @@ lower_scalar_call_argument_producers(
     module::ModuleLoweringDiagnostics& diagnostics) {
   std::vector<module::MachineInstruction> lowered;
   for (const auto& argument : call.args) {
+    if (auto select_chain =
+            materialize_direct_global_select_chain_call_argument(context,
+                                                                 argument,
+                                                                 instruction_index,
+                                                                 scalar_state)) {
+      lowered.push_back(std::move(*select_chain));
+      continue;
+    }
     std::vector<std::string_view> active_values;
     if (!materialize_scalar_call_argument_value(context,
                                                 argument,
@@ -666,6 +681,12 @@ struct SameBlockLoadProducer {
   std::size_t instruction_index = 0;
 };
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_select_chain_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::vector<std::string> lines);
+
 [[nodiscard]] SameBlockLoadProducer find_same_block_load_producer(
     const module::BlockLoweringContext& context,
     const bir::Value& value) {
@@ -703,6 +724,34 @@ struct SameBlockLoadProducer {
     }
   }
   return nullptr;
+}
+
+struct SameBlockSelectProducer {
+  const bir::SelectInst* select = nullptr;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] SameBlockSelectProducer find_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return {};
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto* select =
+        std::get_if<bir::SelectInst>(&context.bir_block->insts[candidate_index]);
+    if (select != nullptr &&
+        select->result.kind == bir::Value::Kind::Named &&
+        select->result.name == value.name) {
+      return SameBlockSelectProducer{.select = select,
+                                     .instruction_index = candidate_index};
+    }
+  }
+  return {};
 }
 
 [[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
@@ -764,6 +813,54 @@ struct SameBlockLoadProducer {
 
 [[nodiscard]] bool is_cmp_immediate_encodable(std::int64_t value) {
   return value >= 0 && value <= 4095;
+}
+
+[[nodiscard]] const bir::Inst* find_same_block_named_producer(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index);
+
+[[nodiscard]] std::optional<std::size_t> producer_instruction_index(
+    const module::BlockLoweringContext& context,
+    const bir::Inst* producer);
+
+[[nodiscard]] bool select_chain_contains_direct_global_load(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    unsigned depth = 0) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, value.name, before_instruction_index);
+  if (producer == nullptr) {
+    return false;
+  }
+  if (std::get_if<bir::LoadGlobalInst>(producer) != nullptr) {
+    return true;
+  }
+  const auto producer_index = producer_instruction_index(context, producer);
+  const auto nested_before = producer_index.value_or(before_instruction_index);
+  if (const auto* select = std::get_if<bir::SelectInst>(producer);
+      select != nullptr) {
+    return select_chain_contains_direct_global_load(
+               context, select->true_value, nested_before, depth + 1) ||
+           select_chain_contains_direct_global_load(
+               context, select->false_value, nested_before, depth + 1);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    return select_chain_contains_direct_global_load(
+        context, cast->operand, nested_before, depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer);
+      binary != nullptr) {
+    return select_chain_contains_direct_global_load(
+               context, binary->lhs, nested_before, depth + 1) ||
+           select_chain_contains_direct_global_load(
+               context, binary->rhs, nested_before, depth + 1);
+  }
+  return false;
 }
 
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
@@ -1144,6 +1241,7 @@ void retarget_pointer_store_value_to_emitted_scalar(
           using T = std::decay_t<decltype(typed_inst)>;
           if constexpr (std::is_same_v<T, bir::BinaryInst> ||
                         std::is_same_v<T, bir::CastInst> ||
+                        std::is_same_v<T, bir::SelectInst> ||
                         std::is_same_v<T, bir::LoadLocalInst> ||
                         std::is_same_v<T, bir::LoadGlobalInst>) {
             matches = typed_inst.result.kind == bir::Value::Kind::Named &&
@@ -1258,6 +1356,33 @@ void retarget_pointer_store_value_to_emitted_scalar(
   }
 
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    if (cast->opcode == bir::CastOpcode::SExt) {
+      bir::Value source = cast->operand;
+      source.type = cast->operand.type;
+      if (!emit_value_publication_to_register(
+              context, source, before_instruction_index, target_index, scratch_index, lines)) {
+        return false;
+      }
+      const auto source_bits = integer_bit_width(cast->operand.type);
+      const auto result_bits = integer_bit_width(cast->result.type);
+      const auto source_name = gp_register_name(target_index, abi::RegisterView::W);
+      const auto target_name = gp_register_name(target_index, *target_view);
+      if (!source_bits.has_value() || !result_bits.has_value() ||
+          !source_name.has_value() || !target_name.has_value() ||
+          *source_bits >= *result_bits) {
+        return false;
+      }
+      if (*source_bits == 8U) {
+        lines.push_back("sxtb " + *target_name + ", " + *source_name);
+      } else if (*source_bits == 16U) {
+        lines.push_back("sxth " + *target_name + ", " + *source_name);
+      } else if (*source_bits == 32U && *result_bits == 64U) {
+        lines.push_back("sxtw " + *target_name + ", " + *source_name);
+      } else {
+        return false;
+      }
+      return true;
+    }
     if (cast->opcode == bir::CastOpcode::ZExt) {
       bir::Value source = cast->operand;
       source.type = cast->operand.type;
@@ -1318,6 +1443,241 @@ void retarget_pointer_store_value_to_emitted_scalar(
   lines.push_back(std::string{binary->opcode == bir::BinaryOpcode::Add ? "add " : "sub "} +
                   *result + ", " + *result + ", " + *rhs_name);
   return true;
+}
+
+[[nodiscard]] std::string select_chain_label(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::size_t label_index,
+    std::string_view suffix) {
+  const auto function_name = context.function.control_flow != nullptr
+                                 ? context.function.control_flow->function_name
+                                 : c4c::kInvalidFunctionName;
+  const auto block_label = context.control_flow_block != nullptr
+                               ? context.control_flow_block->block_label
+                               : c4c::kInvalidBlockLabel;
+  return ".Lselect_mat_" + std::to_string(function_name) + "_" +
+         std::to_string(block_label) + "_" + std::to_string(instruction_index) +
+         "_" + std::to_string(label_index) + "_" + std::string{suffix};
+}
+
+[[nodiscard]] bool emit_select_chain_value_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::size_t root_instruction_index,
+    std::vector<std::string>& lines,
+    std::size_t& label_index,
+    std::vector<std::string_view>& active_values) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    const auto target_view = scalar_view_for_type(value.type);
+    const auto target = target_view.has_value()
+                            ? gp_register_name(target_index, *target_view)
+                            : std::nullopt;
+    if (!target.has_value()) {
+      return false;
+    }
+    lines.push_back("mov " + *target + ", #" + std::to_string(value.immediate));
+    return true;
+  }
+  if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  for (const auto active : active_values) {
+    if (active == value.name) {
+      return false;
+    }
+  }
+
+  const auto producer =
+      find_same_block_select_producer(context, value, before_instruction_index);
+  if (producer.select == nullptr) {
+    return emit_value_publication_to_register(
+        context, value, before_instruction_index, target_index, scratch_index, lines);
+  }
+
+  const auto condition = branch_condition_suffix(producer.select->predicate);
+  const auto compare_view = scalar_view_for_type(producer.select->compare_type);
+  if (!condition.has_value() || !compare_view.has_value()) {
+    return false;
+  }
+
+  active_values.push_back(value.name);
+  const auto current_label = label_index++;
+  const auto true_label =
+      select_chain_label(context, root_instruction_index, current_label, "true");
+  const auto end_label =
+      select_chain_label(context, root_instruction_index, current_label, "end");
+
+  const auto lhs_name = gp_register_name(target_index, *compare_view);
+  if (!lhs_name.has_value() ||
+      !emit_value_publication_to_register(context,
+                                          producer.select->lhs,
+                                          producer.instruction_index,
+                                          target_index,
+                                          scratch_index,
+                                          lines)) {
+    active_values.pop_back();
+    return false;
+  }
+  std::optional<std::string> rhs_name;
+  if (producer.select->rhs.kind == bir::Value::Kind::Immediate &&
+      is_cmp_immediate_encodable(producer.select->rhs.immediate)) {
+    rhs_name = "#" + std::to_string(producer.select->rhs.immediate);
+  } else {
+    rhs_name = gp_register_name(scratch_index, *compare_view);
+    if (!rhs_name.has_value() ||
+        !emit_value_publication_to_register(context,
+                                            producer.select->rhs,
+                                            producer.instruction_index,
+                                            scratch_index,
+                                            target_index,
+                                            lines)) {
+      active_values.pop_back();
+      return false;
+    }
+  }
+  lines.push_back("cmp " + *lhs_name + ", " + *rhs_name);
+  lines.push_back("b." + std::string{*condition} + " " + true_label);
+
+  if (!emit_select_chain_value_to_register(context,
+                                           producer.select->false_value,
+                                           producer.instruction_index,
+                                           target_index,
+                                           scratch_index,
+                                           root_instruction_index,
+                                           lines,
+                                           label_index,
+                                           active_values)) {
+    active_values.pop_back();
+    return false;
+  }
+  lines.push_back("b " + end_label);
+  lines.push_back(true_label + ":");
+  if (!emit_select_chain_value_to_register(context,
+                                           producer.select->true_value,
+                                           producer.instruction_index,
+                                           target_index,
+                                           scratch_index,
+                                           root_instruction_index,
+                                           lines,
+                                           label_index,
+                                           active_values)) {
+    active_values.pop_back();
+    return false;
+  }
+  lines.push_back(end_label + ":");
+  active_values.pop_back();
+  return true;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_select_chain_materialization_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::vector<std::string> lines) {
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryRead},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = [&] {
+            std::string text;
+            for (std::size_t index = 0; index < lines.size(); ++index) {
+              if (index != 0) {
+                text += '\n';
+              }
+              text += lines[index];
+            }
+            return text;
+          }(),
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+materialize_direct_global_select_chain_call_argument(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value() ||
+      !select_chain_contains_direct_global_load(context,
+                                                value,
+                                                before_instruction_index)) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2U) {
+    return std::nullopt;
+  }
+  const auto result_view = scalar_view_for_type(value.type);
+  const auto result_register =
+      result_view.has_value()
+          ? abi::gp_register(scratches[0].index, *result_view)
+          : std::nullopt;
+  if (!result_register.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  std::size_t label_index = 0;
+  std::vector<std::string_view> active_values;
+  if (!emit_select_chain_value_to_register(context,
+                                           value,
+                                           before_instruction_index,
+                                           scratches[0].index,
+                                           scratches[1].index,
+                                           before_instruction_index,
+                                           lines,
+                                           label_index,
+                                           active_values) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  RegisterOperand emitted{
+      .reg = *result_register,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_name = *value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = result_view,
+  };
+  record_emitted_scalar_register(scalar_state, *value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, before_instruction_index, std::move(lines));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
