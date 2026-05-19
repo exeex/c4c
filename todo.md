@@ -3,47 +3,60 @@
 Status: Active
 Source Idea Path: ideas/open/296_aarch64_fused_compare_branch_operand_forms.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Semantic Operand Publication Or Printing
+Current Step ID: 4
+Current Step Title: Prove The Focused 22-Case Family
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 completed the immediate-left fused compare-branch normalization slice at
-the printer boundary. `print_fused_compare_branch` now derives local printable
-compare operands by first trying the published order and then trying the swapped
-order with the swapped predicate. This preserves `BranchConditionRecord` and
-`compare_branch_candidate` semantic facts unchanged while emitting legal AArch64
-`cmp reg, #imm` order for forms such as `slt i32 1000, %t8`.
+Step 4 classified the remaining 21 focused c-testsuite failures after the
+immediate-left repair. The accepted focused baseline in `test_before.log` still
+has 6 passed / 21 failed, and every residual failure still reaches
+`opcode=compare_branch: fused compare branch operands are not printable`.
 
-Added focused machine-printer coverage for an immediate-left `slt` fused
-compare branch. The test keeps the semantic compare facts as `1000 < %rhs`,
-publishes printable operands in the old illegal immediate/register order, and
-expects `cmp w13, #1000` with `b.gt`.
+Narrow `--dump-bir` / `--dump-prepared-bir` diagnostics show the residual cases
+split into these semantic operand-form subfamilies:
 
-The representative c-testsuite case `00030` now passes in the delegated proof
-and no longer fails at the old fused compare-branch operand-form printer point.
+- Constant-vs-constant fused compares still marked `can_fuse_with_branch=yes`:
+  `00034`, `00037`, `00038`, `00054`, `00055`, `00057`, `00059`, `00076`,
+  `00077`, `00085`, `00092`, `00093`, `00101`, `00127`, `00200`, `00207`,
+  `00212`, `00214`, `00215`. Representative prepared records include
+  `ne i32 1, 0`, `ne i64 1, 1`, `ult i64 4, 2`, `eq i64 2, 2`, and repeated
+  `ne i32 0, 0` loop/logic guards. Several of these files contain later
+  register-vs-immediate compares, but the first printer blocker is a
+  constant-vs-constant compare branch.
+- Non-encodable register-vs-immediate fused compares that need immediate
+  materialization or non-fused fallback instead of direct `cmp #imm` printing:
+  `00041` has `slt i32 %t0, 5000`; `00203` has
+  `slt i64 %t1, -2147483648` and later `slt i64 2147483647, %t8`.
+- Already-covered encodable register-vs-immediate forms are present as
+  secondary branches in `00034`, `00037`, `00077`, `00092`, `00127`, `00200`,
+  `00212`, `00214`, and `00215`; these are not the next blocker after the
+  immediate-left repair.
 
 ## Suggested Next
 
-Delegate Step 4 to decide whether the remaining 21 focused c-testsuite failures
-belong to this idea as additional operand-form work or should be split. The next
-coherent packet should classify and repair constant-vs-constant fused compares
-or non-encodable immediate compare operands without weakening tests.
+Repair the constant-vs-constant fused compare branch publication rule first.
+The highest-value packet is to stop publishing both-immediate compares as
+directly printable fused compare branches: either fold the branch direction at
+semantic/prepared authority, or keep the compare branch fail-closed and lower a
+plain branch/control-flow form that the AArch64 printer can spell. This should
+be implemented as a semantic operand-form rule, not by matching testcase names
+or individual literal pairs.
 
 ## Watchouts
 
-- Residual focused failures still report the generic
-  `fused compare branch operands are not printable` diagnostic, but sampled
-  prepared BIR shows different shapes from the repaired immediate-left register
-  case: constant-vs-constant compares such as `ne i32 1, 0`, `ult i64 4, 2`,
-  and `eq i64 2, 2`; out-of-range immediate RHS forms such as
-  `slt i32 %t0, 5000`; and negative immediate RHS forms such as
-  `slt i64 %t1, -2147483648`.
-- The current repair intentionally does not constant-fold branch direction,
-  materialize compare immediates, add scratch-register compare lowering, or
-  mutate semantic compare records.
+- The constant-vs-constant family is 19 of 21 residual failures, so it should
+  stay in this idea as the next repair packet. It is not a separate lifecycle
+  split unless inspection shows branch folding belongs to a different active
+  backend owner.
+- The non-encodable immediate family (`00041`, `00203`) is still inside fused
+  compare-branch operand forms, but it is a distinct second implementation
+  packet after constant-vs-constant publication is repaired.
+- The current accepted repair intentionally does not constant-fold branch
+  direction, materialize compare immediates, add scratch-register compare
+  lowering, or mutate semantic compare records.
 - Do not match c-testsuite filenames, test numbers, or exact emitted
   instruction strings.
 - Do not change expectations, allowlists, unsupported classifications, CTest
@@ -56,15 +69,12 @@ or non-encodable immediate compare operands without weakening tests.
 
 ## Proof
 
-Focused pre-proof:
-`cmake --build build --target backend_aarch64_machine_printer_test && ctest --test-dir build -R '^backend_aarch64_machine_printer$' --output-on-failure`
-passed.
+Accepted baseline analyzed: `test_before.log` records 6 passed / 21 failed for
+the focused scope after `00030` was repaired.
 
-Delegated proof command run exactly:
-`cmake --build build --target c4cll backend_aarch64_branch_control_lowering_test backend_aarch64_branch_compare_records_test backend_aarch64_compare_branch_candidate_records_test backend_aarch64_prepared_branch_records_test backend_aarch64_machine_printer_test && ctest --test-dir build -R '^(backend_aarch64_(branch_control_lowering|branch_compare_records|compare_branch_candidate_records|prepared_branch_records|machine_printer)|c_testsuite_aarch64_backend_src_(00030|00034|00037|00038|00041|00054|00055|00057|00059|00076|00077|00085|00092|00093|00101|00127|00200|00203|00207|00212|00214|00215)_c)$' --output-on-failure | tee test_after.log`
-
-Result recorded in `test_after.log`: build succeeded; the five focused AArch64
-unit tests passed; `c_testsuite_aarch64_backend_src_00030_c` passed; the
-remaining 21 c-testsuite focused cases failed at the generic fused
-compare-branch operand printer diagnostic and are classified above for the next
-packet.
+Narrow diagnostics used for classification only:
+`./build/c4cll --dump-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/<case>.c`
+and
+`./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/<case>.c`
+for representative residual cases. No broad backend regex was rerun, and no
+root proof log was modified for this classification-only packet.
