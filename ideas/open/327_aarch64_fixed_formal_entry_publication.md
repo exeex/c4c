@@ -85,3 +85,22 @@ Reject the route if it:
 - leaves the exact old failure mode in place behind a new abstraction, such
   that generated `myprintf` can still consume an unpublished fixed pointer
   formal before first use.
+
+## Lifecycle Handoff
+
+2026-05-19: Committed slice `de571342a` repaired the fixed-formal entry
+publication owner for ordinary register homes and small byval aggregate
+formals prepared into frame slots. Focused backend coverage now proves the
+callee-side publication behavior, and generated `00204.c` shows `myprintf`
+publishing the incoming `x0` fixed pointer into its prepared home before use.
+The same proof moved the representative's first bad fact to caller-side byval
+aggregate call-argument publication: before calls such as `fa_s1` and
+`fa_s2`, generated AArch64 prepares source aggregate bytes in stack/frame
+storage but does not pack those bytes into the AAPCS64 integer argument
+register lanes expected by the callee.
+
+This idea is parked rather than kept active. Do not continue the caller-side
+byval handoff repair as routine fixed-formal entry publication work. Resume or
+close this idea only after lifecycle authority is allowed to touch the closed
+archive, or if fresh generated-code evidence shows the exact fixed-formal
+entry publication fault has returned.
