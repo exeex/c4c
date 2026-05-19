@@ -1,138 +1,98 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Reconstruct the Post-301 Inventory
+Current Step ID: 2
+Current Step Title: Classify Residual Families
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1: reconstructed the post-301 backend-regex residual
-inventory from the accepted broad proof in `test_before.log`.
+Completed plan Step 2: classified the 52 post-301 residual failures from
+accepted `test_before.log` and c-testsuite source labels without rerunning
+broad runtime tests or changing implementation/test contracts.
 
-Accepted proof state:
+Residual family classification:
 
-- Selected tests: 352
-- Passed tests: 300
-- Failed tests: 52
-- Local backend/unit failures: 0
-- `c_testsuite` AArch64 backend failures: 52
+- Owner-ready scalar machine-node operand-form printer family (3):
+  `00064`, `00139`, `00205`.
+  Direct diagnostics show selected scalar nodes reaching the printer without
+  the structured operands the AArch64 printer accepts: scalar `div`, scalar
+  `mul`, and scalar `logical_shift_right` unsigned reduction. This is separate
+  from closed fused compare-branch owner 296, scalar immediate owner 299,
+  scalar-cast owner 300, and memory-store owner 301.
+- Owner-ready assembly legality/materialization singletons (2): `00104`,
+  `00182`.
+  `00104` emits invalid `sxtw w20, w13`; `00182` emits invalid
+  `mov x0, #1234567`. These are crisp compile/assembler failures, but they are
+  narrower than the scalar operand-form family and should not be merged into
+  299/300 without generated-code evidence.
+- Owner-ready but low-cardinality call-boundary move printer gap (1): `00140`.
+  The diagnostic is a selected-machine-node gap for a call-boundary move
+  outside the supported register subset. It overlaps aggregate/variadic ABI
+  subject matter but has a direct printer failure source.
+- Parked `lir_to_bir` admission/local-memory residuals (2): `00204`, `00216`.
+  Current diagnostics name `gep` local-memory and load local-memory failures,
+  but these cases sit near closed admission/projection owners 297 and 298.
+  They need a narrow diagnostic/generated-code probe before reopening or
+  splitting a semantic admission owner.
+- Parked scalar value, promotion, and control-value runtime family (14):
+  `00035`, `00066`, `00086`, `00102`, `00111`, `00113`, `00119`, `00121`,
+  `00123`, `00144`, `00164`, `00168`, `00200`, `00218`.
+  Source labels cover unary/logical value production, short/char/integer
+  promotions, shifts and shift-result types, int/float/double conversion,
+  recursion-multiply return flow, conditional pointer/null conversions, and
+  enum bit-field zero-extension. These are not owner-ready from counts alone;
+  at least one generated-code probe must decide whether the common root is
+  value publication, extension width, call return, branch/control authority, or
+  multiple separate owners.
+- Parked aggregate, array, initializer, and indexed-storage runtime family (6):
+  `00050`, `00151`, `00157`, `00176`, `00185`, `00195`.
+  The failures involve nested global aggregate initialization, multidimensional
+  array/range initializers, local/global indexed array stores, quicksort over a
+  global array, and global array-of-struct member access. This is adjacent to
+  closed projection/store owners 298 and 301, so it needs generated-code
+  evidence before an owner is selected.
+- Parked pointer, string, address, and indirect-value runtime/crash family (11):
+  `00089`, `00112`, `00137`, `00138`, `00170`, `00172`, `00173`, `00179`,
+  `00189`, `00208`, `00214`.
+  The set includes function-pointer values, string-literal address flow,
+  pointer equality, enum/pointer-adjacent crashes, string buffer/libc paths,
+  local array/static aggregate lifetime, and builtin/statement-expression
+  address flow. This overlaps closed owners 287, 289, 294, and 301 at a high
+  level, so runtime status alone is insufficient for ownership.
+- Parked ABI, libc, float/conversion, and formatted-output runtime family (5):
+  `00159`, `00174`, `00175`, `00186`, `00207`.
+  The visible symptoms include stale scalar call arguments, all-zero or junk
+  floating output, char/int/float argument conversion failures, short `sprintf`
+  loop output, and VLA/goto/short-circuit crash behavior. This needs a
+  generated-code probe before deciding whether it belongs to call ABI, floating
+  lowering, conversion lowering, or control-flow publication.
+- Parked complex control-flow, side-effect, and timeout family (8): `00143`,
+  `00169`, `00181`, `00187`, `00193`, `00196`, `00215`, `00220`.
+  Duff's device, nested loops, recursive Hanoi, file I/O timeout, switch
+  return/break flow, short-circuit side effects, dead infinite-loop suppression,
+  and wide-character timeout/output behavior should remain parked until narrow
+  probes distinguish bad branch/control lowering from output storm, libc, or
+  frontend/runtime-library behavior.
 
-Current c_testsuite failures by runner source:
+Best next focused owner candidate:
 
-- `FRONTEND_FAIL` (6): `00064`, `00139`, `00140`, `00204`, `00205`, `00216`
-- `BACKEND_FAIL` (2): `00104`, `00182`
-- `RUNTIME_NONZERO` (26): `00035`, `00050`, `00066`, `00086`, `00089`,
-  `00102`, `00111`, `00112`, `00113`, `00119`, `00121`, `00123`, `00137`,
-  `00138`, `00144`, `00151`, `00170`, `00173`, `00179`, `00181`, `00189`,
-  `00200`, `00207`, `00208`, `00214`, `00215`
-- `RUNTIME_MISMATCH` (15): `00157`, `00159`, `00164`, `00168`, `00169`,
-  `00172`, `00174`, `00175`, `00176`, `00185`, `00186`, `00193`, `00195`,
-  `00196`, `00218`
-- Timeout (3): `00143`, `00187`, `00220`
-
-Current failure list:
-
-- `c_testsuite_aarch64_backend_src_00035_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00050_c` - `RUNTIME_NONZERO`, exit 3
-- `c_testsuite_aarch64_backend_src_00064_c` - `FRONTEND_FAIL`, printer
-  cannot spell scalar `div`
-- `c_testsuite_aarch64_backend_src_00066_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00086_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00089_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00102_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00104_c` - `BACKEND_FAIL`, invalid
-  `sxtw w20, w13`
-- `c_testsuite_aarch64_backend_src_00111_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00112_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00113_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00119_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00121_c` - `RUNTIME_NONZERO`, exit 167
-- `c_testsuite_aarch64_backend_src_00123_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00137_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00138_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00139_c` - `FRONTEND_FAIL`, printer
-  cannot spell scalar `mul`
-- `c_testsuite_aarch64_backend_src_00140_c` - `FRONTEND_FAIL`, unsupported
-  call-boundary move shape
-- `c_testsuite_aarch64_backend_src_00143_c` - Timeout
-- `c_testsuite_aarch64_backend_src_00144_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00151_c` - `RUNTIME_NONZERO`, exit 1
-- `c_testsuite_aarch64_backend_src_00157_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00159_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00164_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00168_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00169_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00170_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00172_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00173_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00174_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00175_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00176_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00179_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00181_c` - `RUNTIME_NONZERO`,
-  segmentation fault after substantial stdout
-- `c_testsuite_aarch64_backend_src_00182_c` - `BACKEND_FAIL`, invalid
-  immediate materialization for `mov x0, #1234567`
-- `c_testsuite_aarch64_backend_src_00185_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00186_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00187_c` - Timeout
-- `c_testsuite_aarch64_backend_src_00189_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00193_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00195_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00196_c` - `RUNTIME_MISMATCH`
-- `c_testsuite_aarch64_backend_src_00200_c` - `RUNTIME_NONZERO`, exit 26
-  after repeated wrong shift-type output
-- `c_testsuite_aarch64_backend_src_00204_c` - `FRONTEND_FAIL`, semantic
-  `lir_to_bir` failed in `gep` local-memory family
-- `c_testsuite_aarch64_backend_src_00205_c` - `FRONTEND_FAIL`, printer cannot
-  spell scalar `logical_shift_right` unsigned reduction
-- `c_testsuite_aarch64_backend_src_00207_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00208_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00214_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00215_c` - `RUNTIME_NONZERO`,
-  segmentation fault
-- `c_testsuite_aarch64_backend_src_00216_c` - `FRONTEND_FAIL`, semantic
-  `lir_to_bir` failed in load local-memory family
-- `c_testsuite_aarch64_backend_src_00218_c` - `RUNTIME_MISMATCH`, unsigned
-  enum bit-field output
-- `c_testsuite_aarch64_backend_src_00220_c` - Timeout
-
-Likely Step 2 residual family buckets from the log and test source headers:
-
-- Printer/selector shape gaps: scalar `mul`/`div`, unsigned reduction
-  `logical_shift_right`, and call-boundary move selection.
-- AArch64 assembly legality gaps: sign-extension register-width selection and
-  large immediate materialization.
-- Semantic admission/local-memory gaps: `gep` and load local-memory failures
-  still block `00204` and `00216` before prepared-module handoff.
-- Runtime scalar correctness gaps: unary/logical operators, promotions,
-  short/char sign or zero extension, shifts, integer-to-float conversion, and
-  enum/bit-field extension.
-- Runtime aggregate, pointer, and local/global memory gaps: structs, unions,
-  arrays, initializer shapes, address/pointer flow, string buffers, and
-  function-pointer paths.
-- Runtime call/control-flow gaps: recursion, nested loops, switch/return
-  control, indirect calls, variadic/ABI-adjacent calls, and larger program
-  state machines.
-- Timeout/output-storm bucket: `00143`, `00187`, and `00220` need to remain
-  separate until hang versus output volume versus runtime library behavior is
-  proven.
+- Recommend activating an AArch64 scalar machine-node operand-form owner for
+  `00064`, `00139`, and `00205`.
+  It has multiple direct compile-stage diagnostics, does not depend on runtime
+  output interpretation, and is clearly outside the recently closed owner
+  boundaries: not fused compare-branch operands (296), not non-encodable
+  add/sub/bitwise immediates (299), not zero/sign-extension cast forms (300),
+  and not store operand materialization (301). The owner should repair scalar
+  `mul`/`div`/reduction operand publication or selection semantically and prove
+  the full three-case focused subset, not just one diagnostic.
 
 ## Suggested Next
 
-Execute plan Step 2 by turning the Step 1 inventory into a small number of
-owned residual families, using generated-code or diagnostic evidence before
-choosing any implementation owner.
+Create or activate a focused owner for AArch64 scalar machine-node operand
+forms covering `00064`, `00139`, and `00205`; keep runtime, timeout, and
+`lir_to_bir` residuals parked until narrow generated-code probes assign them.
 
 ## Watchouts
 
@@ -140,9 +100,15 @@ choosing any implementation owner.
   implementation.
 - Do not change expectations, allowlists, unsupported classifications, timeout
   policy, runner behavior, CTest registration, or test contracts.
-- Do not reopen ideas 285 through 301 from counts alone; require
-  generated-code, diagnostic, or proof evidence that contradicts closure
-  boundaries.
+- Do not reopen ideas 285 through 301 from counts alone. The parked runtime
+  buckets overlap several closed owner themes at a high level but lack the
+  generated-code evidence needed to contradict closure boundaries.
+- Keep `00104` and `00182` out of the recommended scalar operand-form owner
+  unless a probe proves they share the same operand-publication path; they are
+  compile-stage singletons and risk reopening 299/300 too broadly.
+- Keep `00204` and `00216` separate from 297/298 until a narrow diagnostic
+  probe explains why local-memory admission diagnostics remain after those
+  owners closed.
 - Keep timeout or output-storm cases separate unless evidence supports a
   hang-specific owner.
 - The broad proof shows all 52 residual failures are `c_testsuite` AArch64
@@ -155,4 +121,5 @@ choosing any implementation owner.
 
 Used existing accepted broad proof `test_before.log`; no tests were rerun per
 packet instruction. The accepted proof records 352 selected, 300 passed, and
-52 failed after idea 301.
+52 failed after idea 301. No `test_after.log` update was required for this
+classification-only packet.
