@@ -1,4 +1,5 @@
 #include "calls.hpp"
+#include "machine_printer.hpp"
 #include "memory.hpp"
 #include "variadic.hpp"
 
@@ -1858,6 +1859,45 @@ std::string register_name(const RegisterOperand& operand) {
   return abi::register_name(operand.reg);
 }
 
+std::optional<unsigned> scalar_integer_width_bits(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+      return 64U;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+std::uint64_t scalar_integer_immediate_bits(const ImmediateOperand& immediate,
+                                            unsigned width_bits) {
+  if (width_bits == 32U) {
+    return static_cast<std::uint32_t>(immediate.unsigned_value);
+  }
+  return immediate.unsigned_value;
+}
+
+bool is_single_move_wide_immediate(std::uint64_t value, unsigned width_bits) {
+  const unsigned chunks = width_bits == 64U ? 4U : 2U;
+  unsigned nonzero_chunks = 0;
+  for (unsigned chunk = 0; chunk < chunks; ++chunk) {
+    if (((value >> (chunk * 16U)) & 0xffffU) != 0U) {
+      ++nonzero_chunks;
+    }
+  }
+  return nonzero_chunks <= 1U;
+}
+
 }  // namespace
 
 InstructionRecord make_call_boundary_move_instruction(
@@ -2070,6 +2110,20 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) +
                               "call-boundary move mnemonic is not printable");
+  }
+  if (!move.source_register.has_value() && move.source_immediate.has_value()) {
+    const auto width_bits = scalar_integer_width_bits(move.source_immediate->type);
+    if (!width_bits.has_value() || !abi::is_gp_register(move.destination_register->reg)) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "call-boundary immediate move requires scalar integer GPR materialization");
+    }
+    const auto value =
+        scalar_integer_immediate_bits(*move.source_immediate, *width_bits);
+    if (!is_single_move_wide_immediate(value, *width_bits)) {
+      return target_printed(materialize_integer_constant_lines(
+          move.destination_register->reg, value, *width_bits));
+    }
   }
   std::ostringstream out;
   out << mnemonic << " " << register_name(*move.destination_register) << ", ";
