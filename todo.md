@@ -8,37 +8,41 @@ Current Step Title: Validate And Classify Residuals
 
 ## Just Finished
 
-Step 2 repaired the representable fixed HFA return path for AArch64 scalar FP
-lanes. Semantic LIR-to-BIR return classification now recognizes homogeneous
-`float`/`double` aggregates of 1..4 lanes and classifies them as FP register
-returns instead of `ptr sret`; fixed HFA call results now carry explicit
-per-lane BIR values, aggregate stores materialize each returned lane into the
-matching local aggregate leaf, and aggregate returns load/publish every return
-lane instead of collapsing to one scalar.
+Step 4 classified the current `00204.c` AArch64 runtime segmentation fault.
+The fault is not the next HFA/floating lane consume; it is a distinct adjacent
+AArch64 function-entry formal publication issue for the ordinary fixed
+variadic `format` pointer in `myprintf`.
 
-AArch64 return/call-result publication now covers scalar FPR HFA lanes:
-callee-side before-return moves publish return lanes into `sN`/`dN`, after-call
-moves consume call-result lanes from ABI FPRs, and the return printer preserves
-the correct source/destination register views for scalar register publication.
+Runtime evidence from LLDB: the binary reaches `stdarg:`, enters
+`myprintf("%9s ...", ...)`, then stops at `myprintf+152` on
+`ldrb w9, [x10]` with `x10 = 0`. At the same stop, `x0` still identifies the
+format string `.str49`, and `lr = stdarg+1808`, immediately after the first
+`myprintf` callsite in `stdarg`.
 
-Focused backend coverage now proves the classification/publication contracts:
-`backend_lir_to_bir_notes` covers fixed HFA return and call-result
-classification plus multi-lane aggregate materialization as scalar FP ABI lanes
-rather than sret,
-`backend_aarch64_target_instruction_records` selects scalar FPR
-`FunctionReturnAbi` moves, and `backend_aarch64_machine_printer` prints scalar
-FPR register returns with ABI publication such as `fmov s0, s13`.
+Generated-code evidence: the `stdarg` callsite materializes `.str49` into
+`x0` before `bl myprintf`, but the `myprintf` prologue stores `x1`..`x7` and
+`q0`..`q7`, initializes the variadic entry helper, then emits `str x13, [sp]`
+for `bir.store_local %lv.s, ptr %p.format`. There is no preceding
+`x0 -> x13` or `x0 -> [sp]` publication for `%p.format`. Prepared BIR confirms
+the semantic handoff is correct (`bir.func @myprintf(ptr %p.format)` and
+`bir.store_local %lv.s, ptr %p.format`), while the AArch64 prepared storage
+assigns `%p.format` to `register:x13`; the first-use codegen then consumes the
+unpublished `x13` value.
+
+Classification: split this as adjacent to idea 326 before implementing a
+repair. The visible HFA/floating output is still corrupt earlier in the run,
+but the current fatal first bad fact is fixed-formal entry ABI publication for
+a non-HFA pointer parameter in a variadic callee.
 
 ## Suggested Next
 
-Advance to Step 4 residual classification. `00204.c` now advances past
-semantic LIR-to-BIR and backend assembly/linking. The current first bad fact is
-runtime execution: the linked AArch64 backend binary exits with
-`Segmentation fault` before producing output. Next packet should classify the
-generated-code/runtime fault first, then decide whether it remains under idea
-326's HFA/floating residual scope or needs a separate open idea. Do not reopen
-fixed global initializer emission, HFA argument lanes, or HFA return
-materialization unless fresh evidence points back to those owners.
+Smallest next packet: create or activate an adjacent AArch64 fixed-formal
+entry-publication initiative, then add a focused prepared/codegen/runtime proof
+that a function parameter assigned to non-ABI storage is populated from its
+AAPCS64 incoming register before first use. The minimal representative should
+cover a variadic callee with one fixed pointer formal, e.g. `myprintf(ptr
+%format, ...)`, and then rerun the same `00204.c` focused proof to expose the
+next HFA/floating bad fact after the null-deref is gone.
 
 ## Watchouts
 
@@ -76,31 +80,24 @@ materialization unless fresh evidence points back to those owners.
 - Reopen local/value-home publication only if fresh generated output again
   shows an unpublished ordinary local, constant, pattern operand, branch
   condition, call operand, or predecessor/join source.
+- Fresh generated output does show a fixed-formal entry publication gap:
+  `%p.format` is assigned to `x13` in prepared AArch64 storage, while AAPCS64
+  passes the first argument in `x0`; generated `myprintf` first stores/loads
+  from the `x13`-derived local cursor and dereferences null.
+- Suspected owning surfaces are AArch64 prepared value-home/regalloc handling
+  for BIR function params and AArch64 codegen of function-entry parameter
+  publication. Avoid treating this as an HFA `va_arg` source/progression repair
+  unless a later post-segfault run reaches the HFA/floating path again.
 
 ## Proof
 
 Delegated proof run:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|backend_prepare_liveness|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Result: build succeeded; 3/4 delegated CTest tests passed. The focused backend
-tests `backend_aarch64_machine_printer`,
-`backend_aarch64_instruction_dispatch`, and
-`backend_aarch64_target_instruction_records` passed. The representative
-`c_testsuite_aarch64_backend_src_00204_c` advanced past semantic
-`FRONTEND_FAIL` and backend assembly/linking; it now fails as
-`RUNTIME_NONZERO` with `exit=Segmentation fault`.
-
-Additional focused check: `ctest --test-dir build -j --output-on-failure -R
-'^backend_lir_to_bir_notes$'` passed after adding multi-lane HFA return/call
-result materialization coverage.
-
-Review follow-up checks:
-`ctest --test-dir build -j --output-on-failure -R
-'^(backend_prepare_liveness|backend_aarch64_instruction_dispatch)$'` passed,
-including focused coverage that generated AArch64 HFA call-result lane
-bindings publish `s0`/`s1` and dispatch consumes lane moves as `s0 -> s13`
-and `s1 -> s14`. Broad backend validation
-`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
-140/140.
+Result: build succeeded; 11/12 delegated CTest tests passed. The only failure
+is `c_testsuite_aarch64_backend_src_00204_c`, which still fails as
+`RUNTIME_NONZERO` with `exit=Segmentation fault`. The backend/BIR/prologue
+guardrails in the delegated subset passed, so the classification evidence comes
+from generated assembly, prepared dump inspection, and LLDB runtime state.
 
 Proof log: `test_after.log`.
