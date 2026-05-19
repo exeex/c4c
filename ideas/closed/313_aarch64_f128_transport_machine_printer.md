@@ -1,6 +1,6 @@
 # AArch64 F128 Transport Machine Printer
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/312_aarch64_lir_to_bir_local_memory_prepared_handoff.md
 
@@ -76,3 +76,34 @@ Reject the route if it:
   separate focused source idea;
 - rewrites broad AArch64 codegen or semantic admission paths without focused
   evidence that the `f128_transport` machine-node contract requires it.
+
+## Closure Note
+
+Closed 2026-05-19 as complete for the structured AArch64 `f128_transport`
+machine-printer/lowering owner.
+
+Focused proof covered:
+
+- `backend_aarch64_machine_printer`
+- `backend_aarch64_instruction_dispatch`
+- `backend_aarch64_target_instruction_records`
+- `backend_lir_to_bir_notes`
+- the existing `00204.c` semantic/prepared handoff dump guardrails
+- `c_testsuite_aarch64_backend_src_00204_c`
+
+The old `f128_transport` selected-but-unprintable diagnostic is gone. The
+representative `00204.c` now reaches an out-of-scope scalar stack-publication
+large-offset residual:
+
+```text
+cannot print AArch64 machine node family=scalar opcode=add:
+scalar ALU stack publication offset is not printable
+```
+
+That residual is parked under
+`ideas/open/314_aarch64_large_stack_offset_addressing.md`, alongside the
+existing `00216.c` large stack-slot offset assembly-validation residual.
+
+Close-time regression guard over matching focused `test_before.log` /
+`test_after.log` passed in non-decreasing mode with 9 passed and 1 failed
+before, 9 passed and 1 failed after, and no new failing tests.
