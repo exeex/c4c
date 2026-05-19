@@ -459,5 +459,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 306 without generated-code or
+- reopens recently closed owners 285 through 307 without generated-code or
   proof evidence that contradicts their closure boundary.
