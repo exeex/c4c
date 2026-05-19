@@ -8,15 +8,21 @@ Current Step Title: Verify Timeout Closure Evidence
 
 ## Just Finished
 
-Activated idea 304 from its parked close-rejected state. No implementation
-files, source ideas, closed ideas, test logs, or commit history were changed.
+Step 1 - Verify Timeout Closure Evidence: verified idea 304 as a valid close
+candidate. Source/lifecycle evidence records commit `2d8bbf8c8` repairing the
+focused `00205` timeout by fixing AArch64 fused sign-extension compare-branch
+lowering for loop bounds. `00205` completes quickly instead of returning to
+the 5-second timeout path, conditional loop-header compares are preserved, the
+legal sign-extension spelling remains `sxtw x9, w13`, and the later
+wrong-output/value-materialization residual was split to and closed under idea
+305. No implementation files, source ideas, closed ideas, test logs, or commit
+history were changed.
 
 ## Suggested Next
 
-Run Step 1 close verification for idea 304. Confirm the source acceptance
-criteria still hold, use matching canonical backend close-gate logs if present,
-and then request or perform Step 2 closure. Do not absorb closed idea 305
-value-materialization behavior into this timeout owner.
+Proceed to Step 2 closure for idea 304 as a lifecycle-only close packet. Keep
+the closure scoped to the timeout/control-flow owner and do not absorb closed
+idea 305 value-materialization behavior into this source idea.
 
 ## Watchouts
 
@@ -29,10 +35,29 @@ value-materialization behavior into this timeout owner.
   and closed under idea 305.
 - Preserve the idea 303 legality result: generated assembly must not return to
   illegal `sxtw` with a W destination.
+- Matching canonical backend close-gate logs passed before 139/139 and after
+  139/139, with no new failures and no new slow tests.
 - Do not edit implementation files, test logs, expectations, allowlists,
   unsupported classifications, timeout policy, runner behavior, proof-log
   policy, or CTest registration.
 
 ## Proof
 
-Activation only; no build, CTest, or regression guard was run in this packet.
+Used existing canonical `test_before.log` and `test_after.log`; no logs were
+modified.
+
+Command:
+
+```sh
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
+
+Result: PASS. The guard reported before `passed=139 failed=0 total=139`,
+after `passed=139 failed=0 total=139`, `delta passed=0 failed=0`, resolved
+failing tests `0`, new failing tests `0`, and new `>30.00s` tests `0`.
+
+Read-only evidence checks confirmed the source/lifecycle note for commit
+`2d8bbf8c8`; current generated `00205` assembly contains loop-header sequences
+matching `sxtw x9, w13; cmp x9, #9; b.lo` and `sxtw x9, w13; cmp x9, #4;
+b.lo`; closed idea 305 records the later value-materialization residual as
+closed with focused proof passing `00064`, `00139`, and `00205` quickly.
