@@ -1,6 +1,6 @@
 # LIR To BIR Global Pointer Aggregate Projection
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -78,6 +78,23 @@ nonzero or mismatch buckets, and the standalone `00220` timeout.
 - No progress is claimed through expectation, unsupported, runner, timeout,
   allowlist, CTest-registration, filename-specific, or diagnostic-string-only
   changes.
+
+## Closure Note
+
+Closed after commits `7a43e9523`, `e570274b4`, and `816d0aa7b` removed the
+old focused projection-admission blocker from the global, pointer-derived,
+aggregate, bootstrap/global, and `00216` flexible-array boundary cases.
+Focused close proof preserved the accepted 2/9 result for
+`backend_lir_to_bir_notes` plus `00176`, `00181`, `00182`, `00209`, `00195`,
+`00205`, `00204`, and `00216`: `backend_lir_to_bir_notes` and `00209` pass;
+`00176`, `00181`, and `00182` are AArch64 symbol-store printer residuals;
+`00195` is a runtime mismatch; `00205` is a scalar
+`logical_shift_right` printer residual; `00204` is a later `myprintf` local GEP
+residual; and `00216` is a later load local-memory residual.
+
+The remaining residuals are classified post-admission or out of scope for this
+projection owner. No expectation, unsupported, runner, timeout, allowlist, or
+CTest-registration changes were part of the closure.
 
 ## Reviewer Reject Signals
 
