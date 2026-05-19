@@ -1,7 +1,8 @@
 # AArch64 Variadic Local Value Home Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/closed/324_aarch64_variadic_frame_formal_publication.md
 
 ## Goal
@@ -73,9 +74,35 @@ for `w13`.
 - If `00204.c` advances to another first bad fact outside local/value-home
   publication, the residual is classified into a separate owner.
 
+## Completion Notes
+
+The Step 2 and Step 3 publication repairs were committed as
+`5001cecf6 repair AArch64 local value publication`. `todo.md` recorded
+focused local coverage for branch/control values, symbol-address call
+provenance, frame-slot address call operands, mutable pointer-local
+provenance, and predecessor/join source publication.
+
+The focused representative still fails, but the first remaining bad fact is
+not an ordinary local/value-home publication fault: `fa_hfa11(hfa11)` prints
+`0.0` instead of `11.1`, followed by corrupted floating/HFA output and a later
+segmentation fault. The review artifact
+`review/325_step2_route_review.md` judged the implementation aligned with this
+idea and recommended lifecycle classification for the HFA/floating residual
+unless fresh generated-code evidence ties it back to local/value-home
+publication.
+
+Closure classification: idea 325 is complete. The remaining failure is tracked
+as `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
+
+Close-time guard: existing focused before/after logs cover the Step 2/3 proof
+scope. Strict-increase mode reports no additional resolved CTest case because
+the representative remains the only failing CTest test, but
+`--allow-non-decreasing-passed` reports no new failing tests and no pass-count
+decrease for the matching scope.
+
 ## Reviewer Reject Signals
 
-Reject the route if it:
+Reject any claimed continuation of this closed idea if it:
 
 - special-cases `00204.c`, `stdarg`, `myprintf`, the format loop, one stack
   slot, one register, one local variable, one constant, or one emitted
@@ -87,7 +114,7 @@ Reject the route if it:
   constants, or pattern operands before same-function publication;
 - reopens frame/formal publication, aggregate `va_arg`, `va_start`, raw helper
   lowering, F128 transport, HFA argument ABI, scalar immediate, or large
-  frame/stack owners without generated-code evidence tying that work to the
-  current local/value-home fault;
+  frame/stack owners without generated-code evidence tying that work to a
+  local/value-home publication fault;
 - adds only external c-testsuite coverage without focused backend assertions
   for publication before use.
