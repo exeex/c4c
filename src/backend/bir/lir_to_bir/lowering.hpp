@@ -762,6 +762,14 @@ class BirFunctionLowerer {
       const ValueMap& value_aliases,
       const TypeDeclMap& type_decls,
       const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
+  static std::optional<DynamicGlobalScalarArrayAccess> resolve_global_dynamic_scalar_array_access(
+      std::string_view global_name,
+      LinkNameId link_name_id,
+      std::string_view base_type_text,
+      const c4c::codegen::lir::LirGepOp& gep,
+      const ValueMap& value_aliases,
+      const TypeDeclMap& type_decls,
+      const lir_to_bir_detail::BackendStructuredLayoutTable* structured_layouts);
   static std::optional<DynamicGlobalAggregateArrayAccess>
   resolve_global_dynamic_aggregate_array_access(const GlobalAddress& base_address,
                                                 std::string_view base_type_text,
@@ -1203,6 +1211,12 @@ class BirFunctionLowerer {
   std::optional<bir::Value> load_dynamic_global_scalar_array_value(
       std::string_view result_name,
       bir::TypeKind value_type,
+      const DynamicGlobalScalarArrayAccess& access,
+      std::vector<bir::Inst>* lowered_insts);
+  bool append_dynamic_global_scalar_array_store(
+      std::string_view scratch_prefix,
+      bir::TypeKind value_type,
+      const bir::Value& value,
       const DynamicGlobalScalarArrayAccess& access,
       std::vector<bir::Inst>* lowered_insts);
   static std::optional<bool> try_lower_dynamic_pointer_array_load(

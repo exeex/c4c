@@ -868,6 +868,77 @@ BirFunctionLowerer::resolve_global_dynamic_pointer_array_access(
   return std::nullopt;
 }
 
+std::optional<DynamicGlobalScalarArrayAccess>
+BirFunctionLowerer::resolve_global_dynamic_scalar_array_access(
+    std::string_view global_name,
+    LinkNameId link_name_id,
+    std::string_view base_type_text,
+    const c4c::codegen::lir::LirGepOp& gep,
+    const ValueMap& value_aliases,
+    const TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  if (gep.indices.empty() || gep.indices.size() > 2) {
+    return std::nullopt;
+  }
+
+  const auto base_layout = lookup_addressing_layout(
+      c4c::codegen::lir::trim_lir_arg_text(base_type_text), type_decls, structured_layouts);
+  if (base_layout.kind != AggregateTypeLayout::Kind::Array || base_layout.array_count == 0) {
+    return std::nullopt;
+  }
+  if (c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) !=
+      c4c::codegen::lir::trim_lir_arg_text(base_layout.element_type_text)) {
+    return std::nullopt;
+  }
+
+  std::size_t index_pos = 0;
+  if (gep.indices.size() == 2) {
+    const auto base_index = parse_typed_operand(gep.indices.front());
+    if (!base_index.has_value()) {
+      return std::nullopt;
+    }
+    const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+    if (!base_imm.has_value() || *base_imm != 0) {
+      return std::nullopt;
+    }
+    index_pos = 1;
+  }
+
+  const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
+  if (!parsed_index.has_value() ||
+      resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
+    return std::nullopt;
+  }
+  const auto lowered_index = lower_typed_index_value(*parsed_index, value_aliases);
+  if (!lowered_index.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto element_layout =
+      lookup_addressing_layout(base_layout.element_type_text, type_decls, structured_layouts);
+  if (element_layout.kind != AggregateTypeLayout::Kind::Scalar ||
+      element_layout.scalar_type == bir::TypeKind::Void || element_layout.size_bytes == 0) {
+    return std::nullopt;
+  }
+  const auto zero_index = make_index_immediate(lowered_index->type, 0);
+  if (!zero_index.has_value()) {
+    return std::nullopt;
+  }
+
+  return DynamicGlobalScalarArrayAccess{
+      .global_name = std::string(global_name),
+      .link_name_id = link_name_id,
+      .element_type = element_layout.scalar_type,
+      .byte_offset = 0,
+      .outer_element_count = 1,
+      .outer_element_stride_bytes = 0,
+      .outer_index = *zero_index,
+      .element_count = base_layout.array_count,
+      .element_stride_bytes = element_layout.size_bytes,
+      .index = *lowered_index,
+  };
+}
+
 std::optional<DynamicGlobalAggregateArrayAccess>
 BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
     const GlobalAddress& base_address,
@@ -1064,7 +1135,19 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         type_decls,
         structured_layouts_);
     if (!dynamic_array.has_value()) {
-      return fail_gep();
+      const auto dynamic_scalar = resolve_global_dynamic_scalar_array_access(
+          global_name,
+          global_it->second.link_name_id,
+          global_it->second.type_text,
+          gep,
+          gep_index_value_aliases,
+          type_decls,
+          &structured_layouts_);
+      if (!dynamic_scalar.has_value()) {
+        return fail_gep();
+      }
+      dynamic_global_scalar_arrays[gep.result.str()] = std::move(*dynamic_scalar);
+      return true;
     }
     dynamic_global_pointer_arrays[gep.result.str()] = std::move(*dynamic_array);
     return true;
@@ -1729,6 +1812,74 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           }
         }
 
+        if ((addressed_ptr_it == pointer_value_addresses.end() ||
+             addressed_ptr_it->second.byte_offset == 0) &&
+            (gep.indices.size() == 1 || gep.indices.size() == 2)) {
+          std::size_t typed_index_pos = 0;
+          if (gep.indices.size() == 2) {
+            const auto base_index = parse_typed_operand(gep.indices.front());
+            if (!base_index.has_value()) {
+              return fail_gep();
+            }
+            const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+            if (!base_imm.has_value() || *base_imm != 0) {
+              return fail_gep();
+            }
+            typed_index_pos = 1;
+          }
+          const auto parsed_index = parse_typed_operand(gep.indices[typed_index_pos]);
+          const auto element_type = lower_scalar_or_function_pointer_type(gep.element_type.str());
+          if (parsed_index.has_value() && element_type.has_value()) {
+            auto scaled_offset = lower_typed_index_value(*parsed_index, value_aliases);
+            const auto element_size = type_size_bytes(*element_type);
+            if (scaled_offset.has_value() && element_size != 0) {
+              if (scaled_offset->kind == bir::Value::Kind::Immediate) {
+                scaled_offset = bir::Value::immediate_i64(
+                    scaled_offset->immediate * static_cast<std::int64_t>(element_size));
+              } else if (scaled_offset->kind == bir::Value::Kind::Named &&
+                         scaled_offset->type == bir::TypeKind::I64 && element_size != 1) {
+                const std::string offset_name = gep.result.str() + ".byte_offset";
+                lowered_insts->push_back(bir::BinaryInst{
+                    .opcode = bir::BinaryOpcode::Mul,
+                    .result = bir::Value::named(bir::TypeKind::I64, offset_name),
+                    .operand_type = bir::TypeKind::I64,
+                    .lhs = *scaled_offset,
+                    .rhs = bir::Value::immediate_i64(static_cast<std::int64_t>(element_size)),
+                });
+                scaled_offset = bir::Value::named(bir::TypeKind::I64, offset_name);
+              }
+              if (scaled_offset.has_value() &&
+                  ((scaled_offset->kind == bir::Value::Kind::Immediate &&
+                    scaled_offset->type == bir::TypeKind::I64) ||
+                   (scaled_offset->kind == bir::Value::Kind::Named &&
+                    scaled_offset->type == bir::TypeKind::I64))) {
+                if (scaled_offset->kind == bir::Value::Kind::Immediate &&
+                    scaled_offset->immediate == 0) {
+                  value_aliases[gep.result.str()] = *base_pointer;
+                } else {
+                  lowered_insts->push_back(bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::Add,
+                      .result = bir::Value::named(bir::TypeKind::Ptr, gep.result.str()),
+                      .operand_type = bir::TypeKind::Ptr,
+                      .lhs = *base_pointer,
+                      .rhs = *scaled_offset,
+                  });
+                  value_aliases[gep.result.str()] =
+                      bir::Value::named(bir::TypeKind::Ptr, gep.result.str());
+                }
+                pointer_value_addresses[gep.result.str()] = PointerAddress{
+                    .base_value = value_aliases[gep.result.str()],
+                    .value_type = bir::TypeKind::Void,
+                    .byte_offset = 0,
+                    .type_text = std::string(c4c::codegen::lir::trim_lir_arg_text(
+                        gep.element_type.str())),
+                };
+                return true;
+              }
+            }
+          }
+        }
+
         std::size_t raw_index_pos = 0;
         if (gep.indices.size() == 2) {
           const auto base_index = parse_typed_operand(gep.indices.front());
@@ -1773,6 +1924,12 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           });
           value_aliases[gep.result.str()] = bir::Value::named(bir::TypeKind::Ptr,
                                                                gep.result.str());
+          pointer_value_addresses[gep.result.str()] = PointerAddress{
+              .base_value = value_aliases[gep.result.str()],
+              .value_type = bir::TypeKind::Void,
+              .byte_offset = 0,
+              .type_text = "i8",
+          };
           return true;
         }
       }

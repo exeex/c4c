@@ -239,6 +239,94 @@ std::optional<bir::Value> BirFunctionLowerer::load_dynamic_global_scalar_array_v
       result_name, outer_values, access.outer_index, lowered_insts);
 }
 
+bool BirFunctionLowerer::append_dynamic_global_scalar_array_store(
+    std::string_view scratch_prefix,
+    bir::TypeKind value_type,
+    const bir::Value& value,
+    const DynamicGlobalScalarArrayAccess& access,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (access.element_type != value_type || access.outer_element_count == 0 ||
+      access.element_count == 0) {
+    return false;
+  }
+
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0) {
+    return false;
+  }
+  const auto global_name_id = link_name_id_for_dynamic_global(global_types_, access);
+  if (!global_name_id.has_value()) {
+    return false;
+  }
+  if (*global_name_id != kInvalidLinkName &&
+      context_.lir_module.link_names.spelling(*global_name_id).empty()) {
+    return false;
+  }
+
+  for (std::size_t outer_index = 0; outer_index < access.outer_element_count; ++outer_index) {
+    for (std::size_t element_index = 0; element_index < access.element_count; ++element_index) {
+      const auto byte_offset =
+          access.byte_offset + outer_index * access.outer_element_stride_bytes +
+          element_index * access.element_stride_bytes;
+      const std::string element_name =
+          std::string(scratch_prefix) + ".outer" + std::to_string(outer_index) + ".elt" +
+          std::to_string(element_index);
+      lowered_insts->push_back(bir::LoadGlobalInst{
+          .result = bir::Value::named(value_type, element_name),
+          .global_name = access.global_name,
+          .global_name_id = *global_name_id,
+          .byte_offset = byte_offset,
+          .align_bytes = slot_size,
+      });
+
+      bir::Value stored_value = value;
+      if (access.element_count > 1) {
+        const auto compare_rhs = make_index_immediate(access.index.type, element_index);
+        if (!compare_rhs.has_value()) {
+          return false;
+        }
+        const std::string select_name = element_name + ".inner.store";
+        lowered_insts->push_back(bir::SelectInst{
+            .predicate = bir::BinaryOpcode::Eq,
+            .result = bir::Value::named(value_type, select_name),
+            .compare_type = access.index.type,
+            .lhs = access.index,
+            .rhs = *compare_rhs,
+            .true_value = value,
+            .false_value = bir::Value::named(value_type, element_name),
+        });
+        stored_value = bir::Value::named(value_type, select_name);
+      }
+      if (access.outer_element_count > 1) {
+        const auto compare_rhs = make_index_immediate(access.outer_index.type, outer_index);
+        if (!compare_rhs.has_value()) {
+          return false;
+        }
+        const std::string select_name = element_name + ".outer.store";
+        lowered_insts->push_back(bir::SelectInst{
+            .predicate = bir::BinaryOpcode::Eq,
+            .result = bir::Value::named(value_type, select_name),
+            .compare_type = access.outer_index.type,
+            .lhs = access.outer_index,
+            .rhs = *compare_rhs,
+            .true_value = stored_value,
+            .false_value = bir::Value::named(value_type, element_name),
+        });
+        stored_value = bir::Value::named(value_type, select_name);
+      }
+
+      lowered_insts->push_back(bir::StoreGlobalInst{
+          .global_name = access.global_name,
+          .global_name_id = *global_name_id,
+          .value = stored_value,
+          .byte_offset = byte_offset,
+          .align_bytes = slot_size,
+      });
+    }
+  }
+  return true;
+}
+
 std::optional<bir::Value> BirFunctionLowerer::load_dynamic_pointer_value_array_value(
     std::string_view result_name,
     bir::TypeKind value_type,

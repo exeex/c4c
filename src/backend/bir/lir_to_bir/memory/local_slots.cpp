@@ -565,6 +565,13 @@ bool BirFunctionLowerer::lower_memory_store_inst(
         store.ptr.str(), *value_type, *value, dynamic_ptr_it->second, lowered_insts);
   }
 
+  if (const auto global_scalar_it = dynamic_global_scalar_arrays_.find(store.ptr.str());
+      global_scalar_it != dynamic_global_scalar_arrays_.end()) {
+    clear_local_scalar_slot_values();
+    return append_dynamic_global_scalar_array_store(
+        store.ptr.str(), *value_type, *value, global_scalar_it->second, lowered_insts);
+  }
+
   bool handled_dynamic_local_aggregate_store = false;
   if (!try_lower_dynamic_local_aggregate_store(store.ptr.str(),
                                                *value_type,
