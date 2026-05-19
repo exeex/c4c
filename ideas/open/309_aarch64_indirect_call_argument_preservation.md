@@ -87,6 +87,19 @@ finish the AArch64 indirect-call callee/register preservation and re-check the
 observed `fprintfptr` callee register placement mismatch before proving
 `c_testsuite_aarch64_backend_src_00189_c`.
 
+## Reactivation Note
+
+Reactivated 2026-05-19 after idea 310 repaired and proved the prerequisite
+producer fact. The focused prepared dump for `00189.c` now publishes
+`address_materialization block=entry inst_index=4 kind=string_constant
+result=@.str1 text=.str1 ...`, so the remaining route is back inside AArch64
+indirect-call callee/register preservation.
+
+The next packet should inspect the remaining `fprintfptr` callee register
+placement mismatch before choosing the repair surface. The previously observed
+hazard was that prepared storage printed `%t0` as `reg=x21`, while ordinary
+non-GOT `load_global` lowering loaded `fprintfptr` as `x20`.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

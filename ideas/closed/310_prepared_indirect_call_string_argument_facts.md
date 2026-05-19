@@ -1,7 +1,8 @@
 # Prepared Indirect Call String Argument Facts
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 
 ## Goal
 
@@ -64,6 +65,38 @@ fact before idea 309 can safely resume AArch64 call-boundary repair.
   non-regressed.
 - Supervisor-selected proof is recorded before switching lifecycle state back
   to idea 309.
+
+## Completion Note
+
+Closed 2026-05-19 after Step 2 was implemented and committed in `690ba96e1`
+(`Publish indirect string argument facts`). The focused proof in
+`test_after.log` shows the prepared dump for `00189.c` now publishes
+`address_materialization block=entry inst_index=4 kind=string_constant
+result=@.str1 text=.str1 ...`.
+
+The implemented route stayed in the semantic producer/handoff layer: indirect
+calls now use the typed-call parser and the same string-pointer alias facts
+used by direct calls to publish named string values before stack layout observes
+them. The local fixture is not coupled to `00189.c`, `stdout`, `fprintfptr`,
+`.str1`, or a fixed indirect-call argument index.
+
+Close proof:
+
+- focused `backend_prepare_stack_layout` proof in `test_after.log` passed and
+  included the prepared-BIR `.str1` materialization check;
+- supervisor-reported broader backend validation
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
+  139/139;
+- plan-owner close gate ran the monotonic regression-guard parser with
+  `--allow-non-decreasing-passed` against canonical `test_before.log` and
+  `test_after.log`, passing with 1/1 before and 1/1 after. The meaningful
+  semantic delta is the prepared-BIR materialization check moving from absent
+  before the slice to present after the slice.
+
+Lifecycle returned to
+`ideas/open/309_aarch64_indirect_call_argument_preservation.md`. The remaining
+known issue is AArch64 callee/register preservation, especially the observed
+`fprintfptr` callee register placement mismatch.
 
 ## Reviewer Reject Signals
 
