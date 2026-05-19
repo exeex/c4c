@@ -2385,6 +2385,72 @@ int narrow_unsigned_reductions_print_explicit_zero_extension() {
   return 0;
 }
 
+int selected_unsigned_reductions_materialize_lhs_sources() {
+  const auto immediate_lhs = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+          .source_binary_opcode = bir::BinaryOpcode::UDiv,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{170},
+          .result_value_name = c4c::ValueNameId{171},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 32,
+                  .unsigned_value = 32,
+              }),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 3,
+                  .unsigned_value = 3,
+              }),
+          .supported_integer_operation = true,
+      }));
+  const auto memory_lhs = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::And,
+          .source_binary_opcode = bir::BinaryOpcode::URem,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{172},
+          .result_value_name = c4c::ValueNameId{173},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(2),
+          .lhs = aarch64_codegen::make_memory_operand(frame_slot(16)),
+          .rhs = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+                  .type = bir::TypeKind::I32,
+                  .signed_value = 15,
+                  .unsigned_value = 15,
+              }),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result =
+      print_common_instruction_nodes({immediate_lhs, memory_lhs});
+  if (!result.ok) {
+    return fail("expected unsigned reductions to materialize lhs sources: " +
+                result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    mov w9, #32\n"
+                         "    lsr w0, w9, #3\n"
+                         "    ldr w9, [sp, #16]\n"
+                         "    and w2, w9, #15\n",
+                         "    mov w9, #32\n"
+                         "    lsr w0, w9, #3\n"
+                         "    ldr w9, [sp, #16]\n"
+                         "    and w2, w9, #15\n",
+                         "unsigned reduction lhs materialization printer");
+}
+
 int signed_i32_add_sub_results_print_explicit_sign_extension() {
   const auto add = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -6007,6 +6073,10 @@ int main() {
     return result;
   }
   if (const int result = narrow_unsigned_reductions_print_explicit_zero_extension();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_unsigned_reductions_materialize_lhs_sources();
       result != 0) {
     return result;
   }

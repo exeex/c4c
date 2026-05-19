@@ -77,6 +77,20 @@ matches individual c-testsuite filenames or rewrites expectations.
   separately from this owner and does not claim testcase-count progress without
   explaining the semantic bucket movement.
 
+## Parked Lifecycle Note
+
+Parked on 2026-05-19 when the active `00205` route moved past the old scalar
+`logical_shift_right` unsigned-reduction operand-form diagnostic and exposed a
+later assembler-legality failure on generated `sxtw w9, w13`. That sign-extension
+spelling is outside this owner's scalar arithmetic/reduction machine-node
+operand-form scope and is split to
+`ideas/open/303_aarch64_sign_extension_assembler_legality.md`.
+
+Do not close this idea or claim focused pass-count progress from the dirty
+Step 3 implementation alone. Reactivation should first review the uncommitted
+Step 3 slice, its focused proof, and whether the old `00205` unsigned-reduction
+diagnostic is absent without absorbing the split sign-extension owner.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

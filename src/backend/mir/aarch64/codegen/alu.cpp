@@ -1745,26 +1745,47 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                   "scalar unsigned reduction node has unsupported post-zero-extension width"};
     }
     const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* lhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[0].payload);
+    const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
     const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
-    if (scalar.inputs[0].kind != OperandKind::Register ||
-        scalar.inputs[1].kind != OperandKind::Immediate || lhs_register == nullptr ||
-        rhs_immediate == nullptr || !scalar.result_register.has_value()) {
+    const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
+                                 lhs_register != nullptr;
+    const bool lhs_is_memory = scalar.inputs[0].kind == OperandKind::Memory &&
+                               lhs_memory != nullptr;
+    const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
+                                  lhs_immediate != nullptr;
+    if ((!lhs_is_register && !lhs_is_memory && !lhs_is_immediate) ||
+        scalar.inputs[1].kind != OperandKind::Immediate || rhs_immediate == nullptr ||
+        !scalar.result_register.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar unsigned reduction node requires register lhs, immediate reduction, and result register"};
+                  "scalar unsigned reduction node requires register/memory/immediate lhs, immediate reduction, and result register"};
     }
     const auto result = scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
-    const auto lhs = scalar_gp_register_name_with_view(*lhs_register, *result_view);
-    if (!result.has_value() || !lhs.has_value()) {
+    if (!result.has_value()) {
       return {.lines = std::nullopt,
               .diagnostic =
-                  "scalar unsigned reduction node has incomplete printable register facts"};
+                  "scalar unsigned reduction node has incomplete printable result register facts"};
+    }
+    std::vector<std::string> lines;
+    const auto lhs = materialize_scalar_register_source(
+        scalar.inputs[0],
+        lhs_register,
+        lhs_memory,
+        lhs_immediate,
+        *operand_view,
+        std::vector<const RegisterOperand*>{&*scalar.result_register},
+        lines);
+    if (!lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar unsigned reduction node has incomplete printable lhs facts"};
     }
     std::ostringstream out;
     if (alu.operation == ScalarAluOperationKind::LogicalShiftRight &&
         alu.source_binary_opcode == bir::BinaryOpcode::UDiv) {
-      out << "lsr " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
-      std::vector<std::string> lines{out.str()};
+      out << "lsr " << *result << ", " << lhs->name << ", #" << rhs_immediate->unsigned_value;
+      lines.push_back(out.str());
       if (alu.post_zero_extend_result_bits.has_value()) {
         std::ostringstream extend;
         extend << "ubfx " << *result << ", " << *result << ", #0, #"
@@ -1775,8 +1796,8 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     }
     if (alu.operation == ScalarAluOperationKind::And &&
         alu.source_binary_opcode == bir::BinaryOpcode::URem) {
-      out << "and " << *result << ", " << *lhs << ", #" << rhs_immediate->unsigned_value;
-      std::vector<std::string> lines{out.str()};
+      out << "and " << *result << ", " << lhs->name << ", #" << rhs_immediate->unsigned_value;
+      lines.push_back(out.str());
       if (alu.post_zero_extend_result_bits.has_value()) {
         std::ostringstream extend;
         extend << "ubfx " << *result << ", " << *result << ", #0, #"
