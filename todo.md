@@ -11,32 +11,29 @@ Current Step Title: Check Store/Load Boundaries
 ## Just Finished
 
 Step 3 implementation packet completed the direct local-memory scalar subobject
-store admission repair selected for `00046`. Scalar stores through local
-aggregate byte-array subobjects can now lower as addressable local subobject
-stores instead of falling into the exact local-slot type mismatch when the
-pointer base is an `i8` local pointer-array view and the scalar access fits
-within the byte slots. Provenance scalar-subobject checks also now admit
-byte-array storage when the scalar access is bounded by the byte storage size.
+load admission repair selected for `00046`. Scalar loads through local
+aggregate byte-array subobjects now mirror the accepted store path: when the
+pointer is a tracked `i8` local pointer-array view and the scalar access fits
+within the byte slots, lowering emits an addressed local load instead of
+failing on the exact local-slot type mismatch.
 
-Proof moved `00046` past the old `store local-memory semantic family` blocker;
-it now reaches a later `load local-memory semantic family` residual in `main`.
-`00140` remains at the AArch64 call-boundary move printer failure, `00216`
-remains at the GEP local-memory residual in `foo`, and `00218` remains at its
-load local-memory residual.
+Proof moved `00046` past the old `load local-memory semantic family` blocker
+and it now passes in the focused AArch64 c-testsuite subset. `00140` remains at
+the AArch64 call-boundary move printer failure and `00216` remains at the GEP
+local-memory residual in `foo`. `00218` also moved past its load local-memory
+residual and now reaches a later AArch64 scalar bitwise-immediate printer
+failure.
 
 ## Suggested Next
 
-Lifecycle decision: keep idea 297 active. `00046` still fails in the
-`load local-memory semantic family` after the direct store-side repair, and the
-shape is still the same direct local aggregate/union byte-subobject boundary
-owned by this source idea.
+Lifecycle decision: keep idea 297 active only if the supervisor wants to pursue
+the remaining Step 3 boundary classification. The direct local aggregate/union
+byte-subobject load/store lane represented by `00046` is now repaired and
+passing.
 
-Next bounded packet: diagnose and repair only the `00046` load-side scalar
-subobject admission residual over the local aggregate/union byte-subobject
-shape. Treat `00140`'s call-boundary move printer failure, `00216`'s GEP
-local-memory residual, and `00218`'s pointer-parameter aggregate load residual
-as separate later classification or split candidates unless the supervisor
-explicitly chooses one next.
+Next bounded packet: classify the remaining focused Step 3 cases from fresh
+evidence. `00140` and `00218` are now printer residuals outside local-memory
+admission, while `00216` is still a GEP local-memory residual in `foo`.
 
 ## Watchouts
 
@@ -63,11 +60,9 @@ explicitly chooses one next.
 - `00216` no longer proves the old aggregate load boundary as the first
   blocker; after this packet it reaches a later GEP-family local-memory
   blocker in `foo`.
-- `00046` no longer proves the old direct local-memory store subobject
-  admission residual; after this packet it reaches a later load local-memory
-  residual in `main`.
-- `00046` remains in scope for idea 297 because its current residual is still a
-  direct load-side local-memory admission boundary over a local aggregate.
+- `00046` no longer proves the old direct local-memory store or load subobject
+  admission residual; after this packet it passes in the focused AArch64
+  c-testsuite subset.
 - `00204` is a separate bootstrap global aggregate/array semantics gate; do
   not fold it into this owner without evidence.
 - Do not change expectations, allowlists, unsupported classifications, CTest
@@ -78,11 +73,12 @@ explicitly chooses one next.
   dynamic GEP into scalar local arrays whose elements are represented as local
   slots.
 - If continuing on `00046`, keep the next packet on load-side scalar subobject
-  admission; do not re-open the now-moved store residual unless a regression
-  proves it returned.
+  admission only if a regression proves it returned; the focused proof now has
+  `00046` passing.
 - Keep `00218` out of the first implementation packet unless the supervisor
   confirms pointer-parameter aggregate projection is in scope for idea 297.
-  It is not a direct local alloca boundary inside the failing function.
+  It is not a direct local alloca boundary inside the failing function, and the
+  current residual is no longer load local-memory.
 
 ## Proof
 
@@ -92,6 +88,6 @@ Ran exactly:
 
 Result: build passed and `backend_lir_to_bir_notes` passed. The focused
 c-testsuite subset still fails overall as expected for residual boundary work.
-Fresh residuals in `test_after.log`: `00046` moved to load local-memory,
-`00140` remains AArch64 call-boundary move printer, `00216` remains GEP
-local-memory, and `00218` remains load local-memory.
+Fresh residuals in `test_after.log`: `00046` passed, `00140` remains AArch64
+call-boundary move printer, `00216` remains GEP local-memory, and `00218` moved
+to an AArch64 scalar bitwise-immediate printer failure.

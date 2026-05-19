@@ -230,6 +230,49 @@ std::optional<bool> try_lower_byte_array_base_store(
   return true;
 }
 
+std::optional<bool> try_lower_byte_array_base_load(
+    std::string_view result_name,
+    std::string_view ptr_name,
+    bir::TypeKind value_type,
+    const BirFunctionLowerer::LocalPointerArrayBaseMap& local_pointer_array_bases,
+    const BirFunctionLowerer::LocalSlotTypes& local_slot_types,
+    std::vector<bir::Inst>* lowered_insts) {
+  if (value_type == bir::TypeKind::Ptr) {
+    return std::nullopt;
+  }
+  const auto array_base_it = local_pointer_array_bases.find(std::string(ptr_name));
+  if (array_base_it == local_pointer_array_bases.end()) {
+    return std::nullopt;
+  }
+  const auto slot_size = type_size_bytes(value_type);
+  if (slot_size == 0 || array_base_it->second.element_slots.empty() ||
+      array_base_it->second.base_index > array_base_it->second.element_slots.size() ||
+      slot_size > array_base_it->second.element_slots.size() - array_base_it->second.base_index) {
+    return false;
+  }
+  for (std::size_t index = array_base_it->second.base_index;
+       index < array_base_it->second.base_index + slot_size;
+       ++index) {
+    const auto slot_type_it = local_slot_types.find(array_base_it->second.element_slots[index]);
+    if (slot_type_it == local_slot_types.end() || slot_type_it->second != bir::TypeKind::I8) {
+      return false;
+    }
+  }
+  lowered_insts->push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(value_type, std::string(result_name)),
+      .slot_name = array_base_it->second.element_slots.front(),
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = array_base_it->second.element_slots.front(),
+              .byte_offset = static_cast<std::int64_t>(array_base_it->second.base_index),
+              .size_bytes = slot_size,
+              .align_bytes = slot_size,
+          },
+  });
+  return true;
+}
+
 }  // namespace
 
 std::optional<ScalarLayoutByteOffsetFacts> resolve_scalar_layout_facts_at_byte_offset(
@@ -1293,6 +1336,15 @@ BirFunctionLowerer::LocalSlotLoadResult BirFunctionLowerer::try_lower_local_slot
 
   const auto slot_it = local_slot_types.find(ptr_it->second);
   if (slot_it == local_slot_types.end() || slot_it->second != value_type) {
+    if (const auto byte_array_load = try_lower_byte_array_base_load(result_name,
+                                                                    ptr_name,
+                                                                    value_type,
+                                                                    *local_pointer_array_bases,
+                                                                    local_slot_types,
+                                                                    lowered_insts);
+        byte_array_load.has_value()) {
+      return *byte_array_load ? LocalSlotLoadResult::Lowered : LocalSlotLoadResult::Failed;
+    }
     return LocalSlotLoadResult::Failed;
   }
 
