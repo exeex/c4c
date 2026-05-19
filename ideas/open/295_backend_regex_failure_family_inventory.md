@@ -389,6 +389,24 @@ Post-305 split 2026-05-19:
   later classification or separate focused splits.
 - Active implementation should move to idea 306 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 306,
+  `ideas/closed/306_aarch64_symbol_offset_address_materialization_width.md`,
+  is closed as the AArch64 symbol+offset address materialization/register-width
+  legality owner.
+- The accepted focused proof has been rolled forward to `test_before.log`, so
+  the next umbrella pass should treat that log as the current baseline rather
+  than reopening the closed owner from counts alone.
+- The next lifecycle pass should re-inventory or classify remaining
+  backend-regex buckets without reopening closed owners 285 through 306 unless
+  generated-code or proof evidence contradicts their closure boundaries.
+- Runtime nonzero, runtime mismatch/crash, timeout, output-storm,
+  call-boundary move, scalar `mul` printable-rhs, unprepared frame-slot source,
+  externally binding symbol/PIC relocation, and semantic `lir_to_bir`
+  residuals remain parked under this umbrella until a narrow probe justifies a
+  focused owner split.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -399,5 +417,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 305 without generated-code or
+- reopens recently closed owners 285 through 306 without generated-code or
   proof evidence that contradicts their closure boundary.
