@@ -1,7 +1,8 @@
 # AArch64 Indirect Call Argument Preservation
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 
 ## Goal
 
@@ -99,6 +100,27 @@ The next packet should inspect the remaining `fprintfptr` callee register
 placement mismatch before choosing the repair surface. The previously observed
 hazard was that prepared storage printed `%t0` as `reg=x21`, while ordinary
 non-GOT `load_global` lowering loaded `fprintfptr` as `x20`.
+
+## Completion Note
+
+Closed 2026-05-19 after commit `a4743de86` repaired the AArch64 indirect-call
+preservation path for `00189.c`.
+
+The accepted focused proof moved from 4/5 with
+`c_testsuite_aarch64_backend_src_00189_c` segfaulting in `test_before.log` to
+5/5 passing in `test_after.log`. Close-time regression guard passed on that
+matching focused scope and resolved the old `00189.c` failure with no new
+failures. Supervisor broad validation also passed
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` at 139/139.
+
+Generated AArch64 now preserves the indirect call boundary expected by this
+idea: `fprintfptr` is loaded into the register used by the final `blr`, `.str1`
+is materialized into `x1`, the nested call result is moved from `x0` to `x2`,
+`stdout` is reloaded into `x0`, and the call branches through `x21`.
+
+No residual from this focused owner returns to umbrella idea 295. Direct-call
+shuffle, direct vararg, address-of-local, timeout, runtime mismatch, and other
+parked backend-regex buckets remain outside this closure boundary.
 
 ## Reviewer Reject Signals
 
