@@ -1,8 +1,9 @@
 # AArch64 Variadic Va Start Helper Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/closed/315_aarch64_large_frame_adjustment_materialization.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -61,6 +62,19 @@ to `src/backend/mir/aarch64/codegen/variadic.cpp::print_variadic_call` for
   owner.
 - Existing idea 312, 314, and 315 focused guardrails remain green.
 - Fresh build and focused CTest proof are recorded before closure.
+
+## Completion Note
+
+Closed after Step 4 validation. The focused `00204.c` representative no longer
+emits raw `va.start`, `va.start.rsa`, `va.start.initial_offsets`, or
+`va.start.field` helper payload lines into generated assembly. The remaining
+focused failure is `mov w9, #503808` in `subim503808`, which is scalar ALU
+immediate materialization and matches
+`ideas/open/318_aarch64_scalar_alu_immediate_materialization.md`.
+
+Close-time regression guard used existing focused `test_before.log` and
+`test_after.log` with non-decreasing lifecycle close mode. Both logs report
+10/11 passing with no new failures.
 
 ## Reviewer Reject Signals
 
