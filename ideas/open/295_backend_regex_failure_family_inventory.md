@@ -586,6 +586,36 @@ Focused owner closure 2026-05-19:
   backend-regex buckets without reopening closed owners 285 through 311 unless
   generated-code or proof evidence contradicts their closure boundaries.
 
+Step 4 split 2026-05-19:
+
+- Step 1 of the active umbrella runbook captured a fresh backend-regex
+  inventory in `test_after.log`: 352 selected tests, 295 passed, and 57
+  failed. All residual failures are `c_testsuite_aarch64_backend_*` tests.
+- Step 2 classified the 57 residuals as 0 local backend/unit/CLI failures, 2
+  frontend/prepared-node machine-printer diagnostics, 2 semantic `lir_to_bir`
+  admission diagnostics, 33 runtime nonzero/crash cases, 16 runtime mismatch
+  cases, 1 runtime output-storm plus crash, and 3 CTest timeouts.
+- Step 3 selected the next focused owner as residual AArch64 semantic
+  `lir_to_bir` local-memory admission/prepared-module handoff, represented by
+  `c_testsuite_aarch64_backend_src_00204_c` and
+  `c_testsuite_aarch64_backend_src_00216_c`.
+- Focused idea 312,
+  `ideas/open/312_aarch64_lir_to_bir_local_memory_prepared_handoff.md`, is now
+  active. The proof scope is `backend_lir_to_bir_notes`, the existing
+  `00204.c` semantic/prepared dump helpers, and the two representative
+  c-testsuite cases.
+- The split is semantic compile-stage work: neither `00204.c` nor `00216.c`
+  has generated `.s` or `.bin` output in the current evidence, so this is not
+  an AArch64 printer, assembler, linker, runtime, timeout, runner, or CTest
+  registration owner.
+- Remaining parked buckets include the machine-printer/prepared-node
+  diagnostics such as `00164.c` and `00214.c`, runtime nonzero/crash cases,
+  runtime mismatch cases, the runtime output-storm plus crash, timeout cases,
+  direct-call shuffle, direct vararg, and address-of-local residuals.
+- Active implementation should move to idea 312 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

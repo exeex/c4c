@@ -1,177 +1,165 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 LIR To BIR Local Memory Prepared Handoff Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated from: post-311 lifecycle state, with no active `plan.md` or `todo.md`
+Source Idea: ideas/open/312_aarch64_lir_to_bir_local_memory_prepared_handoff.md
+Activated from: ideas/open/295_backend_regex_failure_family_inventory.md Step 4 split
 
 ## Purpose
 
-Use the main build's backend CTest regex as an umbrella inventory, classify the
-remaining failures by semantic owner, and split the next focused repair idea
-before any implementation work begins.
+Repair the residual semantic `lir_to_bir` local-memory admission and
+prepared-module handoff gap for `00204.c` and `00216.c` without expanding into
+parked AArch64 printer, runtime, timeout, or direct-call buckets.
 
 ## Goal
 
-Produce a current, classified backend-regex failure inventory after recently
-closed focused AArch64 owners, then hand execution to one focused semantic
-owner or record why no owner is ready.
+Make the representative cases advance past the current GEP/load local-memory
+semantic-family diagnostics through structured semantic facts and prepared
+handoff behavior, not c-testsuite-specific matching.
 
 ## Core Rule
 
-This runbook is inventory-only. Do not implement backend fixes, change test
-expectations, alter unsupported classifications, edit runners, change timeout
-policy, or adjust CTest registration while this umbrella plan is active.
+Progress must be a semantic admission or prepared-handoff capability. Do not
+change expectations, unsupported classifications, allowlists, runners, timeout
+policy, proof-log contents, CTest registration, or test contracts.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- current `test_before.log` / `test_after.log`, if present
-- generated AArch64 c-testsuite artifacts under
-  `build/c_testsuite_aarch64_backend/`, when classification needs emitted
-  assembly or diagnostics
-- closed-owner boundaries summarized in the source idea for ideas 285 through
-  311
+- `ideas/open/312_aarch64_lir_to_bir_local_memory_prepared_handoff.md`
+- `ideas/closed/297_lir_to_bir_local_memory_admission.md`
+- `ideas/closed/298_lir_to_bir_global_pointer_aggregate_projection.md`
+- `todo.md`
+- existing focused evidence in `test_after.log`
+- generated artifact absence under `build/c_testsuite_aarch64_backend/src/`
+  for `00204.c` and `00216.c`
 
 ## Current Targets
 
-- Main build tree: `/workspaces/c4c/build`
-- Backend regex command shape:
-  `ctest -j10 -R backend --output-on-failure`
-- AArch64 backend c-testsuite output tree:
-  `build/c_testsuite_aarch64_backend/`
-- Residual buckets parked by the source idea: direct-call shuffle, direct
-  vararg, address-of-local, runtime nonzero, runtime mismatch/crash,
-  timeout/output-storm, remaining machine-printer or prepared-node residuals,
-  and semantic `lir_to_bir` residuals.
+- Representative tests:
+  - `c_testsuite_aarch64_backend_src_00204_c`
+  - `c_testsuite_aarch64_backend_src_00216_c`
+- Existing semantic/prepared dump helpers for `00204.c`:
+  - `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
+  - `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff`
+  - `backend_cli_dump_bir_focus_function_filters_00204`
+  - `backend_cli_dump_prepared_bir_focus_function_filters_00204`
+  - `backend_cli_dump_prepared_bir_focus_block_entry_00204`
+- Broad semantic guard:
+  - `backend_lir_to_bir_notes`
 
 ## Non-Goals
 
-- Do not fix failures under this umbrella plan.
-- Do not treat `ctest -R backend` as one monolithic failure family.
-- Do not reopen closed owners 285 through 311 from pass counts alone.
-- Do not prove progress by expectation rewrites, allowlists, unsupported
-  downgrades, timeout changes, runner behavior, or CTest registration changes.
-- Do not run broad runtime scans without stale-process cleanup and timeout
-  hygiene.
+- Do not reopen closed ideas 297, 298, or 311 from counts alone.
+- Do not fold in `00164.c`, `00214.c`, direct-call shuffle, direct vararg,
+  address-of-local, runtime nonzero, runtime mismatch/crash, timeout, or
+  output-storm residuals.
+- Do not implement AArch64 printer, assembler, linker, runtime, timeout, or
+  runner changes under this owner.
+- Do not rely on filename, function-name, diagnostic-string, or
+  c-testsuite-number special cases.
 
 ## Working Model
 
-The backend regex currently includes both local backend tests and external
-AArch64 c-testsuite backend runtime tests. A useful inventory separates local
-backend/unit/CLI failures from external AArch64 runtime, frontend, printer,
-assembler, timeout, and `lir_to_bir` failures before selecting an owner.
-
-Recently closed focused owners remain closed unless fresh generated-code,
-diagnostic, or proof evidence contradicts their closure boundaries.
+The current representatives fail before emitted AArch64 artifacts exist. The
+failure source is a semantic `lir_to_bir` local-memory family diagnostic as the
+route approaches prepared-module handoff. The first implementation slice should
+localize which structured local-memory fact is missing or discarded; later
+slices should repair that fact publication and prove both representatives
+advance past the current diagnostics.
 
 ## Execution Rules
 
-- Preserve routine packet progress in `todo.md`; do not churn this runbook for
-  per-command observations.
-- Prefer reconstructing from accepted canonical logs when they already cover
-  the current question. Run a fresh broad backend regex only when the existing
-  logs are stale or insufficient.
-- If running the broad backend regex, use the main build tree and include
-  stale-process cleanup and timeout safeguards suitable for the known
-  c-testsuite runtime surface.
-- Classify by semantic owner, not by filename shape alone.
-- When a tractable owner is found, create or request a focused
-  `ideas/open/*.md` owner and switch lifecycle state before code edits.
-- If no owner is ready, record the exact missing evidence and recommended
-  probe in `todo.md`.
+- Keep routine progress in `todo.md`.
+- Use the proof command from this runbook unless the supervisor narrows it for
+  a packet.
+- Preserve fail-closed behavior for unsupported semantic forms.
+- If either representative advances to a machine-printer, assembler, linker,
+  runtime, or timeout residual, record that first bad fact and return it to
+  umbrella classification unless evidence proves this same semantic repair owns
+  it.
 
 ## Ordered Steps
 
-### Step 1: Establish Current Backend Regex Evidence
+### Step 1: Localize Missing Local-Memory Handoff Fact
 
-Goal: determine the freshest trustworthy backend-regex baseline after the
-closed focused owners, especially idea 311.
+Goal: identify the exact semantic or prepared-handoff fact missing from
+`00204.c` and `00216.c`.
 
-Primary target: `test_before.log`, `test_after.log`, and the main build CTest
-state.
-
-Actions:
-
-- Inspect existing canonical logs for selected count, pass/fail count, and
-  whether they represent the broad backend regex or a narrow focused scope.
-- If the existing logs are narrow or stale, prepare a safe fresh broad backend
-  capture from `/workspaces/c4c/build`.
-- Record in `todo.md` whether the inventory is reconstructed or freshly run.
-- Preserve the exact command, working directory, selected count, passed count,
-  failed count, and timeout/hang safeguards used.
-
-Completion check:
-
-- `todo.md` names the evidence source for the current inventory and records the
-  current backend-regex selected/pass/fail counts or the blocker preventing a
-  safe capture.
-
-### Step 2: Classify Residual Failures
-
-Goal: split the backend-regex failures into actionable buckets without
-reopening closed owners by count alone.
-
-Primary target: backend-regex failure output and generated artifacts under
-`build/c_testsuite_aarch64_backend/`.
+Primary target: semantic `lir_to_bir` admission and prepared BIR handoff for
+local-memory GEP/load forms.
 
 Actions:
 
-- Separate local backend/unit/CLI failures from
-  `c_testsuite_aarch64_backend_*` failures.
-- Classify AArch64 c-testsuite failures by observed stage:
-  frontend/prepared-node, `lir_to_bir`, machine-printer, assembler/linker,
-  runtime nonzero, runtime mismatch/crash, timeout, and output storm.
-- Compare diagnostics and generated artifacts against the closed-owner
-  boundaries summarized in the source idea for ideas 285 through 311.
-- Record ambiguous buckets with the exact missing fact needed to split them.
+- Reproduce or inspect the current diagnostics for the two representative
+  tests.
+- Compare the `00204.c` dump helpers against the failing c-testsuite route.
+- Inspect the corresponding `00216.c` path enough to decide whether it shares
+  the same missing semantic fact.
+- Record the localized first bad fact in `todo.md`.
 
 Completion check:
 
-- `todo.md` contains a current classified inventory with counts, representative
-  tests, diagnostics or artifact evidence, and explicit closed-owner
-  non-reopen notes where applicable.
+- `todo.md` names the missing semantic/prepared-handoff fact, the owning code
+  surface, and whether both representatives share it.
 
-### Step 3: Select the Next Semantic Owner
+### Step 2: Repair Semantic Admission Or Prepared Handoff
 
-Goal: identify the highest-value focused repair owner, or decide that no owner
-is ready without another probe.
+Goal: publish or preserve the structured local-memory facts needed for the
+representative GEP/load forms to reach prepared-module handoff.
 
-Primary target: the largest crisp residual bucket with shared semantic
-evidence.
+Primary target: the code surface identified by Step 1.
 
 Actions:
 
-- Prefer semantic backend capability families over singleton test names.
-- Accept a singleton only when it is semantically crisp and backed by concrete
-  generated-code, diagnostic, or proof evidence.
-- Reject owners that would require expectation changes, unsupported
-  downgrades, runner edits, or filename-shaped fixes.
-- Define focused proof scope before any implementation starts.
+- Implement the narrow semantic repair without c-testsuite filename matching.
+- Keep unsupported or incomplete forms fail-closed.
+- Avoid unrelated frontend, backend, AArch64 printer, runtime, runner, timeout,
+  or CTest changes.
 
 Completion check:
 
-- `todo.md` records either the selected owner candidate with scope and proof
-  command, or the reason no owner is ready and the next narrow probe needed.
+- The focused proof scope advances past the old `00204.c` and `00216.c`
+  local-memory semantic-family diagnostics, or `todo.md` records the next
+  first bad fact with evidence.
 
-### Step 4: Split and Switch Lifecycle State
+### Step 3: Add Focused Coverage
 
-Goal: leave the umbrella inventory parked and move implementation to a focused
-owner before code changes.
+Goal: make the repaired fact publication observable in local semantic or
+prepared-handoff tests.
 
-Primary target: a new focused `ideas/open/*.md` owner when Step 3 finds one.
+Primary target: existing `lir_to_bir` notes or CLI dump coverage.
 
 Actions:
 
-- Create a focused source idea only for the selected semantic owner.
-- Include concrete in-scope and out-of-scope boundaries, acceptance criteria,
-  proof scope, and reviewer reject signals.
-- Add a durable deactivation note to
-  `ideas/open/295_backend_regex_failure_family_inventory.md` summarizing the
-  inventory decision, proof scope, remaining parked buckets, and active owner.
-- Switch lifecycle state to the focused owner before implementation begins.
+- Prefer extending existing semantic/prepared dump or notes coverage over
+  broad new test scaffolding.
+- Add `00216.c`-specific semantic/prepared coverage only if the current helper
+  set cannot prove the shared repair.
+- Keep assertions tied to structured semantic facts, not textual coincidences.
 
 Completion check:
 
-- Either a focused owner is active with matching `plan.md` and `todo.md`, or
-  this umbrella remains active with `todo.md` explaining why the split is
-  blocked.
+- Focused tests prove the repaired local-memory handoff fact without weakening
+  existing contracts.
+
+### Step 4: Validate And Classify Residuals
+
+Goal: prove the owner result and classify any new focused residuals.
+
+Primary target: supervisor-selected focused proof scope.
+
+Actions:
+
+- Run:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$' > test_after.log 2>&1
+```
+
+- Record pass/fail results and first bad facts in `todo.md`.
+- Do not claim this owner complete if the old semantic diagnostics remain.
+
+Completion check:
+
+- `todo.md` records fresh proof. The old local-memory semantic-family
+  diagnostics are gone for both representatives, or the remaining blocker is
+  explicitly localized for the next packet.
