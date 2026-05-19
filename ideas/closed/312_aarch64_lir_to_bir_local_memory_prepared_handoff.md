@@ -1,6 +1,6 @@
 # AArch64 LIR To BIR Local Memory Prepared Handoff
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -106,3 +106,30 @@ Reject the route if it:
   `00216.c` local-memory semantic handoff behavior unexamined;
 - performs broad frontend, BIR, backend, or AArch64 codegen rewrites outside
   the semantic admission/prepared-handoff path without a lifecycle switch.
+
+## Closure Note
+
+Closed 2026-05-19 as complete for the semantic `lir_to_bir` local-memory
+prepared-handoff owner.
+
+The focused before/after proof scope was:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_cli_dump_bir_00204_stdarg_semantic_handoff|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff|backend_cli_dump_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_function_filters_00204|backend_cli_dump_prepared_bir_focus_block_entry_00204|c_testsuite_aarch64_backend_src_00204_c|c_testsuite_aarch64_backend_src_00216_c)$'
+```
+
+The matching focused regression guard passed in non-decreasing mode with
+6 passed and 2 failed before, 6 passed and 2 failed after, and no new failing
+tests.
+
+The old semantic local-memory prepared-handoff diagnostics are no longer the
+blocking facts for the representatives:
+
+- `00204.c` is past the original `myprintf` GEP local-memory semantic-family
+  diagnostic and is now parked as an out-of-scope AArch64 `f128_transport`
+  machine-printer residual in
+  `ideas/open/313_aarch64_f128_transport_machine_printer.md`.
+- `00216.c` is past the semantic `lir_to_bir` local-memory diagnostic and is
+  now parked as an out-of-scope AArch64 large stack-offset assembly-validation
+  residual in
+  `ideas/open/314_aarch64_large_stack_offset_addressing.md`.
