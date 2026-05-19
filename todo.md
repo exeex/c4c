@@ -10,26 +10,26 @@ Current Step Title: Check Store/Load Boundaries
 
 ## Just Finished
 
-Step 3 implementation packet completed a bounded local aggregate load/copy
-admission repair. `record_loaded_local_pointer_slot_state` now publishes a
-`LocalAggregateSlots` view when a loaded local pointer is known to point at a
-local aggregate slot or aggregate subobject. This admits the direct local
-representative in `00216`, where `%t166 = load ptr, ptr %lv.pls` points back to
-`%lv.ls` and `%t167 = load %struct.S, ptr %t166` can be treated as an aggregate
-value alias over the same leaf slots.
+Step 3 implementation packet completed a bounded local aggregate store admission
+repair for by-value aggregate parameter copies in variadic functions.
+`collect_aggregate_params()` now keeps fixed aggregate parameters collected
+before the variadic sentinel instead of discarding the whole parameter map when
+it sees `...`. This admits `%p.f` as an aggregate source for the local copy
+`store %struct.foo %p.f, ptr %lv.param.f` in `00140`.
 
-Proof moved `00216` past the old `load local-memory semantic family` blocker;
-it now reaches a later `gep local-memory semantic family` failure in `foo`.
-`00046` and `00140` still fail in `store local-memory semantic family`, and
-`00218` still fails in `load local-memory semantic family`.
+Proof moved `00140` past the old `store local-memory semantic family` blocker;
+it now reaches a later AArch64 call-boundary move printer failure. `00046` still
+fails in `store local-memory semantic family`, `00216` still fails in
+`gep local-memory semantic family`, and `00218` still fails in
+`load local-memory semantic family`.
 
 ## Suggested Next
 
-Keep the next packet focused on the remaining direct local store owner:
-`00140` still rejects the by-value aggregate parameter copy into
-`%lv.param.f`, while `00046` remains the scalar subobject store follow-up.
-Alternatively, split `00216`'s new later GEP failure only if the supervisor
-wants to continue that case after the aggregate load boundary is unblocked.
+Keep the next packet focused on `00046` if the supervisor wants to continue
+Step 3 store/load boundaries: scalar stores through local aggregate/union byte
+subobjects still need to route through addressable local subobject provenance
+instead of falling into the exact local-slot type mismatch. Treat `00140`'s new
+call-boundary move printer failure as a later non-local-memory backend packet.
 
 ## Watchouts
 
@@ -50,6 +50,9 @@ wants to continue that case after the aggregate load boundary is unblocked.
   from scalar global arrays until the simpler global scalar-array lane is
   proven.
 - Store/load boundary checks: `00046`, `00140`, `00216`, `00218`.
+- `00140` no longer proves the old aggregate parameter copy store boundary as
+  the first blocker; after this packet it reaches a later AArch64
+  call-boundary move printer failure.
 - `00216` no longer proves the old aggregate load boundary as the first
   blocker; after this packet it reaches a later GEP-family local-memory
   blocker in `foo`.
@@ -79,5 +82,6 @@ Ran exactly:
 
 Result: build passed and `backend_lir_to_bir_notes` passed. The focused
 c-testsuite subset still fails overall, with `test_after.log` preserving the
-proof. Residuals: `00046` store local-memory, `00140` store local-memory,
-`00216` now GEP local-memory, `00218` load local-memory.
+proof. Residuals: `00046` store local-memory, `00140` now AArch64
+call-boundary move printer failure, `00216` GEP local-memory, `00218` load
+local-memory.

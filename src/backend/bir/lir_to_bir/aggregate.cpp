@@ -213,7 +213,7 @@ BirFunctionLowerer::AggregateParamMap BirFunctionLowerer::collect_aggregate_para
   for (std::size_t index = 0; index < limit; ++index) {
     const auto& parsed_param = (*parsed_params)[index];
     if (parsed_param.is_varargs) {
-      return {};
+      break;
     }
     const auto normalized_type = normalize_aggregate_param_type(parsed_param.type);
     if (lower_integer_type(normalized_type).has_value()) {
