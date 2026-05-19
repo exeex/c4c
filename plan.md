@@ -1,162 +1,168 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Symbol+Offset Address Materialization Register-Width Legality Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated From: post-302 closure, with no remaining focused open owner
+Source Idea: ideas/open/306_aarch64_symbol_offset_address_materialization_width.md
+Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Re-enter the umbrella backend-regex inventory after focused owner 302 and its
-split follow-up owners have closed, then decide whether another semantic
-repair owner is ready to split or whether the inventory should wait for new
-evidence.
+Execute the focused owner split from umbrella inventory idea 295 for AArch64
+symbol+offset address materialization that currently emits illegal 32-bit
+address temporaries.
 
 ## Goal
 
-Produce a current classified backend-regex residual inventory and either split
-the next focused `ideas/open/*.md` owner or record why no actionable owner is
-ready.
+Make symbol+offset address formation preserve address values in 64-bit
+registers through `adrp`/`:lo12:` formation and `ldr`/`str` memory-base use for
+the focused cases `00050.c`, `00176.c`, and `00182.c`.
 
 ## Core Rule
 
-This is classification and lifecycle work, not implementation. Do not treat
-`ctest -R backend` as one monolithic failure, do not reopen closed owners from
-counts alone, and do not claim progress through expectations, allowlists,
-unsupported classifications, timeout policy, runner behavior, proof-log
-policy, or CTest registration changes.
+Fix the semantic AArch64 address-register-width owner. Do not claim progress
+through testcase-name matching, exact emitted-instruction matching, expectation
+changes, allowlists, unsupported classifications, timeout policy, runner
+behavior, CTest registration, or proof-log policy changes.
 
 ## Read First
 
 - Source idea:
+  `ideas/open/306_aarch64_symbol_offset_address_materialization_width.md`
+- Split source:
   `ideas/open/295_backend_regex_failure_family_inventory.md`
-- Recently closed focused owners:
-  - `ideas/closed/302_aarch64_scalar_machine_node_operand_forms.md`
-  - `ideas/closed/303_aarch64_sign_extension_assembler_legality.md`
-  - `ideas/closed/304_aarch64_ctestsuite_00205_timeout_residual.md`
-  - `ideas/closed/305_aarch64_ctestsuite_00205_value_materialization_residual.md`
-- Previous source note: the post-301 split identified idea 302 as the next
-  focused owner and parked assembly-legality, call-boundary move, `lir_to_bir`,
-  runtime, timeout, and output-storm buckets for later classification.
+- Split evidence preserved in the new source idea and the post-305 note in
+  umbrella idea 295.
+- Existing generated assembly:
+  - `build/c_testsuite_aarch64_backend/src/00050.c.s`
+  - `build/c_testsuite_aarch64_backend/src/00176.c.s`
+  - `build/c_testsuite_aarch64_backend/src/00182.c.s`
+  - `build/c_testsuite_aarch64_backend/src/00189.c.s` only as out-of-scope
+    PIC/GOT contrast evidence.
 
 ## Current Targets
 
-- Current main-build backend-regex result, including its actual selected-test
-  count.
-- Residual local backend/unit/CLI failures, if any.
-- Residual `c_testsuite_aarch64_backend_*` compile-stage, runtime nonzero,
-  runtime mismatch/crash, timeout, or output-storm failures.
-- Evidence needed to decide whether the next focused owner is semantic and
-  tractable.
+- `00050.c`: symbol+offset address reference for `v+8`.
+- `00176.c`: global scalar-array symbol+offset loads around `array+56` and
+  `array+60`.
+- `00182.c`: static-local aggregate/object symbol+offset loads around
+  `__static_local_print_led_3+120` and `+124`.
 
 ## Non-Goals
 
-- Do not implement fixes inside this umbrella idea.
-- Do not reopen closed owners 285 through 305 from failure counts alone.
-- Do not fold unrelated buckets into one focused idea because they share a
-  testcase name or broad failure class.
-- Do not ask an executor to run broad runtime tests without timeout and
-  stale-process cleanup.
-- Do not edit implementation files, closed ideas, test logs, expectations,
-  allowlists, unsupported classifications, timeout policy, runner behavior, or
-  CTest registration as lifecycle progress.
+- Do not include `00189.c` unless new generated-code evidence proves the same
+  repair owns externally binding GOT/PIC symbol references such as `stdout`.
+- Do not address runtime nonzero, runtime mismatch/crash, timeout, hang, or
+  output-storm residuals in this owner.
+- Do not fold call-boundary moves, scalar arithmetic printer gaps,
+  unprepared frame-slot sources, semantic `lir_to_bir` admission failures, or
+  unrelated machine-printer/frontend buckets into this runbook.
+- Do not reopen closed owners 285 through 305 from pass counts alone.
+- Do not edit expectations, allowlists, unsupported classifications, timeout
+  policy, runner behavior, CTest registration, or proof-log policy.
 
 ## Working Model
 
-Idea 295 is the durable inventory owner. It has repeatedly split focused
-owners, parked itself, then reactivated after closures to classify the next
-residual family. With focused owner 302 now closed, the next step is to refresh
-or reconstruct the backend-regex residual set, compare it against the closed
-owner boundaries, and split another focused owner only if generated-code,
-diagnostic, or proof evidence identifies a real semantic family.
+The failing cases already reach AArch64 assembly emission. The shared illegal
+form is address materialization into a `wN` register followed by memory access
+that uses that same `wN` as the base. The likely repair surface is the backend
+path that chooses or preserves register width for symbol+offset address values,
+not the c-testsuite registration or runtime harness.
 
 ## Execution Rules
 
-- Treat `todo.md` as the live inventory scratchpad.
-- Prefer a fresh main-build backend-regex capture when the supervisor selects
-  that proof command. If only existing canonical logs are available, first
-  record their exact scope and why they are or are not suitable.
-- Separate local backend tests from external AArch64 c-testsuite backend tests.
-- Classify by failure mechanism, not by filename or pass-count movement.
-- Preserve closed owner boundaries unless generated-code or diagnostic
-  evidence contradicts them.
-- If a tractable semantic owner is found, create a new `ideas/open/*.md`
-  source idea with concrete in-scope, out-of-scope, acceptance, and reviewer
-  reject signals, then switch lifecycle state to that focused owner before
-  implementation.
-- If no owner is ready, record the exact evidence gap in `todo.md` and leave
-  implementation unstarted.
+- Inspect the generated assembly and lowering/printing path before editing.
+- Repair the address-value width decision at the semantic lowering,
+  materialization, selection, or printer-admission point that owns symbol+offset
+  memory references.
+- Keep data values and address values distinct: only address temporaries and
+  memory bases require 64-bit address registers.
+- Prove the focused cases first, then broaden only enough to guard nearby
+  symbol+offset/global/static-object forms.
+- Record all packet progress and proof in `todo.md`.
 
 ## Steps
 
-### Step 1: Capture Or Reconstruct Post-302 Backend Inventory
+### Step 1: Locate The Symbol+Offset Address Width Owner
 
-Goal: establish the current backend-regex residual set after focused owner 302
-closed.
+Goal: identify where `wN` is selected or preserved for symbol+offset address
+temporaries.
 
-Primary target: main build backend-regex test output or existing canonical
-logs with verified scope
-
-Actions:
-
-- Identify whether current `test_before.log` / `test_after.log` cover the
-  backend-regex inventory scope or only a smaller close-gate scope.
-- If the supervisor delegates a fresh inventory run, use the main build
-  backend selector with timeout/stale-process safeguards appropriate for broad
-  runtime scans.
-- Record selected count, pass/fail count, local backend/unit failures, and
-  `c_testsuite_aarch64_backend_*` failures separately.
-- Compare failures against closed owners 285 through 305 and mark any
-  suspected contradiction as requiring generated-code proof before reopening.
-
-Completion check:
-
-- `todo.md` records a current or explicitly scoped backend-regex residual
-  inventory and names any scope/log gaps.
-
-### Step 2: Classify Remaining Failure Families
-
-Goal: find the next tractable semantic owner, if one exists.
-
-Primary target: residual diagnostics, generated assembly/probes, and failure
-categories from Step 1
+Primary target: AArch64 lowering/materialization/selection/printer path for
+symbol+offset memory operands
 
 Actions:
 
-- Group failures into compile-stage machine-printer/frontend diagnostics,
-  `lir_to_bir` admission failures, runtime nonzero, runtime mismatch/crash,
-  timeout/hang, and output-storm buckets.
-- For each candidate group, identify the semantic capability it would repair
-  and the evidence that keeps it distinct from closed owners.
-- Reject testcase-shaped groups that only share filenames, exact diagnostic
-  text, or pass-count movement.
-- Quarantine timeout/hang or output-storm cases unless the supervisor selects
-  a safe proof flow.
+- Inspect generated assembly for `00050.c`, `00176.c`, and `00182.c` and
+  trace the relevant symbol+offset memory references back through the backend.
+- Identify whether the bad width is introduced during semantic lowering,
+  address materialization, register allocation/selection, or final printing.
+- Confirm that `00189.c` is a PIC/GOT relocation contrast case, not proof for
+  this owner.
 
 Completion check:
 
-- `todo.md` records either the next focused semantic owner candidate or the
-  exact reason no owner is ready to split.
+- `todo.md` records the concrete owner function/path and why it covers all
+  three focused cases without absorbing unrelated buckets.
 
-### Step 3: Split Focused Owner Or Park Inventory
+### Step 2: Repair Address Register Width For Symbol+Offset Memory References
 
-Goal: leave lifecycle state ready for implementation only when a focused owner
-exists.
+Goal: emit legal 64-bit address temporaries and memory bases for the focused
+symbol+offset family.
 
-Primary target: `ideas/open/*.md`, `plan.md`, and `todo.md`
+Primary target: the owner identified in Step 1
 
 Actions:
 
-- If Step 2 finds a focused owner, create a new source idea under
-  `ideas/open/` with goal, why, in-scope, out-of-scope, acceptance criteria,
-  and concrete reviewer reject signals.
-- Add a durable deactivation note to idea 295 summarizing the inventory result,
-  owner decision, proof/log scope, and remaining buckets.
-- Switch active lifecycle state from this umbrella to the new focused owner.
-- If no owner is ready, keep `todo.md` as the evidence record and report that
-  no implementation packet should be delegated yet.
+- Update the semantic owner so symbol+offset address values are represented,
+  materialized, selected, and printed as 64-bit address registers.
+- Preserve existing 32-bit data-result behavior for loaded/stored scalar values
+  where the data width is 32-bit.
+- Avoid filename, symbol-name, or exact-instruction shortcuts.
+- Do not change test expectations, runner behavior, CTest registration, or
+  unsupported classifications.
 
 Completion check:
 
-- The lifecycle state either points to a new focused owner ready for execution,
-  or `todo.md` explains why idea 295 remains parked with no activatable
-  implementation owner.
+- Fresh build/compile proof succeeds and generated assembly no longer contains
+  illegal `wN` address temporaries or `wN` memory bases for the focused
+  symbol+offset references.
+
+### Step 3: Focused Proof And Nearby Same-Owner Guard
+
+Goal: prove the repair on the focused family and check nearby same-owner forms.
+
+Primary target: supervisor-selected focused backend c-testsuite subset
+
+Actions:
+
+- Rerun the focused backend c-tests for `00050.c`, `00176.c`, and `00182.c`.
+- Inspect generated assembly for 64-bit address registers through
+  symbol+offset memory access.
+- Add nearby symbol+offset/global/static-object cases only when they exercise
+  the same owner and do not turn the packet into broad inventory work.
+
+Completion check:
+
+- `todo.md` records focused proof results and any remaining residuals,
+  explicitly separating out-of-scope runtime, mismatch, timeout, and PIC/GOT
+  buckets.
+
+### Step 4: Broader Backend-Regex Acceptance Check
+
+Goal: ensure the focused repair is non-regressive at the backend-regex scope
+selected by the supervisor.
+
+Primary target: main-build backend-regex proof
+
+Actions:
+
+- Run the supervisor-selected broader backend-regex command after focused proof
+  is green.
+- Compare remaining failures against the source idea boundary.
+- Do not claim closure from pass-count movement alone; explain semantic bucket
+  movement and residual buckets.
+
+Completion check:
+
+- Canonical proof is recorded in `test_after.log` or the delegated proof
+  artifact, and `todo.md` is ready for supervisor review of whether idea 306 can
+  close or needs another focused packet.

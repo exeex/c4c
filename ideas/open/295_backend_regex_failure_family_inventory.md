@@ -363,6 +363,32 @@ Post-301 split 2026-05-19:
   parked under this umbrella until narrow probes justify separate owners.
 - Active implementation should move to idea 302 before code edits begin.
 
+Post-305 split 2026-05-19:
+
+- Step 2 of the active umbrella runbook classified the supervisor-captured
+  broad backend baseline from `test_before.log` plus existing generated
+  AArch64 assembly under `build/c_testsuite_aarch64_backend/`.
+- The best next focused owner is idea 306,
+  `ideas/open/306_aarch64_symbol_offset_address_materialization_width.md`,
+  covering AArch64 symbol+offset address materialization/register-width
+  legality for `00050.c`, `00176.c`, and `00182.c`.
+- The split is based on concrete assembler-legality evidence: generated
+  `adrp` symbol+offset address formation uses a 32-bit `wN` temporary and then
+  reuses that `wN` as a memory base before `ldr`/`str`.
+- This owner is distinct from closed fused compare-branch operand forms,
+  scalar immediate fallback, scalar-cast spelling, memory-store source
+  materialization, and scalar selected-node operand forms; the current bad
+  operation is address-register width selection for symbol+offset memory
+  references after assembly has already been emitted.
+- `00189.c` remains parked as an externally binding symbol/PIC relocation
+  bucket unless future evidence proves the same repair owns GOT/PIC address
+  formation for symbols such as `stdout`.
+- Runtime nonzero, runtime mismatch/crash, timeout, output-storm,
+  call-boundary move, scalar `mul` printable-rhs, unprepared frame-slot source,
+  and semantic `lir_to_bir` residuals remain parked under this umbrella for
+  later classification or separate focused splits.
+- Active implementation should move to idea 306 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -373,5 +399,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 301 without generated-code or
+- reopens recently closed owners 285 through 305 without generated-code or
   proof evidence that contradicts their closure boundary.
