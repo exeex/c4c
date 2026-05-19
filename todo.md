@@ -10,43 +10,55 @@ Current Step Title: Check Store/Load Boundaries
 
 ## Just Finished
 
-Lifecycle review kept idea 297 active but moved the current pointer to Step 3.
-Step 2 is complete for the direct local-memory GEP owner: direct dynamic scalar
-local-array cases `00143`, `00157`, and `00185` moved past the old GEP
-admission blocker, and the remaining GEP-family admissions are now classified
-as adjacent global/pointer projection work rather than local-memory GEP work.
+Step 3 diagnostic-only packet completed for store boundary cases `00046`,
+`00140` and load boundary cases `00216`, `00218`. All four still abort before
+semantic BIR handoff in the current `test_before.log`; `--dump-bir` reproduces
+the same family notes and emits no BIR:
 
-Narrow `--codegen llvm` and `--dump-bir` diagnostics classify the residuals:
-
-- Global dynamic scalar-array GEPs: `00176` (`swap`, `getelementptr i32, ptr
-  @array, i64 %idx`) and `00181` (`PrintAll`, `getelementptr i32, ptr @A/@B/@C,
-  i64 %idx`). These are globals whose LLVM spelling decays directly to scalar
-  element pointers, not local stack arrays.
-- Pointer-parameter/pointer-value GEPs: `00182` (`print_led`, repeated
-  `getelementptr i8, ptr %buf, i64 1/3` after loading the pointer parameter
-  slot) and `00209` (`f4`, `getelementptr ptr, ptr %fp, i64 %i` then indirect
-  call). These need pointer-value array/provenance admission, not aggregate
-  local slot indexing.
-- Global dynamic aggregate member GEPs: `00195` (`point_array[my_point].x/y`)
-  and `00205` (`cases[j].c[i]`, plus sibling `b/e/k` fields). These require
-  dynamic global aggregate projection through struct fields and nested array
-  fields.
-
-Representative BIR dumps for `00176`, `00181`, and `00209` still stop before
-handoff with the same `gep local-memory semantic family` note, but lifecycle
-scope now treats that label as stale for these residuals. They should be split
-later under a global/pointer GEP owner instead of extending idea 297.
+- `00046`: `main` fails in `store local-memory semantic family`. LLVM shape is
+  local aggregate alloca `%lv.v` followed by nested aggregate/union GEP chains
+  and scalar stores, e.g. `getelementptr %struct._anon_1, ptr %t1, i32 0, i32 0`
+  then `store i32 2, ptr %t2`, plus a deeper anonymous struct/union chain to
+  `store i32 3, ptr %t6`. This is still local aggregate subobject storage, but
+  the representative rejected store is a scalar write through an aggregate/byte
+  subobject pointer rather than a direct scalar local slot.
+- `00140`: `f1` fails in `store local-memory semantic family`. LLVM shape is
+  `define i32 @f1(%struct.foo %p.f, ptr %p.p, i32 %p.n, ...)` followed by
+  `%lv.param.f = alloca %struct.foo` and `store %struct.foo %p.f, ptr
+  %lv.param.f`. The existing aggregate store lane only copies from
+  `aggregate_params_` or `aggregate_value_aliases_`; this by-value aggregate
+  parameter does not appear to be admitted as a source aggregate for the local
+  aggregate store.
+- `00216`: `foo` fails in `load local-memory semantic family`. LLVM has several
+  aggregate load/copy forms. The local-owner representative is `const struct S
+  *pls = &ls; struct S ls21 = *pls;`, emitted as `store ptr %lv.ls, ptr
+  %lv.pls`, `%t166 = load ptr, ptr %lv.pls`, `%t167 = load %struct.S, ptr
+  %t166`, then `store %struct.S %t167, ptr %lv.ls21`. Later forms also load
+  aggregate values from pointer-derived aggregate members, e.g. `%t431 = load
+  %struct.T, ptr %t430`. The current aggregate load branch only aliases direct
+  `load.ptr` names already present in `local_aggregate_slots_`; it does not
+  copy an aggregate through `local_slot_pointer_values_`/pointer-derived local
+  aggregate provenance.
+- `00218`: `convert_like_real` fails in `load local-memory semantic family`.
+  LLVM shape is parameter-pointer aggregate projection:
+  `%t0 = getelementptr %struct.tree_node, ptr %p.convs, i32 0, i32 0`,
+  `%t1 = getelementptr %struct.tree_common, ptr %t0, i32 0, i32 2`, then
+  `%t2.bf.unit = load i32, ptr %t1`. The caller passes a local address, but the
+  failing callee sees only a pointer parameter and aggregate field GEPs over
+  that pointer. Treat this as pointer-parameter aggregate projection unless a
+  lifecycle review explicitly broadens idea 297 beyond direct local-memory
+  admission.
 
 ## Suggested Next
 
-Execute Step 3 against the local-memory store/load boundary checks: `00046`,
-`00140`, `00216`, and `00218`. Diagnose whether each still shares the repaired
-local-memory admission rule or has moved to a residual outside this owner.
-
-Do not implement global scalar-array GEPs (`00176`, `00181`),
-pointer-parameter/pointer-value GEPs (`00182`, `00209`), or global aggregate
-member GEPs (`00195`, `00205`) inside idea 297. Those should become a focused
-later split if the supervisor selects that route.
+Implement one bounded local-memory aggregate boundary packet, preferably
+starting with the direct owner shared by `00140` and the local representative in
+`00216`: aggregate value copy between local aggregate slots and aggregate
+sources tracked through by-value aggregate parameters or local pointer
+provenance. Likely owner helpers are `lower_memory_store_inst` and
+`lower_memory_load_inst` in `src/backend/bir/lir_to_bir/memory/local_slots.cpp`,
+with copy emission through `append_local_aggregate_copy_from_slots` or a sibling
+helper that can copy from a `LocalSlotAddress`/pointer-derived local aggregate.
 
 ## Watchouts
 
@@ -76,23 +88,28 @@ later split if the supervisor selects that route.
 - Step 2 should not special-case `00143`; the rejected form is semantic:
   dynamic GEP into scalar local arrays whose elements are represented as local
   slots.
-- Store/load boundary notes for Step 3: `00046` needs nested aggregate
-  subobject scalar stores through local address provenance; `00216` needs
-  aggregate load/copy from pointer-derived local memory.
+- `00046` may need a separate follow-up after aggregate copy: scalar stores
+  through local aggregate/union byte subobjects must route through
+  `local_slot_pointer_values_`/`try_lower_pointer_provenance_store` as
+  addressable local subobjects instead of falling into exact local-slot type
+  mismatch.
+- Keep `00218` out of the first implementation packet unless the supervisor
+  confirms pointer-parameter aggregate projection is in scope for idea 297.
+  It is not a direct local alloca boundary inside the failing function.
 
 ## Proof
 
-Lifecycle-only route review; per delegation, did not rerun broad backend regex,
-did not implement fixes, and did not modify `test_before.log` or
+Diagnostic-only Step 3 packet; per delegation, did not implement fixes, did not
+rerun broad backend regex, and did not modify `test_before.log` or
 `test_after.log`.
 
 Diagnostics run:
 
-- Read current `test_before.log` focused baseline for `00176`, `00181`,
-  `00182`, `00195`, `00205`, and `00209`.
-- Ran `./build/c4cll --dump-bir --target aarch64-linux-gnu` on representatives
-  `00176`, `00181`, and `00209`; each stopped with the current GEP family
-  admission failure.
+- Read current `test_before.log` focused baseline for `00046`, `00140`,
+  `00216`, and `00218`.
 - Ran `./build/c4cll --codegen llvm --target aarch64-linux-gnu` to `/tmp` for
-  `00176`, `00181`, `00182`, `00195`, `00205`, and `00209` and classified the
-  LLVM GEP shapes above.
+  `00046`, `00140`, `00216`, and `00218` and classified the representative
+  LLVM store/load forms above.
+- Ran `./build/c4cll --dump-bir --target aarch64-linux-gnu` on `00046`,
+  `00140`, `00216`, and `00218`; each stopped before BIR output with the same
+  family diagnostics recorded in `test_before.log`.
