@@ -1,55 +1,62 @@
 Status: Active
 Source Idea Path: ideas/open/323_aarch64_vararg_consumption_source_progression.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Consumer Source And Progression
+Current Step ID: 4
+Current Step Title: Validate And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2: Repair Consumer Source And Progression.
+Step 4: Validate And Classify Residuals.
 
-Implemented a prepared HFA/floating aggregate `va_arg` access shape for
-AArch64:
+Reran the focused proof after Step 2 and classified the remaining
+`c_testsuite_aarch64_backend_src_00204_c` segfault.
 
-- `make_aapcs64_aggregate_va_arg_access_plan()` now detects HFA aggregate
-  helpers from the immediate FP lane loads following the sret aggregate helper
-  call. Integer/memory aggregate helpers remain overflow-area consumers.
-- `PreparedVariadicAggregateVaArgAccessPlan` now carries helper block/inst
-  identity plus register-save-area lane count and lane size facts for machine
-  lowering.
-- `print_aggregate_va_arg_lowering_lines()` now emits executable
-  register-save-area versus overflow branching. HFA/floating aggregates read
-  lanes from consecutive FP register-save slots while `FpOffset + stride <= 0`,
-  copy each lane’s low bytes into the aggregate payload home, and advance
-  `FpOffset` by `lane_count * fp_slot_size`. Overflow fallback still copies the
-  contiguous payload and advances `OverflowArgArea`.
-- `va_start` lowering now also populates the AAPCS64 GP and FP/SIMD register
-  save area slots for unnamed incoming argument registers before publishing the
-  `va_list` field pointers and offsets.
-- Focused backend coverage now proves the selected aggregate helpers expose
-  `source_class=register_save_area`, `source_field=fp_register_save_area`,
-  `progression_field=fp_offset`, and lane metadata for the HFA/floating
-  aggregate consumers in `myprintf`.
+The original idea 323 first bad fact is repaired:
+
+- Generated `build/c_testsuite_aarch64_backend/src/00204.c.s` has no raw
+  `va.arg.aggregate*` helper text.
+- `myprintf` still materializes the writable `va_list` destination before
+  field publication: `add x21, sp, #816`, followed by GP/FP register-save-area
+  stores and `va_list` field stores through `[x21]`.
+- The aggregate HFA/floating consumers still emit executable
+  `.Lva_arg_aggregate_*` branches that test `FpOffset`, read lanes from the
+  FP register-save area through `[x21, #16] + [x21, #28]`, advance
+  `[x21, #28]`, and retain overflow fallbacks.
+
+The remaining segfault is outside idea 323's aggregate `va_arg`
+source/progression owner. The generated `myprintf` entry allocates only
+`896` bytes (`sub sp, sp, #896`) but later accesses local/spill slots far past
+that frame, for example `ldr x1, [sp, #9696]` while matching `%7s` and
+`str w9, [sp, #9752]` in the first HFA consumer path. It also clobbers the
+incoming format pointer before the loop with `mov x0, x21`; since `x21` is
+only the saved callee register at that point, the subsequent `ldrb w13, [x0]`
+does not reliably read the format string. Those are frame/local publication or
+formal preservation faults, not aggregate `va_arg` source-selection or
+progression faults.
 
 ## Suggested Next
 
-Localize the remaining external runtime segfault after Step 2. The generated
-`00204.c.s` now has HFA aggregate `va_arg` FP-register-save-area branches and
-no raw `va.arg.aggregate*` text, but the c-testsuite case still exits with a
-segmentation fault before producing buffered stdout. The next packet should
-identify the first bad fact in the generated `myprintf` entry/loop state rather
-than changing aggregate `va_arg` source selection again.
+Ask the plan owner to close or retire idea 323 as complete and activate a new
+owner for AArch64 local/frame-slot publication and formal argument preservation
+in variadic functions. The next implementation packet should localize why
+`myprintf`'s frame allocation is smaller than the generated stack-slot offsets
+and why the incoming `format` pointer is overwritten by `mov x0, x21` before
+the format loop.
 
 ## Watchouts
 
-- The repaired `va_start` destination sequence from idea 322 must remain
-  intact unless evidence proves it points at the wrong writable object.
-- Raw `va.arg.aggregate*` text must remain absent.
-- Do not regress the new aggregate helper contract: HFA/floating aggregate
-  consumers must keep using FP register-save-area slots with `FpOffset`
-  progression and overflow fallback.
+- The repaired `va_start` destination sequence from idea 322 remains intact;
+  do not route the new fault back to destination materialization without new
+  evidence.
+- Raw `va.arg.aggregate*` text remains absent and must stay absent.
+- The new aggregate helper contract remains intact: HFA/floating aggregate
+  consumers use FP register-save-area slots with `FpOffset` progression and
+  overflow fallback.
+- The residual accesses `myprintf` stack offsets above the allocated frame and
+  corrupts the format pointer before the loop; a repair that only tweaks one
+  `%hfa*` consumer would be testcase overfit.
 - Do not replace the semantic BIR `%7s`/`%9s` branch-expanded consumers with a
   named-case shortcut; they are useful contrast evidence for source/progression
   branching.
@@ -62,7 +69,7 @@ than changing aggregate `va_arg` source selection again.
 
 ## Proof
 
-Reran the supervisor-delegated focused proof and wrote output to
+Reran the supervisor-delegated focused proof for Step 4 and wrote output to
 `test_after.log`:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'`
@@ -74,10 +81,9 @@ focused backend/internal tests all pass, including
 `backend_aarch64_instruction_dispatch`, and the focused BIR/prepared-BIR dump
 checks. The only remaining failure is
 `c_testsuite_aarch64_backend_src_00204_c`, still
-`[RUNTIME_NONZERO] exit=Segmentation fault`.
+`[RUNTIME_NONZERO] exit=Segmentation fault`, with empty captured
+`stdout+stderr`.
 
-Generated `build/c_testsuite_aarch64_backend/src/00204.c.s` has no raw
-`va.arg.aggregate*` text. It now contains the repaired GP/FP register-save-area
-stores in `va_start` and per-helper `.Lva_arg_aggregate_*` branches that test
-`FpOffset`, copy HFA lanes from FP save slots, advance `FpOffset`, and fall
-back to overflow copies when the FP save area is exhausted.
+Classification: no new raw-helper or aggregate HFA source/progression failure
+was found. The first remaining generated-output fault is under-sized
+`myprintf` frame/local slot publication plus incoming-format preservation.
