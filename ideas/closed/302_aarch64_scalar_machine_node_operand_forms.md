@@ -1,8 +1,9 @@
 # AArch64 Scalar Machine Node Operand Forms
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -90,6 +91,18 @@ Do not close this idea or claim focused pass-count progress from the dirty
 Step 3 implementation alone. Reactivation should first review the uncommitted
 Step 3 slice, its focused proof, and whether the old `00205` unsigned-reduction
 diagnostic is absent without absorbing the split sign-extension owner.
+
+Closed after Step 1 close-candidate review recorded in commit `c59937bed`.
+Fresh focused proof passed `00064`, `00139`, and `00205`; the old scalar
+`div`, scalar `mul`, and scalar `logical_shift_right` unsigned-reduction
+operand-form diagnostics were absent. Generated AArch64 evidence showed
+structured scalar arithmetic forms including `sdiv w0, w9, w0` for `00064`
+and `mul w0, w9, w13` for `00139`. Later `00205` residuals remain outside
+this owner and are closed under split owners 303, 304, and 305.
+
+Close-gate validation used matching canonical backend logs and passed with
+`--allow-non-decreasing-passed`: before 139/139, after 139/139, no new
+failures, and no slow tests.
 
 ## Reviewer Reject Signals
 
