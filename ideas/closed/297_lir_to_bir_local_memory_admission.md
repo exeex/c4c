@@ -1,8 +1,32 @@
 # LIR To BIR Local Memory Admission
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+
+## Closure Summary
+
+Idea 297 is complete for its local-memory admission owner. The confirmed direct
+local-memory GEP cases no longer fail at the old `lir_to_bir` local-memory
+admission rejection, and the Step 3 store/load boundary checks are either
+passing or classified outside this owner.
+
+Focused closure evidence:
+
+- `backend_lir_to_bir_notes` passes.
+- `00046` passes.
+- `00140` is now an AArch64 call-boundary move printer residual.
+- `00218` is now an AArch64 scalar bitwise-immediate printer residual.
+- `00216` remains reported by the coarse GEP diagnostic, but first-GEP
+  evidence shows the rejected address is over function parameter `%p.w` with
+  pointee type `%struct.W = { %struct.V, [0 x %struct.S] }`; this is
+  pointer-parameter/flexible-array aggregate projection, not local alloca or
+  local-slot admission.
+
+Residual global, pointer, and aggregate projection work remains outside this
+idea and should be activated as a separate source idea only when selected by
+the supervisor.
 
 ## Intent
 
