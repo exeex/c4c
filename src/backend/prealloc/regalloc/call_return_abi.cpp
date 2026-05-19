@@ -230,7 +230,8 @@ std::optional<std::size_t> call_arg_destination_stack_offset_bytes(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,
     std::size_t arg_index) {
-  if (target_profile.arch != c4c::TargetArch::X86_64 ||
+  if ((target_profile.arch != c4c::TargetArch::X86_64 &&
+       target_profile.arch != c4c::TargetArch::Aarch64) ||
       !call_arg_requires_stack_destination(target_profile, call, arg_index)) {
     return std::nullopt;
   }

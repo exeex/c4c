@@ -2481,6 +2481,64 @@ prepare::PreparedBirModule prepared_semantic_f128_constant_call_argument() {
       });
 }
 
+prepare::PreparedBirModule prepared_semantic_aarch64_stack_call_argument() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "consume_byval";
+  callee.return_type = bir::TypeKind::Void;
+  callee.is_declaration = true;
+  callee.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "arg",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  module.functions.push_back(std::move(callee));
+
+  bir::Function function;
+  function.name = "dispatch.semantic.aarch64.stack.arg";
+  function.return_type = bir::TypeKind::Void;
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::Ptr,
+      .name = "payload",
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "consume_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "payload")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .passed_on_stack = true,
+          .byval_copy = true,
+      }},
+      .return_type = bir::TypeKind::Void,
+      .calling_convention = bir::CallingConv::C,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 prepare::PreparedBirModule prepared_semantic_f128_constant_helper_operand() {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -8120,6 +8178,51 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
   return 0;
 }
 
+int semantic_stack_call_argument_publishes_destination_offset() {
+  auto prepared = prepared_semantic_aarch64_stack_call_argument();
+  if (prepared.call_plans.functions.size() != 1 ||
+      prepared.call_plans.functions.front().calls.size() != 1 ||
+      prepared.call_plans.functions.front().calls.front().arguments.size() != 1) {
+    return fail("expected one prepared AArch64 stack call-argument plan");
+  }
+
+  const auto& argument =
+      prepared.call_plans.functions.front().calls.front().arguments.front();
+  if (argument.destination_register_name.has_value() ||
+      argument.destination_register_bank.has_value() ||
+      argument.destination_stack_offset_bytes != std::optional<std::size_t>{0}) {
+    return fail("expected prepared AArch64 stack call argument to publish dest stack offset 0");
+  }
+
+  const auto* function_locations = prepare::find_prepared_value_location_function(
+      prepared.value_locations, prepared.call_plans.functions.front().function_name);
+  const auto* bundle =
+      function_locations != nullptr
+          ? prepare::find_prepared_move_bundle(*function_locations,
+                                               prepare::PreparedMovePhase::BeforeCall,
+                                               0,
+                                               0)
+          : nullptr;
+  if (bundle == nullptr || bundle->moves.size() != 1 || bundle->abi_bindings.size() != 1) {
+    return fail("expected one before-call stack argument move and ABI binding");
+  }
+
+  const auto& move = bundle->moves.front();
+  const auto& binding = bundle->abi_bindings.front();
+  if (move.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      move.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      move.destination_abi_index != std::optional<std::size_t>{0} ||
+      move.destination_stack_offset_bytes != std::optional<std::size_t>{0} ||
+      binding.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
+      binding.destination_storage_kind != prepare::PreparedMoveStorageKind::StackSlot ||
+      binding.destination_abi_index != std::optional<std::size_t>{0} ||
+      binding.destination_stack_offset_bytes != std::optional<std::size_t>{0}) {
+    return fail("expected before-call stack argument records to carry dest stack offset 0");
+  }
+
+  return 0;
+}
+
 int stack_home_symbol_address_argument_materializes_directly_to_call_register() {
   auto prepared = prepared_with_direct_variadic_call_stack_symbol_address_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -10751,6 +10854,11 @@ int main() {
   }
   if (const int status =
           semantic_symbol_address_argument_avoids_deferred_call_boundary_move();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          semantic_stack_call_argument_publishes_destination_offset();
       status != 0) {
     return status;
   }

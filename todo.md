@@ -8,26 +8,21 @@ Current Step Title: Publish AArch64 Stack Call-Argument Destination Offsets
 
 ## Just Finished
 
-Step 1 localized the `00140.c` failure to the first byval aggregate call
-argument in `main`: prepared BIR publishes a before-call move with
-`destination_kind=call_argument_abi`, `destination_storage=stack_slot`,
-`abi_index=0`, and `reason=call_arg_register_to_stack`, but neither the move
-nor its ABI binding carries `destination_stack_offset_bytes` for AArch64. The
-record is then admitted by `lower_before_call_move` as a
-`CallBoundaryMoveInstructionRecord`; `call_boundary_move_selection_status`
-correctly leaves it `DeferredUnsupported` because it is outside the selected
-register call-boundary move subset, and the machine printer rejects it at
-function 0 block 0 instruction 3.
+Step 2 published AArch64 stack call-argument destination offsets through
+`src/backend/prealloc/regalloc/call_return_abi.cpp` by allowing
+`call_arg_destination_stack_offset_bytes` to compute offsets for AArch64
+stack-slot call arguments. Focused AArch64 MIR coverage now prepares a semantic
+byval stack call argument and proves the prepared call argument plan, the
+before-call move, and the ABI binding all carry
+`destination_stack_offset_bytes=0`.
 
 ## Suggested Next
 
-Execute Step 2 in `plan.md`: publish AArch64 stack call-argument destination
-offsets from the prealloc call ABI path. The first implementation target is
-`src/backend/prealloc/regalloc/call_return_abi.cpp`:
-`call_arg_destination_stack_offset_bytes` is currently x86_64-only, so AArch64
-byval/stack call arguments cannot publish the prepared
-`destination_stack_offset_bytes` fact needed before AArch64 codegen can lower
-or reject the stack-slot call-boundary move semantically.
+Execute the next Step 2 follow-on packet in the AArch64 codegen handoff:
+teach `lower_before_call_move` and the selected-machine-node printer path to
+handle or fail closed with a more specific diagnostic for prepared stack-slot
+call-argument moves whose source and destination stack offset facts are now
+present.
 
 ## Watchouts
 
@@ -35,13 +30,13 @@ or reject the stack-slot call-boundary move semantically.
   gate.
 - Do not mark a call-boundary move selected without printable prepared source
   and destination facts.
-- The missing destination fact is a stack argument offset for AArch64, not a
-  missing register source: `main` already has the source value `%lv.f` in x20,
-  while the byval aggregate-address argument has `dest_bank=none` and no stack
-  offset in the prepared call plan.
-- `lower_before_call_move` currently only guards incomplete selected register
-  argument moves; stack-slot call-argument moves can still reach the printer as
-  unselected `CallBoundaryMoveInstructionRecord`s.
+- The missing AArch64 destination stack offset publication is no longer the
+  current blocker. The remaining `00140.c` failure is that a stack-slot
+  call-argument move reaches the AArch64 machine printer as an unselected
+  `CallBoundaryMoveInstructionRecord`.
+- `lower_before_call_move` currently only selects register call-boundary moves;
+  stack-slot call-argument moves still need an AArch64 lowering contract or a
+  narrower fail-closed gate before printing.
 - Do not change expectations, allowlists, unsupported classifications,
   timeout policy, runner behavior, proof-log policy, or CTest registration.
 - Reject filename-only, `struct foo`-only, argument-index-only, source-shape,
@@ -61,7 +56,19 @@ cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^(ba
 
 `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and
-`backend_aarch64_instruction_dispatch` passed. The proof still fails at
-`c_testsuite_aarch64_backend_src_00140_c` with the localized printer rejection:
+`backend_aarch64_instruction_dispatch` passed, including new focused coverage
+for AArch64 stack call-argument `destination_stack_offset_bytes` publication.
+The focused proof still failed at `c_testsuite_aarch64_backend_src_00140_c`
+with the next stack-slot call-boundary lowering/printing residual:
 `DeferredUnsupported: call-boundary move node is outside the selected register
-call-boundary move subset`. Proof log: `test_after.log`.
+call-boundary move subset`.
+
+The supervisor then ran a matching broader backend guard through the dirty-tree
+stash flow:
+
+```bash
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_before.log 2>&1
+cmake --build build -j && ctest --test-dir build -j --output-on-failure -R '^backend_' > test_after.log 2>&1
+```
+
+Both canonical logs report 139/139 backend tests passed with no new failures.
