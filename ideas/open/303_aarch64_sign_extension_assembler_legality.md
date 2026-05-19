@@ -61,6 +61,24 @@ separate backend legality bucket from a testcase-count movement alone.
 - The implementation does not special-case the filename `00205` or the exact
   generated temporary register numbers.
 
+## Lifecycle Note
+
+Parked on 2026-05-19 after the sign-extension legality repair in commit
+`9e4565365` changed the fused compare-branch route from illegal
+`sxtw w9, w13` to legal `sxtw x9, w13`.
+
+Close rejected: the source goal appears satisfied, but plan-owner close-gate
+proof could not be accepted because only `test_before.log` was present and the
+matching `test_after.log` was absent. The delegated constraints forbade proof
+log generation or mutation during this lifecycle pass. Running the regression
+guard checker therefore failed with input error `after log not found:
+test_after.log`.
+
+The residual focused `00205` failure is now a timeout after 5.01 seconds, not
+the old assembler-legality failure. That timeout is split to
+`ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md` and must not be
+claimed as pass-count progress for this idea.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

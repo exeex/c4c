@@ -1,131 +1,130 @@
-# AArch64 Sign-Extension Assembler Legality Runbook
+# AArch64 C-Testsuite 00205 Timeout Residual Runbook
 
 Status: Active
-Source Idea: ideas/open/303_aarch64_sign_extension_assembler_legality.md
-Switched From: ideas/open/302_aarch64_scalar_machine_node_operand_forms.md for the split sign-extension legality owner
+Source Idea: ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md
+Switched From: ideas/open/303_aarch64_sign_extension_assembler_legality.md after close-gate proof was unavailable
 
 ## Purpose
 
-Repair the AArch64 backend route that emits illegal sign-extension assembly
-spelling after scalar operand-form lowering has moved `00205` farther through
-backend validation.
+Classify and repair the focused `00205` timeout exposed after the
+sign-extension assembler-legality repair.
 
 ## Goal
 
-Make generated sign-extension instructions obey AArch64 register-width legality
-without testcase-specific string handling.
+Find the semantic generated-code reason `00205` times out after assembler
+validation now succeeds.
 
 ## Core Rule
 
-Treat this as a semantic AArch64 sign-extension width/spelling repair. Do not
+Treat this as timeout/runtime generated-code classification and repair. Do not
 change expectations, allowlists, unsupported classifications, timeout policy,
-runner behavior, or CTest registration to claim progress.
+runner behavior, proof-log policy, or CTest registration to claim progress.
 
 ## Read First
 
-- Source idea: `ideas/open/303_aarch64_sign_extension_assembler_legality.md`
-- Split source: `ideas/open/302_aarch64_scalar_machine_node_operand_forms.md`
-- Current exposed failure: `00205` backend assembler validation on
-  `sxtw w9, w13`
-- Do not claim pass-count progress from the dirty idea 302 Step 3 code while
-  this split owner is active.
+- Source idea: `ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md`
+- Parked legality owner:
+  `ideas/open/303_aarch64_sign_extension_assembler_legality.md`
+- Accepted sign-extension result: generated assembly contains legal
+  `sxtw x9, w13`, not illegal `sxtw w9, w13`
+- Current residual: focused `00205` times out after 5.01 seconds
 
 ## Current Targets
 
-- Illegal AArch64 sign-extension spelling with a W destination register,
-  currently observed as `sxtw w9, w13` in generated `00205` assembly.
-- The backend selection or printer path that chooses sign-extension opcode and
-  destination/source register widths for compare preparation or fused
-  compare-branch inputs.
+- `c_testsuite_aarch64_backend_src_00205_c`
+- Generated AArch64 assembly and runtime behavior for the post-assembly
+  timeout path
+- Compare, branch, loop, value-flow, or materialization semantics only if
+  evidence connects them to the timeout
 
 ## Non-Goals
 
-- Do not continue scalar arithmetic/reduction operand-form work from idea 302
-  under this owner.
-- Do not perform a broad fused compare-branch rewrite unrelated to
-  sign-extension legality.
-- Do not reopen closed owners from counts alone.
-- Do not match only c-testsuite filenames, generated temporary names, line
-  numbers, or exact diagnostic strings.
+- Do not reopen sign-extension legality unless illegal `sxtw` destination
+  width returns.
+- Do not claim pass-count progress from classification-only work.
+- Do not alter timeout thresholds, runner behavior, stale-process policy,
+  expectations, allowlists, unsupported classifications, proof-log policy, or
+  CTest registration.
+- Do not perform a broad backend rewrite before classifying the timeout
+  mechanism.
 
 ## Working Model
 
-- The failure is generated-assembly legality, not the old scalar
-  `logical_shift_right` unsigned-reduction printer diagnostic.
-- `sxtw` sign-extends a 32-bit source into a 64-bit destination, so the backend
-  must select a legal destination width, a legal 32-bit extension spelling, or
-  no extension when the value is already in the required width.
-- A valid slice may start from `00205`, but acceptance requires a general width
-  rule in the sign-extension route.
+The previous failure mode was assembler rejection of illegal sign-extension
+assembly. The current failure mode is later runtime non-termination or timeout.
+The first packet should identify whether generated control flow, compare
+lowering, branch lowering, value materialization, or another concrete backend
+semantic route causes the binary to keep running.
 
 ## Execution Rules
 
-- Start by tracing where the illegal sign-extension operation is selected or
-  printed.
-- Prefer a semantic width/opcode/register-class rule over printer-only string
-  substitution.
-- Keep implementation changes scoped to sign-extension legality unless
-  generated-code evidence proves a shared helper boundary.
-- Record fresh build proof and the supervisor-selected focused backend subset
-  in `todo.md`.
-- Report any later residual `00205` failure separately from this owner.
+- Start from the generated assembly and runtime observation for `00205`.
+- Keep probes narrow and timeout-bounded.
+- Preserve the idea 303 legality result while investigating.
+- If the timeout belongs to a broader semantic family, record the evidence and
+  request a lifecycle split instead of absorbing the whole family here.
+- Record fresh build proof and the supervisor-selected focused subset in
+  `todo.md`.
 
 ## Steps
 
-### Step 1: Inspect Sign-Extension Route
+### Step 1: Inspect Timeout Mechanism
 
-Goal: identify the backend route that emits `sxtw` with a W destination.
+Goal: identify why the generated `00205` binary times out after assembler
+validation succeeds.
 
-Primary target: focused backend c-testsuite case `00205`
-
-Actions:
-
-- Inspect the generated assembly and backend route for the failing
-  sign-extension operation.
-- Trace the selected compare, branch, or extension node to the printer or
-  instruction-selection helper that chooses opcode and register widths.
-- Identify whether the repair belongs in selection, register-width
-  materialization, or printer admission.
-
-Completion check:
-
-- `todo.md` records the active illegal sign-extension spelling, the emitting
-  implementation surface, and the semantic width rule needed for repair.
-
-### Step 2: Repair Sign-Extension Width Spelling
-
-Goal: emit legal AArch64 sign-extension assembly for the affected route.
-
-Primary target: sign-extension opcode/register-width selection
+Primary target: generated assembly and runtime behavior for focused `00205`
 
 Actions:
 
-- Repair the semantic path that allows `sxtw` to be emitted with a W
-  destination.
-- Keep the implementation general for sign-extension width legality.
-- Build and prove the focused subset selected by the supervisor.
+- Inspect the generated assembly around the loop, compare, branch, and value
+  updates involved in the timed-out path.
+- Run bounded probes only as needed to determine whether the timeout is caused
+  by generated control-flow, compare/branch lowering, value materialization, or
+  another concrete backend semantic.
+- Verify the generated assembly still uses legal sign-extension spelling such
+  as `sxtw x9, w13`.
 
 Completion check:
 
-- The focused proof no longer fails because generated assembly contains
-  `sxtw` with a W destination, and no expectation or runner contract changed.
+- `todo.md` records the concrete timeout mechanism or records why the evidence
+  requires a different split owner.
 
-### Step 3: Residual Classification And Handoff
+### Step 2: Repair Or Split The Semantic Owner
 
-Goal: separate this owner's completion from any later backend residual exposed
-by the same testcase.
+Goal: fix the classified generated-code cause, or hand it to a more precise
+owner if the evidence is broader than this singleton.
 
-Primary target: focused proof results after the sign-extension repair
+Primary target: the backend route identified in Step 1
 
 Actions:
 
-- Re-run the supervisor-selected focused proof after the implementation slice.
-- If `00205` fails later for a different reason, record that as a separate
-  residual rather than expanding this owner silently.
-- Ask the supervisor whether to reactivate idea 302, continue a new split
-  owner, or return to the umbrella inventory.
+- If the timeout has a focused semantic cause, repair that backend route
+  without testcase-shaped matching.
+- If the timeout belongs to a broader family, stop and request lifecycle split
+  with the concrete evidence from Step 1.
+- Build and prove the supervisor-selected focused subset.
 
 Completion check:
 
-- `todo.md` records proof for the sign-extension legality fix and names any
-  remaining residual bucket without claiming unrelated pass-count progress.
+- The focused proof no longer times out for the classified reason, or the
+  lifecycle handoff names the broader owner and preserves the evidence.
+
+### Step 3: Residual Proof And Handoff
+
+Goal: separate this owner's result from any later residual exposed by the same
+testcase.
+
+Primary target: focused proof results after repair or split
+
+Actions:
+
+- Re-run the focused proof selected by the supervisor.
+- Preserve the sign-extension legality result in the proof notes.
+- Record any later residual separately without claiming unrelated pass-count
+  progress.
+
+Completion check:
+
+- `todo.md` records proof for the timeout classification/repair and names any
+  remaining residual bucket without expanding this owner silently.
