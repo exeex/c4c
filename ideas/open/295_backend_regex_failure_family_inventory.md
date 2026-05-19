@@ -316,6 +316,31 @@ Post-300 split 2026-05-19:
   umbrella for later classification or separate focused splits.
 - Active implementation should move to idea 301 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 301,
+  `ideas/closed/301_aarch64_memory_store_operand_materialization.md`, is
+  closed as complete for the AArch64 memory-store operand materialization
+  owner.
+- The accepted closure proof rebuilt the default preset and reran the backend
+  regex scope into `test_after.log`: 352 selected tests, 300 passed, and 52
+  failed.
+- Matching regression guard comparison against `test_before.log` passed in
+  documented non-decreasing mode because the available baseline was already at
+  the same 300/52 state; no new failing tests were introduced.
+- The old memory-store operand printer diagnostics are absent from the focused
+  memory-store cases and from the broader backend-regex proof.
+- Current focused residuals are outside the idea 301 closure boundary by
+  present evidence: `00173`, `00181`, and `00214` are runtime nonzero/segfault
+  residuals; `00176` is a runtime mismatch; `00182` is a backend assembler
+  immediate-encoding residual; and `00187` times out. `00194` and `00213`
+  pass.
+- Remaining runtime nonzero, runtime mismatch/crash, frontend/backend
+  residuals outside the old store-printer mode, and timeout buckets stay parked
+  under this umbrella for later classification or focused splits. Do not
+  reopen idea 301 without generated-code or diagnostic evidence that
+  contradicts the memory-store operand materialization closure boundary.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -326,5 +351,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 299 without generated-code or
+- reopens recently closed owners 285 through 301 without generated-code or
   proof evidence that contradicts their closure boundary.

@@ -1,6 +1,6 @@
 # AArch64 Memory Store Operand Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -72,6 +72,38 @@ operands, not that it changes c-testsuite expectations or hides the cases.
 - Fresh build proof and the focused c-testsuite backend subset are recorded.
 - Any broader backend-regex proof reports remaining residual buckets separately
   from this owner.
+
+## Closure Note
+
+Closed 2026-05-19 as complete for the AArch64 memory-store operand
+materialization owner.
+
+The accepted closure proof rebuilt the default preset and reran the backend
+regex scope with:
+
+```bash
+timeout 900s ctest --test-dir build -j10 -R backend --output-on-failure > test_after.log 2>&1
+```
+
+The broad proof reports 352 selected tests, 300 passed, and 52 failed. Matching
+regression guard comparison against `test_before.log` passed in documented
+non-decreasing mode because the available baseline was already rolled forward
+to the same 300/52 state; no new failing tests were introduced.
+
+The focused memory-store cases no longer fail from the old memory-store
+operand printer diagnostics. Current focused residuals are outside this owner
+by present evidence: `00173`, `00181`, and `00214` are runtime
+nonzero/segfault residuals; `00176` is a runtime mismatch; `00182` is a
+backend assembler immediate-encoding residual; and `00187` times out. `00194`
+and `00213` pass.
+
+The broad backend log contains no `memory store`, `store source`, `store value
+is not`, `symbol store value is not`, or `not a register or immediate operand`
+diagnostic. Remaining broad residuals are runtime nonzero, runtime mismatch,
+frontend/backend residuals outside the old store-printer mode, and timeouts.
+Do not reopen this owner without generated-code or diagnostic evidence that a
+residual failure again reaches AArch64 machine printing with an unmaterialized
+memory-store source, address, or symbol value operand.
 
 ## Reviewer Reject Signals
 
