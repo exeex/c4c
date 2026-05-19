@@ -1071,6 +1071,25 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     note_function_lowering_family_failure("gep local-memory semantic family");
     return false;
   };
+  const auto widen_gep_byte_offset_to_i64 =
+      [&](std::string_view result_name, bir::Value offset) -> std::optional<bir::Value> {
+        if (offset.type == bir::TypeKind::I64) {
+          return offset;
+        }
+        if (offset.kind == bir::Value::Kind::Immediate) {
+          return bir::Value::immediate_i64(offset.immediate);
+        }
+        if (offset.kind != bir::Value::Kind::Named || offset.type != bir::TypeKind::I32) {
+          return std::nullopt;
+        }
+        const std::string widened_name = std::string(result_name) + ".byte_offset.i64";
+        lowered_insts->push_back(bir::CastInst{
+            .opcode = bir::CastOpcode::SExt,
+            .result = bir::Value::named(bir::TypeKind::I64, widened_name),
+            .operand = offset,
+        });
+        return bir::Value::named(bir::TypeKind::I64, widened_name);
+      };
   const auto publish_exact_local_pointer_owner =
       [&](std::string_view result_name, std::string_view slot_name) {
         value_aliases[std::string(result_name)] =
@@ -1990,12 +2009,8 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
           if (!raw_offset.has_value()) {
             return fail_gep();
           }
-          if (raw_offset->kind == bir::Value::Kind::Immediate &&
-              raw_offset->type != bir::TypeKind::I64) {
-            raw_offset = bir::Value::immediate_i64(raw_offset->immediate);
-          }
-          if (raw_offset->kind == bir::Value::Kind::Named &&
-              raw_offset->type != bir::TypeKind::I64) {
+          raw_offset = widen_gep_byte_offset_to_i64(gep.result.str(), *raw_offset);
+          if (!raw_offset.has_value()) {
             return fail_gep();
           }
           if (raw_offset->kind == bir::Value::Kind::Immediate && raw_offset->immediate == 0) {
