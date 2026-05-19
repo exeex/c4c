@@ -449,6 +449,27 @@ Focused owner closure 2026-05-19:
   reopen idea 307 unless generated-code evidence shows illegal large scalar
   immediate forms still reach AArch64 assembly printing.
 
+Post-307 split 2026-05-19:
+
+- Step 2 of the active umbrella runbook classified the fresh post-307
+  backend-regex capture from `test_before.log`: 352 selected, 306 passed, and
+  46 failed.
+- All 46 residual failures are `c_testsuite_aarch64_backend_*` tests; local
+  backend/unit/CLI tests selected by `-R backend` passed.
+- The best next focused owner is idea 308,
+  `ideas/open/308_aarch64_extern_data_symbol_pic_address_formation.md`,
+  covering AArch64 externally binding data-symbol/PIC-safe address formation
+  for the `00189.c` `stdout` residual.
+- The split is based on concrete linker and generated-assembly evidence:
+  `00189.c.s` emits direct `adrp`/`:lo12:` address formation for `stdout`,
+  and the linker rejects `R_AARCH64_ADR_PREL_PG_HI21` against the externally
+  binding symbol `stdout@@GLIBC_2.17`.
+- Runtime nonzero, runtime mismatch/crash, timeout/output-storm,
+  machine-printer/prepared-node residuals (`00140`, `00164`, `00214`), and
+  semantic `lir_to_bir` admission residuals (`00204`, `00216`) remain parked
+  under this umbrella for later classification or separate focused splits.
+- Active implementation should move to idea 308 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
