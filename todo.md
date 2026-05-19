@@ -8,23 +8,22 @@ Current Step Title: Focused Proof And Broader Safety Check
 
 ## Just Finished
 
-Step 2.2 - Repair Condition-Safe Select-Chain Materialization: implemented a
+Step 2.3 - Focused Proof And Broader Safety Check: reran the final focused
+proof for the accepted Step 2.2 repair. The Step 2.2 implementation remains the
 focused direct-global select-chain materialization path for AArch64 call
-arguments in the prepared direct-global owner. The path detects same-block
-select chains rooted in prepared global loads, materializes through reserved
-MIR scratches `x9`/`x10`, emits each compare immediately before a
-flag-consuming branch, records the materialized result as the emitted scalar
-value, and lets the existing before-call move place the final value into the
-ABI argument register. This removes the `%t26`, `%t34`, `%t42`, and `%t50`
-unwritten stack-home call reads without using ABI argument registers as hidden
-temporaries.
+arguments: it materializes same-block select chains rooted in prepared global
+loads through reserved MIR scratches `x9`/`x10`, consumes predicate flags
+immediately with branch materialization, records the selected value as an
+emitted scalar, and lets the existing before-call move place the final value in
+the ABI argument register. The value-materialization owner appears complete;
+no later residual was exposed by the final focused proof.
 
 ## Suggested Next
 
-Proceed to Step 2.3 focused proof and broader safety check. The next packet
-should inspect the final `00205` assembly shape, confirm the repaired value
-materialization bucket is complete, and decide whether any additional targeted
-backend coverage is needed for this call-site select/global-load path.
+Proceed to Step 3 residual handoff or closure recommendation. The next packet
+should decide whether the active runbook can be closed for idea 305 based on
+the green focused proof, resolved high stack-home reads, preserved timeout
+repair, and preserved sign-extension legality.
 
 ## Watchouts
 
@@ -50,12 +49,15 @@ backend coverage is needed for this call-site select/global-load path.
 ## Proof
 
 Ran `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_00(064|139|205)_c' > test_after.log 2>&1`.
-The build succeeded after rebuilding `dispatch.cpp` and relinking backend
-targets. The focused subset passed 3/3: `00064`, `00139`, and `00205` all
-passed. `00205` completed in 0.05s, preserving the non-timeout behavior.
-Generated assembly inspection found no `[sp, #632]`, `[sp, #1064]`,
-`[sp, #1352]`, or `[sp, #1496]` reads, and legal `sxtw x9, w13` spelling
-remains present. `test_after.log` is the proof log.
+The build was already up to date and the focused subset passed 3/3: `00064`,
+`00139`, and `00205` all passed. `00205` completed in 0.05s, preserving the
+non-timeout behavior. Generated assembly inspection found no `[sp, #632]`,
+`[sp, #1064]`, `[sp, #1352]`, or `[sp, #1496]` reads, and legal
+`sxtw x9, w13` spelling remains present. The repaired select-chain values are
+materialized before the calls and placed into ABI argument registers with
+`mov x3, x9` / `mov x2, x9`. `test_after.log` is the fresh proof log. The
+prepared direct-global value-materialization owner appears complete; no later
+residual needs handoff from this proof.
 
 Supervisor validation for accepted Step 2.2: focused regression guard passed
 with before 2 passed / 1 failed and after 3 passed / 0 failed, resolving
