@@ -8,11 +8,19 @@ Current Step Title: Repair Semantic Admission Or Prepared Handoff
 
 ## Just Finished
 
-Step 2 localization complete for the new `00204.c` `stdarg`
-scalar/local-memory residual after the pointer-phi repair.
+Step 2 reviewer-blocking fail-closed fixes complete for the current direct
+global-source memcpy repair. Direct `LirMemcpyOp` lowering still admits an
+immediate local-memory copy from a structured global source into an SSA local
+destination slot/view when the source global has
+`GlobalInfo::supports_linear_addressing` and enough storage bytes, but rejected
+`@global` sources now return the global-specific route result directly instead
+of falling through to generic pointer-value memcpy. `append_global_symbol_to_leaf_view`
+now preflights the full chunk plan before emitting, so unsupported leaf coverage
+cannot partially mutate `lowered_insts` before returning `false`.
 
-The exact first-bad fact is the first fixed-size aggregate staging memcpy in
-`stdarg`:
+Fresh proof still shows `c_testsuite_aarch64_backend_src_00204_c` advanced past
+the old `stdarg` scalar/local-memory residual at the first fixed-size aggregate
+staging memcpy:
 
 ```llvm
 %t3 = load %struct.s9, ptr @s9
@@ -20,27 +28,26 @@ The exact first-bad fact is the first fixed-size aggregate staging memcpy in
 call void @llvm.memcpy.p0.p0.i64(ptr %t4, ptr @s9, i64 9, i1 false)
 ```
 
-The failing lowering function is
-`src/backend/bir/lir_to_bir/memory/intrinsics.cpp::lower_memory_memcpy_inst`.
-It rejects this direct LIR `memcpy` before reaching
-`try_lower_immediate_local_memcpy` because the direct path currently requires
-both `dst` and `src` operands to be SSA values; here `dst=%t4` is SSA but
-`src=@s9` is a global. The later `load [2 x i64], ptr %t4` and variadic
-`myprintf` call are not yet the first bad facts.
+The new `00204.c` first-bad fact is the immediately following local load:
 
-Classification: this remains in idea 312 scope. It is still semantic
-`lir_to_bir` local-memory admission/prepared-handoff work for the representative
-`00204.c` path, before generated AArch64 artifacts exist. No lifecycle split is
-needed for this residual.
+```llvm
+%t5 = load [2 x i64], ptr %t4
+```
+
+That reports `semantic lir_to_bir function 'stdarg' failed in load
+local-memory semantic family`. The missing fact is semantic admission for a
+fixed-size aggregate/array load from an SSA local destination slot/view that was
+just populated by the repaired immediate memcpy. `c_testsuite_aarch64_backend_src_00216_c`
+remains at `semantic lir_to_bir function 'test_zero_init' failed in alloca
+local-memory semantic family`.
 
 ## Suggested Next
 
-Execute the next Step 2 semantic repair: teach direct `LirMemcpyOp` lowering to
-admit a global source operand for immediate local-memory copies when the
-destination is an SSA local slot/view and the global has structured linear
-addressing facts. Preserve existing fail-closed behavior for unsupported global
-storage, volatile copies, non-immediate sizes, and unrelated runtime `memcpy`
-calls.
+Execute the next Step 2 semantic repair: teach
+`lower_memory_load_inst`/local-memory load admission to consume the fixed-size
+aggregate/array local slot/view produced by immediate memcpy staging, so
+`load [2 x i64], ptr %t4` can publish an aggregate/scalarized value for the
+following variadic call without c-testsuite-specific matching.
 
 ## Watchouts
 
@@ -55,14 +62,19 @@ calls.
   residual after this slice.
 - The new `00204.c` residual is in `stdarg`, not `myprintf`; do not treat it as
   proof that the pointer-phi preservation failed.
-- The first bad fact is the direct intrinsic memcpy with global source
-  `src=@s9`, not the following `load [2 x i64], ptr %t4` or the later variadic
-  `myprintf` call.
+- The direct intrinsic memcpy with global source `src=@s9` is no longer the
+  first bad fact after this slice.
+- The current first bad fact is `load [2 x i64], ptr %t4`, before the later
+  variadic `myprintf` call.
 - Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
   not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
   guardrails, but they do not prove the AArch64 `myprintf` failure path.
 - The existing untracked `review/311_aggregate_stack_copy_review.md` was left
   untouched.
+- Direct `@global` memcpy rejection is now intentionally fail-closed. Do not
+  reintroduce pointer-value fallback for a source operand that begins with `@`.
+- Global-to-leaf memcpy emission is intentionally atomic: keep full coverage
+  planning before appending load/store instructions to `lowered_insts`.
 
 ## Proof
 
@@ -76,12 +88,11 @@ Result: build succeeded; 6 focused backend dump/notes tests passed. The two
 representative c-testsuite AArch64 tests still fail:
 
 - `c_testsuite_aarch64_backend_src_00204_c`: advanced past the old `myprintf`
-  load-family residual and now reports `semantic lir_to_bir function 'stdarg'
-  failed in scalar/local-memory semantic family`; localized first bad fact is
-  `lower_memory_memcpy_inst` rejecting
-  `llvm.memcpy.p0.p0.i64(ptr %t4, ptr @s9, i64 9, false)` because the direct
-  memcpy path does not admit a global source operand
-- `c_testsuite_aarch64_backend_src_00216_c`: now reports `semantic lir_to_bir
-  function 'test_zero_init' failed in alloca local-memory semantic family`
+  load-family residual and the direct global-source memcpy residual; it now
+  reports `semantic lir_to_bir function 'stdarg' failed in load local-memory
+  semantic family` at `load [2 x i64], ptr %t4`
+- `c_testsuite_aarch64_backend_src_00216_c`: still reports `semantic
+  lir_to_bir function 'test_zero_init' failed in alloca local-memory semantic
+  family`
 
 Proof log: `test_after.log`.
