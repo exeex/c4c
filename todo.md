@@ -1,64 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/309_aarch64_indirect_call_argument_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate the Indirect-Call Preservation Owner
+Current Step ID: 2
+Current Step Title: Repair Callee and Argument Preservation
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the `00189.c` failure to the AArch64 prepared call-plan /
-call-boundary consumer surface, not to the closed extern-data PIC relocation
-owner. The current assembly already materializes `stdout` through GOT, but
-`main` still loses the outer indirect call setup around the nested `(*f)(24)`:
-`fprintfptr` is loaded into `x20`, the nested call runs through `blr x13`, then
-the final call reloads `stdout` into `x9`, moves `x20` into argument register
-`x1`, loads `w2` from the saved-register area at `[sp, #8]`, and branches
-through `x21`, which was only restored from the prologue save slot. The final
-call is therefore missing the actual callee register, the `stdout` -> `x0`
-argument move, the `.str1` -> `x1` materialization/move, and the nested result
-`x0` -> `w2` handoff.
+Step 2 stopped before implementation because the observed `00189.c` failure
+cannot be repaired completely inside the delegated owned files without
+recovering facts that were already lost before AArch64 call lowering.
 
-Read-only owner map:
+Smallest blocking path:
 
-- Producer authority: `src/backend/prealloc/call_plans.cpp` builds
-  `PreparedCallPlan`, including `build_indirect_callee_plan`,
-  `build_call_preserved_values`, per-argument source/destination facts, and
-  before/after call bundles.
-- AArch64 consumer authority: `src/backend/mir/aarch64/codegen/dispatch.cpp`
-  lowers, orders, retargets, and records scalar call-argument producers,
-  address materializations, before-call moves, the call itself, and after-call
-  moves.
-- Call lowering surface: `src/backend/mir/aarch64/codegen/calls.cpp` consumes
-  the prepared plan through `lower_before_call_moves`,
-  `lower_after_call_moves`, `make_indirect_callee_register`, and
-  `lower_prepared_call_instruction`.
+- LLVM/LIR for `main` contains `%t2 = getelementptr [4 x i8], ptr @.str1, ...`
+  and the outer indirect call passes `%t2`.
+- `--dump-bir` for `main` has no `%t2` producer and keeps the outer indirect
+  call as `%t5 = bir.call i32 %t0(ptr %t1, ptr %t2, i32 %t4)`.
+- `--dump-prepared-bir --mir-focus-function main` therefore records arg 1 as
+  `source_encoding=register source_value_id=8 source_reg=x20`, while
+  `prepared-addressing` has no inst_index=4 string-constant materialization for
+  `.str1`.
+- The AArch64 owned surfaces can retarget available scalar producers and lower
+  prepared address materializations, but they have no semantic way to recover
+  that `%t2` is `.str1` once BIR/prepared facts publish it only as an ordinary
+  register value with no producer.
 
-The likely repair is a value-liveness / call-sequence ordering fix, with
-parallel-copy/temp preservation as the implementation mechanism if the prepared
-before-call bundle contains overlapping sources and destinations. The key gap
-is that dispatch retargets call-argument move sources from `scalar_state`, but
-the indirect callee register selected by `lower_prepared_call_instruction` is
-still taken directly from the prepared callee home, and live caller values that
-must survive the nested call are not re-established into the final call's ABI
-registers before `blr`.
+I also found a separate callee-register consistency hazard: prepared storage
+prints `%t0` as `reg=x21`, but ordinary non-GOT `load_global` lowering converts
+callee-saved placements through the AArch64 ABI pool where placement slot 1 maps
+to `x20`. That is why current assembly loads `fprintfptr` into `x20` while the
+prepared indirect callee still names `x21`. That could be worked around in the
+delegated AArch64 dispatch/call surfaces, but the missing `%t2` -> `.str1`
+identity remains a hard blocker for completing `00189.c` semantically.
 
 ## Suggested Next
 
-Step 2 should repair the semantic AArch64 call-boundary path, not special-case
-`00189.c`: make the final indirect call consume the current materialized callee
-value and lower all outer arguments after nested-call results are available.
-Concretely, inspect the prepared dump/records for `main` and add a focused
-local backend test that models `outer_indirect(stdout_like, fmt_like,
-inner_indirect(24))`, then repair either prepared liveness/call bundles in
-`prealloc/call_plans.cpp` or the AArch64 dispatch retarget/order logic so the
-final sequence is equivalent to preserving `fprintfptr`, reloading/moving
-`stdout` to `x0`, materializing `.str1` to `x1`, moving the inner result to
-`w2`, and branching through the preserved/current `fprintfptr` register.
+Supervisor should split or widen the next packet to the semantic BIR/string
+argument preservation producer before returning to AArch64 call lowering. The
+smallest next packet is to make indirect calls receive the same string-pointer
+argument rewrite/materialization authority that direct calls already get from
+the LIR `getelementptr @.str*` alias path, then rerun Step 2 against the updated
+prepared call/addressing facts.
 
 ## Watchouts
 
+- Do not repair the missing `.str1` argument by guessing from assembly text,
+  `00189.c`, the argument index, or a one-string-constant heuristic in AArch64.
+  The semantic identity must be present in BIR/prepared facts before the target
+  call-boundary consumer lowers it.
+- After the BIR/prepared string argument fact is repaired, re-check the
+  callee-saved placement/name mismatch for AArch64 non-GOT `load_global`
+  results; current `fprintfptr` loading disagrees with the prepared indirect
+  callee register.
 - Do not broaden this owner into direct multi-argument shuffle
   (`00181.c`/`00182.c`), direct vararg aliasing (`00200.c`), or
   address-of-local direct-call argument preparation (`00218.c`).
@@ -82,9 +77,8 @@ final sequence is equivalent to preserving `fprintfptr`, reloading/moving
 
 ## Proof
 
-No tests were rerun per packet instructions. Proof inputs were current
-`test_before.log`, `tests/c/external/c-testsuite/src/00189.c`, generated
-`build/c_testsuite_aarch64_backend/src/00189.c.s`, AST-backed symbol lookup via
-`c4c-clang-tool-ccdb`, and read-only inspection of the relevant backend
-lowering/tests. No `test_after.log` update was requested or made for this
-localization-only packet.
+Blocked before code changes, so the delegated build/CTest proof was not run and
+`test_after.log` was not updated. Evidence used: AST-backed lookup via
+`c4c-clang-tool-ccdb` on the delegated owned C++ surfaces, `--dump-bir`,
+`--dump-prepared-bir --mir-focus-function main`, current generated assembly for
+`00189.c`, and the captured `test_before.log`.
