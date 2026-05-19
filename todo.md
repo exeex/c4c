@@ -1,77 +1,59 @@
 Status: Active
 Source Idea Path: ideas/open/322_aarch64_va_start_destination_address_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Va Start Destination Publication
+Current Step ID: 2
+Current Step Title: Materialize Va Start Destination Address
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the AArch64 `va_start` destination publication fault.
+Step 2 could not be implemented within the delegated owned-file boundary.
 
-The bad record shape is a `VariadicVaStartRecord` whose
-`destination_va_list` is copied directly from
-`PreparedVariadicEntryHelperOperandHomes::destination_va_list` as a
-`PreparedValueHomeKind::Register` home. In the representative generated
-`myprintf`, that home prints as `x21`, but no instruction materializes `x21`
-as the address of the local `va_list` object before the field stores:
+The required address materialization primitive is missing before
+`src/backend/mir/aarch64/codegen/variadic.cpp` receives the printer record:
+the `VariadicVaStartRecord::destination_va_list` fact remains only a register
+value home, not a writable local `va_list` object address or a frame-slot base.
 
-- `build/c_testsuite_aarch64_backend/src/00204.c.s` lines near `myprintf`
-  save `x21`, then emit `mov x0, x21`.
-- The first `va_start` field stores are then `str x9, [x21]`,
-  `str x9, [x21, #8]`, `str x9, [x21, #16]`, `str w9, [x21, #24]`, and
-  `str w9, [x21, #28]`.
-- Later aggregate `va_arg` lowering reads and progresses the same `x21`
-  address, so the current first bad fact is the missing local `va_list`
-  address publication before `va_start`, not aggregate `va_arg` helper text.
+Evidence from the focused prepared dump for `myprintf`:
 
-Owning code surfaces:
+- `helper_operand kind=va_start block=0 inst=0 dst_va_list=%lv.ap:register:reg=x21`
+  is the only destination fact copied into `VariadicVaStartRecord`.
+- The call argument plan for `llvm.va_start.p0` likewise records
+  `arg0 bank=gpr from=register:x21 to=x0`; it has no source frame slot or
+  computed-address materialization fact.
+- The local `va_list` storage is currently split across independent field
+  locals such as `%lv.ap.0`, `%lv.ap.8`, and `%lv.ap.24`, whose frame slots
+  are not contiguous in the prepared layout (`%lv.ap.0` at stack offset 24,
+  `%lv.ap.8` at stack offset 352, `%lv.ap.24` at stack offset 520 in the
+  representative dump).
+- No `address_materialization` record exists for `%lv.ap`; only unrelated
+  local addresses such as `%lv.s` are materialized.
 
-- `src/backend/prealloc/variadic_entry_plans.cpp`:
-  `collect_variadic_entry_helper_operand_homes()` records the `llvm.va_start`
-  first operand through `prepared_home_for_named_value()` as
-  `homes.destination_va_list`.
-- `src/backend/mir/aarch64/codegen/variadic.cpp`:
-  `make_variadic_va_start_record()` requires and copies
-  `homes.destination_va_list` into `VariadicVaStartRecord`.
-- `src/backend/mir/aarch64/codegen/variadic.cpp`:
-  `print_va_start_lowering_lines()` currently accepts only a register home and
-  treats `destination_va_list.register_name` as the base address for all
-  `va_list` field stores.
-- `src/backend/mir/aarch64/codegen/calls.cpp`:
-  `make_call_instruction()` records the destination as a value def and memory
-  write, but no frame-slot address publication is visible before the printer
-  stores through the register.
-
-Representative proof tests for the repair are the focused `00204.c` handoff
-and AArch64 printer/dispatch subset:
-
-- `backend_cli_dump_bir_00204_stdarg_semantic_handoff`
-- `backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff`
-- `backend_cli_dump_bir_focus_function_filters_00204`
-- `backend_cli_dump_prepared_bir_focus_function_filters_00204`
-- `backend_cli_dump_bir_focus_block_entry_00204`
-- `backend_cli_dump_prepared_bir_focus_block_entry_00204`
-- `backend_aarch64_machine_printer`
-- `backend_aarch64_instruction_dispatch`
-- `backend_aarch64_target_instruction_records`
-- `backend_lir_to_bir_notes`
-- `c_testsuite_aarch64_backend_src_00204_c`
+Given those facts, `variadic.cpp` can either keep storing through an
+uninitialized register or invent a testcase-shaped stack address. The general
+repair needs preparation/address-materialization ownership to publish a real
+contiguous writable `va_list` destination home, or to carry structured field
+homes for `va_start`/`va_arg` lowering. That producer is outside this packet's
+owned files.
 
 ## Suggested Next
 
-Step 2 should materialize or publish the writable local `va_list` destination
-address before `print_va_start_lowering_lines()` emits field stores. The repair
-should make the record/printer path use an actual local `va_list` address
-instead of assuming the register value home already contains one.
+Delegate a plan/lifecycle repair or a widened implementation packet that owns
+the prepared variadic destination-home producer. The smallest coherent packet
+should add a general AArch64 `va_start` destination publication fact before MIR
+printing, either as a contiguous local `va_list` frame object address or as
+structured per-field homes shared by `va_start` and later `va_arg` helpers.
 
 ## Watchouts
 
-- Do not implement the repair by special-casing `x21`, `myprintf`,
-  `00204.c`, or one observed frame offset. The missing capability is general
-  AArch64 `va_start` destination address materialization for register-backed
-  destination homes.
+- Do not implement the repair in `variadic.cpp` by special-casing `x21`,
+  `myprintf`, `00204.c`, or the observed `%lv.ap.*` stack offsets. The current
+  printer record does not carry enough destination ownership to do this
+  generally.
+- A printer-only change that materializes `x21` from one observed frame offset
+  would be testcase overfit because the split `%lv.ap.*` fields are not a
+  contiguous `va_list` object in prepared state.
 - `rg 'va\\.arg\\.aggregate' build/c_testsuite_aarch64_backend/src/00204.c.s`
   returns no matches after this packet.
 - The external representative now reaches runtime, so the prior raw helper
@@ -89,7 +71,8 @@ instead of assuming the register value home already contains one.
 
 ## Proof
 
-Reran the delegated focused proof to `test_after.log`:
+No code change was made, but the delegated focused proof was rerun to preserve
+the canonical proof log at `test_after.log`:
 
 ```sh
 cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_(target_instruction_records|machine_printer|instruction_dispatch)|backend_cli_dump_(bir|prepared_bir)_(00204_stdarg_(semantic|prepared)_handoff|focus_(function_filters|block_entry)_00204)|c_testsuite_aarch64_backend_src_00204_c)$'
@@ -97,7 +80,6 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Result: build succeeded. CTest ran 11 tests: 10 passed and 1 failed. The only
 failure is `c_testsuite_aarch64_backend_src_00204_c`, still
-`[RUNTIME_NONZERO] exit=Segmentation fault`. This is the smallest focused proof
-scope for the Step 2 repair because it preserves the semantic/prepared handoff,
-printer, dispatch, and external representative surfaces around the
-`va_start` destination publication fault.
+`[RUNTIME_NONZERO] exit=Segmentation fault`. The blocker is the missing
+prepared destination-home/address materialization primitive, not aggregate
+`va_arg` helper text.
