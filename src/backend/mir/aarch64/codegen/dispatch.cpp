@@ -777,14 +777,15 @@ lower_fused_compare_branch_from_emitted_cast(
 
   const auto source_bits = integer_bit_width(cast->operand.type);
   const auto result_bits = integer_bit_width(cast->result.type);
+  const auto result_view = scalar_register_view(cast->result.type);
   if (!source_bits.has_value() || !result_bits.has_value() ||
-      *source_bits >= *result_bits) {
+      !result_view.has_value() || *source_bits >= *result_bits) {
     return std::nullopt;
   }
   auto source_name =
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
   const auto rhs_name =
-      compare_operand_name(context, *other_value, scalar_state, abi::RegisterView::W);
+      compare_operand_name(context, *other_value, scalar_state, *result_view);
   std::vector<std::string> lines;
   if (!source_name.has_value()) {
     const auto load_producer = find_same_block_load_producer(context, cast->operand);
@@ -811,7 +812,7 @@ lower_fused_compare_branch_from_emitted_cast(
   std::string scratch_name;
   if (auto result_register = make_named_prepared_result_register(context, cast->result);
       result_register.has_value()) {
-    const auto scratch = abi::gp_register(result_register->reg.index, abi::RegisterView::W);
+    const auto scratch = abi::gp_register(result_register->reg.index, *result_view);
     if (!scratch.has_value()) {
       return std::nullopt;
     }
@@ -821,7 +822,11 @@ lower_fused_compare_branch_from_emitted_cast(
     if (scratches.empty()) {
       return std::nullopt;
     }
-    scratch_name = abi::register_name(abi::w_register(scratches.front().index));
+    const auto scratch = abi::gp_register(scratches.front().index, *result_view);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    scratch_name = abi::register_name(*scratch);
   }
 
   if (*source_bits == 8U) {

@@ -225,6 +225,112 @@ prepare::PreparedBirModule prepared_with_fused_compare_conditional_branch(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_i32_sext_i64_fused_compare_branch() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("sext.cond.fn");
+  const auto entry_label = prepared.names.block_labels.intern("sext.cond.entry");
+  const auto then_label = prepared.names.block_labels.intern("sext.cond.then");
+  const auto else_label = prepared.names.block_labels.intern("sext.cond.else");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto function_link_name =
+      prepared.module.names.link_names.intern("sext.cond.fn");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("sext.cond.entry");
+  const auto bir_then_label =
+      prepared.module.names.block_labels.intern("sext.cond.then");
+  const auto bir_else_label =
+      prepared.module.names.block_labels.intern("sext.cond.else");
+  const auto condition = bir::Value::named(bir::TypeKind::I1, "%cond");
+  const auto source = bir::Value::named(bir::TypeKind::I32, "%src");
+  const auto widened = bir::Value::named(bir::TypeKind::I64, "%wide");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::CondBranch,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+      .branch_conditions = {prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = entry_label,
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = condition,
+          .predicate = bir::BinaryOpcode::Eq,
+          .compare_type = bir::TypeKind::I64,
+          .lhs = widened,
+          .rhs = bir::Value::immediate_i64(0),
+          .can_fuse_with_branch = true,
+          .true_label = then_label,
+          .false_label = else_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{30},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{31},
+                  .function_name = function_name,
+                  .value_name = source_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w13"},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {prepare::PreparedStoragePlanValue{
+          .value_id = prepare::PreparedValueId{31},
+          .value_name = source_name,
+          .encoding = prepare::PreparedStorageEncodingKind::Register,
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .contiguous_width = 1,
+          .register_name = std::string{"w13"},
+          .occupied_register_names = {std::string{"w13"}},
+      }},
+  });
+
+  bir::Block entry;
+  entry.label = "sext.cond.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = source,
+      .operand = bir::Value::immediate_i16(1),
+  });
+  entry.insts.push_back(bir::CastInst{
+      .opcode = bir::CastOpcode::SExt,
+      .result = widened,
+      .operand = source,
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = condition,
+      .true_label = "sext.cond.then",
+      .false_label = "sext.cond.else",
+      .true_label_id = bir_then_label,
+      .false_label_id = bir_else_label,
+  };
+
+  bir::Function function;
+  function.name = "sext.cond.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(entry);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_loop_header_fused_compare_branch() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -680,6 +786,54 @@ int direct_dispatch_lowers_fusable_compare_branch_to_selected_node() {
   return 0;
 }
 
+int direct_dispatch_lowers_i32_sext_i64_fused_compare_branch_with_legal_widths() {
+  auto prepared = prepared_with_i32_sext_i64_fused_compare_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 9);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!result.visited_terminator || result.emitted_instructions != 2 ||
+      block.instructions.size() != 2 || !diagnostics.empty()) {
+    std::string messages;
+    for (const auto& diagnostic : diagnostics.entries) {
+      messages += diagnostic.message;
+      messages += "; ";
+    }
+    return fail("expected i32->i64 sext compare branch to lower after source publication: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) + " " +
+                messages);
+  }
+
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.back().target);
+  if (!printed.ok || printed.instruction_lines.size() != 4 ||
+      printed.instruction_lines[0] != "sxtw x9, w13" ||
+      printed.instruction_lines[1] != "cmp x9, #0" ||
+      printed.instruction_lines[2] !=
+          "b.eq .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.true_label) ||
+      printed.instruction_lines[3] !=
+          "b .LBB" + std::to_string(function_cf.function_name) + "_" +
+              std::to_string(block_cf.false_label)) {
+    return fail("expected fused i32->i64 sign-extension branch to use X destination and compare: " +
+                (printed.ok ? printed.instruction_lines.empty()
+                                  ? std::string{}
+                                  : printed.instruction_lines.front()
+                            : std::string{"<print failed>"}));
+  }
+  return 0;
+}
+
 int direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids() {
   auto prepared = prepared_with_loop_header_fused_compare_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -807,6 +961,11 @@ int main() {
   }
   if (const int status =
           direct_dispatch_lowers_fusable_compare_branch_to_selected_node();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          direct_dispatch_lowers_i32_sext_i64_fused_compare_branch_with_legal_widths();
       status != 0) {
     return status;
   }
