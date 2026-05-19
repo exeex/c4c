@@ -1,6 +1,6 @@
 # AArch64 Large Scalar Immediate Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -64,6 +64,28 @@ instruction sequences before assembly.
   subset are recorded.
 - Any broader backend-regex proof reports remaining PIC/global relocation and
   runtime buckets separately from this owner.
+
+## Closure Note
+
+Closed 2026-05-19 after commit `4af6bc256` exported and reused the shared
+`materialize_integer_constant_lines` helper for call-boundary scalar integer
+immediates. The focused generated assembly for `00182.c` no longer emits the
+old illegal `mov x0, #1234567` form; it materializes the value through legal
+move-wide instructions before `bl print_led`.
+
+The implementation was accepted as backend constant-materialization behavior,
+not a filename, literal, or exact-instruction shortcut. Fresh build proof
+passed, the focused proof
+`ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00182_c)$'`
+remained at 1/2 with `backend_aarch64_machine_printer` passing, and the
+remaining `c_testsuite_aarch64_backend_src_00182_c` residual is now
+`RUNTIME_MISMATCH`.
+
+Close-time regression guard passed in non-decreasing mode against the canonical
+focused `test_before.log` / `test_after.log` pair. The residual `00182.c`
+runtime mismatch is outside this owner and returns to the umbrella runtime
+classification rather than extending the large-immediate materialization
+scope.
 
 ## Reviewer Reject Signals
 

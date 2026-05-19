@@ -431,6 +431,24 @@ Post-306 split 2026-05-19:
   splits.
 - Active implementation should move to idea 307 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 307,
+  `ideas/closed/307_aarch64_large_scalar_immediate_materialization.md`, is
+  closed as complete for the AArch64 large scalar immediate materialization
+  owner.
+- Commit `4af6bc256` removed the old `00182.c` assembler-stage failure by
+  reusing shared integer constant materialization for call-boundary scalar
+  immediates; generated assembly no longer emits `mov x0, #1234567`.
+- The accepted focused proof remains 1/2 because `00182.c` now fails as
+  `RUNTIME_MISMATCH`, while `backend_aarch64_machine_printer` passes.
+- Close-time non-decreasing regression guard on the focused canonical
+  `test_before.log` / `test_after.log` pair passed with no new failing tests.
+- The remaining `00182.c` runtime mismatch is outside the idea 307 closure
+  boundary and returns to this umbrella's runtime mismatch bucket. Do not
+  reopen idea 307 unless generated-code evidence shows illegal large scalar
+  immediate forms still reach AArch64 assembly printing.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
