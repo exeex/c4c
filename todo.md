@@ -26,11 +26,17 @@ load local-memory residual.
 
 ## Suggested Next
 
-Keep the next packet focused on `00046` only if the supervisor wants to finish
-the same source file's local-memory boundary: its next blocker is now a
-load-side scalar subobject residual over the same aggregate/union byte
-subobject shape. Treat `00140`'s call-boundary move printer failure and
-`00216`'s GEP residual as separate later packets.
+Lifecycle decision: keep idea 297 active. `00046` still fails in the
+`load local-memory semantic family` after the direct store-side repair, and the
+shape is still the same direct local aggregate/union byte-subobject boundary
+owned by this source idea.
+
+Next bounded packet: diagnose and repair only the `00046` load-side scalar
+subobject admission residual over the local aggregate/union byte-subobject
+shape. Treat `00140`'s call-boundary move printer failure, `00216`'s GEP
+local-memory residual, and `00218`'s pointer-parameter aggregate load residual
+as separate later classification or split candidates unless the supervisor
+explicitly chooses one next.
 
 ## Watchouts
 
@@ -60,6 +66,8 @@ subobject shape. Treat `00140`'s call-boundary move printer failure and
 - `00046` no longer proves the old direct local-memory store subobject
   admission residual; after this packet it reaches a later load local-memory
   residual in `main`.
+- `00046` remains in scope for idea 297 because its current residual is still a
+  direct load-side local-memory admission boundary over a local aggregate.
 - `00204` is a separate bootstrap global aggregate/array semantics gate; do
   not fold it into this owner without evidence.
 - Do not change expectations, allowlists, unsupported classifications, CTest
