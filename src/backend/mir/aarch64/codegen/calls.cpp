@@ -2262,6 +2262,100 @@ std::string register_name(const RegisterOperand& operand) {
   return abi::register_name(operand.reg);
 }
 
+bool same_gp_register_index(abi::RegisterReference lhs, abi::RegisterReference rhs) {
+  return lhs.index == rhs.index && abi::is_gp_register(lhs) && abi::is_gp_register(rhs);
+}
+
+std::optional<std::size_t> call_boundary_load_width_bytes(
+    const RegisterOperand& destination) {
+  switch (destination.reg.view) {
+    case abi::RegisterView::W:
+      return 4U;
+    case abi::RegisterView::X:
+      return 8U;
+    default:
+      return std::nullopt;
+  }
+}
+
+bool call_boundary_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t load_width_bytes) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      load_width_bytes == 0) {
+    return false;
+  }
+  if (load_width_bytes != 1 && load_width_bytes != 2 && load_width_bytes != 4 &&
+      load_width_bytes != 8) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % load_width_bytes == 0 && offset / load_width_bytes <= 4095U;
+}
+
+std::optional<abi::RegisterReference> call_boundary_address_scratch_register(
+    abi::RegisterReference destination) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (!same_gp_register_index(scratch, destination)) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& memory) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0) {
+    return {};
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  if (offset <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+std::optional<std::vector<std::string>> print_call_boundary_frame_slot_load_lines(
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (!move.source_memory.has_value() || !move.destination_register.has_value()) {
+    return std::nullopt;
+  }
+  std::string address;
+  std::vector<std::string> lines;
+  const auto load_width = call_boundary_load_width_bytes(*move.destination_register);
+  if (!load_width.has_value()) {
+    return std::nullopt;
+  }
+  if (call_boundary_frame_slot_direct_offset_is_encodable(*move.source_memory,
+                                                          *load_width)) {
+    address = memory_address(*move.source_memory);
+  } else {
+    const auto scratch =
+        call_boundary_address_scratch_register(move.destination_register->reg);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    lines =
+        materialize_call_boundary_frame_slot_address_lines(*scratch, *move.source_memory);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    address = "[" + std::string{abi::register_name(*scratch)} + "]";
+  }
+  if (address.empty()) {
+    return std::nullopt;
+  }
+  lines.push_back("ldr " + register_name(*move.destination_register) + ", " + address);
+  return lines;
+}
+
 std::optional<unsigned> scalar_integer_width_bits(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -2500,14 +2594,12 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
           bad_header(instruction) +
           "call-boundary frame-slot move requires a prepared frame-slot address");
     }
-    const auto address = memory_address(*move.source_memory);
-    if (address.empty()) {
+    const auto lines = print_call_boundary_frame_slot_load_lines(move);
+    if (!lines.has_value()) {
       return target_unsupported(bad_header(instruction) +
                                 "call-boundary frame-slot address is not printable");
     }
-    std::ostringstream out;
-    out << "ldr " << register_name(*move.destination_register) << ", " << address;
-    return target_printed({out.str()});
+    return target_printed(*lines);
   }
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {

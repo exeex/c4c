@@ -253,6 +253,92 @@ std::vector<std::string> materialize_local_address_lines(
   return {line.str()};
 }
 
+bool same_gp_register_index(abi::RegisterReference lhs, abi::RegisterReference rhs) {
+  return lhs.index == rhs.index && abi::is_gp_register(lhs) && abi::is_gp_register(rhs);
+}
+
+bool frame_slot_direct_offset_is_encodable(const MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot || address.byte_offset < 0 ||
+      address.size_bytes == 0) {
+    return false;
+  }
+  if (address.size_bytes != 1 && address.size_bytes != 2 && address.size_bytes != 4 &&
+      address.size_bytes != 8) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(address.byte_offset);
+  return offset % address.size_bytes == 0 && offset / address.size_bytes <= 4095U;
+}
+
+std::optional<abi::RegisterReference> frame_slot_address_scratch_register(
+    std::initializer_list<abi::RegisterReference> occupied) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    const bool conflict =
+        std::any_of(occupied.begin(), occupied.end(), [&](abi::RegisterReference reg) {
+          return same_gp_register_index(scratch, reg);
+        });
+    if (!conflict) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+std::vector<std::string> materialize_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& address) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot || address.byte_offset < 0) {
+    return {};
+  }
+  const auto offset = static_cast<std::uint64_t>(address.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  if (offset <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+struct PrintableMemoryAddress {
+  std::vector<std::string> lines;
+  std::string address;
+};
+
+std::optional<PrintableMemoryAddress> printable_memory_address(
+    const MemoryOperand& address,
+    std::initializer_list<abi::RegisterReference> occupied) {
+  if (address.base_kind == MemoryBaseKind::FrameSlot) {
+    if (frame_slot_direct_offset_is_encodable(address)) {
+      const auto direct = memory_address(address);
+      if (direct.empty()) {
+        return std::nullopt;
+      }
+      return PrintableMemoryAddress{.lines = {}, .address = direct};
+    }
+    const auto scratch = frame_slot_address_scratch_register(occupied);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    auto lines = materialize_frame_slot_address_lines(*scratch, address);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    return PrintableMemoryAddress{
+        .lines = std::move(lines),
+        .address = "[" + std::string{abi::register_name(*scratch)} + "]"};
+  }
+
+  const auto direct = memory_address(address);
+  if (direct.empty()) {
+    return std::nullopt;
+  }
+  return PrintableMemoryAddress{.lines = {}, .address = direct};
+}
+
 std::string relocation_operand(std::string_view label, std::int64_t byte_offset) {
   std::string operand{label};
   if (byte_offset > 0) {
@@ -849,8 +935,9 @@ mir::TargetInstructionPrintResult print_spill_reload(
                               "spill/reload node is not a prepared frame-slot address");
   }
 
-  const auto address = memory_address(spill_reload.slot);
-  if (address.empty()) {
+  const auto address =
+      printable_memory_address(spill_reload.slot, {spill_reload.scratch->reg});
+  if (!address.has_value()) {
     return target_unsupported(bad_header(instruction) +
                               "spill/reload address is not printable");
   }
@@ -862,8 +949,11 @@ mir::TargetInstructionPrintResult print_spill_reload(
   }
 
   std::ostringstream out;
-  out << mnemonic << " " << register_name(*spill_reload.scratch) << ", " << address;
-  return target_printed({out.str()});
+  out << mnemonic << " " << register_name(*spill_reload.scratch) << ", "
+      << address->address;
+  auto lines = address->lines;
+  lines.push_back(out.str());
+  return target_printed(std::move(lines));
 }
 
 mir::TargetInstructionPrintResult print_branch(const InstructionRecord& instruction,
@@ -975,16 +1065,22 @@ mir::TargetInstructionPrintResult print_symbol_memory(const InstructionRecord& i
       return target_unsupported(bad_header(instruction) +
                                 "symbol stack-slot store source is not printable");
     }
-    const auto source_address = memory_address(*source_memory);
     const auto value_scratch = symbol_stack_source_store_scratch_register(memory);
     const auto load_mnemonic = stack_source_load_mnemonic(memory.address.size_bytes);
-    if (source_address.empty() || !value_scratch.has_value() || load_mnemonic.empty()) {
+    if (!value_scratch.has_value() || load_mnemonic.empty()) {
       return target_unsupported(bad_header(instruction) +
                                 "symbol stack-slot store source scratch is not printable");
     }
+    const auto source_address =
+        printable_memory_address(*source_memory, {*scratch});
+    if (!source_address.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "symbol stack-slot store source address is not printable");
+    }
+    lines.insert(lines.end(), source_address->lines.begin(), source_address->lines.end());
     std::ostringstream load;
     load << load_mnemonic << " " << abi::register_name(*value_scratch) << ", "
-         << source_address;
+         << source_address->address;
     lines.push_back(load.str());
     std::ostringstream store;
     store << mnemonic << " " << abi::register_name(*value_scratch) << ", " << address;
@@ -1024,10 +1120,6 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   if (memory.address.base_kind == MemoryBaseKind::Symbol) {
     return print_symbol_memory(instruction, memory);
   }
-  const auto address = memory_address(memory.address);
-  if (address.empty()) {
-    return target_unsupported(bad_header(instruction) + "memory address is not printable");
-  }
   const auto mnemonic = required_primary_mnemonic(instruction);
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "memory mnemonic is not printable");
@@ -1038,9 +1130,16 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
       return target_unsupported(bad_header(instruction) +
                                 "load node is missing a structured destination register operand");
     }
+    const auto address = printable_memory_address(memory.address, {});
+    if (!address.has_value()) {
+      return target_unsupported(bad_header(instruction) + "memory address is not printable");
+    }
     std::ostringstream out;
-    out << mnemonic << " " << register_name(*memory.result_register) << ", " << address;
-    return target_printed({out.str()});
+    out << mnemonic << " " << register_name(*memory.result_register) << ", "
+        << address->address;
+    auto lines = address->lines;
+    lines.push_back(out.str());
+    return target_printed(std::move(lines));
   }
   if (!memory.value.has_value()) {
     return target_unsupported(bad_header(instruction) +
@@ -1048,9 +1147,15 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   }
   const auto* value = std::get_if<RegisterOperand>(&memory.value->payload);
   if (memory.value->kind == OperandKind::Register && value != nullptr) {
+    const auto address = printable_memory_address(memory.address, {value->reg});
+    if (!address.has_value()) {
+      return target_unsupported(bad_header(instruction) + "memory address is not printable");
+    }
     std::ostringstream out;
-    out << mnemonic << " " << register_name(*value) << ", " << address;
-    return target_printed({out.str()});
+    out << mnemonic << " " << register_name(*value) << ", " << address->address;
+    auto lines = address->lines;
+    lines.push_back(out.str());
+    return target_printed(std::move(lines));
   }
   const auto* source_memory = std::get_if<MemoryOperand>(&memory.value->payload);
   if (memory.value->kind == OperandKind::Memory && source_memory != nullptr) {
@@ -1061,19 +1166,30 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
       return target_unsupported(bad_header(instruction) +
                                 "stack-slot store source is not printable");
     }
-    const auto source_address = memory_address(*source_memory);
     const auto scratch = stack_source_store_scratch_register(memory);
     const auto load_mnemonic = stack_source_load_mnemonic(memory.address.size_bytes);
-    if (source_address.empty() || !scratch.has_value() || load_mnemonic.empty()) {
+    if (!scratch.has_value() || load_mnemonic.empty()) {
       return target_unsupported(bad_header(instruction) +
                                 "stack-slot store source scratch is not printable");
     }
+    const auto source_address = printable_memory_address(*source_memory, {});
+    const auto destination_address = printable_memory_address(memory.address, {*scratch});
+    if (!source_address.has_value() || !destination_address.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "stack-slot store address is not printable");
+    }
     std::vector<std::string> lines;
+    lines.insert(lines.end(), source_address->lines.begin(), source_address->lines.end());
     std::ostringstream load;
-    load << load_mnemonic << " " << abi::register_name(*scratch) << ", " << source_address;
+    load << load_mnemonic << " " << abi::register_name(*scratch) << ", "
+         << source_address->address;
     lines.push_back(load.str());
+    lines.insert(lines.end(),
+                 destination_address->lines.begin(),
+                 destination_address->lines.end());
     std::ostringstream store;
-    store << mnemonic << " " << abi::register_name(*scratch) << ", " << address;
+    store << mnemonic << " " << abi::register_name(*scratch) << ", "
+          << destination_address->address;
     lines.push_back(store.str());
     return target_printed(std::move(lines));
   }
@@ -1089,8 +1205,13 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
       return target_unsupported(bad_header(instruction) +
                                 "local address store offset is not printable");
     }
+    const auto address = printable_memory_address(memory.address, {*scratch});
+    if (!address.has_value()) {
+      return target_unsupported(bad_header(instruction) + "memory address is not printable");
+    }
+    lines.insert(lines.end(), address->lines.begin(), address->lines.end());
     std::ostringstream store;
-    store << mnemonic << " " << abi::register_name(*scratch) << ", " << address;
+    store << mnemonic << " " << abi::register_name(*scratch) << ", " << address->address;
     lines.push_back(store.str());
     return target_printed(std::move(lines));
   }
@@ -1107,8 +1228,13 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
       return target_unsupported(bad_header(instruction) +
                                 "immediate store value is not printable");
     }
+    const auto address = printable_memory_address(memory.address, {*scratch});
+    if (!address.has_value()) {
+      return target_unsupported(bad_header(instruction) + "memory address is not printable");
+    }
+    lines.insert(lines.end(), address->lines.begin(), address->lines.end());
     std::ostringstream store;
-    store << mnemonic << " " << scratch_name << ", " << address;
+    store << mnemonic << " " << scratch_name << ", " << address->address;
     lines.push_back(store.str());
     return target_printed(std::move(lines));
   }

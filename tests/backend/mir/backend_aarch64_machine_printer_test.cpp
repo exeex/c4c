@@ -1361,8 +1361,26 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
           .source_spill_reload =
               reinterpret_cast<const prepare::PreparedSpillReloadOp*>(&source_op),
       });
+  const auto large_reload = aarch64_codegen::make_spill_reload_instruction(
+      aarch64_codegen::SpillReloadInstructionRecord{
+          .value_id = prepare::PreparedValueId{12},
+          .value_name = c4c::ValueNameId{13},
+          .value_type = bir::TypeKind::I64,
+          .op_kind = prepare::PreparedSpillReloadOpKind::Reload,
+          .pseudo_kind = aarch64_codegen::MachinePseudoKind::ReloadFromSlot,
+          .slot = frame_slot(1644),
+          .scratch = xreg(13),
+          .occupied_scratch_register_references = {aarch64_abi::x_register(13)},
+          .occupied_scratch_registers = {"x13"},
+          .scratch_register_authority = std::size_t{0},
+          .slot_id = prepare::PreparedFrameSlotId{4},
+          .stack_offset_bytes = std::size_t{1644},
+          .stack_offset_is_prepared_snapshot = true,
+          .source_spill_reload =
+              reinterpret_cast<const prepare::PreparedSpillReloadOp*>(&source_op),
+      });
 
-  const auto result = print_common_instruction_nodes({spill, reload});
+  const auto result = print_common_instruction_nodes({spill, reload, large_reload});
   if (!result.ok || !result.diagnostic.empty()) {
     return fail("expected selected spill/reload nodes to print canonical AArch64 text");
   }
@@ -1371,10 +1389,15 @@ int selected_spill_reload_nodes_print_gnu_aarch64_text() {
       aarch64_codegen::machine_instruction_primary_printer_mnemonic(reload);
   const std::string expected =
       "    " + std::string(spill_mnemonic) + " x9, [sp, #16]\n" +
-      "    " + std::string(reload_mnemonic) + " x9, [sp, #16]\n";
+      "    " + std::string(reload_mnemonic) + " x9, [sp, #16]\n"
+      "    add x9, sp, #1644\n"
+      "    " + std::string(reload_mnemonic) + " x13, [x9]\n";
   if (const int check = expect_assembly(result.assembly,
                                         expected,
-                                        "    str x9, [sp, #16]\n    ldr x9, [sp, #16]\n",
+                                        "    str x9, [sp, #16]\n"
+                                        "    ldr x9, [sp, #16]\n"
+                                        "    add x9, sp, #1644\n"
+                                        "    ldr x13, [x9]\n",
                                         "spill/reload common-printer drift guard");
       check != 0) {
     return check;
@@ -1862,6 +1885,48 @@ int selected_structured_memory_subset_prints_loads_and_stores() {
                          expected,
                          expected,
                          "structured memory load/store printer drift guard");
+}
+
+int selected_large_frame_slot_memory_offsets_materialize_address_scratch() {
+  auto load_address = frame_slot(1644);
+  load_address.result_value_id = prepare::PreparedValueId{224};
+  load_address.result_value_name = c4c::ValueNameId{225};
+  const auto load = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Load,
+          .address = load_address,
+          .result_value_id = prepare::PreparedValueId{224},
+          .result_value_name = c4c::ValueNameId{225},
+          .value_type = bir::TypeKind::I64,
+          .result_register = xreg(13),
+      });
+
+  auto store_address = frame_slot(32768);
+  store_address.stored_value_id = prepare::PreparedValueId{226};
+  store_address.stored_value_name = c4c::ValueNameId{227};
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = store_address,
+          .value = aarch64_codegen::make_register_operand(xreg(9)),
+          .value_type = bir::TypeKind::I64,
+      });
+
+  const auto result = print_common_instruction_nodes({load, store});
+  if (!result.ok) {
+    return fail("expected large frame-slot memory offsets to materialize: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    add x9, sp, #1644\n"
+      "    ldr x13, [x9]\n"
+      "    movz x10, #32768\n"
+      "    add x10, sp, x10\n"
+      "    str x9, [x10]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "large frame-slot memory offset materialization");
 }
 
 int selected_byte_stack_source_store_materializes_through_scratch() {
@@ -2387,6 +2452,38 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
     return check;
   }
   return 0;
+}
+
+int selected_scalar_stack_publication_materializes_large_offset() {
+  const auto add = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{240},
+          .result_value_name = c4c::ValueNameId{241},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(9),
+          .result_stack_offset_bytes = 1644,
+          .lhs = aarch64_codegen::make_register_operand(xreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(xreg(2)),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({add});
+  if (!result.ok) {
+    return fail("expected scalar stack publication to materialize large offset: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    add x9, x1, x2\n"
+      "    add x10, sp, #1644\n"
+      "    str x9, [x10]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "scalar stack publication large-offset materialization");
 }
 
 int selected_unsigned_power_of_two_reductions_print_from_structured_operands() {
@@ -4744,6 +4841,68 @@ int selected_call_boundary_large_immediate_argument_materializes_legal_constant(
                          "large call-boundary immediate materialization");
 }
 
+int selected_call_boundary_frame_slot_source_materializes_large_offset() {
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{72},
+                  .to_value_id = prepare::PreparedValueId{72},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{0},
+                  .destination_register_name = std::string{"x0"},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+          },
+  };
+  const auto in_range = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_memory = frame_slot(32),
+          .destination_register = xreg(0),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+  auto large_source = frame_slot(1644);
+  large_source.size_bytes = 4;
+  large_source.align_bytes = 4;
+  const auto large = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_memory = large_source,
+          .destination_register = xreg(13),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+
+  const auto result = print_common_instruction_nodes({in_range, large});
+  if (!result.ok) {
+    return fail("expected call-boundary frame-slot source moves to print: " +
+                result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    ldr x0, [sp, #32]\n"
+                         "    add x9, sp, #1644\n"
+                         "    ldr x13, [x9]\n",
+                         "    ldr x0, [sp, #32]\n"
+                         "    add x9, sp, #1644\n"
+                         "    ldr x13, [x9]\n",
+                         "call-boundary frame-slot source materialization");
+}
+
 int selected_after_call_result_register_move_prints_prepared_mov() {
   const prepare::PreparedMoveBundle call_boundary_bundle{
       .function_name = c4c::FunctionNameId{2},
@@ -6309,6 +6468,11 @@ int main() {
       result != 0) {
     return result;
   }
+  if (const int result =
+          selected_large_frame_slot_memory_offsets_materialize_address_scratch();
+      result != 0) {
+    return result;
+  }
   if (const int result = selected_byte_stack_source_store_materializes_through_scratch();
       result != 0) {
     return result;
@@ -6352,6 +6516,10 @@ int main() {
   }
   if (const int result =
           selected_scalar_add_sub_and_register_return_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_scalar_stack_publication_materializes_large_offset();
       result != 0) {
     return result;
   }
@@ -6495,6 +6663,11 @@ int main() {
   }
   if (const int result =
           selected_call_boundary_large_immediate_argument_materializes_legal_constant();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_call_boundary_frame_slot_source_materializes_large_offset();
       result != 0) {
     return result;
   }

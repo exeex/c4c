@@ -1,6 +1,7 @@
 #include "alu.hpp"
 #include "cast_ops.hpp"
 #include "float_ops.hpp"
+#include "machine_printer.hpp"
 #include "memory.hpp"
 #include "operands.hpp"
 
@@ -153,7 +154,7 @@ namespace mir = c4c::backend::mir;
   if (!alu.result_stack_offset_bytes.has_value()) {
     return std::nullopt;
   }
-  if (*alu.result_stack_offset_bytes < 0 || *alu.result_stack_offset_bytes > 4095) {
+  if (*alu.result_stack_offset_bytes < 0) {
     return std::string{};
   }
   std::ostringstream store;
@@ -165,18 +166,97 @@ namespace mir = c4c::backend::mir;
   return store.str();
 }
 
+[[nodiscard]] std::optional<std::size_t> scalar_publication_width_bytes(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return 4U;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return 8U;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] bool stack_publication_direct_offset_is_encodable(std::int64_t offset,
+                                                                std::size_t width_bytes) {
+  if (offset < 0 || width_bytes == 0) {
+    return false;
+  }
+  const auto unsigned_offset = static_cast<std::uint64_t>(offset);
+  return unsigned_offset % width_bytes == 0 &&
+         unsigned_offset / width_bytes <= 4095U;
+}
+
+[[nodiscard]] bool scalar_result_uses_scratch(std::string_view result,
+                                              abi::RegisterReference scratch) {
+  return result == abi::register_name(abi::x_register(scratch.index)) ||
+         result == abi::register_name(abi::w_register(scratch.index));
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> scalar_publication_address_scratch(
+    std::string_view result) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (!scalar_result_uses_scratch(result, scratch)) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>> scalar_alu_stack_publication_lines(
+    const ScalarAluRecord& alu,
+    std::string_view result) {
+  if (!alu.result_stack_offset_bytes.has_value()) {
+    return std::vector<std::string>{};
+  }
+  const auto width = scalar_publication_width_bytes(alu.result_type);
+  if (!width.has_value() || *alu.result_stack_offset_bytes < 0) {
+    return std::nullopt;
+  }
+  if (stack_publication_direct_offset_is_encodable(*alu.result_stack_offset_bytes,
+                                                   *width)) {
+    const auto line = scalar_alu_stack_publication_line(alu, result);
+    if (!line.has_value() || line->empty()) {
+      return std::nullopt;
+    }
+    return std::vector<std::string>{*line};
+  }
+
+  const auto scratch = scalar_publication_address_scratch(result);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  const auto offset = static_cast<std::uint64_t>(*alu.result_stack_offset_bytes);
+  const std::string scratch_name = abi::register_name(*scratch);
+  std::vector<std::string> lines;
+  if (offset <= 4095U) {
+    lines.push_back("add " + scratch_name + ", sp, #" + std::to_string(offset));
+  } else {
+    lines = materialize_integer_constant_lines(*scratch, offset, 64);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  }
+  lines.push_back("str " + std::string{result} + ", [" + scratch_name + "]");
+  return lines;
+}
+
 [[nodiscard]] ScalarAluPrintResult append_scalar_alu_stack_publication(
     std::vector<std::string>& lines,
     const ScalarAluRecord& alu,
     std::string_view result) {
-  const auto publication = scalar_alu_stack_publication_line(alu, result);
-  if (publication.has_value() && publication->empty()) {
+  const auto publication = scalar_alu_stack_publication_lines(alu, result);
+  if (!publication.has_value()) {
     return {.lines = std::nullopt,
             .diagnostic = "scalar ALU stack publication offset is not printable"};
   }
-  if (publication.has_value()) {
-    lines.push_back(*publication);
-  }
+  lines.insert(lines.end(), publication->begin(), publication->end());
   return {.lines = std::move(lines), .diagnostic = {}};
 }
 
@@ -311,6 +391,62 @@ namespace mir = c4c::backend::mir;
     return std::nullopt;
   }
   return abi::register_name(scratch->reg);
+}
+
+[[nodiscard]] bool scalar_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0 ||
+      memory.size_bytes == 0) {
+    return false;
+  }
+  if (memory.size_bytes != 1 && memory.size_bytes != 2 && memory.size_bytes != 4 &&
+      memory.size_bytes != 8) {
+    return false;
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  return offset % memory.size_bytes == 0 && offset / memory.size_bytes <= 4095U;
+}
+
+[[nodiscard]] std::vector<std::string> scalar_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& memory) {
+  if (memory.base_kind != MemoryBaseKind::FrameSlot || memory.byte_offset < 0) {
+    return {};
+  }
+  const auto offset = static_cast<std::uint64_t>(memory.byte_offset);
+  const std::string scratch_name = abi::register_name(scratch);
+  if (offset <= 4095U) {
+    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+  }
+  auto lines = materialize_integer_constant_lines(scratch, offset, 64);
+  if (lines.empty()) {
+    return {};
+  }
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+[[nodiscard]] bool append_scalar_frame_slot_load(
+    std::vector<std::string>& lines,
+    const MemoryOperand& memory,
+    std::string_view target,
+    abi::RegisterReference address_scratch) {
+  std::string address;
+  if (scalar_frame_slot_direct_offset_is_encodable(memory)) {
+    address = memory_address(memory);
+  } else {
+    auto address_lines = scalar_frame_slot_address_lines(address_scratch, memory);
+    if (address_lines.empty()) {
+      return false;
+    }
+    lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+    address = "[" + std::string{abi::register_name(address_scratch)} + "]";
+  }
+  if (address.empty()) {
+    return false;
+  }
+  lines.push_back("ldr " + std::string{target} + ", " + address);
+  return true;
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_storage_register_view(
@@ -995,13 +1131,12 @@ struct MaterializedControlSource {
     }
     const std::string name = abi::register_name(scratch->reg);
     if (memory->base_kind == MemoryBaseKind::FrameSlot) {
-      const auto address = memory_address(*memory);
-      if (address.empty()) {
+      if (!append_scalar_frame_slot_load(lines,
+                                         *memory,
+                                         name,
+                                         abi::x_register(scratch->reg.index))) {
         return std::nullopt;
       }
-      std::ostringstream load;
-      load << "ldr " << name << ", " << address;
-      lines.push_back(load.str());
     } else if (memory->base_kind == MemoryBaseKind::Symbol) {
       if (memory->symbol_label.empty()) {
         return std::nullopt;
@@ -1097,13 +1232,15 @@ struct MaterializedControlSource {
       return false;
     }
     if (memory->base_kind == MemoryBaseKind::FrameSlot) {
-      const auto address = memory_address(*memory);
-      if (address.empty()) {
+      const auto address_scratch =
+          scalar_gp_scratch_register(abi::RegisterView::X, occupied);
+      if (!address_scratch.has_value() ||
+          !append_scalar_frame_slot_load(lines,
+                                         *memory,
+                                         target,
+                                         abi::x_register(address_scratch->reg.index))) {
         return false;
       }
-      std::ostringstream load;
-      load << "ldr " << target << ", " << address;
-      lines.push_back(load.str());
       return true;
     }
     if (memory->base_kind == MemoryBaseKind::Symbol) {
@@ -1644,15 +1781,17 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
           !memory->byte_offset_is_prepared_snapshot) {
         return std::nullopt;
       }
-      const auto address = memory_address(*memory);
       const auto scratch = scalar_gp_scratch_register(view, occupied);
-      if (address.empty() || !scratch.has_value()) {
+      if (!scratch.has_value()) {
         return std::nullopt;
       }
       const std::string scratch_name = abi::register_name(scratch->reg);
-      std::ostringstream load;
-      load << "ldr " << scratch_name << ", " << address;
-      lines.push_back(load.str());
+      if (!append_scalar_frame_slot_load(lines,
+                                         *memory,
+                                         scratch_name,
+                                         abi::x_register(scratch->reg.index))) {
+        return std::nullopt;
+      }
       return MaterializedScalarRegisterSource{.name = scratch_name, .scratch = scratch};
     }
     if (operand.kind == OperandKind::Immediate && immediate != nullptr) {
@@ -2040,15 +2179,27 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
           !memory->byte_offset_is_prepared_snapshot) {
         return std::nullopt;
       }
-      const auto address = memory_address(*memory);
       const auto scratch = scalar_gp_scratch_register(*result_view, occupied);
-      if (address.empty() || !scratch.has_value()) {
+      if (!scratch.has_value()) {
         return std::nullopt;
       }
       const std::string scratch_name = abi::register_name(scratch->reg);
-      std::ostringstream load;
-      load << "ldr " << scratch_name << ", " << address;
-      lines.push_back(load.str());
+      if (memory->base_kind == MemoryBaseKind::FrameSlot) {
+        if (!append_scalar_frame_slot_load(lines,
+                                           *memory,
+                                           scratch_name,
+                                           abi::x_register(scratch->reg.index))) {
+          return std::nullopt;
+        }
+      } else {
+        const auto address = memory_address(*memory);
+        if (address.empty()) {
+          return std::nullopt;
+        }
+        std::ostringstream load;
+        load << "ldr " << scratch_name << ", " << address;
+        lines.push_back(load.str());
+      }
       return MaterializedScalarSource{.name = scratch_name, .scratch = scratch};
     }
     if (operand.kind == OperandKind::Immediate && immediate != nullptr) {
