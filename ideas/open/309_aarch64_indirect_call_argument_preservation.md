@@ -70,6 +70,23 @@ shortcut.
 - Supervisor-selected proof includes the focused c-testsuite target and enough
   adjacent call-boundary coverage to reject a named-test-only fix.
 
+## Deactivation Note
+
+Paused 2026-05-19 after Step 2 found that the outer indirect call's string
+argument identity is already lost before AArch64 lowering. LIR still has
+`%t2 = getelementptr ... @.str1`, but BIR/prepared data publish the outer call
+argument only as an ordinary register source and do not emit a prepared
+string-constant address materialization for `.str1`. An AArch64-only repair
+would have to guess from source shape, argument index, or assembly text, which
+would violate this idea's reject signals.
+
+Lifecycle switched to
+`ideas/open/310_prepared_indirect_call_string_argument_facts.md` as a
+prerequisite producer-fact owner. When that idea is complete, return here to
+finish the AArch64 indirect-call callee/register preservation and re-check the
+observed `fprintfptr` callee register placement mismatch before proving
+`c_testsuite_aarch64_backend_src_00189_c`.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
