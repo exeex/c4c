@@ -237,6 +237,26 @@ Post-298 split 2026-05-19:
   later classification or separate focused splits.
 - Active implementation should move to idea 299 before code edits begin.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 299,
+  `ideas/closed/299_aarch64_scalar_immediate_materialize_or_encoding_fallback.md`,
+  is closed as complete for the scalar add/sub/bitwise immediate
+  materialization or encoding-fallback owner.
+- Close proof used matching backend-regex reruns in `test_before.log` and
+  `test_after.log`: both selected 352 tests, stayed at 294 passed and 58
+  failed, and introduced no new failures. This was non-regressive for
+  lifecycle close, not a strict pass-count regression-guard improvement.
+- The old scalar immediate printer diagnostic is absent from the focused target
+  cases and from the broader backend-regex proof.
+- Focused residuals are outside the idea 299 closure boundary: `00031` passes;
+  `00104` is invalid scalar cast spelling; `00213` and `00214` are
+  symbol-store value printer residuals; `00207` and `00215` segfault; `00143`
+  times out; and `00218` is a runtime mismatch.
+- Remaining scalar cast, symbol-store value printing, runtime nonzero,
+  runtime mismatch, timeout, and other parked backend-regex buckets should be
+  classified through this umbrella before another focused owner is split.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

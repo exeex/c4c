@@ -1,7 +1,8 @@
 # AArch64 Scalar Immediate Materialize Or Encoding Fallback
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -63,6 +64,31 @@ machine printer.
 - Fresh build proof and the focused c-testsuite backend subset are recorded.
 - Any broader backend-regex proof is reported with the residual bucket changes
   separated from unrelated runtime or timeout behavior.
+
+## Closure Note
+
+Closed after the scalar ALU immediate materialization route removed the old
+focused machine-printer diagnostic:
+
+```text
+scalar add/sub/bitwise immediate operand is outside the plain #imm encoding
+range 0..4095
+```
+
+Fresh close proof used matching backend-regex reruns in `test_before.log` and
+`test_after.log`: both selected 352 tests, stayed at 294 passed and 58 failed,
+and introduced no new failures. This was non-regressive for lifecycle close,
+not a strict pass-count regression-guard improvement. The old scalar immediate
+diagnostic is absent from both focused and broad backend-regex proof.
+
+The focused target set is now classified outside this owner: `00031` passes;
+`00104` fails on invalid `sxtw w20, w13` cast spelling; `00213` and `00214`
+fail on symbol-store value printing; `00207` and `00215` segfault; `00143`
+times out; and `00218` reaches a runtime mismatch. Those residuals remain
+parked for later focused owners under the umbrella inventory.
+
+No expectation, unsupported, runner, timeout, allowlist, or CTest-registration
+changes were part of the closure.
 
 ## Reviewer Reject Signals
 
