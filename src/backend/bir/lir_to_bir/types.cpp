@@ -66,7 +66,7 @@ std::optional<bir::TypeKind> lower_scalar_storage_type(std::string_view text) {
   if (text == "double" || text == "f64") {
     return bir::TypeKind::F64;
   }
-  if (text == "x86_fp80" || text == "f128") {
+  if (text == "x86_fp80" || text == "f128" || text == "fp128") {
     return bir::TypeKind::F128;
   }
   return std::nullopt;

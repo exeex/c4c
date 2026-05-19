@@ -273,6 +273,28 @@ bool append_x86_fp80_initializer_bytes(std::string_view text, std::vector<bir::V
   return true;
 }
 
+bool append_f128_initializer_bytes(std::string_view text, std::vector<bir::Value>* out) {
+  if (text.size() != 35 || text[0] != '0' || (text[1] != 'x' && text[1] != 'X') ||
+      (text[2] != 'L' && text[2] != 'l')) {
+    return false;
+  }
+
+  std::array<std::uint8_t, 16> payload{};
+  for (std::size_t index = 0; index < payload.size(); ++index) {
+    const auto hi = parse_hex_digit(text[3 + index * 2]);
+    const auto lo = parse_hex_digit(text[4 + index * 2]);
+    if (!hi.has_value() || !lo.has_value()) {
+      return false;
+    }
+    payload[index] = static_cast<std::uint8_t>((*hi << 4) | *lo);
+  }
+
+  for (auto it = payload.rbegin(); it != payload.rend(); ++it) {
+    out->push_back(bir::Value::immediate_i8(static_cast<std::int8_t>(*it)));
+  }
+  return true;
+}
+
 std::optional<std::vector<bir::Value>> lower_llvm_byte_string_initializer(
     std::string_view init_text,
     std::string_view type_text) {
@@ -674,7 +696,8 @@ bool lower_aggregate_initializer_recursive(
 
   if (layout.kind == AggregateTypeLayout::Kind::Scalar) {
     if (layout.scalar_type == bir::TypeKind::F128) {
-      return append_x86_fp80_initializer_bytes(trimmed_init, out);
+      return append_x86_fp80_initializer_bytes(trimmed_init, out) ||
+             append_f128_initializer_bytes(trimmed_init, out);
     }
     if (layout.scalar_type == bir::TypeKind::Ptr) {
       const auto address = structured_layouts != nullptr

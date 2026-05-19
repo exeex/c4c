@@ -996,6 +996,28 @@ BirFunctionLowerer::resolve_global_dynamic_aggregate_array_access(
     return std::nullopt;
   }
 
+  if (base_layout.kind == AggregateTypeLayout::Kind::Array &&
+      c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) ==
+          c4c::codegen::lir::trim_lir_arg_text(base_layout.element_type_text)) {
+    const auto element_layout =
+        lookup_addressing_layout(base_layout.element_type_text, type_decls, structured_layouts);
+    if ((element_layout.kind != AggregateTypeLayout::Kind::Struct &&
+         element_layout.kind != AggregateTypeLayout::Kind::Array) ||
+        element_layout.size_bytes == 0 || base_layout.array_count == 0) {
+      return std::nullopt;
+    }
+    return DynamicGlobalAggregateArrayAccess{
+        .global_name = base_address.global_name,
+        .link_name_id = base_address.link_name_id,
+        .element_type_text =
+            std::string(c4c::codegen::lir::trim_lir_arg_text(base_layout.element_type_text)),
+        .byte_offset = base_address.byte_offset,
+        .element_count = base_layout.array_count,
+        .element_stride_bytes = element_layout.size_bytes,
+        .index = *lowered_index,
+    };
+  }
+
   const auto global_it = global_types.find(base_address.global_name);
   if (global_it == global_types.end()) {
     return std::nullopt;
@@ -1135,6 +1157,23 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         type_decls,
         structured_layouts_);
     if (!dynamic_array.has_value()) {
+      const auto dynamic_aggregate = resolve_global_dynamic_aggregate_array_access(
+          GlobalAddress{
+              .global_name = global_name,
+              .link_name_id = global_it->second.link_name_id,
+              .value_type = global_it->second.value_type,
+              .byte_offset = 0,
+          },
+          global_it->second.type_text,
+          gep,
+          gep_index_value_aliases,
+          global_types,
+          type_decls,
+          structured_layouts_);
+      if (dynamic_aggregate.has_value()) {
+        dynamic_global_aggregate_arrays[gep.result.str()] = std::move(*dynamic_aggregate);
+        return true;
+      }
       const auto dynamic_scalar = resolve_global_dynamic_scalar_array_access(
           global_name,
           global_it->second.link_name_id,
@@ -1482,6 +1521,54 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
     return true;
   } else if (const auto global_aggregate_it = dynamic_global_aggregate_arrays.find(gep.ptr.str());
              global_aggregate_it != dynamic_global_aggregate_arrays.end()) {
+    if (gep.indices.size() == 1 || gep.indices.size() == 2) {
+      std::size_t index_pos = 0;
+      if (gep.indices.size() == 2) {
+        const auto base_index = parse_typed_operand(gep.indices.front());
+        if (!base_index.has_value()) {
+          return fail_gep();
+        }
+        const auto base_imm = resolve_index_operand(base_index->operand, value_aliases);
+        if (!base_imm.has_value() || *base_imm != 0) {
+          return fail_gep();
+        }
+        index_pos = 1;
+      }
+      const auto parsed_index = parse_typed_operand(gep.indices[index_pos]);
+      if (!parsed_index.has_value()) {
+        return fail_gep();
+      }
+      if (!resolve_index_operand(parsed_index->operand, value_aliases).has_value()) {
+        const auto element_layout = lookup_addressing_layout(
+            global_aggregate_it->second.element_type_text, type_decls, &structured_layouts_);
+        if (element_layout.kind == AggregateTypeLayout::Kind::Array &&
+            c4c::codegen::lir::trim_lir_arg_text(gep.element_type.str()) ==
+                c4c::codegen::lir::trim_lir_arg_text(element_layout.element_type_text)) {
+          const auto scalar_layout = lookup_addressing_layout(
+              element_layout.element_type_text, type_decls, &structured_layouts_);
+          const auto index_value = lower_typed_index_value(*parsed_index, value_aliases);
+          if (index_value.has_value() &&
+              scalar_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+              scalar_layout.scalar_type != bir::TypeKind::Void &&
+              scalar_layout.size_bytes != 0 && element_layout.array_count != 0) {
+            dynamic_global_scalar_arrays[gep.result.str()] = DynamicGlobalScalarArrayAccess{
+                .global_name = global_aggregate_it->second.global_name,
+                .link_name_id = global_aggregate_it->second.link_name_id,
+                .element_type = scalar_layout.scalar_type,
+                .byte_offset = global_aggregate_it->second.byte_offset,
+                .outer_element_count = global_aggregate_it->second.element_count,
+                .outer_element_stride_bytes =
+                    global_aggregate_it->second.element_stride_bytes,
+                .outer_index = global_aggregate_it->second.index,
+                .element_count = element_layout.array_count,
+                .element_stride_bytes = scalar_layout.size_bytes,
+                .index = *index_value,
+            };
+            return true;
+          }
+        }
+      }
+    }
     if (const auto aggregate_target = resolve_relative_gep_target(
             global_aggregate_it->second.element_type_text,
             0,
