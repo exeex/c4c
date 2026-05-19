@@ -21,6 +21,8 @@ namespace abi = c4c::backend::aarch64::abi;
 
 namespace {
 
+[[nodiscard]] MachineEffectResource effect_from_operand(const OperandRecord& operand);
+
 prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
@@ -340,6 +342,72 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return std::nullopt;
 }
 
+[[nodiscard]] std::string stack_copy_address(std::string_view base,
+                                             std::int64_t offset) {
+  std::ostringstream out;
+  out << "[" << base;
+  if (offset != 0) {
+    out << ", #" << offset;
+  }
+  out << "]";
+  return out.str();
+}
+
+[[nodiscard]] std::string_view aggregate_stack_copy_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+[[nodiscard]] std::string_view aggregate_stack_copy_store_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_stack_copy_scratch(
+    std::size_t width_bytes) {
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  if (width_bytes == 1 || width_bytes == 4) {
+    return abi::w_register(scratch.index);
+  }
+  if (width_bytes == 8) {
+    return abi::x_register(scratch.index);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::vector<std::size_t> aggregate_stack_copy_chunks(
+    std::size_t size_bytes) {
+  std::vector<std::size_t> chunks;
+  std::size_t remaining = size_bytes;
+  while (remaining >= 8) {
+    chunks.push_back(8);
+    remaining -= 8;
+  }
+  if (remaining >= 4) {
+    chunks.push_back(4);
+    remaining -= 4;
+  }
+  while (remaining > 0) {
+    chunks.push_back(1);
+    --remaining;
+  }
+  return chunks;
+}
+
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
@@ -478,6 +546,41 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<MemoryOperand> make_aggregate_call_argument_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& source_register,
+    std::size_t size_bytes,
+    std::int64_t byte_offset,
+    std::size_t instruction_index) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      source_home.value_name == c4c::kInvalidValueName || size_bytes == 0) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::PointerValue,
+      .base_register = source_register,
+      .pointer_value_name = source_home.value_name,
+      .pointer_value_id = source_home.value_id,
+      .byte_offset = byte_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = source_home.align_bytes.value_or(1),
+      .can_use_base_plus_offset = true,
+  };
+}
+
 [[nodiscard]] module::MachineInstruction make_call_boundary_machine_instruction(
     const module::BlockLoweringContext& context,
     std::size_t instruction_index,
@@ -498,6 +601,71 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] module::MachineInstruction make_aggregate_stack_copy_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const MemoryOperand& source,
+    const MemoryOperand& destination) {
+  const auto source_base = abi::register_name(source.base_register->reg);
+  std::string asm_text;
+  std::size_t offset = 0;
+  for (const auto width : aggregate_stack_copy_chunks(source.size_bytes)) {
+    const auto scratch = aggregate_stack_copy_scratch(width);
+    const auto load_mnemonic = aggregate_stack_copy_load_mnemonic(width);
+    const auto store_mnemonic = aggregate_stack_copy_store_mnemonic(width);
+    if (!scratch.has_value() || load_mnemonic.empty() || store_mnemonic.empty()) {
+      continue;
+    }
+    if (!asm_text.empty()) {
+      asm_text += '\n';
+    }
+    asm_text += std::string{load_mnemonic};
+    asm_text += " ";
+    asm_text += std::string{abi::register_name(*scratch)};
+    asm_text += ", ";
+    asm_text += stack_copy_address(
+        source_base, source.byte_offset + static_cast<std::int64_t>(offset));
+    asm_text += '\n';
+    asm_text += std::string{store_mnemonic};
+    asm_text += " ";
+    asm_text += std::string{abi::register_name(*scratch)};
+    asm_text += ", ";
+    asm_text += stack_copy_address(
+        "sp", destination.byte_offset + static_cast<std::int64_t>(offset));
+    offset += width;
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = {make_memory_operand(source), make_memory_operand(destination)},
+      .defs = {effect_from_operand(make_memory_operand(destination))},
+      .uses = {effect_from_operand(make_memory_operand(source))},
+      .side_effects = {MachineSideEffectKind::MemoryRead,
+                       MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .operands = {make_memory_operand(source), make_memory_operand(destination)},
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index,
+                                                std::move(target));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
@@ -722,6 +890,111 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
     }
     move_record.source_memory = *source;
     move_record.destination_register = *destination;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      argument != nullptr &&
+      (argument->source_encoding == prepare::PreparedStorageEncodingKind::Register ||
+       argument->source_encoding == prepare::PreparedStorageEncodingKind::ComputedAddress) &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->value_bank == prepare::PreparedRegisterBank::AggregateAddress &&
+      (!argument->source_register_bank.has_value() ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress) &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto* source_register_home = source_home;
+    if (source_home->kind == prepare::PreparedValueHomeKind::PointerBasePlusOffset &&
+        argument->source_base_value_id.has_value() &&
+        context.function.value_locations != nullptr) {
+      source_register_home = prepare::find_prepared_value_home(
+          *context.function.value_locations, *argument->source_base_value_id);
+    }
+    if (source_register_home == nullptr ||
+        source_register_home->kind != prepare::PreparedValueHomeKind::Register ||
+        !source_register_home->register_name.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack call-argument copy requires a prepared aggregate address register");
+      return std::nullopt;
+    }
+    if (argument->source_register_name.has_value() &&
+        *argument->source_register_name != *source_register_home->register_name) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack call-argument source register disagrees with prepared value home");
+      return std::nullopt;
+    }
+    const auto size_bytes = source_home->size_bytes;
+    if (!size_bytes.has_value() || *size_bytes == 0) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack call-argument copy requires a prepared aggregate size");
+      return std::nullopt;
+    }
+    auto source_register = make_register_operand_from_prepared_authority(
+        source_register_home->register_name,
+        argument->source_register_placement,
+        argument->source_register_bank.has_value()
+            ? argument->source_register_bank
+            : std::optional<prepare::PreparedRegisterBank>{
+                  prepare::PreparedRegisterBank::Gpr},
+        RegisterOperandRole::CallAbi,
+        source_register_home->value_id,
+        source_register_home->value_name,
+        1,
+        {},
+        abi::RegisterView::X,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source_register.has_value()) {
+      return std::nullopt;
+    }
+    const auto source_byte_offset = source_home->pointer_byte_delta.value_or(0);
+    const auto source = make_aggregate_call_argument_source(
+        context,
+        *argument,
+        *source_home,
+        *source_register,
+        *size_bytes,
+        source_byte_offset,
+        instruction_index);
+    if (!source.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack call-argument copy requires a prepared aggregate address source");
+      return std::nullopt;
+    }
+    const auto destination = make_stack_call_argument_destination(
+        context, *argument, *source_home, move, binding, *source, instruction_index);
+    if (!destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack call-argument copy requires a prepared destination stack offset");
+      return std::nullopt;
+    }
+    return make_aggregate_stack_copy_instruction(
+        context, instruction_index, *source, *destination);
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
