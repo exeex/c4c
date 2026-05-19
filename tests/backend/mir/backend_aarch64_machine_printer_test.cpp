@@ -1476,6 +1476,95 @@ int selected_branch_and_store_nodes_print_without_semantic_roundtrip() {
   return 0;
 }
 
+int fused_compare_branch_prints_immediate_left_operands_in_aarch64_order() {
+  auto instruction = aarch64_codegen::make_branch_instruction(
+      aarch64_codegen::BranchInstructionRecord{
+          .target =
+              aarch64_codegen::BranchTargetOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .block_label = c4c::BlockLabelId{7},
+                  .function_name = c4c::FunctionNameId{2},
+                  .condition_value_id = prepare::PreparedValueId{20},
+              },
+          .target_pair =
+              aarch64_codegen::BranchTargetPairRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .true_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{7},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{20},
+                      },
+                  .false_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{8},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{20},
+                      },
+              },
+          .condition_record =
+              aarch64_codegen::BranchConditionRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .form = aarch64_codegen::BranchConditionForm::FusedCompare,
+                  .condition_value_id = prepare::PreparedValueId{20},
+                  .condition_value_name = c4c::ValueNameId{20},
+                  .condition_type = bir::TypeKind::I32,
+                  .predicate =
+                      aarch64_codegen::ComparePredicateRecord{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .source_predicate = bir::BinaryOpcode::Slt,
+                          .compare_type = bir::TypeKind::I32,
+                      },
+                  .compare_operands =
+                      aarch64_codegen::CompareOperandPairRecord{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .lhs =
+                              aarch64_codegen::CompareValueRecord{
+                                  .surface =
+                                      aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                                  .type = bir::TypeKind::I32,
+                                  .source_value = bir::Value::immediate_i32(1000),
+                              },
+                          .rhs =
+                              aarch64_codegen::CompareValueRecord{
+                                  .surface =
+                                      aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                                  .value_id = prepare::PreparedValueId{21},
+                                  .value_name = c4c::ValueNameId{21},
+                                  .type = bir::TypeKind::I32,
+                                  .source_value =
+                                      bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                              },
+                          .compare_type = bir::TypeKind::I32,
+                      },
+                  .can_fuse_with_branch = true,
+              },
+          .conditional = true,
+      });
+  if (instruction.operands.size() != 5) {
+    return fail("expected fused compare branch to carry compare operand slots");
+  }
+  instruction.operands[3] =
+      aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+          .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+          .type = bir::TypeKind::I32,
+          .signed_value = 1000,
+          .unsigned_value = 1000,
+      });
+  instruction.operands[4] = aarch64_codegen::make_register_operand(wreg(13));
+
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 3 ||
+      printed.instruction_lines[0] != "cmp w13, #1000" ||
+      printed.instruction_lines[1] != "b.gt .LBB2_7" ||
+      printed.instruction_lines[2] != "b .LBB2_8") {
+    return fail("expected immediate-left fused compare branch to print in legal order");
+  }
+  return 0;
+}
+
 int selected_branch_target_requires_matching_block_label_definition() {
   const auto branch = aarch64_codegen::make_branch_instruction(
       aarch64_codegen::BranchInstructionRecord{
@@ -5488,6 +5577,11 @@ int main() {
     return result;
   }
   if (const int result = selected_branch_and_store_nodes_print_without_semantic_roundtrip();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          fused_compare_branch_prints_immediate_left_operands_in_aarch64_order();
       result != 0) {
     return result;
   }

@@ -141,6 +141,33 @@ std::optional<std::string_view> compare_branch_condition(bir::BinaryOpcode predi
   }
 }
 
+std::optional<bir::BinaryOpcode> swapped_compare_predicate(
+    bir::BinaryOpcode predicate) {
+  switch (predicate) {
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+      return predicate;
+    case bir::BinaryOpcode::Slt:
+      return bir::BinaryOpcode::Sgt;
+    case bir::BinaryOpcode::Sle:
+      return bir::BinaryOpcode::Sge;
+    case bir::BinaryOpcode::Sgt:
+      return bir::BinaryOpcode::Slt;
+    case bir::BinaryOpcode::Sge:
+      return bir::BinaryOpcode::Sle;
+    case bir::BinaryOpcode::Ult:
+      return bir::BinaryOpcode::Ugt;
+    case bir::BinaryOpcode::Ule:
+      return bir::BinaryOpcode::Uge;
+    case bir::BinaryOpcode::Ugt:
+      return bir::BinaryOpcode::Ult;
+    case bir::BinaryOpcode::Uge:
+      return bir::BinaryOpcode::Ule;
+    default:
+      return std::nullopt;
+  }
+}
+
 std::optional<abi::RegisterReference> immediate_store_scratch_register(
     const MemoryInstructionRecord& memory) {
   const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
@@ -297,6 +324,41 @@ std::optional<std::string> compare_operand_spelling(const OperandRecord& operand
   return std::nullopt;
 }
 
+struct CompareBranchPrintOperands {
+  std::string lhs;
+  std::string rhs;
+  bir::BinaryOpcode predicate = bir::BinaryOpcode::Eq;
+};
+
+std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
+    const OperandRecord& lhs_operand,
+    const OperandRecord& rhs_operand,
+    bir::TypeKind compare_type,
+    bir::BinaryOpcode predicate) {
+  auto lhs = compare_operand_spelling(lhs_operand, compare_type, true);
+  auto rhs = compare_operand_spelling(rhs_operand, compare_type, false);
+  if (lhs.has_value() && rhs.has_value()) {
+    return CompareBranchPrintOperands{
+        .lhs = *lhs,
+        .rhs = *rhs,
+        .predicate = predicate,
+    };
+  }
+
+  lhs = compare_operand_spelling(rhs_operand, compare_type, true);
+  rhs = compare_operand_spelling(lhs_operand, compare_type, false);
+  const auto swapped_predicate = swapped_compare_predicate(predicate);
+  if (lhs.has_value() && rhs.has_value() && swapped_predicate.has_value()) {
+    return CompareBranchPrintOperands{
+        .lhs = *lhs,
+        .rhs = *rhs,
+        .predicate = *swapped_predicate,
+    };
+  }
+
+  return std::nullopt;
+}
+
 mir::TargetInstructionPrintResult print_fused_compare_branch(
     const InstructionRecord& instruction,
     const BranchTargetPairRecord& targets,
@@ -310,28 +372,24 @@ mir::TargetInstructionPrintResult print_fused_compare_branch(
                               "fused compare branch is missing printable operands");
   }
 
-  const auto condition_code =
-      compare_branch_condition(condition.predicate->source_predicate);
+  const auto operands =
+      compare_branch_print_operands(instruction.operands[3],
+                                    instruction.operands[4],
+                                    condition.compare_operands->compare_type,
+                                    condition.predicate->source_predicate);
+  if (!operands.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "fused compare branch operands are not printable");
+  }
+
+  const auto condition_code = compare_branch_condition(operands->predicate);
   if (!condition_code.has_value()) {
     return target_unsupported(bad_header(instruction) +
                               "fused compare branch predicate is not printable");
   }
 
-  const auto lhs =
-      compare_operand_spelling(instruction.operands[3],
-                               condition.compare_operands->compare_type,
-                               true);
-  const auto rhs =
-      compare_operand_spelling(instruction.operands[4],
-                               condition.compare_operands->compare_type,
-                               false);
-  if (!lhs.has_value() || !rhs.has_value()) {
-    return target_unsupported(bad_header(instruction) +
-                              "fused compare branch operands are not printable");
-  }
-
   std::ostringstream compare_line;
-  compare_line << "cmp " << *lhs << ", " << *rhs;
+  compare_line << "cmp " << operands->lhs << ", " << operands->rhs;
   std::ostringstream true_branch_line;
   true_branch_line << "b." << *condition_code << " "
                    << block_label(targets.true_target.function_name,

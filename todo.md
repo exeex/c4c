@@ -3,92 +3,47 @@
 Status: Active
 Source Idea Path: ideas/open/296_aarch64_fused_compare_branch_operand_forms.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Locate Operand Authority
+Current Step ID: 3
+Current Step Title: Repair Semantic Operand Publication Or Printing
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed for focused idea 296. I traced the fused compare-branch
-authority through AST-backed symbol queries and targeted reads of
-`comparison.cpp`, `instruction.cpp/.hpp`, `machine_printer.cpp`, and the
-branch-control / compare-record tests.
+Step 3 completed the immediate-left fused compare-branch normalization slice at
+the printer boundary. `print_fused_compare_branch` now derives local printable
+compare operands by first trying the published order and then trying the swapped
+order with the swapped predicate. This preserves `BranchConditionRecord` and
+`compare_branch_candidate` semantic facts unchanged while emitting legal AArch64
+`cmp reg, #imm` order for forms such as `slt i32 1000, %t8`.
 
-Operand authority is split across three layers:
+Added focused machine-printer coverage for an immediate-left `slt` fused
+compare branch. The test keeps the semantic compare facts as `1000 < %rhs`,
+publishes printable operands in the old illegal immediate/register order, and
+expects `cmp w13, #1000` with `b.gt`.
 
-- Semantic compare facts are owned by `prepare::PreparedBranchCondition`, then
-  transcribed by `make_prepared_conditional_branch_record` into
-  `BranchConditionRecord::{predicate, compare_operands,
-  compare_branch_candidate}`. `BranchCompareCandidateRecord` mirrors those
-  facts and fusion eligibility, but the printer does not consume it directly.
-- Generic machine-node construction in `make_branch_instruction` calls
-  `branch_instruction_operands`, which seeds a fused compare branch as five
-  operands: true target, false target, condition value, lhs compare value, rhs
-  compare value. At this point named compare values are still
-  `PreparedValue` operands; immediates are immediate operands. This is enough
-  for `branch_selection_status` to select `MachineOpcode::CompareBranch`, but
-  it is not necessarily printable.
-- Printable operand publication is owned by
-  `install_fused_compare_print_operands` and
-  `make_fused_compare_print_operand` in `comparison.cpp`. The installer is
-  called from `lower_prepared_conditional_branch_terminator` after
-  `make_branch_instruction`; it rewrites `instruction.target.operands[3]` and
-  `[4]` from `condition.compare_operands` using `resolve_value_operand`.
-  `print_fused_compare_branch` then consumes only those two operand slots for
-  the `cmp` operands, while using `condition.predicate` and
-  `condition.compare_operands->compare_type` only for condition code and
-  register width.
-
-The current c-testsuite path rejects printable operands at that boundary, not
-because branch targets or candidate facts are missing. A fresh narrow run of
-`c_testsuite_aarch64_backend_src_00030_c` still fails at function 0 block 4
-instruction 3 with `opcode=compare_branch: fused compare branch operands are
-not printable`. `--dump-prepared-bir` for `00030` shows that block 4 is the
-semantic compare `slt i32 1000, %t8`, and prepared value locations give `%t8`
-register authority (`x13`). That means the installer can publish the operands
-literally as lhs immediate `1000` and rhs register `%t8`, but
-`compare_operand_spelling` only accepts a register on the lhs and allows an
-immediate only on the rhs. The record path preserves valid semantic compare
-facts; the printable path lacks normalization for immediate-left compare
-forms such as `imm < reg`, `imm <= reg`, `imm == reg`, and `imm != reg`.
-
-Smallest viable Step 3 repair site: keep the fix at the fused compare
-publication/printing boundary, centered on `install_fused_compare_print_operands`
-and `print_fused_compare_branch`. The implementation packet should make
-immediate-left forms publish or print a legal AArch64 `cmp` order by swapping
-the printable operands and using the swapped predicate where required, while
-leaving `BranchConditionRecord` / `compare_branch_candidate` as the durable
-semantic facts. If the repair mutates stored branch condition facts, the
-bounded site is `lower_prepared_conditional_branch_terminator` immediately
-around the existing installer call, because that is where the fresh
-`InstructionRecord` and its payload-owned `BranchConditionRecord` are both
-available before machine printing. Avoid changing generic
-`branch_instruction_operands`; its existing `PreparedValue` slots are useful
-semantic/use records and the tests intentionally distinguish them from the
-prepared-terminator route's printable register/immediate slots.
+The representative c-testsuite case `00030` now passes in the delegated proof
+and no longer fails at the old fused compare-branch operand-form printer point.
 
 ## Suggested Next
 
-Delegate Step 3 to implement immediate-left fused compare-branch normalization
-at the existing publication/printing boundary. A bounded implementation should
-cover at least register-lhs/immediate-rhs, register-lhs/register-rhs, and
-immediate-lhs/register-rhs forms without changing expectations or selecting
-per-test behavior.
+Delegate Step 4 to decide whether the remaining 21 focused c-testsuite failures
+belong to this idea as additional operand-form work or should be split. The next
+coherent packet should classify and repair constant-vs-constant fused compares
+or non-encodable immediate compare operands without weakening tests.
 
 ## Watchouts
 
-- Do not treat this as a target-label or candidate-record problem: the
-  representative failure has prepared branch-condition facts and register
-  authority for the named operand.
-- The current unit coverage proves the happy path for register-lhs plus
-  immediate-rhs printing (`cmp w13, #0`) and the generic record path that still
-  carries `PreparedValue` compare operands. It does not cover the `00030`
-  immediate-left shape (`cmp #1000, w13` would be illegal/unprintable as
-  currently modeled).
-- Predicate swapping matters for ordered comparisons: `imm < reg` should print
-  as `cmp reg, #imm` with the inverse relational condition, while equality and
-  inequality can swap operands without changing the condition code.
+- Residual focused failures still report the generic
+  `fused compare branch operands are not printable` diagnostic, but sampled
+  prepared BIR shows different shapes from the repaired immediate-left register
+  case: constant-vs-constant compares such as `ne i32 1, 0`, `ult i64 4, 2`,
+  and `eq i64 2, 2`; out-of-range immediate RHS forms such as
+  `slt i32 %t0, 5000`; and negative immediate RHS forms such as
+  `slt i64 %t1, -2147483648`.
+- The current repair intentionally does not constant-fold branch direction,
+  materialize compare immediates, add scratch-register compare lowering, or
+  mutate semantic compare records.
 - Do not match c-testsuite filenames, test numbers, or exact emitted
   instruction strings.
 - Do not change expectations, allowlists, unsupported classifications, CTest
@@ -101,22 +56,15 @@ per-test behavior.
 
 ## Proof
 
-Read-only proof only; `test_after.log` and `test_before.log` were not modified.
-Commands/evidence used:
+Focused pre-proof:
+`cmake --build build --target backend_aarch64_machine_printer_test && ctest --test-dir build -R '^backend_aarch64_machine_printer$' --output-on-failure`
+passed.
 
-- AST-backed queries with `c4c-clang-tool-ccdb` for
-  `lower_prepared_conditional_branch_terminator`,
-  `install_fused_compare_print_operands`, `make_branch_instruction`,
-  `print_fused_compare_branch`, and
-  `lower_fused_compare_branch_from_emitted_cast`.
-- Targeted source/test inspection of `comparison.cpp`, `instruction.cpp/.hpp`,
-  `machine_printer.cpp`, `backend_aarch64_branch_control_lowering_test.cpp`,
-  and `backend_aarch64_branch_compare_records_test.cpp`.
-- Narrow local unit subset:
-  `ctest --test-dir build -R 'backend_aarch64_(branch_control_lowering|branch_compare_records|compare_branch_candidate_records|prepared_branch_records|machine_printer)$' --output-on-failure`
-  passed 5/5.
-- Narrow representative c-testsuite check:
-  `ctest --test-dir build -R '^c_testsuite_aarch64_backend_src_00030_c$' --output-on-failure`
-  failed at the known fused compare-branch printer point.
-- `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function main tests/c/external/c-testsuite/src/00030.c`
-  showed block 4 as `slt i32 1000, %t8` with `%t8` register authority.
+Delegated proof command run exactly:
+`cmake --build build --target c4cll backend_aarch64_branch_control_lowering_test backend_aarch64_branch_compare_records_test backend_aarch64_compare_branch_candidate_records_test backend_aarch64_prepared_branch_records_test backend_aarch64_machine_printer_test && ctest --test-dir build -R '^(backend_aarch64_(branch_control_lowering|branch_compare_records|compare_branch_candidate_records|prepared_branch_records|machine_printer)|c_testsuite_aarch64_backend_src_(00030|00034|00037|00038|00041|00054|00055|00057|00059|00076|00077|00085|00092|00093|00101|00127|00200|00203|00207|00212|00214|00215)_c)$' --output-on-failure | tee test_after.log`
+
+Result recorded in `test_after.log`: build succeeded; the five focused AArch64
+unit tests passed; `c_testsuite_aarch64_backend_src_00030_c` passed; the
+remaining 21 c-testsuite focused cases failed at the generic fused
+compare-branch operand printer diagnostic and are classified above for the next
+packet.
