@@ -10,53 +10,42 @@ Current Step Title: Prove The Focused 22-Case Family
 
 ## Just Finished
 
-Step 4 classified the remaining 21 focused c-testsuite failures after the
-immediate-left repair. The accepted focused baseline in `test_before.log` still
-has 6 passed / 21 failed, and every residual failure still reaches
-`opcode=compare_branch: fused compare branch operands are not printable`.
+Step 4 repaired the constant-vs-constant fused compare branch printer path.
+Both-immediate compare operands are now evaluated from the structured compare
+facts and printed as a direct `b` to the selected true/false target instead of
+being sent through AArch64 `cmp` operand spelling. The machine-printer unit test
+now covers `ult i64 4, 2` folding to the false target without emitting `cmp`.
 
-Narrow `--dump-bir` / `--dump-prepared-bir` diagnostics show the residual cases
-split into these semantic operand-form subfamilies:
-
-- Constant-vs-constant fused compares still marked `can_fuse_with_branch=yes`:
-  `00034`, `00037`, `00038`, `00054`, `00055`, `00057`, `00059`, `00076`,
-  `00077`, `00085`, `00092`, `00093`, `00101`, `00127`, `00200`, `00207`,
-  `00212`, `00214`, `00215`. Representative prepared records include
-  `ne i32 1, 0`, `ne i64 1, 1`, `ult i64 4, 2`, `eq i64 2, 2`, and repeated
-  `ne i32 0, 0` loop/logic guards. Several of these files contain later
-  register-vs-immediate compares, but the first printer blocker is a
-  constant-vs-constant compare branch.
-- Non-encodable register-vs-immediate fused compares that need immediate
-  materialization or non-fused fallback instead of direct `cmp #imm` printing:
-  `00041` has `slt i32 %t0, 5000`; `00203` has
-  `slt i64 %t1, -2147483648` and later `slt i64 2147483647, %t8`.
-- Already-covered encodable register-vs-immediate forms are present as
-  secondary branches in `00034`, `00037`, `00077`, `00092`, `00127`, `00200`,
-  `00212`, `00214`, and `00215`; these are not the next blocker after the
-  immediate-left repair.
+The delegated proof improved the focused scope from the accepted 6 passed / 21
+failed baseline in `test_before.log` to 21 passed / 6 failed in
+`test_after.log`. The old
+`opcode=compare_branch: fused compare branch operands are not printable` failure
+is gone for the 19 constant-vs-constant cases from this packet. Most of that
+family now passes; `00200` reaches runtime and fails with output mismatches
+instead of stopping at compare-branch printing.
 
 ## Suggested Next
 
-Repair the constant-vs-constant fused compare branch publication rule first.
-The highest-value packet is to stop publishing both-immediate compares as
-directly printable fused compare branches: either fold the branch direction at
-semantic/prepared authority, or keep the compare branch fail-closed and lower a
-plain branch/control-flow form that the AArch64 printer can spell. This should
-be implemented as a semantic operand-form rule, not by matching testcase names
-or individual literal pairs.
+Repair the remaining non-encodable register-vs-immediate fused compare branch
+forms next. The focused failures still at the old compare-branch printer point
+are `00041` (`slt i32 %t0, 5000`) and `00203`
+(`slt i64 %t1, -2147483648` / later immediate-left large compare). Handle these
+as an operand-form rule, either by materializing the non-encodable immediate or
+by routing the compare branch through a supported non-fused form.
 
 ## Watchouts
 
-- The constant-vs-constant family is 19 of 21 residual failures, so it should
-  stay in this idea as the next repair packet. It is not a separate lifecycle
-  split unless inspection shows branch folding belongs to a different active
-  backend owner.
-- The non-encodable immediate family (`00041`, `00203`) is still inside fused
-  compare-branch operand forms, but it is a distinct second implementation
-  packet after constant-vs-constant publication is repaired.
-- The current accepted repair intentionally does not constant-fold branch
-  direction, materialize compare immediates, add scratch-register compare
-  lowering, or mutate semantic compare records.
+- Constant-vs-constant folding is implemented in the target printer because the
+  current conditional terminator lowering interface returns only an instruction;
+  folding earlier would also need successor metadata changes to avoid silently
+  dropping or misclassifying CFG edges.
+- `00200` is no longer a compare-branch printer blocker, but it remains a
+  runtime failure after this repair. Treat it separately from the
+  non-encodable-immediate printer failures.
+- `00207`, `00214`, and `00215` now get past their constant-vs-constant branch
+  blockers and fail later in scalar immediate printing (`add`/`xor` immediate
+  outside the plain `#imm` range). That is outside this packet's compare-branch
+  repair.
 - Do not match c-testsuite filenames, test numbers, or exact emitted
   instruction strings.
 - Do not change expectations, allowlists, unsupported classifications, CTest
@@ -69,12 +58,10 @@ or individual literal pairs.
 
 ## Proof
 
-Accepted baseline analyzed: `test_before.log` records 6 passed / 21 failed for
-the focused scope after `00030` was repaired.
+Ran the delegated proof exactly:
+`cmake --build build --target c4cll backend_aarch64_branch_control_lowering_test backend_aarch64_branch_compare_records_test backend_aarch64_compare_branch_candidate_records_test backend_aarch64_prepared_branch_records_test backend_aarch64_machine_printer_test && ctest --test-dir build -R '^(backend_aarch64_(branch_control_lowering|branch_compare_records|compare_branch_candidate_records|prepared_branch_records|machine_printer)|c_testsuite_aarch64_backend_src_(00030|00034|00037|00038|00041|00054|00055|00057|00059|00076|00077|00085|00092|00093|00101|00127|00200|00203|00207|00212|00214|00215)_c)$' --output-on-failure | tee test_after.log`
 
-Narrow diagnostics used for classification only:
-`./build/c4cll --dump-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/<case>.c`
-and
-`./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/<case>.c`
-for representative residual cases. No broad backend regex was rerun, and no
-root proof log was modified for this classification-only packet.
+Result in `test_after.log`: build succeeded; backend unit tests passed; focused
+CTest result was 21 passed / 6 failed. Residual failures are `00041` and
+`00203` at non-encodable fused compare-branch operands, `00200` at runtime, and
+`00207`, `00214`, `00215` at scalar immediate printer limits.

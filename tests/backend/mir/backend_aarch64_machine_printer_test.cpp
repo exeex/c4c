@@ -1565,6 +1565,79 @@ int fused_compare_branch_prints_immediate_left_operands_in_aarch64_order() {
   return 0;
 }
 
+int fused_compare_branch_folds_both_immediate_operands_to_direct_branch() {
+  auto instruction = aarch64_codegen::make_branch_instruction(
+      aarch64_codegen::BranchInstructionRecord{
+          .target =
+              aarch64_codegen::BranchTargetOperand{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .block_label = c4c::BlockLabelId{7},
+                  .function_name = c4c::FunctionNameId{2},
+                  .condition_value_id = prepare::PreparedValueId{20},
+              },
+          .target_pair =
+              aarch64_codegen::BranchTargetPairRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .true_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{7},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{20},
+                      },
+                  .false_target =
+                      aarch64_codegen::BranchTargetOperand{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .block_label = c4c::BlockLabelId{8},
+                          .function_name = c4c::FunctionNameId{2},
+                          .condition_value_id = prepare::PreparedValueId{20},
+                      },
+              },
+          .condition_record =
+              aarch64_codegen::BranchConditionRecord{
+                  .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                  .form = aarch64_codegen::BranchConditionForm::FusedCompare,
+                  .condition_value_id = prepare::PreparedValueId{20},
+                  .condition_value_name = c4c::ValueNameId{20},
+                  .condition_type = bir::TypeKind::I64,
+                  .predicate =
+                      aarch64_codegen::ComparePredicateRecord{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .source_predicate = bir::BinaryOpcode::Ult,
+                          .compare_type = bir::TypeKind::I64,
+                      },
+                  .compare_operands =
+                      aarch64_codegen::CompareOperandPairRecord{
+                          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                          .lhs =
+                              aarch64_codegen::CompareValueRecord{
+                                  .surface =
+                                      aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                                  .type = bir::TypeKind::I64,
+                                  .source_value = bir::Value::immediate_i64(4),
+                              },
+                          .rhs =
+                              aarch64_codegen::CompareValueRecord{
+                                  .surface =
+                                      aarch64_codegen::RecordSurfaceKind::RecordOnly,
+                                  .type = bir::TypeKind::I64,
+                                  .source_value = bir::Value::immediate_i64(2),
+                              },
+                          .compare_type = bir::TypeKind::I64,
+                      },
+                  .can_fuse_with_branch = true,
+              },
+          .conditional = true,
+      });
+
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines[0] != "b .LBB2_8") {
+    return fail("expected both-immediate fused compare branch to fold without cmp");
+  }
+  return 0;
+}
+
 int selected_branch_target_requires_matching_block_label_definition() {
   const auto branch = aarch64_codegen::make_branch_instruction(
       aarch64_codegen::BranchInstructionRecord{
@@ -5582,6 +5655,11 @@ int main() {
   }
   if (const int result =
           fused_compare_branch_prints_immediate_left_operands_in_aarch64_order();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          fused_compare_branch_folds_both_immediate_operands_to_direct_branch();
       result != 0) {
     return result;
   }

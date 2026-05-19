@@ -359,6 +359,123 @@ std::optional<CompareBranchPrintOperands> compare_branch_print_operands(
   return std::nullopt;
 }
 
+std::uint64_t integer_mask_for_compare_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+      return 0x1ULL;
+    case bir::TypeKind::I8:
+      return 0xffULL;
+    case bir::TypeKind::I16:
+      return 0xffffULL;
+    case bir::TypeKind::I32:
+      return 0xffffffffULL;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return UINT64_MAX;
+    default:
+      return 0;
+  }
+}
+
+std::optional<std::uint64_t> immediate_unsigned_compare_value(const bir::Value& value,
+                                                              bir::TypeKind compare_type) {
+  if (value.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  const auto mask = integer_mask_for_compare_type(compare_type);
+  if (mask == 0) {
+    return std::nullopt;
+  }
+  return static_cast<std::uint64_t>(value.immediate) & mask;
+}
+
+std::optional<std::int64_t> immediate_signed_compare_value(const bir::Value& value,
+                                                           bir::TypeKind compare_type) {
+  const auto unsigned_value = immediate_unsigned_compare_value(value, compare_type);
+  if (!unsigned_value.has_value()) {
+    return std::nullopt;
+  }
+  switch (compare_type) {
+    case bir::TypeKind::I1:
+      return static_cast<std::int64_t>(*unsigned_value & 0x1ULL);
+    case bir::TypeKind::I8:
+      return static_cast<std::int8_t>(*unsigned_value & 0xffULL);
+    case bir::TypeKind::I16:
+      return static_cast<std::int16_t>(*unsigned_value & 0xffffULL);
+    case bir::TypeKind::I32:
+      return static_cast<std::int32_t>(*unsigned_value & 0xffffffffULL);
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return static_cast<std::int64_t>(*unsigned_value);
+    default:
+      return std::nullopt;
+  }
+}
+
+std::optional<bool> evaluate_immediate_compare_branch(
+    const CompareOperandPairRecord& operands,
+    bir::BinaryOpcode predicate) {
+  const auto compare_type = operands.compare_type;
+  switch (predicate) {
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne: {
+      const auto lhs = immediate_unsigned_compare_value(operands.lhs.source_value, compare_type);
+      const auto rhs = immediate_unsigned_compare_value(operands.rhs.source_value, compare_type);
+      if (!lhs.has_value() || !rhs.has_value()) {
+        return std::nullopt;
+      }
+      const bool equal = *lhs == *rhs;
+      return predicate == bir::BinaryOpcode::Eq ? equal : !equal;
+    }
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge: {
+      const auto lhs = immediate_signed_compare_value(operands.lhs.source_value, compare_type);
+      const auto rhs = immediate_signed_compare_value(operands.rhs.source_value, compare_type);
+      if (!lhs.has_value() || !rhs.has_value()) {
+        return std::nullopt;
+      }
+      switch (predicate) {
+        case bir::BinaryOpcode::Slt:
+          return *lhs < *rhs;
+        case bir::BinaryOpcode::Sle:
+          return *lhs <= *rhs;
+        case bir::BinaryOpcode::Sgt:
+          return *lhs > *rhs;
+        case bir::BinaryOpcode::Sge:
+          return *lhs >= *rhs;
+        default:
+          return std::nullopt;
+      }
+    }
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge: {
+      const auto lhs = immediate_unsigned_compare_value(operands.lhs.source_value, compare_type);
+      const auto rhs = immediate_unsigned_compare_value(operands.rhs.source_value, compare_type);
+      if (!lhs.has_value() || !rhs.has_value()) {
+        return std::nullopt;
+      }
+      switch (predicate) {
+        case bir::BinaryOpcode::Ult:
+          return *lhs < *rhs;
+        case bir::BinaryOpcode::Ule:
+          return *lhs <= *rhs;
+        case bir::BinaryOpcode::Ugt:
+          return *lhs > *rhs;
+        case bir::BinaryOpcode::Uge:
+          return *lhs >= *rhs;
+        default:
+          return std::nullopt;
+      }
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
 mir::TargetInstructionPrintResult print_fused_compare_branch(
     const InstructionRecord& instruction,
     const BranchTargetPairRecord& targets,
@@ -370,6 +487,16 @@ mir::TargetInstructionPrintResult print_fused_compare_branch(
   if (instruction.operands.size() < 5U) {
     return target_unsupported(bad_header(instruction) +
                               "fused compare branch is missing printable operands");
+  }
+
+  const auto folded =
+      evaluate_immediate_compare_branch(*condition.compare_operands,
+                                        condition.predicate->source_predicate);
+  if (folded.has_value()) {
+    const auto& target = *folded ? targets.true_target : targets.false_target;
+    std::ostringstream branch_line;
+    branch_line << "b " << block_label(target.function_name, target.block_label);
+    return target_printed({branch_line.str()});
   }
 
   const auto operands =
