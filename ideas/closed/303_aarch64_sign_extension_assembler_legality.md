@@ -1,8 +1,9 @@
 # AArch64 Sign-Extension Assembler Legality
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/302_aarch64_scalar_machine_node_operand_forms.md
+Closed: 2026-05-19
 
 ## Goal
 
@@ -78,6 +79,15 @@ The residual focused `00205` failure is now a timeout after 5.01 seconds, not
 the old assembler-legality failure. That timeout is split to
 `ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md` and must not be
 claimed as pass-count progress for this idea.
+
+Closed after Step 1 verification recorded in commit `69eed4707`. The source
+intent is satisfied by the sign-extension legality repair from illegal
+`sxtw w9, w13` to legal `sxtw x9, w13`; later `00205` timeout behavior remains
+owned by idea 304, and the later value-materialization residual was split to
+and closed under idea 305. Close-gate validation used matching canonical
+backend logs and passed with
+`--allow-non-decreasing-passed`: before 139/139, after 139/139, no new
+failures, and no slow tests.
 
 ## Reviewer Reject Signals
 
