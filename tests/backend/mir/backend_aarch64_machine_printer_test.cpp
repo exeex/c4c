@@ -3735,6 +3735,49 @@ int selected_f128_transport_and_helper_nodes_print_from_structured_fields() {
                          "f128 transport/helper structured printer");
 }
 
+int selected_f128_memory_backed_transport_prints_through_reserved_scratch() {
+  auto load_record = aarch64_codegen::F128TransportRecord{
+      .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+      .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
+      .function_name = c4c::FunctionNameId{2},
+      .block_label = c4c::BlockLabelId{3},
+      .instruction_index = 3,
+      .value_id = prepare::PreparedValueId{93},
+      .value_name = c4c::ValueNameId{93},
+      .value_type = bir::TypeKind::F128,
+      .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .slot_id = prepare::PreparedFrameSlotId{7},
+      .stack_offset_bytes = std::size_t{64},
+      .memory = f128_frame_slot(32),
+      .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
+  };
+  auto store_record = load_record;
+  store_record.transport_kind = aarch64_codegen::F128TransportKind::StoreToMemory;
+  store_record.instruction_index = 4;
+  store_record.value_id = prepare::PreparedValueId{94};
+  store_record.value_name = c4c::ValueNameId{94};
+  store_record.memory = f128_frame_slot(96);
+
+  const auto load = aarch64_codegen::make_f128_transport_instruction(load_record);
+  const auto store = aarch64_codegen::make_f128_transport_instruction(store_record);
+  const auto result = print_common_instruction_nodes({load, store});
+  if (!result.ok) {
+    return fail("expected selected f128 memory-backed transport to print through scratch: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr q16, [sp, #32]\n"
+      "    str q16, [sp, #64]\n"
+      "    ldr q16, [sp, #64]\n"
+      "    str q16, [sp, #96]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "f128 memory-backed transport scratch printer");
+}
+
 int selected_f128_compare_and_cast_helpers_print_from_structured_records() {
   const auto compare = aarch64_codegen::make_f128_runtime_helper_boundary_instruction(
       printable_f128_comparison_helper());
@@ -3766,7 +3809,8 @@ int selected_f128_compare_and_cast_helpers_print_from_structured_records() {
 }
 
 int selected_f128_records_reject_incomplete_structured_fields() {
-  const auto memory_backed = aarch64_codegen::make_f128_transport_instruction(
+  const auto memory_backed_without_slot =
+      aarch64_codegen::make_f128_transport_instruction(
       aarch64_codegen::F128TransportRecord{
           .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
           .transport_kind = aarch64_codegen::F128TransportKind::LoadFromMemory,
@@ -3779,17 +3823,15 @@ int selected_f128_records_reject_incomplete_structured_fields() {
           .carrier_kind = prepare::PreparedF128CarrierKind::MemoryBacked,
           .total_size_bytes = 16,
           .total_align_bytes = 16,
-          .slot_id = prepare::PreparedFrameSlotId{7},
-          .stack_offset_bytes = std::size_t{64},
           .memory = f128_frame_slot(64),
           .source_carrier = reinterpret_cast<const prepare::PreparedF128Carrier*>(0x1),
       });
   const auto memory_backed_result =
-      aarch64_codegen::print_machine_instruction_line_payloads(memory_backed);
+      aarch64_codegen::print_machine_instruction_line_payloads(memory_backed_without_slot);
   if (memory_backed_result.ok ||
-      memory_backed_result.diagnostic.find("full-width q-register authority") ==
+      memory_backed_result.diagnostic.find("frame-slot authority") ==
           std::string::npos) {
-    return fail("expected f128 memory-backed transport to fail closed in printer");
+    return fail("expected incomplete f128 memory-backed transport to fail closed");
   }
 
   auto helper_record = printable_f128_arithmetic_helper();
@@ -6379,6 +6421,11 @@ int main() {
     return result;
   }
   if (const int result = selected_f128_transport_and_helper_nodes_print_from_structured_fields();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_f128_memory_backed_transport_prints_through_reserved_scratch();
       result != 0) {
     return result;
   }

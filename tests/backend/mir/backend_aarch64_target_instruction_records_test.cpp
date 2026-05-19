@@ -118,6 +118,25 @@ prepare::PreparedF128Carrier f128_full_width_register_carrier(
   };
 }
 
+prepare::PreparedF128Carrier f128_memory_backed_carrier(
+    c4c::FunctionNameId function_name,
+    prepare::PreparedValueId value_id,
+    c4c::ValueNameId value_name,
+    prepare::PreparedFrameSlotId slot_id,
+    std::size_t stack_offset_bytes) {
+  return prepare::PreparedF128Carrier{
+      .function_name = function_name,
+      .value_id = value_id,
+      .value_name = value_name,
+      .source_type = bir::TypeKind::F128,
+      .kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+      .total_size_bytes = 16,
+      .total_align_bytes = 16,
+      .slot_id = slot_id,
+      .stack_offset_bytes = stack_offset_bytes,
+  };
+}
+
 prepare::PreparedSavedRegister prepared_saved_x19(std::size_t offset_bytes) {
   return prepare::PreparedSavedRegister{
       .bank = prepare::PreparedRegisterBank::Gpr,
@@ -3248,6 +3267,67 @@ int f128_transport_records_preserve_full_width_carrier_and_memory_facts() {
       instruction.side_effects.size() != 1 ||
       instruction.side_effects.front() != aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
     return fail("expected f128 memory transport record to preserve full-width carrier facts");
+  }
+
+  carriers.carriers = {f128_memory_backed_carrier(
+      function_name,
+      prepare::PreparedValueId{221},
+      value_name,
+      prepare::PreparedFrameSlotId{51},
+      96)};
+  auto memory_backed = aarch64_codegen::make_prepared_f128_carrier_transport_record(
+      carriers,
+      value_name,
+      aarch64_codegen::F128TransportKind::LoadFromMemory,
+      f128_frame_slot_memory_operand(function_name, c4c::BlockLabelId{4}, 6));
+  if (!memory_backed.record.has_value() ||
+      memory_backed.error != aarch64_codegen::PreparedF128TransportRecordError::None) {
+    return fail("expected complete f128 memory-backed carrier to select transport record");
+  }
+  const auto memory_backed_instruction =
+      aarch64_codegen::make_f128_transport_instruction(*memory_backed.record);
+  const auto* memory_backed_payload =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &memory_backed_instruction.payload);
+  if (memory_backed_payload == nullptr ||
+      memory_backed_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      memory_backed_payload->transport_kind !=
+          aarch64_codegen::F128TransportKind::LoadFromMemory ||
+      memory_backed_payload->carrier_kind !=
+          prepare::PreparedF128CarrierKind::MemoryBacked ||
+      memory_backed_payload->reg.has_value() ||
+      memory_backed_payload->slot_id != prepare::PreparedFrameSlotId{51} ||
+      memory_backed_payload->stack_offset_bytes != std::optional<std::size_t>{96} ||
+      !memory_backed_payload->memory.has_value() ||
+      memory_backed_instruction.defs.size() != 1 ||
+      memory_backed_instruction.defs.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::PreparedValue ||
+      memory_backed_instruction.uses.size() != 1 ||
+      memory_backed_instruction.uses.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::Memory ||
+      memory_backed_instruction.side_effects.size() != 1 ||
+      memory_backed_instruction.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryRead) {
+    return fail("expected f128 memory-backed transport to preserve slot facts");
+  }
+  auto memory_backed_store = *memory_backed.record;
+  memory_backed_store.transport_kind =
+      aarch64_codegen::F128TransportKind::StoreToMemory;
+  const auto memory_backed_store_instruction =
+      aarch64_codegen::make_f128_transport_instruction(memory_backed_store);
+  if (memory_backed_store_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      memory_backed_store_instruction.defs.size() != 1 ||
+      memory_backed_store_instruction.defs.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::Memory ||
+      memory_backed_store_instruction.uses.size() != 1 ||
+      memory_backed_store_instruction.uses.front().kind !=
+          aarch64_codegen::MachineEffectResourceKind::PreparedValue ||
+      memory_backed_store_instruction.side_effects.size() != 1 ||
+      memory_backed_store_instruction.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected f128 memory-backed store transport to use prepared carrier");
   }
 
   carriers.carriers.front().total_align_bytes = 8;
