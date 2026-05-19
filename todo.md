@@ -1,77 +1,65 @@
 Status: Active
 Source Idea Path: ideas/open/300_aarch64_scalar_cast_machine_printer_forms.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair sign-extension structured source publication
+Current Step ID: 4
+Current Step Title: Prove focused closure and report residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired sign-extension structured source publication/materialization for
-simple integer scalar casts whose source arrives as an immediate/rematerializable
-operand. The scalar cast printer now materializes immediate sources into the
-destination GPR, then prints the existing sign/zero/truncate cast form using that
-structured register source. The changed machine-printer unit coverage now
-asserts semantic source materialization for an immediate `sext i32 -> i64`
-source (`mov w0, #1`; `sxtw x0, w0`) instead of treating the immediate as a
-missing source-register fact.
+Step 4 proved focused scalar-cast printer closure after the Step 2 and Step 3
+repairs. The required build succeeded, and the delegated focused CTest subset
+still has the same residual-only shape:
 
-The old `scalar cast node requires a structured register source operand`
-diagnostic is gone for both Step 3 sign-extension cases:
+- `00105`, `00126`, `00134`, and `00135` pass.
+- `00035` fails with `RUNTIME_NONZERO exit=1`.
+- `00151` fails with `RUNTIME_NONZERO exit=1`.
+- `00208` fails with `RUNTIME_NONZERO exit=Segmentation fault`.
 
-- `00134`: passes the delegated focused CTest subset.
-- `00135`: passes the delegated focused CTest subset.
+No focused case in the focused proof or broad backend inventory still reports
+the old scalar-cast printer diagnostics involving unsupported `zero_extend`
+forms, `sign_extend`, `scalar cast node requires a structured register source
+operand`, or related structured-source admission failures.
 
-Step 2 zero-extension improvements are preserved in the same proof subset:
+The broad backend-regex inventory improved from the accepted post-299 baseline
+of 294 passed / 58 failed to 298 passed / 54 failed. Current broad residual
+buckets in `test_after.log` are:
 
-- `00105`: passes.
-- `00126`: passes.
-
-The remaining focused failures are residual runtime modes outside this Step 3
-source-materialization packet:
-
-- `00035`: `RUNTIME_NONZERO exit=1`.
-- `00151`: `RUNTIME_NONZERO exit=1`.
-- `00208`: `RUNTIME_NONZERO exit=Segmentation fault`.
+- `FRONTEND_FAIL`: 14.
+- `BACKEND_FAIL`: 1.
+- `RUNTIME_NONZERO`: 23, including focused residuals `00035`, `00151`, and
+  `00208`.
+- `RUNTIME_MISMATCH`: 14.
+- CTest timeouts: 2 (`00143`, `00220`).
 
 ## Suggested Next
 
-Select the next packet around the residual runtime cases (`00035`, `00151`,
-`00208`) without folding them into the completed Step 3 sign-extension
-source-materialization slice.
+Ask the plan owner to close or retire idea 300 as scalar-cast printer complete,
+or explicitly split the remaining focused runtime residuals (`00035`, `00151`,
+`00208`) into a separate owner if the supervisor wants to pursue them.
 
 ## Watchouts
 
-- Keep the owner limited to scalar-cast machine-printer forms unless the
-  supervisor explicitly moves to a runtime residual packet.
+- The scalar-cast owner is closure-ready from this Step 4 proof perspective:
+  the old focused scalar-cast printer diagnostics are gone.
+- `00035`, `00151`, and `00208` remain runtime residuals and should not be
+  claimed as scalar-cast printer blockers without fresh generated-code evidence.
+- No stale qemu, c-testsuite runner, or CTest runtime processes were found
+  before or after the broad backend command, so no processes were terminated.
 - Do not change expectations, allowlists, unsupported classifications, timeout
   policy, runner behavior, or CTest registration.
-- `00035`, `00151`, and `00208` are no longer Step 2 printer-admission failures,
-  and they still have runtime residuals that should not be conflated with the
-  completed sign-extension Step 3 source-operand work.
-- The Step 3 implementation intentionally materializes immediate cast sources in
-  the scalar cast printer using the destination register as the temporary source
-  register; unsupported non-immediate non-register sources still fail closed with
-  the structured-source diagnostic.
 
 ## Proof
 
 Ran:
 
 ```bash
-cmake --build --preset default && ctest --test-dir build -j7 -R '^c_testsuite_aarch64_backend_src_(00035|00105|00126|00134|00135|00151|00208)_c$' --output-on-failure > test_after.log 2>&1
+cmake --build --preset default
+ctest --test-dir build -j7 -R '^c_testsuite_aarch64_backend_src_(00035|00105|00126|00134|00135|00151|00208)_c$' --output-on-failure
+timeout 900s ctest --test-dir build -j10 -R backend --output-on-failure > test_after.log 2>&1
 ```
 
-Result: build succeeded; CTest failed 3/7 on residual runtime modes only.
-`00105`, `00126`, `00134`, and `00135` passed. `00035` and `00151` still fail
-with `RUNTIME_NONZERO exit=1`; `00208` still fails with `RUNTIME_NONZERO
-exit=Segmentation fault`. Proof log: `test_after.log`.
-
-Additional changed-unit check:
-
-```bash
-ctest --test-dir build -j7 -R '^backend_aarch64_machine_printer$' --output-on-failure
-```
-
-Result: passed.
+Result: build succeeded; focused CTest failed 3/7 on residual runtime modes
+only; broad backend-regex proof failed 54/352 with 298 passing. Proof log:
+`test_after.log`.
