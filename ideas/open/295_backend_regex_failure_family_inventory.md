@@ -205,6 +205,16 @@ Step 4 split 2026-05-19:
   standalone `00220` timeout remain separate inventory buckets unless future
   generated-code or diagnostic evidence proves a shared semantic owner.
 
+Lifecycle switch 2026-05-19:
+
+- Umbrella inventory idea 295 is parked after splitting focused idea 298.
+- Active implementation should move to idea 298 before code edits begin.
+- Remaining inventory buckets after this switch are machine-printer residuals,
+  runtime nonzero/mismatch buckets that still need generated assembly or
+  narrower probes, and standalone timeout `00220`.
+- Re-activate this umbrella only for a later classification pass or for
+  splitting another focused owner from those remaining buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

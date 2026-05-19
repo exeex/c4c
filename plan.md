@@ -1,146 +1,135 @@
-# Backend Regex Failure Family Inventory
+# LIR To BIR Global Pointer Aggregate Projection
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/298_lir_to_bir_global_pointer_aggregate_projection.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Classify the current main-build `ctest -R backend` failure set and split only
-semantic repair owners from the umbrella inventory before any implementation
-work starts.
+Repair the semantic `lir_to_bir` admission path for global, pointer-derived,
+and aggregate projection address formation reached by the AArch64 c-testsuite
+backend route.
 
 ## Goal
 
-Produce a current backend-regex failure inventory that separates local backend
-failures from AArch64 c-testsuite backend failures, preserves closed-owner
-boundaries, and creates the next focused `ideas/open/*.md` owner only when the
-failure evidence supports a semantic repair family.
+Remove the old residual projection-admission failure for the focused
+global/pointer/aggregate family while preserving closed local-memory owner
+boundaries and leaving unrelated printer, runtime, and timeout buckets alone.
 
 ## Core Rule
 
-This is an inventory and lifecycle-splitting runbook. Do not implement fixes
-under this umbrella idea, and do not claim progress through expectation
-rewrites, unsupported downgrades, allowlist changes, timeout policy changes,
-runner behavior changes, CTest registration changes, filename matching, or
-instruction-string matching.
+Progress must come from semantic projection admission in `lir_to_bir`, not from
+filename matching, testcase-number shortcuts, diagnostic-string matching,
+expectation rewrites, unsupported downgrades, allowlist changes, timeout
+policy changes, runner behavior changes, or CTest registration changes.
 
 ## Read First
 
+- `ideas/open/298_lir_to_bir_global_pointer_aggregate_projection.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
 - `test_before.log`
-- Current main-build backend regex evidence from `/workspaces/c4c/build`
-- Recently closed focused owners 285 through 297 when a bucket appears to
-  overlap a closure boundary
+- Closed local-memory owner 297 before treating any local-memory recurrence as
+  reopened scope
 
 ## Current Targets
 
-- Capture or refresh the main-build backend regex result:
-  `ctest -j10 -R backend --output-on-failure` from `/workspaces/c4c/build`.
-- Classify failures into:
-  - local backend/unit/CLI tests;
-  - AArch64 c-testsuite backend runtime tests;
-  - frontend or prepared-module handoff failures reached through backend tests;
-  - timeout/hang or runtime-output-storm cases.
-- Compare current failures against the closed-owner boundaries for ideas 285
-  through 297 before reopening or splitting any work.
-- Preserve known residuals from the idea-297 closure as classification inputs,
-  not as automatic new owners:
-  - residual global, pointer, and aggregate projection GEP work;
-  - `00216` pointer-parameter/flexible-array aggregate projection;
-  - AArch64 printer residuals.
+- Accepted broad backend-regex baseline: `test_before.log`, 352 selected, 291
+  passed, 61 failed.
+- Focused residual projection cases:
+  - global scalar-array GEPs: `00176`, `00181`
+  - pointer-value or pointer-parameter GEPs: `00182`, `00209`
+  - global dynamic aggregate member GEPs: `00195`, `00205`
+  - bootstrap/global aggregate semantics: `00204`
+  - boundary case: `00216` pointer-parameter/flexible-array aggregate
+    projection
 
 ## Non-Goals
 
-- Do not implement backend, frontend, lowering, printer, runtime, runner, or
-  test-expectation changes.
-- Do not treat `ctest -R backend` as one monolithic repair bucket.
-- Do not reopen closed AArch64 owners 285 through 297 from failing counts alone.
-- Do not create a focused idea for a named testcase without a semantic owner.
-- Do not run broad runtime scans without timeout discipline and stale-process
-  cleanup.
-- Do not edit `test_before.log`, `test_after.log`, `test_baseline.log`, test
-  expectations, allowlists, unsupported classifications, timeout policy, runner
-  behavior, or CTest registration as part of this inventory.
+- Do not touch test expectations, allowlists, unsupported classifications,
+  timeout policy, runner behavior, or CTest registration.
+- Do not repair AArch64 machine-printer residuals, runtime nonzero or runtime
+  mismatch buckets, or the standalone `00220` timeout in this plan.
+- Do not reopen idea 297 from failing counts alone.
+- Do not broadly rewrite unrelated frontend, HIR, LIR, BIR, runtime, or
+  AArch64 printer behavior.
+- Do not claim completion by making only one named target pass while nearby
+  projection cases remain unexamined.
 
 ## Working Model
 
-Idea 295 is an umbrella inventory. Previous inventory passes split and closed
-focused owners for fused compare-branch operand forms and local-memory
-`lir_to_bir` admission. The current pass starts after idea 297 closure, so it
-must refresh or read current backend-regex evidence, preserve the accepted
-focused baseline in `test_before.log`, and decide whether remaining failures
-justify one or more new focused source ideas.
+Idea 297 completed direct local-memory admission and left residual global,
+pointer, and aggregate projection admissions outside its closure boundary.
+This plan owns the remaining compile-stage projection family. The first packet
+should inspect the current failing diagnostics and generated artifacts enough
+to define the semantic categories, then implementation packets should repair
+the shared admission rule without absorbing unrelated failure buckets.
 
 ## Execution Rules
 
-- Keep routine packet findings in `todo.md`.
-- Create or update `ideas/open/*.md` only when a durable focused owner is ready
-  to split from the inventory.
-- If a bucket is only a residual note or needs more evidence, record that in
-  `todo.md` instead of creating a premature source idea.
-- When a focused owner is split, the supervisor should switch lifecycle state
-  away from this umbrella idea before implementation begins.
-- If a timeout or hang appears, quarantine or split a hang-specific idea before
-  asking an executor to run broad runtime proof.
+- Keep routine packet progress, blockers, and proof in `todo.md`.
+- Keep `Current Step ID` and `Current Step Title` aligned with the delegated
+  packet.
+- Prefer small semantic packets that each build and run the supervisor-selected
+  focused backend subset.
+- When a focused case stops failing at the old projection-admission point,
+  classify any new failure source instead of hiding it.
+- If evidence shows `00216` does not share this projection rule, record the
+  boundary evidence and request a separate owner instead of stretching this
+  plan.
 - Treat testcase-overfit and expectation-only count improvements as blocking
   route failures.
 
 ## Steps
 
-### Step 1: Capture Current Backend Regex Evidence
+### Step 1: Inspect Focused Projection Failures
 
-Inspect the available canonical baseline and, if the supervisor delegates a
-fresh capture, run the main-build backend regex command from `/workspaces/c4c/build`:
+Inspect the focused residual projection cases from `test_before.log` and any
+available generated diagnostics or dumps needed to distinguish global scalar
+arrays, pointer-derived values, global aggregate members, bootstrap/global
+aggregate semantics, and the `00216` boundary case.
 
-```bash
-ctest -j10 -R backend --output-on-failure
-```
+Completion check: `todo.md` records the focused cases, their old
+`lir_to_bir` projection-admission failure shape, the semantic projection
+categories, and whether `00216` appears to share the same owner.
 
-Record the selected, passed, and failed counts, and preserve the exact failing
-test list in `todo.md`.
+### Step 2: Repair Global And Pointer Projection Admission
 
-Completion check: `todo.md` records the current backend-regex command source,
-counts, failing tests, and whether the data came from `test_before.log` or a
-fresh delegated run.
+Implement the narrow semantic admission needed for global scalar-array GEPs
+and pointer-value or pointer-parameter GEPs through the existing lowering
+model. Preserve local-memory behavior from idea 297 and avoid named-case or
+diagnostic-string matching.
 
-### Step 2: Classify Failure Sources
+Completion check: the touched code builds, and the supervisor-selected focused
+subset shows the global scalar-array and pointer-derived targets no longer
+fail at the old projection-admission point.
 
-Group each failure by failure source: local backend/unit/CLI, AArch64
-c-testsuite backend runtime, frontend or prepared-module handoff,
-timeout/hang/runtime-output-storm, machine-printer, `lir_to_bir` admission, or
-another observed semantic source.
+### Step 3: Repair Aggregate And Bootstrap Projection Admission
 
-Completion check: `todo.md` contains a classified inventory with enough
-evidence for a reviewer to reject filename-only grouping.
+Extend the same semantic model to global dynamic aggregate member projections
+and bootstrap/global aggregate semantics when the Step 1 evidence shows they
+share the owner.
 
-### Step 3: Compare Closed Owner Boundaries
+Completion check: the focused aggregate and bootstrap/global targets no longer
+fail at the old projection-admission point, or `todo.md` records evidence for
+a separate focused owner if one category is distinct.
 
-Compare each meaningful bucket against closed ideas 285 through 297. Reopen or
-split follow-up work only when generated-code, proof, or diagnostic evidence
-contradicts a closure boundary or shows a distinct residual owner.
+### Step 4: Decide The `00216` Boundary
 
-Completion check: `todo.md` records which closed owners remain valid, which
-residuals are adjacent-but-new work, and which buckets lack enough evidence to
-split.
+Use generated diagnostic evidence to either repair `00216` as part of the same
+pointer-parameter/flexible-array aggregate projection rule or classify it as a
+separate owner.
 
-### Step 4: Split Focused Repair Owners
+Completion check: `00216` is either covered by the repaired projection
+admission path or `todo.md` records why it should be split before further
+implementation.
 
-For any tractable semantic bucket, create a focused `ideas/open/*.md` file with
-goal, scope, non-goals, acceptance criteria, and reviewer reject signals. Keep
-separate semantic families separate, especially global/pointer/aggregate GEP
-projection, `00216` pointer-parameter/flexible-array aggregate projection,
-printer residuals, runtime mismatches, and timeout/hang cases unless evidence
-proves a shared owner.
+### Step 5: Classify Residuals And Prove The Owner
 
-Completion check: at least one focused owner exists for implementation, or
-`todo.md` explains why no owner is ready to split.
+Run the supervisor-selected focused backend subset and classify remaining
+focused-scope failures by their new failure source after the old admission
+failure is removed.
 
-### Step 5: Prepare Lifecycle Switch
-
-Once a focused owner is ready, preserve a durable deactivation note in the
-source idea only if the lifecycle switch needs it, then let the supervisor
-activate the focused owner before any implementation edits happen.
-
-Completion check: this umbrella runbook has either produced a focused source
-idea for activation or recorded why the inventory cannot yet split. No
-implementation files or test contracts were touched.
+Completion check: proof records fresh build or compile evidence plus focused
+subset results; no remaining focused case is hidden behind the old projection
+admission diagnostic; unrelated printer, runtime, and timeout buckets remain
+outside this owner.
