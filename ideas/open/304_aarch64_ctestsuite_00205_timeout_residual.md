@@ -1,8 +1,42 @@
 # AArch64 C-Testsuite 00205 Timeout Residual
 
-Status: Open
+Status: Open, parked after timeout repair
 Created: 2026-05-19
 Split From: ideas/open/303_aarch64_sign_extension_assembler_legality.md
+Parked In Favor Of: ideas/open/305_aarch64_ctestsuite_00205_value_materialization_residual.md
+
+## Lifecycle Note
+
+The timeout-specific source intent has been satisfied by commit
+`2d8bbf8c8` (`[code+todo] Repair 00205 loop-bound compares`). The focused
+proof now reaches program completion quickly instead of timing out:
+`00064` and `00139` pass, and `00205` completes in about 0.05 seconds before
+failing output comparison.
+
+The repair classified the timeout as AArch64 fused sign-extension
+compare-branch lowering: same-block constant integer division loop bounds such
+as `sizeof(cases) / sizeof(cases[0])` were not available as encodable compare
+immediates, and scratch selection could alias the other compare operand into a
+self-compare. The generated `00205` assembly now emits conditional compares
+for both loop headers, including legal forms such as `sxtw x9, w13; cmp x9,
+#9` and `sxtw x9, w13; cmp x9, #4`.
+
+The accepted post-timeout state is captured in `test_before.log`: generated
+code preserves legal sign-extension spelling (`sxtw x9, w13`) and emits
+conditional compares for both loop headers, but the remaining `00205` failure
+prints garbage case-field output. The observed residual reads case fields from
+high stack offsets such as `[sp, #632]`, `[sp, #1064]`, and `[sp, #1496]` even
+though the prologue reserves only `sub sp, sp, #48`.
+
+That residual is not part of this timeout owner. It is split to
+`ideas/open/305_aarch64_ctestsuite_00205_value_materialization_residual.md` so
+the next route targets stack-frame/value-materialization semantics without
+expanding this idea into unrelated output-correctness work.
+
+Full close was not accepted in this lifecycle packet because the packet
+explicitly prohibited touching proof logs and no matching `test_after.log`
+close-gate artifact was available. Keep this idea parked rather than active
+until a supervisor chooses a close-gate flow.
 
 ## Goal
 
