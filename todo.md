@@ -1,61 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/318_aarch64_scalar_alu_immediate_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Materialize Non-Encodable ALU Constants
+Current Step ID: 4
+Current Step Title: Validate And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 - Materialize Non-Encodable ALU Constants is complete. Scalar ALU
-fallback constants in `src/backend/mir/aarch64/codegen/alu.cpp` now preserve
-the existing direct `mov` path for small printable constants, but route larger
-fallback immediates through `materialize_integer_constant_lines(...)`.
+Step 4 - Validate And Classify Residuals is complete. The remaining
+`00204.c` failure is outside idea 318's scalar ALU immediate materialization
+owner.
 
-The implemented owner surface is `make_scalar_alu_print_lines`, specifically:
+Evidence:
 
-- `materialize_source(...)` for immediate lhs or general immediate sources
-- `materialize_rhs_immediate_for_existing_lhs(...)` for non-encodable rhs
-  immediates
-- `materialize_lhs_immediate_into_result(...)` for immediate/immediate pairs
-
-Focused local coverage was added to
-`tests/backend/mir/backend_aarch64_machine_printer_test.cpp` in
-`selected_scalar_add_sub_materializes_nonencodable_immediates`. It now proves a
-multi-chunk scalar ALU fallback constant materializes as `movz`/`movk` before
-the ALU operation, while existing nearby coverage preserves direct encodable
-immediate behavior such as `add w0, w0, #3` and small fallback `mov` cases.
-
-The former `00204.c` bad site now prints legal materialization:
-
-```asm
-mov w0, #0
-movz w9, #45056
-movk w9, #7, lsl #16
-sub w0, w0, w9
-sub w0, w0, w0
-```
+- The focused proof advances past the former assembler diagnostic. The
+  generated `subim503808` site no longer contains illegal `mov w9, #503808`;
+  it contains legal `movz w9, #45056` and `movk w9, #7, lsl #16` before
+  `sub w0, w0, w9`.
+- `backend_aarch64_machine_printer`, `backend_aarch64_instruction_dispatch`,
+  `backend_aarch64_target_instruction_records`, and the focused `00204`
+  BIR/prepared-BIR guardrails all pass.
+- The remaining failure is runtime-only:
+  `c_testsuite_aarch64_backend_src_00204_c` reports `RUNTIME_NONZERO` with
+  `exit=Segmentation fault`.
+- The observed stdout reaches only the `Arguments:` section and shows
+  corrupted HFA floating/long-double argument output before the crash. It does
+  not reach `Return values:`, `stdarg:`, `MOVI:`, or the `opi()` scalar
+  arithmetic section.
+- `subim503808` is called only from `opi()`, after `arg()`, `ret()`,
+  `stdarg()`, and `movi()` in `pcs()`. Therefore the runtime residual occurs
+  before the repaired scalar ALU representative function is executed.
 
 ## Suggested Next
 
-Run Step 4 - Validate And Classify Residuals. The scalar ALU assembler blocker
-is gone; the focused representative now advances to runtime execution and
-fails with `RUNTIME_NONZERO` / `Segmentation fault`. Classify that first bad
-runtime fact before widening into any new implementation owner.
+Ask the plan owner to close idea 318 as complete and create or activate a
+follow-up owner for the `00204.c` runtime argument/HFA corruption plus
+segfault. The current evidence points at AArch64 ABI argument handling for
+HFA/aggregate values, not scalar ALU immediate materialization.
 
 ## Watchouts
 
-- The current focused residual is no longer an assembler diagnostic. It is a
-  runtime segmentation fault from `c_testsuite_aarch64_backend_src_00204_c`
-  after printing many arguments and floating values.
-- Do not treat the runtime failure as scalar ALU immediate materialization
-  without generated-code evidence. The former illegal line at `subim503808`
-  has advanced to legal `movz`/`movk`.
-- `backend_aarch64_prepared_scalar_alu_records`, `backend_aarch64_instruction_dispatch`,
-  and the focused `00204` prepared/BIR dump tests remain guardrails for
-  upstream lowering and prior owners, not proof of ownership for the runtime
-  residual.
+- Do not keep idea 318 open for the runtime segfault unless new generated-code
+  evidence shows a scalar ALU immediate materialization fault still reaches
+  executable code.
+- The follow-up should start from the earliest observed runtime corruption in
+  the `Arguments:` HFA/aggregate path, not from `subim503808` or `opi()`.
+- The current proof does not show a `va_start` helper-text, large frame
+  adjustment, stack-slot spelling, or frame-layout first bad fact.
 - Do not reopen idea 317's raw `va_start` helper-text lowering owner.
 - Do not reopen idea 315's large frame setup/teardown materialization owner.
 - Do not reopen idea 314's stack-slot memory or scalar stack-publication owner.
@@ -76,7 +68,7 @@ cmake --build --preset default && ctest --test-dir build -j --output-on-failure 
 
 Result: build succeeded; 11 tests ran; 10 passed. The local backend guardrails,
 including `backend_aarch64_machine_printer`, passed. The only remaining
-failure is `c_testsuite_aarch64_backend_src_00204_c`, now advanced from the
+failure is `c_testsuite_aarch64_backend_src_00204_c`, advanced from the
 baseline assembler error to runtime `RUNTIME_NONZERO` with `exit=Segmentation
 fault`.
 
@@ -84,3 +76,7 @@ Confirmed generated assembly at
 `build/c_testsuite_aarch64_backend/src/00204.c.s:8502` no longer contains
 `mov w9, #503808`; it contains `movz w9, #45056` plus
 `movk w9, #7, lsl #16`.
+
+Classification: outside idea 318. The scalar ALU acceptance condition is met;
+the remaining first bad fact belongs to a separate runtime ABI/HFA/aggregate
+argument owner.
