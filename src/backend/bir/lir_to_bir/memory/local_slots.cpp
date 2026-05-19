@@ -1417,6 +1417,36 @@ void BirFunctionLowerer::record_loaded_local_pointer_slot_state(
   (*local_slot_pointer_values)[result] = local_slot_it->second;
   const auto loaded_layout = lookup_scalar_byte_offset_layout(
       local_slot_it->second.type_text, type_decls, structured_layouts);
+  if ((loaded_layout.kind == AggregateTypeLayout::Kind::Struct ||
+       loaded_layout.kind == AggregateTypeLayout::Kind::Array) &&
+      local_slot_it->second.byte_offset >= 0) {
+    std::optional<LocalAggregateSlots> aggregate_view;
+    for (const auto& [aggregate_name, aggregate_slots] : *local_aggregate_slots) {
+      (void)aggregate_name;
+      if (aggregate_slots.storage_type_text != local_slot_it->second.storage_type_text) {
+        continue;
+      }
+      for (const auto& [byte_offset, slot_name] : aggregate_slots.leaf_slots) {
+        if (slot_name != local_slot_it->second.slot_name) {
+          continue;
+        }
+        aggregate_view = LocalAggregateSlots{
+            .storage_type_text = aggregate_slots.storage_type_text,
+            .type_text = local_slot_it->second.type_text,
+            .base_byte_offset =
+                byte_offset + static_cast<std::size_t>(local_slot_it->second.byte_offset),
+            .leaf_slots = aggregate_slots.leaf_slots,
+        };
+        break;
+      }
+      if (aggregate_view.has_value()) {
+        break;
+      }
+    }
+    if (aggregate_view.has_value()) {
+      (*local_aggregate_slots)[result] = std::move(*aggregate_view);
+    }
+  }
   if (loaded_layout.kind == AggregateTypeLayout::Kind::Array &&
       !local_slot_it->second.array_element_slots.empty() &&
       local_slot_it->second.byte_offset >= 0) {

@@ -10,55 +10,26 @@ Current Step Title: Check Store/Load Boundaries
 
 ## Just Finished
 
-Step 3 diagnostic-only packet completed for store boundary cases `00046`,
-`00140` and load boundary cases `00216`, `00218`. All four still abort before
-semantic BIR handoff in the current `test_before.log`; `--dump-bir` reproduces
-the same family notes and emits no BIR:
+Step 3 implementation packet completed a bounded local aggregate load/copy
+admission repair. `record_loaded_local_pointer_slot_state` now publishes a
+`LocalAggregateSlots` view when a loaded local pointer is known to point at a
+local aggregate slot or aggregate subobject. This admits the direct local
+representative in `00216`, where `%t166 = load ptr, ptr %lv.pls` points back to
+`%lv.ls` and `%t167 = load %struct.S, ptr %t166` can be treated as an aggregate
+value alias over the same leaf slots.
 
-- `00046`: `main` fails in `store local-memory semantic family`. LLVM shape is
-  local aggregate alloca `%lv.v` followed by nested aggregate/union GEP chains
-  and scalar stores, e.g. `getelementptr %struct._anon_1, ptr %t1, i32 0, i32 0`
-  then `store i32 2, ptr %t2`, plus a deeper anonymous struct/union chain to
-  `store i32 3, ptr %t6`. This is still local aggregate subobject storage, but
-  the representative rejected store is a scalar write through an aggregate/byte
-  subobject pointer rather than a direct scalar local slot.
-- `00140`: `f1` fails in `store local-memory semantic family`. LLVM shape is
-  `define i32 @f1(%struct.foo %p.f, ptr %p.p, i32 %p.n, ...)` followed by
-  `%lv.param.f = alloca %struct.foo` and `store %struct.foo %p.f, ptr
-  %lv.param.f`. The existing aggregate store lane only copies from
-  `aggregate_params_` or `aggregate_value_aliases_`; this by-value aggregate
-  parameter does not appear to be admitted as a source aggregate for the local
-  aggregate store.
-- `00216`: `foo` fails in `load local-memory semantic family`. LLVM has several
-  aggregate load/copy forms. The local-owner representative is `const struct S
-  *pls = &ls; struct S ls21 = *pls;`, emitted as `store ptr %lv.ls, ptr
-  %lv.pls`, `%t166 = load ptr, ptr %lv.pls`, `%t167 = load %struct.S, ptr
-  %t166`, then `store %struct.S %t167, ptr %lv.ls21`. Later forms also load
-  aggregate values from pointer-derived aggregate members, e.g. `%t431 = load
-  %struct.T, ptr %t430`. The current aggregate load branch only aliases direct
-  `load.ptr` names already present in `local_aggregate_slots_`; it does not
-  copy an aggregate through `local_slot_pointer_values_`/pointer-derived local
-  aggregate provenance.
-- `00218`: `convert_like_real` fails in `load local-memory semantic family`.
-  LLVM shape is parameter-pointer aggregate projection:
-  `%t0 = getelementptr %struct.tree_node, ptr %p.convs, i32 0, i32 0`,
-  `%t1 = getelementptr %struct.tree_common, ptr %t0, i32 0, i32 2`, then
-  `%t2.bf.unit = load i32, ptr %t1`. The caller passes a local address, but the
-  failing callee sees only a pointer parameter and aggregate field GEPs over
-  that pointer. Treat this as pointer-parameter aggregate projection unless a
-  lifecycle review explicitly broadens idea 297 beyond direct local-memory
-  admission.
+Proof moved `00216` past the old `load local-memory semantic family` blocker;
+it now reaches a later `gep local-memory semantic family` failure in `foo`.
+`00046` and `00140` still fail in `store local-memory semantic family`, and
+`00218` still fails in `load local-memory semantic family`.
 
 ## Suggested Next
 
-Implement one bounded local-memory aggregate boundary packet, preferably
-starting with the direct owner shared by `00140` and the local representative in
-`00216`: aggregate value copy between local aggregate slots and aggregate
-sources tracked through by-value aggregate parameters or local pointer
-provenance. Likely owner helpers are `lower_memory_store_inst` and
-`lower_memory_load_inst` in `src/backend/bir/lir_to_bir/memory/local_slots.cpp`,
-with copy emission through `append_local_aggregate_copy_from_slots` or a sibling
-helper that can copy from a `LocalSlotAddress`/pointer-derived local aggregate.
+Keep the next packet focused on the remaining direct local store owner:
+`00140` still rejects the by-value aggregate parameter copy into
+`%lv.param.f`, while `00046` remains the scalar subobject store follow-up.
+Alternatively, split `00216`'s new later GEP failure only if the supervisor
+wants to continue that case after the aggregate load boundary is unblocked.
 
 ## Watchouts
 
@@ -79,6 +50,9 @@ helper that can copy from a `LocalSlotAddress`/pointer-derived local aggregate.
   from scalar global arrays until the simpler global scalar-array lane is
   proven.
 - Store/load boundary checks: `00046`, `00140`, `00216`, `00218`.
+- `00216` no longer proves the old aggregate load boundary as the first
+  blocker; after this packet it reaches a later GEP-family local-memory
+  blocker in `foo`.
 - `00204` is a separate bootstrap global aggregate/array semantics gate; do
   not fold it into this owner without evidence.
 - Do not change expectations, allowlists, unsupported classifications, CTest
@@ -99,17 +73,11 @@ helper that can copy from a `LocalSlotAddress`/pointer-derived local aggregate.
 
 ## Proof
 
-Diagnostic-only Step 3 packet; per delegation, did not implement fixes, did not
-rerun broad backend regex, and did not modify `test_before.log` or
-`test_after.log`.
+Ran exactly:
 
-Diagnostics run:
+`cmake --build build --target c4cll backend_lir_to_bir_notes_test && ctest --test-dir build -R '^(backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_(00046|00140|00216|00218)_c)$' --output-on-failure | tee test_after.log`
 
-- Read current `test_before.log` focused baseline for `00046`, `00140`,
-  `00216`, and `00218`.
-- Ran `./build/c4cll --codegen llvm --target aarch64-linux-gnu` to `/tmp` for
-  `00046`, `00140`, `00216`, and `00218` and classified the representative
-  LLVM store/load forms above.
-- Ran `./build/c4cll --dump-bir --target aarch64-linux-gnu` on `00046`,
-  `00140`, `00216`, and `00218`; each stopped before BIR output with the same
-  family diagnostics recorded in `test_before.log`.
+Result: build passed and `backend_lir_to_bir_notes` passed. The focused
+c-testsuite subset still fails overall, with `test_after.log` preserving the
+proof. Residuals: `00046` store local-memory, `00140` store local-memory,
+`00216` now GEP local-memory, `00218` load local-memory.
