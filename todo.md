@@ -8,47 +8,47 @@ Current Step Title: Repair Semantic Admission Or Prepared Handoff
 
 ## Just Finished
 
-Step 2 fixed-size local aggregate/array load repair tightened. `lower_memory_load_inst`
-still admits an aggregate array load from a tracked local scalar array slot, but
-the local-array aggregate-load helper now validates the source element slots
-before declaration, then validates all declared target leaf slots and
-source/target types before appending any load/store instructions. The remaining
-pre-emission mutation is the required `declare_local_aggregate_slots` call for
-the result aggregate; no BIR instructions or aggregate alias are emitted until
-all post-declaration leaf checks pass.
+Step 2 `00216.c` alloca/local-memory residual localized. The concrete source
+construct is `test_zero_init`'s zero-initialized local aggregate with a
+zero-length array member:
 
-Fresh proof shows `c_testsuite_aarch64_backend_src_00204_c` advanced past both
-the direct global-source memcpy staging copy and the following fixed-size local
-aggregate load:
-
-```llvm
-%t3 = load %struct.s9, ptr @s9
-%t4 = alloca [2 x i64]
-call void @llvm.memcpy.p0.p0.i64(ptr %t4, ptr @s9, i64 9, i1 false)
+```c
+struct SEC { struct SEA a; int r[0]; };
+struct SEC c = { .a.j = 5 };
 ```
 
+HIR records `struct SEC size=20 align=4`, with `a` at offset 0 size 16 and
+`r: int[0]` at offset 16 size 0. The emitted LLVM/LIR-shaped operation sequence
+in `test_zero_init` is:
+
 ```llvm
-%t5 = load [2 x i64], ptr %t4
+%lv.b = alloca %struct.SEB, align 4
+%lv.c = alloca %struct.SEC, align 4
+%lv.d = alloca %struct.SED, align 4
+call void @llvm.memset.p0.i64(ptr %lv.c, i8 0, i64 20, i1 false)
+%t2 = getelementptr %struct.SEC, ptr %lv.c, i32 0, i32 0
+%t3 = getelementptr %struct.SEA, ptr %t2, i32 0, i32 1
+store i32 5, ptr %t3
 ```
 
-The new `00204.c` first-bad fact is no longer semantic `lir_to_bir`. The
-AArch64 assembly route reaches the machine-node printer and fails in
-`f128_transport`: `target instruction spelling failed at function 0 block 0
-instruction 1: cannot print AArch64 machine node family=f128_transport
-opcode=f128_transport: f128 transport printer requires structured full-width
-q-register authority`. `c_testsuite_aarch64_backend_src_00216_c` remains at
-`semantic lir_to_bir function 'test_zero_init' failed in alloca local-memory
-semantic family`.
+Minimal probes show `%struct.SEB` with `int r[1]` lowers, while `%struct.SEC`
+with `int r[0]` and `%struct.SED` with `int r[]` both fail before BIR dump with
+the same `test_zero_init` alloca local-memory family diagnostic. The narrow
+repair surface is semantic local-memory coverage for aggregate storage that has
+zero-sized trailing array/flexible-array members: `declare_local_aggregate_slots`
+and/or immediate local `memset` coverage need to represent or tolerate the tail
+padding bytes between the scalar leaves and the aggregate storage size. This
+remains inside idea 312 semantic local-memory prepared-handoff scope; it is not
+an AArch64 printer/runtime issue.
 
 ## Suggested Next
 
-Stop treating `00204.c` as blocked on Step 2 semantic local-memory admission:
-it now reaches an AArch64 printer-side `f128_transport` residual, which is
-outside this packet's owned files and the current local-memory prepared-handoff
-scope. The remaining in-scope semantic representative is still `00216.c`
-`test_zero_init` in the alloca local-memory semantic family, unless the
-supervisor splits the new `f128_transport` printer residual into a separate
-lifecycle item.
+Execute the narrow Step 2 semantic repair for zero-sized trailing aggregate
+storage coverage. Keep the change fail-closed and general: handle local
+aggregate storage where the declared layout size exceeds scalar leaf coverage
+because of zero-length or flexible trailing array members, so immediate zero
+fills such as `memset(ptr %lv.c, 0, 20)` can lower without requiring a
+testcase-specific exception.
 
 ## Watchouts
 
@@ -72,6 +72,14 @@ lifecycle item.
 - The fixed-size local aggregate/array load path now plans all load/store pairs
   before emitting instructions; keep it fail-closed on source coverage, target
   leaf coverage, and source/target type mismatches.
+- `00216.c`'s visible ctest family is `alloca local-memory`, but the localized
+  failing operation after `%lv.c` declaration is the immediate zero `memset`
+  over 20 bytes of `%struct.SEC`; the scalar leaves only cover the 16-byte
+  `struct SEA a` prefix because `int r[0]` contributes no scalar leaf at the
+  tail.
+- `%struct.SEB` with `int r[1]` is not the first bad shape; a minimal `SEB`
+  probe lowers. `%struct.SEC` and `%struct.SED` minimal probes fail before BIR
+  dump with the same local-memory diagnostic.
 - Existing `00204.c` x86 semantic/prepared dump helpers pass because they do
   not exercise the AArch64 expanded `va_arg` GEP lane. They are still useful
   guardrails, but they do not prove the AArch64 `myprintf` failure path.
@@ -100,6 +108,7 @@ representative c-testsuite AArch64 tests still fail:
   the machine-node printer and fails on `family=f128_transport`
 - `c_testsuite_aarch64_backend_src_00216_c`: still reports `semantic
   lir_to_bir function 'test_zero_init' failed in alloca local-memory semantic
-  family`
+  family`; localized to `%struct.SEC` zero-length trailing array storage
+  coverage for the immediate zero `memset`
 
 Proof log: `test_after.log`.
