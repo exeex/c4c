@@ -945,7 +945,8 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
     const LocalArraySlotMap& local_array_slots,
     LocalPointerSlots* local_pointer_slots,
     LocalPointerArrayBaseMap* local_pointer_array_bases,
-    DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays) {
+    DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
+    DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays) {
   const auto array_it = local_array_slots.find(std::string(gep.ptr.str()));
   if (array_it == local_array_slots.end()) {
     return std::nullopt;
@@ -990,14 +991,37 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_array_slot_gep(
   }
 
   const auto elem_value = lower_typed_index_value(*elem_index, value_aliases);
-  if (!elem_value.has_value() || array_it->second.element_type != bir::TypeKind::Ptr) {
+  if (!elem_value.has_value()) {
     return false;
   }
 
-  (*dynamic_local_pointer_arrays)[result_name] = DynamicLocalPointerArrayAccess{
-      .element_slots = array_it->second.element_slots,
+  if (array_it->second.element_type == bir::TypeKind::Ptr) {
+    (*dynamic_local_pointer_arrays)[result_name] = DynamicLocalPointerArrayAccess{
+        .element_slots = array_it->second.element_slots,
+        .index = *elem_value,
+    };
+    return true;
+  }
+
+  const auto element_size = type_size_bytes(array_it->second.element_type);
+  if (element_size == 0 || array_it->second.element_slots.empty()) {
+    return false;
+  }
+
+  DynamicLocalAggregateArrayAccess access{
+      .element_type_text = render_type(array_it->second.element_type),
+      .byte_offset = 0,
+      .element_count = array_it->second.element_slots.size(),
+      .element_stride_bytes = element_size,
       .index = *elem_value,
   };
+  for (std::size_t element_index = 0; element_index < array_it->second.element_slots.size();
+       ++element_index) {
+    access.leaf_slots.emplace(element_index * element_size,
+                              array_it->second.element_slots[element_index]);
+  }
+
+  (*dynamic_local_aggregate_arrays)[result_name] = std::move(access);
   return true;
 }
 
