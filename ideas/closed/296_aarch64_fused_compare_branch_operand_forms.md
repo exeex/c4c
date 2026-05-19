@@ -1,8 +1,9 @@
 # AArch64 Fused Compare-Branch Operand Forms
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-19
 
 ## Intent
 
@@ -68,6 +69,28 @@ timeout buckets recorded by the umbrella inventory.
   command and recorded in `todo.md`.
 - Remaining failures, if any, are classified without weakening tests or
   claiming progress through expectation/runner changes.
+
+## Closure Note
+
+Closed on 2026-05-19 after the focused fused compare-branch printer blockers
+were repaired and the residual focused-scope failures were classified outside
+this idea's owner.
+
+Accepted close proof used the supervisor-provided focused baseline in
+`test_before.log`: the 27-test scope reported 23 passed and 4 failed after the
+recent committed slices. The repaired cases include the immediate-left compare
+forms, both-immediate constant compares, and non-encodable register/immediate
+compare operands. `00041` and `00203` now pass and no longer fail at
+`opcode=compare_branch: fused compare branch operands are not printable`.
+
+The remaining focused failures are not retained under this idea:
+
+- `00200` is a runtime mismatch after machine printing succeeds.
+- `00207`, `00214`, and `00215` fail later in scalar `add`/`xor` immediate
+  printing when the immediate is outside the plain `#imm` encoding range.
+
+No test expectations, allowlists, unsupported classifications, runner behavior,
+timeout policy, or CTest registration changes are part of this closure.
 
 ## Reviewer Reject Signals
 

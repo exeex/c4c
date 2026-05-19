@@ -147,6 +147,25 @@ Deactivation 2026-05-19 inventory result:
   where progress means semantic operand publication/printing for
   compare-branch forms, not filename matching or expectation/runner changes.
 
+Focused owner closure 2026-05-19:
+
+- Focused idea 296, `ideas/closed/296_aarch64_fused_compare_branch_operand_forms.md`,
+  is closed as complete for the fused compare-branch operand-form owner.
+- The accepted focused proof in `test_before.log` covers the 27-test focused
+  scope and reports 23 passed / 4 failed. Earlier committed focused slices
+  moved the scope from 5/27 to 23/27 overall, with the final accepted slice
+  moving from 21/27 to 23/27.
+- The repaired owner includes immediate-left compare operands, both-immediate
+  constant compares, and non-encodable register/immediate compare operands.
+  `00041` and `00203` now pass.
+- Residual `00200` is a runtime mismatch and residual `00207`, `00214`, and
+  `00215` are scalar add/xor immediate printer limits. They are outside the
+  fused compare-branch operand-form closure boundary and should be considered
+  by a later inventory pass before any new focused repair owner is split.
+- The next lifecycle pass should re-inventory or classify the remaining
+  backend-regex buckets without reopening closed owners 285 through 296 unless
+  generated-code or proof evidence contradicts their closure boundaries.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

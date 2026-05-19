@@ -1,120 +1,105 @@
-# AArch64 Fused Compare-Branch Operand Forms
+# Backend Regex Failure Family Inventory
 
 Status: Active
-Source Idea: ideas/open/296_aarch64_fused_compare_branch_operand_forms.md
-Supersedes: umbrella inventory runbook from ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Repair the AArch64 backend path that fails to publish or print valid operands
-for fused compare-branch forms.
+Use the main-build `ctest -R backend` result as an umbrella inventory and split
+focused repair owners only when a failure group points to a semantic backend
+capability.
 
 ## Goal
 
-Make the 22 fused compare-branch compile-stage failures advance through
-machine printing by fixing semantic operand-form authority for the underlying
-compare-branch lowering/printing path.
+Classify the remaining backend-regex failures after the completed fused
+compare-branch owner and decide the next focused repair idea, without turning
+the umbrella inventory into implementation work.
 
 ## Core Rule
 
-Fix compare-branch operand semantics. Do not match c-testsuite filenames,
-rewrite expectations, downgrade supported tests, change runners, or alter CTest
-registration to improve counts.
+Inventory and split semantic owners. Do not implement fixes in this umbrella
+runbook, and do not claim progress through expectation, allowlist,
+unsupported-classification, timeout, runner, or CTest-registration changes.
 
 ## Read First
 
-- `ideas/open/296_aarch64_fused_compare_branch_operand_forms.md`
+- `ideas/open/295_backend_regex_failure_family_inventory.md`
 - `todo.md`
-- The current failing cases:
-  `00030`, `00034`, `00037`, `00038`, `00041`, `00054`, `00055`, `00057`,
-  `00059`, `00076`, `00077`, `00085`, `00092`, `00093`, `00101`, `00127`,
-  `00200`, `00203`, `00207`, `00212`, `00214`, `00215`
+- `ideas/closed/296_aarch64_fused_compare_branch_operand_forms.md`
+- Current close proof in `test_before.log`
 
 ## Current Targets
 
-- AArch64 compare-branch lowering and machine-printer operand-form handling.
-- The fused compare-branch instruction family, including zero/nonzero and
-  compare-result branch forms reached by the failing c-testsuite cases.
-- Shared operand publication rules that let the printer consume valid operands
-  without testcase-shaped bypasses.
+- Main build backend-regex failures from `/workspaces/c4c/build`.
+- Remaining AArch64 c-testsuite backend buckets after focused owner 296.
+- Residuals currently known from focused owner 296:
+  `00200` runtime mismatch, and `00207`, `00214`, `00215` scalar add/xor
+  immediate printer limits.
 
 ## Non-Goals
 
-- Do not change test expectations, allowlists, unsupported classifications,
-  runner behavior, timeout policy, or CTest registration.
-- Do not add filename, test-number, or exact emitted-instruction matching.
-- Do not reopen closed runtime owners 285 through 294 from these compile-stage
-  failures.
-- Do not absorb the unrelated scalar machine-printer, `lir_to_bir` admission,
-  runtime, or timeout buckets from umbrella idea 295.
+- Do not implement backend fixes in this umbrella plan.
+- Do not treat `ctest -R backend` as one monolithic repair bucket.
+- Do not reopen closed AArch64 owners 285 through 296 from failing counts alone.
+- Do not match exact c-testsuite filenames, local test names, or emitted
+  instruction strings instead of identifying semantic owners.
+- Do not run broad runtime tests without stale-process cleanup and timeout
+  precautions.
 
 ## Working Model
 
-The umbrella inventory found 38 machine-printer failures. The largest coherent
-subset is 22 fused compare-branch cases whose failure shape points at a shared
-operand-form contract between lowering and printing. The repair should make the
-lowering path publish the operands the AArch64 machine printer expects, or make
-the printer consume the semantic operands that lowering is supposed to expose,
-without special-casing individual tests.
+Idea 295 is the umbrella inventory for the backend-regex surface. Focused idea
+296 closed the fused compare-branch operand-form owner after improving the
+focused scope to 23/27. The next useful step is to refresh or classify the
+remaining backend-regex buckets and split a new focused owner only if the
+evidence supports a real semantic capability.
 
 ## Execution Rules
 
-- Start with one or two representative failing cases, but prove the repaired
-  rule against the full 22-case focused subset before claiming capability
-  progress.
-- Inspect the generated machine/LIR/BIR path enough to identify the shared
-  compare-branch operand contract.
-- Prefer a small semantic lowering or printer contract fix over broad backend
-  rewrites.
-- Keep generated proof in `test_after.log` or another supervisor-approved
-  artifact; do not create extra root-level logs.
-- Escalate back to lifecycle planning if evidence shows the 22 cases split
-  into separate semantic owners.
+- Keep classification findings in `todo.md` unless a durable focused split or
+  deactivation note is needed.
+- Create a new `ideas/open/*.md` before implementation starts for any focused
+  semantic owner.
+- Preserve closed-owner boundaries unless generated-code or proof evidence
+  contradicts them.
+- Keep canonical proof logs as `test_before.log` and `test_after.log`; do not
+  leave extra root-level `.log` files.
 
 ## Steps
 
-### Step 1: Confirm The Shared Failure Contract
+### Step 1: Refresh The Remaining Backend Surface
 
-Inspect representative failing cases from the 22-case set and identify the
-specific fused compare-branch operand form that reaches the machine-printer
-failure.
+Capture or review the supervisor-selected backend-regex evidence from the main
+build tree, with timeout and stale-process precautions if broad runtime tests
+are run.
 
-Completion check: `todo.md` records the representative cases inspected, the
-shared operand contract, and any cases that do not fit the fused
-compare-branch family.
+Completion check: `todo.md` records the command or accepted existing evidence,
+the selected count, pass/fail count, and current failing test list.
 
-### Step 2: Locate Operand Authority
+### Step 2: Classify Remaining Failures
 
-Trace where compare-branch operands are created, normalized, and consumed by
-the AArch64 machine printer.
+Separate local backend/unit failures from external AArch64 c-testsuite
+failures, then group the external failures by failure source: machine-printer,
+`lir_to_bir` admission, runtime mismatch, timeout/hang, or another observed
+owner.
 
-Completion check: `todo.md` names the lowering/printer functions or data
-structures that own the operand-form contract, plus the smallest viable repair
-site.
+Completion check: `todo.md` records the grouped inventory and explicitly notes
+whether any evidence contradicts closed owners 285 through 296.
 
-### Step 3: Repair Semantic Operand Publication Or Printing
+### Step 3: Choose The Next Focused Owner
 
-Implement the narrow semantic fix so fused compare-branch lowering publishes
-printer-consumable operands, or the printer consumes the canonical semantic
-operands produced by lowering.
+Select the highest-value tractable semantic owner, or record why no focused
+owner is ready to split.
 
-Completion check: the representative compile-stage failures no longer fail at
-the old machine-printer operand-form point, with no expectation, runner,
-allowlist, unsupported-classification, timeout, or CTest-registration changes.
+Completion check: either a new `ideas/open/*.md` focused owner exists with
+reviewer reject signals, or `todo.md` explains why the umbrella inventory is
+blocked or needs another evidence pass.
 
-### Step 4: Prove The Focused 22-Case Family
+### Step 4: Switch Away Before Implementation
 
-Run the supervisor-delegated proof for the full 22-case focused subset and
-compare the old failure mode against the new result.
+If a focused owner is split, deactivate this umbrella runbook and activate the
+focused owner before any implementation work starts.
 
-Completion check: `todo.md` records the exact proof command, result, and
-remaining failures. Any residual failures must be classified as either outside
-the fused compare-branch operand-form owner or a blocker for this idea.
-
-### Step 5: Broader Backend Sanity
-
-Run the supervisor-selected broader backend sanity check after the focused
-subset is repaired or clearly blocked.
-
-Completion check: broader proof is recorded without new backend regressions
-attributable to the compare-branch operand-form change.
+Completion check: lifecycle state points at the focused source idea, and
+`ideas/open/295_backend_regex_failure_family_inventory.md` has a compact
+durable deactivation note preserving the owner decision and remaining buckets.
