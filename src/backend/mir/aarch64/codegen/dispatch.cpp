@@ -686,6 +686,86 @@ struct SameBlockLoadProducer {
   return {};
 }
 
+[[nodiscard]] const bir::BinaryInst* find_same_block_binary_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return nullptr;
+  }
+  for (const auto& inst : context.bir_block->insts) {
+    const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+    if (binary != nullptr &&
+        binary->result.kind == bir::Value::Kind::Named &&
+        binary->result.name == value.name) {
+      return binary;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<std::int64_t> evaluate_same_block_integer_constant(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    unsigned depth = 0) {
+  if (value.kind == bir::Value::Kind::Immediate) {
+    return value.immediate;
+  }
+  if (depth > 4U) {
+    return std::nullopt;
+  }
+  const auto* binary = find_same_block_binary_producer(context, value);
+  if (binary == nullptr) {
+    return std::nullopt;
+  }
+  const auto lhs = evaluate_same_block_integer_constant(context, binary->lhs, depth + 1);
+  const auto rhs = evaluate_same_block_integer_constant(context, binary->rhs, depth + 1);
+  if (!lhs.has_value() || !rhs.has_value()) {
+    return std::nullopt;
+  }
+  switch (binary->opcode) {
+    case bir::BinaryOpcode::SDiv:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return *lhs / *rhs;
+    case bir::BinaryOpcode::UDiv:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Add:
+    case bir::BinaryOpcode::Sub:
+    case bir::BinaryOpcode::Mul:
+    case bir::BinaryOpcode::And:
+    case bir::BinaryOpcode::Or:
+    case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
+    case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
+    case bir::BinaryOpcode::SRem:
+    case bir::BinaryOpcode::URem:
+    case bir::BinaryOpcode::Eq:
+    case bir::BinaryOpcode::Ne:
+    case bir::BinaryOpcode::Slt:
+    case bir::BinaryOpcode::Sle:
+    case bir::BinaryOpcode::Sgt:
+    case bir::BinaryOpcode::Sge:
+    case bir::BinaryOpcode::Ult:
+    case bir::BinaryOpcode::Ule:
+    case bir::BinaryOpcode::Ugt:
+    case bir::BinaryOpcode::Uge:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool is_cmp_immediate_encodable(std::int64_t value) {
+  return value >= 0 && value <= 4095;
+}
+
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
@@ -784,8 +864,13 @@ lower_fused_compare_branch_from_emitted_cast(
   }
   auto source_name =
       emitted_register_name(context, cast->operand, scalar_state, abi::RegisterView::W);
-  const auto rhs_name =
-      compare_operand_name(context, *other_value, scalar_state, *result_view);
+  auto rhs_name = compare_operand_name(context, *other_value, scalar_state, *result_view);
+  if (!rhs_name.has_value()) {
+    const auto constant = evaluate_same_block_integer_constant(context, *other_value);
+    if (constant.has_value() && is_cmp_immediate_encodable(*constant)) {
+      rhs_name = "#" + std::to_string(*constant);
+    }
+  }
   std::vector<std::string> lines;
   if (!source_name.has_value()) {
     const auto load_producer = find_same_block_load_producer(context, cast->operand);
@@ -813,20 +898,26 @@ lower_fused_compare_branch_from_emitted_cast(
   if (auto result_register = make_named_prepared_result_register(context, cast->result);
       result_register.has_value()) {
     const auto scratch = abi::gp_register(result_register->reg.index, *result_view);
-    if (!scratch.has_value()) {
-      return std::nullopt;
+    if (scratch.has_value() && abi::register_name(*scratch) != *rhs_name) {
+      scratch_name = abi::register_name(*scratch);
     }
-    scratch_name = abi::register_name(*scratch);
-  } else {
+  }
+  if (scratch_name.empty()) {
     const auto scratches = abi::reserved_mir_scratch_gp_registers();
-    if (scratches.empty()) {
+    for (const auto& scratch_reg : scratches) {
+      const auto scratch = abi::gp_register(scratch_reg.index, *result_view);
+      if (!scratch.has_value()) {
+        continue;
+      }
+      const auto candidate = abi::register_name(*scratch);
+      if (candidate != *rhs_name) {
+        scratch_name = candidate;
+        break;
+      }
+    }
+    if (scratch_name.empty()) {
       return std::nullopt;
     }
-    const auto scratch = abi::gp_register(scratches.front().index, *result_view);
-    if (!scratch.has_value()) {
-      return std::nullopt;
-    }
-    scratch_name = abi::register_name(*scratch);
   }
 
   if (*source_bits == 8U) {
@@ -876,7 +967,18 @@ lower_fused_compare_branch_from_emitted_cast(
       binary != nullptr &&
       binary->result.kind == bir::Value::Kind::Named &&
       branch_condition->condition_value.kind == bir::Value::Kind::Named) {
-    return binary->result.name == branch_condition->condition_value.name;
+    if (binary->result.name == branch_condition->condition_value.name) {
+      return true;
+    }
+    const auto matches_binary_result = [&](const bir::Value& value) {
+      return value.kind == bir::Value::Kind::Named &&
+             value.name == binary->result.name;
+    };
+    if ((matches_binary_result(*branch_condition->lhs) ||
+         matches_binary_result(*branch_condition->rhs)) &&
+        evaluate_same_block_integer_constant(context, binary->result).has_value()) {
+      return true;
+    }
   }
   return false;
 }

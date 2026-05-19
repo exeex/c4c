@@ -1,70 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/304_aarch64_ctestsuite_00205_timeout_residual.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Inspect Timeout Mechanism
+Current Step ID: 2
+Current Step Title: Repair Or Split The Semantic Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: inspected the focused `00205` timeout mechanism after the
-sign-extension legality fix.
+Step 2: repaired the focused generated-code timeout mechanism in AArch64
+fused `sext` compare-branch lowering.
 
-The accepted timeout baseline is `test_before.log`: focused CTest links the
-AArch64 backend tests, `00064` and `00139` pass, and
-`c_testsuite_aarch64_backend_src_00205_c` times out after 5.01 seconds.
+Changed `src/backend/mir/aarch64/codegen/dispatch.cpp` so the fused
+sign-extension compare branch can consume same-block constant integer division
+producers as encodable compare immediates. This handles loop bounds such as
+`sizeof(cases) / sizeof(cases[0])` without requiring the bound to have already
+been materialized in a register. The same support path now treats those
+constant-bound producer instructions as branch-support instructions, avoiding
+an unsupported scalar-lowering diagnostic for the producer consumed only by the
+terminator.
 
-Generated `build/c_testsuite_aarch64_backend/src/00205.c.s` preserves the
-sign-extension legality fact as `sxtw x9, w13`, not `sxtw w9, w13`.
+Also changed the helper to avoid selecting a sign-extension scratch register
+that aliases the other compare operand, removing the classified inner-loop
+`cmp x9, x9` self-compare.
 
-The timeout mechanism is not assembler legality or runner policy. The emitted
-`main` enters an unconditional outer-loop back-edge before any output:
-`j` is initialized at `[sp, #4]`, `.LBB89_2` loads it, `.LBB89_5` increments it,
-stores it back, and branches directly to `.LBB89_2`. The normal exit and inner
-case-printing blocks are therefore unreachable. A bounded direct runtime probe
-of the existing binary timed out after 1 second with no output, consistent with
-spinning before the first `printf`.
+Added unit coverage in
+`tests/backend/mir/backend_aarch64_branch_control_lowering_test.cpp` for an
+i32-to-i64 sign-extension fused branch comparing against a same-block
+`504 / 56` constant bound. The unit proof passed:
+`cmake --build --preset default --target backend_aarch64_branch_control_lowering_test && ./build/tests/backend/mir/backend_aarch64_branch_control_lowering_test`.
 
-The nearby inner-loop lowering is also suspicious once reachable: it computes
-the expected bound value `32 >> 3 == 4`, stores it at `[sp, #56]`, but then
-compares `x9` with itself after `sxtw x9, w13` (`cmp x9, x9`) instead of
-comparing the index against the computed bound.
+Generated `build/c_testsuite_aarch64_backend/src/00205.c.s` now emits
+conditional compares for both loop headers and preserves the legal
+sign-extension form:
+`sxtw x9, w13; cmp x9, #9` for the outer loop and
+`sxtw x9, w13; cmp x9, #4` for the inner loop.
 
 ## Suggested Next
 
-Delegate the next packet to trace and repair general lowering for loop
-conditions whose bounds come from constant `sizeof` expressions, starting with
-the missing outer `j < sizeof(cases)/sizeof(cases[0])` compare and preserving
-the existing legal AArch64 sign-extension width.
+Delegate the next packet to investigate the now-reachable `00205` output
+mismatch. The generated code reads case fields from stack offsets such as
+`[sp, #632]`, `[sp, #1064]`, and `[sp, #1496]` while the prologue reserves only
+`sub sp, sp, #48`, so the remaining failure appears to be stack-frame/value
+materialization rather than the repaired branch/compare timeout path.
 
 ## Watchouts
 
-- Do not claim pass-count progress from the timeout residual.
+- The delegated proof no longer times out, but it is still red because `00205`
+  now runs and fails output comparison.
 - Do not change expectations, allowlists, unsupported classifications, timeout
   policy, runner behavior, proof-log policy, or CTest registration.
 - Do not regress the idea 303 legality repair.
-- Avoid a testcase-shaped branch insertion for `00205`; the evidence points to
-  general loop-condition lowering for constant `sizeof` bounds.
-- Check both the outer loop and the inner loop: the outer condition is missing,
-  while the inner condition appears to compare the sign-extended index against
-  itself rather than the computed bound.
+- The branch repair is semantic for same-block constant integer division bounds
+  and scratch aliasing; do not broaden it into arbitrary scalar constant
+  folding without a separate owner.
 
 ## Proof
 
-Observation-only executor packet. No implementation, tests, expectations,
-allowlists, unsupported classifications, timeout policy, runner behavior, CTest
-registration, `plan.md`, source idea, `test_before.log`, or `test_after.log`
-were changed.
+Supervisor-selected proof command was run exactly and wrote `test_after.log`:
 
-Accepted baseline inspected:
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00064|00139|00205)_c'; } > test_after.log 2>&1`
 
-`test_before.log`
-
-Narrow non-mutating probes:
-
-`nl -ba build/c_testsuite_aarch64_backend/src/00205.c.s | sed -n '1,240p'`
-
-`timeout 1s build/c_testsuite_aarch64_backend/src/00205.c.bin | head -c 1200`
-
-Runtime probe result: timeout status `124`, no captured output.
+Result: command exited nonzero because `00205` failed output comparison, not
+because of the previous timeout. `00064` and `00139` passed. `00205` completed
+in about 0.05 seconds and failed with garbage case-field output, consistent
+with a separate now-reachable value-materialization/frame issue.
