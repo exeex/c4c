@@ -559,8 +559,38 @@ namespace mir = c4c::backend::mir;
       source_access = &access;
     }
   }
-  if (source_access == nullptr ||
-      source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+  if (source_access == nullptr) {
+    return std::nullopt;
+  }
+
+  if (source_access->address.base_kind == prepare::PreparedAddressBaseKind::GlobalSymbol) {
+    if (!source_access->address.symbol_name.has_value()) {
+      return std::nullopt;
+    }
+    return MemoryOperand{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = source_access->function_name,
+        .block_label = source_access->block_label,
+        .instruction_index = source_access->inst_index,
+        .result_value_id = home.value_id,
+        .result_value_name = home.value_name,
+        .base_kind = MemoryBaseKind::Symbol,
+        .symbol_name = source_access->address.symbol_name,
+        .symbol_label = std::string{
+            prepare::prepared_link_name(context.function.prepared->names,
+                                        *source_access->address.symbol_name)},
+        .byte_offset = source_access->address.byte_offset,
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = source_access->address.size_bytes,
+        .align_bytes = source_access->address.align_bytes,
+        .address_space = source_access->address_space,
+        .is_volatile = source_access->is_volatile,
+        .can_use_base_plus_offset = source_access->address.can_use_base_plus_offset,
+    };
+  }
+
+  if (source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !source_access->address.frame_slot_id.has_value()) {
     return std::nullopt;
   }
@@ -591,6 +621,18 @@ namespace mir = c4c::backend::mir;
       .is_volatile = source_access->is_volatile,
       .can_use_base_plus_offset = true,
   };
+}
+
+[[nodiscard]] std::string relocation_operand(std::string_view label,
+                                             std::int64_t offset) {
+  std::string text{label};
+  if (offset > 0) {
+    text += "+";
+    text += std::to_string(offset);
+  } else if (offset < 0) {
+    text += std::to_string(offset);
+  }
+  return text;
 }
 
 [[nodiscard]] std::optional<OperandRecord> make_immediate_scalar_operand(
@@ -943,20 +985,41 @@ struct MaterializedControlSource {
   if (operand.kind == OperandKind::Memory) {
     const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
     if (memory == nullptr || memory->support != MemoryOperandSupportKind::Prepared ||
-        memory->base_kind != MemoryBaseKind::FrameSlot ||
         !memory->can_use_base_plus_offset ||
         !memory->byte_offset_is_prepared_snapshot) {
       return std::nullopt;
     }
     const auto scratch = scalar_gp_scratch_register(view, occupied);
-    const auto address = memory_address(*memory);
-    if (!scratch.has_value() || address.empty()) {
+    if (!scratch.has_value()) {
       return std::nullopt;
     }
     const std::string name = abi::register_name(scratch->reg);
-    std::ostringstream load;
-    load << "ldr " << name << ", " << address;
-    lines.push_back(load.str());
+    if (memory->base_kind == MemoryBaseKind::FrameSlot) {
+      const auto address = memory_address(*memory);
+      if (address.empty()) {
+        return std::nullopt;
+      }
+      std::ostringstream load;
+      load << "ldr " << name << ", " << address;
+      lines.push_back(load.str());
+    } else if (memory->base_kind == MemoryBaseKind::Symbol) {
+      if (memory->symbol_label.empty()) {
+        return std::nullopt;
+      }
+      const std::string reloc =
+          relocation_operand(memory->symbol_label, memory->byte_offset);
+      std::ostringstream page;
+      page << "adrp " << name << ", " << reloc;
+      lines.push_back(page.str());
+      std::ostringstream low;
+      low << "add " << name << ", " << name << ", :lo12:" << reloc;
+      lines.push_back(low.str());
+      std::ostringstream load;
+      load << "ldr " << name << ", [" << name << "]";
+      lines.push_back(load.str());
+    } else {
+      return std::nullopt;
+    }
     return MaterializedControlSource{.name = name, .occupied_register = *scratch};
   }
   if (operand.kind == OperandKind::Immediate) {
@@ -1021,6 +1084,52 @@ struct MaterializedControlSource {
     std::string_view target,
     std::vector<std::string>& lines,
     std::vector<const RegisterOperand*> occupied) {
+  if (operand.kind == OperandKind::Memory) {
+    const auto* memory = std::get_if<MemoryOperand>(&operand.payload);
+    if (memory == nullptr || memory->support != MemoryOperandSupportKind::Prepared ||
+        !memory->can_use_base_plus_offset ||
+        !memory->byte_offset_is_prepared_snapshot) {
+      return false;
+    }
+    if (memory->base_kind == MemoryBaseKind::FrameSlot) {
+      const auto address = memory_address(*memory);
+      if (address.empty()) {
+        return false;
+      }
+      std::ostringstream load;
+      load << "ldr " << target << ", " << address;
+      lines.push_back(load.str());
+      return true;
+    }
+    if (memory->base_kind == MemoryBaseKind::Symbol) {
+      if (memory->symbol_label.empty()) {
+        return false;
+      }
+      const std::string reloc =
+          relocation_operand(memory->symbol_label, memory->byte_offset);
+      std::ostringstream page;
+      page << "adrp " << target << ", " << reloc;
+      lines.push_back(page.str());
+      std::ostringstream low;
+      low << "add " << target << ", " << target << ", :lo12:" << reloc;
+      lines.push_back(low.str());
+      std::ostringstream load;
+      load << "ldr " << target << ", [" << target << "]";
+      lines.push_back(load.str());
+      return true;
+    }
+    return false;
+  }
+  if (operand.kind == OperandKind::Immediate) {
+    const auto* immediate = std::get_if<ImmediateOperand>(&operand.payload);
+    if (immediate == nullptr) {
+      return false;
+    }
+    std::ostringstream move;
+    move << "mov " << target << ", " << scalar_immediate_name(*immediate);
+    lines.push_back(move.str());
+    return true;
+  }
   const auto source =
       materialize_control_register_source(operand, view, lines, std::move(occupied));
   if (!source.has_value()) {
