@@ -4996,6 +4996,51 @@ int selected_simple_frame_setup_and_teardown_print_from_prepared_frame_facts() {
                          "simple frame common-printer drift guard");
 }
 
+int selected_large_frame_setup_and_teardown_materialize_adjustment() {
+  const prepare::PreparedFramePlanFunction prepared_frame{
+      .function_name = c4c::FunctionNameId{2},
+      .frame_size_bytes = 5776,
+      .frame_alignment_bytes = 16,
+  };
+  const auto setup = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+  const auto teardown = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = prepared_frame.function_name,
+          .frame_size_bytes = prepared_frame.frame_size_bytes,
+          .frame_alignment_bytes = prepared_frame.frame_alignment_bytes,
+          .source_frame = &prepared_frame,
+      });
+
+  const auto result = print_common_instruction_nodes({setup, teardown});
+  if (!result.ok) {
+    return fail("expected large fixed frame adjustment nodes to print: " +
+                result.diagnostic);
+  }
+  const auto setup_mnemonic = aarch64_codegen::machine_instruction_primary_printer_mnemonic(setup);
+  const auto teardown_mnemonic =
+      aarch64_codegen::machine_instruction_primary_printer_mnemonic(teardown);
+  const std::string expected =
+      "    movz x9, #5776\n"
+      "    " + std::string(setup_mnemonic) + " sp, sp, x9\n"
+      "    movz x9, #5776\n"
+      "    " + std::string(teardown_mnemonic) + " sp, sp, x9\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         "    movz x9, #5776\n"
+                         "    sub sp, sp, x9\n"
+                         "    movz x9, #5776\n"
+                         "    add sp, sp, x9\n",
+                         "large frame adjustment materialization drift guard");
+}
+
 int selected_non_leaf_frame_prints_link_register_save_restore() {
   const auto saved_x19 = prepared_saved_x19(16);
   const auto setup = aarch64_codegen::make_frame_instruction(
@@ -5037,6 +5082,55 @@ int selected_non_leaf_frame_prints_link_register_save_restore() {
                          "    ldr x30, [sp, #0]\n"
                          "    add sp, sp, #32\n",
                          "non-leaf LR frame common-printer drift guard");
+}
+
+int selected_large_frame_link_register_slot_materializes_address() {
+  const auto setup = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::PrologueSetup,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 5776,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{5760},
+      });
+  const auto teardown = aarch64_codegen::make_frame_instruction(
+      aarch64_codegen::FrameInstructionRecord{
+          .frame_kind = aarch64_codegen::FrameInstructionKind::EpilogueTeardown,
+          .function_name = c4c::FunctionNameId{2},
+          .frame_size_bytes = 5776,
+          .frame_alignment_bytes = 16,
+          .preserves_link_register = true,
+          .link_register_save_offset_bytes = std::size_t{5760},
+      });
+
+  const auto result = print_common_instruction_nodes({setup, teardown});
+  if (!result.ok) {
+    return fail("expected large link-register frame slot to print: " +
+                result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    movz x9, #5776\n"
+                         "    sub sp, sp, x9\n"
+                         "    movz x9, #5760\n"
+                         "    add x9, sp, x9\n"
+                         "    str x30, [x9]\n"
+                         "    movz x9, #5760\n"
+                         "    add x9, sp, x9\n"
+                         "    ldr x30, [x9]\n"
+                         "    movz x9, #5776\n"
+                         "    add sp, sp, x9\n",
+                         "    movz x9, #5776\n"
+                         "    sub sp, sp, x9\n"
+                         "    movz x9, #5760\n"
+                         "    add x9, sp, x9\n"
+                         "    str x30, [x9]\n"
+                         "    movz x9, #5760\n"
+                         "    add x9, sp, x9\n"
+                         "    ldr x30, [x9]\n"
+                         "    movz x9, #5776\n"
+                         "    add sp, sp, x9\n",
+                         "large link-register frame slot drift guard");
 }
 
 int selected_direct_address_materialization_prints_page_low12_sequence() {
@@ -6680,7 +6774,17 @@ int main() {
       result != 0) {
     return result;
   }
+  if (const int result =
+          selected_large_frame_setup_and_teardown_materialize_adjustment();
+      result != 0) {
+    return result;
+  }
   if (const int result = selected_non_leaf_frame_prints_link_register_save_restore();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_large_frame_link_register_slot_materializes_address();
       result != 0) {
     return result;
   }

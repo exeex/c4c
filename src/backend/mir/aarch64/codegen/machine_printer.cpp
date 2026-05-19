@@ -1404,7 +1404,26 @@ mir::TargetInstructionPrintResult print_atomic_memory(
                             "atomic memory kind is outside the printable subset");
 }
 
-std::optional<std::string> saved_register_stack_line(
+std::vector<std::string> frame_register_stack_lines(
+    std::string_view register_name,
+    std::uint64_t stack_offset_bytes,
+    std::string_view mnemonic) {
+  if (stack_offset_bytes <= 4095U) {
+    std::ostringstream out;
+    out << mnemonic << " " << register_name << ", [sp, #" << stack_offset_bytes << "]";
+    return {out.str()};
+  }
+
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  const std::string scratch_name = abi::register_name(scratch);
+  auto lines = materialize_integer_constant_lines(scratch, stack_offset_bytes, 64);
+  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  lines.push_back(std::string{mnemonic} + " " + std::string{register_name} + ", [" +
+                  scratch_name + "]");
+  return lines;
+}
+
+std::optional<std::vector<std::string>> saved_register_stack_lines(
     const prepare::PreparedSavedRegister& saved,
     std::string_view mnemonic) {
   if (!saved.slot_placement.has_value() ||
@@ -1412,10 +1431,27 @@ std::optional<std::string> saved_register_stack_line(
           *saved.slot_placement)) {
     return std::nullopt;
   }
-  std::ostringstream out;
-  out << mnemonic << " " << saved.register_name << ", [sp, #"
-      << *saved.slot_placement->stack_offset_bytes << "]";
-  return out.str();
+  return frame_register_stack_lines(saved.register_name,
+                                    *saved.slot_placement->stack_offset_bytes,
+                                    mnemonic);
+}
+
+std::vector<std::string> materialize_frame_adjustment_lines(
+    std::string_view mnemonic,
+    std::size_t frame_size_bytes) {
+  std::vector<std::string> lines;
+  if (frame_size_bytes <= 4095U) {
+    std::ostringstream direct;
+    direct << mnemonic << " sp, sp, #" << frame_size_bytes;
+    lines.push_back(direct.str());
+    return lines;
+  }
+
+  const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
+  const std::string scratch_name = abi::register_name(scratch);
+  lines = materialize_integer_constant_lines(scratch, frame_size_bytes, 64);
+  lines.push_back(std::string{mnemonic} + " sp, sp, " + scratch_name);
+  return lines;
 }
 
 mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instruction,
@@ -1454,18 +1490,10 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     return target_unsupported(bad_header(instruction) +
                               "link-register frame node is missing save slot facts");
   }
-  if (frame.frame_size_bytes > 4095 ||
-      (frame.link_register_save_offset_bytes.has_value() &&
-       *frame.link_register_save_offset_bytes > 4095)) {
-    return target_unsupported(bad_header(instruction) +
-                              "frame adjustment immediate is outside the plain #imm "
-                              "encoding range 0..4095");
-  }
   for (const auto& saved : frame.saved_callee_registers) {
     if (!saved.slot_placement.has_value() ||
         !prepare::has_complete_prepared_saved_register_slot_placement(
-            *saved.slot_placement) ||
-        *saved.slot_placement->stack_offset_bytes > 4095) {
+            *saved.slot_placement)) {
       return target_unsupported(bad_header(instruction) +
                                 "callee-save frame node is missing printable slot facts");
     }
@@ -1477,40 +1505,39 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
   }
 
   std::vector<std::string> lines;
-  std::ostringstream out;
-  out << mnemonic << " sp, sp, #" << frame.frame_size_bytes;
+  auto adjustment = materialize_frame_adjustment_lines(mnemonic, frame.frame_size_bytes);
   if (frame.frame_kind == FrameInstructionKind::PrologueSetup) {
-    lines.push_back(out.str());
+    lines.insert(lines.end(), adjustment.begin(), adjustment.end());
     if (frame.preserves_link_register) {
-      std::ostringstream save;
-      save << "str x30, [sp, #" << *frame.link_register_save_offset_bytes << "]";
-      lines.push_back(save.str());
+      auto save =
+          frame_register_stack_lines("x30", *frame.link_register_save_offset_bytes, "str");
+      lines.insert(lines.end(), save.begin(), save.end());
     }
     for (const auto& saved : frame.saved_callee_registers) {
-      auto line = saved_register_stack_line(saved, "str");
-      if (!line.has_value()) {
+      auto saved_lines = saved_register_stack_lines(saved, "str");
+      if (!saved_lines.has_value()) {
         return target_unsupported(bad_header(instruction) +
                                   "callee-save frame node is missing printable slot facts");
       }
-      lines.push_back(std::move(*line));
+      lines.insert(lines.end(), saved_lines->begin(), saved_lines->end());
     }
   } else {
     for (auto it = frame.saved_callee_registers.rbegin();
          it != frame.saved_callee_registers.rend();
          ++it) {
-      auto line = saved_register_stack_line(*it, "ldr");
-      if (!line.has_value()) {
+      auto saved_lines = saved_register_stack_lines(*it, "ldr");
+      if (!saved_lines.has_value()) {
         return target_unsupported(bad_header(instruction) +
                                   "callee-save frame node is missing printable slot facts");
       }
-      lines.push_back(std::move(*line));
+      lines.insert(lines.end(), saved_lines->begin(), saved_lines->end());
     }
     if (frame.preserves_link_register) {
-      std::ostringstream restore;
-      restore << "ldr x30, [sp, #" << *frame.link_register_save_offset_bytes << "]";
-      lines.push_back(restore.str());
+      auto restore =
+          frame_register_stack_lines("x30", *frame.link_register_save_offset_bytes, "ldr");
+      lines.insert(lines.end(), restore.begin(), restore.end());
     }
-    lines.push_back(out.str());
+    lines.insert(lines.end(), adjustment.begin(), adjustment.end());
   }
   return target_printed(std::move(lines));
 }
