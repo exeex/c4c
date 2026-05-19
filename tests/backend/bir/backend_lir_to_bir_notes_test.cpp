@@ -112,6 +112,8 @@ int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix()
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
 int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
 int expect_aarch64_variadic_hfa_call_uses_fp_lanes();
+int expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
+int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
 int expect_structured_incoming_byval_param_materializes_from_type_ref();
 int expect_aarch64_crc32w_intrinsic_carries_bir_semantics();
 int expect_aarch64_v16i8_vector_load_intrinsic_carries_bir_semantics();
@@ -3262,6 +3264,187 @@ int expect_aarch64_variadic_hfa_call_uses_fp_lanes() {
   return fail("AArch64 variadic HFA call should be represented as FP lanes");
 }
 
+LirModule make_aarch64_hfa_return_fp_lane_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Hfa = type { float, float }");
+
+  const c4c::StructNameId hfa_id = module.struct_names.intern("%struct.Hfa");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("float")},
+                 lir::LirStructField{lir::LirTypeRef("float")}},
+  });
+  const lir::LirTypeRef hfa_ref = lir::LirTypeRef::struct_type("%struct.Hfa", hfa_id);
+  const c4c::LinkNameId global_id = module.link_names.intern("hfa_source");
+
+  LirGlobal global;
+  global.name = "hfa_source";
+  global.link_name_id = global_id;
+  global.llvm_type = "%struct.Hfa";
+  global.init_text = "zeroinitializer";
+  global.align_bytes = 4;
+  module.globals.push_back(std::move(global));
+
+  LirFunction function;
+  function.name = "aarch64_hfa_return_fp_lane";
+  function.signature_text = "define %struct.Hfa @aarch64_hfa_return_fp_lane()";
+  function.signature_return_type_ref = hfa_ref;
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%r"),
+      .type_str = hfa_ref,
+      .ptr = LirOperand("@hfa_source"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%r",
+      .type_str = "%struct.Hfa",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_hfa_return_uses_fp_lanes_not_sret() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_hfa_return_fp_lane_module(), BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("AArch64 fixed HFA return fixture should lower semantically");
+  }
+  const auto& function = result.module->functions.front();
+  if (function.return_type != TypeKind::F32 ||
+      function.return_size_bytes != 8 ||
+      function.return_align_bytes != 4 ||
+      !function.params.empty() ||
+      !function.return_abi.has_value() ||
+      function.return_abi->type != TypeKind::F32 ||
+      function.return_abi->primary_class != c4c::backend::bir::AbiValueClass::Sse ||
+      function.return_abi->register_count != 2 ||
+      function.return_abi->returned_in_memory) {
+    return fail("AArch64 fixed HFA return should be classified as FP ABI lanes, not sret");
+  }
+  if (function.blocks.empty() ||
+      function.blocks.front().terminator.return_lanes.size() != 2 ||
+      function.blocks.front().terminator.return_lanes[0].type != TypeKind::F32 ||
+      function.blocks.front().terminator.return_lanes[1].type != TypeKind::F32) {
+    return fail("AArch64 fixed HFA aggregate return should publish every FP return lane");
+  }
+  return 0;
+}
+
+LirModule make_aarch64_hfa_call_result_fp_lane_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Hfa = type { double, double }");
+
+  const c4c::StructNameId hfa_id = module.struct_names.intern("%struct.Hfa");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("double")},
+                 lir::LirStructField{lir::LirTypeRef("double")}},
+  });
+  const lir::LirTypeRef hfa_ref = lir::LirTypeRef::struct_type("%struct.Hfa", hfa_id);
+  const c4c::LinkNameId callee_id = module.link_names.intern("semantic_hfa_source");
+
+  c4c::codegen::lir::LirExternDecl callee;
+  callee.name = "stale_hfa_source";
+  callee.link_name_id = callee_id;
+  callee.return_type_str = "%struct.Hfa";
+  callee.return_type = hfa_ref;
+  module.extern_decls.push_back(std::move(callee));
+
+  lir::LirCallSignature signature;
+  signature.return_type_ref = hfa_ref;
+
+  LirFunction function;
+  function.name = "aarch64_hfa_call_result_fp_lane";
+  function.signature_text = "define void @aarch64_hfa_call_result_fp_lane()";
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirAllocaOp{
+      .result = LirOperand("%dst"),
+      .type_str = hfa_ref,
+      .align = 8,
+  });
+  entry.insts.push_back(LirCallOp{
+      .result = LirOperand("%r"),
+      .return_type = hfa_ref,
+      .callee = LirOperand("@stale_hfa_source"),
+      .direct_callee_link_name_id = callee_id,
+      .callee_type_suffix = "()",
+      .callee_signature = std::move(signature),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = hfa_ref,
+      .val = LirOperand("%r"),
+      .ptr = LirOperand("%dst"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_hfa_call_result_fp_lane_module(), BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("AArch64 fixed HFA call-result fixture should lower semantically");
+  }
+
+  for (const auto& function : result.module->functions) {
+    if (function.name != "aarch64_hfa_call_result_fp_lane" ||
+        function.blocks.empty()) {
+      continue;
+    }
+    for (const auto& inst : function.blocks.front().insts) {
+      const auto* call = std::get_if<c4c::backend::bir::CallInst>(&inst);
+      if (call == nullptr) continue;
+      if (!call->is_indirect && call->callee == "semantic_hfa_source" &&
+          call->result.has_value() &&
+          call->result->type == TypeKind::F64 &&
+          call->args.empty() &&
+          !call->sret_storage_name.has_value() &&
+          call->result_abi.has_value() &&
+          call->result_abi->type == TypeKind::F64 &&
+          call->result_abi->primary_class == c4c::backend::bir::AbiValueClass::Sse &&
+          call->result_abi->register_count == 2 &&
+          !call->result_abi->returned_in_memory &&
+          call->result_lanes.size() == 2 &&
+          call->result_lanes[0].type == TypeKind::F64 &&
+          call->result_lanes[1].type == TypeKind::F64) {
+        std::size_t stored_lanes = 0;
+        for (const auto& lowered_inst : function.blocks.front().insts) {
+          const auto* store =
+              std::get_if<c4c::backend::bir::StoreLocalInst>(&lowered_inst);
+          if (store != nullptr && store->value.type == TypeKind::F64 &&
+              (store->value == call->result_lanes[0] ||
+               store->value == call->result_lanes[1])) {
+            ++stored_lanes;
+          }
+        }
+        if (stored_lanes == 2) {
+          return 0;
+        }
+      }
+    }
+  }
+  return fail("AArch64 fixed HFA call result should materialize every FP lane, not sret");
+}
+
 LirModule make_direct_call_symbol_identity_boundary_module(bool structured_metadata,
                                                            c4c::LinkNameId override_callee_id) {
   LirModule module;
@@ -6395,6 +6578,16 @@ int main() {
           expect_aarch64_variadic_hfa_call_uses_fp_lanes();
       aarch64_variadic_hfa_call_status != 0) {
     return aarch64_variadic_hfa_call_status;
+  }
+  if (const int aarch64_hfa_return_status =
+          expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
+      aarch64_hfa_return_status != 0) {
+    return aarch64_hfa_return_status;
+  }
+  if (const int aarch64_hfa_call_result_status =
+          expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
+      aarch64_hfa_call_result_status != 0) {
+    return aarch64_hfa_call_result_status;
   }
 
   if (const int missing_direct_link_name_status =

@@ -1312,6 +1312,48 @@ prepare::PreparedBirModule prepare_call_result_move_module_with_regalloc() {
   return planner.run();
 }
 
+prepare::PreparedBirModule prepare_aarch64_hfa_call_result_lane_module_with_regalloc() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "aarch64_hfa_call_result_lane_move_resolution";
+  function.return_type = bir::TypeKind::Void;
+
+  auto entry = make_block(module, "entry");
+  bir::CallInst call;
+  call.result = bir::Value::named(bir::TypeKind::F32, "hfa.call.result.0");
+  call.result_lanes = {
+      bir::Value::named(bir::TypeKind::F32, "hfa.call.result.0"),
+      bir::Value::named(bir::TypeKind::F32, "hfa.call.result.1"),
+  };
+  call.callee = "source_hfa2";
+  call.return_type_name = "%struct.Hfa2";
+  call.return_type = bir::TypeKind::F32;
+  call.result_abi = bir::CallResultAbiInfo{
+      .type = bir::TypeKind::F32,
+      .primary_class = bir::AbiValueClass::Sse,
+      .register_count = 2,
+  };
+  entry.insts.push_back(std::move(call));
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = aarch64_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = true;
+  options.run_regalloc = true;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  return planner.run();
+}
+
 prepare::PreparedBirModule prepare_return_move_module_with_regalloc() {
   bir::Module module;
 
@@ -5310,6 +5352,104 @@ int check_call_result_move_resolution(const prepare::PreparedBirModule& prepared
   return 0;
 }
 
+int check_aarch64_hfa_call_result_lane_move_resolution(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* function =
+      find_regalloc_function(prepared, "aarch64_hfa_call_result_lane_move_resolution");
+  if (function == nullptr) {
+    return fail("expected regalloc output for AArch64 HFA call-result lanes");
+  }
+
+  const auto* lane0 = find_regalloc_value(prepared, *function, "hfa.call.result.0");
+  const auto* lane1 = find_regalloc_value(prepared, *function, "hfa.call.result.1");
+  if (lane0 == nullptr || lane1 == nullptr) {
+    return fail("expected both HFA call-result lanes to appear in regalloc output");
+  }
+
+  const auto* lane0_move = find_move_resolution(*function, lane0->value_id, lane0->value_id);
+  const auto* lane1_move = find_move_resolution(*function, lane1->value_id, lane1->value_id);
+  if (lane0_move == nullptr || lane1_move == nullptr) {
+    return fail("expected one after-call move for each HFA call-result lane");
+  }
+  if (lane0_move->destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+      lane0_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      lane0_move->destination_abi_index != std::optional<std::size_t>{0} ||
+      lane0_move->destination_register_name != std::optional<std::string>{"s0"} ||
+      lane0_move->destination_register_placement !=
+          std::optional<prepare::PreparedRegisterPlacement>{
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Fpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                  .slot_index = 0,
+                  .contiguous_width = 1,
+              }}) {
+    return fail("expected HFA call-result lane 0 to publish s0 ABI metadata");
+  }
+  if (lane1_move->destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+      lane1_move->destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+      lane1_move->destination_abi_index != std::optional<std::size_t>{1} ||
+      lane1_move->destination_register_name != std::optional<std::string>{"s1"} ||
+      lane1_move->destination_register_placement !=
+          std::optional<prepare::PreparedRegisterPlacement>{
+              prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Fpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                  .slot_index = 1,
+                  .contiguous_width = 1,
+              }}) {
+    return fail("expected HFA call-result lane 1 to publish s1 ABI metadata");
+  }
+
+  const auto* locations = prepare::find_prepared_value_location_function(
+      prepared, function->function_name);
+  const auto* bundle =
+      locations == nullptr
+          ? nullptr
+          : prepare::find_prepared_move_bundle(
+                *locations, prepare::PreparedMovePhase::AfterCall, 0, 0);
+  if (bundle == nullptr) {
+    return fail("expected after-call bundle for AArch64 HFA call-result lanes");
+  }
+
+  bool saw_s0_binding = false;
+  bool saw_s1_binding = false;
+  for (const auto& binding : bundle->abi_bindings) {
+    if (binding.destination_kind != prepare::PreparedMoveDestinationKind::CallResultAbi ||
+        binding.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
+      continue;
+    }
+    saw_s0_binding =
+        saw_s0_binding ||
+        (binding.destination_abi_index == std::optional<std::size_t>{0} &&
+         binding.destination_register_name == std::optional<std::string>{"s0"} &&
+         binding.destination_register_placement ==
+             std::optional<prepare::PreparedRegisterPlacement>{
+                 prepare::PreparedRegisterPlacement{
+                     .bank = prepare::PreparedRegisterBank::Fpr,
+                     .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                     .slot_index = 0,
+                     .contiguous_width = 1,
+                 }});
+    saw_s1_binding =
+        saw_s1_binding ||
+        (binding.destination_abi_index == std::optional<std::size_t>{1} &&
+         binding.destination_register_name == std::optional<std::string>{"s1"} &&
+         binding.destination_register_placement ==
+             std::optional<prepare::PreparedRegisterPlacement>{
+                 prepare::PreparedRegisterPlacement{
+                     .bank = prepare::PreparedRegisterBank::Fpr,
+                     .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                     .slot_index = 1,
+                     .contiguous_width = 1,
+                 }});
+  }
+  if (!saw_s0_binding || !saw_s1_binding) {
+    return fail("expected after-call ABI bindings for distinct HFA result FPR lanes");
+  }
+
+  return 0;
+}
+
 int check_return_move_resolution(const prepare::PreparedBirModule& prepared) {
   const auto* module_function = find_module_function(prepared, "return_move_resolution");
   if (module_function == nullptr) {
@@ -6878,6 +7018,14 @@ int main() {
 
   const auto call_result_move_prepared = prepare_call_result_move_module_with_regalloc();
   if (const int rc = check_call_result_move_resolution(call_result_move_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto aarch64_hfa_call_result_lane_prepared =
+      prepare_aarch64_hfa_call_result_lane_module_with_regalloc();
+  if (const int rc = check_aarch64_hfa_call_result_lane_move_resolution(
+          aarch64_hfa_call_result_lane_prepared);
+      rc != 0) {
     return rc;
   }
 

@@ -350,6 +350,9 @@ void legalize_module(const c4c::TargetProfile& target_profile,
                 if (lowered.result.has_value()) {
                   legalize_value(target_profile, *lowered.result);
                 }
+                for (auto& lane : lowered.result_lanes) {
+                  legalize_value(target_profile, lane);
+                }
                 if (lowered.callee_value.has_value()) {
                   legalize_value(target_profile, *lowered.callee_value);
                 }

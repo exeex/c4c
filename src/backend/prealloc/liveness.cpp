@@ -287,6 +287,14 @@ void collect_dense_values_from_instruction(
                 PreparedValueKind::CallResult,
                 stack_object_lookup);
           }
+          for (const auto& lane : typed_inst.result_lanes) {
+            maybe_add_named_value(
+                dense_values,
+                names,
+                lane,
+                PreparedValueKind::CallResult,
+                stack_object_lookup);
+          }
           if (typed_inst.callee_value.has_value()) {
             maybe_add_named_value(
                 dense_values,
@@ -423,6 +431,9 @@ void collect_instruction_uses_and_defs(const PreparedNameTables& names,
           if (typed_inst.result.has_value()) {
             append_named_value_match(names, *typed_inst.result, dense_values, defs);
           }
+          for (const auto& lane : typed_inst.result_lanes) {
+            append_named_value_match(names, lane, dense_values, defs);
+          }
           if (typed_inst.callee_value.has_value()) {
             append_named_value_match(names, *typed_inst.callee_value, dense_values, uses);
           }
@@ -454,6 +465,9 @@ void collect_terminator_uses(const PreparedNameTables& names,
                              std::vector<std::size_t>& uses) {
   if (terminator.kind == bir::TerminatorKind::Return && terminator.value.has_value()) {
     append_named_value_match(names, *terminator.value, dense_values, uses);
+    for (const auto& lane : terminator.return_lanes) {
+      append_named_value_match(names, lane, dense_values, uses);
+    }
   } else if (terminator.kind == bir::TerminatorKind::CondBranch) {
     append_named_value_match(names, terminator.condition, dense_values, uses);
   }

@@ -2347,6 +2347,63 @@ int scalar_fpr_call_boundary_move_record_selects_fixed_hfa_lane_publication() {
   return 0;
 }
 
+int scalar_fpr_return_boundary_move_record_selects_fixed_hfa_lane_publication() {
+  const prepare::PreparedMoveBundle bundle{
+      .function_name = c4c::FunctionNameId{12},
+      .phase = prepare::PreparedMovePhase::BeforeReturn,
+      .block_index = 4,
+      .instruction_index = 8,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{81},
+                  .to_value_id = prepare::PreparedValueId{81},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"s0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"s0"},
+                  .block_index = 4,
+                  .instruction_index = 8,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "fixed hfa lane before-return move",
+              },
+          },
+  };
+  const auto value_name = c4c::ValueNameId{19};
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .move = bundle.moves.front(),
+          .source_register =
+              s_call_register(prepare::PreparedValueId{81}, value_name, 13),
+          .destination_register =
+              s_call_register(prepare::PreparedValueId{81}, value_name, 0),
+          .source_bundle = &bundle,
+          .source_move = &bundle.moves.front(),
+      });
+  const auto* payload =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(&move.payload);
+
+  if (payload == nullptr ||
+      move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      move.operands.size() != 2 || move.uses.size() != 1 || move.defs.size() != 1 ||
+      move.uses.front().reg != aarch64_abi::s_register(13) ||
+      move.defs.front().reg != aarch64_abi::s_register(0) ||
+      payload->phase != prepare::PreparedMovePhase::BeforeReturn ||
+      payload->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      payload->source_register->expected_view != aarch64_abi::RegisterView::S ||
+      payload->destination_register->expected_view != aarch64_abi::RegisterView::S) {
+    return fail("expected scalar FPR return-boundary move to publish fixed HFA lane");
+  }
+
+  return 0;
+}
+
 int machine_node_printer_mnemonics_have_one_supported_spelling_source() {
   if (const int status = expect_equal(
           aarch64_codegen::machine_printer_mnemonic_kind_name(
@@ -4300,6 +4357,11 @@ int main() {
   }
   if (const int status =
           scalar_fpr_call_boundary_move_record_selects_fixed_hfa_lane_publication();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          scalar_fpr_return_boundary_move_record_selects_fixed_hfa_lane_publication();
       status != 0) {
     return status;
   }

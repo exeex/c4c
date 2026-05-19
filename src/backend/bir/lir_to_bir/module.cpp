@@ -741,7 +741,44 @@ bool BirFunctionLowerer::lower_block_terminator(const c4c::codegen::lir::LirBloc
           return false;
         }
       } else {
-        const auto value = lower_value(ret_value, return_info_->type);
+        std::optional<bir::Value> value;
+        if (ret_value.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+          const auto aggregate_alias_it = aggregate_value_aliases_.find(ret_value.str());
+          const auto source_aggregate_it =
+              aggregate_alias_it == aggregate_value_aliases_.end()
+                  ? local_aggregate_slots_.end()
+                  : local_aggregate_slots_.find(aggregate_alias_it->second);
+          if (source_aggregate_it != local_aggregate_slots_.end()) {
+            const auto leaf_slots = collect_sorted_leaf_slots(source_aggregate_it->second);
+            if (!leaf_slots.empty() && leaf_slots.size() == return_info_->abi_lane_count) {
+              std::vector<bir::Value> return_lanes;
+              bool lanes_supported = true;
+              return_lanes.reserve(leaf_slots.size());
+              for (std::size_t lane_index = 0; lane_index < leaf_slots.size(); ++lane_index) {
+                const auto slot_type_it = local_slot_types_.find(leaf_slots[lane_index].second);
+                if (slot_type_it == local_slot_types_.end() ||
+                    slot_type_it->second != return_info_->type) {
+                  lanes_supported = false;
+                  break;
+                }
+                const std::string temp_name =
+                    ret_value.str() + ".ret.aggregate.lane." + std::to_string(lane_index);
+                lowered_block->insts.push_back(bir::LoadLocalInst{
+                    .result = bir::Value::named(return_info_->type, temp_name),
+                    .slot_name = leaf_slots[lane_index].second,
+                });
+                return_lanes.push_back(bir::Value::named(return_info_->type, temp_name));
+              }
+              if (lanes_supported && !return_lanes.empty()) {
+                value = return_lanes.front();
+                lowered_ret.return_lanes = std::move(return_lanes);
+              }
+            }
+          }
+        }
+        if (!value.has_value()) {
+          value = lower_value(ret_value, return_info_->type);
+        }
         if (!value.has_value()) {
           note_function_lowering_family_failure("scalar-control-flow semantic family");
           return false;

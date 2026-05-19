@@ -482,6 +482,7 @@ struct CallResultAbiInfo {
   AbiValueClass primary_class = AbiValueClass::None;
   AbiValueClass secondary_class = AbiValueClass::None;
   bool returned_in_memory = false;
+  std::size_t register_count = 1;
 };
 
 struct Param {
@@ -765,6 +766,7 @@ struct IntrinsicOperation {
 
 struct CallInst {
   std::optional<Value> result;
+  std::vector<Value> result_lanes;
   std::string callee;
   // Direct user/extern calls carry LinkNameId when LIR provides one.
   // Runtime/intrinsic placeholder calls synthesized by BIR lowering keep this
@@ -851,6 +853,7 @@ using Inst = std::variant<BinaryInst,
 
 struct ReturnTerminator {
   std::optional<Value> value;
+  std::vector<Value> return_lanes;
 };
 
 struct BranchTerminator {
@@ -879,6 +882,7 @@ enum class TerminatorKind : unsigned char {
 struct Terminator {
   TerminatorKind kind = TerminatorKind::Return;
   std::optional<Value> value;
+  std::vector<Value> return_lanes;
   Value condition;
   // Compatibility label spellings for dumps/raw-only BIR. Structured
   // BlockLabelId fields are authoritative when valid.
@@ -890,7 +894,8 @@ struct Terminator {
   BlockLabelId false_label_id = kInvalidBlockLabel;
 
   Terminator() = default;
-  Terminator(const ReturnTerminator& ret) : kind(TerminatorKind::Return), value(ret.value) {}
+  Terminator(const ReturnTerminator& ret)
+      : kind(TerminatorKind::Return), value(ret.value), return_lanes(ret.return_lanes) {}
   Terminator(const BranchTerminator& br)
       : kind(TerminatorKind::Branch),
         target_label(br.target_label),

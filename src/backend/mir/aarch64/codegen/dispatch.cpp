@@ -4416,6 +4416,12 @@ InstructionDispatchResult dispatch_prepared_block(
   result.visited_terminator = true;
   if (context.control_flow_block->terminator_kind ==
       c4c::backend::bir::TerminatorKind::Return) {
+    const std::size_t return_instruction_index =
+        context.bir_block != nullptr ? context.bir_block->insts.size() : 0;
+    for (auto& before_return_move :
+         lower_before_return_moves(context, return_instruction_index, diagnostics)) {
+      block.instructions.push_back(std::move(before_return_move));
+    }
     if (auto lowered =
             lower_prepared_return_terminator(context, scalar_state, diagnostics)) {
       block.instructions.push_back(std::move(*lowered));

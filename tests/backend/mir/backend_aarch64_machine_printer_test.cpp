@@ -2454,6 +2454,26 @@ int selected_scalar_add_sub_and_register_return_print_from_structured_operands()
   return 0;
 }
 
+int selected_scalar_fpr_register_return_publishes_abi_register() {
+  const auto ret = aarch64_codegen::make_return_instruction(
+      aarch64_codegen::ReturnInstructionRecord{
+          .value = aarch64_codegen::make_register_operand(sreg(13)),
+          .value_type = bir::TypeKind::F32,
+      });
+
+  const auto result = print_common_instruction_nodes({ret});
+  if (!result.ok) {
+    return fail("expected scalar FPR register return to print ABI publication: " +
+                result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    fmov s0, s13\n"
+                         "    ret\n",
+                         "    fmov s0, s13\n"
+                         "    ret\n",
+                         "scalar FPR return ABI publication");
+}
+
 int selected_scalar_stack_publication_materializes_large_offset() {
   const auto add = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -6805,6 +6825,10 @@ int main() {
   }
   if (const int result =
           selected_scalar_add_sub_and_register_return_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result = selected_scalar_fpr_register_return_publishes_abi_register();
       result != 0) {
     return result;
   }

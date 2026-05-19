@@ -30,6 +30,17 @@ namespace {
          std::optional<std::string>{assigned_register.register_name};
 }
 
+[[nodiscard]] std::optional<PreparedRegisterPlacement> indexed_result_placement(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallResultAbiInfo& abi,
+    std::size_t lane_index) {
+  auto placement = call_result_destination_register_placement(target_profile, abi, 1);
+  if (placement.has_value()) {
+    placement->slot_index = lane_index;
+  }
+  return placement;
+}
+
 void append_f128_constant_call_arg_move_resolution_record(
     PreparedRegallocFunction& regalloc_function,
     const PreparedRegallocValue& source,
@@ -286,67 +297,95 @@ void append_call_result_move_resolution(const PreparedNameTables& names,
         continue;
       }
 
-      const auto* result = find_regalloc_value(regalloc_function, names, call->result->name);
-      if (result == nullptr) {
-        continue;
-      }
-
       const PreparedMoveStorageKind consumed_kind = call_result_storage_kind(*call);
-      const PreparedMoveStorageKind source_kind = assigned_storage_kind(*result);
-      const auto destination_register_name = call->result_abi.has_value()
-                                                   ? call_result_destination_register_name(
-                                                       target_profile, *call->result_abi)
-                                                   : std::nullopt;
-      const std::size_t destination_contiguous_width =
-          consumed_kind == PreparedMoveStorageKind::Register
-              ? published_register_group_width(*result)
-              : 1;
-      const auto destination_register_placement =
-          consumed_kind == PreparedMoveStorageKind::Register &&
-                  call->result_abi.has_value()
-              ? call_result_destination_register_placement(target_profile,
-                                                           *call->result_abi,
-                                                           destination_contiguous_width)
+      const bool uses_explicit_result_lanes = !call->result_lanes.empty();
+      const std::vector<bir::Value> result_lanes =
+          uses_explicit_result_lanes ? call->result_lanes
+                                     : std::vector<bir::Value>{*call->result};
+      const auto base_destination_register_name =
+          call->result_abi.has_value()
+              ? call_result_destination_register_name(target_profile, *call->result_abi)
               : std::nullopt;
-      const auto destination_occupied_register_names =
-          consumed_kind == PreparedMoveStorageKind::Register &&
-                  destination_register_name.has_value()
+      const auto destination_register_names =
+          uses_explicit_result_lanes &&
+                  consumed_kind == PreparedMoveStorageKind::Register &&
+                  base_destination_register_name.has_value() && call->result_abi.has_value()
               ? call_result_destination_register_names(target_profile,
-                                                       result->register_class,
-                                                       *destination_register_name,
-                                                       destination_contiguous_width)
+                                                       PreparedRegisterClass::Float,
+                                                       *base_destination_register_name,
+                                                       std::max<std::size_t>(
+                                                           call->result_abi->register_count,
+                                                           result_lanes.size()))
               : std::vector<std::string>{};
-      if (source_kind == PreparedMoveStorageKind::Register &&
-          consumed_kind == PreparedMoveStorageKind::Register && result->assigned_register.has_value() &&
-          same_register_destination(destination_register_placement,
-                                    *result->assigned_register,
-                                    destination_register_name)) {
-        continue;
+      for (std::size_t lane_index = 0; lane_index < result_lanes.size(); ++lane_index) {
+        if (result_lanes[lane_index].kind != bir::Value::Kind::Named) {
+          continue;
+        }
+        const auto* result =
+            find_regalloc_value(regalloc_function, names, result_lanes[lane_index].name);
+        if (result == nullptr) {
+          continue;
+        }
+        const PreparedMoveStorageKind source_kind = assigned_storage_kind(*result);
+        const auto destination_register_name =
+            uses_explicit_result_lanes && lane_index < destination_register_names.size()
+                ? std::optional<std::string>{destination_register_names[lane_index]}
+                : base_destination_register_name;
+        const std::size_t destination_contiguous_width =
+            uses_explicit_result_lanes ? 1 : published_register_group_width(*result);
+        const auto destination_register_placement =
+            consumed_kind == PreparedMoveStorageKind::Register && call->result_abi.has_value()
+                ? (uses_explicit_result_lanes
+                       ? indexed_result_placement(target_profile, *call->result_abi, lane_index)
+                       : call_result_destination_register_placement(target_profile,
+                                                                    *call->result_abi,
+                                                                    destination_contiguous_width))
+                : std::nullopt;
+        const auto destination_occupied_register_names =
+            consumed_kind == PreparedMoveStorageKind::Register &&
+                    destination_register_name.has_value()
+                ? (uses_explicit_result_lanes
+                       ? std::vector<std::string>{*destination_register_name}
+                       : call_result_destination_register_names(target_profile,
+                                                                result->register_class,
+                                                                *destination_register_name,
+                                                                destination_contiguous_width))
+                : std::vector<std::string>{};
+        if (source_kind == PreparedMoveStorageKind::Register &&
+            consumed_kind == PreparedMoveStorageKind::Register &&
+            result->assigned_register.has_value() &&
+            same_register_destination(destination_register_placement,
+                                      *result->assigned_register,
+                                      destination_register_name)) {
+          continue;
+        }
+        append_move_resolution_record(regalloc_function,
+                                      result->value_id,
+                                      result->value_id,
+                                      PreparedMoveDestinationKind::CallResultAbi,
+                                      source_kind,
+                                      consumed_kind,
+                                      uses_explicit_result_lanes
+                                          ? std::optional<std::size_t>{lane_index}
+                                          : std::nullopt,
+                                      destination_register_name,
+                                      destination_contiguous_width,
+                                      destination_occupied_register_names,
+                                      std::nullopt,
+                                      block_index,
+                                      instruction_index,
+                                      false,
+                                      false,
+                                      std::nullopt,
+                                      PreparedMoveResolutionOpKind::Move,
+                                      PreparedMoveAuthorityKind::None,
+                                      storage_transfer_reason("call_result",
+                                                              source_kind,
+                                                              consumed_kind),
+                                      std::nullopt,
+                                      std::nullopt,
+                                      destination_register_placement);
       }
-      append_move_resolution_record(regalloc_function,
-                                    result->value_id,
-                                    result->value_id,
-                                    PreparedMoveDestinationKind::CallResultAbi,
-                                    source_kind,
-                                    consumed_kind,
-                                    std::nullopt,
-                                    destination_register_name,
-                                    destination_contiguous_width,
-                                    destination_occupied_register_names,
-                                    std::nullopt,
-                                    block_index,
-                                    instruction_index,
-                                    false,
-                                    false,
-                                    std::nullopt,
-                                    PreparedMoveResolutionOpKind::Move,
-                                    PreparedMoveAuthorityKind::None,
-                                    storage_transfer_reason("call_result",
-                                                            source_kind,
-                                                            consumed_kind),
-                                    std::nullopt,
-                                    std::nullopt,
-                                    destination_register_placement);
     }
   }
 }
@@ -370,79 +409,108 @@ void append_return_move_resolution(const PreparedNameTables& names,
       continue;
     }
 
-    const auto* source = find_regalloc_value(regalloc_function, names, block.terminator.value->name);
-    if (source == nullptr) {
-      continue;
-    }
-
-    const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
-    const auto destination_register_name = return_abi.has_value()
-                                               ? call_result_destination_register_name(
-                                                     target_profile, *return_abi)
-                                               : std::nullopt;
-    const std::size_t destination_contiguous_width =
-        consumed_kind == PreparedMoveStorageKind::Register
-            ? published_register_group_width(*source)
-            : 1;
-    const auto destination_register_placement =
-        consumed_kind == PreparedMoveStorageKind::Register && return_abi.has_value()
-            ? call_result_destination_register_placement(target_profile,
-                                                         *return_abi,
-                                                         destination_contiguous_width)
+    const bool uses_explicit_return_lanes = !block.terminator.return_lanes.empty();
+    const std::vector<bir::Value> return_lanes =
+        uses_explicit_return_lanes ? block.terminator.return_lanes
+                                   : std::vector<bir::Value>{*block.terminator.value};
+    const auto base_destination_register_name =
+        return_abi.has_value()
+            ? call_result_destination_register_name(target_profile, *return_abi)
             : std::nullopt;
-    const auto destination_occupied_register_names =
-        consumed_kind == PreparedMoveStorageKind::Register &&
-                destination_register_name.has_value()
+    const auto destination_register_names =
+        uses_explicit_return_lanes &&
+                consumed_kind == PreparedMoveStorageKind::Register &&
+                base_destination_register_name.has_value() && return_abi.has_value()
             ? call_result_destination_register_names(target_profile,
-                                                     source->register_class,
-                                                     *destination_register_name,
-                                                     destination_contiguous_width)
+                                                     PreparedRegisterClass::Float,
+                                                     *base_destination_register_name,
+                                                     std::max<std::size_t>(
+                                                         return_abi->register_count,
+                                                         return_lanes.size()))
             : std::vector<std::string>{};
-    const bool coalesced_by_assigned_storage =
-        source_kind == PreparedMoveStorageKind::Register &&
-        consumed_kind == PreparedMoveStorageKind::Register &&
-        source->assigned_register.has_value() &&
-        same_register_destination(destination_register_placement,
-                                  *source->assigned_register,
-                                  destination_register_name);
-    if (source_kind == PreparedMoveStorageKind::None) {
-      append_unassigned_return_move_resolution_record(
-          regalloc_function,
-          *source,
-          consumed_kind,
-          destination_register_name,
-          destination_contiguous_width,
-          destination_occupied_register_names,
-          destination_register_placement,
-          block_index,
-          block.insts.size(),
-          "return_context_to_register");
-      continue;
+    for (std::size_t lane_index = 0; lane_index < return_lanes.size(); ++lane_index) {
+      if (return_lanes[lane_index].kind != bir::Value::Kind::Named) {
+        continue;
+      }
+      const auto* source =
+          find_regalloc_value(regalloc_function, names, return_lanes[lane_index].name);
+      if (source == nullptr) {
+        continue;
+      }
+
+      const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
+      const auto destination_register_name =
+          uses_explicit_return_lanes && lane_index < destination_register_names.size()
+              ? std::optional<std::string>{destination_register_names[lane_index]}
+              : base_destination_register_name;
+      const std::size_t destination_contiguous_width =
+          uses_explicit_return_lanes ? 1 : published_register_group_width(*source);
+      const auto destination_register_placement =
+          consumed_kind == PreparedMoveStorageKind::Register && return_abi.has_value()
+              ? (uses_explicit_return_lanes
+                     ? indexed_result_placement(target_profile, *return_abi, lane_index)
+                     : call_result_destination_register_placement(target_profile,
+                                                                  *return_abi,
+                                                                  destination_contiguous_width))
+              : std::nullopt;
+      const auto destination_occupied_register_names =
+          consumed_kind == PreparedMoveStorageKind::Register &&
+                  destination_register_name.has_value()
+              ? (uses_explicit_return_lanes
+                     ? std::vector<std::string>{*destination_register_name}
+                     : call_result_destination_register_names(target_profile,
+                                                              source->register_class,
+                                                              *destination_register_name,
+                                                              destination_contiguous_width))
+              : std::vector<std::string>{};
+      const bool coalesced_by_assigned_storage =
+          source_kind == PreparedMoveStorageKind::Register &&
+          consumed_kind == PreparedMoveStorageKind::Register &&
+          source->assigned_register.has_value() &&
+          same_register_destination(destination_register_placement,
+                                    *source->assigned_register,
+                                    destination_register_name);
+      if (source_kind == PreparedMoveStorageKind::None) {
+        append_unassigned_return_move_resolution_record(
+            regalloc_function,
+            *source,
+            consumed_kind,
+            destination_register_name,
+            destination_contiguous_width,
+            destination_occupied_register_names,
+            destination_register_placement,
+            block_index,
+            block.insts.size(),
+            "return_context_to_register");
+        continue;
+      }
+      append_move_resolution_record(regalloc_function,
+                                    source->value_id,
+                                    source->value_id,
+                                    PreparedMoveDestinationKind::FunctionReturnAbi,
+                                    source_kind,
+                                    consumed_kind,
+                                    uses_explicit_return_lanes
+                                        ? std::optional<std::size_t>{lane_index}
+                                        : std::nullopt,
+                                    destination_register_name,
+                                    destination_contiguous_width,
+                                    destination_occupied_register_names,
+                                    std::nullopt,
+                                    block_index,
+                                    block.insts.size(),
+                                    false,
+                                    coalesced_by_assigned_storage,
+                                    std::nullopt,
+                                    PreparedMoveResolutionOpKind::Move,
+                                    PreparedMoveAuthorityKind::None,
+                                    storage_transfer_reason("return",
+                                                            source_kind,
+                                                            consumed_kind),
+                                    std::nullopt,
+                                    std::nullopt,
+                                    destination_register_placement);
     }
-    append_move_resolution_record(regalloc_function,
-                                  source->value_id,
-                                  source->value_id,
-                                  PreparedMoveDestinationKind::FunctionReturnAbi,
-                                  source_kind,
-                                  consumed_kind,
-                                  std::nullopt,
-                                  destination_register_name,
-                                  destination_contiguous_width,
-                                  destination_occupied_register_names,
-                                  std::nullopt,
-                                  block_index,
-                                  block.insts.size(),
-                                  false,
-                                  coalesced_by_assigned_storage,
-                                  std::nullopt,
-                                  PreparedMoveResolutionOpKind::Move,
-                                  PreparedMoveAuthorityKind::None,
-                                  storage_transfer_reason("return",
-                                                          source_kind,
-                                                          consumed_kind),
-                                  std::nullopt,
-                                  std::nullopt,
-                                  destination_register_placement);
   }
 }
 

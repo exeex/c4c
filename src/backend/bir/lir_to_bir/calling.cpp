@@ -1313,6 +1313,16 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       return fail_call_family(call_family);
     }
     lowered_call.result = bir::Value::named(return_info->type, call.result.str());
+    if (return_info->abi_lane_count > 1) {
+      lowered_call.result_lanes.reserve(return_info->abi_lane_count);
+      lowered_call.result_lanes.push_back(*lowered_call.result);
+      for (std::size_t lane_index = 1; lane_index < return_info->abi_lane_count; ++lane_index) {
+        lowered_call.result_lanes.push_back(bir::Value::named(
+            return_info->type,
+            call.result.str() + ".hfa.ret.lane." + std::to_string(lane_index)));
+      }
+      hfa_return_lanes_[call.result.str()] = lowered_call.result_lanes;
+    }
   } else if (call.result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
     if (!return_info->returned_via_sret) {
       return fail_call_family(call_family);

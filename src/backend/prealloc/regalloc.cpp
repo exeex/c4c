@@ -403,6 +403,60 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
       if (result_storage_kind == PreparedMoveStorageKind::None) {
         continue;
       }
+      if (!call->result_lanes.empty()) {
+        const auto base_destination_register_name =
+            call->result_abi.has_value()
+                ? call_result_destination_register_name(target_profile, *call->result_abi)
+                : std::nullopt;
+        const auto destination_register_names =
+            result_storage_kind == PreparedMoveStorageKind::Register &&
+                    base_destination_register_name.has_value() && call->result_abi.has_value()
+                ? call_result_destination_register_names(
+                      target_profile,
+                      PreparedRegisterClass::Float,
+                      *base_destination_register_name,
+                      std::max<std::size_t>(call->result_abi->register_count,
+                                            call->result_lanes.size()))
+                : std::vector<std::string>{};
+        for (std::size_t lane_index = 0; lane_index < call->result_lanes.size(); ++lane_index) {
+          const auto& lane = call->result_lanes[lane_index];
+          if (lane.kind != bir::Value::Kind::Named) {
+            continue;
+          }
+          const auto destination_register_name =
+              lane_index < destination_register_names.size()
+                  ? std::optional<std::string>{destination_register_names[lane_index]}
+                  : base_destination_register_name;
+          auto destination_register_placement =
+              result_storage_kind == PreparedMoveStorageKind::Register &&
+                      call->result_abi.has_value()
+                  ? call_result_destination_register_placement(target_profile, *call->result_abi, 1)
+                  : std::nullopt;
+          if (destination_register_placement.has_value()) {
+            destination_register_placement->slot_index = lane_index;
+          }
+          append_prepared_abi_binding(
+              function_locations,
+              PreparedMovePhase::AfterCall,
+              block_index,
+              instruction_index,
+              PreparedAbiBinding{
+                  .destination_kind = PreparedMoveDestinationKind::CallResultAbi,
+                  .destination_storage_kind = result_storage_kind,
+                  .destination_abi_index = lane_index,
+                  .destination_register_name = destination_register_name,
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names =
+                      result_storage_kind == PreparedMoveStorageKind::Register &&
+                              destination_register_name.has_value()
+                          ? std::vector<std::string>{*destination_register_name}
+                          : std::vector<std::string>{},
+                  .destination_stack_offset_bytes = std::nullopt,
+                  .destination_register_placement = destination_register_placement,
+              });
+        }
+        continue;
+      }
       const auto destination_register_name =
           call->result_abi.has_value()
               ? call_result_destination_register_name(target_profile, *call->result_abi)

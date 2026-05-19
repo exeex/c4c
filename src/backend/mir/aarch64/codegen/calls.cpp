@@ -234,6 +234,25 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 }
 
+[[nodiscard]] std::optional<abi::RegisterView> scalar_view_from_register_name(
+    const std::optional<std::string>& register_name) {
+  if (!register_name.has_value() || register_name->empty()) {
+    return std::nullopt;
+  }
+  switch (register_name->front()) {
+    case 'w':
+      return abi::RegisterView::W;
+    case 'x':
+      return abi::RegisterView::X;
+    case 's':
+      return abi::RegisterView::S;
+    case 'd':
+      return abi::RegisterView::D;
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
     const std::optional<std::string>& register_name,
     const std::optional<prepare::PreparedRegisterPlacement>& placement,
@@ -1546,6 +1565,12 @@ make_value_stack_move_instruction(
       result_plan != nullptr &&
       result_plan->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
       result_plan->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
+  const bool selected_scalar_fpr_result_move =
+      result_plan != nullptr &&
+      result_plan->source_register_bank == prepare::PreparedRegisterBank::Fpr &&
+      result_plan->destination_register_bank == prepare::PreparedRegisterBank::Fpr &&
+      result_plan->source_contiguous_width == 1 &&
+      result_plan->destination_contiguous_width == 1;
   const bool selected_f128_result_move =
       result_plan != nullptr &&
       result_plan->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
@@ -1567,7 +1592,8 @@ make_value_stack_move_instruction(
       result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       result_plan->source_register_name.has_value() &&
       result_plan->destination_register_name.has_value() &&
-      (selected_gpr_result_move || selected_f128_result_move) &&
+      (selected_gpr_result_move || selected_scalar_fpr_result_move ||
+       selected_f128_result_move) &&
       binding != nullptr &&
       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       binding->destination_register_name.has_value()) {
@@ -1602,7 +1628,9 @@ make_value_stack_move_instruction(
     }
     const auto expected_view =
         selected_f128_result_move ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
-                                  : std::nullopt;
+        : selected_scalar_fpr_result_move
+            ? scalar_fp_view_from_register_name(binding->destination_register_name)
+        : std::nullopt;
     auto source = make_register_operand_from_prepared_authority(
         binding->destination_register_name,
         result_plan->source_register_placement.has_value()
@@ -1622,7 +1650,10 @@ make_value_stack_move_instruction(
         context,
         instruction_index);
     auto destination = make_register_operand_from_prepared_authority(
-        destination_home->register_name,
+        selected_scalar_fpr_result_move &&
+                result_plan->destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : destination_home->register_name,
         result_plan->destination_register_placement,
         result_plan->destination_register_bank,
         RegisterOperandRole::CallAbi,
@@ -1650,6 +1681,56 @@ make_value_stack_move_instruction(
       result_plan != nullptr &&
       result_plan->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) {
     return std::nullopt;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallResultAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      destination_home != nullptr &&
+      destination_home->kind == prepare::PreparedValueHomeKind::Register &&
+      destination_home->register_name.has_value() &&
+      binding != nullptr &&
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      binding->destination_register_name.has_value() &&
+      binding->destination_register_placement.has_value() &&
+      binding->destination_register_placement->bank == prepare::PreparedRegisterBank::Fpr &&
+      (!move_record.source_register.has_value() ||
+       !move_record.destination_register.has_value())) {
+    const auto expected_view =
+        scalar_fp_view_from_register_name(binding->destination_register_name);
+    auto source = make_register_operand_from_prepared_authority(
+        binding->destination_register_name,
+        binding->destination_register_placement,
+        prepare::PreparedRegisterBank::Fpr,
+        RegisterOperandRole::CallAbi,
+        move.from_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.from_value_id}
+                                : std::nullopt,
+        destination_home->value_name,
+        1,
+        binding->destination_occupied_register_names,
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    auto destination = make_register_operand_from_prepared_authority(
+        destination_home->register_name,
+        std::nullopt,
+        prepare::PreparedRegisterBank::Fpr,
+        RegisterOperandRole::CallAbi,
+        destination_home->value_id,
+        destination_home->value_name,
+        1,
+        {},
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      return std::nullopt;
+    }
+    move_record.source_register = *source;
+    move_record.destination_register = *destination;
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::AfterCall &&
@@ -1839,6 +1920,101 @@ std::vector<module::MachineInstruction> lower_after_call_moves(
             lower_after_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));
     }
+  }
+  return lowered;
+}
+
+std::vector<module::MachineInstruction> lower_before_return_moves(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    module::ModuleLoweringDiagnostics& diagnostics) {
+  std::vector<module::MachineInstruction> lowered;
+  if (context.function.value_locations == nullptr ||
+      context.function.control_flow == nullptr) {
+    return lowered;
+  }
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      *context.function.value_locations,
+      prepare::PreparedMovePhase::BeforeReturn,
+      context.block_index,
+      instruction_index);
+  if (bundle == nullptr) {
+    return lowered;
+  }
+
+  for (const auto& move : bundle->moves) {
+    if (move.destination_kind != prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+      continue;
+    }
+    const auto* source_home =
+        prepare::find_prepared_value_home(*context.function.value_locations,
+                                          move.from_value_id);
+    if (source_home == nullptr ||
+        source_home->kind != prepare::PreparedValueHomeKind::Register ||
+        !source_home->register_name.has_value() ||
+        !move.destination_register_name.has_value()) {
+      continue;
+    }
+
+    const auto expected_view = scalar_view_from_register_name(move.destination_register_name);
+    const auto destination_bank =
+        move.destination_register_placement.has_value()
+            ? std::optional<prepare::PreparedRegisterBank>{
+                  move.destination_register_placement->bank}
+            : std::nullopt;
+    auto source = make_register_operand_from_prepared_authority(
+        source_home->register_name,
+        std::nullopt,
+        destination_bank,
+        RegisterOperandRole::CallAbi,
+        source_home->value_id,
+        source_home->value_name,
+        1,
+        {},
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    auto destination = make_register_operand_from_prepared_authority(
+        move.destination_register_name,
+        move.destination_register_placement,
+        destination_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : std::nullopt,
+        source_home->value_name,
+        move.destination_contiguous_width,
+        move.destination_occupied_register_names,
+        expected_view,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      continue;
+    }
+
+    CallBoundaryMoveInstructionRecord move_record{
+        .function_name = context.function.control_flow->function_name,
+        .phase = bundle->phase,
+        .authority_kind = bundle->authority_kind,
+        .block_index = bundle->block_index,
+        .instruction_index = bundle->instruction_index,
+        .source_parallel_copy_predecessor_label =
+            bundle->source_parallel_copy_predecessor_label,
+        .source_parallel_copy_successor_label =
+            bundle->source_parallel_copy_successor_label,
+        .move = move,
+        .source_register = *source,
+        .destination_register = *destination,
+        .source_bundle = bundle,
+        .source_move = &move,
+    };
+    lowered.push_back(make_call_boundary_machine_instruction(
+        context,
+        instruction_index,
+        make_call_boundary_move_instruction(std::move(move_record))));
   }
   return lowered;
 }
@@ -2393,6 +2569,13 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
       instruction.move.destination_storage_kind ==
           prepare::PreparedMoveStorageKind::Register &&
       instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
+  const bool selected_register_return_move =
+      instruction.phase == prepare::PreparedMovePhase::BeforeReturn &&
+      instruction.move.destination_kind ==
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi &&
+      instruction.move.destination_storage_kind ==
+          prepare::PreparedMoveStorageKind::Register &&
+      instruction.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move;
   const bool selected_value_register_move =
       (instruction.phase == prepare::PreparedMovePhase::BlockEntry ||
        instruction.phase == prepare::PreparedMovePhase::BeforeInstruction) &&
@@ -2413,7 +2596,7 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
             "call-boundary stack argument move requires AArch64 stack-copy lowering"};
   }
   if (!selected_register_argument_move && !selected_register_result_move &&
-      !selected_value_register_move) {
+      !selected_register_return_move && !selected_value_register_move) {
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::DeferredUnsupported,
         .diagnostic =

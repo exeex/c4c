@@ -1565,11 +1565,62 @@ mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruct
   const auto print_form = classify_return_value_print_form(ret);
   switch (print_form) {
     case ReturnValuePrintForm::PrimaryReturn: {
+      const auto* source =
+          ret.value.has_value() ? std::get_if<RegisterOperand>(&ret.value->payload) : nullptr;
+      std::optional<abi::RegisterReference> destination;
+      switch (ret.value_type) {
+        case bir::TypeKind::F32:
+          destination = abi::s_register(0);
+          break;
+        case bir::TypeKind::F64:
+          destination = abi::d_register(0);
+          break;
+        case bir::TypeKind::I1:
+        case bir::TypeKind::I8:
+        case bir::TypeKind::I16:
+        case bir::TypeKind::I32:
+          destination = abi::w_register(0);
+          break;
+        case bir::TypeKind::I64:
+        case bir::TypeKind::Ptr:
+          destination = abi::x_register(0);
+          break;
+        default:
+          break;
+      }
+      if (source != nullptr && destination.has_value() &&
+          (source->reg.bank != destination->bank ||
+           source->reg.index != destination->index ||
+           source->reg.view != destination->view)) {
+        const bool scalar_fp_return_move =
+            abi::is_fp_simd_register(source->reg) &&
+            abi::is_fp_simd_register(*destination) &&
+            source->reg.view == destination->view &&
+            (source->reg.view == abi::RegisterView::S ||
+             source->reg.view == abi::RegisterView::D);
+        const auto move_mnemonic = scalar_fp_return_move
+                                       ? std::string_view{"fmov"}
+                                       : required_auxiliary_mnemonic(instruction);
+        if (move_mnemonic.empty()) {
+          return target_unsupported(bad_header(instruction) +
+                                    "return move mnemonic is not printable");
+        }
+        std::string source_name = register_name(*source);
+        if (abi::is_gp_register(source->reg) && abi::is_gp_register(*destination)) {
+          if (const auto viewed_source = register_name_with_view(*source, destination->view)) {
+            source_name = *viewed_source;
+          }
+        }
+        lines.push_back(std::string(move_mnemonic) + " " +
+                        std::string(abi::register_name(*destination)) + ", " +
+                        source_name);
+      }
       const auto return_mnemonic = required_primary_mnemonic(instruction);
       if (return_mnemonic.empty()) {
         return target_unsupported(bad_header(instruction) + "return mnemonic is not printable");
       }
-      return target_printed({std::string(return_mnemonic)});
+      lines.emplace_back(return_mnemonic);
+      return target_printed(std::move(lines));
     }
     case ReturnValuePrintForm::Unsupported:
       return target_unsupported(bad_header(instruction) +

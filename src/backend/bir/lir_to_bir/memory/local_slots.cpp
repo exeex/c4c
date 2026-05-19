@@ -23,6 +23,11 @@ using lir_to_bir_detail::type_size_bytes;
 
 namespace {
 
+struct HomogeneousFpAggregateFacts {
+  bir::TypeKind lane_type = bir::TypeKind::Void;
+  std::size_t lane_count = 0;
+};
+
 BackendAggregateLayoutLookup lookup_scalar_byte_offset_layout_result(
     std::string_view type_text,
     const BirFunctionLowerer::TypeDeclMap& type_decls,
@@ -48,6 +53,72 @@ BirFunctionLowerer::AggregateTypeLayout lookup_scalar_byte_offset_layout(
     const BirFunctionLowerer::TypeDeclMap& type_decls,
     const BackendStructuredLayoutTable* structured_layouts) {
   return lookup_scalar_byte_offset_layout_result(type_text, type_decls, structured_layouts).layout;
+}
+
+bool collect_homogeneous_fp_aggregate_facts(
+    const BirFunctionLowerer::AggregateTypeLayout& layout,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts,
+    HomogeneousFpAggregateFacts* facts) {
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
+      if (layout.scalar_type != bir::TypeKind::F32 &&
+          layout.scalar_type != bir::TypeKind::F64) {
+        return false;
+      }
+      if (facts->lane_type != bir::TypeKind::Void && facts->lane_type != layout.scalar_type) {
+        return false;
+      }
+      facts->lane_type = layout.scalar_type;
+      ++facts->lane_count;
+      return facts->lane_count <= 4;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      if (layout.array_count == 0) {
+        return false;
+      }
+      const auto element_layout =
+          lookup_scalar_byte_offset_layout(layout.element_type_text, type_decls, structured_layouts);
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid) {
+        return false;
+      }
+      for (std::size_t index = 0; index < layout.array_count; ++index) {
+        if (!collect_homogeneous_fp_aggregate_facts(
+                element_layout, type_decls, structured_layouts, facts)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      if (layout.fields.empty()) {
+        return false;
+      }
+      for (const auto& field : layout.fields) {
+        const auto field_layout =
+            lookup_scalar_byte_offset_layout(field.type_text, type_decls, structured_layouts);
+        if (field_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+            !collect_homogeneous_fp_aggregate_facts(
+                field_layout, type_decls, structured_layouts, facts)) {
+          return false;
+        }
+      }
+      return true;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid:
+      return false;
+  }
+  return false;
+}
+
+std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
+    const BirFunctionLowerer::AggregateTypeLayout& layout,
+    const BirFunctionLowerer::TypeDeclMap& type_decls,
+    const BackendStructuredLayoutTable* structured_layouts) {
+  HomogeneousFpAggregateFacts facts;
+  if (!collect_homogeneous_fp_aggregate_facts(layout, type_decls, structured_layouts, &facts) ||
+      facts.lane_type == bir::TypeKind::Void || facts.lane_count == 0 || facts.lane_count > 4) {
+    return std::nullopt;
+  }
+  return facts;
 }
 
 [[nodiscard]] bool append_local_slot_address_value(std::string_view result_name,
@@ -505,6 +576,56 @@ bool BirFunctionLowerer::lower_memory_store_inst(
         });
       }
       return true;
+    }
+
+    if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+        context_.target_profile.has_float_return_registers) {
+      const auto target_layout =
+          lookup_scalar_byte_offset_layout(target_aggregate_it->second.type_text,
+                                           type_decls_,
+                                           &structured_layouts_);
+      if (const auto hfa_facts =
+              homogeneous_fp_aggregate_facts(target_layout, type_decls_, &structured_layouts_);
+          hfa_facts.has_value()) {
+        std::vector<bir::Value> lanes;
+        bool has_return_lane_store = false;
+        if (const auto lane_it = hfa_return_lanes_.find(store.val.str());
+            lane_it != hfa_return_lanes_.end()) {
+          lanes = lane_it->second;
+          has_return_lane_store = true;
+        } else if (hfa_facts->lane_count == 1) {
+          const auto value = lower_value(store.val, hfa_facts->lane_type, value_aliases_);
+          if (value.has_value()) {
+            lanes.push_back(*value);
+            has_return_lane_store = true;
+          }
+        }
+        if (has_return_lane_store && lanes.size() != hfa_facts->lane_count) {
+          return false;
+        }
+        if (has_return_lane_store) {
+          const auto leaf_slots = collect_sorted_leaf_slots(target_aggregate_it->second);
+          if (leaf_slots.size() != hfa_facts->lane_count) {
+            return false;
+          }
+          for (const auto& [byte_offset, slot_name] : leaf_slots) {
+            (void)byte_offset;
+            const auto slot_type_it = local_slot_types_.find(slot_name);
+            if (slot_type_it == local_slot_types_.end() ||
+                slot_type_it->second != hfa_facts->lane_type) {
+              return false;
+            }
+          }
+          clear_local_scalar_slot_values();
+          for (std::size_t lane_index = 0; lane_index < lanes.size(); ++lane_index) {
+            lowered_insts->push_back(bir::StoreLocalInst{
+                .slot_name = leaf_slots[lane_index].second,
+                .value = lanes[lane_index],
+            });
+          }
+          return true;
+        }
+      }
     }
 
     const auto source_alias_it = aggregate_value_aliases_.find(store.val.str());

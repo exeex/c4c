@@ -241,6 +241,78 @@ std::optional<BirFunctionLowerer::AggregateTypeLayout> lower_signature_aggregate
   return layout;
 }
 
+bool collect_homogeneous_fp_aggregate_lanes(
+    const BirFunctionLowerer::AggregateTypeLayout& layout,
+    std::optional<bir::TypeKind>& lane_type,
+    std::size_t& lane_count) {
+  switch (layout.kind) {
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Scalar:
+      if (layout.scalar_type != bir::TypeKind::F32 &&
+          layout.scalar_type != bir::TypeKind::F64) {
+        return false;
+      }
+      if (lane_type.has_value() && *lane_type != layout.scalar_type) {
+        return false;
+      }
+      lane_type = layout.scalar_type;
+      ++lane_count;
+      return lane_count <= 4;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Array: {
+      if (layout.array_count == 0) {
+        return false;
+      }
+      const auto element_layout =
+          lir_to_bir_detail::compute_aggregate_type_layout(layout.element_type_text, {});
+      if (element_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid) {
+        return false;
+      }
+      for (std::size_t index = 0; index < layout.array_count; ++index) {
+        if (!collect_homogeneous_fp_aggregate_lanes(element_layout, lane_type, lane_count)) {
+          return false;
+        }
+      }
+      return true;
+    }
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Struct:
+      if (layout.fields.empty()) {
+        return false;
+      }
+      for (const auto& field : layout.fields) {
+        const auto field_layout =
+            lir_to_bir_detail::compute_aggregate_type_layout(field.type_text, {});
+        if (field_layout.kind == BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid ||
+            !collect_homogeneous_fp_aggregate_lanes(field_layout, lane_type, lane_count)) {
+          return false;
+        }
+      }
+      return true;
+    case BirFunctionLowerer::AggregateTypeLayout::Kind::Invalid:
+      return false;
+  }
+  return false;
+}
+
+struct HfaReturnFacts {
+  bir::TypeKind lane_type = bir::TypeKind::Void;
+  std::size_t lane_count = 0;
+};
+
+std::optional<HfaReturnFacts> aarch64_hfa_return_facts(
+    const c4c::TargetProfile& target_profile,
+    const BirFunctionLowerer::AggregateTypeLayout& layout) {
+  if (target_profile.arch != c4c::TargetArch::Aarch64 ||
+      !target_profile.has_float_return_registers) {
+    return std::nullopt;
+  }
+  std::optional<bir::TypeKind> lane_type;
+  std::size_t lane_count = 0;
+  if (!collect_homogeneous_fp_aggregate_lanes(layout, lane_type, lane_count) ||
+      !lane_type.has_value() || lane_count == 0 || lane_count > 4) {
+    return std::nullopt;
+  }
+  return HfaReturnFacts{.lane_type = *lane_type, .lane_count = lane_count};
+}
+
 }  // namespace
 
 bool BirFunctionLowerer::is_void_param_sentinel(const c4c::TypeSpec& type) {
@@ -347,6 +419,21 @@ std::optional<BirFunctionLowerer::LoweredReturnInfo> BirFunctionLowerer::lower_r
   if (const auto aggregate_layout =
           lower_signature_aggregate_layout(trimmed, type_decls, structured_layouts, type_ref);
       aggregate_layout.has_value()) {
+    if (const auto hfa_return = aarch64_hfa_return_facts(target_profile, *aggregate_layout);
+        hfa_return.has_value()) {
+      auto abi = lir_to_bir_detail::compute_function_return_abi(
+          target_profile, hfa_return->lane_type, false);
+      if (abi.has_value()) {
+        abi->register_count = hfa_return->lane_count;
+      }
+      return LoweredReturnInfo{
+          .type = hfa_return->lane_type,
+          .size_bytes = aggregate_layout->size_bytes,
+          .align_bytes = aggregate_layout->align_bytes,
+          .abi = abi,
+          .abi_lane_count = hfa_return->lane_count,
+      };
+    }
     return LoweredReturnInfo{
         .type = bir::TypeKind::Void,
         .size_bytes = aggregate_layout->size_bytes,

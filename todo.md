@@ -8,30 +8,35 @@ Current Step Title: Repair Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired AArch64 fixed HFA/floating call-lane publication in
-`src/backend/mir/aarch64/codegen/calls.cpp`: scalar FPR call-boundary argument
-moves are now selected when prepared call ownership says a lane in a non-ABI
-FPR must be published into the classified ABI FPR, and the printer emits
-`fmov` for scalar `s`/`d` FPR register-to-register call-boundary moves.
+Step 2 repaired the representable fixed HFA return path for AArch64 scalar FP
+lanes. Semantic LIR-to-BIR return classification now recognizes homogeneous
+`float`/`double` aggregates of 1..4 lanes and classifies them as FP register
+returns instead of `ptr sret`; fixed HFA call results now carry explicit
+per-lane BIR values, aggregate stores materialize each returned lane into the
+matching local aggregate leaf, and aggregate returns load/publish every return
+lane instead of collapsing to one scalar.
 
-Focused backend coverage now proves the record and printer contracts:
-`backend_aarch64_target_instruction_records` selects a scalar FPR
-`CallArgumentAbi` move such as `s13 -> s0`, and
-`backend_aarch64_machine_printer` prints that selected move as
-`fmov s0, s13`.
+AArch64 return/call-result publication now covers scalar FPR HFA lanes:
+callee-side before-return moves publish return lanes into `sN`/`dN`, after-call
+moves consume call-result lanes from ABI FPRs, and the return printer preserves
+the correct source/destination register views for scalar register publication.
 
-Fresh `00204.c` generated assembly now publishes the fixed HFA float lanes
-before direct calls: the `fa_hfa11(hfa11)` path loads the lane through `s13`
-and now emits `fmov s0, s13` immediately before `bl fa_hfa11`; the wider
-`fa_hfa12`/`fa_hfa13`/`fa_hfa14` float-lane calls similarly publish into
-`s0`/`s1`/`s2` as needed.
+Focused backend coverage now proves the classification/publication contracts:
+`backend_lir_to_bir_notes` covers fixed HFA return and call-result
+classification plus multi-lane aggregate materialization as scalar FP ABI lanes
+rather than sret,
+`backend_aarch64_target_instruction_records` selects scalar FPR
+`FunctionReturnAbi` moves, and `backend_aarch64_machine_printer` prints scalar
+FPR register returns with ABI publication such as `fmov s0, s13`.
 
 ## Suggested Next
 
-Next packet should investigate fixed HFA return classification/publication on
-AArch64. Fresh generated BIR still lowers functions such as `fr_hfa11` as
-`ptr sret(size=4, align=4)` and generated assembly uses stack/pointer return
-storage instead of publishing HFA return lanes through ABI FPRs such as `s0`.
+`00204.c` now advances past semantic LIR-to-BIR and backend assembly/linking.
+The current first bad fact is runtime execution: the linked AArch64 backend
+binary exits with `Segmentation fault` before producing output. Next packet
+should debug the generated-code/runtime fault without reopening fixed HFA
+return materialization unless fresh evidence points back to ABI lane
+publication.
 
 ## Watchouts
 
@@ -41,9 +46,14 @@ storage instead of publishing HFA return lanes through ABI FPRs such as `s0`.
 - The direct fixed-HFA argument path now emits scalar FPR publication before
   `bl`; reopen it only if a fresh generated callsite again reaches a fixed HFA
   callee without `s`/`d` ABI FPR publication.
-- The remaining visible HFA-family bad fact is not the fixed argument call
-  lane: fixed HFA returns such as `fr_hfa11` are still represented as sret
-  pointer returns in BIR/generated assembly.
+- The previous fixed HFA return bad fact is repaired: `CallInst` carries
+  explicit multi-lane result values and `ReturnTerminator` carries explicit
+  return lanes for fixed `float`/`double` HFAs. Do not regress this back to
+  one scalar result duplicated into multiple leaves.
+- Review follow-up `review/326_hfa_return_step2_review.md` is addressed:
+  after-call HFA call-result lane moves now have matching per-lane ABI
+  bindings, so lane 1+ consumes `s1`/`d1` and later ABI FPRs instead of the
+  primary `s0`/`d0` lane.
 - Preserve prior repairs: large stack offsets, large frame adjustments,
   `va_start` helper lowering, scalar ALU immediates, HFA argument lanes, F128
   transport, aggregate helper text lowering, `va_start` destination
@@ -54,10 +64,6 @@ storage instead of publishing HFA return lanes through ABI FPRs such as `s0`.
   `%lv.t7.0`, stale mutable pointer-local provenance, later branch exits, and
   `%t15` predecessor/join source publication are fixed and now have focused
   local coverage.
-- The remaining runtime representative failure is still
-  `RUNTIME_NONZERO`/segmentation fault. The delegated CTest capture reported
-  no stdout/stderr payload for the failing run, so use generated BIR/assembly
-  facts rather than output text alone for the next first-bad-fact pass.
 - Do not special-case `00204.c`, `stdarg`, `myprintf`, the format loop, one
   HFA shape, one float literal, one stack slot, one register, one offset, or
   one emitted instruction sequence.
@@ -74,13 +80,25 @@ storage instead of publishing HFA return lanes through ABI FPRs such as `s0`.
 Delegated proof run:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_target_instruction_records|c_testsuite_aarch64_backend_src_00204_c)$'`
 
-Result: build succeeded; 3/4 focused CTest tests passed. The focused backend
+Result: build succeeded; 3/4 delegated CTest tests passed. The focused backend
 tests `backend_aarch64_machine_printer`,
 `backend_aarch64_instruction_dispatch`, and
 `backend_aarch64_target_instruction_records` passed. The representative
-`c_testsuite_aarch64_backend_src_00204_c` still fails with
-`RUNTIME_NONZERO`/segmentation fault after the fixed-HFA call-lane publication
-repair; fresh generated assembly confirms `fmov s0, s13` before
-`bl fa_hfa11`.
+`c_testsuite_aarch64_backend_src_00204_c` advanced past semantic
+`FRONTEND_FAIL` and backend assembly/linking; it now fails as
+`RUNTIME_NONZERO` with `exit=Segmentation fault`.
+
+Additional focused check: `ctest --test-dir build -j --output-on-failure -R
+'^backend_lir_to_bir_notes$'` passed after adding multi-lane HFA return/call
+result materialization coverage.
+
+Review follow-up checks:
+`ctest --test-dir build -j --output-on-failure -R
+'^(backend_prepare_liveness|backend_aarch64_instruction_dispatch)$'` passed,
+including focused coverage that generated AArch64 HFA call-result lane
+bindings publish `s0`/`s1` and dispatch consumes lane moves as `s0 -> s13`
+and `s1 -> s14`. Broad backend validation
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed
+140/140.
 
 Proof log: `test_after.log`.

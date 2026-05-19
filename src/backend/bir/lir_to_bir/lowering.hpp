@@ -425,6 +425,7 @@ class BirFunctionLowerer {
   using BlockLookup = std::unordered_map<std::string, const c4c::codegen::lir::LirBlock*>;
   // Aggregate SSA value to aggregate slot spelling within one function.
   using AggregateValueAliasMap = std::unordered_map<std::string, std::string>;
+  using HfaReturnLaneMap = std::unordered_map<std::string, std::vector<bir::Value>>;
 
   struct BranchChain {
     // Selector-recognition labels are raw LIR block spellings consumed before
@@ -479,6 +480,7 @@ class BirFunctionLowerer {
     std::size_t align_bytes = 0;
     std::optional<bir::CallResultAbiInfo> abi;
     bool returned_via_sret = false;
+    std::size_t abi_lane_count = 1;
   };
 
   using AggregateArrayExtent = c4c::backend::AggregateArrayExtent;
@@ -1423,6 +1425,7 @@ class BirFunctionLowerer {
   ValueMap value_aliases_;
   CompareMap compare_exprs_;
   AggregateValueAliasMap aggregate_value_aliases_;
+  HfaReturnLaneMap hfa_return_lanes_;
   LocalSlotTypes local_slot_types_;
   LocalPointerSlots local_pointer_slots_;
   LocalArraySlotMap local_array_slots_;
