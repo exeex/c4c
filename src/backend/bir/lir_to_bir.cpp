@@ -206,13 +206,25 @@ StringPointerAliasMap collect_string_pointer_aliases(
   return aliases;
 }
 
-std::vector<const c4c::codegen::lir::LirCallOp*> collect_direct_lir_calls(
-    const c4c::codegen::lir::LirFunction& function) {
+enum class StringPointerCallRewriteKind {
+  Direct,
+  Indirect,
+};
+
+bool lir_call_matches_rewrite_kind(const c4c::codegen::lir::LirCallOp& call,
+                                   StringPointerCallRewriteKind kind) {
+  const bool is_direct = call.callee.kind() == c4c::codegen::lir::LirOperandKind::Global;
+  return kind == StringPointerCallRewriteKind::Direct ? is_direct : !is_direct;
+}
+
+std::vector<const c4c::codegen::lir::LirCallOp*> collect_lir_calls_for_string_pointer_rewrite(
+    const c4c::codegen::lir::LirFunction& function,
+    StringPointerCallRewriteKind kind) {
   std::vector<const c4c::codegen::lir::LirCallOp*> calls;
   for (const auto& block : function.blocks) {
     for (const auto& inst : block.insts) {
       const auto* call = std::get_if<c4c::codegen::lir::LirCallOp>(&inst);
-      if (call == nullptr || call->callee.kind() != c4c::codegen::lir::LirOperandKind::Global) {
+      if (call == nullptr || !lir_call_matches_rewrite_kind(*call, kind)) {
         continue;
       }
       calls.push_back(call);
@@ -221,12 +233,22 @@ std::vector<const c4c::codegen::lir::LirCallOp*> collect_direct_lir_calls(
   return calls;
 }
 
-std::vector<bir::CallInst*> collect_direct_bir_calls(bir::Function* function) {
+bool bir_call_matches_rewrite_kind(const bir::CallInst& call,
+                                   StringPointerCallRewriteKind kind) {
+  if (kind == StringPointerCallRewriteKind::Direct) {
+    return !call.is_indirect && !call.callee.empty();
+  }
+  return call.is_indirect && call.callee_value.has_value();
+}
+
+std::vector<bir::CallInst*> collect_bir_calls_for_string_pointer_rewrite(
+    bir::Function* function,
+    StringPointerCallRewriteKind kind) {
   std::vector<bir::CallInst*> calls;
   for (auto& block : function->blocks) {
     for (auto& inst : block.insts) {
       auto* call = std::get_if<bir::CallInst>(&inst);
-      if (call == nullptr || call->is_indirect || call->callee.empty()) {
+      if (call == nullptr || !bir_call_matches_rewrite_kind(*call, kind)) {
         continue;
       }
       calls.push_back(call);
@@ -268,7 +290,79 @@ const c4c::codegen::lir::LirFunction* find_lir_function_for_lowered_function(
   return fallback_it == lookup.fallback_by_name.end() ? nullptr : fallback_it->second;
 }
 
-void rewrite_direct_call_string_pointer_args(
+std::optional<BirFunctionLowerer::ParsedTypedCall> parse_call_for_string_pointer_rewrite(
+    const c4c::codegen::lir::LirCallOp& call,
+    StringPointerCallRewriteKind kind) {
+  if (kind == StringPointerCallRewriteKind::Direct) {
+    const auto parsed_direct_call = BirFunctionLowerer::parse_direct_global_typed_call(call);
+    if (!parsed_direct_call.has_value()) {
+      return std::nullopt;
+    }
+    return std::move(parsed_direct_call->typed_call);
+  }
+  return BirFunctionLowerer::parse_typed_call(call);
+}
+
+void rewrite_string_pointer_args_for_call_pairs(
+    const std::vector<const c4c::codegen::lir::LirCallOp*>& lir_calls,
+    const std::vector<bir::CallInst*>& lowered_calls,
+    StringPointerCallRewriteKind kind,
+    const StringPointerAliasMap& string_aliases,
+    const std::unordered_map<c4c::TextId, const bir::StringConstant*>& string_constants_by_name_id,
+    bir::Module* lowered_module) {
+  if (lir_calls.size() != lowered_calls.size()) {
+    return;
+  }
+
+  for (std::size_t call_index = 0; call_index < lir_calls.size(); ++call_index) {
+    const auto parsed_call = parse_call_for_string_pointer_rewrite(*lir_calls[call_index], kind);
+    if (!parsed_call.has_value()) {
+      continue;
+    }
+
+    auto& lowered_call = *lowered_calls[call_index];
+    const auto arg_count =
+        std::min(std::min(parsed_call->param_types.size(), parsed_call->args.size()),
+                 lowered_call.args.size());
+    for (std::size_t arg_index = 0; arg_index < arg_count; ++arg_index) {
+      if (c4c::codegen::lir::trim_lir_arg_text(parsed_call->param_types[arg_index]) != "ptr" ||
+          lowered_call.args[arg_index].type != bir::TypeKind::Ptr ||
+          lowered_call.args[arg_index].kind != bir::Value::Kind::Named ||
+          (!lowered_call.args[arg_index].name.empty() &&
+           lowered_call.args[arg_index].name.front() == '@')) {
+        continue;
+      }
+
+      const c4c::codegen::lir::LirOperand arg_operand(
+          std::string(parsed_call->args[arg_index].operand));
+      c4c::TextId resolved_name_id = c4c::kInvalidText;
+      if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
+        const auto global_name = strip_global_sig(arg_operand.str());
+        resolved_name_id = lowered_module->names.texts.find(global_name);
+      } else if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
+        const auto alias_it = string_aliases.find(arg_operand.str());
+        if (alias_it == string_aliases.end()) {
+          continue;
+        }
+        resolved_name_id = alias_it->second;
+      } else {
+        continue;
+      }
+
+      const auto string_constant_it = string_constants_by_name_id.find(resolved_name_id);
+      if (string_constant_it == string_constants_by_name_id.end()) {
+        continue;
+      }
+      const std::string_view resolved_name =
+          lowered_module->names.texts.lookup(string_constant_it->second->name_id);
+      std::string rewritten_name = "@";
+      rewritten_name.append(resolved_name);
+      lowered_call.args[arg_index] = bir::Value::named(bir::TypeKind::Ptr, rewritten_name);
+    }
+  }
+}
+
+void rewrite_call_string_pointer_args(
     const c4c::codegen::lir::LirModule& lir_module,
     const LoweredStringConstantMetadata& string_constants,
     bir::Module* lowered_module) {
@@ -302,58 +396,18 @@ void rewrite_direct_call_string_pointer_args(
       continue;
     }
 
-    const auto lir_calls = collect_direct_lir_calls(*lir_function);
-    auto lowered_calls = collect_direct_bir_calls(&lowered_function);
-    if (lir_calls.size() != lowered_calls.size()) {
-      continue;
-    }
-
-    for (std::size_t call_index = 0; call_index < lir_calls.size(); ++call_index) {
-      const auto parsed_direct_call =
-          BirFunctionLowerer::parse_direct_global_typed_call(*lir_calls[call_index]);
-      if (!parsed_direct_call.has_value()) {
-        continue;
-      }
-
-      auto& lowered_call = *lowered_calls[call_index];
-      const auto arg_count =
-          std::min(parsed_direct_call->typed_call.args.size(), lowered_call.args.size());
-      for (std::size_t arg_index = 0; arg_index < arg_count; ++arg_index) {
-        if (c4c::codegen::lir::trim_lir_arg_text(
-                parsed_direct_call->typed_call.param_types[arg_index]) != "ptr" ||
-            lowered_call.args[arg_index].type != bir::TypeKind::Ptr ||
-            lowered_call.args[arg_index].kind != bir::Value::Kind::Named ||
-            (!lowered_call.args[arg_index].name.empty() &&
-             lowered_call.args[arg_index].name.front() == '@')) {
-          continue;
-        }
-
-        const c4c::codegen::lir::LirOperand arg_operand(
-            std::string(parsed_direct_call->typed_call.args[arg_index].operand));
-        c4c::TextId resolved_name_id = c4c::kInvalidText;
-        if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::Global) {
-          const auto global_name = strip_global_sig(arg_operand.str());
-          resolved_name_id = lowered_module->names.texts.find(global_name);
-        } else if (arg_operand.kind() == c4c::codegen::lir::LirOperandKind::SsaValue) {
-          const auto alias_it = string_aliases.find(arg_operand.str());
-          if (alias_it == string_aliases.end()) {
-            continue;
-          }
-          resolved_name_id = alias_it->second;
-        } else {
-          continue;
-        }
-
-        const auto string_constant_it = string_constants_by_name_id.find(resolved_name_id);
-        if (string_constant_it == string_constants_by_name_id.end()) {
-          continue;
-        }
-        const std::string_view resolved_name =
-            lowered_module->names.texts.lookup(string_constant_it->second->name_id);
-        std::string rewritten_name = "@";
-        rewritten_name.append(resolved_name);
-        lowered_call.args[arg_index] = bir::Value::named(bir::TypeKind::Ptr, rewritten_name);
-      }
+    for (const auto kind : {StringPointerCallRewriteKind::Direct,
+                            StringPointerCallRewriteKind::Indirect}) {
+      const auto lir_calls =
+          collect_lir_calls_for_string_pointer_rewrite(*lir_function, kind);
+      auto lowered_calls =
+          collect_bir_calls_for_string_pointer_rewrite(&lowered_function, kind);
+      rewrite_string_pointer_args_for_call_pairs(lir_calls,
+                                                 lowered_calls,
+                                                 kind,
+                                                 string_aliases,
+                                                 string_constants_by_name_id,
+                                                 lowered_module);
     }
   }
 }
@@ -370,7 +424,7 @@ BirLoweringResult try_lower_to_bir_with_options(
   auto lowered = lower_module(context, analysis);
   const auto string_constants = collect_lowered_string_constants(module);
   if (lowered.has_value()) {
-    rewrite_direct_call_string_pointer_args(module, string_constants, &*lowered);
+    rewrite_call_string_pointer_args(module, string_constants, &*lowered);
   }
 
   context.note("pipeline", "finish lir_to_bir lowering pipeline");

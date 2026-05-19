@@ -1,76 +1,53 @@
 Status: Active
 Source Idea Path: ideas/open/310_prepared_indirect_call_string_argument_facts.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Locate the Existing Direct-Call String Argument Authority
+Current Step ID: 2
+Current Step Title: Publish Indirect-Call String Argument Facts
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the existing direct-call string argument authority and the
-missing indirect-call branch.
+Step 2 extended the existing LIR-to-BIR string pointer argument rewrite so it
+now runs over both direct and indirect call pairs. Direct calls still use the
+existing direct-global typed-call parser; indirect calls use the typed-call
+parser and the same `collect_string_pointer_aliases()` facts to rewrite pointer
+arguments that resolve to string-pool constants into named `@...` string
+values before stack layout observes them.
 
-Direct-call string argument authority is split across two producer surfaces:
-`src/backend/bir/lir_to_bir.cpp` materializes string constants and
-`rewrite_direct_call_string_pointer_args()` rewrites direct BIR call pointer
-arguments that alias all-zero LIR `getelementptr @.str*` results into named
-string values such as `@.L.str.call`; then
-`src/backend/prealloc/stack_layout/coordinator.cpp`
-`append_call_argument_address_materialization()` recognizes those named
-`@...` string values through `direct_string_constant_name()` and publishes a
-`PreparedAddressMaterializationKind::StringConstant` record with result value
-identity, text identity, byte offset 0, and default address space.
-
-The exact missing branch is in the LIR-to-BIR rewrite pass: it only collects
-direct LIR calls (`collect_direct_lir_calls()`) and direct BIR calls
-(`collect_direct_bir_calls()`), so indirect calls are never considered even
-when `collect_string_pointer_aliases()` already knows an indirect call argument
-SSA value aliases a string-pool `getelementptr`. The stack-layout coordinator
-then only sees the indirect call argument as `%t2`, not `@.str1`, so
-`direct_string_constant_name()` cannot publish the string materialization.
-
-Focused current-state evidence:
-`./build/c4cll --dump-bir --mir-focus-function main tests/c/external/c-testsuite/src/00189.c`
-shows the outer call as `%t5 = bir.call i32 %t0(ptr %t1, ptr %t2, i32 %t4)`.
-`./build/c4cll --dump-prepared-bir --mir-focus-function main tests/c/external/c-testsuite/src/00189.c`
-shows prepared addressing for `main` only has global-symbol accesses for
-`%t0`, `%t1`, and `%t3`; the outer call arg1 remains a register source `%t2`
-with no prepared string-constant materialization.
+`backend_prepare_stack_layout` now keeps the direct-call string argument
+fixture and keeps the BIR-only indirect-call consumer fixture. It also adds a
+LIR-origin indirect-call fixture that starts with an all-zero
+`getelementptr @.L.str...`, lowers through LIR-to-BIR, runs the stack-layout
+path, and verifies the resulting prepared
+`PreparedAddressMaterializationKind::StringConstant` record. No stack-layout
+coordinator changes were needed.
 
 ## Suggested Next
 
-Implement Step 2 by extending the existing LIR-to-BIR string-pointer rewrite
-surface, not AArch64 lowering: generalize
-`rewrite_direct_call_string_pointer_args()` so it also pairs indirect LIR calls
-with indirect BIR calls and rewrites pointer arguments whose operands resolve
-through `collect_string_pointer_aliases()`. The smallest likely implementation
-surface is `src/backend/bir/lir_to_bir.cpp`, plus focused prepare coverage in
-`tests/backend/bir/backend_prepare_stack_layout_test.cpp` that mirrors the
-direct-call fixture with an indirect callee and a string pointer argument.
+Supervisor should review and commit the Step 2 slice, then choose the next
+packet from the active plan.
 
 ## Watchouts
 
-- Do not repair this by guessing in AArch64 from `00189.c`, `stdout`,
-  `fprintfptr`, `.str1`, argument index, assembly text, or one-string
-  heuristics.
-- Do not edit expectations, allowlists, unsupported classifications, runner
-  behavior, timeout policy, CTest registration, proof logs, or test contracts.
-- Do not expand this prerequisite into idea 309's AArch64 callee/register
-  preservation; return to idea 309 only after the prepared string argument fact
-  exists.
-- Keep the rewrite semantic and call-pair based: indirect callee identity is
-  irrelevant to the string argument fact, and the accepted proof should show an
-  arbitrary indirect pointer call can publish the same prepared string
-  materialization as a direct call.
-- Preserve existing direct-call behavior and the direct-call fixture. The
-  coordinator path already handles `@string` call arguments once BIR presents
-  them with string identity.
+The rewrite remains call-pair based and does not infer from `00189.c`, callee
+names, argument indexes, assembly, or AArch64 lowering. If future work observes
+functions where lowered BIR call counts diverge from LIR call counts for the
+same direct/indirect lane, that should be handled as a producer-pairing issue,
+not by adding target-specific string guessing. The strengthened local fixture
+uses a synthetic indirect callee pointer and private string name so the unit
+coverage is not coupled to `00189.c`, `stdout`, `fprintfptr`, `.str1`, or a
+fixed indirect-call argument index.
 
 ## Proof
 
-Read-only localization packet. No build or CTest was required and no
-`test_after.log` was written.
+Passed. Proof log: `test_after.log`.
 
-Recommended supervisor proof command for the Step 2 implementation packet:
-`cmake --build build --target backend_prepare_stack_layout_test c4cll && ctest --test-dir build -R '^backend_prepare_stack_layout$' --output-on-failure && ./build/c4cll --dump-prepared-bir --mir-focus-function main tests/c/external/c-testsuite/src/00189.c`
+Command:
+`{ cmake --build --preset default --target backend_prepare_stack_layout_test c4cll && ctest --test-dir build -R '^backend_prepare_stack_layout$' --output-on-failure && ./build/c4cll --dump-prepared-bir --mir-focus-function main tests/c/external/c-testsuite/src/00189.c | rg 'address_materialization .*inst_index=4 kind=string_constant .*text=\.str1 '; } > test_after.log 2>&1`
+
+Additional supervisor validation after review:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 139/139.
+The monotonic regression-guard parser was not accepted for this proof shape
+because the CTest pass count was unchanged; the meaningful before/after delta
+is the prepared-BIR materialization check moving from absent to present.

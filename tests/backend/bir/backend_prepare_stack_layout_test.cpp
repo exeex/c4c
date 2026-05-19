@@ -1,9 +1,11 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/prealloc/prealloc.hpp"
 #include "src/target_profile.hpp"
 
 #include <cstdlib>
 #include <iostream>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -11,6 +13,7 @@
 namespace {
 
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 namespace prepare = c4c::backend::prepare;
 
 c4c::TargetProfile riscv_target_profile() {
@@ -433,6 +436,117 @@ prepare::PreparedBirModule prepare_direct_call_string_argument_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_indirect_call_string_argument_module() {
+  bir::Module module;
+  module.string_constants.push_back(bir::StringConstant{
+      .name = ".L.str.indirect.call",
+      .name_id = module.names.texts.intern(".L.str.indirect.call"),
+      .bytes = "indirect-call-arg",
+      .align_bytes = 1,
+  });
+
+  bir::Function function;
+  function.name = "stack_layout_indirect_call_string_argument_activation";
+  function.return_type = bir::TypeKind::I32;
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
+  entry.insts.push_back(bir::CallInst{
+      .callee_value = bir::Value::named(bir::TypeKind::Ptr, "callee.ptr"),
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "@.L.str.indirect.call")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "i32",
+      .return_type = bir::TypeKind::I32,
+      .is_indirect = true,
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
+lir::LirModule make_lir_indirect_call_string_argument_module() {
+  lir::LirModule module;
+  module.target_profile = riscv_target_profile();
+  module.string_pool.push_back(lir::LirStringConst{
+      .pool_name = "@.L.str.lir.indirect.call",
+      .raw_bytes = "lir-indirect-call-arg\\00",
+      .byte_length = 22,
+  });
+
+  lir::LirFunction function;
+  function.name = "stack_layout_lir_indirect_call_string_argument_activation";
+  function.signature_text =
+      "define void @stack_layout_lir_indirect_call_string_argument_activation()";
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%string.ptr"),
+      .element_type = lir::LirTypeRef("[22 x i8]"),
+      .ptr = lir::LirOperand("@.L.str.lir.indirect.call"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(lir::LirCallOp{
+      .return_type = lir::LirTypeRef("void"),
+      .callee = lir::LirOperand("%callee.ptr"),
+      .callee_type_suffix = "(ptr)",
+      .args_str = "ptr %string.ptr",
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+std::optional<prepare::PreparedBirModule> prepare_lir_indirect_call_string_argument_module() {
+  auto lowered = c4c::backend::try_lower_to_bir(make_lir_indirect_call_string_argument_module());
+  if (!lowered.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
   const c4c::FunctionNameId function_name_id =
       find_function_name_id(prepared, "stack_layout_copy_coalescing_activation");
@@ -658,6 +772,72 @@ int check_direct_call_string_argument_materialization(
       materialization->has_tls_address_space ||
       materialization->symbol_name.has_value()) {
     return fail("expected direct call string argument materialization to preserve string identity");
+  }
+  return 0;
+}
+
+int check_indirect_call_string_argument_materialization(
+    const prepare::PreparedBirModule& prepared) {
+  const c4c::FunctionNameId function_name_id =
+      find_function_name_id(prepared, "stack_layout_indirect_call_string_argument_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  if (function_addressing == nullptr) {
+    return fail("expected indirect-call string argument fixture to publish prepared addressing");
+  }
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  const auto* materialization =
+      prepare::find_prepared_address_materialization(*function_addressing,
+                                                     entry_block_label_id,
+                                                     0);
+  if (materialization == nullptr) {
+    return fail("expected indirect call string argument to publish address materialization");
+  }
+  if (materialization->kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+      !materialization->result_value_name.has_value() ||
+      prepare::prepared_value_name(prepared.names, *materialization->result_value_name) !=
+          "@.L.str.indirect.call" ||
+      !materialization->text_name.has_value() ||
+      prepared.names.texts.lookup(*materialization->text_name) !=
+          ".L.str.indirect.call" ||
+      materialization->byte_offset != 0 ||
+      materialization->address_space != bir::AddressSpace::Default ||
+      materialization->has_tls_address_space ||
+      materialization->symbol_name.has_value()) {
+    return fail("expected indirect call string argument materialization to preserve string identity");
+  }
+  return 0;
+}
+
+int check_lir_indirect_call_string_argument_materialization(
+    const prepare::PreparedBirModule& prepared) {
+  const c4c::FunctionNameId function_name_id = find_function_name_id(
+      prepared, "stack_layout_lir_indirect_call_string_argument_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  if (function_addressing == nullptr) {
+    return fail("expected LIR-origin indirect-call string argument fixture to publish prepared addressing");
+  }
+
+  bool saw_lir_string_argument_materialization = false;
+  for (const auto& materialization : function_addressing->address_materializations) {
+    if (materialization.kind != prepare::PreparedAddressMaterializationKind::StringConstant ||
+        !materialization.result_value_name.has_value() ||
+        prepare::prepared_value_name(prepared.names, *materialization.result_value_name) !=
+            "@.L.str.lir.indirect.call" ||
+        !materialization.text_name.has_value() ||
+        prepared.names.texts.lookup(*materialization.text_name) !=
+            ".L.str.lir.indirect.call" ||
+        materialization.byte_offset != 0 ||
+        materialization.address_space != bir::AddressSpace::Default ||
+        materialization.has_tls_address_space ||
+        materialization.symbol_name.has_value()) {
+      continue;
+    }
+    saw_lir_string_argument_materialization = true;
+    break;
+  }
+  if (!saw_lir_string_argument_materialization) {
+    return fail(
+        "expected LIR-to-BIR indirect call string argument rewrite to publish prepared string materialization");
   }
   return 0;
 }
@@ -4211,6 +4391,22 @@ int main() {
   }
   const auto call_string_arg_prepared = prepare_direct_call_string_argument_module();
   if (const int rc = check_direct_call_string_argument_materialization(call_string_arg_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto indirect_call_string_arg_prepared = prepare_indirect_call_string_argument_module();
+  if (const int rc =
+          check_indirect_call_string_argument_materialization(indirect_call_string_arg_prepared);
+      rc != 0) {
+    return rc;
+  }
+  auto lir_indirect_call_string_arg_prepared =
+      prepare_lir_indirect_call_string_argument_module();
+  if (!lir_indirect_call_string_arg_prepared.has_value()) {
+    return fail("expected LIR-origin indirect-call string argument fixture to lower to BIR");
+  }
+  if (const int rc = check_lir_indirect_call_string_argument_materialization(
+          *lir_indirect_call_string_arg_prepared);
       rc != 0) {
     return rc;
   }
