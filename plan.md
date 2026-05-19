@@ -1,140 +1,151 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Memory Store Operand Materialization Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/301_aarch64_memory_store_operand_materialization.md
 Activated: 2026-05-19
+Supersedes: ideas/open/295_backend_regex_failure_family_inventory.md active umbrella runbook
 
 ## Purpose
 
-Use the main-build backend regex surface as an umbrella inventory, then split
-the next focused semantic owner before any implementation work starts.
+Implement the focused post-300 memory-store machine-printer owner split from
+the backend-regex umbrella inventory.
 
 ## Goal
 
-Classify the post-300 backend-regex residual failures well enough to create one
-focused repair idea, or record why no focused owner is ready.
+Make AArch64 memory stores publish or materialize printable source, address,
+and symbolic value operands before machine printing.
 
 ## Core Rule
 
-Do not implement fixes in this umbrella plan. This plan exists to classify,
-split, and switch lifecycle state.
+Repair the semantic store operand path. Do not claim progress through
+expectation, allowlist, unsupported-classification, timeout, runner, or CTest
+registration changes.
 
 ## Read First
 
+- `ideas/open/301_aarch64_memory_store_operand_materialization.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
-- `ideas/closed/296_aarch64_fused_compare_branch_operand_forms.md`
-- `ideas/closed/297_lir_to_bir_local_memory_admission.md`
-- `ideas/closed/298_lir_to_bir_global_pointer_aggregate_projection.md`
-- `ideas/closed/299_aarch64_scalar_immediate_materialize_or_encoding_fallback.md`
-- `ideas/closed/300_aarch64_scalar_cast_machine_printer_forms.md`
-- `test_before.log`, as the latest accepted broad backend-regex proof after
-  idea 300 closure: 352 selected, 298 passed, and 54 failed
+- `test_before.log`, as the accepted post-300 backend-regex inventory:
+  352 selected, 298 passed, and 54 failed
 
 ## Current Targets
 
-- Remaining frontend, backend, runtime nonzero, runtime mismatch/crash, and
-  timeout buckets parked under idea 295 after closed idea 300.
-- Machine-printer/frontend residuals only when generated-code or diagnostic
-  evidence points to a semantic owner not already closed by ideas 285 through
-  300.
-- Runtime nonzero and runtime mismatch/crash residuals only after generated
-  assembly or narrower probes show a shared semantic owner.
-- Standalone timeout cases, only as quarantine or a hang-specific split unless
-  evidence proves a shared semantic owner.
+- Focused cases: `00173`, `00176`, `00181`, `00182`, `00187`, `00194`,
+  `00213`, and `00214`.
+- Store source scratch not printable: `00173`, `00187`, `00194`.
+- Symbol/global store value not represented as register/immediate:
+  `00176`, `00181`, `00182`, `00213`, and `00214`.
 
 ## Non-Goals
 
-- Do not edit implementation files.
-- Do not change test expectations, allowlists, unsupported classifications,
+- Do not reopen closed owners 285 through 300 from residual counts alone.
+- Do not fold scalar mul/div/rem, call-boundary, unsigned reduction,
+  `lir_to_bir`, invalid scalar cast spelling, runtime nonzero,
+  runtime mismatch/crash, or timeout residuals into this owner without new
+  generated-code or diagnostic evidence.
+- Do not change tests, expectations, allowlists, unsupported classifications,
   timeout policy, runner behavior, or CTest registration.
-- Do not reopen closed owners 285 through 300 from failing counts alone.
-- Do not treat the full backend regex as one monolithic repair owner.
-- Do not run broad runtime scans without timeout and stale-process cleanup.
+- Do not match c-testsuite filenames or exact diagnostic strings as the fix.
 
 ## Working Model
 
-- The latest durable umbrella state says idea 300 is closed and idea 295 should
-  classify remaining frontend, backend, runtime nonzero, runtime
-  mismatch/crash, timeout, and other parked backend-regex buckets before
-  another focused owner is split.
-- The latest accepted broad proof is in `test_before.log` at 298/352 passing
-  and 54 failing. That proof is the starting evidence for this classification
-  pass unless the supervisor delegates a fresh backend-regex inventory.
-- `ctest -R backend` is an imprecise selector. Classify failures before
-  deciding an implementation owner.
-- A focused owner needs generated-code, diagnostic, or proof evidence showing a
-  shared semantic failure family.
+- The post-300 umbrella inventory identified eight compile-blocking memory
+  store diagnostics as the next coherent owner.
+- The relevant failure mode is that a store operand reaches the AArch64
+  machine printer without being represented as a printable structured operand.
+- A valid fix may live in lowering, operand publication, selected-node
+  normalization, materialization, or printer admission, but it must make the
+  store instruction semantically printable instead of hiding the diagnostic.
+- Runtime residuals are not acceptance evidence for this owner unless a probe
+  first proves they share the same store operand materialization failure.
 
 ## Execution Rules
 
-- Preserve routine classification findings in `todo.md`.
-- Update this plan only when the classification route changes.
-- Update the source idea only for durable deactivation, closure, or a new split
-  decision.
-- When a focused owner is split, create a new `ideas/open/*.md` with concrete
-  reviewer reject signals, then switch lifecycle state to that owner.
+- Keep packet progress and proof notes in `todo.md`.
+- Before editing code, inspect at least one case from each focused subfamily:
+  source scratch and symbol/global store value.
+- Prefer small semantic changes with generated-assembly or diagnostic proof.
+- After each implementation slice, run the supervisor-delegated build and
+  focused backend c-testsuite subset exactly as requested.
+- Broader backend-regex proof is required before accepting this focused owner
+  as complete.
 
 ## Ordered Steps
 
-### Step 1: Reconstruct post-300 residual inventory
+### Step 1: Confirm store operand failure shapes
 
-Goal: establish the current residual failure set after closed idea 300.
-
-Actions:
-
-- Inspect the accepted post-300 proof/log context, especially `test_before.log`
-  with 352 selected, 298 passed, and 54 failed.
-- If the supervisor delegates a fresh inventory command, capture the backend
-  regex result from `/workspaces/c4c/build` with timeout and stale-process
-  cleanup appropriate for runtime tests.
-- Separate residuals into frontend/machine-printer, backend assembler,
-  semantic `lir_to_bir` or handoff, runtime nonzero, runtime mismatch/crash,
-  timeout, and any local backend/unit failures.
-- Record the current classification in `todo.md`.
-
-Completion check:
-
-- `todo.md` lists the residual buckets and states which bucket is the best
-  candidate for focused ownership, or why no bucket is ready.
-
-### Step 2: Identify the next semantic owner
-
-Goal: choose one focused repair family from the residual inventory.
+Goal: prove the focused cases share memory-store operand materialization or
+publication failures.
 
 Actions:
 
-- Prefer a bucket with multiple nearby failures sharing the same generated-code
-  or diagnostic symptom.
-- For runtime nonzero or mismatch/crash buckets, require generated assembly or
-  a narrower probe before declaring the owner.
-- For machine-printer/frontend residuals, group by instruction/form semantics
-  rather than by testcase filename.
-- Treat timeout cases as separate hang-specific owners or quarantine unless
-  evidence proves they belong to another semantic family.
-- Do not reopen ideas 285 through 300 unless generated-code or proof evidence
-  contradicts a specific closure boundary.
+- Inspect diagnostics or generated intermediate/machine output for
+  `00173`, `00187`, and `00194` to identify the unprintable store source
+  scratch form.
+- Inspect diagnostics or generated intermediate/machine output for
+  `00176`, `00181`, `00182`, `00213`, and `00214` to identify the
+  symbol/global store value form that is not a register or immediate.
+- Identify the earliest shared lowering, selected-node, or printer-admission
+  boundary where the operands should become structured printable forms.
+- Record the confirmed boundary and any cases that fall outside this owner in
+  `todo.md`.
 
 Completion check:
 
-- A focused owner candidate has a named semantic capability, included cases,
-  out-of-scope cases, and proof scope.
+- `todo.md` names the shared store operand boundary, the cases still in scope,
+  and the narrow proof command the executor will use for the first code slice.
 
-### Step 3: Split or park
+### Step 2: Materialize store source scratch operands
 
-Goal: convert the classification decision into lifecycle state.
+Goal: make stack/local memory-store source operands printable without
+case-specific handling.
 
 Actions:
 
-- If a focused owner is ready, create a new `ideas/open/*.md` with goal,
-  scope, proof expectations, and concrete reviewer reject signals.
-- Add a durable deactivation note to idea 295 describing the split decision,
-  proof/log basis, and remaining buckets.
-- Switch lifecycle state from this umbrella plan to the new focused owner
-  before implementation begins.
-- If no owner is ready, keep idea 295 active only long enough to record the
-  blocker in `todo.md`, then report the missing evidence needed.
+- Repair the semantic path that leaves source scratch values unstructured for
+  memory stores.
+- Ensure the selected AArch64 store form receives a register, immediate, or
+  other valid structured operand accepted by the printer.
+- Run fresh build proof and the focused subset delegated by the supervisor.
 
 Completion check:
 
-- Either lifecycle state is switched to a focused owner, or `todo.md` explains
-  why no activation/split is possible yet.
+- `00173`, `00187`, and `00194` no longer fail from the old unprintable store
+  source scratch diagnostic, and no unrelated focused case regresses.
+
+### Step 3: Materialize symbol/global store value operands
+
+Goal: make stores of symbolic or global values publish printable operands.
+
+Actions:
+
+- Repair the semantic path that leaves symbol/global store values outside the
+  register/immediate operand forms accepted by AArch64 store printing.
+- Reuse the same materialization or publication model from Step 2 when it
+  applies; split only if generated-code evidence proves a distinct subfamily.
+- Run fresh build proof and the focused subset delegated by the supervisor.
+
+Completion check:
+
+- `00176`, `00181`, `00182`, `00213`, and `00214` no longer fail from the old
+  store symbol/value printer diagnostic, and no unrelated focused case
+  regresses.
+
+### Step 4: Focused closure and broader backend-regex proof
+
+Goal: decide whether the focused owner is complete and safe to close.
+
+Actions:
+
+- Rerun the full focused memory-store subset after all store operand fixes.
+- Run the supervisor-selected broader backend-regex proof.
+- Separate remaining runtime, timeout, scalar, `lir_to_bir`, and other
+  residual buckets from this owner.
+- Update `todo.md` with final proof and any remaining out-of-scope residuals
+  before requesting lifecycle closure.
+
+Completion check:
+
+- The old memory-store operand printer diagnostics are absent from focused
+  proof, broader proof is recorded, and any residual focused failures are
+  classified outside this owner with evidence.

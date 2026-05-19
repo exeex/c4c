@@ -295,6 +295,27 @@ Focused owner closure 2026-05-19:
   focused splits. Do not reopen idea 300 without generated-code or diagnostic
   evidence that contradicts the scalar-cast printer closure boundary.
 
+Post-300 split 2026-05-19:
+
+- Step 1 of the active umbrella runbook reconstructed the committed post-300
+  backend-regex residual inventory from `test_before.log`: 352 selected tests,
+  298 passed, and 54 failed. No fresh broad runtime rerun was performed during
+  this lifecycle split.
+- The best next focused owner is idea 301,
+  `ideas/open/301_aarch64_memory_store_operand_materialization.md`, covering
+  the memory-store machine-printer/frontend residuals `00173`, `00176`,
+  `00181`, `00182`, `00187`, `00194`, `00213`, and `00214`.
+- The split is based on shared store operand diagnostics: memory store source
+  scratch values are not printable for `00173`, `00187`, and `00194`, while
+  symbol/global store values are not represented as register/immediate
+  operands for `00176`, `00181`, `00182`, `00213`, and `00214`.
+- Remaining scalar selected-node operand-shape gaps, call-boundary move forms,
+  unsigned reduction/logical-shift-right gaps, semantic `lir_to_bir`
+  local-memory handoff gaps, invalid scalar cast spelling, runtime nonzero,
+  runtime mismatch/crash, and timeout buckets remain parked under this
+  umbrella for later classification or separate focused splits.
+- Active implementation should move to idea 301 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
