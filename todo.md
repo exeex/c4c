@@ -1,49 +1,50 @@
 Status: Active
 Source Idea Path: ideas/open/342_aarch64_duff_do_while_latch_condition_emission.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Do-While Latch Condition Emission
+Current Step ID: 3
+Current Step Title: Prove Representative And Reclassify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired AArch64 materialized compare branch lowering for stack-homed
-fused-compare conditions. `lower_materialized_compare_condition_branch()` now
-receives the current block scalar state and reuses an already emitted GP
-register for the compare lhs/rhs before falling back to producer replay. A
-scratch-clobber guard rejects reuse when publishing the other compare operand
-would overwrite the reused operand.
+Step 3 proved the idea-342 latch repair still holds under the delegated
+representative subset. Backend instruction dispatch, machine printer, prepared
+memory operand records, `00086`, and `00111` all pass. `00143` still fails
+`[RUNTIME_NONZERO]`, so the remaining residual was classified with temporary
+evidence under `/tmp`.
 
-Added focused instruction-dispatch coverage for a latch-shaped block that
-loads a counter, emits one decrement, stores it back, materializes a
-stack-homed compare condition, and branches by comparing the already emitted
-decrement value. The fixture rejects a second subtract and requires the branch
-compare to use the emitted latch value.
-
-`00143` still fails `[RUNTIME_NONZERO]`, but the original duplicate decrement
-is gone. The generated `dowhile.cond.6` latch now has one decrement:
+The original duplicate Duff latch decrement is repaired in generated AArch64.
+In `/tmp/c4c_00143.s`, `dowhile.cond.6` emits a single decrement sequence:
 `ldr w9, [sp, #176]`, `mov w10, #-1`, `add w13, w9, w10`,
-`str w13, [sp, #176]`, followed by both materialized and branch compares on
-`w13`. The new first bad fact is back in Duff fallthrough copy emission: after
-the corrected latch, the case-copy blocks still copy wrong fixed short
-offsets. For example the case-7 block copies `ldrh w9, [sp, #4]` to
-`strh w9, [sp, #82]`, skipping the expected next element at `[sp, #2]` /
-`[sp, #80]`.
+`str w13, [sp, #176]`, then both the materialized `cmp/cset` and terminator
+`cmp/b.gt` use `w13`. No second subtract is present on the latch path.
+
+The new first bad fact is outside that latch condition repair. Prepared BIR is
+correct for the Duff fallthrough copy chain: `/tmp/c4c_00143.prepared.txt`
+shows `block_9` copying `addr %lv.a.0+2` to `addr %lv.b.0+2`, `block_10`
+copying `+4` to `+4`, continuing consecutively through `block_15`. Generated
+AArch64 diverges after the first copy: `.LBB1_27` copies `[sp] -> [sp,#78]`
+then branches to `.LBB1_8`, but `.LBB1_8` copies `[sp,#4] -> [sp,#82]`
+instead of the prepared-BIR `+2` copy. Subsequent fallthrough blocks continue
+skipping every other short offset (`+8 -> +8`, `+12 -> +12`, ...), explaining
+the runtime mismatch after the latch fix.
 
 ## Suggested Next
 
-Next packet should decide whether the active idea should continue into the
-remaining Duff fixed-offset copy lowering fault or hand that residual back to a
-plan review. If continuing here, repair the general post-increment/fallthrough
-copy offset selection so case blocks copy consecutive short elements instead
-of skipping every other element.
+Next packet should hand this back to supervisor/plan-owner routing as an
+outside-idea-342 residual. Recommended direction: close or split idea 342 as
+the latch-condition repair is proven, then open/activate a separate AArch64
+Duff fallthrough copy emission repair for the generated-label/fixed-offset
+skip.
 
 ## Watchouts
 
-- Do not reopen idea 341's fixed-offset fallthrough copy emission unless the
-  supervisor accepts that the first bad fact has moved back to wrong Duff copy
-  offsets after the latch fix.
+- Do not treat `00143` as disproving the idea-342 latch repair; the current
+  failure is after the corrected latch and prepared BIR has the right copy
+  offsets.
+- Do not reopen idea 341's fixed-offset fallthrough copy emission inside idea
+  342 unless the supervisor explicitly chooses that scope change.
 - Do not special-case `00143`, `.LBB1_29`, Duff-device labels, local name `n`,
   source lines, block numbers, or emitted instruction spellings.
 - Keep expectation, unsupported, runner, timeout, CTest registration, and
@@ -54,7 +55,7 @@ of skipping every other element.
 
 ## Proof
 
-Delegated proof ran:
+Delegated Step 3 proof ran:
 `cmake --build build --target c4cll backend_aarch64_instruction_dispatch_test backend_aarch64_machine_printer_test backend_aarch64_prepared_memory_operand_records_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(instruction_dispatch|machine_printer|prepared_memory_operand_records)|c_testsuite_aarch64_backend_src_(00086|00111|00143)_c' > test_after.log 2>&1`
 
 Result: build succeeded. `backend_aarch64_instruction_dispatch`,
@@ -62,4 +63,10 @@ Result: build succeeded. `backend_aarch64_instruction_dispatch`,
 `backend_aarch64_prepared_memory_operand_records`, `00086`, and `00111`
 passed. `c_testsuite_aarch64_backend_src_00143_c` still fails
 `[RUNTIME_NONZERO]` after the latch decrement repair, with the residual
-classified above. Proof log: `test_after.log`.
+classified above as generated AArch64 Duff fallthrough copy emission rather
+than latch compare/decrement emission. Proof log: `test_after.log`.
+
+Temporary evidence files:
+`/tmp/c4c_00143.s`, `/tmp/c4c_00143.prepared.txt`,
+`/tmp/c4c_00143_probe.c`, `/tmp/c4c_00143_probe.s`, and
+`/tmp/c4c_00143_probe.prepared.txt`.
