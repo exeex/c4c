@@ -1,6 +1,6 @@
 # AArch64 Duff Do-While Latch Condition Emission
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md
 
@@ -56,6 +56,25 @@ from fixed-offset fallthrough load/store emission.
   a new first bad fact after the duplicate latch decrement is repaired.
 - No expectation, runner, timeout, unsupported classification,
   CTest-registration, or proof-log-policy change is used to claim progress.
+
+## Completion Note
+
+Closed on 2026-05-20 after the latch-condition repair was proven in the
+focused backend subset recorded in `test_after.log`. Generated AArch64 for
+`dowhile.cond.6` now has one counter decrement and both compares use the
+post-decrement register value, so the duplicate latch decrement targeted by
+this idea is repaired.
+
+`c_testsuite_aarch64_backend_src_00143_c` still fails `[RUNTIME_NONZERO]`, but
+the remaining first bad fact is outside latch condition emission. Prepared BIR
+contains consecutive Duff fallthrough short-copy offsets, while generated
+AArch64 skips every other fixed offset after the first fallthrough case. That
+residual was split to
+`ideas/open/343_aarch64_duff_fallthrough_copy_fixed_offset_skip.md`.
+
+Close-time regression guard used the existing matched focused subset logs:
+`test_before.log` and `test_after.log` both report 5 passed and 1 failed out
+of 6, with no new failing tests.
 
 ## Reviewer Reject Signals
 
