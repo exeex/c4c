@@ -2072,6 +2072,74 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
     return {.lines = std::nullopt,
             .diagnostic = "scalar unsigned reduction operation is not printable"};
   }
+  if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
+      scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::Shl) {
+    const auto& alu = *scalar.scalar_alu;
+    if (scalar.inputs.size() != 2) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar shift-left node requires two structured operands"};
+    }
+    const auto result_view = scalar_register_view(alu.result_type);
+    const auto operand_view = scalar_register_view(alu.operand_type);
+    const auto bit_width = integer_scalar_bit_width(alu.operand_type);
+    if (!result_view.has_value() || !operand_view.has_value() ||
+        result_view != operand_view || !bit_width.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar shift-left node requires matching integer widths"};
+    }
+    if (!scalar.result_register.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar shift-left node requires a structured result register"};
+    }
+    const auto* lhs_register = std::get_if<RegisterOperand>(&scalar.inputs[0].payload);
+    const auto* lhs_memory = std::get_if<MemoryOperand>(&scalar.inputs[0].payload);
+    const auto* lhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[0].payload);
+    const auto* rhs_immediate = std::get_if<ImmediateOperand>(&scalar.inputs[1].payload);
+    const bool lhs_is_register = scalar.inputs[0].kind == OperandKind::Register &&
+                                 lhs_register != nullptr;
+    const bool lhs_is_memory = scalar.inputs[0].kind == OperandKind::Memory &&
+                               lhs_memory != nullptr;
+    const bool lhs_is_immediate = scalar.inputs[0].kind == OperandKind::Immediate &&
+                                  lhs_immediate != nullptr;
+    if ((!lhs_is_register && !lhs_is_memory && !lhs_is_immediate) ||
+        scalar.inputs[1].kind != OperandKind::Immediate || rhs_immediate == nullptr) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar shift-left node requires register/memory/immediate lhs and "
+                  "immediate shift amount"};
+    }
+    if (rhs_immediate->unsigned_value >= *bit_width) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar shift-left amount exceeds operand width"};
+    }
+    const auto result =
+        scalar_gp_register_name_with_view(*scalar.result_register, *result_view);
+    if (!result.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic =
+                  "scalar shift-left node has incomplete printable result register facts"};
+    }
+
+    std::vector<std::string> lines;
+    const auto lhs = materialize_scalar_register_source(
+        scalar.inputs[0],
+        lhs_register,
+        lhs_memory,
+        lhs_immediate,
+        *operand_view,
+        std::vector<const RegisterOperand*>{&*scalar.result_register},
+        lines);
+    if (!lhs.has_value()) {
+      return {.lines = std::nullopt,
+              .diagnostic = "scalar shift-left node has incomplete printable lhs facts"};
+    }
+    std::ostringstream out;
+    out << "lsl " << *result << ", " << lhs->name << ", #"
+        << rhs_immediate->unsigned_value;
+    lines.push_back(out.str());
+    return append_scalar_alu_stack_publication(lines, alu, *result);
+  }
   if (instruction.opcode != MachineOpcode::Add &&
       instruction.opcode != MachineOpcode::Sub &&
       instruction.opcode != MachineOpcode::And &&
@@ -2444,13 +2512,13 @@ bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
     case bir::BinaryOpcode::And:
     case bir::BinaryOpcode::Or:
     case bir::BinaryOpcode::Xor:
+    case bir::BinaryOpcode::Shl:
       return true;
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
     case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::Eq:
@@ -2503,9 +2571,10 @@ ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
       return ScalarAluOperationKind::Or;
     case bir::BinaryOpcode::Xor:
       return ScalarAluOperationKind::Xor;
+    case bir::BinaryOpcode::Shl:
+      return ScalarAluOperationKind::LogicalShiftRight;
     case bir::BinaryOpcode::LShr:
       return ScalarAluOperationKind::LogicalShiftRight;
-    case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
@@ -2808,6 +2877,14 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
           make_prepared_scalar_operand(names, value_locations, storage_plan, binary.rhs, rhs);
       error != PreparedScalarAluRecordError::None) {
     return scalar_alu_record_error(error);
+  }
+  if (binary.opcode == bir::BinaryOpcode::Shl) {
+    const auto* shift_amount = std::get_if<ImmediateOperand>(&rhs.payload);
+    const auto bit_width = integer_scalar_bit_width(binary.operand_type);
+    if (rhs.kind != OperandKind::Immediate || shift_amount == nullptr ||
+        !bit_width.has_value() || shift_amount->unsigned_value >= *bit_width) {
+      return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
+    }
   }
 
   ScalarAluOperationKind operation = scalar_alu_operation_from_binary_opcode(binary.opcode);

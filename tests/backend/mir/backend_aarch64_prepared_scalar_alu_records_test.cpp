@@ -278,6 +278,73 @@ int supported_scalar_alu_records_preserve_prepared_and_bir_facts() {
   return 0;
 }
 
+int shift_left_immediate_prepares_result_home_and_shift_operand() {
+  auto fixture = make_i64_fixture();
+  fixture.locations.value_homes[0].register_name = "w0";
+  fixture.locations.value_homes[2].register_name = "w13";
+  fixture.storage.values[0] =
+      register_storage(prepare::PreparedValueId{10}, fixture.lhs_name, "w0");
+  fixture.storage.values[2] =
+      register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w13");
+
+  const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      binary_with_rhs(bir::BinaryOpcode::Shl,
+                      bir::TypeKind::I32,
+                      bir::Value::immediate_i32(1)));
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+      !result.record->scalar_alu.has_value()) {
+    return fail("expected i32 shift-left immediate to prepare");
+  }
+  const auto& alu = *result.record->scalar_alu;
+  const auto* lhs = std::get_if<aarch64_codegen::RegisterOperand>(&alu.lhs.payload);
+  const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+  if (alu.source_binary_opcode != bir::BinaryOpcode::Shl ||
+      alu.operation != aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
+      !alu.supported_integer_operation || alu.operand_type != bir::TypeKind::I32 ||
+      alu.result_type != bir::TypeKind::I32 || lhs == nullptr || rhs == nullptr ||
+      lhs->reg != aarch64_abi::w_register(0) ||
+      lhs->expected_view != aarch64_abi::RegisterView::W ||
+      rhs->unsigned_value != 1 || !alu.result_register.has_value() ||
+      alu.result_register->reg != aarch64_abi::w_register(13) ||
+      alu.result_register->expected_view != aarch64_abi::RegisterView::W) {
+    return fail("expected shift-left immediate record to preserve source, amount, and result home");
+  }
+
+  auto register_shift = fixture;
+  register_shift.locations.value_homes[1].register_name = "w1";
+  register_shift.storage.values[1] =
+      register_storage(prepare::PreparedValueId{11}, register_shift.rhs_name, "w1");
+  const auto unsupported_register_shift =
+      aarch64_codegen::make_prepared_scalar_alu_record(
+          register_shift.names,
+          register_shift.locations,
+          register_shift.storage,
+          binary(bir::BinaryOpcode::Shl, bir::TypeKind::I32));
+  if (unsupported_register_shift.record.has_value() ||
+      unsupported_register_shift.error !=
+          aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+    return fail("expected shift-left register amount to fail closed until lslv is modeled");
+  }
+
+  const auto out_of_range = aarch64_codegen::make_prepared_scalar_alu_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      binary_with_rhs(bir::BinaryOpcode::Shl,
+                      bir::TypeKind::I32,
+                      bir::Value::immediate_i32(32)));
+  if (out_of_range.record.has_value() ||
+      out_of_range.error != aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
+    return fail("expected shift-left amount at operand width to fail closed");
+  }
+
+  return 0;
+}
+
 int supported_floating_scalar_alu_records_preserve_fpr_facts() {
   for (const auto opcode :
        {bir::BinaryOpcode::Add, bir::BinaryOpcode::Sub, bir::BinaryOpcode::Mul,
@@ -1027,6 +1094,10 @@ int unsupported_and_incomplete_facts_fail_closed() {
 
 int main() {
   if (const int status = supported_scalar_alu_records_preserve_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = shift_left_immediate_prepares_result_home_and_shift_operand();
       status != 0) {
     return status;
   }

@@ -1,4 +1,4 @@
-#include "src/backend/mir/aarch64/codegen/instruction.hpp"
+#include "src/backend/mir/aarch64/codegen/alu.hpp"
 
 #include <iostream>
 #include <variant>
@@ -376,6 +376,9 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
           aarch64_codegen::ScalarAluOperationKind::Mul) != "mul" ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Div) != "div" ||
+      !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Shl) ||
+      aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Shl) !=
+          aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::LShr) !=
           aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
       aarch64_codegen::scalar_alu_operation_kind_name(
@@ -403,6 +406,44 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
       deferred.source_binary_opcode != bir::BinaryOpcode::Mul ||
       deferred.supported_integer_operation || deferred.supported_floating_operation) {
     return fail("expected deferred record to preserve source opcode without claiming support");
+  }
+
+  return 0;
+}
+
+int shift_left_immediate_records_select_and_print_width_correct_alu_nodes() {
+  auto shift = scalar_alu_record(
+      aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
+      bir::BinaryOpcode::Shl,
+      bir::TypeKind::I32,
+      prepare::PreparedValueId{80},
+      c4c::ValueNameId{80},
+      prepared_register_operand(prepare::PreparedValueId{81},
+                                c4c::ValueNameId{81},
+                                bir::TypeKind::I32,
+                                1),
+      aarch64_codegen::make_immediate_operand(aarch64_codegen::ImmediateOperand{
+          .kind = aarch64_codegen::ImmediateKind::UnsignedInteger,
+          .type = bir::TypeKind::I32,
+          .signed_value = 1,
+          .unsigned_value = 1,
+      }));
+  shift.supported_integer_operation = true;
+
+  const auto instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(shift));
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&instruction.payload);
+  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      instruction.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
+      scalar == nullptr || !scalar->scalar_alu.has_value() ||
+      scalar->source_binary_opcode != bir::BinaryOpcode::Shl) {
+    return fail("expected shift-left record to select a scalar shift machine node");
+  }
+  const auto printed = aarch64_codegen::make_scalar_alu_print_lines(instruction, *scalar);
+  if (!printed.lines.has_value() || printed.lines->size() != 1 ||
+      printed.lines->front() != "lsl w0, w1, #1") {
+    return fail("expected shift-left record to print width-correct lsl immediate");
   }
 
   return 0;
@@ -508,6 +549,10 @@ int main() {
     return status;
   }
   if (const int status = deferred_scalar_forms_are_explicit_records_not_generic_support();
+      status != 0) {
+    return status;
+  }
+  if (const int status = shift_left_immediate_records_select_and_print_width_correct_alu_nodes();
       status != 0) {
     return status;
   }
