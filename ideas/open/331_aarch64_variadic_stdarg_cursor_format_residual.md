@@ -83,3 +83,27 @@ Reject the route if it:
   fact moved back to that owner;
 - adds only external c-testsuite proof without focused backend assertions for
   the repaired variadic stdarg behavior.
+
+## Lifecycle Handoff
+
+2026-05-20: Commit `77bc43d78` repaired the AArch64 `va_start` overflow
+cursor owner by initializing `overflow_arg_area` above the actual fixed callee
+frame and named incoming stack formal area. The old stdarg cursor first bad
+fact is gone: generated `myprintf` initializes the va_list overflow cursor
+from `sp + 1344`, and the prior stack `%9s` path continues to reload and
+advance the cursor through `[x21]`.
+
+The representative still fails, but its first bad fact moved earlier than
+`stdarg`: in the `Arguments:` section, `fa_hfa11(hfa11)` should print `11.1`
+but prints `0.0`; generated caller `arg` stores loaded `hfa11` at
+`[sp,#784]` while passing the stale `s8` path through `[sp,#788]`, and callee
+`fa_hfa11` consumes `s0` normally. That residual belongs to caller
+HFA/floating argument publication under
+`ideas/open/326_aarch64_variadic_hfa_floating_residual.md`, not to this stdarg
+cursor/format idea.
+
+Close was not accepted in this lifecycle turn because the available
+`test_before.log` and `test_after.log` are identical and the close-time
+regression guard rejected them for non-increasing pass count. Keep this idea
+open but inactive until a supervisor accepts closure with an appropriate
+regression-guard basis.

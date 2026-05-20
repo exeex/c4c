@@ -117,3 +117,12 @@ output, `00204.c` reaches `stdarg:`, and the first byval payload bytes begin as
 (`0xd0`, `0xd4`, `0xd8`, ...) before a segmentation fault. Active execution
 split to `ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`;
 do not continue the stdarg cursor/format residual under idea 326.
+
+2026-05-20: Reactivated after idea 331's `va_start` overflow cursor repair in
+commit `77bc43d78`. The stdarg cursor first bad fact is gone, and the
+representative now fails earlier in the `Arguments:` section: expected `11.1`
+from `fa_hfa11(hfa11)` prints as `0.0`. Generated caller `arg` loads `hfa11`,
+stores it to `[sp,#784]`, then stores stale `s8` to `[sp,#788]`, reloads that
+stale home into `s13`, moves it to `s0`, and calls `fa_hfa11`; the callee
+consumes `s0` normally. Resume from caller-side HFA/floating argument
+publication/loading, not from stdarg cursor/format or `va_start`.
