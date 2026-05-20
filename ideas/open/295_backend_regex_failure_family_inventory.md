@@ -749,6 +749,37 @@ Step 4 split 2026-05-20 post-339:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked buckets.
 
+Step 3 split 2026-05-20 post-345:
+
+- Step 1 inventory commit `67736b8b2` and Step 2 classification commit
+  `c47813313` classified the current backend-regex inventory from
+  `/workspaces/c4c/test_after.log`: 354 tests selected, 330 passed, 24
+  failed, and 2 timed out.
+- Local backend/unit/CLI tests selected by the backend regex are clean. The
+  remaining residuals are external `c_testsuite_aarch64_backend_*` failures.
+- The best current focused owner is idea 346,
+  `ideas/open/346_aarch64_direct_call_argument_formal_publication.md`,
+  covering AArch64 direct-call argument/formal publication for `00140`,
+  `00159`, `00170`, `00175`, and `00218`.
+- The split is based on generated-code evidence that prepared direct-call
+  operands and callee formal homes fail to publish to or consume the AAPCS64
+  ABI argument registers/stack slots: stale `w20` instead of incoming `w0` in
+  `00159`, stale `w13`/`d13` call values in `00175`, a missing eighth
+  variadic/overflow integer argument in `00170`, uninitialized `x20` aggregate
+  or address argument publication in `00140`, and uninitialized `x21` instead
+  of `&convs` in `00218`.
+- This is adjacent to closed ideas 309 and 311, but the current first bad fact
+  is runtime ABI argument/formal publication, not an indirect-call
+  preservation fault or selected call-boundary machine-printer diagnostic.
+- Remaining buckets stay parked under this umbrella: pointer/null/scalar
+  condition result publication, FP comparison/expression value
+  materialization, broad addressable memory/indexed aggregate/pointer-local
+  materialization, libc/file/string residuals, semantic `lir_to_bir` admission,
+  and timeout/output-storm cases.
+- Active implementation should move to idea 346 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
