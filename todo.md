@@ -1,95 +1,63 @@
 Status: Active
 Source Idea Path: ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Later Stdarg Field Mismatch
+Current Step ID: 2
+Current Step Title: Repair Classified Stdarg Owner
 
 # Current Packet
 
 ## Just Finished
 
-Plan step 1 localized the later `stdarg:` mismatch without implementation
-edits. The first visible mismatch remains in
-`c_testsuite_aarch64_backend_src_00204_c`: expected
-`ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI`, observed
-`ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` at the first `stdarg` payload line.
+Plan step 2 repaired the localized materialized-bool branch clobber for spilled
+same-block compare conditions. AArch64 conditional block lowering now recognizes
+when the terminator condition is a prepared same-block compare whose materialized
+boolean lives in a stack slot, and emits a fresh compare-and-branch at the
+terminator instead of trusting a stale cached boolean register after intervening
+lowered instructions.
 
-The caller-side publication for `stdarg`'s first `myprintf("%9s ...")` call is
-not the first divergence. Prepared AArch64 BIR records the expected split:
-`arg1` from stack+7752 to `x1/w2[x1,x2]`, `arg2` to `x3/w2[x3,x4]`, `arg3` to
-`x5/w2[x5,x6]`, then `arg4`, `arg5`, and `arg6` to overflow stack offsets
-`0`, `16`, and `32`. That matches AAPCS64 for six rounded 16-byte `struct s9`
-varargs after the format pointer: three complete aggregates in remaining GPRs,
-then three complete aggregates on the overflow area.
+For `myprintf` block `vaarg.regtry.37`, the generated `%9s` transition no
+longer branches on the clobbered stride constant. The emitted block now
+recomputes the cursor advance and branches with `cmp w9, #0; b.le ...; b ...`
+after the intervening add, so the fourth `%9s` aggregate switches from
+register-save to overflow. The first `stdarg:` payload line now prints all six
+`ABCDEFGHI` fields.
 
-The exact first generated-code divergence is inside `myprintf`'s `%9s`
-`va_arg` transition block. Semantic/prepared BIR for `vaarg.regtry.37` is:
-`%t41 = bir.add i32 %t35, 16`; store `%t41` to `ap.__gr_offs`;
-`%t42 = bir.sle i32 %t41, 0`; `bir.cond_br i32 %t42, vaarg.reg.38,
-vaarg.stack.36`. With initial `__gr_offs = -56`, the first three `%9s`
-iterations produce `-40`, `-24`, and `-8`; the fourth computes `+8`, so `%t42`
-is false and should branch to `vaarg.stack.36`.
-
-The emitted assembly for the same block materializes the compare and then
-clobbers it before the branch:
-`cmp w9, #0`; `cset w9, le`; `mov w10, w13`; `mov w9, #16`; `add x10, x10,
-x9`; `cbnz w9, .LBB154_27`. Because `w9` is overwritten with `16`, `cbnz` is
-always taken to the register path. On the fourth `%9s`, `myprintf` reads from
-the register-save area at old offset `-8` instead of switching to the overflow
-area where the fourth `s9` was correctly published. The visible effect is three
-good `ABCDEFGHI` fields, then traversal continues into the next literal marker
-instead of printing the remaining three overflow `s9` fields.
-
-Owner classification: not format traversal, selected aggregate bytes,
-destination buffering, or observing call publication. The likely owner is
-materialized-bool branch emission/liveness around the generic lowered
-non-HFA aggregate `va_arg` cursor progression path: the cursor decision is
-correct in BIR, but AArch64 assembly branches on a clobbered condition register.
-Likely code surfaces are AArch64 branch/compare materialized-bool printing and
-instruction lowering (`src/backend/mir/aarch64/codegen/machine_printer.cpp`,
-the branch/compare record path) plus the regalloc/liveness handoff that lets the
-dead add/stride temporary reuse the branch condition register before `cbnz`.
+The delegated CTest proof is not green because the first bad fact advanced to
+the next stdarg payload line: expected
+`lmnopqr ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI`, observed
+`lmnopqr ABCDEFGH ABCDEFGH ABCDEFGH ABCDEFGH ABCDEFGH`. That is a later
+aggregate-width/copy issue after the repaired register-to-overflow transition,
+not the original always-register-path branch clobber.
 
 ## Suggested Next
 
-Repair materialized-bool conditional branch emission so the branch consumes the
-actual `%t42` result after any intervening lowered instructions, or eliminate
-the intervening dead/clobbering add in `vaarg.regtry.37`. The repair should be
-general over materialized bool branch conditions and the AAPCS64 aggregate
-`va_arg` register-to-overflow transition, not shaped to `00204.c`, `%9s`, or a
-single register/offset.
+Localize and repair the advanced stdarg mismatch on the second payload line,
+where the `lmnopqr`/narrow aggregate path now prints `ABCDEFGH` fields instead
+of `ABCDEFGHI` fields after the Step 2 branch repair.
 
 ## Watchouts
 
-Do not reopen fixed byval rounded-slot placement, outgoing stack argument base,
-HFA/floating publication, non-HFA aggregate materialization, or post-`va_arg`
-call setup without generated-code evidence that the first bad fact moved back
-to that owner.
+The Step 2 repair intentionally applies only when the prepared condition value
+is stack-backed; ordinary register-backed fused compare branches should continue
+through the existing compare-branch path. The focused regression
+`backend_aarch64_branch_control_lowering` covers a same-block compare whose
+materialized bool register is clobbered before the terminator.
 
-The prepared focused dump already proves caller publication for the first
-`myprintf` call is credible. The important repair proof is the fourth `%9s`
-transition: after `__gr_offs` advances from `-8` to `+8`, generated assembly
-must branch to the overflow path and continue printing all six fields. Avoid a
-patch that only rewrites expectations, hard-codes `myprintf`, or special-cases
-one `s9` size/offset sequence.
+Do not reopen byval rounded-slot placement, outgoing stack argument base,
+HFA/floating publication, non-HFA aggregate materialization, post-`va_arg` call
+setup, or the `%9s` register-to-overflow decision unless generated-code
+evidence moves the first bad fact back there.
 
 ## Proof
 
-Localization probes used:
-`/workspaces/c4c/build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function stdarg tests/c/external/c-testsuite/src/00204.c`,
-`/workspaces/c4c/build/c4cll --dump-bir --target aarch64-linux-gnu --mir-focus-function myprintf tests/c/external/c-testsuite/src/00204.c`,
-`/workspaces/c4c/build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function myprintf --mir-focus-block vaarg.regtry.37 tests/c/external/c-testsuite/src/00204.c`,
-and assembly inspection of
-`build/c_testsuite_aarch64_backend/src/00204.c.s`.
+Built `c4cll` and `backend_aarch64_branch_control_lowering_test`.
 
-Executor proof log: `test_after.log` from
-`ctest --test-dir build --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$'`.
-It still fails at the known runtime mismatch and preserves the expected vs
-observed output for this handoff.
+Focused backend regression passed:
+`ctest --test-dir build --output-on-failure -R '^backend_aarch64_branch_control_lowering$'`.
 
-Smallest credible repair proof: first run the focused prepared/assembly probes
-above to confirm the branch sequence changed, then run
-`ctest --test-dir build --output-on-failure -R '^(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|c_testsuite_aarch64_backend_src_00204_c)$'`
-with output captured to `test_after.log`. Escalate to the supervisor-selected
-backend subset after a code change because the likely owner is shared branch
-emission rather than only this testcase.
+Delegated proof command was run exactly with output captured to `test_after.log`:
+`ctest --test-dir build --output-on-failure -R '^(backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log 2>&1`.
+The prepared-BIR publication test passed; `c_testsuite_aarch64_backend_src_00204_c`
+failed at the advanced runtime mismatch recorded above.
+
+`git diff --check` passed.

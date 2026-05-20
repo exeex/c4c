@@ -1068,6 +1068,104 @@ lower_fused_compare_branch_from_emitted_cast(
     std::vector<std::string>& lines);
 
 [[nodiscard]] std::optional<module::MachineInstruction>
+lower_materialized_compare_condition_branch(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.function.prepared == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch ||
+      context.bir_block->terminator.kind != bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->condition_value.kind != bir::Value::Kind::Named ||
+      branch_condition->condition_value != context.bir_block->terminator.condition) {
+    return std::nullopt;
+  }
+  const auto condition_name =
+      prepared_named_value_id(context, branch_condition->condition_value);
+  const auto* condition_home =
+      condition_name.has_value() && context.function.value_locations != nullptr
+          ? prepare::find_prepared_value_home(*context.function.value_locations,
+                                              *condition_name)
+          : nullptr;
+  if (condition_home == nullptr ||
+      condition_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+    return std::nullopt;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context,
+                                     branch_condition->condition_value.name,
+                                     context.bir_block->insts.size());
+  const auto producer_index = producer_instruction_index(context, producer);
+  const auto* binary =
+      producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
+  if (binary == nullptr || !producer_index.has_value()) {
+    return std::nullopt;
+  }
+  const auto condition = branch_condition_suffix(binary->opcode);
+  const auto operand_view = scalar_view_for_type(binary->operand_type);
+  if (!condition.has_value() || !operand_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
+  const auto rhs_reg = abi::gp_register(scratches[1].index, *operand_view);
+  const auto lhs_name = lhs_reg.has_value()
+                            ? std::optional<std::string>{abi::register_name(*lhs_reg)}
+                            : std::nullopt;
+  const auto rhs_name = rhs_reg.has_value()
+                            ? std::optional<std::string>{abi::register_name(*rhs_reg)}
+                            : std::nullopt;
+  if (!lhs_name.has_value() || !rhs_name.has_value() ||
+      branch_condition->true_label == c4c::kInvalidBlockLabel ||
+      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  auto lhs = binary->lhs;
+  lhs.type = binary->operand_type;
+  if (!emit_value_publication_to_register(context,
+                                          lhs,
+                                          *producer_index,
+                                          scratches[0].index,
+                                          scratches[1].index,
+                                          lines)) {
+    return std::nullopt;
+  }
+
+  std::string rhs;
+  if (binary->rhs.kind == bir::Value::Kind::Immediate &&
+      is_cmp_immediate_encodable(binary->rhs.immediate)) {
+    rhs = "#" + std::to_string(binary->rhs.immediate);
+  } else {
+    auto rhs_value = binary->rhs;
+    rhs_value.type = binary->operand_type;
+    if (!emit_value_publication_to_register(context,
+                                            rhs_value,
+                                            *producer_index,
+                                            scratches[1].index,
+                                            scratches[0].index,
+                                            lines)) {
+      return std::nullopt;
+    }
+    rhs = *rhs_name;
+  }
+
+  lines.push_back("cmp " + *lhs_name + ", " + rhs);
+  lines.push_back("b." + std::string{*condition} + " " +
+                  machine_block_label(branch_condition->function_name,
+                                      branch_condition->true_label));
+  lines.push_back("b " + machine_block_label(branch_condition->function_name,
+                                             branch_condition->false_label));
+  return make_branch_compare_assembler_instruction(context, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
 lower_conditional_branch_from_emitted_condition(
     const module::BlockLoweringContext& context,
     BlockScalarLoweringState& scalar_state) {
@@ -5932,6 +6030,9 @@ InstructionDispatchResult dispatch_prepared_block(
              c4c::backend::bir::TerminatorKind::CondBranch) {
     if (auto lowered =
             lower_fused_compare_branch_from_emitted_cast(context, scalar_state)) {
+      block.instructions.push_back(std::move(*lowered));
+      block.successors = make_conditional_branch_successors(context);
+    } else if (auto lowered = lower_materialized_compare_condition_branch(context)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else {
