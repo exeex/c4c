@@ -1,7 +1,8 @@
 # AArch64 Scalar Cast Register-Source Operand Facts
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
+Closed: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -68,6 +69,33 @@ publication for sign/zero extension.
   bad fact before this idea is closed.
 - No expectation, runner, timeout, unsupported, or CTest-registration change is
   used to claim progress.
+
+## Closure Note
+
+Closed after the active runbook proved the AArch64 scalar cast register-source
+operand-fact owner advanced past the old machine-printer failure. Focused
+backend coverage for scalar cast records, prepared scalar cast records, machine
+printing, and instruction dispatch passes, and the 9-case external bucket no
+longer reports the old structured register-source operand diagnostic.
+
+Close-scope regression proof used matching 13-test `test_before.log` and
+`test_after.log` captures for the Step 3 command:
+
+```text
+backend_aarch64_(scalar_cast_records|prepared_scalar_cast_records|machine_printer|instruction_dispatch)|c_testsuite_aarch64_backend_src_(00143|00173|00175|00176|00181|00185|00204|00205|00216)_c
+```
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+passed with before 4/13, after 6/13, two additional passing tests, and no new
+failing tests. Passing external representatives are now `00143` and `00185`;
+`00173` no longer fails with the old scalar-cast printer diagnostic in the
+current proof and is classified as a timeout residual.
+
+Remaining failures are outside this focused owner by current evidence:
+`00175`, `00176`, `00204`, `00205`, and `00216` are runtime mismatch
+residuals, and `00181` is a runtime nonzero/segmentation-fault residual. Those
+residuals should be handled by separate owners only when selected by lifecycle
+triage.
 
 ## Reviewer Reject Signals
 
