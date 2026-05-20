@@ -8,56 +8,41 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the classified AArch64 HFA/floating owner for the original
-multi-lane fixed-HFA mismatch. Fresh generated-code evidence showed `arg()`
-already had prepared BIR moves for `fa_hfa13` lanes into `s0`, `s1`, and `s2`,
-but the emitted assembly published only `s0`. The concrete owner was AArch64
-MIR call-boundary lowering/selection for prepared frame-slot-to-FPR call
-argument moves.
+Step 2 repaired the next fixed HFA residual after the `fa_hfa13` repair. Fresh
+generated-code evidence showed the `arg()` call site already published `hfa14`
+lanes into `s0`, `s1`, `s2`, and `s3`, but `fa_hfa14` stored those lanes at
+`[sp]`, `[sp,#4]`, `[sp,#8]`, and `[sp,#12]` and then converted lanes `c/d`
+from stale spill homes at `[sp,#20]` and `[sp,#24]`.
 
-`src/backend/mir/aarch64/codegen/calls.cpp` now accepts FPR source registers in
-value stack moves, selects prepared frame-slot loads into FPR call ABI
-registers, preserves scalar S/D destination bank/view for value moves, and
-allows call-boundary frame-slot loads into FPR destinations. The generated
-`build/c_testsuite_aarch64_backend/src/00204.c.s` now publishes `fa_hfa13`
-argument lanes as `s0`, `s1`, and `s2` before `bl fa_hfa13`.
+The concrete owner was the stack-backed scalar F32/F64 width-cast fallback in
+`src/backend/mir/aarch64/codegen/cast_ops.cpp`: for a cast operand that is a
+prepared `load_local` result, it used the regalloc spill home as the source
+address even when prepared addressing had the authoritative frame-slot load
+home. The fallback now prefers the unique prepared frame-slot load access for
+the operand value before falling back to the value-home offset.
 
-The next first bad fact in `fa_hfa13` was not ABI lane placement but an
-unpublished stack-backed scalar FP width cast: `%t9 = fpext float ... to
-double` had a prepared result stack slot, but no emitted `fcvt`/store before
-the later `ldr d2, [sp, #16]`. `src/backend/mir/aarch64/codegen/cast_ops.cpp`
-now emits a focused scalar F32/F64 width-cast fallback for stack-backed or
-prepared-register results when the regular scalar cast record is absent. The
-generated `fa_hfa13` path now loads the float lane, emits `fcvt d16, s8`,
-stores the double result to the prepared stack slot, and publishes `d2`.
-
-The original visible mismatch starting at `13.1 0.0 -nan` is repaired in the
-fresh proof output: the `fa_hfa13` line now prints `13.1 13.2 13.3`.
+The fresh generated `fa_hfa14` assembly now converts lane `c` from `[sp,#8]`
+and lane `d` from `[sp,#12]`, and the proof output now prints
+`14.1 14.2 14.3 14.4` for the fixed `hfa14` line.
 
 ## Suggested Next
 
-Continue Step 2 on the remaining representative failure after the repaired
-`fa_hfa13` owner. The fresh proof still fails with `RUNTIME_NONZERO` /
-segmentation fault. The next concrete output facts are:
-
-- fixed `hfa14` still prints `14.1 14.2 13.2 13.3` where the expected line is
-  `14.1 14.2 14.3 14.4`
-- long-double HFA publication still prints `33.1 0.0 0.0` and
-  `34.1 0.0 0.0 ...`, followed by a very large corrupted floating value before
-  the segfault
-
-Localize whether the next owner is HFA14 lane source/home collision, binary128
-HFA multi-lane transport, or HFA return publication. Do that from generated
-assembly/dumps rather than from expectation or runner changes.
+Continue Step 2 on the remaining representative failure after fixed `hfa14`.
+The fresh proof still fails with `RUNTIME_NONZERO` / segmentation fault. The
+next concrete output facts are long-double HFA publication still printing
+`33.1 0.0 0.0` and `34.1 0.0 0.0 ...`, followed by very large corrupted
+floating output before the segfault. Localize whether the next owner is
+binary128 HFA multi-lane transport, HFA return publication, or variadic HFA
+materialization from generated assembly/dumps.
 
 ## Watchouts
 
-The proof is not green. Treat this as a repaired first mismatch plus recorded
-residuals, not as completed `00204.c` support. Do not special-case `hfa13`,
-`fa_hfa13`, one lane count, one literal, one emitted register, or one test
-case. Do not reopen committed HFA lane-home, F128 transport/address, call ABI
-register-indexing, or long-double literal payload repairs without fresh
-evidence.
+The proof is not green. Treat this as a repaired `hfa14` lane collision plus
+recorded residuals, not as completed `00204.c` support. Do not special-case
+`hfa14`, `fa_hfa14`, one lane count, one literal, one emitted register, one
+stack slot, or one test case. Do not reopen committed HFA lane-home, F128
+transport/address, call ABI register-indexing, binary128 literal, or `fa_hfa13`
+scalar lane repairs without fresh evidence proving regression.
 
 Untracked `review/*.md` files were present before this executor packet and were
 left untouched.
@@ -70,7 +55,7 @@ Ran the delegated proof command:
 Current result: build succeeded; `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`
 passed. `c_testsuite_aarch64_backend_src_00204_c` still failed with
-`RUNTIME_NONZERO` / segmentation fault. `test_after.log` is the fresh proof log
-for this dirty state.
+`RUNTIME_NONZERO` / segmentation fault after the fixed `hfa14` line.
+`test_after.log` is the fresh proof log for this dirty state.
 
 Also ran `git diff --check`, which passed.

@@ -165,6 +165,57 @@ namespace {
   return scalar_fp_register_view(type);
 }
 
+[[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<std::int64_t> prepared_frame_load_offset(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      home.value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  const prepare::PreparedMemoryAccess* source_access = nullptr;
+  for (const auto& access : addressing->accesses) {
+    if (access.result_value_name != std::optional<c4c::ValueNameId>{home.value_name}) {
+      continue;
+    }
+    if (source_access != nullptr) {
+      return std::nullopt;
+    }
+    source_access = &access;
+  }
+  if (source_access == nullptr ||
+      source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !source_access->address.frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* slot = find_frame_slot_by_id(
+      context.function.prepared->stack_layout, *source_access->address.frame_slot_id);
+  if (slot == nullptr) {
+    return std::nullopt;
+  }
+  return static_cast<std::int64_t>(slot->offset_bytes) +
+         source_access->address.byte_offset;
+}
+
 [[nodiscard]] prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
   switch (bank) {
@@ -913,10 +964,13 @@ std::optional<module::MachineInstruction> lower_stack_scalar_float_width_cast(
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       source_home->offset_bytes.has_value()) {
+    const auto source_offset =
+        prepared_frame_load_offset(context, *source_home)
+            .value_or(static_cast<std::int64_t>(*source_home->offset_bytes));
     std::ostringstream load;
     load << "ldr " << abi::register_name(*source_scratch_view) << ", [sp";
-    if (*source_home->offset_bytes != 0) {
-      load << ", #" << *source_home->offset_bytes;
+    if (source_offset != 0) {
+      load << ", #" << source_offset;
     }
     load << "]";
     lines.push_back(load.str());
