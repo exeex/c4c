@@ -197,6 +197,7 @@ struct PreparedVariadicAggregateVaArgAccessPlan {
   std::optional<std::size_t> overflow_stride_bytes;
   std::optional<std::size_t> register_save_lane_count;
   std::optional<std::size_t> register_save_lane_size_bytes;
+  std::vector<PreparedValueHome> register_save_lane_destination_homes;
 };
 
 [[nodiscard]] inline bool

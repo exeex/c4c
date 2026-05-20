@@ -2173,6 +2173,17 @@ MemoryInstructionLoweringResult lower_f128_transport_instruction(
                              memory_error_message(memory.error));
     return MemoryInstructionLoweringResult{.handled = true};
   }
+  if (!context.function.prepared->stack_layout.frame_slots.empty() &&
+      !resolve_frame_slot_memory_offset(context.function.prepared->stack_layout,
+                                        *memory.record)) {
+    append_memory_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+        context,
+        instruction_index,
+        "AArch64 f128 transport requires prepared frame-slot stack offsets");
+    return MemoryInstructionLoweringResult{.handled = true};
+  }
   if (carrier_value_name == c4c::kInvalidValueName) {
     append_memory_diagnostic(
         diagnostics,

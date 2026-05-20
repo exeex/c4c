@@ -1527,6 +1527,7 @@ struct VariadicAggregateVaArgRecord {
   std::size_t overflow_stride_bytes = 0;
   std::size_t register_save_lane_count = 0;
   std::size_t register_save_lane_size_bytes = 0;
+  std::vector<prepare::PreparedValueHome> register_save_lane_destination_homes;
   prepare::PreparedFrameSlotId register_save_area_slot_id = 0;
   std::size_t register_save_area_stack_offset_bytes = 0;
   std::size_t register_save_area_size_bytes = 0;

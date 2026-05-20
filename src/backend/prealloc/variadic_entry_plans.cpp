@@ -79,6 +79,7 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
 struct Aapcs64HfaVaArgShape {
   std::size_t lane_count = 0;
   std::size_t lane_size_bytes = 0;
+  std::vector<PreparedValueHome> lane_destination_homes;
 };
 
 [[nodiscard]] std::size_t type_kind_size_bytes(bir::TypeKind type) {
@@ -116,6 +117,8 @@ struct Aapcs64HfaVaArgShape {
 }
 
 [[nodiscard]] std::optional<Aapcs64HfaVaArgShape> infer_aapcs64_hfa_va_arg_shape(
+    const PreparedBirModule& prepared,
+    const PreparedVariadicEntryPlanFunction& function_plan,
     const bir::Block& block,
     std::size_t instruction_index,
     const bir::CallInst& call) {
@@ -126,7 +129,14 @@ struct Aapcs64HfaVaArgShape {
     return std::nullopt;
   }
   const auto& payload_abi = call.arg_abi.front();
+  const auto* function_addressing =
+      find_prepared_addressing_function(prepared.addressing,
+                                        function_plan.function_name);
+  if (function_addressing == nullptr) {
+    return std::nullopt;
+  }
   std::vector<std::size_t> lane_offsets;
+  std::vector<PreparedValueHome> lane_destination_homes;
   bir::TypeKind lane_type = bir::TypeKind::Void;
   std::size_t lane_size = 0;
   for (std::size_t index = instruction_index + 1; index < block.insts.size(); ++index) {
@@ -152,14 +162,49 @@ struct Aapcs64HfaVaArgShape {
     if (*offset != lane_offsets.size() * lane_size) {
       return std::nullopt;
     }
+    const auto* access =
+        find_prepared_memory_access(*function_addressing, block.label_id, index);
+    if (access == nullptr ||
+        !access->result_value_name.has_value() ||
+        access->address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        access->address.byte_offset < 0) {
+      return std::nullopt;
+    }
+    const PreparedFrameSlot* frame_slot = nullptr;
+    for (const auto& slot : prepared.stack_layout.frame_slots) {
+      if (slot.slot_id == *access->address.frame_slot_id) {
+        frame_slot = &slot;
+        break;
+      }
+    }
+    if (frame_slot == nullptr) {
+      return std::nullopt;
+    }
+    lane_destination_homes.push_back(PreparedValueHome{
+        .function_name = function_plan.function_name,
+        .value_name = *access->result_value_name,
+        .kind = PreparedValueHomeKind::StackSlot,
+        .slot_id = access->address.frame_slot_id,
+        .offset_bytes =
+            frame_slot->offset_bytes +
+            static_cast<std::size_t>(access->address.byte_offset),
+        .size_bytes = access->address.size_bytes,
+        .align_bytes = access->address.align_bytes,
+    });
     lane_offsets.push_back(*offset);
   }
   if (lane_offsets.empty() || lane_offsets.size() > 4 ||
       lane_offsets.size() * lane_size != payload_abi.size_bytes) {
     return std::nullopt;
   }
+  if (lane_destination_homes.size() != lane_offsets.size()) {
+    return std::nullopt;
+  }
   return Aapcs64HfaVaArgShape{.lane_count = lane_offsets.size(),
-                              .lane_size_bytes = lane_size};
+                              .lane_size_bytes = lane_size,
+                              .lane_destination_homes =
+                                  std::move(lane_destination_homes)};
 }
 
 [[nodiscard]] PreparedObjectId next_prepared_object_id(
@@ -526,6 +571,7 @@ make_aapcs64_scalar_va_arg_access_plan(
 
 [[nodiscard]] std::optional<PreparedVariadicAggregateVaArgAccessPlan>
 make_aapcs64_aggregate_va_arg_access_plan(
+    const PreparedBirModule& prepared,
     const PreparedVariadicEntryPlanFunction& function_plan,
     const PreparedVariadicEntryHelperOperandHomes& homes,
     const bir::Block& block,
@@ -566,7 +612,7 @@ make_aapcs64_aggregate_va_arg_access_plan(
   };
 
   const auto hfa_shape =
-      infer_aapcs64_hfa_va_arg_shape(block, instruction_index, call);
+      infer_aapcs64_hfa_va_arg_shape(prepared, function_plan, block, instruction_index, call);
   if (hfa_shape.has_value() &&
       function_plan.register_save_area.fp_slot_size_bytes.has_value()) {
     plan.source_class = PreparedVariadicAggregateVaArgSourceClass::RegisterSaveArea;
@@ -579,6 +625,8 @@ make_aapcs64_aggregate_va_arg_access_plan(
         hfa_shape->lane_count * *function_plan.register_save_area.fp_slot_size_bytes;
     plan.register_save_lane_count = hfa_shape->lane_count;
     plan.register_save_lane_size_bytes = hfa_shape->lane_size_bytes;
+    plan.register_save_lane_destination_homes =
+        std::move(hfa_shape->lane_destination_homes);
   }
 
   if (const auto overflow_field = find_variadic_va_list_field(
@@ -713,7 +761,7 @@ void populate_aapcs64_variadic_entry_helper_operand_home_authority(
               function_plan, homes, homes.source_va_list, "source_va_list");
           homes.aggregate_access_plan =
               make_aapcs64_aggregate_va_arg_access_plan(
-                  function_plan, homes, block, instruction_index, *call);
+                  prepared, function_plan, homes, block, instruction_index, *call);
           if (!has_complete_prepared_variadic_aggregate_va_arg_access_plan(homes)) {
             append_missing_variadic_entry_fact(
                 function_plan,

@@ -202,19 +202,24 @@ bool f128_frame_slot_direct_offset_is_encodable(const MemoryOperand& address) {
 std::vector<std::string> f128_materialize_frame_slot_address_lines(
     abi::RegisterReference scratch,
     const MemoryOperand& address) {
-  if (address.base_kind != MemoryBaseKind::FrameSlot || address.byte_offset < 0) {
+  if (address.base_kind != MemoryBaseKind::FrameSlot) {
     return {};
   }
-  const auto offset = static_cast<std::uint64_t>(address.byte_offset);
+  const auto offset =
+      address.byte_offset < 0
+          ? static_cast<std::uint64_t>(-address.byte_offset)
+          : static_cast<std::uint64_t>(address.byte_offset);
   const std::string scratch_name = abi::register_name(scratch);
   if (offset <= 4095U) {
-    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+    return {(address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
+            ", sp, #" + std::to_string(offset)};
   }
   auto lines = materialize_integer_constant_lines(scratch, offset, 64);
   if (lines.empty()) {
     return {};
   }
-  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  lines.push_back((address.byte_offset < 0 ? "sub " : "add ") + scratch_name +
+                  ", sp, " + scratch_name);
   return lines;
 }
 
@@ -582,6 +587,14 @@ MachineNodeStatusRecord validate_f128_transport_instruction(
     return MachineNodeStatusRecord{
         .status = MachineNodeSelectionStatus::MissingRequiredFacts,
         .diagnostic = "f128 memory transport is missing structured memory operand"};
+  }
+  if ((instruction.transport_kind == F128TransportKind::LoadFromMemory ||
+       instruction.transport_kind == F128TransportKind::StoreToMemory) &&
+      instruction.memory.has_value() &&
+      !f128_printable_memory_address(*instruction.memory).has_value()) {
+    return MachineNodeStatusRecord{
+        .status = MachineNodeSelectionStatus::DeferredUnsupported,
+        .diagnostic = "f128 memory transport address is not printable"};
   }
   return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
 }
@@ -1165,13 +1178,16 @@ std::optional<RegisterOperand> make_f128_register_operand(
   if (!carrier.register_name.has_value()) {
     return std::nullopt;
   }
-  const auto converted = abi::convert_prepared_register(
-      *carrier.register_name, carrier.register_bank, carrier.register_class, abi::RegisterView::Q);
-  if (!converted.has_value()) {
+  const auto parsed = abi::parse_aarch64_register_name(*carrier.register_name);
+  if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(parsed->index, abi::RegisterView::Q);
+  if (!viewed.has_value()) {
     return std::nullopt;
   }
   return RegisterOperand{
-      .reg = *converted.reg,
+      .reg = *viewed,
       .role = RegisterOperandRole::StoragePlan,
       .value_id = carrier.value_id,
       .value_name = carrier.value_name,
@@ -1179,8 +1195,8 @@ std::optional<RegisterOperand> make_f128_register_operand(
       .prepared_bank = carrier.register_bank,
       .expected_view = abi::RegisterView::Q,
       .contiguous_width = carrier.contiguous_width,
-      .occupied_register_references = f128_occupied_register_references(*converted.reg),
-      .occupied_registers = f128_occupied_register_views(*converted.reg),
+      .occupied_register_references = f128_occupied_register_references(*viewed),
+      .occupied_registers = f128_occupied_register_views(*viewed),
   };
 }
 

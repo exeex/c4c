@@ -323,6 +323,8 @@ make_variadic_aggregate_va_arg_record(
           plan.register_save_lane_count.value_or(std::size_t{0}),
       .register_save_lane_size_bytes =
           plan.register_save_lane_size_bytes.value_or(std::size_t{0}),
+      .register_save_lane_destination_homes =
+          plan.register_save_lane_destination_homes,
       .register_save_area_slot_id = *entry.register_save_area.slot_id,
       .register_save_area_stack_offset_bytes =
           *entry.register_save_area.stack_offset_bytes,
@@ -792,19 +794,18 @@ bool append_aggregate_source_address_lines(std::vector<std::string>& lines,
                                            copy_offset_bytes);
 }
 
-bool append_aggregate_destination_store(std::vector<std::string>& lines,
-                                        const VariadicAggregateVaArgRecord& va_arg,
-                                        abi::RegisterReference address_scratch,
-                                        abi::RegisterReference data_register,
-                                        std::size_t width_bytes,
-                                        std::size_t copy_offset_bytes) {
-  if (va_arg.destination_payload_home.kind !=
-          prepare::PreparedValueHomeKind::StackSlot ||
-      !va_arg.destination_payload_home.offset_bytes.has_value()) {
+bool append_aggregate_destination_store_to_home(
+    std::vector<std::string>& lines,
+    const prepare::PreparedValueHome& destination_home,
+    abi::RegisterReference address_scratch,
+    abi::RegisterReference data_register,
+    std::size_t width_bytes,
+    std::size_t copy_offset_bytes) {
+  if (destination_home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !destination_home.offset_bytes.has_value()) {
     return false;
   }
-  const auto stack_offset =
-      *va_arg.destination_payload_home.offset_bytes + copy_offset_bytes;
+  const auto stack_offset = *destination_home.offset_bytes + copy_offset_bytes;
   const auto store_mnemonic = aggregate_copy_store_mnemonic(width_bytes);
   if (store_mnemonic.empty()) {
     return false;
@@ -825,6 +826,20 @@ bool append_aggregate_destination_store(std::vector<std::string>& lines,
                   std::string{abi::register_name(data_register)} + ", [" +
                   std::string{abi::register_name(address_scratch)} + "]");
   return true;
+}
+
+bool append_aggregate_destination_store(std::vector<std::string>& lines,
+                                        const VariadicAggregateVaArgRecord& va_arg,
+                                        abi::RegisterReference address_scratch,
+                                        abi::RegisterReference data_register,
+                                        std::size_t width_bytes,
+                                        std::size_t copy_offset_bytes) {
+  return append_aggregate_destination_store_to_home(lines,
+                                                    va_arg.destination_payload_home,
+                                                    address_scratch,
+                                                    data_register,
+                                                    width_bytes,
+                                                    copy_offset_bytes);
 }
 
 [[nodiscard]] std::string aggregate_va_arg_label(
@@ -857,6 +872,8 @@ bool append_aggregate_copy_from_va_list_field(
   const bool register_save_area =
       source_field == prepare::PreparedVariadicVaListFieldKind::FpRegisterSaveArea ||
       source_field == prepare::PreparedVariadicVaListFieldKind::GpRegisterSaveArea;
+  const bool use_lane_destination_homes =
+      va_arg.register_save_lane_destination_homes.size() == lane_count;
   for (std::size_t lane_index = 0; lane_index < lane_count; ++lane_index) {
     std::size_t lane_chunk_offset = 0;
     for (const auto width_bytes : aggregate_copy_chunks(lane_size_bytes)) {
@@ -890,13 +907,20 @@ bool append_aggregate_copy_from_va_list_field(
       lines.push_back(std::string{load_mnemonic} + " " +
                       std::string{abi::register_name(data_register)} + ", [" +
                       std::string{abi::register_name(source_scratch)} + "]");
-      if (!append_aggregate_destination_store(
-              lines,
-              va_arg,
-              address_scratch,
-              data_register,
-              width_bytes,
-              lane_index * lane_size_bytes + lane_chunk_offset)) {
+      const auto& destination_home =
+          use_lane_destination_homes
+              ? va_arg.register_save_lane_destination_homes[lane_index]
+              : va_arg.destination_payload_home;
+      const std::size_t destination_offset =
+          use_lane_destination_homes
+              ? lane_chunk_offset
+              : lane_index * lane_size_bytes + lane_chunk_offset;
+      if (!append_aggregate_destination_store_to_home(lines,
+                                                      destination_home,
+                                                      address_scratch,
+                                                      data_register,
+                                                      width_bytes,
+                                                      destination_offset)) {
         return false;
       }
       lane_chunk_offset += width_bytes;
@@ -973,14 +997,20 @@ print_aggregate_va_arg_lowering_lines(const VariadicAggregateVaArgRecord& va_arg
                         va_arg.progression_field_offset_bytes));
     lines.push_back("b " + done_label);
     lines.push_back(overflow_label + ":");
+    const bool use_hfa_lane_homes =
+        va_arg.register_save_lane_destination_homes.size() ==
+            va_arg.register_save_lane_count &&
+        va_arg.register_save_lane_size_bytes != 0;
     if (!append_aggregate_copy_from_va_list_field(
             lines,
             va_arg,
             prepare::PreparedVariadicVaListFieldKind::OverflowArgArea,
             va_arg.overflow_source_field_offset_bytes,
-            va_arg.copy_size_bytes,
-            va_arg.copy_size_bytes,
-            1,
+            use_hfa_lane_homes ? va_arg.register_save_lane_size_bytes
+                               : va_arg.copy_size_bytes,
+            use_hfa_lane_homes ? va_arg.register_save_lane_size_bytes
+                               : va_arg.copy_size_bytes,
+            use_hfa_lane_homes ? va_arg.register_save_lane_count : 1,
             source_scratch,
             address_scratch)) {
       return std::nullopt;

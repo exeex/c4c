@@ -4804,6 +4804,16 @@ InstructionDispatchResult dispatch_prepared_block(
         block.instructions.push_back(std::move(*lowered));
       } else if (is_current_block_join_parallel_copy_source(context, inst)) {
         continue;
+      } else if (auto lowered_f128_transport =
+                     lower_f128_transport_instruction(
+                         context, inst, instruction_index, diagnostics);
+                 lowered_f128_transport.handled) {
+        if (lowered_f128_transport.instruction.has_value()) {
+          retarget_memory_result_to_prepared_home(
+              context, *lowered_f128_transport.instruction);
+          record_memory_result(scalar_state, *lowered_f128_transport.instruction);
+          block.instructions.push_back(std::move(*lowered_f128_transport.instruction));
+        }
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));

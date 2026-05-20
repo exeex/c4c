@@ -315,6 +315,57 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   };
 }
 
+[[nodiscard]] std::optional<RegisterOperand>
+make_f128_q_register_operand_from_carrier(
+    const prepare::PreparedF128Carrier& carrier,
+    RegisterOperandRole role,
+    std::optional<prepare::PreparedValueId> value_id,
+    c4c::ValueNameId value_name,
+    module::ModuleLoweringDiagnostics& diagnostics,
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index) {
+  if (!carrier.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*carrier.register_name);
+  if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        "AArch64 binary128 call-boundary source carrier is not an FP/SIMD register");
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(parsed->index, abi::RegisterView::Q);
+  if (!viewed.has_value()) {
+    append_call_diagnostic(
+        diagnostics,
+        module::ModuleLoweringDiagnosticKind::RegisterConversionFailed,
+        context,
+        instruction_index,
+        "AArch64 binary128 call-boundary source carrier could not be re-viewed as q-register");
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *viewed,
+      .role = role,
+      .value_id = value_id,
+      .value_name = value_name,
+      .prepared_class = carrier.register_class,
+      .prepared_bank = carrier.register_bank,
+      .expected_view = abi::RegisterView::Q,
+      .contiguous_width = carrier.contiguous_width,
+      .occupied_register_references = {*viewed},
+      .occupied_registers =
+          carrier.occupied_register_names.empty()
+              ? std::vector<std::string_view>{abi::register_name(*viewed)}
+              : std::vector<std::string_view>(
+                    carrier.occupied_register_names.begin(),
+                    carrier.occupied_register_names.end()),
+  };
+}
+
 [[nodiscard]] std::optional<ImmediateOperand> make_scalar_call_argument_immediate(
     const bir::Value& value,
     std::optional<prepare::PreparedValueId> source_value_id) {
@@ -1284,7 +1335,8 @@ make_value_stack_move_instruction(
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
   const bool selected_f128_argument_move =
       argument != nullptr &&
-      argument->source_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::Vreg ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Fpr) &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
       complete_full_width_f128_carrier(source_f128_carrier);
   const bool selected_scalar_fpr_argument_move =
@@ -1371,20 +1423,6 @@ make_value_stack_move_instruction(
                 argument->source_register_placement.has_value()
             ? std::optional<std::string>{}
             : source_home->register_name;
-    auto source = make_register_operand_from_prepared_authority(
-        source_register_name,
-        argument->source_register_placement,
-        argument->source_register_bank,
-        RegisterOperandRole::CallAbi,
-        source_home->value_id,
-        source_home->value_name,
-        selected_f128_argument_move ? source_f128_carrier->contiguous_width : 1,
-        selected_f128_argument_move ? source_f128_carrier->occupied_register_names
-                                    : std::vector<std::string>{},
-        expected_view,
-        diagnostics,
-        context,
-        instruction_index);
     auto destination = make_register_operand_from_prepared_authority(
         binding->destination_register_name,
         binding->destination_register_placement,
@@ -1399,13 +1437,43 @@ make_value_stack_move_instruction(
         diagnostics,
         context,
         instruction_index);
-    if (!source.has_value() || !destination.has_value()) {
+    if (!destination.has_value()) {
       return std::nullopt;
     }
-    move_record.source_register = *source;
     move_record.destination_register = *destination;
-      move_record.source_f128_carrier =
-          selected_f128_argument_move ? source_f128_carrier : nullptr;
+    if (selected_f128_argument_move) {
+      auto source = make_f128_q_register_operand_from_carrier(
+          *source_f128_carrier,
+          RegisterOperandRole::CallAbi,
+          source_home->value_id,
+          source_home->value_name,
+          diagnostics,
+          context,
+          instruction_index);
+      if (!source.has_value()) {
+        return std::nullopt;
+      }
+      move_record.source_register = *source;
+      move_record.source_f128_carrier = source_f128_carrier;
+    } else {
+      auto source = make_register_operand_from_prepared_authority(
+          source_register_name,
+          argument->source_register_placement,
+          argument->source_register_bank,
+          RegisterOperandRole::CallAbi,
+          source_home->value_id,
+          source_home->value_name,
+          1,
+          std::vector<std::string>{},
+          expected_view,
+          diagnostics,
+          context,
+          instruction_index);
+      if (!source.has_value()) {
+        return std::nullopt;
+      }
+      move_record.source_register = *source;
+    }
     }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
@@ -3136,7 +3204,7 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
       return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
     }
   }
-    if (instruction.source_memory.has_value() &&
+  if (instruction.source_memory.has_value() &&
         instruction.source_memory->support == MemoryOperandSupportKind::Prepared &&
         instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
       instruction.source_memory->frame_slot_id.has_value() &&
@@ -3387,6 +3455,22 @@ std::optional<std::vector<std::string>> print_call_boundary_frame_slot_load_line
   }
   lines.push_back("ldr " + register_name(*move.destination_register) + ", " + address);
   return lines;
+}
+
+std::optional<std::string> f128_call_boundary_vector_register_name(
+    const RegisterOperand& operand) {
+  if (operand.expected_view != abi::RegisterView::Q ||
+      operand.prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      operand.prepared_class != prepare::PreparedRegisterClass::Vector ||
+      operand.contiguous_width != 1 ||
+      !abi::is_fp_simd_register(operand.reg)) {
+    return std::nullopt;
+  }
+  const auto viewed = abi::fp_simd_register(operand.reg.index, abi::RegisterView::V);
+  if (!viewed.has_value()) {
+    return std::nullopt;
+  }
+  return std::string{abi::register_name(*viewed)} + ".16b";
 }
 
 std::optional<unsigned> scalar_integer_width_bits(bir::TypeKind type) {
@@ -3669,6 +3753,24 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
     }
   }
   std::ostringstream out;
+  const bool f128_q_register_move =
+      move.source_register.has_value() &&
+      move.source_f128_carrier != nullptr &&
+      move.source_register->expected_view == abi::RegisterView::Q &&
+      move.destination_register->expected_view == abi::RegisterView::Q;
+  if (f128_q_register_move) {
+    const auto destination =
+        f128_call_boundary_vector_register_name(*move.destination_register);
+    const auto source =
+        f128_call_boundary_vector_register_name(*move.source_register);
+    if (!destination.has_value() || !source.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "binary128 call-boundary q-register move is not printable");
+    }
+    out << "mov " << *destination << ", " << *source;
+    return target_printed({out.str()});
+  }
   const bool scalar_fp_register_move =
       move.source_register.has_value() &&
       abi::is_fp_simd_register(move.source_register->reg) &&
