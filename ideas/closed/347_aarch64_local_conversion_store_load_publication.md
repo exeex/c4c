@@ -1,6 +1,6 @@
 # AArch64 Local Conversion Store Load Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/346_aarch64_direct_call_argument_formal_publication.md
 
@@ -68,6 +68,23 @@ direct-call source idea would broaden that owner beyond its durable intent.
   especially `00140`, `00159`, `00170`, and `00218`.
 - Any remaining `00175` failure is reclassified by its next first bad fact
   before this idea is closed.
+
+## Closure Note
+
+Closed on 2026-05-20. The runbook localized the first bad fact to same-block
+scalar cast results not being materialized into the selected AArch64 local
+store source register before publishing to the local home. The repair made
+local conversion store publication consume the converted result for both
+FP-to-integer and integer-to-FP conversion paths, with a fallback preserving the
+existing GPR local-store publication behavior when the specialized cast helper
+does not emit.
+
+Focused AArch64 backend coverage now checks same-block `cast -> storelocal`
+publication without pinning scratch registers or stack offsets. Representative
+proof shows `c_testsuite_aarch64_backend_src_00175_c` passes, and direct-call
+guards `00140`, `00159`, `00170`, and `00218` remain stable. The earlier mixed
+full-suite candidate remains rejected as unrelated non-monotonic evidence, not
+as remaining scope for this local conversion publication idea.
 
 ## Reviewer Reject Signals
 
