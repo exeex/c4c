@@ -1,51 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused Backend Coverage
+Current Step ID: 4
+Current Step Title: Prove Representative Progress
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added focused backend coverage in
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`.
+Step 4 proved representative `00204` progress after the byval payload-lane
+repair.
 
-The new dispatch case exercises a generic before-call move whose BIR call ABI
-marks a one-byte pointer argument as integer-class `byval`, passed in an
-AArch64 register. The aggregate object's ordinary stack home is intentionally
-poisoned away from the prepared byte store, so the test distinguishes payload
-lane publication from forwarding or loading through the prepared object
-address.
+Fresh generated output for `fa_s1(s1)` no longer shows the targeted byval
+temporary-address call argument fault. The callsite stores the prepared source
+byte to the byval temp and loads the payload into the ABI argument lane before
+the call:
 
-Coverage now asserts that lowering selects the prepared payload byte store,
-marks the move as `call_arg_byval_aggregate_register_lanes`, does not
-materialize an address, and prints `ldrb w0, [sp, #128]`. It would reject the
-old `add x0, sp, #...` address-forwarding shape and the wrong-source
-`ldrb` fallback from the aggregate object home.
+```asm
+ldrb w13, [x9]
+strb w13, [sp, #928]
+ldrb w0, [sp, #928]
+bl fa_s1
+```
+
+The old targeted bad fact, `add x0, sp, #928; bl fa_s1`, is absent at the
+representative `fa_s1` callsite. The representative test passed, so no next
+distinct first bad fact remains for `00204` in this packet.
 
 ## Suggested Next
 
-Execute Step 4 from `plan.md`: prove representative `00204` progress and
-record whether any next first bad fact remains after the byval payload-lane
-repair.
+Execute Step 5 from `plan.md`: run the supervisor-selected adjacent byval and
+variadic guard subset, then record whether prior byval placement, upper-lane
+publication, fixed-formal entry, and local/value-home guardrails remain stable.
 
 ## Watchouts
 
-- The new coverage is semantic and does not mention `00204`, `fa_s1`, source
-  names from the external case, exact scratch registers, or generated stack
-  offsets from the representative.
-- Existing adjacent guards in the delegated proof preserved target instruction
-  records, dispatch coverage, prepared-BIR handoff, byval helper runtime
-  payload cases, and `00204`.
-- The covered owner remains small integer-class register-passed `byval`
-  aggregate payload publication. HFA/floating byval and larger indirect byval
-  address passing remain separate owners unless fresh evidence ties them here.
+- This packet only proved the representative `00204` target selected by the
+  supervisor. Broader adjacent guard selection remains supervisor-owned.
+- Larger stack-passed byval behavior still legitimately materializes an
+  address, for example `add x0, sp, #1064; bl fa_s17`; that is not the repaired
+  small integer-class register-passed byval lane fault.
+- No expectation, allowlist, CTest registration, runner, timeout, proof-log,
+  implementation, or test files were changed.
 
 ## Proof
 
 Ran the delegated proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_(target_instruction_records|instruction_dispatch)|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_runtime_byval_helper_payload_(8_to_13|9_to_14)|c_testsuite_aarch64_backend_src_00204_c)$' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$' | tee test_after.log`
 
-Result: build succeeded and all 6/6 selected tests passed. Proof log preserved
-at `test_after.log`.
+Result: build was up to date and `c_testsuite_aarch64_backend_src_00204_c`
+passed, 1/1. Proof log preserved at `test_after.log`.
