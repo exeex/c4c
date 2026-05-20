@@ -1,84 +1,104 @@
 Status: Active
 Source Idea Path: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair The Classified HFA/Floating Owner
+Current Step ID: 4
+Current Step Title: Validate Representative And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the classified singleton HFA aggregate-copy owner. AArch64
-aggregate stores now prefer the aggregate alias copy path for aliased one-lane
-HFA values instead of treating the aggregate SSA name as the scalar lane. The
-singleton path now matches the multi-lane path by loading the explicit source
-leaf before storing the destination leaf.
+Step 4 classified the new `00204.c` first visible mismatch after the singleton
+HFA aggregate-copy repair. The repaired HFA/floating argument block now reaches
+the expected scalar lines through `34.1 34.2 34.3 34.4`. The next first bad
+fact is in the following fixed aggregate call:
 
-Focused BIR coverage was added for a small AArch64 local aggregate-copy
-fixture that copies both `%struct.Hfa1 = type { float }` and `%struct.Hfa2 =
-type { float, float }`. The test requires `%dst1.aggregate.copy.0 =
-load_local %src1.0`, rejects a direct `%single` store into `%dst1.0`, and
-keeps the adjacent two-lane copy checks in the same semantic rule.
+- expected: `stu ABC JKL TUV 456 ghi`
+- observed: `stu ABC I JKL RS TUV`
 
-The representative `fa_hfa11(hfa11)` first bad fact is gone. Generated BIR
-for `arg` now shows `%t20.aggregate.copy.0 = bir.load_local float %t19.0`,
-`bir.store_local %t20.0, float %t20.aggregate.copy.0`, `%t22 =
-bir.load_local float %t20.0`, then `bir.call void fa_hfa11(float %t22)`.
-Generated assembly now reloads `[sp, #784]` into `[sp, #788]` before
-publishing `s0`, and runtime output reaches the expected `11.1` line.
+The observing source is `fa1(struct s8 a, struct s9 b, struct s10 c, struct
+s11 d, struct s12 e, struct s13 f)`, which prints the first three bytes of
+six non-HFA struct arguments. Generated BIR for `arg` correctly loads the
+global bytes for `%t103` through `%t108` from `s8` through `s13` and calls
+`fa1(ptr byval(size=8) %t103, ptr byval(size=9) %t104, ptr byval(size=10)
+%t105, ptr byval(size=11) %t106, ptr byval(size=12) %t107, ptr
+byval(size=13) %t108)`.
+
+Prepared/generated-code evidence places the mismatch after semantic byte
+materialization, in AArch64 byval aggregate argument placement and entry
+unpack:
+
+- prepared `arg` reports `callsite ... callee=fa1 ... args=1` for focus value
+  `%t103`, with only `arg0 ... to=x0` shown for the byval aggregate-register
+  lane move.
+- generated assembly for the `fa1` call publishes the contiguous aggregate
+  chunks into `x0` through `x6`: `x0` has `s8`, `x1` has the first eight bytes
+  of `s9`, `x2` has the trailing `I`, `x3` has `s10`, `x4` has the trailing
+  `RS`, `x5` has `s11`, and `x6` has the trailing `YZ0`.
+- generated `fa1` entry then materializes `%p.a` from `x0`, `%p.b` from `x1`,
+  `%p.c` from `x2`, `%p.d` from `x3`, `%p.e` from `x4`, and `%p.f` from
+  `x5`, which explains the observed `stu ABC I JKL RS TUV` line.
+
+This residual does not remain under idea 326. It is a fixed non-HFA byval
+aggregate register-lane / stack-transition ABI issue, not an HFA/floating
+argument publication issue. It should be handed to plan-owner lifecycle
+routing for a new or resumed non-HFA byval aggregate argument placement route.
+Likely owning surfaces are `src/backend/prealloc/call_plans.cpp`,
+`src/backend/prealloc/regalloc.cpp`, and
+`src/backend/mir/aarch64/codegen/calls.cpp` for call-argument byval lane
+planning/publication, plus `src/backend/mir/aarch64/codegen/dispatch.cpp` for
+entry formal byval aggregate unpack.
 
 ## Suggested Next
 
-Execute Step 4-style residual classification for the next `00204.c` first bad
-fact exposed after the singleton HFA copy repair. The targeted Step 2 owner is
-fixed, but the representative still fails later in `Arguments:` and then in
-stdarg/HFA/MOVI output.
+Ask the plan owner to route the non-HFA byval aggregate residual out of idea
+326. The next executable packet should localize AAPCS64 fixed aggregate
+arguments across the caller and callee boundary for a small `s8, s9, s10, ...`
+shape, including the register-to-stack transition when too few GPR argument
+registers remain for the full aggregate.
 
-Smallest credible proof command to keep using:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00204_c)$'`.
+Smallest next proof command after lifecycle routing:
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00204_c)$'`.
 
-Focused generated-state probes to keep using:
-`./build/c4cll --target aarch64-linux-gnu --dump-bir --mir-focus-function arg tests/c/external/c-testsuite/src/00204.c | sed -n '300,346p'`,
-`./build/c4cll --target aarch64-linux-gnu --dump-prepared-bir --mir-focus-function arg --mir-focus-value t22 tests/c/external/c-testsuite/src/00204.c | sed -n '1,90p'`, and
-`./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00204.c | sed -n '/bl fa_s17/,+18p'`.
+Focused generated-state probes to reuse:
+`./build/c4cll --target aarch64-linux-gnu --dump-bir --mir-focus-function arg tests/c/external/c-testsuite/src/00204.c | sed -n '560,630p'`,
+`./build/c4cll --target aarch64-linux-gnu --dump-prepared-bir --mir-focus-function arg --mir-focus-value t103 tests/c/external/c-testsuite/src/00204.c | sed -n '1,220p'`,
+`./build/c4cll --target aarch64-linux-gnu --dump-prepared-bir --mir-focus-function fa1 tests/c/external/c-testsuite/src/00204.c | sed -n '1,220p'`, and
+`./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00204.c | sed -n '/^arg:/,/^fr_s1:/p' | rg -n -C 35 'bl fa1|s8|s9|s10|s11|s12|s13|ldr x[0-7]|str x[0-7]|mov x[0-7]'`.
 
 ## Watchouts
 
-The remaining `00204.c` first visible mismatch is no longer
-`fa_hfa11(hfa11)`: the `Arguments:` HFA scalar lines through `34.1 34.2
-34.3 34.4` match, then the expected string line `stu ABC JKL TUV 456 ghi`
-prints as `stu ABC I JKL RS TUV`. That residual should be localized as a new
-first bad fact before further implementation.
+Do not continue this residual under the HFA/floating idea without plan-owner
+approval. The new bad line involves non-HFA `char[]` structs and matches a
+fixed aggregate byval call-boundary chunking problem.
 
-The implementation branch that owned the stale singleton path was in
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp`, where aggregate stores
-select between HFA lane materialization and alias-based aggregate copy. The
-focused coverage lives in `tests/backend/bir/backend_lir_to_bir_notes_test.cpp`.
+Do not repair this with one function, one string literal, one register, one
+stack offset, or one emitted instruction sequence. The real contract is the
+general AAPCS64 rule for small non-HFA aggregates: each aggregate consumes its
+own rounded register/stack slots, and an aggregate that cannot fit in the
+remaining GPR argument registers must transition coherently to stack passing
+for both caller publication and callee entry materialization.
 
-Do not reopen stdarg cursor/format or `va_start` overflow cursor
-initialization without direct generated-code evidence that the first bad fact
-moved back to that owner.
-
-Do not reopen HFA/floating return publication, sret `x8`, large byval indirect
-pointer transport, byval aggregate register-lane allocation, fragmented byval
-lane publication, non-HFA aggregate `va_arg` materialization, fixed-formal
-entry publication, local/value-home publication, frame/formal publication, the
-scalar separator call-argument repair, or the byval overflow stack publication
-repair without direct generated-code evidence that the first bad fact moved
-back to that owner.
-
-Do not special-case `00204.c`, `arg`, `fa_hfa11`, `hfa11`, one HFA shape, one
-float value, one stack offset, one register, or one emitted instruction
-sequence.
+The previous singleton HFA owner remains fixed; do not reopen HFA/floating
+return publication, stdarg cursor/format, `va_start` overflow cursor
+initialization, non-HFA aggregate `va_arg` materialization, fixed-formal entry
+publication, local/value-home publication, or frame/formal publication unless
+fresh generated evidence moves the first bad fact back to one of those owners.
 
 ## Proof
 
 Proof log: `test_after.log`.
 
-Command run:
-`git diff --check && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|c_testsuite_aarch64_backend_src_00204_c)$'`.
+Commands/probes run:
+`rg -n 'stu ABC|Arguments:|34\.1|c_testsuite_aarch64_backend_src_00204_c|Expected|Actual|FAILED' test_after.log`;
+`./build/c4cll --target aarch64-linux-gnu --dump-bir --mir-focus-function arg tests/c/external/c-testsuite/src/00204.c | sed -n '560,630p'`;
+`./build/c4cll --target aarch64-linux-gnu --dump-prepared-bir --mir-focus-function arg --mir-focus-value t103 tests/c/external/c-testsuite/src/00204.c | sed -n '1,220p'`;
+`./build/c4cll --target aarch64-linux-gnu --dump-prepared-bir --mir-focus-function fa1 --mir-focus-value lv.param.p.c tests/c/external/c-testsuite/src/00204.c | sed -n '1,220p'`;
+`./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00204.c | sed -n '/^arg:/,/^fr_s1:/p' | rg -n -C 35 'bl fa1|s8|s9|s10|s11|s12|s13|ldr x[0-7]|str x[0-7]|mov x[0-7]'`.
 
-Result: `git diff --check` passed, build passed, and
-`backend_lir_to_bir_notes`, `backend_aarch64_instruction_dispatch`, and
-`backend_aarch64_machine_printer` passed. `c_testsuite_aarch64_backend_src_00204_c`
-still fails with a moved first bad fact after the repaired `fa_hfa11` output.
+Result: classification complete from existing `test_after.log` plus generated
+BIR/prepared-BIR/assembly probes. No full build was required for this todo-only
+classification. `test_after.log` remains the runtime proof log showing
+`c_testsuite_aarch64_backend_src_00204_c` still fails with the moved first bad
+fact after repaired HFA scalar output. `git diff --check` passed after the
+`todo.md` update.
