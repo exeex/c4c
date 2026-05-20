@@ -608,6 +608,103 @@ std::optional<prepare::PreparedBirModule> prepare_lir_i16_local_writeback_module
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_sliced_i16_local_address_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_sliced_i16_local_address_activation";
+  function.return_type = bir::TypeKind::Void;
+  const auto add_i16_slot = [&](std::string name) {
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = std::move(name),
+        .type = bir::TypeKind::I16,
+        .size_bytes = 2,
+        .align_bytes = 2,
+        .is_address_taken = true,
+    });
+  };
+  add_i16_slot("%slice.src.0");
+  add_i16_slot("%slice.src.1");
+  add_i16_slot("%slice.src.2");
+  add_i16_slot("%slice.dst.0");
+  add_i16_slot("%slice.dst.1");
+  add_i16_slot("%slice.dst.2");
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = block_label_id(module, "entry");
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%copy.plus2"),
+      .slot_name = "%slice.src.0",
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "%slice.src.0",
+              .byte_offset = 2,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%slice.dst.0",
+      .value = bir::Value::named(bir::TypeKind::I16, "%copy.plus2"),
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "%slice.dst.0",
+              .byte_offset = 2,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+  });
+  entry.insts.push_back(bir::LoadLocalInst{
+      .result = bir::Value::named(bir::TypeKind::I16, "%copy.plus4"),
+      .slot_name = "%slice.src.0",
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "%slice.src.0",
+              .byte_offset = 4,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "%slice.dst.0",
+      .value = bir::Value::named(bir::TypeKind::I16, "%copy.plus4"),
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .base_name = "%slice.dst.0",
+              .byte_offset = 4,
+              .size_bytes = 2,
+              .align_bytes = 2,
+          },
+  });
+  entry.terminator = bir::ReturnTerminator{};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
   const c4c::FunctionNameId function_name_id =
       find_function_name_id(prepared, "stack_layout_copy_coalescing_activation");
@@ -874,6 +971,73 @@ int check_lir_i16_local_writeback_sizing(const prepare::PreparedBirModule& prepa
     return rc;
   }
   if (const int rc = check_i16_access(3, false); rc != 0) {
+    return rc;
+  }
+
+  return 0;
+}
+
+int check_sliced_i16_local_address_coverage(const prepare::PreparedBirModule& prepared) {
+  const auto function_name_id =
+      find_function_name_id(prepared, "stack_layout_sliced_i16_local_address_activation");
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (function_addressing == nullptr) {
+    return fail("expected sliced i16 local fixture to publish prepared addressing");
+  }
+
+  const auto* src1_object = find_stack_object(prepared, "%slice.src.1");
+  const auto* src2_object = find_stack_object(prepared, "%slice.src.2");
+  const auto* dst1_object = find_stack_object(prepared, "%slice.dst.1");
+  const auto* dst2_object = find_stack_object(prepared, "%slice.dst.2");
+  if (src1_object == nullptr || src2_object == nullptr || dst1_object == nullptr ||
+      dst2_object == nullptr) {
+    return fail("expected sliced i16 local fixture to preserve consecutive slice objects");
+  }
+  const auto* src1_slot = find_frame_slot(prepared, src1_object->object_id);
+  const auto* src2_slot = find_frame_slot(prepared, src2_object->object_id);
+  const auto* dst1_slot = find_frame_slot(prepared, dst1_object->object_id);
+  const auto* dst2_slot = find_frame_slot(prepared, dst2_object->object_id);
+  if (src1_slot == nullptr || src2_slot == nullptr || dst1_slot == nullptr ||
+      dst2_slot == nullptr) {
+    return fail("expected sliced i16 local fixture to assign consecutive frame slots");
+  }
+
+  const auto check_access = [&](std::size_t inst_index,
+                                prepare::PreparedFrameSlotId expected_slot_id,
+                                bool is_store) -> int {
+    const auto* access =
+        prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, inst_index);
+    if (access == nullptr) {
+      return fail("expected sliced i16 local access to be published");
+    }
+    if ((is_store && !access->stored_value_name.has_value()) ||
+        (!is_store && !access->result_value_name.has_value())) {
+      return fail("expected sliced i16 local access direction metadata");
+    }
+    if (access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        *access->address.frame_slot_id != expected_slot_id ||
+        access->address.byte_offset != 0 ||
+        access->address.size_bytes != 2 ||
+        access->address.align_bytes != 2 ||
+        !access->address.can_use_base_plus_offset) {
+      return fail(
+          "expected base-slice + byte offset to resolve to the covering sliced frame slot");
+    }
+    return 0;
+  };
+
+  if (const int rc = check_access(0, src1_slot->slot_id, false); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_access(1, dst1_slot->slot_id, true); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_access(2, src2_slot->slot_id, false); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_access(3, dst2_slot->slot_id, true); rc != 0) {
     return rc;
   }
 
@@ -4550,6 +4714,11 @@ int main() {
     return fail("expected LIR-origin i16 local fixture to lower to BIR");
   }
   if (const int rc = check_lir_i16_local_writeback_sizing(*lir_i16_local_prepared);
+      rc != 0) {
+    return rc;
+  }
+  const auto sliced_i16_local_prepared = prepare_sliced_i16_local_address_module();
+  if (const int rc = check_sliced_i16_local_address_coverage(sliced_i16_local_prepared);
       rc != 0) {
     return rc;
   }

@@ -7,6 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <utility>
+#include <vector>
 
 namespace c4c::backend::prepare {
 
@@ -17,6 +18,14 @@ using FrameSlotMap = std::unordered_map<SlotNameId, const PreparedFrameSlot*>;
 struct ResolvedFrameSlot {
   const PreparedFrameSlot* frame_slot = nullptr;
   std::int64_t byte_offset_adjust = 0;
+};
+
+struct SlotSliceCoverage {
+  SlotNameId slot_name_id = kInvalidSlotName;
+  const PreparedFrameSlot* frame_slot = nullptr;
+  std::size_t ordinal = 0;
+  std::int64_t begin = 0;
+  std::int64_t end = 0;
 };
 
 [[nodiscard]] bir::AddressSpace prepared_memory_address_space(
@@ -130,6 +139,55 @@ struct ResolvedFrameSlot {
   return std::pair<std::string_view, std::size_t>{slot_name.substr(0, dot), slice_offset};
 }
 
+[[nodiscard]] std::vector<SlotSliceCoverage> build_slot_slice_coverage(
+    PreparedNameTables& names,
+    std::string_view family_name,
+    const FrameSlotMap& frame_slots_by_name) {
+  std::vector<SlotSliceCoverage> coverage;
+  coverage.reserve(frame_slots_by_name.size());
+  for (const auto& [candidate_name_id, candidate_slot] : frame_slots_by_name) {
+    const auto candidate_name = prepared_slot_name(names, candidate_name_id);
+    const auto candidate_slice = parse_slot_slice_name(candidate_name);
+    if (!candidate_slice.has_value() || candidate_slice->first != family_name) {
+      continue;
+    }
+    coverage.push_back(SlotSliceCoverage{
+        .slot_name_id = candidate_name_id,
+        .frame_slot = candidate_slot,
+        .ordinal = candidate_slice->second,
+    });
+  }
+
+  std::sort(coverage.begin(),
+            coverage.end(),
+            [](const SlotSliceCoverage& lhs, const SlotSliceCoverage& rhs) {
+              if (lhs.ordinal != rhs.ordinal) {
+                return lhs.ordinal < rhs.ordinal;
+              }
+              return lhs.slot_name_id < rhs.slot_name_id;
+            });
+
+  bool dense_ordinal_family = !coverage.empty();
+  for (std::size_t index = 0; index < coverage.size(); ++index) {
+    if (coverage[index].ordinal != index ||
+        (index > 0 && coverage[index - 1].ordinal == coverage[index].ordinal)) {
+      dense_ordinal_family = false;
+      break;
+    }
+  }
+
+  std::int64_t next_begin = 0;
+  for (auto& entry : coverage) {
+    entry.begin = dense_ordinal_family ? next_begin : static_cast<std::int64_t>(entry.ordinal);
+    entry.end = entry.begin + static_cast<std::int64_t>(entry.frame_slot->size_bytes);
+    if (dense_ordinal_family) {
+      next_begin = entry.end;
+    }
+  }
+
+  return coverage;
+}
+
 [[nodiscard]] FrameSlotMap build_frame_slot_map(
     const std::vector<PreparedStackObject>& function_objects,
     const std::vector<PreparedFrameSlot>& function_slots) {
@@ -187,33 +245,32 @@ struct ResolvedFrameSlot {
     return resolved;
   }
 
-  const auto requested_begin =
-      static_cast<std::int64_t>(requested_slice->second) + access_byte_offset;
+  const auto coverage =
+      build_slot_slice_coverage(names, requested_slice->first, frame_slots_by_name);
+  std::int64_t requested_slice_begin = static_cast<std::int64_t>(requested_slice->second);
+  for (const auto& entry : coverage) {
+    if (entry.slot_name_id == prepared_slot_id) {
+      requested_slice_begin = entry.begin;
+      break;
+    }
+  }
+
+  const auto requested_begin = requested_slice_begin + access_byte_offset;
   const auto requested_end = requested_begin + static_cast<std::int64_t>(access_size_bytes);
   if (requested_begin < 0 || requested_end < requested_begin) {
     return resolved;
   }
 
-  std::optional<std::size_t> best_covering_offset;
-  for (const auto& [candidate_name_id, candidate_slot] : frame_slots_by_name) {
-    const auto candidate_name = prepared_slot_name(names, candidate_name_id);
-    const auto candidate_slice = parse_slot_slice_name(candidate_name);
-    if (!candidate_slice.has_value() || candidate_slice->first != requested_slice->first) {
+  std::optional<std::int64_t> best_covering_begin;
+  for (const auto& entry : coverage) {
+    if (requested_begin < entry.begin || requested_end > entry.end) {
       continue;
     }
 
-    const auto candidate_begin = static_cast<std::int64_t>(candidate_slice->second);
-    const auto candidate_end =
-        candidate_begin + static_cast<std::int64_t>(candidate_slot->size_bytes);
-    if (requested_begin < candidate_begin || requested_end > candidate_end) {
-      continue;
-    }
-
-    if (!best_covering_offset.has_value() || candidate_slice->second < *best_covering_offset) {
-      best_covering_offset = candidate_slice->second;
-      resolved.frame_slot = candidate_slot;
-      resolved.byte_offset_adjust =
-          static_cast<std::int64_t>(requested_slice->second) - candidate_begin;
+    if (!best_covering_begin.has_value() || entry.begin < *best_covering_begin) {
+      best_covering_begin = entry.begin;
+      resolved.frame_slot = entry.frame_slot;
+      resolved.byte_offset_adjust = requested_slice_begin - entry.begin;
     }
   }
 
