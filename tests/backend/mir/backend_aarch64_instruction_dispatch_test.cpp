@@ -12055,6 +12055,205 @@ int wide_local_load_publication_uses_latest_narrow_byte_store() {
   return 0;
 }
 
+int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.fallthrough.local.copy");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.fallthrough.local.copy.block");
+  const auto exit_label =
+      prepared.names.block_labels.intern("dispatch.fallthrough.local.copy.exit");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.fallthrough.local.copy.block");
+  const auto bir_exit_label =
+      prepared.module.names.block_labels.intern("dispatch.fallthrough.local.copy.exit");
+  const auto pad0_name = prepared.names.value_names.intern("%pad0");
+  const auto pad1_name = prepared.names.value_names.intern("%pad1");
+  const auto pad2_name = prepared.names.value_names.intern("%pad2");
+  const auto copy_name = prepared.names.value_names.intern("%copy.i16");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.fallthrough.local.copy",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.fallthrough.local.copy.block",
+               .insts =
+                   {bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I32, "%pad0"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::immediate_i32(0),
+                        .rhs = bir::Value::immediate_i32(0),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I32, "%pad1"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::named(bir::TypeKind::I32, "%pad0"),
+                        .rhs = bir::Value::immediate_i32(1),
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = bir::Value::named(bir::TypeKind::I32, "%pad2"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::named(bir::TypeKind::I32, "%pad1"),
+                        .rhs = bir::Value::immediate_i32(1),
+                    },
+                    bir::LoadLocalInst{
+                        .result = bir::Value::named(bir::TypeKind::I16, "%copy.i16"),
+                        .slot_name = "%source",
+                        .byte_offset = 2,
+                        .align_bytes = 2,
+                    },
+                    bir::StoreLocalInst{
+                        .slot_name = "%dest",
+                        .value = bir::Value::named(bir::TypeKind::I16, "%copy.i16"),
+                        .byte_offset = 2,
+                        .align_bytes = 2,
+                    }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.fallthrough.local.copy.exit",
+                       .target_label_id = bir_exit_label,
+                   }},
+               .label_id = bir_block_label,
+           },
+           bir::Block{
+               .label = "dispatch.fallthrough.local.copy.exit",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_exit_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = block_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = exit_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = exit_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{900},
+               .function_name = function_name,
+               .value_name = pad0_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w5"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{901},
+               .function_name = function_name,
+               .value_name = pad1_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w6"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{902},
+               .function_name = function_name,
+               .value_name = pad2_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w7"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{903},
+               .function_name = function_name,
+               .value_name = copy_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w10"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{900}, pad0_name, "w5"),
+           register_storage(prepare::PreparedValueId{901}, pad1_name, "w6"),
+           register_storage(prepare::PreparedValueId{902}, pad2_name, "w7"),
+           register_storage(prepare::PreparedValueId{903}, copy_name, "w10")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{910},
+      .function_name = function_name,
+      .offset_bytes = 16,
+      .size_bytes = 8,
+      .align_bytes = 2,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{911},
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 8,
+      .align_bytes = 2,
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 1,
+               .result_value_name = copy_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{910},
+                       .byte_offset = 2,
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = block_label,
+               .inst_index = 2,
+               .stored_value_name = copy_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{911},
+                       .byte_offset = 2,
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 5 ||
+      !result.visited_terminator) {
+    return fail("expected branch-block fixed-offset local copy to dispatch without diagnostics");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("ldrh w10, [sp, #18]") == std::string::npos ||
+      printed.assembly.find("strh w10, [sp, #34]") == std::string::npos) {
+    return fail("expected fixed-offset branch-block local copy to print ldrh/strh");
+  }
+  return 0;
+}
+
 int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
   constexpr auto function_name = c4c::FunctionNameId{91};
   constexpr auto block_label = c4c::BlockLabelId{92};
@@ -17237,6 +17436,11 @@ int main() {
   }
   if (const int status =
           wide_local_load_publication_uses_latest_narrow_byte_store();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices();
       status != 0) {
     return status;
   }

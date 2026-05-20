@@ -5883,6 +5883,14 @@ InstructionDispatchResult dispatch_prepared_block(
           std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
       const std::size_t memory_instruction_index =
           is_memory_inst ? ++prepared_memory_instruction_index : instruction_index;
+      const bool use_prepared_memory_index =
+          is_memory_inst &&
+          instruction_index != 0 &&
+          memory_instruction_index != instruction_index &&
+          prepared_memory_access(context, instruction_index) == nullptr &&
+          prepared_memory_access(context, memory_instruction_index) != nullptr;
+      const std::size_t memory_lowering_index =
+          use_prepared_memory_index ? memory_instruction_index : instruction_index;
       const bool can_retry_prepared_memory_index = std::visit(
           [](const auto& op) {
             using T = std::decay_t<decltype(op)>;
@@ -6056,11 +6064,11 @@ InstructionDispatchResult dispatch_prepared_block(
                     context, instruction_index, *load_global, scalar_state)) {
           block.instructions.push_back(std::move(*got_load));
         } else if (auto lowered_ordinary_memory =
-                       lower_memory_instruction(context, inst, instruction_index, diagnostics);
+                       lower_memory_instruction(context, inst, memory_lowering_index, diagnostics);
                    lowered_ordinary_memory.handled) {
           if (!lowered_ordinary_memory.instruction.has_value() &&
               can_retry_prepared_memory_index &&
-              memory_instruction_index != instruction_index) {
+              memory_instruction_index != memory_lowering_index) {
             lowered_ordinary_memory =
                 lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
           }
@@ -6125,11 +6133,11 @@ InstructionDispatchResult dispatch_prepared_block(
             block.instructions.push_back(std::move(*lowered_memory.instruction));
           }
         } else if (auto lowered_ordinary_memory =
-                       lower_memory_instruction(context, inst, instruction_index, diagnostics);
+                       lower_memory_instruction(context, inst, memory_lowering_index, diagnostics);
                    lowered_ordinary_memory.handled) {
           if (!lowered_ordinary_memory.instruction.has_value() &&
               can_retry_prepared_memory_index &&
-              memory_instruction_index != instruction_index) {
+              memory_instruction_index != memory_lowering_index) {
             lowered_ordinary_memory =
                 lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
           }
