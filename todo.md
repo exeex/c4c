@@ -47,9 +47,33 @@ Supervisor validation recorded for acceptance:
 
 ## Suggested Next
 
-Decide whether the remaining scalar-select/store-publication boundary behind
-`00176`, `00181`, `00182`, and `00195` belongs in idea 348 Step 3 or needs a
-lifecycle split into a separate focused initiative.
+Lifecycle decision: continue inside idea 348 Step 3. Do not split or switch
+owners yet.
+
+Rationale: the remaining red representatives still match the active idea's
+indexed aggregate selected-address/writeback scope, based on the existing
+first-bad-fact evidence from the Step 1 localization and the current
+`test_after.log`:
+
+- `00176` still shows global indexed swap output mostly unchanged, consistent
+  with dynamic `array[index]` stores selecting values but not publishing them
+  through the selected element addresses.
+- `00181` still segfaults in pointer-parameter/global tower mutation, matching
+  the recorded pointer-backed indexed aggregate scan/store boundary.
+- `00182` still loses dynamic buffer writes, matching indexed buffer element
+  publication through a selected slot.
+- `00195` still prints zeroed struct fields, matching indexed struct-member
+  stores where the selected element/member value is not published.
+
+The accepted slice repaired one sub-boundary: selected pointer/local offsets
+are now preserved well enough for `00130` and `00187` to pass. The remaining
+boundary is narrower but not a separate durable initiative yet: scalar
+selection or temporary publication appears to be the next handoff in the same
+dynamic selected aggregate operation. Keep the next executor packet scoped to
+that handoff in the shared indexed aggregate path, and only request a split if
+fresh evidence proves the remaining failures are scalar publication for
+non-address-exposed locals, scalar casts, direct calls, returns, local
+conversions, or another owner explicitly excluded by idea 348.
 
 ## Watchouts
 
