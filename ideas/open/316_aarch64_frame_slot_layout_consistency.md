@@ -1,8 +1,18 @@
 # AArch64 Frame Slot Layout Consistency
 
-Status: Open
+Status: Parked
 Created: 2026-05-19
 Split From: ideas/closed/314_aarch64_large_stack_offset_addressing.md
+
+## Parking Note
+
+Parked on 2026-05-20 after Step 1 localization found the recorded source
+evidence stale in current generated artifacts. Current `00216.c` artifacts for
+`test_correct_filling`, `test_zero_init`, and `foo` show coherent prepared
+frame sizes, slot offsets, emitted prologue allocations, and accessed
+addresses; no frame-layout owner could be localized from the stale
+`sub sp, sp, #48` / high-offset evidence. Reactivate only with fresh failing
+proof that shows a current AArch64 frame-size/frame-slot layout divergence.
 
 ## Goal
 
