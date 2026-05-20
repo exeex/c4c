@@ -96,3 +96,15 @@ owner is repaired. After that repair, resume this idea only if fresh
 `00204.c` evidence again reaches an HFA/floating corruption path, variadic
 floating register-save-area or overflow-area issue, HFA lane materialization
 issue, or another generated-code owner within the original scope.
+
+2026-05-20: Resumed after idea 330 closed. Fresh `00204.c` evidence now gets
+past the non-HFA `%7s` / `%9s` aggregate string `va_arg` materialization
+fault. Generated `myprintf` copies those selected aggregate bytes into the
+destination buffers before `printf`, while the remaining runtime failure is
+malformed HFA/floating output and a later segmentation fault. Current evidence
+shows HFA aggregate `va_arg` payloads selected into temporary stack slots such
+as `sp + 720` / `sp + 724`, but following float/double publications reading
+different homes such as `sp + 556` / `sp + 560`; long-double HFA branches also
+reach `.str44` calls without publishing the selected long-double values as
+`printf` arguments. Resume classification from that residual, not from the
+closed non-HFA string aggregate materialization route.

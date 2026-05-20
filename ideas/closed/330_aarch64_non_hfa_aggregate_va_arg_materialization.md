@@ -1,6 +1,6 @@
 # AArch64 Non-HFA Aggregate Va Arg Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/329_aarch64_variadic_aggregate_va_arg_call_setup.md
 
@@ -108,3 +108,14 @@ Reject the route if it:
 - proves only the external `00204.c` run while nearby focused backend output
   lacks assertions for the non-HFA aggregate `va_arg` source-to-destination
   copy being repaired.
+
+## Completion Note
+
+2026-05-20: Closed after Step 4 validation. Focused backend coverage now
+guards ordinary-block dispatch of prepared non-HFA aggregate `va_arg`
+source-to-destination byte copies, and generated `myprintf` copies the `%7s`
+and `%9s` bytes into the destination buffers before the following `printf`
+calls. The remaining `00204.c` runtime failure has advanced beyond the
+non-HFA string aggregate materialization fault and is classified to the
+variadic HFA/floating or long-double residual owned by
+`ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
