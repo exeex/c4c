@@ -47,6 +47,8 @@ std::size_t type_size_bytes(bir::TypeKind type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
       return 1;
+    case bir::TypeKind::I16:
+      return 2;
     case bir::TypeKind::I32:
     case bir::TypeKind::F32:
       return 4;
@@ -68,9 +70,11 @@ void legalize_sized_type(const c4c::TargetProfile& target_profile,
                          std::size_t& align_bytes) {
   const auto original_type = type;
   type = legalize_type(target_profile, type);
-  if (original_type != type) {
-    const auto legalized_size = type_size_bytes(type);
+  const auto legalized_size = type_size_bytes(type);
+  if (original_type != type || (legalized_size != 0 && size_bytes == 0)) {
     size_bytes = legalized_size;
+  }
+  if (original_type != type || (legalized_size != 0 && align_bytes == 0)) {
     align_bytes = legalized_size;
   }
 }

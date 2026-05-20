@@ -17,6 +17,8 @@ namespace c4c::backend::prepare::stack_layout {
     case TypeKind::I1:
     case TypeKind::I8:
       return 1;
+    case TypeKind::I16:
+      return 2;
     case TypeKind::I32:
     case TypeKind::F32:
       return 4;

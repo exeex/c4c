@@ -2004,6 +2004,50 @@ int selected_symbol_stack_source_store_materializes_through_value_scratch() {
                          "symbol stack-source store materialization printer");
 }
 
+int selected_symbol_halfword_immediate_store_materializes_through_value_scratch() {
+  auto destination = frame_slot(0);
+  destination.base_kind = aarch64_codegen::MemoryBaseKind::Symbol;
+  destination.frame_slot_id = std::nullopt;
+  destination.symbol_name = c4c::LinkNameId{39};
+  destination.symbol_label = "g.symbol_half_store";
+  destination.byte_offset = 2;
+  destination.size_bytes = 2;
+  destination.align_bytes = 2;
+  destination.stored_value_id = prepare::PreparedValueId{40};
+  destination.stored_value_name = c4c::ValueNameId{41};
+
+  const auto store = aarch64_codegen::make_memory_instruction(
+      aarch64_codegen::MemoryInstructionRecord{
+          .memory_kind = aarch64_codegen::MemoryInstructionKind::Store,
+          .address = destination,
+          .value = aarch64_codegen::make_immediate_operand(
+              aarch64_codegen::ImmediateOperand{
+                  .kind = aarch64_codegen::ImmediateKind::SignedInteger,
+                  .type = bir::TypeKind::I16,
+                  .signed_value = 4660,
+                  .unsigned_value = 4660,
+                  .source_value_id = prepare::PreparedValueId{42},
+                  .source_value_name = c4c::ValueNameId{43},
+              }),
+          .value_type = bir::TypeKind::I16,
+      });
+
+  const auto result = print_common_instruction_nodes({store});
+  if (!result.ok) {
+    return fail("expected 2-byte symbol immediate store to print: " +
+                result.diagnostic);
+  }
+  const std::string expected =
+      "    adrp x9, g.symbol_half_store+2\n"
+      "    add x9, x9, :lo12:g.symbol_half_store+2\n"
+      "    movz w10, #4660\n"
+      "    strh w10, [x9]\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "symbol halfword immediate store materialization printer");
+}
+
 int selected_stack_call_argument_store_prints_from_prepared_stack_facts() {
   auto destination = frame_slot(0);
   destination.size_bytes = 8;
@@ -6917,6 +6961,11 @@ int main() {
   }
   if (const int result =
           selected_symbol_stack_source_store_materializes_through_value_scratch();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_symbol_halfword_immediate_store_materializes_through_value_scratch();
       result != 0) {
     return result;
   }

@@ -1,51 +1,39 @@
 Status: Active
 Source Idea Path: ideas/open/339_aarch64_scalar_local_storage_writeback_sizing.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Scalar Local Slot Sizes And Writeback Path
+Current Step ID: 2
+Current Step Title: Repair Scalar Local Sizing And Writeback
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the first bad boundary for focused idea 339.
+Step 2 repaired the focused scalar local sizing/writeback path for `I16`
+locals and the downstream AArch64 halfword emission needed by `00086` and
+`00111`.
 
-The semantic BIR instruction stream is still correct for both target cases:
-`00086` stores `i16 0` to `%lv.x`, reloads it, truncates the incremented value
-back to `i16`, stores `%t4` to `%lv.x`, then reloads `%lv.x` for the compare;
-`00111` stores `i16 1` to `%lv.s`, stores `i64 1` to `%lv.l`, loads both,
-truncates the subtraction back to `i16`, stores `%t6` to `%lv.s`, then reloads
-`%lv.s` for the return.
+Prepared sizing is fixed first: LIR-origin scalar local allocas now publish
+`size_bytes`, the stack-layout fallback size table includes `I16 = 2`, and
+legalization backfills zero scalar size/alignment facts for existing `I16`
+locals. Focused backend coverage now proves an `i16` local stack object,
+frame slot, frame metrics, and init/load/writeback/reload prepared memory
+accesses all carry `size=2 align=2`.
 
-The first bad concrete facts appear in prepared stack layout/addressing:
+AArch64 emission now consumes those facts: memory selection/printer paths accept
+2-byte immediate stores, choose `ldrh`/`strh` for `size_bytes=2`, and cover the
+2-byte symbol immediate-store path. Stack-backed simple integer casts now
+require explicit load/publication instead of assuming a consumer register was
+already populated, and stack-home truncation results are materialized and stored
+back with the `I16` width.
 
-- `00086`: `%lv.x` is `type=i16` but object `#0` and slot `#0` both have
-  `size=0`, `frame_size=0`, and all four prepared local accesses report
-  `size=0`. The final AArch64 output then emits no store for either
-  initialization or writeback and reloads from `[sp]`.
-- `00111`: `%lv.l` has a real `size=8` slot/accesses, but `%lv.s` remains
-  `type=i16 size=0`, is assigned at offset `8` outside the 8-byte local frame,
-  and the three short accesses report `size=0`. The final AArch64 output stores
-  and reloads `l`, but loads stale `%lv.s` from `[sp, #8]`, emits no short
-  initialization/writeback store, and later collides with the saved `x20`
-  slot at the same offset.
-
-Likely implementation surface: `src/backend/bir/lir_to_bir/memory/local_slots.cpp`
-currently creates scalar local slots with no `size_bytes`, relying on prepared
-normalization; `src/backend/prealloc/stack_layout/stack_layout.hpp` and the
-local access builders in
-`src/backend/prealloc/stack_layout/coordinator.cpp` then normalize through a
-fallback size table that lacks `I16`, so `i16` slots/accesses stay zero-sized.
-`src/backend/prealloc/legalize.cpp` has the same `I16` omission in its local
-slot size helper, so it does not repair preexisting zero-sized `I16` slot facts
-during legalization.
+Generated AArch64 for the representatives now emits short initialization,
+halfword reloads, truncation/writeback stores, and the focused runtime subset
+passes for both `00086` and `00111`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: repair the general scalar local sizing path for
-`I16` non-address-exposed locals, then prove prepared stack layout and prepared
-addressing publish nonzero size/alignment for short `store_local`/`load_local`
-before relying on final assembly.
+Supervisor should review and commit the coherent Step 2 slice, then delegate
+Step 3 focused proof/reclassification if broader guard results are acceptable.
 
 ## Watchouts
 
@@ -56,27 +44,24 @@ before relying on final assembly.
   CTest-registration work.
 - Do not special-case `00086`, `00111`, stack offsets, variable names, or
   emitted instruction strings.
-- The AArch64 local load/store consumer is downstream of the first bad fact:
-  zero-sized prepared accesses cannot use direct frame-slot addressing and
-  zero-sized frame slots collapse frame size. Fixing only AArch64 emission would
-  be route drift unless prepared slot/access facts are fixed first.
-- Focused Step 2 coverage should assert a general backend contract such as
-  prepared `i16` local object/slot/access `size=2 align=2`, short
-  initialization store, short writeback store after truncation, and reload
-  using the same slot. Add final-assembly checks only after that contract is
-  pinned.
+- The repaired prepared facts are visible in `--dump-prepared-bir`; do not
+  reopen the zero-size stack-layout path unless a new proof contradicts those
+  facts.
+- This packet intentionally changed the dispatch test for stack-sourced simple
+  casts to require an explicit load/publication before the cast instead of
+  accepting a structured register source with no emitted population.
+- The 2-byte symbol immediate-store path is now covered at printer level; do
+  not remove it as unreachable without a separate selector/lowering proof.
 
 ## Proof
 
-Non-mutating localization probes only; no implementation or tests changed.
-`test_after.log` was not touched because this packet explicitly marked it out
-of bounds.
+Delegated proof command was run exactly and preserved in `test_after.log`:
 
-Commands run:
+`cmake --build build --target c4cll backend_prepare_stack_layout_test backend_prepare_frame_stack_call_contract_test backend_aarch64_memory_operand_records_test backend_aarch64_prepared_memory_operand_records_test backend_aarch64_machine_printer_test backend_aarch64_instruction_dispatch_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_prepare_(stack_layout|frame_stack_call_contract)|backend_aarch64_(memory_operand_records|prepared_memory_operand_records|machine_printer|instruction_dispatch)|c_testsuite_aarch64_backend_src_(00086|00111)_c' > test_after.log 2>&1`
 
-- `./build/c4cll --dump-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00086.c > /tmp/c4c_00086.semantic.txt`
-- `./build/c4cll --dump-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00111.c > /tmp/c4c_00111.semantic.txt`
-- `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00086.c > /tmp/c4c_00086.prepared.txt`
-- `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00111.c > /tmp/c4c_00111.prepared.txt`
-- `./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00086.c -o /tmp/c4c_00086.s`
-- `./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00111.c -o /tmp/c4c_00111.s`
+Result: build passed and all 8 selected tests passed, including
+`backend_prepare_stack_layout`,
+`backend_aarch64_machine_printer`,
+`backend_aarch64_instruction_dispatch`,
+`c_testsuite_aarch64_backend_src_00086_c`, and
+`c_testsuite_aarch64_backend_src_00111_c`.

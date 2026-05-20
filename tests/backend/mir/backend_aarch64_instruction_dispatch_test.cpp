@@ -16299,12 +16299,14 @@ int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts()
     bir::CastOpcode opcode;
     bir::TypeKind source_type;
     bir::TypeKind result_type;
-    std::string_view expected_register;
+    std::string_view expected_load;
     std::string_view expected_assembly;
   };
   const Case cases[] = {
-      {bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64, "w0", "sxtw x0, w0"},
-      {bir::CastOpcode::ZExt, bir::TypeKind::I8, bir::TypeKind::I32, "w0", "ubfx w0, w0, #0, #8"},
+      {bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64,
+       "ldr w0, [sp, #16]", "sxtw x0, w0"},
+      {bir::CastOpcode::ZExt, bir::TypeKind::I8, bir::TypeKind::I32,
+       "ldrb w0, [sp, #16]", "ubfx x0, x0, #0, #8"},
   };
 
   for (const auto& test_case : cases) {
@@ -16327,42 +16329,25 @@ int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts()
 
     if (!diagnostics.empty() || result.visited_operations != 1 ||
         result.emitted_instructions != 2 || block.instructions.size() != 2) {
-      return fail("expected stack-sourced simple cast to select plus return");
+      return fail("expected stack-sourced simple cast publication plus return");
     }
-    const auto* scalar =
-        std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+    const auto* assembler =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
             &block.instructions.front().target.payload);
-    if (scalar == nullptr || !scalar->scalar_cast.has_value() ||
-        scalar->inputs.size() != 1) {
-      return fail("expected selected stack-sourced cast to carry scalar metadata");
-    }
-    const auto* source =
-        std::get_if<aarch64_codegen::RegisterOperand>(
-            &scalar->scalar_cast->source.payload);
-    const auto* input =
-        std::get_if<aarch64_codegen::RegisterOperand>(&scalar->inputs[0].payload);
-    if (source == nullptr || input == nullptr ||
-        scalar->scalar_cast->source.kind != aarch64_codegen::OperandKind::Register ||
-        scalar->inputs[0].kind != aarch64_codegen::OperandKind::Register) {
-      return fail("expected cast source and input to be structured register operands");
-    }
-    if (source->value_id != prepare::PreparedValueId{20} ||
-        source->value_name != prepared.names.value_names.find("%src")) {
-      return fail("expected cast source register to retain source value identity");
-    }
-    if (source->occupied_registers.empty() ||
-        source->occupied_registers.front() != test_case.expected_register) {
-      return fail("expected cast source register spelling to match the consumer register");
-    }
-    if (input->value_id != source->value_id || input->value_name != source->value_name ||
-        input->reg != source->reg) {
-      return fail("expected cast source and input to publish the prepared consumer register");
+    if (assembler == nullptr ||
+        block.instructions.front().target.family !=
+            aarch64_codegen::InstructionFamily::Assembler ||
+        block.instructions.front().target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        !assembler->has_inline_asm_payload) {
+      return fail("expected stack-sourced cast to materialize through assembler publication");
     }
 
     const auto printed = print_route_block(function_cf.function_name, block);
     if (!printed.ok ||
+        printed.assembly.find(test_case.expected_load) == std::string::npos ||
         printed.assembly.find(test_case.expected_assembly) == std::string::npos) {
-      return fail("expected stack-sourced cast to print from the consumer register");
+      return fail("expected stack-sourced cast to load and print from the consumer register");
     }
   }
 

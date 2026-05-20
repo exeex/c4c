@@ -171,7 +171,7 @@ std::optional<bir::BinaryOpcode> swapped_compare_predicate(
 std::optional<abi::RegisterReference> immediate_store_scratch_register(
     const MemoryInstructionRecord& memory) {
   const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
-  if (memory.address.size_bytes == 4) {
+  if (memory.address.size_bytes == 2 || memory.address.size_bytes == 4) {
     return abi::w_register(scratch.index);
   }
   if (memory.address.size_bytes == 8) {
@@ -310,7 +310,7 @@ std::optional<abi::RegisterReference> symbol_immediate_store_scratch_register(
   if (scratches.size() < 2) {
     return std::nullopt;
   }
-  if (memory.address.size_bytes == 4) {
+  if (memory.address.size_bytes == 2 || memory.address.size_bytes == 4) {
     return abi::w_register(scratches[1].index);
   }
   if (memory.address.size_bytes == 8) {
@@ -450,6 +450,10 @@ std::vector<std::string> materialize_immediate_store_value_lines(
     abi::RegisterReference scratch,
     const ImmediateOperand& immediate,
     const MemoryInstructionRecord& memory) {
+  if (memory.address.size_bytes == 2) {
+    const auto value = static_cast<std::uint16_t>(immediate.signed_value);
+    return materialize_integer_constant_lines(scratch, value, 32);
+  }
   if (memory.address.size_bytes == 4) {
     const auto value = static_cast<std::uint32_t>(immediate.signed_value);
     return materialize_integer_constant_lines(scratch, value, 32);
@@ -958,6 +962,20 @@ std::string_view required_primary_mnemonic(const InstructionRecord& instruction)
   return machine_instruction_primary_printer_mnemonic(instruction);
 }
 
+std::string_view scalar_memory_mnemonic(const MemoryInstructionRecord& memory,
+                                        std::string_view fallback) {
+  switch (memory.address.size_bytes) {
+    case 1:
+      return memory.memory_kind == MemoryInstructionKind::Load ? "ldrb" : "strb";
+    case 2:
+      return memory.memory_kind == MemoryInstructionKind::Load ? "ldrh" : "strh";
+    case 4:
+    case 8:
+      return fallback;
+  }
+  return {};
+}
+
 std::string_view required_auxiliary_mnemonic(const InstructionRecord& instruction) {
   return machine_instruction_auxiliary_printer_mnemonic(instruction);
 }
@@ -1107,7 +1125,8 @@ mir::TargetInstructionPrintResult print_symbol_memory(const InstructionRecord& i
     return target_unsupported(bad_header(instruction) +
                               "symbol memory address is not printable");
   }
-  const auto mnemonic = required_primary_mnemonic(instruction);
+  const auto mnemonic =
+      scalar_memory_mnemonic(memory, required_primary_mnemonic(instruction));
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "memory mnemonic is not printable");
   }
@@ -1203,7 +1222,8 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
   if (memory.address.base_kind == MemoryBaseKind::Symbol) {
     return print_symbol_memory(instruction, memory);
   }
-  const auto mnemonic = required_primary_mnemonic(instruction);
+  const auto mnemonic =
+      scalar_memory_mnemonic(memory, required_primary_mnemonic(instruction));
   if (mnemonic.empty()) {
     return target_unsupported(bad_header(instruction) + "memory mnemonic is not printable");
   }

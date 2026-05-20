@@ -1846,6 +1846,27 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"strb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"strh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"str"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
     const module::BlockLoweringContext& context,
     const bir::LoadLocalInst& load_local,
@@ -4453,6 +4474,52 @@ lower_scalar_cast_publication_to_prepared_register(
       context, instruction_index, std::move(lines));
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_stack(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  const auto result = instruction_result_value(inst);
+  if (cast == nullptr || !result.has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for_value(context, *result);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto mnemonic = scalar_store_mnemonic(result->type);
+  const auto value_view = scalar_view_for_type(result->type);
+  if (!mnemonic.has_value() || !value_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2U) {
+    return std::nullopt;
+  }
+  const auto target = gp_register_name(scratches.front().index, *value_view);
+  if (!target.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          *result,
+                                          instruction_index + 1,
+                                          scratches.front().index,
+                                          scratches[1].index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+                  frame_slot_address(*home->offset_bytes));
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
 [[nodiscard]] std::optional<bir::Value> find_bir_value_for_prepared_name(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -6017,6 +6084,9 @@ InstructionDispatchResult dispatch_prepared_block(
         block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_cast_publication_to_prepared_register(
               context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
+      } else if (auto lowered = lower_scalar_cast_publication_to_prepared_stack(
+              context, inst, instruction_index)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (is_current_block_join_parallel_copy_source(context, inst)) {
         continue;

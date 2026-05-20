@@ -473,11 +473,13 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
   }
 
   if (slot_type.has_value()) {
+    const auto slot_size = type_size_bytes(*slot_type);
     local_slot_types_.emplace(slot_name, *slot_type);
     local_pointer_slots_.emplace(slot_name, slot_name);
     lowered_function_.local_slots.push_back(bir::LocalSlot{
         .name = slot_name,
         .type = *slot_type,
+        .size_bytes = slot_size,
         .align_bytes = align_bytes,
     });
     return true;
@@ -495,6 +497,7 @@ bool BirFunctionLowerer::lower_local_memory_alloca_inst(
       lowered_function_.local_slots.push_back(bir::LocalSlot{
           .name = element_slot,
           .type = array_type->second,
+          .size_bytes = type_size_bytes(array_type->second),
           .align_bytes = align_bytes,
       });
     }

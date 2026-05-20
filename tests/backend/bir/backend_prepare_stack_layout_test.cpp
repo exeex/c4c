@@ -547,6 +547,67 @@ std::optional<prepare::PreparedBirModule> prepare_lir_indirect_call_string_argum
   return std::move(planner.prepared());
 }
 
+std::optional<prepare::PreparedBirModule> prepare_lir_i16_local_writeback_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+
+  lir::LirFunction function;
+  function.name = "stack_layout_lir_i16_local_writeback_activation";
+  function.signature_text = "define void @stack_layout_lir_i16_local_writeback_activation()";
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.short"),
+      .type_str = lir::LirTypeRef("i16"),
+      .count = lir::LirOperand(""),
+      .align = 2,
+  });
+
+  lir::LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = lir::LirTypeRef("i16"),
+      .val = lir::LirOperand("%incoming.short"),
+      .ptr = lir::LirOperand("%lv.short"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%loaded.short"),
+      .type_str = lir::LirTypeRef("i16"),
+      .ptr = lir::LirOperand("%lv.short"),
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = lir::LirTypeRef("i16"),
+      .val = lir::LirOperand("%loaded.short"),
+      .ptr = lir::LirOperand("%lv.short"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%reloaded.short"),
+      .type_str = lir::LirTypeRef("i16"),
+      .ptr = lir::LirOperand("%lv.short"),
+  });
+  entry.terminator = lir::LirRet{std::nullopt, "void"};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto lowered = c4c::backend::try_lower_to_bir(module);
+  if (!lowered.has_value()) {
+    return std::nullopt;
+  }
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(*lowered);
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+
+  prepare::PrepareOptions options;
+  options.run_legalize = true;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_legalize();
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirModule& prepared) {
   const c4c::FunctionNameId function_name_id =
       find_function_name_id(prepared, "stack_layout_copy_coalescing_activation");
@@ -742,6 +803,80 @@ int check_prepared_addressing_frame_fact_bootstrap(const prepare::PreparedBirMod
           prepared, find_function_name_id(prepared, "missing_function")) != nullptr) {
     return fail("expected prepared addressing frame-fact bootstrap to reject missing functions");
   }
+  return 0;
+}
+
+int check_lir_i16_local_writeback_sizing(const prepare::PreparedBirModule& prepared) {
+  const auto function_name_id =
+      find_function_name_id(prepared, "stack_layout_lir_i16_local_writeback_activation");
+  const auto* object = find_stack_object(prepared, "%lv.short");
+  if (object == nullptr) {
+    return fail("expected LIR i16 local to publish a prepared stack object");
+  }
+  if (object->type != bir::TypeKind::I16 || object->size_bytes != 2 ||
+      object->align_bytes != 2) {
+    return fail("expected LIR i16 local stack object to carry size=2 align=2");
+  }
+
+  const auto* slot = find_frame_slot(prepared, object->object_id);
+  if (slot == nullptr) {
+    return fail("expected LIR i16 local to receive a frame slot");
+  }
+  if (slot->size_bytes != 2 || slot->align_bytes != 2) {
+    return fail("expected LIR i16 local frame slot to carry size=2 align=2");
+  }
+  if (prepared.stack_layout.frame_size_bytes < 2 ||
+      prepared.stack_layout.frame_alignment_bytes < 2) {
+    return fail("expected LIR i16 local to contribute nonzero frame metrics");
+  }
+
+  const auto* function_addressing = prepare::find_prepared_addressing(prepared, function_name_id);
+  const c4c::BlockLabelId entry_block_label_id = find_block_label_id(prepared, "entry");
+  if (function_addressing == nullptr) {
+    return fail("expected LIR i16 local to publish prepared addressing facts");
+  }
+  if (function_addressing->frame_size_bytes < 2 ||
+      function_addressing->frame_alignment_bytes < 2) {
+    return fail("expected LIR i16 prepared addressing to mirror nonzero frame metrics");
+  }
+  if (function_addressing->accesses.size() != 4) {
+    return fail("expected LIR i16 local init/load/writeback/reload accesses");
+  }
+
+  const auto check_i16_access = [&](std::size_t inst_index, bool is_store) -> int {
+    const auto* access =
+        prepare::find_prepared_memory_access(*function_addressing, entry_block_label_id, inst_index);
+    if (access == nullptr) {
+      return fail("expected LIR i16 local access to be published");
+    }
+    if ((is_store && !access->stored_value_name.has_value()) ||
+        (!is_store && !access->result_value_name.has_value())) {
+      return fail("expected LIR i16 access direction metadata to be preserved");
+    }
+    if (access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        *access->address.frame_slot_id != slot->slot_id ||
+        access->address.size_bytes != 2 ||
+        access->address.align_bytes != 2 ||
+        !access->address.can_use_base_plus_offset) {
+      return fail("expected LIR i16 local access to use a direct size=2 align=2 frame slot");
+    }
+    return 0;
+  };
+
+  if (const int rc = check_i16_access(0, true); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i16_access(1, false); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i16_access(2, true); rc != 0) {
+    return rc;
+  }
+  if (const int rc = check_i16_access(3, false); rc != 0) {
+    return rc;
+  }
+
   return 0;
 }
 
@@ -4407,6 +4542,14 @@ int main() {
   }
   if (const int rc = check_lir_indirect_call_string_argument_materialization(
           *lir_indirect_call_string_arg_prepared);
+      rc != 0) {
+    return rc;
+  }
+  auto lir_i16_local_prepared = prepare_lir_i16_local_writeback_module();
+  if (!lir_i16_local_prepared.has_value()) {
+    return fail("expected LIR-origin i16 local fixture to lower to BIR");
+  }
+  if (const int rc = check_lir_i16_local_writeback_sizing(*lir_i16_local_prepared);
       rc != 0) {
     return rc;
   }

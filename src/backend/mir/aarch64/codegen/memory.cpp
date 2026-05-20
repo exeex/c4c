@@ -958,7 +958,8 @@ bool is_immediate_store_value(const MemoryInstructionRecord& instruction) {
 }
 
 bool is_supported_immediate_store_width(const MemoryInstructionRecord& instruction) {
-  return instruction.address.size_bytes == 4 || instruction.address.size_bytes == 8;
+  return instruction.address.size_bytes == 2 || instruction.address.size_bytes == 4 ||
+         instruction.address.size_bytes == 8;
 }
 
 std::vector<MachineEffectResource> memory_effects_from_operands(

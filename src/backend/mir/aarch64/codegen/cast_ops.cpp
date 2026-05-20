@@ -408,6 +408,9 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
       scalar.scalar_cast->operation != ScalarCastOperationKind::ZeroExtend) {
     return std::nullopt;
   }
+  if (source_home.kind != prepare::PreparedValueHomeKind::Register) {
+    return std::nullopt;
+  }
   if (scalar.scalar_cast->source.kind == OperandKind::Register) {
     return std::nullopt;
   }
@@ -1248,6 +1251,16 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
         prepared.record->scalar_cast->source = make_register_operand(*consumer_source);
         prepared.record->inputs[0] = prepared.record->scalar_cast->source;
       }
+    }
+    const auto source_is_register =
+        prepared.record->scalar_cast->source.kind == OperandKind::Register &&
+        std::get_if<RegisterOperand>(&prepared.record->scalar_cast->source.payload) != nullptr;
+    const auto source_is_immediate =
+        prepared.record->scalar_cast->source.kind == OperandKind::Immediate &&
+        std::get_if<ImmediateOperand>(&prepared.record->scalar_cast->source.payload) != nullptr;
+    if (!source_is_register && !source_is_immediate &&
+        prepared.record->scalar_cast->supported_simple_integer_cast) {
+      return std::nullopt;
     }
   }
 
