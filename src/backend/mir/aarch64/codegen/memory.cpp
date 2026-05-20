@@ -817,15 +817,24 @@ std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
       storage.encoding != prepare::PreparedStorageEncodingKind::FrameSlot) {
     return std::nullopt;
   }
-  const auto expected_view = scalar_register_view(type);
+  const auto expected_view = scalar_storage_register_view(type);
   if (!expected_view.has_value()) {
     return std::nullopt;
   }
-  const auto scratches = abi::reserved_mir_scratch_gp_registers();
-  if (scratches.empty()) {
-    return std::nullopt;
+  std::optional<abi::RegisterReference> scratch;
+  if (type == bir::TypeKind::F32 || type == bir::TypeKind::F64) {
+    const auto scratches = abi::reserved_mir_scratch_fp_simd_registers();
+    if (scratches.empty()) {
+      return std::nullopt;
+    }
+    scratch = abi::fp_simd_register(scratches.front().index, *expected_view);
+  } else {
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    if (scratches.empty()) {
+      return std::nullopt;
+    }
+    scratch = abi::gp_register(scratches.front().index, *expected_view);
   }
-  auto scratch = abi::gp_register(scratches.front().index, *expected_view);
   if (!scratch.has_value()) {
     return std::nullopt;
   }

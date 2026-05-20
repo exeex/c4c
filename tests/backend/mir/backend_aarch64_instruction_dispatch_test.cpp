@@ -1993,6 +1993,108 @@ prepare::PreparedBirModule prepared_with_load_global_call_argument(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_stack_published_f64_global_load() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.stack.f64.global.load");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.stack.f64.global.load.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.stack.f64.global.load.entry");
+  const auto prepared_global_link = prepared.names.link_names.intern("global_double_lane");
+  const auto bir_global_link = prepared.module.names.link_names.intern("global_double_lane");
+  const auto loaded_value_name = prepared.names.value_names.intern("%loaded.f64");
+  constexpr prepare::PreparedValueId kLoadedValue{57};
+  constexpr prepare::PreparedFrameSlotId kLoadedSlot{37};
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "global_double_lane",
+      .link_name_id = bir_global_link,
+      .type = bir::TypeKind::F64,
+      .is_extern = false,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .address_materialization_policy = bir::GlobalAddressMaterializationPolicy::Direct,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.stack.f64.global.load",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.stack.f64.global.load.entry",
+          .insts = {bir::LoadGlobalInst{
+              .result = bir::Value::named(bir::TypeKind::F64, "%loaded.f64"),
+              .global_name = "global_double_lane",
+              .global_name_id = bir_global_link,
+              .align_bytes = 8,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = kLoadedValue,
+                  .function_name = function_name,
+                  .value_name = loaded_value_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = kLoadedSlot,
+                  .offset_bytes = std::size_t{64},
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = kLoadedValue,
+                  .value_name = loaded_value_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .bank = prepare::PreparedRegisterBank::Fpr,
+                  .contiguous_width = 1,
+                  .slot_id = kLoadedSlot,
+                  .stack_offset_bytes = std::size_t{64},
+              },
+          },
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = entry_label,
+                  .inst_index = 0,
+                  .result_value_name = loaded_value_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                          .symbol_name = prepared_global_link,
+                          .size_bytes = 8,
+                          .align_bytes = 8,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_variadic_call_symbol_address_argument() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -10957,6 +11059,67 @@ int load_global_call_argument_keeps_direct_for_direct_global() {
   return 0;
 }
 
+int block_dispatch_lowers_stack_published_f64_global_load_with_fpr_scratch() {
+  auto prepared = prepared_with_stack_published_f64_global_load();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.empty()) {
+    return fail("expected F64 global load to publish through a stack-backed FPR scratch: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (memory == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Load ||
+      memory->address.base_kind != aarch64_codegen::MemoryBaseKind::Symbol ||
+      memory->address.size_bytes != 8 || memory->address.align_bytes != 8 ||
+      memory->result_value_id != prepare::PreparedValueId{57} ||
+      !memory->result_register.has_value() ||
+      memory->result_register->reg != aarch64_abi::d_register(16) ||
+      memory->result_stack_offset_bytes != std::optional<std::int64_t>{64}) {
+    return fail("expected selected F64 global load to carry d16 stack publication facts");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-published F64 global load route to print: " +
+                printed.diagnostic);
+  }
+  const auto page = printed.assembly.find("adrp x9, global_double_lane");
+  const auto low = printed.assembly.find("add x9, x9, :lo12:global_double_lane");
+  const auto load = printed.assembly.find("ldr d16, [x9]");
+  const auto store = printed.assembly.find("str d16, [sp, #64]");
+  if (page == std::string::npos || low == std::string::npos ||
+      load == std::string::npos || store == std::string::npos ||
+      !(page < low && low < load && load < store)) {
+    return fail("expected direct global F64 load to publish d16 into the prepared stack slot: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_register_result_move_after_direct_call() {
   auto prepared = prepared_with_direct_call_result_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -13816,6 +13979,11 @@ int main() {
   }
   if (const int status =
           load_global_call_argument_keeps_direct_for_direct_global();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_stack_published_f64_global_load_with_fpr_scratch();
       status != 0) {
     return status;
   }
