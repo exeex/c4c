@@ -1,7 +1,8 @@
 # AArch64 OPI Pointer Integer Operation Result Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
+Closed: 2026-05-20
 Split From: ideas/open/332_aarch64_movi_zero_extension_materialization.md
 
 ## Goal
@@ -65,6 +66,25 @@ operand publication first loses the computed `1000` value.
   classified first bad fact for lifecycle handoff.
 - Adjacent repaired AArch64 variadic, byval, MOVI, and publication guardrails
   remain stable.
+
+## Closure Notes
+
+Closed after the OPI representative advanced through and repaired the scalar
+ALU result-home publication, caller call-result/cast publication,
+rematerializable-immediate live-source clobbering, and direct scalar shift
+immediate publication owners for `Shl`, `LShr`, and `AShr`.
+
+Close proof:
+
+- `test_before.log` to `test_after.log` regression guard passed: 10/11 to
+  11/11, resolving `c_testsuite_aarch64_backend_src_00204_c` with no new
+  failures.
+- Supervisor broader backend validation passed:
+  `ctest --test-dir build -j --output-on-failure -R '^backend_'` was 141/141.
+
+No durable follow-up under this source idea remains. Future AArch64 scalar
+publication failures should open a new source idea unless direct evidence ties
+them to one of the repaired owners above.
 
 ## Reviewer Reject Signals
 
