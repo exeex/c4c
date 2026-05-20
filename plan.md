@@ -140,22 +140,83 @@ Completion check:
   expected copied bytes, observed emitted instructions, owning code surfaces,
   representative tests, and smallest focused proof command.
 
-### Step 2: Repair General Non-HFA Aggregate Va Arg Source-To-Destination Copy
+### Step 2.1: Localize Missing Ordinary Dispatch Of Prepared Va Arg Memory Operations
 
-Goal: emit the required copy from the selected non-HFA aggregate `va_arg`
-source into the destination aggregate object before any following use.
+Goal: determine why the prepared memory operations for
+`vaarg.join.14` / `vaarg.join.39` are not emitted by ordinary block
+dispatch before the following call.
 
-Primary target: AArch64 prepared/codegen lowering for non-HFA aggregate
-`va_arg` materialization.
+Primary target: AArch64 prepared-memory operation retention, ordering, and
+ordinary block instruction dispatch for non-HFA aggregate `va_arg`
+materialization.
 
 Actions:
 
-- Implement a general source-to-destination materialization path for non-HFA
-  aggregate `va_arg` values, including register-save-area and overflow-area
-  sources when applicable.
-- Preserve the expected aggregate byte count, destination address, source
-  address, and instruction ordering so later member address publication or
-  ordinary calls observe initialized aggregate bytes.
+- Trace the prepared BIR records for `vaarg.join.14` and `vaarg.join.39`
+  from construction through the retained block that contains the later
+  `.str31` / `.str33` `printf` calls.
+- Identify whether the operations are missing because they are not attached
+  to the ordinary block, are attached to a replaced or skipped block, are
+  filtered by instruction kind, lose their source/destination address
+  operands, or are scheduled after the observing call.
+- Compare the prepared-memory operation records against nearby ordinary
+  memory operations that are emitted correctly by block dispatch.
+- Do not replay all prepared memory accesses at the call boundary; that
+  experiment emitted the desired local copy shape but widened into unrelated
+  corruption.
+- Record the dispatch owner, the skipped operation identity, expected
+  source/destination addresses, and the smallest focused proof command in
+  `todo.md`.
+
+Completion check:
+
+- `todo.md` identifies the concrete ordinary dispatch break between prepared
+  `vaarg.join.14` / `vaarg.join.39` memory records and emitted AArch64
+  instructions, without relying on broad call-boundary replay.
+
+### Step 2.2: Repair Ordinary Dispatch For Prepared Va Arg Memory Operations
+
+Goal: make ordinary block dispatch emit the prepared non-HFA aggregate
+`va_arg` memory operations in program order before any following use observes
+the destination object.
+
+Primary target: the ordinary block dispatch owner localized by Step 2.1.
+
+Actions:
+
+- Repair the ordinary dispatch path so prepared memory operations for
+  non-HFA aggregate `va_arg` materialization are retained, visited, and
+  lowered in the block that owns the later use.
+- Preserve the prepared operation's source address, destination address,
+  byte count, and ordering relative to `.str31` / `.str33` call setup.
+- Scope the change to the missing dispatch/lowering gap; do not add broad
+  call-boundary replay or named-case emission shortcuts.
+- Preserve scalar `va_arg`, HFA/floating `va_arg`, ordinary calls, fixed
+  aggregate calls, byval aggregate lane publication, and stack-passed large
+  aggregate behavior.
+
+Completion check:
+
+- Focused proof shows the `vaarg.join.14` / `vaarg.join.39` prepared memory
+  operations are emitted by ordinary block dispatch before the following
+  calls, with adjacent publication and aggregate guardrails still stable.
+
+### Step 2.3: Repair Remaining Non-HFA Aggregate Va Arg Copy Semantics If Needed
+
+Goal: emit the required copy from the selected non-HFA aggregate `va_arg`
+source into the destination aggregate object before any following use, if
+ordinary dispatch is working but the materialized bytes or addresses remain
+wrong.
+
+Primary target: AArch64 prepared/codegen lowering for non-HFA aggregate
+`va_arg` materialization after Step 2.2 has restored dispatch.
+
+Actions:
+
+- If Step 2.2 restores emission but the copy still uses the wrong source,
+  destination, byte count, or order, repair that remaining semantic lowering
+  gap.
+- Include register-save-area and overflow-area sources when applicable.
 - Reuse existing AArch64 stack-slot, aggregate-copy, memory-address,
   register, and temporary-object helpers when available.
 - Preserve scalar `va_arg`, HFA/floating `va_arg`, ordinary calls, fixed
