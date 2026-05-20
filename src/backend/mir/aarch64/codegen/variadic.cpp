@@ -1201,6 +1201,11 @@ void complete_variadic_call_record(CallInstructionRecord& instruction) {
     instruction.variadic_va_start =
         make_variadic_va_start_record(*instruction.source_variadic_entry,
                                       *instruction.source_variadic_helper_operand_homes);
+    if (instruction.variadic_va_start.has_value() &&
+        instruction.variadic_va_start_overflow_area_stack_offset_bytes.has_value()) {
+      instruction.variadic_va_start->overflow_area_base_stack_offset_bytes =
+          *instruction.variadic_va_start_overflow_area_stack_offset_bytes;
+    }
   }
   if (instruction.variadic_entry_helper ==
           std::optional<prepare::PreparedVariadicEntryHelperKind>{

@@ -1581,6 +1581,7 @@ struct CallInstructionRecord {
   const prepare::PreparedVariadicEntryHelperOperandHomes*
       source_variadic_helper_operand_homes = nullptr;
   std::optional<prepare::PreparedVariadicEntryHelperKind> variadic_entry_helper;
+  std::optional<std::size_t> variadic_va_start_overflow_area_stack_offset_bytes;
   std::optional<VariadicVaStartRecord> variadic_va_start;
   std::optional<VariadicScalarVaArgRecord> variadic_scalar_va_arg;
   std::optional<VariadicAggregateVaArgRecord> variadic_aggregate_va_arg;

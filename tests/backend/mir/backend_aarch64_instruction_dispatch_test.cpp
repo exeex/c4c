@@ -9662,6 +9662,58 @@ int variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan() {
   return 0;
 }
 
+int variadic_va_start_initializes_overflow_cursor_above_callee_frame() {
+  auto prepared = prepared_with_variadic_entry_helper_call(true, true, true);
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  auto& function = prepared.module.functions.front();
+  function.params.push_back(bir::Param{
+      .type = bir::TypeKind::I64,
+      .name = "fixed_stack",
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .abi = stack_arg_abi(bir::TypeKind::I64, 8, 8, bir::AbiValueClass::Integer),
+  });
+  auto& entry_plan = prepared.variadic_entry_plans.functions.front();
+  entry_plan.named_parameter_count = 2;
+  entry_plan.overflow_area.base_stack_offset_bytes = std::size_t{32};
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers = {},
+      .frame_slot_order = {},
+      .has_dynamic_stack = false,
+      .uses_frame_pointer_for_fixed_slots = false,
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
+      !diagnostics.entries.empty()) {
+    return fail("expected complete va_start entry lowering without diagnostics");
+  }
+  const auto* call = std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+      &block.instructions.front().target.payload);
+  if (call == nullptr || !call->variadic_va_start.has_value()) {
+    return fail("expected va_start machine record");
+  }
+  if (call->variadic_va_start->overflow_area_base_stack_offset_bytes != 88) {
+    return fail("expected va_start overflow cursor to start after frame and named stack formals");
+  }
+
+  return 0;
+}
+
 int variadic_entry_fixed_formals_publish_typed_stack_homes_before_helper() {
   auto prepared = prepared_with_variadic_entry_formal_stack_homes();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -16572,6 +16624,11 @@ int main() {
   }
   if (const int status =
           variadic_entry_helper_dispatch_requires_complete_prepared_entry_plan();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          variadic_va_start_initializes_overflow_cursor_above_callee_frame();
       status != 0) {
     return status;
   }
