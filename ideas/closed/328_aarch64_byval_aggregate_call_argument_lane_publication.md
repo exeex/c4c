@@ -1,6 +1,6 @@
 # AArch64 Byval Aggregate Call Argument Register-Lane Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
 Split From: ideas/open/327_aarch64_fixed_formal_entry_publication.md
 
@@ -209,3 +209,23 @@ branches with the temporary address in `x0` (`add x0, sp, #928`) instead of
 packing the payload byte into `w0` before `bl fa_s1`. Resume from that current
 generated-code shape, preserving prior rounded byval placement and partial
 upper-lane publication repairs.
+
+2026-05-20: Closed after the reactivated plan repaired the current small
+integer-class byval aggregate payload-lane fault. The caller now loads the
+prepared `s1` byte into `w0` before `bl fa_s1` instead of forwarding the
+temporary address, while focused coverage pins generic small register-passed
+byval payload publication and adjacent byval/variadic guardrails remain
+stable.
+
+Close gate used the same 9-test focused scope before and after the repair:
+`backend_aarch64_target_instruction_records`,
+`backend_aarch64_instruction_dispatch`,
+`backend_aarch64_prepared_handoff_gate`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff`,
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
+`backend_runtime_byval_helper_payload_8_to_13`,
+`backend_runtime_byval_helper_payload_9_to_14`,
+`backend_runtime_byval_helper_mixed_hfa_payload`, and
+`c_testsuite_aarch64_backend_src_00204_c`. The regression guard passed with
+`00204` resolved: before `passed=8 failed=1 total=9`, after
+`passed=9 failed=0 total=9`.
