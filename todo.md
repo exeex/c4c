@@ -1,43 +1,37 @@
 Status: Active
 Source Idea Path: ideas/open/347_aarch64_local_conversion_store_load_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Add Focused Backend Coverage
+Current Step ID: 5
+Current Step Title: Check Direct-Call Guard Stability
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 added focused AArch64 backend coverage in
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` for local
-scalar/FP conversion store publication. The new fixture lowers a same-block
-`cast -> storelocal` route for both FP-to-integer and integer-to-FP conversion
-sides, verifies the store-owned publication precedes the selected local store,
-and checks the store consumes the converted register without pinning scratch
-register names or stack offsets.
+Step 4 and Step 5 proof completed for the active AArch64 local conversion
+publication plan. Representative `c_testsuite_aarch64_backend_src_00175_c`
+passes for the local conversion residual, and direct-call guard representatives
+`00140`, `00159`, `00170`, and `00218` remain stable in the same delegated
+proof subset.
 
 ## Suggested Next
 
-Supervisor should accept the Step 3 coverage slice with the Step 2 dispatch
-repair, then choose the next packet from the active plan. A coherent next
-packet is to run the supervisor-selected broader acceptance proof or move to
-plan review/closure if the active runbook has no remaining implementation
-work.
+Supervisor should decide whether the active runbook is acceptance-ready for
+plan-owner review/closure or whether it needs an additional broader regression
+guard beyond the representative/direct-call subset.
 
 ## Watchouts
 
-- The coverage intentionally lives in the instruction-dispatch test surface,
-  which already owns same-block scalar-cast and local-store publication
-  behavior.
-- The assertions compare publication/store order and converted-register
-  consumption, not exact scratch registers or frame offsets.
-- The test fixture allows the ordinary cast node to lower before the store;
-  the pinned contract is that the store path still emits its own publication
-  immediately before the local home store.
+- The earlier full-suite baseline candidate remains rejected as non-monotonic
+  because it added unrelated AArch64 failures.
+- This proof is a representative progress plus direct-call guard stability
+  proof; it does not replace any broader acceptance policy the supervisor wants
+  before lifecycle closure.
 
 ## Proof
 
 Ran the delegated proof command exactly:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_(instruction_dispatch|scalar_cast_records|prepared_scalar_cast_records|memory_operand_contract)$' | tee test_after.log`.
-The build was up to date after the test recompile, and all four delegated
-backend tests passed. Proof log: `test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c$' | tee test_after.log`.
+The build was up to date, `00175` passed, and direct-call guard
+representatives `00140`, `00159`, `00170`, and `00218` passed. Proof log:
+`test_after.log`.
