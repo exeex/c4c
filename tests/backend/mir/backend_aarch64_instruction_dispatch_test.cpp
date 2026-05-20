@@ -7812,6 +7812,140 @@ prepare::PreparedBirModule prepared_with_conversion_cast(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_local_conversion_store(
+    bir::CastOpcode opcode,
+    bir::TypeKind source_type,
+    bir::TypeKind result_type) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.local_conversion_store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.local_conversion_store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.local_conversion_store.entry");
+  const auto source_name = prepared.names.value_names.intern("%src");
+  const auto cast_name = prepared.names.value_names.intern("%cast");
+  const char* source_register = dispatch_register_for_type(source_type, 1);
+  const char* result_register = dispatch_register_for_type(result_type, 0);
+  const std::size_t result_size = result_type == bir::TypeKind::I8
+                                      ? 1
+                                      : (result_type == bir::TypeKind::F32 ? 4 : 8);
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.local_conversion_store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.local_conversion_store.entry",
+              .insts =
+                  {bir::CastInst{
+                       .opcode = opcode,
+                       .result = bir::Value::named(result_type, "%cast"),
+                       .operand = bir::Value::named(source_type, "%src"),
+                   },
+                   bir::StoreLocalInst{
+                       .slot_id = c4c::SlotNameId{7},
+                       .value = bir::Value::named(result_type, "%cast"),
+                       .byte_offset = 0,
+                       .align_bytes = result_size,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = result_size,
+                               .align_bytes = result_size,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{7},
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{50},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = source_register,
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{51},
+               .function_name = function_name,
+               .value_name = cast_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = result_register,
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {dispatch_storage_for_type(
+               prepare::PreparedValueId{50}, source_name, source_type, source_register),
+           dispatch_storage_for_type(
+               prepare::PreparedValueId{51}, cast_name, result_type, result_register)},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{51},
+               .object_id = prepare::PreparedObjectId{51},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = result_size,
+               .align_bytes = result_size,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{52},
+               .object_id = prepare::PreparedObjectId{52},
+               .function_name = function_name,
+               .offset_bytes = 32,
+               .size_bytes = result_size,
+               .align_bytes = result_size,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 1,
+              .stored_value_name = cast_name,
+              .address_space = bir::AddressSpace::Fs,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{52},
+                      .byte_offset = 0,
+                      .size_bytes = result_size,
+                      .align_bytes = result_size,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  return prepared;
+}
+
 int block_dispatch_visits_prepared_terminator_without_bir_block_mapping() {
   auto prepared = prepared_with_control_flow_only();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -18297,6 +18431,124 @@ int block_dispatch_lowers_prepared_conversion_cast_with_bank_transition_facts() 
   return 0;
 }
 
+std::optional<std::string> first_operand_after_mnemonic(const std::string& assembly,
+                                                        std::string_view mnemonic) {
+  std::string needle = "    " + std::string{mnemonic} + " ";
+  auto position = assembly.find(needle);
+  if (position == std::string::npos) {
+    needle = std::string{mnemonic} + " ";
+    position = assembly.find(needle);
+  }
+  if (position == std::string::npos) {
+    return std::nullopt;
+  }
+  const auto operand_begin = position + needle.size();
+  const auto operand_end = assembly.find(',', operand_begin);
+  if (operand_end == std::string::npos) {
+    return std::nullopt;
+  }
+  return assembly.substr(operand_begin, operand_end - operand_begin);
+}
+
+bool store_uses_register_after(const std::string& assembly,
+                               std::string_view store_mnemonic,
+                               std::string_view register_name,
+                               std::size_t after_position) {
+  const std::string needle =
+      "    " + std::string{store_mnemonic} + " " + std::string{register_name} + ", [";
+  return assembly.find(needle, after_position) != std::string::npos;
+}
+
+int block_dispatch_publishes_local_conversion_store_sources_before_store() {
+  struct Case {
+    bir::CastOpcode opcode;
+    bir::TypeKind source_type;
+    bir::TypeKind result_type;
+    std::string_view conversion_mnemonic;
+    std::string_view store_mnemonic;
+  };
+  const Case cases[] = {
+      {bir::CastOpcode::FPToSI, bir::TypeKind::F64, bir::TypeKind::I8, "fcvtzs", "strb"},
+      {bir::CastOpcode::SIToFP, bir::TypeKind::I32, bir::TypeKind::F32, "scvtf", "str"},
+  };
+
+  for (const auto& test_case : cases) {
+    auto prepared = prepared_with_local_conversion_store(
+        test_case.opcode, test_case.source_type, test_case.result_type);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (!diagnostics.empty() || result.visited_operations != 2 ||
+        result.emitted_instructions != 4 || block.instructions.size() != 4) {
+      return fail("expected conversion cast, store publication, selected store, and return: visited=" +
+                  std::to_string(result.visited_operations) +
+                  " emitted=" + std::to_string(result.emitted_instructions) +
+                  " block_size=" + std::to_string(block.instructions.size()) +
+                  " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                  (diagnostics.entries.empty()
+                       ? std::string{}
+                       : " first=" + diagnostics.entries.front().message +
+                             (diagnostics.entries.size() > 1
+                                  ? " second=" + diagnostics.entries[1].message
+                                  : std::string{})));
+    }
+    const auto* publication =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+            &block.instructions[1].target.payload);
+    if (!block.instructions[1].origin.has_value() ||
+        block.instructions[1].origin->instruction_index != 1 ||
+        publication == nullptr || !publication->has_inline_asm_payload) {
+      return fail("expected local conversion store publication to be owned by the store");
+    }
+    const auto* memory =
+        std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+            &block.instructions[2].target.payload);
+    if (memory == nullptr ||
+        memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+        !memory->value.has_value() ||
+        memory->value->kind != aarch64_codegen::OperandKind::Register) {
+      return fail("expected selected local store to keep a structured register source");
+    }
+
+    const auto printed = print_route_block(function_cf.function_name, block);
+    if (!printed.ok) {
+      return fail("expected local conversion store route to print: " + printed.diagnostic);
+    }
+    const auto converted_register =
+        first_operand_after_mnemonic(publication->inline_asm_template,
+                                     test_case.conversion_mnemonic);
+    const std::string conversion_needle = "    " +
+                                          std::string{test_case.conversion_mnemonic} +
+                                          " " + converted_register.value_or("");
+    const auto first_conversion_position = printed.assembly.find(conversion_needle);
+    const auto second_conversion_position =
+        first_conversion_position == std::string::npos
+            ? std::string::npos
+            : printed.assembly.find(conversion_needle, first_conversion_position + 1);
+    const auto publication_position =
+        second_conversion_position == std::string::npos ? first_conversion_position
+                                                        : second_conversion_position;
+    if (publication_position == std::string::npos || !converted_register.has_value() ||
+        !store_uses_register_after(printed.assembly,
+                                   test_case.store_mnemonic,
+                                   *converted_register,
+                                   publication_position)) {
+      return fail("expected local store to publish and then store the converted register: " +
+                  printed.assembly);
+    }
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_conversion_cast_missing_bank_facts() {
   auto prepared = prepared_with_conversion_cast(
       bir::CastOpcode::SIToFP, bir::TypeKind::I32, bir::TypeKind::F64, false);
@@ -18682,6 +18934,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_conversion_cast_with_bank_transition_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_local_conversion_store_sources_before_store();
       status != 0) {
     return status;
   }
