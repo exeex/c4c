@@ -1677,10 +1677,15 @@ mir::TargetInstructionPrintResult print_return(const InstructionRecord& instruct
         default:
           break;
       }
-      if (source != nullptr && destination.has_value() &&
-          (source->reg.bank != destination->bank ||
-           source->reg.index != destination->index ||
-           source->reg.view != destination->view)) {
+      const bool same_physical_register =
+          source != nullptr && destination.has_value() &&
+          source->reg.bank == destination->bank &&
+          source->reg.index == destination->index;
+      const bool same_return_register =
+          same_physical_register &&
+          (abi::is_gp_register(source->reg) ||
+           source->reg.view == destination->view);
+      if (source != nullptr && destination.has_value() && !same_return_register) {
         const bool scalar_fp_return_move =
             abi::is_fp_simd_register(source->reg) &&
             abi::is_fp_simd_register(*destination) &&

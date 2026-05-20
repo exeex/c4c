@@ -210,6 +210,41 @@ prepare::PreparedSavedRegister prepared_saved_x19(std::size_t offset_bytes) {
   };
 }
 
+prepare::PreparedSavedRegister prepared_saved_x21(std::size_t offset_bytes) {
+  return prepare::PreparedSavedRegister{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "x21",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x21"},
+      .save_index = 0,
+      .placement = prepare::PreparedRegisterPlacement{
+          .bank = prepare::PreparedRegisterBank::Gpr,
+          .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+          .slot_index = 2,
+          .contiguous_width = 1,
+      },
+      .slot_placement =
+          prepare::PreparedSavedRegisterSlotPlacement{
+              .bank = prepare::PreparedRegisterBank::Gpr,
+              .register_name = "x21",
+              .contiguous_width = 1,
+              .occupied_register_names = {"x21"},
+              .save_index = 0,
+              .register_placement = prepare::PreparedRegisterPlacement{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                  .slot_index = 2,
+                  .contiguous_width = 1,
+              },
+              .slot_id = prepare::PreparedFrameSlotId{21},
+              .stack_offset_bytes = offset_bytes,
+              .size_bytes = std::size_t{8},
+              .align_bytes = std::size_t{8},
+              .fixed_location = true,
+          },
+  };
+}
+
 prepare::PreparedBirModule prepared_with_return_selected_scalar_value() {
   prepare::PreparedBirModule prepared = prepared_with_return_block();
 
@@ -474,6 +509,136 @@ prepare::PreparedBirModule prepared_with_direct_call_immediate_argument_then_ret
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_call_result_before_return_publication() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("return.call.result");
+  const auto entry_label = prepared.names.block_labels.intern("return.call.result.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("return.call.result.entry");
+  const auto callee_link = prepared.names.link_names.intern("actual_function");
+  const auto result_name = prepared.names.value_names.intern("%call_result");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "return.call.result",
+      .return_type = bir::TypeKind::I32,
+      .blocks = {bir::Block{
+          .label = "return.call.result.entry",
+          .insts = {bir::CallInst{
+              .result = bir::Value::named(bir::TypeKind::I32, "%call_result"),
+              .callee = "actual_function",
+              .callee_link_name_id = callee_link,
+              .return_type = bir::TypeKind::I32,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{
+              .value = bir::Value::named(bir::TypeKind::I32, "%call_result"),
+          }},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {register_home(prepare::PreparedValueId{51},
+                                    function_name,
+                                    result_name,
+                                    "x21")},
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::AfterCall,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{51},
+                      .to_value_id = prepare::PreparedValueId{51},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallResultAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_result_register_to_register",
+                  }},
+                  .abi_bindings = {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallResultAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                  }},
+              },
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeReturn,
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .moves = {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{51},
+                      .to_value_id = prepare::PreparedValueId{51},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .destination_register_placement = call_result_gpr(0),
+                  }},
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"actual_function"},
+          .result = prepare::PreparedCallResultPlan{
+              .instruction_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_value_id = prepare::PreparedValueId{51},
+              .source_register_name = std::string{"x0"},
+              .source_contiguous_width = 1,
+              .source_occupied_register_names = {"x0"},
+              .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+              .destination_register_name = std::string{"x21"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x21"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          },
+      }},
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 16,
+      .saved_callee_registers = {prepared_saved_x21(0)},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_return_selected_memory_load_value() {
   prepare::PreparedBirModule prepared = prepared_with_return_block();
 
@@ -540,7 +705,9 @@ prepare::PreparedBirModule prepared_with_return_selected_memory_load_value() {
               .to_value_id = prepare::PreparedValueId{8},
               .destination_kind = prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
               .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+              .destination_register_name = std::string{"x0"},
               .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
               .destination_register_placement = call_result_gpr(0),
           }},
       }},
@@ -1125,6 +1292,39 @@ int module_build_materializes_scalar_immediate_before_direct_call() {
   return 0;
 }
 
+int module_build_keeps_call_result_return_publication_before_epilogue() {
+  auto prepared = prepared_with_call_result_before_return_publication();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected call-result return publication module to build");
+  }
+  const auto& instructions =
+      result.module->mir.functions.front().blocks.front().instructions;
+  if (instructions.size() < 5) {
+    return fail("expected call-result return block to include call, moves, epilogue, and return");
+  }
+  const auto* ret = std::get_if<aarch64_codegen::ReturnInstructionRecord>(
+      &instructions.back().target.payload);
+  const auto* ret_reg =
+      ret != nullptr && ret->value.has_value()
+          ? std::get_if<aarch64_codegen::RegisterOperand>(&ret->value->payload)
+          : nullptr;
+  if (ret_reg == nullptr || ret_reg->reg != aarch64_abi::x_register(0) ||
+      ret_reg->value_id != prepare::PreparedValueId{51}) {
+    return fail("expected terminal return to consume the before-return ABI publication");
+  }
+
+  const auto assembly = aarch64_codegen::print_prepared_machine_nodes(prepared);
+  if (assembly.find("    mov x0, x21\n") == std::string::npos) {
+    return fail("expected before-return move to publish call result into x0");
+  }
+  if (assembly.find("    mov w0, w21\n") != std::string::npos ||
+      assembly.find("    mov x0, x21\n    ret\n") != std::string::npos) {
+    return fail("terminal return must not reload a restored call-result home");
+  }
+  return 0;
+}
+
 int module_build_retains_return_abi_for_memory_load_result() {
   auto prepared = prepared_with_return_selected_memory_load_value();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1291,6 +1491,11 @@ int main() {
     return status;
   }
   if (const int status = module_build_materializes_scalar_immediate_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          module_build_keeps_call_result_return_publication_before_epilogue();
       status != 0) {
     return status;
   }

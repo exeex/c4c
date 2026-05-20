@@ -1368,6 +1368,41 @@ void record_memory_result(BlockScalarLoweringState& scalar_state,
                                  *memory_record->result_register);
 }
 
+[[nodiscard]] bool before_return_publication_already_emitted(
+    const BlockScalarLoweringState& scalar_state,
+    const module::MachineInstruction& instruction) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr ||
+      move_record->phase != prepare::PreparedMovePhase::BeforeReturn ||
+      move_record->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      !move_record->destination_register.has_value()) {
+    return false;
+  }
+  const auto emitted =
+      find_emitted_scalar_register(scalar_state,
+                                   move_record->destination_register->value_name);
+  return emitted.has_value() &&
+         registers_alias(*emitted, *move_record->destination_register);
+}
+
+void record_before_return_publication(BlockScalarLoweringState& scalar_state,
+                                      const module::MachineInstruction& instruction) {
+  const auto* move_record =
+      std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+  if (move_record == nullptr ||
+      move_record->phase != prepare::PreparedMovePhase::BeforeReturn ||
+      move_record->move.destination_kind !=
+          prepare::PreparedMoveDestinationKind::FunctionReturnAbi ||
+      !move_record->destination_register.has_value()) {
+    return;
+  }
+  record_emitted_scalar_register(scalar_state,
+                                 move_record->destination_register->value_name,
+                                 *move_record->destination_register);
+}
+
 [[nodiscard]] bool before_return_move_targets_fpr_abi(
     const prepare::PreparedMoveResolution& move) {
   if (move.destination_register_placement.has_value()) {
@@ -6071,6 +6106,11 @@ InstructionDispatchResult dispatch_prepared_block(
         context.bir_block != nullptr ? context.bir_block->insts.size() : 0;
     for (auto& before_return_move :
          lower_before_return_moves(context, return_instruction_index, diagnostics)) {
+      if (before_return_publication_already_emitted(scalar_state,
+                                                    before_return_move)) {
+        continue;
+      }
+      record_before_return_publication(scalar_state, before_return_move);
       block.instructions.push_back(std::move(before_return_move));
     }
     if (auto lowered =

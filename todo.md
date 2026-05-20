@@ -1,82 +1,70 @@
 Status: Active
 Source Idea Path: ideas/open/336_aarch64_return_result_publication_epilogue_clobber.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Return Result Clobber Sites
+Current Step ID: 2
+Current Step Title: Repair The Narrow Return Publication Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localization completed with generated assembly plus prepared-BIR
-evidence. No implementation or test files were changed.
+Step 2 repaired the AArch64 return publication owner in dispatch. A
+`before_return` FunctionReturnAbi move is now skipped when the same value has
+already been emitted into the ABI return register, and retained
+`before_return` publications update scalar state before terminal return
+lowering so the final `ReturnInstructionRecord` no longer reloads a stale home
+after frame teardown. Return printing also treats same physical return
+register aliases as already in the ABI register instead of printing a
+redundant terminal self-move.
 
-Representative first bad facts:
+Focused coverage was added in `backend_aarch64_return_lowering_test` for:
 
-- No-call scalar `00011`: source returns local `x == 0`. Prepared BIR has
-  `bir.ret i32 %t0`, stores `%t0` in home `x13`, and publishes it through a
-  `before_return` move to `x0`. Generated assembly instead loads the result
-  directly into `w0` (`ldr w0, [sp]`) and immediately overwrites it with the
-  prepared home copy (`mov x0, x13`). There is no saved-register restore in
-  this function, so this is not epilogue/restore ordering.
-- Pointer/local `00004`: prepared BIR returns `%t2`, whose home is callee-saved
-  `x20`, with a `before_return` move to `x0`. Generated assembly loads the
-  correct local value into `w0`, then emits `mov x0, x20` before restoring
-  `x20`. The first bad fact is again producer/result-publication authority
-  diverging from the prepared return home; `x20` never receives the loaded
-  `%t2` value before the return move consumes it.
-- Call-result `00087`: prepared BIR preserves the indirect call result from
-  `x0` to `%t3` home `x21`, then has a `before_return` move from `%t3` to
-  `x0`. Generated assembly performs `blr x13`, `mov x21, x0`, and `mov x0,
-  x21`, but then restores `x21` and emits a second terminal return move
-  `mov w0, w21`. The call-result preservation itself is present; the bad fact
-  is duplicate terminal return publication after epilogue insertion from a
-  callee-saved home that has already been restored.
-- Additional call/ALU shape `00168`: recursive `factorial` preserves the
-  recursive call result from `x0` to `x21`, computes the intended product with
-  `mul w0, w19, w21`, then overwrites it with `mov x0, x13`. Prepared BIR says
-  the product `%t5` home is `x13` and the `before_return` move publishes
-  `%t5` to `x0`; generated scalar-ALU lowering instead wrote the product
-  directly to the return ABI register without making that publication
-  authoritative.
+- direct load return publication where the stale prepared-home
+  `before_return` copy must be suppressed
+- call-result return publication where `mov x0, x21` before epilogue is the
+  authoritative move and the terminal return must not emit `mov w0, w21` after
+  `x21` is restored
 
-Owner decision: the narrow owner is AArch64 return-result publication
-coordination, not return home selection, not call-result preservation, and not
-raw epilogue/restore ordering alone. Prepared homes and `before_return`
-bundles are internally coherent, and call-result moves to callee-saved homes
-are present. The broken boundary is that return-feeding producers can publish
-directly to `w0`/`x0` while the prepared home-to-return move remains live, and
-the terminal `ReturnInstructionRecord` can emit another home-to-return move
-after frame teardown.
+Representative generated results after the repair:
 
-Narrow repair target: make AArch64 return lowering use a single authoritative
-return-result publication path for `FunctionReturnAbi`. Either keep producer
-results in their prepared homes and let the `before_return` move publish them,
-or make direct producer-to-ABI publication authoritative and suppress the later
-prepared/terminal duplicate moves. In either route, terminal return printing
-must not emit a post-epilogue register move from a callee-saved home when the
-`before_return` bundle already published the result.
+- `00004`, `00011`, and `00087` pass the delegated c-testsuite subset.
+- `00004` and `00011` no longer show the correct `w0` result followed by stale
+  `mov x0, x20` / `mov x0, x13` home publication.
+- `00087` keeps the intended `mov x0, x21` before the epilogue and no longer
+  emits the stale post-epilogue `mov w0, w21`.
+- `00168` advances past the stale return-publication overwrite: recursive
+  `factorial` now computes `mul w0, w19, w21` and returns directly from `w0`.
+  Its remaining runtime mismatch is a separate live callee-saved home problem:
+  `w19` holds the caller's `n` across `bl factorial` but the generated frame
+  does not save/restore `x19`, so recursive returns leave `w19 == 1` and every
+  printed factorial result is `1`.
 
 ## Suggested Next
 
-Execute Step 2 from `plan.md`: repair the AArch64 return publication
-coordination path so load/scalar-ALU return producers and call-result returns
-do not leave a stale prepared-home move or a post-epilogue terminal return move
-that overwrites `w0`/`x0`. Start around the AArch64 codegen helpers that
-retarget return-feeding producers to the return ABI and the return terminator /
-before-return move emission path.
+Smallest next packet: classify or repair the `00168` residual as live
+callee-saved scalar-home preservation across recursive calls, starting from
+the frame/register-preservation facts that omit `x19` while the recursive
+factorial body keeps `n` in `w19` across `bl factorial`.
 
 ## Watchouts
 
-Do not fix this by deleting all `before_return` moves or by special-casing the
-c-testsuite filenames. The no-call scalar and pointer/local cases prove the
-bug is not only epilogue ordering; the `00087` call-result case proves the
-terminal return record can still emit after frame teardown even when
-`before_return` publication was already correct. Keep closed ideas 333 and 335
-out of scope unless fresh generated-code evidence ties the repair to their
-exact old owner.
+Do not treat `00087`'s remaining `mov x0, x21` before the restore sequence as
+stale; that is the intended `before_return` publication. The stale pattern was
+the later terminal home reload after `x21` had been restored. The remaining
+`00168` failure is not a return-publication overwrite and should not be fixed
+with return-move suppression or testcase-specific register strings.
 
 ## Proof
 
-`git diff --check`. Formatting-only proof for the `todo.md` evidence update;
-no code/test validation was run in this localization packet.
+`cmake --build build --target c4cll backend_aarch64_return_lowering_test backend_aarch64_scalar_alu_records_test backend_aarch64_instruction_dispatch_test backend_aarch64_machine_printer_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(return_lowering|scalar_alu_records|instruction_dispatch|machine_printer)|c_testsuite_aarch64_backend_src_(00004|00011|00087|00168)_c' > test_after.log 2>&1`
+
+Result: build succeeded; backend focused tests passed; c-testsuite
+representatives `00004`, `00011`, and `00087` passed; `00168` failed with the
+residual callee-saved `w19` preservation issue classified above. Canonical
+proof log: `test_after.log`.
+
+Supervisor follow-up validation accepted the advanced residual: the focused
+return-publication subset
+`backend_aarch64_(return_lowering|scalar_alu_records|instruction_dispatch|machine_printer)|c_testsuite_aarch64_backend_src_(00004|00011|00022|00052|00087)_c`
+passed 9/9, and broader internal backend validation
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.
