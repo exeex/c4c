@@ -8,44 +8,27 @@ Current Step Title: Repair The Classified Owner
 
 ## Just Finished
 
-Continued plan Step 2, "Repair The Classified Owner", by repairing the
-`subim503808` scalar ALU rematerializable-immediate operand publication /
-live-source clobbering owner.
+Completed the todo-only localization packet for
+`tests/c/external/c-testsuite/src/00204.c:500`, `pll(lsli1(x))`. The first
+generated-code divergence is in the callee-side scalar shift operation
+lowering/publication owner: semantic BIR and prepared homes describe
+`%t0 = %p.x << 1`, but final AArch64 emission never emits the shift into the
+prepared result home before publishing the return value.
 
-The bug was that `%t0 = bir.sub i32 0, 503808` had a rematerializable immediate
-home, but fallback return-chain lowering still materialized it through `w0`,
-which was also the live `%p.x` formal register for the next instruction. Then
-`%t1 = %p.x - %t0` read `w0` for both operands and returned zero.
+Source value and prepared facts:
 
-The repair keeps rematerializable-immediate homes authoritative when retargeting
-prepared scalar ALU operands, and narrows fallback scratch use to the real
-clobber case: when a rematerializable result would otherwise materialize into a
-register needed by its immediate consumer. Harmless return-ABI accumulator
-chains still use `w0`.
+- Source input is `x = 1000` (`0x3e8`), passed to `lsli1` as `%p.x`.
+- BIR is correct:
+  `%t0 = bir.shl i32 %p.x, 1`; `bir.ret i32 %t0`.
+- Prepared type/width is `i32` for `%p.x` and `%t0`.
+- Prepared source home: `%p.x` value id `3689`, register `x0`.
+- Shift operand/source: immediate shift amount `1` from the BIR RHS.
+- Prepared result home: `%t0` value id `3690`, register `x13`.
+- Prepared before-instruction move copies `%p.x` to `%t0` for the consumer
+  register path, and prepared before-return move publishes `%t0` to return ABI
+  register `x0`.
 
-Repaired `subim503808` generated sequence:
-
-```asm
-subim503808:
-    mov w9, #0
-    movz w10, #45056
-    movk w10, #7, lsl #16
-    sub w9, w9, w10
-    movz w9, #20480
-    movk w9, #65528, lsl #16
-    sub w20, w0, w9
-    mov x0, x21
-    mov w0, w20
-    ret
-```
-
-This preserves `%p.x` in `w0`, materializes `%t0` separately, and computes
-`1000 - (-503808) = 504808`, so `pll(subim503808(x))` now prints `7b3e8`.
-
-The representative now advances to
-`tests/c/external/c-testsuite/src/00204.c:500`, `pll(lsli1(x))`: expected
-`7d0`, actual `3e8`. The generated callee currently returns the input without
-emitting the left shift:
+The emitted `lsli1` sequence is:
 
 ```asm
 lsli1:
@@ -54,12 +37,31 @@ lsli1:
     ret
 ```
 
+There is no `lsl`/shift instruction, so the callee returns unshifted `0x3e8`
+instead of expected `0x7d0`.
+
+Caller publication is coherent and is not the owner. In `opi`, `%t72` is loaded
+from `x` into `x13`, the call argument move publishes it to `x0`, `%t73` is
+captured from call result `x0` into `x20`, the zext path reads `%t73` from
+`x20`, and `pll` receives the caller-published operand through `x0`. The
+caller-side sequence around `lsli1` is:
+
+```asm
+ldr w13, [sp]
+mov w0, w13
+bl lsli1
+mov x20, x0
+ubfx x13, x20, #0, #32
+mov x0, x13
+bl pll
+```
+
 ## Suggested Next
 
-Localize the new shift residual for `lsli1`. Start from generated
-BIR/prepared/assembly for `lsli1` and caller `opi`; determine why `x << 1`
-returns the unshifted input even though caller-side call-result/cast
-publication is coherent.
+Repair the scalar shift/SHL lowering path so `bir.shl i32 %p.x, 1` emits a
+coherent shift into the prepared result home before the return-ABI publication
+for `lsli1`, for example a width-correct `lsl` from `%p.x` to `%t0` followed by
+the existing return move.
 
 ## Watchouts
 
@@ -67,19 +69,25 @@ Do not reopen the repaired MOVI BIR immediate cast fold unless new evidence
 shows a remaining MOVI mismatch. Keep HFA/byval/stdarg/fixed-formal/local-
 value guardrails and `review/326_stdarg_byval_route_review.md` untouched.
 
-Do not undo the scalar ALU result-home fix, cast source publication fix, or this
-rematerializable-immediate clobber fix to chase the new shift failure. The new
-first bad fact is separate from MOVI, HFA/floating, byval, stdarg cursor,
-fixed-formal, local/value, frame/formal, return lowering, immediate
-rematerialization, and caller call-result/cast publication.
+Do not undo the scalar ALU result-home fix, cast source publication fix, or the
+rematerializable-immediate clobber fix to chase the shift failure. This owner is
+separate from MOVI, HFA/floating, byval, stdarg cursor, fixed-formal,
+local/value, frame/formal, return lowering, scalar ALU result-home publication,
+caller call-result/cast publication, and rematerializable-immediate operand
+publication/live-source clobbering.
 
 ## Proof
 
-Ran the exact delegated proof command:
+Read-only localization commands used:
 
-`cmake --build build --target c4cll backend_aarch64_scalar_alu_records_test backend_aarch64_prepared_scalar_alu_records_test backend_aarch64_scalar_record_contract_test backend_aarch64_return_lowering_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(scalar_alu_records|prepared_scalar_alu_records|scalar_record_contract|return_lowering)|cli_aarch64_asm_external_return_add_smoke|cli_aarch64_asm_external_return_add_sub_chain_smoke|cli_dump_(bir|prepared_bir)_00204_stdarg)|c_testsuite_aarch64_backend_src_00204_c' > test_after.log 2>&1`
+- `build/c4cll --dump-bir --target aarch64-linux-gnu --mir-focus-function lsli1 tests/c/external/c-testsuite/src/00204.c`
+- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function lsli1 tests/c/external/c-testsuite/src/00204.c`
+- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t72 tests/c/external/c-testsuite/src/00204.c`
+- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t73 tests/c/external/c-testsuite/src/00204.c`
+- `nl -ba build/c_testsuite_aarch64_backend/src/00204.c.s | sed -n '14318,14335p;14680,14698p'`
+- `nl -ba build/c_testsuite_aarch64_backend/src/00204.c.s | sed -n '14422,14432p'`
 
-Result: 10/11 selected tests passed. The focused backend tests all pass. The
-only remaining failure is `c_testsuite_aarch64_backend_src_00204_c`, now
-advanced to `00204.c:500` (`pll(lsli1(x))`), expected `7d0`, actual `3e8`.
-`test_after.log` contains the full proof output.
+No broad test or build was run, and `test_after.log` was not overwritten for
+this todo-only packet. `test_before.log` remains the baseline showing
+`c_testsuite_aarch64_backend_src_00204_c` failing at `lsli1`, expected `7d0`,
+actual `3e8`. `git diff --check` passed.
