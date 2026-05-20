@@ -64,6 +64,14 @@ the fallthrough blocks. The failure is likely between prepared BIR and emitted
 AArch64: lowering, selected-node construction, instruction scheduling, local
 access materialization, or printer emission drops those data-copy operations.
 
+Step 2 repaired one prepared-memory dispatch path and proved the case-0 copy
+sequence, but Step 3 showed the repair is incomplete. Prepared BIR still
+contains i16 fixed-offset local copy operations in Duff fallthrough blocks 9
+through 15, while generated labels `.LBB1_8` through `.LBB1_20` still only
+update `from`/`to` stack homes and branch onward. The next repair must cover
+all prepared fixed-offset local load/store copies in those fallthrough blocks,
+not only the path that emits the case-0 `.LBB1_27` copy sequence.
+
 ## Execution Rules
 
 - Keep routine localization and proof notes in `todo.md`.
@@ -145,3 +153,38 @@ Completion check:
 
 - The focused proof either passes `00143` or records a new first bad fact that
   is outside fallthrough fixed-offset local load/store emission.
+
+### Step 4: Repair Remaining Duff Fallthrough Copy Emission
+
+Goal: extend the fallthrough fixed-offset local load/store repair so every
+prepared Duff fallthrough copy emits the corresponding AArch64 data movement,
+not only the case-0 path.
+
+Primary target: prepared i16 fixed-offset local copy operations in fallthrough
+blocks 9 through 15 of `00143`, represented in generated assembly by the
+fallthrough label range currently observed as `.LBB1_8` through `.LBB1_20`.
+
+Actions:
+
+- Reproduce the Step 3 evidence and pick one missing non-case-0 copy pair,
+  such as the prepared `a[1]` to `b[1]` fixed-offset load/store, as the first
+  trace.
+- Compare the already-repaired case-0 emission path against the omitted
+  fallthrough paths and identify the general dispatch, lowering, selected-node,
+  scheduling, local-access, or printer condition that admits one path while
+  skipping the others.
+- Repair the shared semantic owner so prepared fixed-offset local load/store
+  operations in all fallthrough copy blocks survive to emitted `ldrh`/`strh`
+  data movement.
+- Add or update focused backend coverage with multiple fallthrough case blocks
+  containing i16 fixed-offset local copies. The coverage must fail if only one
+  case path is emitted.
+- Preserve the existing Step 2 focused coverage and the scalar-cast boundary
+  from idea 340.
+
+Completion check:
+
+- Focused backend coverage proves multiple Duff fallthrough fixed-offset local
+  copies emit AArch64 data movement, and `00143` generated assembly no longer
+  has prepared fallthrough copy blocks that only update pointer-local stack
+  homes.

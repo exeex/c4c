@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Prove Representative And Reclassify Residuals
+Current Step ID: 4
+Current Step Title: Repair Remaining Duff Fallthrough Copy Emission
 
 # Current Packet
 
@@ -26,11 +26,23 @@ show the backend binary exits 1 while host clang exits 0, and a probe returning
 
 ## Suggested Next
 
-Repair the remaining AArch64 prepared-memory dispatch/emission gap for all
-prepared fixed-offset local load/store copies in Duff fallthrough blocks, not
-only the case-0 path. Keep `00143` as representative evidence, but prove the
-repair with a focused backend fixture that has multiple fallthrough case blocks
-with i16 fixed-offset local copies and no testcase-shaped matching.
+Execute plan Step 4: repair the remaining AArch64 prepared-memory
+dispatch/emission gap for all prepared fixed-offset local load/store copies in
+Duff fallthrough blocks, not only the case-0 path.
+
+Concrete packet:
+
+- Reproduce the Step 3 prepared-BIR and assembly probes for `00143`.
+- Trace one omitted non-case-0 copy pair, preferably `a[1]` to `b[1]`, from
+  prepared BIR through the repaired case-0 path and the still-omitted
+  fallthrough path.
+- Identify the general owner that emits the case-0 `.LBB1_27` copy but skips
+  the other fallthrough copy blocks.
+- Repair that owner without matching `00143`, label names, block numbers,
+  local names, source lines, or emitted instruction strings.
+- Add or update focused backend coverage with multiple fallthrough case blocks
+  containing i16 fixed-offset local copies; it should fail if only one copy
+  path is emitted.
 
 ## Watchouts
 
@@ -38,6 +50,9 @@ with i16 fixed-offset local copies and no testcase-shaped matching.
   `00143` is still inside idea 341's fallthrough fixed-offset local
   load/store emission family, so this packet does not recommend close or split
   yet.
+- The prior Step 2 repair is useful contrast evidence, not sufficient
+  completion proof. Do not claim this source idea complete while prepared
+  fallthrough copy blocks still emit only pointer-local stack-home updates.
 - There may be a second control-flow/condition residual: the generated
   do-while condition around `.LBB1_29` stores `--n` but branches using another
   `n - 1` compare, and the `/tmp/c4c_00143_probe_n` runtime probe leaves
