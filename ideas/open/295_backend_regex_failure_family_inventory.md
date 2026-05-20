@@ -718,6 +718,37 @@ Step 4 split 2026-05-20:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked buckets.
 
+Step 4 split 2026-05-20 post-339:
+
+- Step 3 of the active umbrella runbook used the post-339 focused evidence for
+  `c_testsuite_aarch64_backend_src_00143_c` to select a reopened scalar-cast
+  register-source publication owner.
+- The representative fails before assembly at selected AArch64 machine-node
+  printing: `family=scalar opcode=sign_extend`, with the diagnostic that a
+  scalar cast node requires a structured register source operand.
+- Prepared evidence shows the source path `%t76 = bir.select ... i16` feeding
+  `%t81 = bir.sext i16 %t76 to i32`; `%t76 value_id=308` is stack-homed, while
+  `%t81 value_id=388` is a register value. The move bundle before the failing
+  selected instruction contains `move from_value_id=308 to_value_id=388
+  destination_storage=register reason=consumer_stack_to_register`.
+- This is the same scalar cast structured register-source first bad fact as
+  closed idea 338, but narrowed to the post-regalloc selected-source
+  publication path where the prepared consumer stack-to-register move exists
+  and is not exposed to the selected scalar cast printer operand.
+- This is not a local scalar storage/writeback sizing residual from closed idea
+  339 by current first-bad-fact evidence.
+- Focused idea 340,
+  `ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md`,
+  is now active. It references closed idea 338 as the reopened/split boundary
+  without mutating the archive.
+- Remaining runtime nonzero/crash, runtime mismatch, timeout/output-storm, FP
+  comparison/materialization, pointer/null conditional, broad return/ABI, and
+  other parked buckets remain under this umbrella until a later classification
+  pass justifies another focused split.
+- Active implementation should move to idea 340 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

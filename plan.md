@@ -1,164 +1,145 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar Cast Stack-Homed Register Source Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md Step 4 split
 
 ## Purpose
 
-Refresh and classify the main-build backend regex failure inventory after
-focused AArch64 owner 339 closed, then split the next semantic repair owner
-before implementation begins.
+Repair the post-339 selected scalar cast path where a stack-homed source has a
+prepared consumer stack-to-register move, but the AArch64 printer still receives
+no structured register source operand.
 
 ## Goal
 
-Use the current `/workspaces/c4c/build` backend regex result to identify the
-next tractable semantic failure family without reopening closed owners from
-counts alone.
+Make selected scalar casts publish and consume the prepared register source for
+stack-homed inputs before AArch64 machine printing.
 
 ## Core Rule
 
-Do not implement repairs under this umbrella. Capture evidence, classify
-failures by semantic owner, and switch lifecycle state to a focused idea before
-code changes begin.
+Fix the scalar cast register-source publication boundary generally. Do not
+special-case `00143`, value ids, instruction numbers, source lines, registers,
+or diagnostic strings.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- Recent closure context from the source idea:
-  - idea 339 is closed as the scalar local storage/writeback sizing owner
-  - closed focused owners 333 through 339 must stay closed unless fresh
-    generated-code or proof evidence contradicts a closure boundary
-- Current backend regex command:
-  - `ctest --test-dir build -j10 -R backend --output-on-failure`
+- `ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md`
+- `ideas/closed/338_aarch64_scalar_cast_register_source_operand_facts.md`
+- `ideas/closed/339_aarch64_scalar_local_storage_writeback_sizing.md`
+- Current evidence preserved in the focused idea and umbrella deactivation
+  note:
+  - `%t76 = bir.select ... i16`
+  - `%t81 = bir.sext i16 %t76 to i32`
+  - `%t76 value_id=308 kind=stack_slot`
+  - `%t81 value_id=388 kind=register reg=x13`
+  - prepared move `from_value_id=308 to_value_id=388`
+    `destination_storage=register reason=consumer_stack_to_register`
+  - printer diagnostic: scalar `sign_extend` requires a structured register
+    source operand
 
 ## Current Targets
 
-- Main build tree: `/workspaces/c4c/build`
-- Backend regex scope selected by `ctest -R backend`
-- External AArch64 c-testsuite backend residuals:
-  - `c_testsuite_aarch64_backend_*`
-- Local backend/unit/CLI failures if any appear in the refreshed regex result
+- Primary representative:
+  - `c_testsuite_aarch64_backend_src_00143_c`
+- Useful narrow probes:
+  - `ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_00143_c'`
+  - `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function main tests/c/external/c-testsuite/src/00143.c`
+  - `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function main --mir-focus-block block_16 tests/c/external/c-testsuite/src/00143.c`
+  - `./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00143.c -o /tmp/c4c_00143.s`
+- Focused backend coverage should exercise scalar casts whose source value is
+  stack-homed but has a prepared consumer stack-to-register move.
 
 ## Non-Goals
 
-- Do not edit implementation code.
-- Do not change expectations, allowlists, unsupported classifications,
-  timeout policy, runner behavior, CTest registration, or proof-log contents.
-- Do not treat `ctest -R backend` as one monolithic failure bucket.
-- Do not reopen closed focused owners from pass/fail counts alone.
-- Do not create filename-only, instruction-string-only, diagnostic-string-only,
-  or c-testsuite-number-specific repair routes.
+- Do not edit expectation, unsupported, runner, timeout, CTest registration, or
+  proof-log policy.
+- Do not mutate `ideas/closed/338_*` or `ideas/closed/339_*`.
+- Do not reopen idea 339 local storage/writeback sizing unless generated-code
+  evidence shows the first bad fact has moved there.
+- Do not broaden into runtime value correctness, frame layout, aggregate,
+  variadic, compare, or semantic `lir_to_bir` work.
 
 ## Working Model
 
-`ctest -R backend` is an imprecise umbrella selector. It can include local
-backend tests, AArch64 external runtime tests, frontend/prepared handoff
-failures, timeout/output-storm cases, and residual families that need separate
-owners. The job of this runbook is to classify the current failure surface and
-split the next focused owner only when evidence points to a semantic backend
-capability.
+Prepared BIR contains both the stack-homed source and the consumer
+stack-to-register move needed by the cast. The failure is likely between
+prepared move facts and the selected scalar cast operand consumed by the
+AArch64 printer: source publication, selected-node construction, normalization,
+or move consumption.
 
 ## Execution Rules
 
-- Keep progress notes and proof details in `todo.md`.
-- Use `test_before.log` and `test_after.log` only as canonical proof logs when
-  the supervisor delegates matching regression-log preparation.
-- Broad runtime scans should use timeout/stale-process cleanup when needed.
-- If a focused owner is split, write the new idea under `ideas/open/` with
-  concrete reviewer reject signals, then switch lifecycle state before any
-  implementation.
-- If no owner is ready, record the classified buckets and blocker in `todo.md`
-  instead of forcing a weak split.
+- Keep routine localization and proof notes in `todo.md`.
+- Add focused backend coverage before or with the repair when the behavior can
+  be expressed without relying on only the external representative.
+- Preserve closed-owner boundaries from ideas 338 and 339 unless fresh evidence
+  moves the first bad fact.
+- Reclassify any new `00143` residual by generated-code, prepared-state, or
+  diagnostic evidence before claiming completion.
 
 ## Steps
 
-### Step 1: Capture Current Backend Regex Inventory
+### Step 1: Localize Scalar Cast Source Publication Boundary
 
-Goal: establish the post-339 backend-regex failure set from the main build.
+Goal: identify where the prepared stack-to-register consumer move stops being
+visible as the selected scalar cast source operand.
 
-Primary target: `ctest --test-dir build -j10 -R backend --output-on-failure`
-
-Actions:
-
-- Confirm the build tree exists and is suitable for backend CTest execution.
-- Run the supervisor-delegated backend regex command, with timeout cleanup if
-  the supervisor requires it for runtime/output-storm safety.
-- Record selected, passed, failed, timeout, and skipped counts in `todo.md`.
-- Preserve the raw canonical proof log path selected by the supervisor.
-
-Completion check:
-
-- `todo.md` records a current backend regex inventory and the exact command
-  used to produce it.
-
-### Step 2: Classify Residual Failures
-
-Goal: split the current failures into actionable semantic buckets.
-
-Primary target: failures selected by Step 1.
+Primary target: selected scalar cast lowering/publication for the `00143`
+prepared `%t76` to `%t81` shape.
 
 Actions:
 
-- Separate local backend/unit/CLI failures from
-  `c_testsuite_aarch64_backend_*` failures.
-- Classify each failure by first bad stage:
-  - frontend/prepared-node or machine-printer diagnostics
-  - semantic `lir_to_bir` admission or prepared-module handoff
-  - assembler/linker legality
-  - runtime nonzero/crash
-  - runtime mismatch
-  - timeout or output-storm
-- Compare candidate buckets against closed focused owners through idea 339
-  using generated-code or proof evidence, not counts alone.
-- Record remaining parked buckets and any unsafe timeout/output-storm handling
-  in `todo.md`.
+- Reproduce the narrow `00143` printer failure and prepared dump evidence.
+- Trace the prepared move fact from value id 308 to value id 388 through
+  selection, scalar cast record construction, and AArch64 printer handoff.
+- Identify whether the missing structured register source is caused by move
+  consumption, selected-node construction, operand normalization, or printer
+  admission.
+- Record the concrete first bad owner and proposed repair boundary in
+  `todo.md`.
 
 Completion check:
 
-- `todo.md` contains a classified inventory with closed-owner boundaries
-  respected and no implementation route chosen from counts alone.
+- `todo.md` names the concrete producer, handoff, normalizer, or consumer
+  boundary where the structured register source is lost.
 
-### Step 3: Select The Next Focused Owner
+### Step 2: Repair Stack-Homed Scalar Cast Register Source Publication
 
-Goal: choose one focused semantic repair family, or explain why none is ready.
+Goal: make selected scalar casts consume the prepared register source when the
+original source is stack-homed and a consumer stack-to-register move exists.
 
-Primary target: the highest-value bucket from Step 2 with concrete evidence.
+Primary target: the boundary localized in Step 1.
 
 Actions:
 
-- Prefer a bucket with multiple related failures and a shared generated-code,
-  diagnostic, ABI, or lowering owner.
-- Allow a singleton only when evidence proves a semantic capability rather
-  than a named testcase shortcut.
-- Define the candidate owner's scope, non-goals, representative tests, and
-  proof ladder.
-- Reject buckets that would require expectation, runner, timeout, or CTest
-  changes to claim progress.
+- Implement the narrow semantic repair without matching `00143`, value ids,
+  registers, instruction numbers, or diagnostic strings.
+- Add or update focused backend coverage for stack-homed scalar cast source
+  publication after consumer stack-to-register moves.
+- Preserve existing scalar cast register-source behavior from closed idea 338
+  and scalar local storage/writeback behavior from closed idea 339.
 
 Completion check:
 
-- `todo.md` names the selected focused owner and evidence, or explains why no
-  focused owner is ready to split.
+- Focused backend coverage proves the selected scalar cast carries a structured
+  register source operand into AArch64 printing.
 
-### Step 4: Split And Switch Lifecycle State
+### Step 3: Prove Representative And Reclassify Residuals
 
-Goal: leave the umbrella after classification and hand implementation to a
-focused idea.
+Goal: verify the old printer diagnostic is gone and classify any new first bad
+fact.
 
-Primary target: `ideas/open/<new-focused-owner>.md`
+Primary target: `c_testsuite_aarch64_backend_src_00143_c`.
 
 Actions:
 
-- Create a focused source idea with goal, scope, non-goals, acceptance
-  criteria, and concrete reviewer reject signals.
-- Add a durable deactivation note to
-  `ideas/open/295_backend_regex_failure_family_inventory.md` recording the
-  inventory count, selected owner, proof scope, and remaining buckets.
-- Replace this umbrella runbook with a focused `plan.md` and reset `todo.md`
-  through the plan-owner lifecycle workflow.
-- Do not edit implementation code before the lifecycle switch is complete.
+- Run the supervisor-delegated focused proof command.
+- Confirm the old scalar cast structured register-source diagnostic is absent.
+- If `00143` still fails, classify the new first bad fact from prepared dump,
+  generated assembly, assembler/linker output, or runtime output.
+- Update `todo.md` with proof results and any residual owner recommendation.
 
 Completion check:
 
-- A focused idea is active in `plan.md` and `todo.md`, or the umbrella remains
-  active only with a documented blocker in `todo.md`.
+- The focused proof either passes `00143` or records a new first bad fact that
+  is outside this scalar cast source-publication owner.
