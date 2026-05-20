@@ -1,169 +1,169 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Return Result Publication Epilogue Clobber Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/336_aarch64_return_result_publication_epilogue_clobber.md
 
 ## Purpose
 
-Reactivate the umbrella backend-regex inventory after focused AArch64 owners
-334 and 335 closed, so the next current semantic backend owner is selected
-from fresh evidence before any implementation work starts.
+Focus the umbrella backend-regex inventory on the AArch64 runtime family where
+generated functions compute or load the intended result into `w0`/`x0`, then
+clobber `x0` with a stale restored register before returning.
 
 ## Goal
 
-Capture and classify the current main-build backend CTest surface, then split
-or select exactly one focused repair idea only when a tractable semantic owner
-is supported by current logs, generated artifacts, or diagnostics.
+Repair the general AArch64 return-result publication / epilogue-clobber owner
+for scalar, pointer/local, and call-result representatives without changing
+test expectations or runner behavior.
 
 ## Core Rule
 
-Do not implement fixes under this umbrella. Use it to inventory, classify, and
-split focused owners. Do not reopen parked or closed owners from counts alone;
-require current generated-code, diagnostic, or proof evidence that contradicts
-their boundary.
+Do not fix this by matching c-testsuite filenames, literal registers, or final
+instruction strings. Localize and repair the semantic rule that decides the
+authoritative return result and prevents epilogue or restore code from
+overwriting it.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/336_aarch64_return_result_publication_epilogue_clobber.md`
 - current `todo.md`
-- current canonical `test_before.log` / `test_after.log`, if the supervisor
-  selects them as the backend-regex baseline artifacts
-- current `ideas/open/` statuses, especially parked or close-deferred ideas
-  316, 326, 327, 328, 329, 331, and 332
-- recently closed focused owners 333, 334, and 335 only when comparing a
-  current failure against an already completed route
+- current `test_after.log` classification evidence from umbrella idea 295
+- generated assembly under `build/c_testsuite_aarch64_backend/src/` for:
+  `00004.c.s`, `00011.c.s`, `00022.c.s`, `00052.c.s`, `00087.c.s`,
+  `00124.c.s`, `00159.c.s`, and `00168.c.s`
+- closed ideas 333 and 335 only to preserve their boundaries, not to reopen
+  them from counts alone
 
 ## Current Targets
 
-- Main build backend surface selected by the supervisor, normally
-  `ctest --test-dir build -j --output-on-failure -R '^backend_'` or the
-  broader `ctest -R backend` equivalent when explicitly requested.
-- Local backend/unit/CLI tests versus external
-  `c_testsuite_aarch64_backend_*` tests.
-- Current runtime failures, runtime mismatches, compile/printer diagnostics,
-  semantic handoff failures, timeouts, and output-storm cases.
-- Open inactive idea records that may be closable, parked, stale, or
-  activatable only with fresh evidence.
+- Return-result clobber representatives from the current 22-case bucket:
+  `00004`, `00011`, `00013`, `00014`, `00016`, `00019`, `00020`, `00022`,
+  `00052`, `00087`, `00103`, `00112`, `00116`, `00117`, `00118`, `00121`,
+  `00124`, `00139`, `00153`, `00159`, `00168`, and `00170`.
+- No-call scalar return cases that materialize a result and then emit stale
+  `mov x0, x13` or equivalent.
+- Pointer/local return cases that load the correct `w0` value and then emit
+  stale `mov x0, x20` or equivalent.
+- Call-result cases that compute or preserve a call result and then return a
+  restored/stale callee-saved register.
 
 ## Non-Goals
 
-- Do not edit implementation files or tests.
-- Do not treat the whole backend regex as one repair bucket.
-- Do not change expectations, unsupported classifications, allowlists,
-  runners, timeout policy, proof-log policy, or CTest registration.
-- Do not reactivate parked or close-deferred ideas 316, 326, 327, 328, 329,
-  331, or 332 without fresh evidence that their exact owner has returned.
-- Do not continue stale `00204.c`, `00216.c`, `00164.c`, or `00214.c`
-  evidence when current artifacts show a different first bad fact or no bad
-  fact.
+- Do not reopen closed ideas 333 or 335 without generated-code evidence tying
+  the current first bad fact to their exact old owners.
+- Do not edit expectations, unsupported classifications, allowlists, runner
+  behavior, timeout policy, proof-log policy, or CTest registration.
+- Do not repair scalar conversion/comparison, addressable-memory
+  materialization, switch/loop/control-flow lowering, varargs/libc ABI,
+  indirect-call pointer materialization, scalar-cast machine-printer, or
+  timeout/output-storm buckets from idea 295 under this plan.
+- Do not broad-rewrite AArch64 prologue/epilogue, register allocation, or call
+  lowering unless localization proves that narrower owner is insufficient.
 
 ## Working Model
 
-The latest focused route closed idea 335 after repairing the local-slot
-runtime residual. Idea 295 remains the durable umbrella for re-inventorying the
-backend-regex surface after such focused closures. Several open ideas are
-parked or close-deferred because their representative moved outside source
-scope or closure-grade logs were unavailable; they should not be reactivated
-without current evidence.
+The current failure signature is not that `w0`/`x0` can never receive the
+right value. Multiple representatives show the right result reaching `w0` or
+`x0` before a later return-path move overwrites it with a stale saved register.
+The repair should preserve the ABI return register as the authoritative return
+value after expression/call result publication and through epilogue emission.
 
 ## Execution Rules
 
-- Keep packet progress and inventory tables in `todo.md`.
-- Preserve canonical proof-log discipline: use `test_after.log` for a
-  delegated capture only when the supervisor selects that as the proof
-  artifact.
-- Classify before splitting. Split a focused owner only when multiple facts or
-  one crisp singleton point to a semantic backend capability.
-- Quarantine timeouts or output-storm cases separately from normal runtime
-  mismatches.
-- When a focused owner is created or chosen, return to plan-owner for the
-  lifecycle switch before implementation.
+- Start with generated assembly and prepared/backend dumps before changing
+  code.
+- Prove at least three representative shapes before claiming the owner:
+  no-call scalar return, pointer/local return, and call-result return.
+- Add focused backend coverage for the repaired rule where practical before
+  relying on external c-testsuite proof.
+- Treat a new first bad fact after removing the stale return overwrite as a
+  residual for classification, not automatic scope expansion.
+- Keep proof logs in the canonical files selected by the supervisor.
 
 ## Ordered Steps
 
-### Step 1: Capture Fresh Backend Regex Inventory
+### Step 1: Localize Return Result Clobber Sites
 
-Goal: obtain a current backend-regex result from the main build tree.
+Goal: identify where each representative's intended return value is produced,
+published to `w0`/`x0`, and then overwritten.
 
-Primary target: supervisor-selected backend-regex CTest command and canonical
-log path.
-
-Actions:
-
-- Capture the selected backend-regex output without editing implementation.
-- Record total selected, passed, failed, skipped, timeout, and incomplete
-  counts.
-- List failing tests by exact CTest name and failure mode.
-- Separate local backend/unit/CLI failures from
-  `c_testsuite_aarch64_backend_*` failures.
-- Identify whether any failures are stale relative to current generated
-  artifacts.
-
-Completion check:
-
-- `todo.md` contains a current backend-regex inventory with counts, failing
-  tests, and first-pass buckets.
-
-### Step 2: Classify Failure Families
-
-Goal: group current failures by semantic owner candidate rather than by test
-number.
-
-Primary targets: current logs, generated artifacts, prepared dumps, and
-focused command output for representative failures.
+Primary targets: generated assembly and focused dumps for one no-call scalar
+case, one pointer/local case, and one call-result case.
 
 Actions:
 
-- Classify failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Compare current symptoms against parked open ideas and relevant closed-owner
-  boundaries.
-- Reject any classification that depends only on a filename, literal offset,
-  expected-output line, or stale lifecycle note.
-- Record representative evidence for each tractable family.
+- Inspect `00011`, `00022`, or `00052` for the simple scalar return shape.
+- Inspect `00004` for the pointer/local return shape.
+- Inspect `00159`, `00168`, `00087`, or `00124` for call-result preservation.
+- Record the first point where the intended return value loses authority to a
+  stale restored register.
+- Decide whether the owner is return home selection, result publication,
+  call-result preservation, or epilogue/restore ordering.
 
 Completion check:
 
-- `todo.md` names the best next semantic owner candidate, or explains why no
-  focused owner is ready to split.
+- `todo.md` records the concrete first bad fact and the narrow repair target
+  with representative evidence from at least two shapes.
 
-### Step 3: Split Or Select One Focused Owner
+### Step 2: Repair The Narrow Return Publication Owner
 
-Goal: produce exactly one implementation-ready lifecycle target when evidence
-supports it.
+Goal: prevent return-path code from overwriting the authoritative `w0`/`x0`
+result with a stale register.
 
-Primary target: one focused `ideas/open/*.md` source idea, either existing or
-new.
+Primary target: the localized backend component from Step 1.
 
 Actions:
 
-- If an existing open idea directly matches the current owner and is not
-  parked or stale, select it for activation.
-- If no existing idea matches, create a focused source idea with goal, scope,
-  acceptance criteria, and reviewer reject signals.
-- If the best candidate is parked, document the fresh evidence required to
-  reactivate it before switching.
-- Keep unrelated residual buckets parked under idea 295.
+- Apply the smallest semantic repair that preserves the ABI return register
+  through function return emission.
+- Keep the change independent of c-testsuite filenames and literal register
+  numbers.
+- Add or update focused backend coverage that fails on the old stale-register
+  clobber and passes with the repair.
+- Rebuild or compile the touched target as required by the supervisor packet.
 
 Completion check:
 
-- A single focused source idea is ready for activation, or `todo.md` records
-  `WAIT_FOR_NEW_IDEA` / no activatable focused owner with the exact ambiguity.
+- Focused backend coverage passes and generated representative assembly no
+  longer shows a correct result followed by a stale final return overwrite.
 
-### Step 4: Deactivate Umbrella And Hand Off
+### Step 3: Prove Representative Runtime Shapes
 
-Goal: leave lifecycle state pointing at the focused owner before code changes.
+Goal: verify the repair across the return-result bucket's distinct shapes.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused source idea.
+Primary target: supervisor-selected focused c-testsuite subset.
 
 Actions:
 
-- Preserve the inventory summary and remaining buckets in idea 295.
-- Switch active lifecycle state to the focused source idea.
-- Ensure the new `plan.md` and `todo.md` point to the same focused source.
-- Do not perform implementation edits as part of the switch.
+- Run one no-call scalar return representative such as `00011`, `00022`, or
+  `00052`.
+- Run `00004` or another pointer/local representative.
+- Run one call-result representative such as `00159`, `00168`, `00087`, or
+  `00124`.
+- If a representative advances to a new first bad fact, record the residual
+  without expanding this plan unless it is the same return-result owner.
 
 Completion check:
 
-- The umbrella inventory is inactive, exactly one focused plan is active, and
-  the next executor packet has a concrete localization or repair target.
+- The selected representatives either pass or advance past the stale return
+  overwrite with any residual clearly classified.
+
+### Step 4: Broader Guardrail And Handoff
+
+Goal: prove the focused repair did not regress adjacent backend behavior and
+decide whether this source idea can close.
+
+Primary target: supervisor-selected backend subset and canonical proof logs.
+
+Actions:
+
+- Run the supervisor-selected backend guardrail after focused proof is green.
+- Compare against closed idea 333 and 335 boundaries to avoid accidental
+  reopening or regression.
+- Update `todo.md` with proof results and any residual owner candidate.
+- Return to plan-owner for closure or lifecycle handoff when the source idea's
+  acceptance criteria are satisfied or a separate residual owner is exposed.
+
+Completion check:
+
+- Focused and guardrail proof is recorded, no expectation/runner changes were
+  used, and closure or next-owner handoff is ready for plan-owner review.

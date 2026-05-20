@@ -641,6 +641,36 @@ Step 3/4 split 2026-05-20:
   potential frame-layout residuals after scalar printer localization.
 - Active implementation should move to idea 334 before code edits begin.
 
+Step 3/4 split 2026-05-20:
+
+- Step 2 classification from the active umbrella runbook found 53 current
+  `c_testsuite_aarch64_backend_*` failures and 0 local backend/unit/CLI
+  failures.
+- The best current focused owner is idea 336,
+  `ideas/open/336_aarch64_return_result_publication_epilogue_clobber.md`,
+  covering the AArch64 return-result publication / epilogue-clobber bucket.
+- The split owner covers 22 current failures: `00004`, `00011`, `00013`,
+  `00014`, `00016`, `00019`, `00020`, `00022`, `00052`, `00087`, `00103`,
+  `00112`, `00116`, `00117`, `00118`, `00121`, `00124`, `00139`, `00153`,
+  `00159`, `00168`, and `00170`.
+- Representative generated assembly shows simple scalar returns such as
+  `00011.c.s`, `00022.c.s`, and `00052.c.s` loading the intended return value
+  then overwriting `x0` with stale `x13`; pointer-local cases such as
+  `00004.c.s` loading `w0` then overwriting `x0` with restored/stale `x20`;
+  and call-result cases such as `00159.c.s`, `00168.c.s`, `00087.c.s`, and
+  `00124.c.s` computing or preserving a result and then returning a restored
+  or stale register.
+- Remaining buckets stay parked under this umbrella: scalar conversion,
+  comparison, FP, and bitfield value lowering; addressable memory, pointer
+  slot, and indexed aggregate materialization; control-flow, switch, loop
+  induction, and fallthrough lowering; call/ABI/varargs/libc and indirect-call
+  pointer materialization; AArch64 scalar-cast machine-printer operand
+  normalization; and timeout/output-storm residuals.
+- Active implementation should move to idea 336 before code edits begin. Do
+  not reopen closed owners 333 or 335 from this bucket without fresh
+  generated-code evidence tying the current first bad fact to those exact
+  closure boundaries.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
@@ -651,5 +681,5 @@ Reject the route if it:
 - uses expectation, allowlist, unsupported-classification, timeout, runner, or
   CTest registration changes to improve counts;
 - reruns broad runtime tests without stale-process cleanup;
-- reopens recently closed owners 285 through 311 without generated-code or
-  proof evidence that contradicts their closure boundary.
+- reopens closed focused owners without generated-code or proof evidence that
+  contradicts their closure boundary.
