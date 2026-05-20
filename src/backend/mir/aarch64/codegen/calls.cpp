@@ -261,6 +261,19 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 }
 
+[[nodiscard]] std::size_t scalar_size_from_register_view(
+    std::optional<abi::RegisterView> view) {
+  switch (view.value_or(abi::RegisterView::W)) {
+    case abi::RegisterView::D:
+    case abi::RegisterView::X:
+      return 8U;
+    case abi::RegisterView::S:
+    case abi::RegisterView::W:
+    default:
+      return 4U;
+  }
+}
+
 [[nodiscard]] std::optional<std::string> register_name_with_expected_view(
     const std::optional<std::string>& register_name,
     std::optional<abi::RegisterView> expected_view) {
@@ -2792,10 +2805,7 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
     const auto* source_home =
         prepare::find_prepared_value_home(*context.function.value_locations,
                                           move.from_value_id);
-    if (source_home == nullptr ||
-        source_home->kind != prepare::PreparedValueHomeKind::Register ||
-        !source_home->register_name.has_value() ||
-        !move.destination_register_name.has_value()) {
+    if (source_home == nullptr || !move.destination_register_name.has_value()) {
       continue;
     }
 
@@ -2805,21 +2815,6 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
             ? std::optional<prepare::PreparedRegisterBank>{
                   move.destination_register_placement->bank}
             : std::nullopt;
-    const auto source_register_name =
-        register_name_with_expected_view(source_home->register_name, expected_view);
-    auto source = make_register_operand_from_prepared_authority(
-        source_register_name,
-        std::nullopt,
-        destination_bank,
-        RegisterOperandRole::CallAbi,
-        source_home->value_id,
-        source_home->value_name,
-        1,
-        {},
-        expected_view,
-        diagnostics,
-        context,
-        instruction_index);
     auto destination = make_register_operand_from_prepared_authority(
         move.destination_register_name,
         move.destination_register_placement,
@@ -2834,7 +2829,7 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
         diagnostics,
         context,
         instruction_index);
-    if (!source.has_value() || !destination.has_value()) {
+    if (!destination.has_value()) {
       continue;
     }
 
@@ -2849,11 +2844,56 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
         .source_parallel_copy_successor_label =
             bundle->source_parallel_copy_successor_label,
         .move = move,
-        .source_register = *source,
         .destination_register = *destination,
         .source_bundle = bundle,
         .source_move = &move,
     };
+    if (source_home->kind == prepare::PreparedValueHomeKind::Register &&
+        source_home->register_name.has_value()) {
+      const auto source_register_name =
+          register_name_with_expected_view(source_home->register_name, expected_view);
+      auto source = make_register_operand_from_prepared_authority(
+          source_register_name,
+          std::nullopt,
+          destination_bank,
+          RegisterOperandRole::CallAbi,
+          source_home->value_id,
+          source_home->value_name,
+          1,
+          {},
+          expected_view,
+          diagnostics,
+          context,
+          instruction_index);
+      if (!source.has_value()) {
+        continue;
+      }
+      move_record.source_register = *source;
+    } else if (source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+               source_home->offset_bytes.has_value()) {
+      move_record.source_memory = MemoryOperand{
+          .surface = RecordSurfaceKind::MachineInstructionNode,
+          .support = MemoryOperandSupportKind::Prepared,
+          .function_name = context.function.control_flow->function_name,
+          .block_label = context.control_flow_block != nullptr
+                             ? context.control_flow_block->block_label
+                             : c4c::kInvalidBlockLabel,
+          .instruction_index = instruction_index,
+          .result_value_id = source_home->value_id,
+          .result_value_name = source_home->value_name,
+          .base_kind = MemoryBaseKind::FrameSlot,
+          .frame_slot_id = source_home->slot_id,
+          .byte_offset = static_cast<std::int64_t>(*source_home->offset_bytes),
+          .byte_offset_is_prepared_snapshot = true,
+          .size_bytes = source_home->size_bytes.value_or(
+              scalar_size_from_register_view(expected_view)),
+          .align_bytes = source_home->align_bytes.value_or(
+              scalar_size_from_register_view(expected_view)),
+          .can_use_base_plus_offset = true,
+      };
+    } else {
+      continue;
+    }
     lowered.push_back(make_call_boundary_machine_instruction(
         context,
         instruction_index,

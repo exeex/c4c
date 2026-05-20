@@ -11458,6 +11458,148 @@ int before_return_fpr_move_retargets_source_view_for_hfa_lane() {
   return 0;
 }
 
+int before_return_stack_hfa_lanes_load_to_abi_result_lanes() {
+  constexpr auto function_name = c4c::FunctionNameId{230};
+  constexpr auto block_label = c4c::BlockLabelId{231};
+  constexpr auto float_value_id = prepare::PreparedValueId{232};
+  constexpr auto double_value_id = prepare::PreparedValueId{233};
+  constexpr auto float_value_name = c4c::ValueNameId{234};
+  constexpr auto double_value_name = c4c::ValueNameId{235};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = float_value_id,
+                  .function_name = function_name,
+                  .value_name = float_value_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{236},
+                  .offset_bytes = std::size_t{16},
+                  .size_bytes = std::size_t{4},
+                  .align_bytes = std::size_t{4},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = double_value_id,
+                  .function_name = function_name,
+                  .value_name = double_value_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{237},
+                  .offset_bytes = std::size_t{32},
+                  .size_bytes = std::size_t{8},
+                  .align_bytes = std::size_t{8},
+              },
+          },
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 5,
+              .moves =
+                  {
+                      prepare::PreparedMoveResolution{
+                          .from_value_id = float_value_id,
+                          .to_value_id = float_value_id,
+                          .destination_kind =
+                              prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                          .destination_storage_kind =
+                              prepare::PreparedMoveStorageKind::Register,
+                          .destination_abi_index = std::size_t{3},
+                          .destination_register_name = std::string{"s3"},
+                          .destination_contiguous_width = 1,
+                          .destination_occupied_register_names = {"s3"},
+                          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                          .reason = "return_stack_to_register",
+                          .destination_register_placement =
+                              prepare::PreparedRegisterPlacement{
+                                  .bank = prepare::PreparedRegisterBank::Fpr,
+                                  .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                                  .slot_index = 3,
+                                  .contiguous_width = 1,
+                              },
+                      },
+                      prepare::PreparedMoveResolution{
+                          .from_value_id = double_value_id,
+                          .to_value_id = double_value_id,
+                          .destination_kind =
+                              prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                          .destination_storage_kind =
+                              prepare::PreparedMoveStorageKind::Register,
+                          .destination_abi_index = std::size_t{3},
+                          .destination_register_name = std::string{"d3"},
+                          .destination_contiguous_width = 1,
+                          .destination_occupied_register_names = {"d3"},
+                          .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                          .reason = "return_stack_to_register",
+                          .destination_register_placement =
+                              prepare::PreparedRegisterPlacement{
+                                  .bank = prepare::PreparedRegisterBank::Fpr,
+                                  .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                                  .slot_index = 3,
+                                  .contiguous_width = 1,
+                              },
+                      },
+                  },
+          }},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_return_moves(block_context, 5, diagnostics);
+  if (lowered.size() != 2 || !diagnostics.empty()) {
+    return fail("expected stack-backed before-return HFA lanes to lower");
+  }
+  const auto* float_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered[0].target.payload);
+  const auto* double_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered[1].target.payload);
+  if (float_move == nullptr || double_move == nullptr ||
+      !float_move->source_memory.has_value() ||
+      !float_move->destination_register.has_value() ||
+      float_move->source_memory->byte_offset != 16 ||
+      float_move->destination_register->reg != aarch64_abi::s_register(3) ||
+      !double_move->source_memory.has_value() ||
+      !double_move->destination_register.has_value() ||
+      double_move->source_memory->byte_offset != 32 ||
+      double_move->destination_register->reg != aarch64_abi::d_register(3)) {
+    return fail("expected stack-backed HFA return lanes to target s3 and d3");
+  }
+  const auto float_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered[0].target);
+  const auto double_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered[1].target);
+  if (!float_printed.ok || !double_printed.ok ||
+      float_printed.instruction_lines != std::vector<std::string>{"ldr s3, [sp, #16]"} ||
+      double_printed.instruction_lines != std::vector<std::string>{"ldr d3, [sp, #32]"}) {
+    return fail("expected stack-backed HFA return lanes to print direct ABI reloads");
+  }
+  return 0;
+}
+
 int hfa_return_frame_slot_lane_load_publishes_prepared_home() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -15344,6 +15486,11 @@ int main() {
   }
   if (const int status =
           before_return_fpr_move_retargets_source_view_for_hfa_lane();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          before_return_stack_hfa_lanes_load_to_abi_result_lanes();
       status != 0) {
     return status;
   }
