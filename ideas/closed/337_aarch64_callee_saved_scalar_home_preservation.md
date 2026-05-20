@@ -1,6 +1,6 @@
 # AArch64 Callee-Saved Scalar Home Preservation
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/336_aarch64_return_result_publication_epilogue_clobber.md
 
@@ -64,6 +64,29 @@ callee-saved preservation.
   missing `x19` preservation fact with any new residual clearly classified.
 - Adjacent AArch64 frame, call-boundary, scalar-home, and return-publication
   guardrails remain stable.
+
+## Closure Note
+
+Closed: 2026-05-20
+
+The active runbook localized the failure to the AArch64 prepared-to-codegen
+scalar callee-saved placement handoff, then repaired scalar GPR and
+AggregateAddress callee-saved prepared placements so frame planning and operand
+emission use the same prepared AArch64 scalar callee-saved profile. The focused
+coverage now pins saved-register frame-record conversion from the explicit
+frame register name, direct prepared placement conversion, and structured
+physical assignment preference.
+
+Close-gate proof used matching focused before/after logs for:
+
+```bash
+ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(prepared_register_conversion|return_lowering)|backend_prepare_(frame_stack_call_contract|liveness)|c_testsuite_aarch64_backend_src_00168_c'
+```
+
+`test_before.log` at the parent repair baseline passed 4/5 and failed only
+`c_testsuite_aarch64_backend_src_00168_c` with the old factorial runtime
+mismatch. `test_after.log` at the repaired head passed 5/5. The monotonic
+regression guard reported no new failures.
 
 ## Reviewer Reject Signals
 
