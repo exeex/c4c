@@ -4849,6 +4849,20 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedStoragePlanValue frame_slot_storage(prepare::PreparedValueId value_id,
+                                                     c4c::ValueNameId value_name,
+                                                     prepare::PreparedFrameSlotId slot_id,
+                                                     std::size_t offset_bytes) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .slot_id = slot_id,
+      .stack_offset_bytes = offset_bytes,
+  };
+}
+
 prepare::PreparedStoragePlanValue fpr_storage(prepare::PreparedValueId value_id,
                                               c4c::ValueNameId value_name,
                                               const char* register_name) {
@@ -6975,7 +6989,8 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
     bir::CastOpcode opcode = bir::CastOpcode::SExt,
     bir::TypeKind source_type = bir::TypeKind::I32,
     bir::TypeKind result_type = bir::TypeKind::I64,
-    bool include_result_storage = true) {
+    bool include_result_storage = true,
+    bool stack_source_with_consumer_register = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -6988,6 +7003,15 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
   const auto result_name = prepared.names.value_names.intern("%cast");
   const char* source_register = source_type == bir::TypeKind::I64 ? "x1" : "w1";
   const char* result_register = result_type == bir::TypeKind::I64 ? "x0" : "w0";
+  const std::size_t source_size =
+      source_type == bir::TypeKind::I16
+          ? 2
+          : (source_type == bir::TypeKind::I64
+                 ? 8
+                 : ((source_type == bir::TypeKind::I1 ||
+                     source_type == bir::TypeKind::I8)
+                        ? 1
+                        : 4));
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.cast",
@@ -7016,13 +7040,24 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
   prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
       .function_name = function_name,
       .value_homes =
-          {prepare::PreparedValueHome{
-               .value_id = prepare::PreparedValueId{20},
-               .function_name = function_name,
-               .value_name = source_name,
-               .kind = prepare::PreparedValueHomeKind::Register,
-               .register_name = source_register,
-           },
+          {stack_source_with_consumer_register
+               ? prepare::PreparedValueHome{
+                     .value_id = prepare::PreparedValueId{20},
+                     .function_name = function_name,
+                     .value_name = source_name,
+                     .kind = prepare::PreparedValueHomeKind::StackSlot,
+                     .slot_id = prepare::PreparedFrameSlotId{40},
+                     .offset_bytes = std::size_t{16},
+                     .size_bytes = source_size,
+                     .align_bytes = source_size,
+                 }
+               : prepare::PreparedValueHome{
+                     .value_id = prepare::PreparedValueId{20},
+                     .function_name = function_name,
+                     .value_name = source_name,
+                     .kind = prepare::PreparedValueHomeKind::Register,
+                     .register_name = source_register,
+                 },
            prepare::PreparedValueHome{
                .value_id = prepare::PreparedValueId{21},
                .function_name = function_name,
@@ -7030,9 +7065,42 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = result_register,
            }},
+      .move_bundles =
+          stack_source_with_consumer_register
+              ? std::vector<prepare::PreparedMoveBundle>{
+                    prepare::PreparedMoveBundle{
+                        .function_name = function_name,
+                        .phase = prepare::PreparedMovePhase::BeforeInstruction,
+                        .block_index = 0,
+                        .instruction_index = 0,
+                        .moves =
+                            {prepare::PreparedMoveResolution{
+                                .from_value_id = prepare::PreparedValueId{20},
+                                .to_value_id = prepare::PreparedValueId{21},
+                                .destination_kind =
+                                    prepare::PreparedMoveDestinationKind::Value,
+                                .destination_storage_kind =
+                                    prepare::PreparedMoveStorageKind::Register,
+                                .destination_register_name = result_register,
+                                .destination_contiguous_width = 1,
+                                .destination_occupied_register_names = {result_register},
+                                .block_index = 0,
+                                .instruction_index = 0,
+                                .op_kind =
+                                    prepare::PreparedMoveResolutionOpKind::Move,
+                                .reason =
+                                    "scalar_cast_consumer_stack_to_register",
+                            }},
+                    }}
+              : std::vector<prepare::PreparedMoveBundle>{},
   });
   std::vector<prepare::PreparedStoragePlanValue> values = {
-      register_storage(prepare::PreparedValueId{20}, source_name, source_register),
+      stack_source_with_consumer_register
+          ? frame_slot_storage(prepare::PreparedValueId{20},
+                               source_name,
+                               prepare::PreparedFrameSlotId{40},
+                               16)
+          : register_storage(prepare::PreparedValueId{20}, source_name, source_register),
   };
   if (include_result_storage) {
     values.push_back(
@@ -7042,6 +7110,22 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
       .function_name = function_name,
       .values = values,
   });
+  if (stack_source_with_consumer_register) {
+    prepared.stack_layout = prepare::PreparedStackLayout{
+        .frame_slots =
+            {prepare::PreparedFrameSlot{
+                .slot_id = prepare::PreparedFrameSlotId{40},
+                .object_id = prepare::PreparedObjectId{40},
+                .function_name = function_name,
+                .offset_bytes = 16,
+                .size_bytes = source_size,
+                .align_bytes = source_size,
+                .fixed_location = true,
+            }},
+        .frame_size_bytes = 32,
+        .frame_alignment_bytes = 16,
+    };
+  }
   return prepared;
 }
 
@@ -16210,6 +16294,81 @@ int block_dispatch_lowers_prepared_simple_integer_cast_with_result_register() {
   return 0;
 }
 
+int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts() {
+  struct Case {
+    bir::CastOpcode opcode;
+    bir::TypeKind source_type;
+    bir::TypeKind result_type;
+    std::string_view expected_register;
+    std::string_view expected_assembly;
+  };
+  const Case cases[] = {
+      {bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64, "w0", "sxtw x0, w0"},
+      {bir::CastOpcode::ZExt, bir::TypeKind::I8, bir::TypeKind::I32, "w0", "ubfx w0, w0, #0, #8"},
+  };
+
+  for (const auto& test_case : cases) {
+    auto prepared = prepared_with_simple_integer_cast(test_case.opcode,
+                                                     test_case.source_type,
+                                                     test_case.result_type,
+                                                     true,
+                                                     true);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+    if (!diagnostics.empty() || result.visited_operations != 1 ||
+        result.emitted_instructions != 2 || block.instructions.size() != 2) {
+      return fail("expected stack-sourced simple cast to select plus return");
+    }
+    const auto* scalar =
+        std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+            &block.instructions.front().target.payload);
+    if (scalar == nullptr || !scalar->scalar_cast.has_value() ||
+        scalar->inputs.size() != 1) {
+      return fail("expected selected stack-sourced cast to carry scalar metadata");
+    }
+    const auto* source =
+        std::get_if<aarch64_codegen::RegisterOperand>(
+            &scalar->scalar_cast->source.payload);
+    const auto* input =
+        std::get_if<aarch64_codegen::RegisterOperand>(&scalar->inputs[0].payload);
+    if (source == nullptr || input == nullptr ||
+        scalar->scalar_cast->source.kind != aarch64_codegen::OperandKind::Register ||
+        scalar->inputs[0].kind != aarch64_codegen::OperandKind::Register) {
+      return fail("expected cast source and input to be structured register operands");
+    }
+    if (source->value_id != prepare::PreparedValueId{20} ||
+        source->value_name != prepared.names.value_names.find("%src")) {
+      return fail("expected cast source register to retain source value identity");
+    }
+    if (source->occupied_registers.empty() ||
+        source->occupied_registers.front() != test_case.expected_register) {
+      return fail("expected cast source register spelling to match the consumer register");
+    }
+    if (input->value_id != source->value_id || input->value_name != source->value_name ||
+        input->reg != source->reg) {
+      return fail("expected cast source and input to publish the prepared consumer register");
+    }
+
+    const auto printed = print_route_block(function_cf.function_name, block);
+    if (!printed.ok ||
+        printed.assembly.find(test_case.expected_assembly) == std::string::npos) {
+      return fail("expected stack-sourced cast to print from the consumer register");
+    }
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
   {
     auto prepared = prepared_with_simple_integer_cast(
@@ -16715,6 +16874,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_simple_integer_cast_with_result_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts();
       status != 0) {
     return status;
   }

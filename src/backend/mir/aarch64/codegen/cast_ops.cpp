@@ -391,6 +391,113 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
   return PreparedScalarCastRecordError::UnsupportedOperandType;
 }
 
+[[nodiscard]] std::optional<RegisterOperand> make_prepared_consumer_register_source(
+    const module::BlockLoweringContext& context,
+    const bir::CastInst& cast,
+    std::size_t instruction_index,
+    const prepare::PreparedValueHome& source_home,
+    const ScalarInstructionRecord& scalar) {
+  if (context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      scalar.scalar_cast == std::nullopt ||
+      !scalar.result_value_id.has_value() ||
+      !scalar.result_register.has_value()) {
+    return std::nullopt;
+  }
+  if (scalar.scalar_cast->operation != ScalarCastOperationKind::SignExtend &&
+      scalar.scalar_cast->operation != ScalarCastOperationKind::ZeroExtend) {
+    return std::nullopt;
+  }
+  if (scalar.scalar_cast->source.kind == OperandKind::Register) {
+    return std::nullopt;
+  }
+
+  const auto source_view = scalar_register_view(cast.operand.type);
+  if (!source_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto* result_home =
+      prepare::find_prepared_value_home(*context.function.value_locations,
+                                        scalar.result_value_name);
+  if (result_home == nullptr || result_home->value_id != *scalar.result_value_id ||
+      result_home->kind != prepare::PreparedValueHomeKind::Register) {
+    return std::nullopt;
+  }
+  const auto* result_storage =
+      find_storage_plan_value(*context.function.storage_plan, result_home->value_id);
+  if (result_storage == nullptr ||
+      result_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return std::nullopt;
+  }
+
+  const auto* bundle = prepare::find_prepared_move_bundle(
+      *context.function.value_locations,
+      prepare::PreparedMovePhase::BeforeInstruction,
+      context.block_index,
+      instruction_index);
+  if (bundle == nullptr) {
+    return std::nullopt;
+  }
+
+  for (const auto& move : bundle->moves) {
+    if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
+        move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
+        move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+        move.source_immediate_i32.has_value() ||
+        move.from_value_id != source_home.value_id ||
+        move.to_value_id != result_home->value_id) {
+      continue;
+    }
+
+    const auto prepared_class = register_class_from_bank(result_storage->bank);
+    abi::PreparedRegisterConversionResult converted;
+    if (move.destination_register_placement.has_value()) {
+      converted = abi::convert_prepared_register(
+          *move.destination_register_placement, prepared_class, source_view);
+    } else if (move.destination_register_name.has_value()) {
+      converted = abi::convert_prepared_register(
+          *move.destination_register_name,
+          result_storage->bank,
+          prepared_class,
+          std::nullopt);
+    } else if (result_storage->register_placement.has_value()) {
+      converted = abi::convert_prepared_register(
+          *result_storage->register_placement, prepared_class, source_view);
+    } else if (result_storage->register_name.has_value()) {
+      converted = abi::convert_prepared_register(
+          *result_storage->register_name,
+          result_storage->bank,
+          prepared_class,
+          std::nullopt);
+    } else {
+      return std::nullopt;
+    }
+    if (converted.has_value()) {
+      converted.reg->view = *source_view;
+    }
+    if (!converted.has_value() || !abi::is_gp_register(*converted.reg)) {
+      return std::nullopt;
+    }
+    const auto display_name = register_display_name(*converted.reg);
+    if (display_name.empty()) {
+      return std::nullopt;
+    }
+    return RegisterOperand{
+        .reg = *converted.reg,
+        .role = RegisterOperandRole::StoragePlan,
+        .value_id = source_home.value_id,
+        .value_name = source_home.value_name,
+        .prepared_class = prepared_class,
+        .prepared_bank = result_storage->bank,
+        .expected_view = source_view,
+        .contiguous_width = move.destination_contiguous_width,
+        .occupied_register_references = {*converted.reg},
+        .occupied_registers = {display_name},
+    };
+  }
+  return std::nullopt;
+}
+
 }  // namespace
 
 bool is_simple_integer_cast_opcode(bir::CastOpcode opcode) {
@@ -1134,6 +1241,11 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
           find_emitted_scalar_register(scalar_state, source_home->value_name);
       if (emitted.has_value()) {
         prepared.record->scalar_cast->source = make_register_operand(*emitted);
+        prepared.record->inputs[0] = prepared.record->scalar_cast->source;
+      } else if (const auto consumer_source =
+                     make_prepared_consumer_register_source(
+                         context, *cast, instruction_index, *source_home, *prepared.record)) {
+        prepared.record->scalar_cast->source = make_register_operand(*consumer_source);
         prepared.record->inputs[0] = prepared.record->scalar_cast->source;
       }
     }
