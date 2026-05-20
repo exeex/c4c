@@ -126,3 +126,27 @@ stores it to `[sp,#784]`, then stores stale `s8` to `[sp,#788]`, reloads that
 stale home into `s13`, moves it to `s0`, and calls `fa_hfa11`; the callee
 consumes `s0` normally. Resume from caller-side HFA/floating argument
 publication/loading, not from stdarg cursor/format or `va_start`.
+
+2026-05-20: Step 4 after commit `b7c41f054` classified the post-repair
+residual. The HFA/floating first bad fact is gone: the representative now
+prints the expected scalar/HFA lines through `34.1 34.2 34.3 34.4`. The next
+visible mismatch is fixed non-HFA byval aggregate argument transport in
+`fa1(struct s8, struct s9, struct s10, struct s11, struct s12, struct s13)`:
+expected `stu ABC JKL TUV 456 ghi`, observed `stu ABC I JKL RS TUV`.
+
+Generated BIR materializes bytes from `s8` through `s13` correctly and calls
+`fa1(ptr byval(size=8) %t103, ptr byval(size=9) %t104, ptr byval(size=10)
+%t105, ptr byval(size=11) %t106, ptr byval(size=12) %t107, ptr
+byval(size=13) %t108)`. Prepared/generated evidence instead points to AAPCS64
+byval aggregate argument placement across the fixed call boundary: the caller
+publishes contiguous chunks through `x0` through `x6`, while callee entry
+materializes `%p.a` from `x0`, `%p.b` from `x1`, `%p.c` from `x2`, `%p.d`
+from `x3`, `%p.e` from `x4`, and `%p.f` from `x5`, shifting later aggregates
+onto trailing chunks of earlier ones.
+
+This idea is parked again, not closed. Source intent is satisfied enough for a
+handoff, but the close-time regression guard rejected the available
+`test_before.log` / `test_after.log` basis for non-increasing pass count
+(`passed=3 failed=1 total=4` before and after). Continue the fixed non-HFA
+byval aggregate register-lane / stack-transition residual under
+`ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`.

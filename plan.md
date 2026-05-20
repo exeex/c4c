@@ -1,30 +1,32 @@
-# AArch64 Variadic HFA And Floating Residual Runbook
+# AArch64 Byval Aggregate Call Argument Placement Runbook
 
 Status: Active
-Source Idea: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
-Reactivated after: ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md
+Source Idea: ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md
+Reactivated after: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 
 ## Purpose
 
-Continue from the idea 331 handoff after the AArch64 `va_start`
-overflow-cursor residual was repaired. The representative now fails earlier in
-the caller-side HFA argument block, not in the stdarg cursor/format path.
+Continue from the idea 326 handoff after the HFA/floating residual was
+repaired. The representative now fails in fixed non-HFA byval aggregate
+argument placement across the AArch64 call boundary.
 
 ## Goal
 
-Classify and repair the current `00204.c` HFA/floating argument publication
-blocker generally for AArch64 generated code.
+Repair AAPCS64 byval aggregate argument placement so each fixed non-HFA
+aggregate consumes its own rounded register or stack slots, and caller
+publication matches callee entry unpack across register-lane and stack
+transitions.
 
 ## Core Rule
 
-Progress must repair a concrete AArch64 HFA/floating argument publication
-owner. Do not special-case `00204.c`, `arg`, `fa_hfa11`, `hfa11`, one HFA
-shape, one float value, one stack offset, one register, or one emitted
+Progress must repair general AArch64 byval aggregate call-boundary behavior.
+Do not special-case `00204.c`, `arg`, `fa1`, `s8` through `s13`, one aggregate
+size, one register, one stack offset, one string fragment, or one emitted
 instruction sequence.
 
 ## Read First
 
-- `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`
+- `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`
 - `todo.md`
 - generated AArch64 artifacts for `00204.c` under
   `build/c_testsuite_aarch64_backend/src/`
@@ -35,17 +37,18 @@ instruction sequence.
 - Representative external case:
   - `c_testsuite_aarch64_backend_src_00204_c`
 - Current first bad fact:
-  - runtime mismatch is in the `Arguments:` section before `stdarg:`
-  - `fa_hfa11(hfa11)` should print `11.1` but prints `0.0`
-  - generated caller `arg` loads `hfa11`, stores it to `[sp,#784]`, then
-    passes the stale `s8` path through `[sp,#788]`
-  - generated callee `fa_hfa11` consumes `s0` normally, so the first bad fact
-    is caller HFA float argument publication/loading
+  - runtime mismatch is in the fixed `Arguments:` section after the repaired
+    HFA/floating block
+  - `fa1(struct s8..s13)` should print `stu ABC JKL TUV 456 ghi`
+  - observed output is `stu ABC I JKL RS TUV`
+  - generated BIR materializes bytes from `s8` through `s13` correctly
+  - generated caller publishes contiguous chunks through `x0` through `x6`
+  - generated callee entry treats `x0` through `x5` as six independent byval
+    formal starts, shifting later aggregates onto trailing chunks
 - Prior-owner guardrails to preserve:
   - AArch64 `va_start` overflow cursor initialization from idea 331
-  - HFA/floating return publication from idea 326
+  - HFA/floating argument and return publication from idea 326
   - sret `x8` transport and large byval indirect pointer transport
-  - byval aggregate register-lane allocation and fragmented lane publication
   - non-HFA aggregate `va_arg` source-to-destination copies from idea 330
   - post-`va_arg` call operand publication from idea 329
   - fixed-formal entry publication from idea 327
@@ -54,102 +57,106 @@ instruction sequence.
 
 ## Non-Goals
 
+- Do not reopen HFA/floating argument or return publication unless fresh
+  generated-code evidence again places the first bad fact there.
 - Do not reopen stdarg cursor/format or `va_start` overflow cursor
   initialization unless fresh generated-code evidence again places the first
   bad fact there.
-- Do not reopen HFA/floating return publication unless fresh generated-code
-  evidence places the first bad fact in return-value transport.
 - Do not reopen non-HFA aggregate string `va_arg` materialization for `%7s` or
   `%9s` unless selected aggregate bytes are again missing before their
   observing calls.
-- Do not reopen byval aggregate lane allocation/publication, sret `x8`
-  transport, large byval indirect pointer transport, F128 memory transport,
-  fixed-formal entry publication, local/value-home publication, frame/formal
-  publication, runner behavior, expectation files, unsupported
+- Do not rewrite fixed-formal entry publication, local/value-home publication,
+  frame/formal publication, runner behavior, expectation files, unsupported
   classifications, timeout policy, CTest registration, or proof-log policy
   without direct generated-code evidence.
 
 ## Working Model
 
-The remaining failure is before the repaired stdarg path. The callee consumes
-the AAPCS64 float argument register normally, while the caller appears to load
-or publish from the wrong HFA lane home. The next repair must localize whether
-the stale `s8` path is caused by HFA aggregate lane materialization,
-call-argument source selection, caller stack-home publication, final ABI
-register publication, or another caller-side generated-code owner before
-editing implementation.
+The semantic source bytes are correct before ABI lowering. The failure appears
+when byval aggregate arguments are flattened into a continuous stream of GPR
+chunks while callee entry unpacks each formal as if it begins at the next
+register. AAPCS64 requires each non-HFA aggregate argument to consume its own
+rounded slots; if the whole aggregate cannot fit in the remaining argument
+registers, caller and callee must agree on stack placement for that aggregate
+and following arguments.
 
 ## Execution Rules
 
 - Keep routine packet progress in `todo.md`.
-- Localize the first caller HFA/floating argument divergence before editing
-  code.
-- Prefer focused backend coverage for the repaired HFA/floating owner before
-  relying on the external c-testsuite representative.
-- Preserve prior-owner guardrails; do not weaken stdarg cursor, `va_start`,
-  non-HFA aggregate `va_arg`, byval aggregate lanes, fixed-formal,
-  local/value-home, or frame/formal coverage.
-- If `00204.c` advances past the current HFA/floating residual, record the
-  next first bad fact in `todo.md` and return it to lifecycle classification
-  if it belongs to another owner.
+- Localize caller planning, caller publication, and callee entry unpack before
+  editing code.
+- Prefer focused backend coverage for the repaired byval aggregate placement
+  owner before relying on the external c-testsuite representative.
+- Preserve prior-owner guardrails; do not weaken HFA/floating, stdarg cursor,
+  `va_start`, non-HFA aggregate `va_arg`, fixed-formal, local/value-home, or
+  frame/formal coverage.
+- If `00204.c` advances past the current byval aggregate residual, record the
+  next first bad fact in `todo.md` and return it to lifecycle classification if
+  it belongs to another owner.
 
 ## Ordered Steps
 
-### Step 1: Localize HFA/Floating Caller Argument Publication Residual
+### Step 1: Localize Byval Aggregate Slot Accounting Residual
 
-Goal: identify the first caller-side state where generated code diverges while
-publishing `hfa11` for `fa_hfa11(hfa11)`.
+Goal: identify the first state where caller and callee disagree about byval
+aggregate slot starts for `fa1(s8, s9, s10, s11, s12, s13)`.
 
-Primary target: generated `arg` and `fa_hfa11` artifacts and AArch64 HFA
-aggregate lane materialization, source selection, stack home, and final ABI
-argument publication state.
+Primary target: prepared call plans, prealloc/register allocation records,
+caller byval publication, and AArch64 entry formal unpack for fixed non-HFA
+aggregates.
 
 Actions:
 
-- Trace `hfa11` from source initialization through generated caller storage,
-  reload, final `s0` publication, and the observing `fa_hfa11` call.
-- Compare the generated source home for the expected `11.1` lane with the
-  stale `s8` / `[sp,#788]` publication path.
-- Determine whether the owner is HFA lane materialization, prepared call
-  operand source selection, caller stack-home publication, final ABI register
-  publication, or another caller-side generated-code path.
-- Record in `todo.md` the first bad state, expected value, observed value,
-  owning code surfaces, representative tests, and smallest focused proof
-  command.
+- Trace `%t103` through `%t108` from generated BIR source bytes into prepared
+  call facts, call-plan argument locations, emitted caller registers or stack
+  slots, and generated `fa1` entry homes.
+- Determine where the continuous chunk stream diverges from per-aggregate
+  rounded slot accounting.
+- Classify whether the owner is `src/backend/prealloc/call_plans.cpp`,
+  `src/backend/prealloc/regalloc.cpp`,
+  `src/backend/mir/aarch64/codegen/calls.cpp`,
+  `src/backend/mir/aarch64/codegen/dispatch.cpp`, or a narrower helper under
+  those surfaces.
+- Record in `todo.md` the first bad state, expected placement, observed
+  placement, owning code surfaces, representative tests, and smallest focused
+  proof command.
 
 Completion check:
 
-- `todo.md` names the concrete first HFA/floating argument bad fact and the
-  code owner to repair, without reopening stdarg cursor or prior aggregate
-  materialization owners.
+- `todo.md` names the concrete first byval aggregate placement bad fact and
+  the code owner to repair, without reopening semantic byte materialization or
+  HFA/floating owners.
 
-### Step 2: Repair The Classified HFA/Floating Owner
+### Step 2: Repair Caller And Callee Byval Placement Agreement
 
-Goal: make generated AArch64 publish the correct HFA/floating argument lane to
-the observing call.
+Goal: make caller publication and callee entry unpack use the same AAPCS64
+byval aggregate slot accounting.
 
 Primary target: the generated-code owner localized by Step 1.
 
 Actions:
 
-- Repair the classified owner generally for AArch64 HFA/floating argument
-  publication behavior.
-- Preserve source address, destination home, lane order, register class,
-  floating width, and final call ordering for the selected HFA argument lane.
+- Repair the classified owner generally for fixed non-HFA byval aggregate
+  arguments.
+- Ensure each aggregate consumes its own rounded register slots, with coherent
+  stack transition when not enough GPR argument registers remain.
+- Keep caller publication and callee entry materialization aligned for
+  one-register, multi-register, and stack-transition aggregates.
 - Scope the change to the classified owner; do not add named-case emission
   shortcuts or broad call-boundary replay.
 - Preserve scalar `va_arg`, non-HFA aggregate `va_arg`, stdarg cursor,
-  `va_start`, HFA/floating returns, byval aggregate lanes, fixed aggregate
-  calls, and stack-passed large aggregate behavior.
+  `va_start`, HFA/floating returns, fixed-formal publication, sret `x8`, and
+  large byval indirect pointer behavior.
 
 Completion check:
 
-- Focused proof shows the selected HFA/floating argument lane is published
-  from the correct home, with adjacent guardrails still stable.
+- Focused proof shows the selected fixed aggregate arguments are published and
+  unpacked from matching homes, with adjacent guardrails still stable.
 
-### Step 3: Add Focused HFA/Floating Coverage
+### Step 3: Add Focused Byval Placement Coverage
 
-Goal: make the repaired HFA/floating owner observable in local backend tests.
+Goal: make the repaired byval aggregate placement owner observable in local
+backend tests.
 
 Primary target: existing AArch64 semantic/prepared BIR dump tests, machine
 printer tests, instruction dispatch tests, or focused `00204.c` dump tests.
@@ -157,22 +164,24 @@ printer tests, instruction dispatch tests, or focused `00204.c` dump tests.
 Actions:
 
 - Add or extend focused coverage for the repaired owner from Step 2.
-- Assert source lane, temporary home, final ABI publication, and following call
-  order for the current representative shape or a smaller local equivalent.
+- Assert per-aggregate rounded slot starts, final ABI register or stack
+  publication, and entry materialization for the current representative shape
+  or a smaller local equivalent.
+- Include a case where an aggregate cannot fit in the remaining GPR argument
+  registers and must transition coherently to stack passing.
 - Preserve adjacent scalar `va_arg`, non-HFA aggregate `va_arg`, stdarg
-  cursor, `va_start`, post-`va_arg` call publication, fixed aggregate call,
-  byval aggregate lane, HFA/floating return, fixed-formal entry,
-  local/value-home, and frame/formal coverage.
+  cursor, `va_start`, post-`va_arg` call publication, HFA/floating return,
+  fixed-formal entry, local/value-home, and frame/formal coverage.
 
 Completion check:
 
-- Local coverage fails without the HFA/floating repair and passes with the
+- Local coverage fails without the byval placement repair and passes with the
   repair.
 
 ### Step 4: Validate Representative And Classify Residuals
 
-Goal: prove the HFA/floating repair on the focused representative and classify
-any newly exposed first bad fact.
+Goal: prove the byval aggregate placement repair on the focused representative
+and classify any newly exposed first bad fact.
 
 Primary target: supervisor-selected focused proof scope including `00204.c`.
 
@@ -180,17 +189,16 @@ Actions:
 
 - Run a focused proof including build, local AArch64 backend coverage,
   prior-owner guardrails, and `c_testsuite_aarch64_backend_src_00204_c`.
-- Confirm the `fa_hfa11(hfa11)` call receives and prints `11.1` before the
-  observing call.
+- Confirm `fa1(struct s8..s13)` prints `stu ABC JKL TUV 456 ghi`.
 - Confirm prior stdarg cursor, `va_start`, HFA/floating return, non-HFA
-  aggregate `va_arg`, byval lane, sret `x8`, fixed-formal, local/value-home,
-  and frame/formal guardrails remain stable.
+  aggregate `va_arg`, sret `x8`, fixed-formal, local/value-home, and
+  frame/formal guardrails remain stable.
 - If `00204.c` still fails, classify whether the next first bad fact remains
   in this source idea or belongs to another distinct initiative.
 - Record pass/fail results and first bad facts in `todo.md`.
 
 Completion check:
 
-- `todo.md` records fresh proof. The classified HFA/floating argument fault is
-  gone, prior-owner guardrails remain stable, and any remaining blocker is
-  explicitly localized for the next lifecycle decision.
+- `todo.md` records fresh proof. The classified byval aggregate placement
+  fault is gone, prior-owner guardrails remain stable, and any remaining
+  blocker is explicitly localized for the next lifecycle decision.

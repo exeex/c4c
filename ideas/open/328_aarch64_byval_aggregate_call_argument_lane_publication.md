@@ -127,3 +127,27 @@ pass count. Keep this idea open and parked unless the supervisor accepts a
 non-decreasing close guard or provides closure-grade logs. The adjacent
 variadic aggregate post-`va_arg` call setup work is tracked separately in
 `ideas/open/329_aarch64_variadic_aggregate_va_arg_call_setup.md`.
+
+2026-05-20: Reactivated after idea 326's repaired HFA/floating argument route
+advanced the representative to another fixed non-HFA byval aggregate call
+boundary fault. The current first bad fact is `fa1(struct s8, struct s9,
+struct s10, struct s11, struct s12, struct s13)`: expected
+`stu ABC JKL TUV 456 ghi`, observed `stu ABC I JKL RS TUV`.
+
+Generated BIR for caller `arg` materializes source bytes for `%t103` through
+`%t108` from globals `s8` through `s13` correctly, then calls
+`fa1(ptr byval(size=8) %t103, ptr byval(size=9) %t104, ptr byval(size=10)
+%t105, ptr byval(size=11) %t106, ptr byval(size=12) %t107, ptr
+byval(size=13) %t108)`. The generated caller publishes contiguous byval
+chunks through `x0` through `x6`: `x0` carries `s8`, `x1` carries the first
+eight bytes of `s9`, `x2` carries the trailing `I`, `x3` carries `s10`, `x4`
+carries trailing `RS`, `x5` carries `s11`, and `x6` carries trailing `YZ0`.
+Generated `fa1` entry then treats `x0` through `x5` as the starts of six
+separate byval formals, explaining the observed shifted string fragments.
+
+Resume this idea from AAPCS64 fixed non-HFA byval aggregate argument
+placement, including per-aggregate rounded register-slot consumption and the
+coherent register-to-stack transition when too few GPR argument registers
+remain for a whole aggregate. Preserve the earlier single-aggregate
+register-lane publication repairs; do not collapse the residual into a named
+`00204.c` or `fa1` workaround.
