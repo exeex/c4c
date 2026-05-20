@@ -36,6 +36,12 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
 std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
     abi::RegisterReference scratch,
     const MemoryOperand& memory);
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_immediate_cast_call_argument_publication_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& destination,
+    std::size_t instruction_index);
 
 [[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
   if (alignment == 0) {
@@ -2415,6 +2421,23 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       move_record.source_register = *source;
     }
     }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      move_record.destination_register.has_value()) {
+    if (auto cast_publication =
+            make_immediate_cast_call_argument_publication_instruction(
+                context, *source_home, *move_record.destination_register, instruction_index)) {
+      return cast_publication;
+    }
+  }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
@@ -4918,6 +4941,262 @@ bool is_single_move_wide_immediate(std::uint64_t value, unsigned width_bits) {
     }
   }
   return nonzero_chunks <= 1U;
+}
+
+[[nodiscard]] const bir::CastInst* find_same_block_cast_producer(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name,
+    std::size_t before_instruction_index) {
+  if (context.function.prepared == nullptr || context.bir_block == nullptr ||
+      value_name == c4c::kInvalidValueName) {
+    return nullptr;
+  }
+  const auto spelling = context.function.prepared->names.value_names.spelling(value_name);
+  if (spelling.empty()) {
+    return nullptr;
+  }
+  const auto limit = std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = 0; index < limit; ++index) {
+    const auto* cast = std::get_if<bir::CastInst>(&context.bir_block->insts[index]);
+    if (cast != nullptr && cast->result.kind == bir::Value::Kind::Named &&
+        cast->result.name == spelling) {
+      return cast;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] std::optional<unsigned> integer_width_bits_for_type(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+    case bir::TypeKind::I16:
+    case bir::TypeKind::I32:
+      return 32U;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return 64U;
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::uint64_t immediate_integer_bits(const bir::Value& value,
+                                                   unsigned width_bits) {
+  if (value.immediate_bits != 0U) {
+    return width_bits == 32U ? static_cast<std::uint32_t>(value.immediate_bits)
+                             : value.immediate_bits;
+  }
+  return width_bits == 32U ? static_cast<std::uint32_t>(value.immediate)
+                           : static_cast<std::uint64_t>(value.immediate);
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> scalar_fp_register_view(
+    abi::RegisterReference reg,
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::F32:
+      return abi::fp_simd_register(reg.index, abi::RegisterView::S);
+    case bir::TypeKind::F64:
+      return abi::fp_simd_register(reg.index, abi::RegisterView::D);
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> scalar_gp_register_view(
+    abi::RegisterReference reg,
+    unsigned width_bits) {
+  if (width_bits == 32U) {
+    return abi::gp_register(reg.index, abi::RegisterView::W);
+  }
+  if (width_bits == 64U) {
+    return abi::gp_register(reg.index, abi::RegisterView::X);
+  }
+  return std::nullopt;
+}
+
+bool append_materialize_fp_immediate(std::vector<std::string>& lines,
+                                     const bir::Value& value,
+                                     abi::RegisterReference gp_scratch_base,
+                                     abi::RegisterReference fp_scratch_base,
+                                     abi::RegisterReference& fp_scratch) {
+  const auto fp_view = scalar_fp_register_view(fp_scratch_base, value.type);
+  if (!fp_view.has_value() || value.kind != bir::Value::Kind::Immediate) {
+    return false;
+  }
+  fp_scratch = *fp_view;
+  if (value.type == bir::TypeKind::F32) {
+    const auto gp_scratch = abi::gp_register(gp_scratch_base.index, abi::RegisterView::W);
+    if (!gp_scratch.has_value()) {
+      return false;
+    }
+    auto materialize =
+        materialize_integer_constant_lines(*gp_scratch, value.immediate_bits, 32);
+    if (materialize.empty()) {
+      return false;
+    }
+    lines.insert(lines.end(), materialize.begin(), materialize.end());
+    lines.push_back("fmov " + std::string{abi::register_name(*fp_view)} + ", " +
+                    std::string{abi::register_name(*gp_scratch)});
+    return true;
+  }
+  if (value.type == bir::TypeKind::F64) {
+    const auto gp_scratch = abi::gp_register(gp_scratch_base.index, abi::RegisterView::X);
+    if (!gp_scratch.has_value()) {
+      return false;
+    }
+    auto materialize =
+        materialize_integer_constant_lines(*gp_scratch, value.immediate_bits, 64);
+    if (materialize.empty()) {
+      return false;
+    }
+    lines.insert(lines.end(), materialize.begin(), materialize.end());
+    lines.push_back("fmov " + std::string{abi::register_name(*fp_view)} + ", " +
+                    std::string{abi::register_name(*gp_scratch)});
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+make_immediate_cast_call_argument_publication_lines(
+    const bir::CastInst& cast,
+    const RegisterOperand& destination) {
+  if (cast.operand.kind != bir::Value::Kind::Immediate) {
+    return std::nullopt;
+  }
+  const auto gp_scratch_base = abi::reserved_mir_scratch_gp_registers().front();
+  const auto fp_scratch_base = abi::reserved_mir_scratch_fp_simd_registers().front();
+  std::vector<std::string> lines;
+  switch (cast.opcode) {
+    case bir::CastOpcode::FPToSI:
+    case bir::CastOpcode::FPToUI: {
+      if (!abi::is_gp_register(destination.reg)) {
+        return std::nullopt;
+      }
+      abi::RegisterReference fp_source{};
+      if (!append_materialize_fp_immediate(
+              lines, cast.operand, gp_scratch_base, fp_scratch_base, fp_source)) {
+        return std::nullopt;
+      }
+      const auto width_bits = integer_width_bits_for_type(cast.result.type);
+      const auto viewed_destination =
+          width_bits.has_value()
+              ? scalar_gp_register_view(destination.reg, *width_bits)
+              : std::nullopt;
+      if (!viewed_destination.has_value()) {
+        return std::nullopt;
+      }
+      lines.push_back(std::string{cast.opcode == bir::CastOpcode::FPToSI ? "fcvtzs "
+                                                                         : "fcvtzu "} +
+                      std::string{abi::register_name(*viewed_destination)} + ", " +
+                      std::string{abi::register_name(fp_source)});
+      return lines;
+    }
+    case bir::CastOpcode::SIToFP:
+    case bir::CastOpcode::UIToFP: {
+      if (!abi::is_fp_simd_register(destination.reg)) {
+        return std::nullopt;
+      }
+      const auto source_width = integer_width_bits_for_type(cast.operand.type);
+      const auto gp_scratch = source_width.has_value()
+                                  ? scalar_gp_register_view(gp_scratch_base, *source_width)
+                                  : std::nullopt;
+      const auto fp_destination = scalar_fp_register_view(destination.reg, cast.result.type);
+      if (!source_width.has_value() || !gp_scratch.has_value() ||
+          !fp_destination.has_value()) {
+        return std::nullopt;
+      }
+      auto materialize = materialize_integer_constant_lines(
+          *gp_scratch, immediate_integer_bits(cast.operand, *source_width), *source_width);
+      if (materialize.empty()) {
+        return std::nullopt;
+      }
+      lines.insert(lines.end(), materialize.begin(), materialize.end());
+      lines.push_back(std::string{cast.opcode == bir::CastOpcode::SIToFP ? "scvtf "
+                                                                         : "ucvtf "} +
+                      std::string{abi::register_name(*fp_destination)} + ", " +
+                      std::string{abi::register_name(*gp_scratch)});
+      return lines;
+    }
+    case bir::CastOpcode::FPExt:
+    case bir::CastOpcode::FPTrunc: {
+      if (!abi::is_fp_simd_register(destination.reg)) {
+        return std::nullopt;
+      }
+      abi::RegisterReference fp_source{};
+      if (!append_materialize_fp_immediate(
+              lines, cast.operand, gp_scratch_base, fp_scratch_base, fp_source)) {
+        return std::nullopt;
+      }
+      const auto fp_destination = scalar_fp_register_view(destination.reg, cast.result.type);
+      if (!fp_destination.has_value()) {
+        return std::nullopt;
+      }
+      lines.push_back("fcvt " + std::string{abi::register_name(*fp_destination)} +
+                      ", " + std::string{abi::register_name(fp_source)});
+      return lines;
+    }
+    default:
+      return std::nullopt;
+  }
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_immediate_cast_call_argument_publication_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& destination,
+    std::size_t instruction_index) {
+  const auto* cast =
+      find_same_block_cast_producer(context, source_home.value_name, instruction_index);
+  if (cast == nullptr) {
+    return std::nullopt;
+  }
+  const auto lines =
+      make_immediate_cast_call_argument_publication_lines(*cast, destination);
+  if (!lines.has_value() || lines->empty()) {
+    return std::nullopt;
+  }
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines->size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += (*lines)[index];
+  }
+  const auto destination_operand = make_register_operand(destination);
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = {destination_operand},
+      .defs = {effect_from_operand(destination_operand)},
+      .uses = {MachineEffectResource{
+          .kind = MachineEffectResourceKind::PreparedValue,
+          .value_id = source_home.value_id,
+          .value_name = source_home.value_name,
+      }},
+      .side_effects = {MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .operands = {destination_operand},
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
 }  // namespace

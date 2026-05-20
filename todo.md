@@ -8,13 +8,22 @@ Current Step Title: Repair The Narrow Publication Boundary
 
 ## Just Finished
 
-Step 2 repaired the first caller-side overflow stack publication subcase in
-`src/backend/mir/aarch64/codegen/calls.cpp`: prepared immediate
-`CallArgumentAbi` ABI bindings whose destination is an outgoing stack slot now
-lower to a selected immediate store through the outgoing stack argument base
-before the direct `bl`. Focused dispatch coverage now proves a ninth direct
-call argument literal is stored through `x16` before the call, and the
-delegated representative proof shows `00170` advanced from failing to passing.
+Step 2 repaired the next caller-side direct-call publication subcase in
+`src/backend/mir/aarch64/codegen/calls.cpp`: prepared register/FPR
+`CallArgumentAbi` moves whose source value is produced by an immediate scalar
+cast in the same block now lower to a selected call-boundary publication
+sequence that materializes/converts directly into the ABI argument register
+before the direct `bl`. Focused dispatch coverage now proves both an immediate
+FP-to-integer source published to `w0` and an immediate integer-to-FP source
+published to `s0` through the prepared move/binding records, without matching
+specific filenames or stale source registers.
+
+The delegated representative proof shows `00175` advanced but did not pass:
+its direct `charfunc`, `intfunc`, and `floatfunc` calls now print the expected
+`c`, `99`, and `99.000000` values. The remaining `00175` mismatch is after
+the direct-call sequence in local store/load conversion publication:
+`97 17`, `97 -160045680`, and `0.000000 0.000000` are still printed where
+`97 97`, `97 97`, and `97.000000 97.000000` are expected.
 
 Remaining first bad facts after this slice:
 
@@ -24,9 +33,9 @@ Remaining first bad facts after this slice:
   publishes `%p.x` in incoming `x0`, but emitted `myfunc` still reads stale
   `w20` in `mul w0, w20, w20`. This is not resolved by caller-side
   `CallArgumentAbi` publication.
-- `00175`: still caller-side scalar and FP register publication for computed
-  same-module call operands; emitted calls still read stale `w13`/`s13` for
-  the converted arguments.
+- `00175`: direct-call scalar and FP argument publication advanced; remaining
+  failures are local store/load conversion publication after the call series,
+  not stale direct-call `w13`/`s13` argument moves.
 - `00218`: still caller-side address publication; prepared `%lv.convs` is
   expected in `x21`, but emitted `main` still calls `convert_like_real` with
   stale `x21`.
@@ -34,9 +43,10 @@ Remaining first bad facts after this slice:
 ## Suggested Next
 
 Continue Step 2 with the next narrow publication boundary: either repair the
-computed register/FPR caller publication path that leaves `00175` reading stale
-`w13`/`s13`, or split the callee-side fixed formal consumption gap for `00159`
-if the supervisor wants a non-`calls.cpp` packet.
+remaining `00175` local store/load conversion publication path if the
+supervisor keeps this representative as the next target, or split the
+callee-side fixed formal consumption gap for `00159` if the next packet should
+leave `calls.cpp`.
 
 ## Watchouts
 
@@ -47,6 +57,11 @@ if the supervisor wants a non-`calls.cpp` packet.
 - The completed stack-immediate repair is general over prepared immediate
   stack-slot ABI bindings; do not regress the selected store through the
   outgoing stack base before `bl`.
+- The completed immediate-cast direct-call repair is intentionally limited to
+  prepared before-call register destinations with same-block immediate scalar
+  cast producers; it still consumes prepared move/binding/source-home facts
+  and uses reserved MIR scratch registers rather than matching source register
+  names.
 - The `00159` callee formal gap appears to require the fixed-formal consumer
   path to make incoming `x0` authoritative for later scalar lowering; a
   caller-side move repair alone will not change `mul w0, w20, w20`.
@@ -71,6 +86,12 @@ Delegated proof command was run exactly:
 
 Result: `proof_rc=8`. The AArch64 backend/backend CLI subset passed 31/31.
 The representative c-testsuite subset passed `00170` and still failed `00140`,
-`00159`, `00175`, and `00218` with the residual first bad facts listed above.
-After supervisor regression guard acceptance, the accepted after-log was rolled
-forward to `test_before.log`.
+`00159`, `00175`, and `00218`. `00175` advanced from stale direct-call
+argument outputs to correct direct-call outputs, with only the later local
+store/load conversion outputs still mismatching as listed above.
+
+Supervisor review accepted this as valid partial route progress after reviewer
+acceptance, no new failing tests, backend/backend CLI staying 31/31, `00170`
+staying green, and `00175` direct-call output advancement. The strict
+monotonic regression guard did not pass because the representative pass count
+remained 1/5, so the before/after logs are retained rather than rolled forward.

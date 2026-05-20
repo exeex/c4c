@@ -10731,6 +10731,114 @@ int block_dispatch_lowers_prepared_register_argument_move_before_direct_call() {
   return 0;
 }
 
+int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
+  auto prepared = prepared_with_direct_call_argument_register_move();
+  auto& function = prepared.module.functions.front();
+  auto& block = function.blocks.front();
+  const auto cast_name = prepared.names.value_names.intern("%cast.arg");
+  constexpr auto cast_value_id = prepare::PreparedValueId{42};
+
+  block.insts.insert(
+      block.insts.begin(),
+      bir::CastInst{
+          .opcode = bir::CastOpcode::FPToSI,
+          .result = bir::Value::named(bir::TypeKind::I32, "%cast.arg"),
+          .operand = bir::Value::immediate_f64_bits(0x4058C00000000000ULL),
+      });
+  auto& call = std::get<bir::CallInst>(block.insts[1]);
+  call.args = {bir::Value::named(bir::TypeKind::I32, "%cast.arg")};
+  call.arg_types = {bir::TypeKind::I32};
+
+  auto& home = prepared.value_locations.functions.front().value_homes.front();
+  home.value_id = cast_value_id;
+  home.value_name = cast_name;
+  home.register_name = std::string{"x13"};
+
+  auto& bundle = prepared.value_locations.functions.front().move_bundles.front();
+  bundle.instruction_index = 1;
+  auto& move = bundle.moves.front();
+  move.from_value_id = cast_value_id;
+  move.to_value_id = cast_value_id;
+  move.instruction_index = 1;
+
+  auto& call_plan = prepared.call_plans.functions.front().calls.front();
+  call_plan.instruction_index = 1;
+  auto& argument = call_plan.arguments.front();
+  argument.instruction_index = 1;
+  argument.source_value_id = cast_value_id;
+  argument.source_register_name = std::string{"x13"};
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
+  const auto* assembler =
+      lowered.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+                &lowered.front().target.payload);
+  if (lowered.size() != 1 || !diagnostics.empty() || assembler == nullptr ||
+      lowered.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      assembler->inline_asm_template.find("fmov d16, x9") == std::string::npos ||
+      assembler->inline_asm_template.find("fcvtzs w0, d16") == std::string::npos) {
+    return fail("expected immediate FPToSI call argument cast to publish w0 before direct call");
+  }
+
+  block.insts.front() = bir::CastInst{
+      .opcode = bir::CastOpcode::SIToFP,
+      .result = bir::Value::named(bir::TypeKind::F32, "%cast.arg"),
+      .operand = bir::Value::immediate_i32(97),
+  };
+  call.args = {bir::Value::named(bir::TypeKind::F32, "%cast.arg")};
+  call.arg_types = {bir::TypeKind::F32};
+  argument.value_bank = prepare::PreparedRegisterBank::Fpr;
+  argument.source_register_bank = prepare::PreparedRegisterBank::Fpr;
+  argument.source_register_name.reset();
+  argument.source_register_placement = prepare::PreparedRegisterPlacement{
+      .bank = prepare::PreparedRegisterBank::Fpr,
+      .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+  argument.destination_register_bank = prepare::PreparedRegisterBank::Fpr;
+  argument.destination_register_name = std::string{"s0"};
+  bundle.abi_bindings.front().destination_register_name = std::string{"s0"};
+  move.destination_register_name = std::string{"s0"};
+  home.register_name = std::string{"d13"};
+
+  const auto fpr_function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto fpr_block_context =
+      aarch64_codegen::make_block_lowering_context(fpr_function_context, block_cf, 0);
+  aarch64_module::ModuleLoweringDiagnostics fpr_diagnostics;
+  const auto fpr_lowered =
+      aarch64_codegen::lower_before_call_moves(
+          fpr_block_context, call_plan, 1, fpr_diagnostics);
+  const auto* fpr_assembler =
+      fpr_lowered.empty()
+          ? nullptr
+          : std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+                &fpr_lowered.front().target.payload);
+  if (fpr_lowered.size() != 1 || !fpr_diagnostics.empty() ||
+      fpr_assembler == nullptr ||
+      (fpr_assembler->inline_asm_template.find("movz w9, #97") == std::string::npos &&
+       fpr_assembler->inline_asm_template.find("mov w9, #97") == std::string::npos) ||
+      fpr_assembler->inline_asm_template.find("scvtf s0, w9") == std::string::npos) {
+    return fail(std::string{"expected immediate SIToFP call argument cast to publish s0 before direct call; got "} +
+                (fpr_assembler != nullptr ? fpr_assembler->inline_asm_template
+                                           : std::string{"<no assembler>"}));
+  }
+
+  return 0;
+}
+
 int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
   auto prepared = prepared_with_direct_variadic_call_symbol_address_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -18374,6 +18482,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_register_argument_move_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_immediate_cast_register_argument_publishes_before_direct_call();
       status != 0) {
     return status;
   }
