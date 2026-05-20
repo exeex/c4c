@@ -150,3 +150,14 @@ handoff, but the close-time regression guard rejected the available
 (`passed=3 failed=1 total=4` before and after). Continue the fixed non-HFA
 byval aggregate register-lane / stack-transition residual under
 `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`.
+
+2026-05-20: Reactivated after idea 328's partial upper-lane byval aggregate
+publication repair in commit `0a4ef64e5`. The byval `stdarg:` payloads now
+preserve the target ninth bytes, and the next first bad fact is again in an
+HFA/aggregate output section: expected
+`33.1,33.3 34.1,34.4 34.1,34.4 34.1,34.4`, actual
+`33.1,33.3 34.1,34.4 34.2,34.1 34.2,0.0`.
+
+Resume from generated-code classification of that HFA/aggregate output
+mismatch. Do not reopen byval aggregate lane publication unless fresh evidence
+again shows prepared byval bytes failing to reach their AAPCS64 call lanes.

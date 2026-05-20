@@ -1,6 +1,6 @@
 # AArch64 Byval Aggregate Call Argument Register-Lane Publication
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-19
 Split From: ideas/open/327_aarch64_fixed_formal_entry_publication.md
 
@@ -185,3 +185,18 @@ aggregate lane slots. Resume from the partial upper-lane publication handoff in
 `src/backend/bir/lir_to_bir/memory/local_slots.cpp` and
 `src/backend/mir/aarch64/codegen/calls.cpp`, preserving the earlier rounded
 byval placement repair.
+
+2026-05-20: Step 1 after commit `0a4ef64e5` repaired the partial upper-lane
+byval aggregate publication residual. The previously regressed all-byval
+`stdarg:` payload and the target `lmnopqr` payload both now preserve the ninth
+byte for `%9s` byval arguments. Focused proof passed the prepared handoff dump
+and payload helper coverage for sizes 8 through 14, while the representative
+advanced to a later HFA/aggregate output mismatch: expected
+`33.1,33.3 34.1,34.4 34.1,34.4 34.1,34.4`, actual
+`33.1,33.3 34.1,34.4 34.2,34.1 34.2,0.0`.
+
+The remaining first bad fact is outside byval aggregate call-argument
+register-lane publication and should continue under
+`ideas/open/326_aarch64_variadic_hfa_floating_residual.md`. Keep this idea
+parked unless fresh generated-code evidence shows another caller-side byval
+aggregate lane publication fault.
