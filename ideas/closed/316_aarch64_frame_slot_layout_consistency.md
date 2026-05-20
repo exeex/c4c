@@ -1,8 +1,35 @@
 # AArch64 Frame Slot Layout Consistency
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-20
 Split From: ideas/closed/314_aarch64_large_stack_offset_addressing.md
+
+## Completion Note
+
+Closed after the active runbook repaired the current `00182.c` caller
+local-array frame underallocation. Prepared `main` now reports enough frame
+storage for `%lv.buf.0..159`, generated AArch64 reserves a frame large enough
+for that buffer plus saved registers, and the saved return address is no
+longer inside the callee-written local output buffer range.
+
+The remaining `00182` failure was reclassified outside this owner: generated
+AArch64 loses the accumulated false value in a nested scalar select chain and
+passes `d[0]` to each LED line renderer, producing seven `7` digits. That
+residual is split to
+`ideas/open/351_aarch64_nested_select_false_value_materialization.md`.
+
+Current `00216.c` evidence was also rechecked and does not expose a
+frame-layout residual for this idea: observed generated frames reserve enough
+space for the currently observed stack offsets even though the test still
+segfaults under a separate first bad fact.
+
+Close gate: the existing matching focused `test_before.log` and
+`test_after.log` were compared with
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed`.
+The guard reported 4 passed, 2 failed, 0 new failures, and PASS. The broader
+backend guard provided with the lifecycle request also passed
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` at 141/141.
 
 ## Parking Note
 
