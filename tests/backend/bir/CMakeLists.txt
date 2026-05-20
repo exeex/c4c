@@ -376,6 +376,22 @@ set_tests_properties(backend_cli_dump_bir_00204_stdarg_semantic_handoff PROPERTI
 )
 
 add_test(
+  NAME backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold
+  COMMAND "${CMAKE_COMMAND}"
+          -DCOMPILER=$<TARGET_FILE:c4cll>
+          -DTARGET_TRIPLE=aarch64-linux-gnu
+          -DDUMP_FLAG=--dump-bir
+          "-DEXTRA_ARGS=--mir-focus-function;movi"
+          -DSRC=${PROJECT_SOURCE_DIR}/tests/c/external/c-testsuite/src/00204.c
+          "-DREQUIRED_SNIPPETS=focus function: movi|focused functions matched: 1|bir.func @movi() -> void {|bir.call void pll(i64 2882338816)|bir.call void pll(i64 2863311530)"
+          "-DFORBIDDEN_SNIPPETS=bir.call void pll(i64 -1412628480)|bir.call void pll(i64 -1431655766)"
+          -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_dump_flag_case.cmake"
+)
+set_tests_properties(backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold PROPERTIES
+  LABELS "backend;internal;cli"
+)
+
+add_test(
   NAME backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff
   COMMAND "${CMAKE_COMMAND}"
           -DCOMPILER=$<TARGET_FILE:c4cll>

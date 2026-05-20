@@ -1,85 +1,69 @@
 Status: Active
 Source Idea Path: ideas/open/332_aarch64_movi_zero_extension_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize The MOVI Sign-Extension Owner
+Current Step ID: 2
+Current Step Title: Repair The Classified Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1, "Localize The MOVI Sign-Extension Owner". The first
-generated-code divergence is semantic BIR lowering of folded integer casts, not
-AArch64 instruction selection, ABI call placement, or `pll` output.
+Completed plan Step 2, "Repair The Classified Owner". The BIR scalar immediate
+cast fast path in `src/backend/bir/lir_to_bir/scalar.cpp` now routes
+`LirCastKind::SExt`, `ZExt`, and `Trunc` immediates through the existing
+`fold_integer_cast` helper instead of copying the source immediate into the
+target width.
 
-Evidence:
+Focused coverage was added in `tests/backend/bir/CMakeLists.txt` as
+`backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`. It focuses the
+`00204.c` BIR dump to `movi()` and requires the repaired zero-extended calls:
+`bir.call void pll(i64 2882338816)` for source `0xabcd0000` and
+`bir.call void pll(i64 2863311530)` for source `0xaaaaaaaa`. It also forbids
+the old sign-extended forms `-1412628480` and `-1431655766`.
 
-- Source `tests/c/external/c-testsuite/src/00204.c:383` declares
-  `pll(unsigned long long x)` and `movi()` passes unsuffixed hex constants to it
-  at lines 391-430.
-- HIR preserves the first bad value correctly: `movi()` prints
-  `pll(2882338816)` for source `0xabcd0000`, `pll(2863311530)` for
-  `0xaaaaaaaa`, and `pll(4177066232)` for `0xf8f8f8f8`.
-- LIR/LLVM for `movi()` also preserves the required unsigned conversion:
-  `%t4 = zext i32 2882338816 to i64`, `%t7 = zext i32 2863311530 to i64`,
-  and `%t9 = zext i32 4177066232 to i64`, each immediately passed to
-  `pll(i64 ...)`.
-- Semantic BIR is the first bad artifact. The same calls become
-  `bir.call void pll(i64 -1412628480)`,
-  `bir.call void pll(i64 -1431655766)`, and
-  `bir.call void pll(i64 -117901064)`, which are the sign-extended 64-bit
-  forms `ffffffffabcd0000`, `ffffffffaaaaaaaa`, and `fffffffff8f8f8f8`.
-- Prepared BIR carries those bad immediates unchanged into the same-module
-  `pll` call records: for `movi` callsite block 0 inst 3, `arg0 bank=gpr
-  from=immediate:-1412628480 to=x0`; inst 12 similarly passes
-  `from=immediate:-1431655766 to=x0`; inst 16 passes
-  `from=immediate:-117901064 to=x0`.
-- Generated AArch64 assembly is a faithful materialization of the already-bad
-  BIR immediates: the first bad call emits `movz x0, #43981, lsl #16` followed
-  by `movk x0, #65535, lsl #32` and `movk x0, #65535, lsl #48`, then
-  `bl pll`, producing `0xffffffffabcd0000` in ABI register `x0`.
-
-Owner classification: `src/backend/bir/lir_to_bir/scalar.cpp` immediate cast
-folding. `BirFunctionLowerer::lower_value(..., I32, ...)` parses the decimal
-LIR operand and returns `bir::Value::immediate_i32(static_cast<int32_t>(...))`,
-so values above `INT32_MAX` are represented as negative 32-bit payloads. The
-later `LirCastKind::ZExt` fast path at `lower_scalar_compare_inst` lines
-506-524 handles both `SExt` and `ZExt` by copying `value->immediate` into
-`bir::Value::immediate_i64(imm)`, bypassing the existing `fold_integer_cast`
-logic that would mask and zero-extend for `ZExt`. Source width and signedness
-are correct through HIR/LIR; the bad high bits are introduced when BIR folds
-`zext i32 immediate to i64`.
+The MOVI first bad fact has advanced: the representative AArch64 runtime output
+now prints the MOVI high-bit values as zero-extended, including `abcd0000`,
+`aaaaaaaa`, and `f8f8f8f8`. A follow-up residual remains after `movi()` in
+`opi()`: the first OPI call at `tests/c/external/c-testsuite/src/00204.c:476`,
+`pll(addip0(x))`, expects `3e8` but the appended representative run printed
+`c220ecc6`.
 
 ## Suggested Next
 
-Execute plan Step 2 by repairing BIR immediate cast folding generally. The
-smallest credible repair is to route folded `LirCastKind::ZExt`/`SExt`/`Trunc`
-immediates through `fold_integer_cast` or equivalent width-aware masking in
-`src/backend/bir/lir_to_bir/scalar.cpp`, then add focused BIR/backend coverage
-for `zext i32 2882338816 to i64` and at least one nearby high-bit 32-bit
-literal such as `0xaaaaaaaa`.
+Execute plan Step 4 classification for the advanced `00204.c` residual. Start
+from `opi()` and localize why `addip0(x)` observes `c220ecc6` instead of
+`3e8` after MOVI zero-extension is fixed.
 
 ## Watchouts
 
-Do not repair this in the AArch64 machine printer or immediate materializer:
-assembly is only reflecting the already-bad BIR value. Do not special-case
-`00204.c`, `movi`, `abcd0000`, `aaaaaaaa`, `x0`, or a `movz`/`movk` sequence.
-Keep HFA overflow assignment, scalar-FP symbol-load placement, byval aggregate
-lane publication, stdarg cursor, fixed-formal entry publication, and
-local/value-home publication out of scope unless new generated evidence moves
-the first bad fact before the BIR `zext` fold. Leave
-`review/326_stdarg_byval_route_review.md` untouched.
+The delegated CTest regex selected the focused dump/guardrail subset but did
+not select the representative because the registered test is named
+`c_testsuite_aarch64_backend_src_00204_c`, not `backend_aarch64_backend_src_00204_c`.
+That representative was run separately and appended to `test_after.log`; it
+still fails, but after the repaired MOVI section.
+
+Do not reopen the MOVI BIR immediate cast fold unless new evidence shows a
+remaining MOVI mismatch. Leave HFA/byval/stdarg/fixed-formal/local-value
+guardrails and `review/326_stdarg_byval_route_review.md` untouched.
 
 ## Proof
 
-Todo-only localization; no full build was needed. Evidence commands used:
+Ran the delegated proof command:
 
-- `build/c4cll --dump-hir tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00204.c -o /tmp/00204.ll`
-- `build/c4cll --target aarch64-linux-gnu --dump-bir tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --target aarch64-linux-gnu --dump-prepared-bir tests/c/external/c-testsuite/src/00204.c`
-- read-only inspection of `build/c_testsuite_aarch64_backend/src/00204.c.s`
-  and current `test_after.log`
+`cmake --build build --target c4cll backend_prepared_printer_test backend_aarch64_scalar_cast_records_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_(cli_dump_(bir|prepared_bir)_00204_stdarg|prepared_printer|aarch64_scalar_cast_records|aarch64_backend_src_00204_c)' > test_after.log 2>&1`
 
-Suggested Step 2 proof command after a code repair:
-`cmake --build build --target c4cll backend_prepared_printer_test backend_aarch64_scalar_cast_records_test && ctest --test-dir build -j --output-on-failure -R 'backend_(cli_dump_(bir|prepared_bir)_00204_stdarg|prepared_printer|aarch64_scalar_cast_records|aarch64_backend_src_00204_c)'`.
+Result: passed, 6/6 selected tests green. The selected tests included the new
+`backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold` focused guard.
+
+Also ran `git diff --check`: passed.
+
+Additional representative check appended to `test_after.log`:
+
+`ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$' >> test_after.log 2>&1`
+
+Result: failed after MOVI, with the first observed residual in `opi()` as
+recorded above. Proof log path: `test_after.log`.
+
+Supervisor broader validation passed:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+passed 141/141.

@@ -504,7 +504,8 @@ bool BirFunctionLowerer::lower_scalar_compare_inst(const c4c::codegen::lir::LirI
     }
 
     if ((cast->kind == c4c::codegen::lir::LirCastKind::SExt ||
-         cast->kind == c4c::codegen::lir::LirCastKind::ZExt) &&
+         cast->kind == c4c::codegen::lir::LirCastKind::ZExt ||
+         cast->kind == c4c::codegen::lir::LirCastKind::Trunc) &&
         cast->result.kind() == c4c::codegen::lir::LirOperandKind::SsaValue &&
         from_type.has_value() && to_type.has_value()) {
       const auto value = lower_value(cast->operand, *from_type, value_aliases);
@@ -512,19 +513,10 @@ bool BirFunctionLowerer::lower_scalar_compare_inst(const c4c::codegen::lir::LirI
         return false;
       }
 
-      if (value->kind == bir::Value::Kind::Immediate) {
-        const auto imm = value->immediate;
-        switch (*to_type) {
-          case bir::TypeKind::I32:
-            value_aliases[cast->result.str()] =
-                bir::Value::immediate_i32(static_cast<std::int32_t>(imm));
-            return true;
-          case bir::TypeKind::I64:
-            value_aliases[cast->result.str()] = bir::Value::immediate_i64(imm);
-            return true;
-          default:
-            break;
-        }
+      if (const auto folded = fold_integer_cast(cast->kind, *value, *to_type);
+          folded.has_value()) {
+        value_aliases[cast->result.str()] = *folded;
+        return true;
       }
     }
   }
