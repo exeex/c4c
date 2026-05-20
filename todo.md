@@ -1,55 +1,64 @@
 Status: Active
 Source Idea Path: ideas/open/343_aarch64_duff_fallthrough_copy_fixed_offset_skip.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Fallthrough Copy Fixed-Offset Emission
+Current Step ID: 3
+Current Step Title: Prove Representative And Reclassify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired prepared direct frame-slot lookup for dense sliced local slot
-families. `find_direct_frame_slot` now resolves local-address byte ranges
-against each candidate slice's byte coverage, derived from consecutive slice
-slot sizes when suffixes form a dense ordinal family, instead of treating the
-numeric suffix itself as the byte offset. Focused `backend_prepare_stack_layout`
-coverage now proves `%slice.0+2` and `%slice.0+4` resolve to the second and
-third two-byte frame slots with zero intra-slot offset.
+Step 3 ran the delegated representative proof and reclassified the residual
+after the fixed-offset skip repair. The fixed-offset repair remains good:
+prepared addressing still maps the Duff fallthrough copies consecutively
+(`block_6` source/destination slots `#0/#39`, `block_9` `#1/#40`, `block_10`
+`#2/#41`), and generated AArch64 emits consecutive short-copy offsets `[sp]`,
+`[sp,#2]`, `[sp,#4]`, ... to `[sp,#78]`, `[sp,#80]`, `[sp,#82]`, ... .
 
-For `00143`, prepared addressing for the Duff fallthrough chain no longer skips
-every other slot: `block_6` uses source/destination slots `#0/#39`, `block_9`
-uses `#1/#40`, and `block_10` uses `#2/#41`. Generated AArch64 likewise emits
-fallthrough short-copy offsets `[sp]`, `[sp,#2]`, `[sp,#4]`, ... to
-`[sp,#78]`, `[sp,#80]`, `[sp,#82]`, ... .
+The Duff latch remains the idea 342 form: semantic/prepared BIR uses one
+post-decremented `%t34` for both `bir.store_local %lv.n, i32 %t34` and
+`bir.sgt i32 %t34, 0`; generated AArch64 similarly computes one `w13 = n - 1`,
+stores it to `[sp,#176]`, and branches on `cmp w13, #0`.
+
+The smallest new first bad fact is already present in semantic BIR, before
+prepare or AArch64 emission. The Duff copy blocks update `%lv.from` and
+`%lv.to`, but the actual dereferences are frozen to direct array-base slots:
+`block_6` loads `%lv.a.0` and stores `%lv.b.0`; `block_9` loads
+`addr %lv.a.0+2` and stores `addr %lv.b.0+2`; the chain continues through
+`block_15` at `+14`. On latch back to `block_6`, the stored loop-carried
+pointer locals are not consumed, so later iterations repeat `a[0..7] ->
+b[0..7]` instead of copying `a[8..38] -> b[8..38]`.
 
 ## Suggested Next
 
-Run Step 3 as a residual-localization packet: after the fixed-offset skip
-repair, classify why the Duff loop still repeats the same base slice range on
-later iterations instead of advancing through the loop-carried `from`/`to`
-pointer state.
+Treat the current runbook as exhausted for fixed-offset skip repair and route
+the remaining representative failure as a separate semantic BIR
+pointer-provenance/lower-memory packet. Start from `*from++`/`*to++` lowering
+where a local pointer initialized from an array base is incremented across a
+loopback; likely owner probes are `src/backend/bir/lir_to_bir/memory/addressing.cpp`
+`lower_memory_gep_inst`, `src/backend/bir/lir_to_bir/memory/local_gep.cpp`
+`try_lower_local_slot_pointer_gep`, and `src/backend/bir/lir_to_bir/memory/provenance.cpp`
+pointer-provenance load/store helpers.
 
 ## Watchouts
 
-- The fixed-offset skip boundary localized in Step 1 is repaired; do not reopen
-  it unless fresh prepared-addressing evidence again shows `+2 -> #2` or
-  `+4 -> #4`.
-- `c_testsuite_aarch64_backend_src_00143_c` still fails `[RUNTIME_NONZERO]`
-  exit `1`. The smallest remaining observed fact is outside the repaired
-  prepared slot lookup: the generated Duff body repeats fixed base copies from
-  `a[0..7]` to `b[0..7]` across later loop iterations rather than consuming the
-  advanced `from`/`to` pointers for `a[8..38]` and `b[8..38]`.
-- Preserve idea 342's repaired latch behavior; the latch still branches on the
-  single post-decrement counter value.
+- Do not reopen fixed direct frame-slot lookup unless fresh evidence again
+  shows prepared addressing skips the consecutive slot chain.
+- The representative still fails `[RUNTIME_NONZERO]` exit `1`, but the new
+  evidence is outside Duff fallthrough fixed-offset emission: semantic BIR
+  direct-slot dereferences ignore loop-carried `%lv.from`/`%lv.to` state.
+- Preserve idea 342's repaired latch behavior; this packet reconfirmed the
+  latch branches on the single post-decrement counter value.
 - Do not special-case `00143`, labels, block numbers, stack offsets, source
   lines, emitted instruction strings, expectations, unsupported lists, runner,
   timeout, CTest, or proof-log policy.
 
 ## Proof
 
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^backend_|c_testsuite_aarch64_backend_src_00143_c)'`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_00143_c'`
 was run with combined output written to `test_after.log`.
 
-Result: build succeeded and backend coverage passed. The only failing test was
-`c_testsuite_aarch64_backend_src_00143_c`, still `[RUNTIME_NONZERO]` exit `1`;
-`test_after.log` is the canonical proof log for this packet.
+Result: build succeeded; `c_testsuite_aarch64_backend_src_00143_c` failed
+`[RUNTIME_NONZERO]` exit `1`. `test_after.log` is the canonical proof log for
+this packet. Additional local probes regenerated semantic BIR, prepared BIR,
+and AArch64 assembly under `/tmp` for classification only.
