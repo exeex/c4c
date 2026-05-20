@@ -1,6 +1,6 @@
 # AArch64 MOVI Zero-Extension Materialization
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-20
 Split From: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 
@@ -78,3 +78,27 @@ Reject the route if it:
   current first bad fact to that owner;
 - adds only external `00204.c` proof without focused backend coverage for the
   repaired MOVI or integer materialization behavior.
+
+## Lifecycle Handoff
+
+2026-05-20: Commit `9ad547218` repaired the MOVI zero-extension owner by
+folding BIR scalar immediate `SExt`, `ZExt`, and `Trunc` casts through the
+integer cast helper instead of copying the source immediate into the target
+width. Focused proof passed the six selected backend tests, including
+`backend_cli_dump_bir_00204_stdarg_movi_zext_immediate_fold`, and supervisor
+broader validation passed `ctest --test-dir build -j --output-on-failure -R
+'^backend_'` at 141/141.
+
+The MOVI first bad fact is gone: the representative now prints high-bit MOVI
+values as zero-extended, including `abcd0000`, `aaaaaaaa`, and `f8f8f8f8`.
+The remaining `00204.c` failure is later in `opi()`: at
+`tests/c/external/c-testsuite/src/00204.c:476`, `pll(addip0(x))` expects
+`3e8` but printed `c220ecc6`. Generated assembly shows `addip0` emits
+`add w0, w0, #0` followed by `mov x0, x13`, while the caller later publishes
+`x19` rather than the returned value to `pll`.
+
+This idea is parked instead of archived because the close-time regression
+guard rejected the available canonical logs: `test_before.log` and
+`test_after.log` do not form a matching close-gate scope after the appended
+representative run. Continue the OPI pointer/integer operation residual under
+`ideas/open/333_aarch64_opi_pointer_integer_operation_result_publication.md`.
