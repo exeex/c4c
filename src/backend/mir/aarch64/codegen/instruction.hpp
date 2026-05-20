@@ -967,6 +967,7 @@ struct MemoryInstructionRecord {
   c4c::ValueNameId result_value_name = c4c::kInvalidValueName;
   bir::TypeKind value_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
+  std::optional<std::int64_t> result_stack_offset_bytes;
 };
 
 struct PreparedMemoryInstructionRecordResult {

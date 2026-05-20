@@ -503,8 +503,9 @@ lower_scalar_call_argument_producers(
           prepare::find_prepared_value_home(*context.function.value_locations,
                                             move.to_value_id);
       if (destination_home != nullptr &&
-          prepared_edge_select_source_is_destination_register(*result_home,
-                                                             *destination_home)) {
+          (prepared_edge_select_source_is_destination_register(*result_home,
+                                                              *destination_home) ||
+           result_home->kind == prepare::PreparedValueHomeKind::StackSlot)) {
         return true;
       }
     }
@@ -591,7 +592,8 @@ lower_predecessor_select_parallel_copy_sources(
       continue;
     }
     if (!prepared_edge_select_source_is_destination_register(*source_home,
-                                                            *destination_home)) {
+                                                            *destination_home) &&
+        source_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
       continue;
     }
     for (std::size_t source_index = 0; source_index < successor->insts.size(); ++source_index) {
@@ -1207,7 +1209,9 @@ void record_memory_result(BlockScalarLoweringState& scalar_state,
                           const module::MachineInstruction& instruction) {
   const auto* memory_record =
       std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
-  if (memory_record == nullptr || !memory_record->result_register.has_value()) {
+  if (memory_record == nullptr ||
+      memory_record->result_stack_offset_bytes.has_value() ||
+      !memory_record->result_register.has_value()) {
     return;
   }
   record_emitted_scalar_register(scalar_state,
@@ -1420,6 +1424,67 @@ void retarget_pointer_store_value_to_emitted_scalar(
   return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
 }
 
+[[nodiscard]] std::optional<std::size_t> parse_va_list_field_suffix(
+    std::string_view base,
+    std::string_view slot_name) {
+  if (slot_name.size() <= base.size() + 1 ||
+      slot_name.substr(0, base.size()) != base ||
+      slot_name[base.size()] != '.') {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = base.size() + 1; index < slot_name.size(); ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10U + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] std::optional<std::string> prepared_va_list_field_address(
+    const module::BlockLoweringContext& context,
+    std::string_view slot_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(
+          *context.function.prepared,
+          context.function.control_flow->function_name);
+  if (entry_plan == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& homes : entry_plan->helper_operand_homes) {
+    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+        !homes.destination_va_list.has_value()) {
+      continue;
+    }
+    const auto& va_list_home = *homes.destination_va_list;
+    const auto base_name =
+        prepare::prepared_value_name(context.function.prepared->names,
+                                     va_list_home.value_name);
+    const auto field_offset = parse_va_list_field_suffix(base_name, slot_name);
+    if (!field_offset.has_value() ||
+        va_list_home.kind != prepare::PreparedValueHomeKind::Register ||
+        !va_list_home.register_name.has_value()) {
+      continue;
+    }
+    const auto parsed = abi::parse_aarch64_register_name(*va_list_home.register_name);
+    if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+      continue;
+    }
+    const auto base = abi::gp_register(parsed->index, abi::RegisterView::X);
+    if (!base.has_value()) {
+      continue;
+    }
+    return register_indirect_address(abi::register_name(*base), *field_offset);
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -1439,6 +1504,26 @@ void retarget_pointer_store_value_to_emitted_scalar(
       return std::nullopt;
   }
   return std::nullopt;
+}
+
+[[nodiscard]] bool emit_prepared_va_list_field_load_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load_local,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  const auto address = prepared_va_list_field_address(context, load_local.slot_name);
+  if (!address.has_value()) {
+    return false;
+  }
+  const auto mnemonic = scalar_load_mnemonic(load_local.result.type);
+  const auto target_view = scalar_view_for_type(load_local.result.type);
+  const auto target =
+      target_view.has_value() ? gp_register_name(target_index, *target_view) : std::nullopt;
+  if (!mnemonic.has_value() || !target.has_value()) {
+    return false;
+  }
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", " + *address);
+  return true;
 }
 
 [[nodiscard]] bool is_byval_formal_value_name(
@@ -1723,6 +1808,10 @@ void retarget_pointer_store_value_to_emitted_scalar(
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
       load_local != nullptr) {
     const auto index = producer_instruction_index(context, producer);
+    if (emit_prepared_va_list_field_load_to_register(
+            context, *load_local, target_index, lines)) {
+      return true;
+    }
     const auto offset =
         index.has_value() ? prepared_local_load_offset(context, *index) : std::nullopt;
     if (offset.has_value()) {
@@ -2090,6 +2179,10 @@ struct EdgeProducerContext {
   if (!mnemonic.has_value() || !target.has_value()) {
     return false;
   }
+  if (emit_prepared_va_list_field_load_to_register(
+          producer.context, load, target_index, lines)) {
+    return true;
+  }
   const auto* access = prepared_memory_access(producer.context, producer.instruction_index);
   if (access == nullptr) {
     return emit_value_publication_to_register(producer.context,
@@ -2288,6 +2381,42 @@ struct EdgeProducerContext {
     }
     lines.push_back("cmp " + *lhs_name + ", " + *rhs_name);
     lines.push_back("cset " + *result_name + ", " + std::string{*condition});
+    return true;
+  }
+  if (binary->opcode == bir::BinaryOpcode::Add ||
+      binary->opcode == bir::BinaryOpcode::Sub) {
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    if (!emit_edge_value_publication_to_register(edge_context,
+                                                 successor_context,
+                                                 lhs,
+                                                 producer->instruction_index,
+                                                 target_index,
+                                                 scratch_index,
+                                                 lines)) {
+      return false;
+    }
+    const std::uint8_t nested_scratch = scratch_index == 9 ? 10 : 9;
+    if (!emit_edge_value_publication_to_register(edge_context,
+                                                 successor_context,
+                                                 rhs,
+                                                 producer->instruction_index,
+                                                 scratch_index,
+                                                 nested_scratch,
+                                                 lines)) {
+      return false;
+    }
+    const auto result = gp_register_name(target_index, abi::RegisterView::X);
+    const auto rhs_name = gp_register_name(scratch_index, abi::RegisterView::X);
+    if (!result.has_value() || !rhs_name.has_value()) {
+      return false;
+    }
+    lines.push_back(std::string{binary->opcode == bir::BinaryOpcode::Add
+                                    ? "add "
+                                    : "sub "} +
+                    *result + ", " + *result + ", " + *rhs_name);
     return true;
   }
   return emit_value_publication_to_register(producer->context,
@@ -4446,14 +4575,47 @@ InstructionDispatchResult dispatch_prepared_block(
            prepare::PreparedMovePhase::BlockEntry,
            0,
            diagnostics)) {
+    if (const auto* move =
+            std::get_if<CallBoundaryMoveInstructionRecord>(
+                &block_entry_move.target.payload);
+        move != nullptr &&
+        move->authority_kind ==
+            prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+        move->source_parallel_copy_predecessor_label ==
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} &&
+        move->source_parallel_copy_successor_label.has_value() &&
+        move->source_memory.has_value()) {
+      continue;
+    }
     record_call_boundary_destination(block_entry_move);
     block.instructions.push_back(std::move(block_entry_move));
   }
   if (context.bir_block != nullptr) {
+    std::size_t prepared_memory_instruction_index = 0;
     for (std::size_t instruction_index = 0;
          instruction_index < context.bir_block->insts.size();
          ++instruction_index) {
       const auto& inst = context.bir_block->insts[instruction_index];
+      const bool is_memory_inst =
+          std::get_if<bir::LoadLocalInst>(&inst) != nullptr ||
+          std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
+          std::get_if<bir::StoreLocalInst>(&inst) != nullptr ||
+          std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
+      const std::size_t memory_instruction_index =
+          is_memory_inst ? ++prepared_memory_instruction_index : instruction_index;
+      const bool can_retry_prepared_memory_index = std::visit(
+          [](const auto& op) {
+            using T = std::decay_t<decltype(op)>;
+            if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
+                          std::is_same_v<T, bir::LoadGlobalInst>) {
+              return op.result.type == bir::TypeKind::I8;
+            } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
+                                 std::is_same_v<T, bir::StoreGlobalInst>) {
+              return op.value.type == bir::TypeKind::I8;
+            }
+            return false;
+          },
+          inst);
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
         if (auto dynamic_stack = lower_dynamic_stack_helper_call(
                 context, *call, instruction_index, diagnostics)) {
@@ -4616,6 +4778,12 @@ InstructionDispatchResult dispatch_prepared_block(
         } else if (auto lowered_ordinary_memory =
                        lower_memory_instruction(context, inst, instruction_index, diagnostics);
                    lowered_ordinary_memory.handled) {
+          if (!lowered_ordinary_memory.instruction.has_value() &&
+              can_retry_prepared_memory_index &&
+              memory_instruction_index != instruction_index) {
+            lowered_ordinary_memory =
+                lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
+          }
           if (lowered_ordinary_memory.instruction.has_value()) {
             retarget_memory_result_to_prepared_home(
                 context, *lowered_ordinary_memory.instruction);
@@ -4663,6 +4831,12 @@ InstructionDispatchResult dispatch_prepared_block(
         } else if (auto lowered_ordinary_memory =
                        lower_memory_instruction(context, inst, instruction_index, diagnostics);
                    lowered_ordinary_memory.handled) {
+          if (!lowered_ordinary_memory.instruction.has_value() &&
+              can_retry_prepared_memory_index &&
+              memory_instruction_index != instruction_index) {
+            lowered_ordinary_memory =
+                lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
+          }
           if (lowered_ordinary_memory.instruction.has_value()) {
             retarget_pointer_store_value_to_emitted_scalar(
                 context, inst, scalar_state, *lowered_ordinary_memory.instruction);

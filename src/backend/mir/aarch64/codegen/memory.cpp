@@ -223,6 +223,7 @@ bool rewrite_local_address_store_value(
     const bir::StoreLocalInst& store,
     MemoryInstructionRecord& record) {
   if (record.memory_kind != MemoryInstructionKind::Store ||
+      record.address.base_kind == MemoryBaseKind::Register ||
       store.value.kind != bir::Value::Kind::Named || store.value.type != bir::TypeKind::Ptr ||
       !record.address.stored_value_name.has_value()) {
     return true;
@@ -570,66 +571,60 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedAddressingFunction& addressing,
-    c4c::BlockLabelId block_label,
-    std::size_t instruction_index) {
+    const prepare::PreparedMemoryAccess& access) {
   if (addressing.function_name == c4c::kInvalidFunctionName ||
-      value_locations.function_name != addressing.function_name) {
+      value_locations.function_name != addressing.function_name ||
+      access.function_name != addressing.function_name) {
     return memory_operand_record_error(PreparedMemoryOperandRecordError::InvalidFunction);
-  }
-  const auto* access =
-      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
-  if (access == nullptr || access->function_name != addressing.function_name) {
-    return memory_operand_record_error(
-        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
   }
 
   MemoryOperand memory{
       .surface = RecordSurfaceKind::RecordOnly,
       .support = MemoryOperandSupportKind::Prepared,
-      .function_name = access->function_name,
-      .block_label = access->block_label,
-      .instruction_index = access->inst_index,
-      .byte_offset = access->address.byte_offset,
-      .size_bytes = access->address.size_bytes,
-      .align_bytes = access->address.align_bytes,
-      .address_space = access->address_space,
-      .is_volatile = access->is_volatile,
-      .can_use_base_plus_offset = access->address.can_use_base_plus_offset,
+      .function_name = access.function_name,
+      .block_label = access.block_label,
+      .instruction_index = access.inst_index,
+      .byte_offset = access.address.byte_offset,
+      .size_bytes = access.address.size_bytes,
+      .align_bytes = access.address.align_bytes,
+      .address_space = access.address_space,
+      .is_volatile = access.is_volatile,
+      .can_use_base_plus_offset = access.address.can_use_base_plus_offset,
   };
 
-  switch (access->address.base_kind) {
+  switch (access.address.base_kind) {
     case prepare::PreparedAddressBaseKind::FrameSlot:
-      if (!access->address.frame_slot_id.has_value()) {
+      if (!access.address.frame_slot_id.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingFrameSlotId);
       }
       memory.base_kind = MemoryBaseKind::FrameSlot;
-      memory.frame_slot_id = access->address.frame_slot_id;
+      memory.frame_slot_id = access.address.frame_slot_id;
       break;
     case prepare::PreparedAddressBaseKind::GlobalSymbol:
-      if (!access->address.symbol_name.has_value()) {
+      if (!access.address.symbol_name.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingSymbolName);
       }
       memory.base_kind = MemoryBaseKind::Symbol;
-      memory.symbol_name = access->address.symbol_name;
-      memory.symbol_label = prepare::prepared_link_name(names, *access->address.symbol_name);
+      memory.symbol_name = access.address.symbol_name;
+      memory.symbol_label = prepare::prepared_link_name(names, *access.address.symbol_name);
       break;
     case prepare::PreparedAddressBaseKind::PointerValue:
-      if (!access->address.pointer_value_name.has_value()) {
+      if (!access.address.pointer_value_name.has_value()) {
         return memory_operand_record_error(
             PreparedMemoryOperandRecordError::MissingPointerValueName);
       }
       memory.base_kind = MemoryBaseKind::PointerValue;
-      memory.pointer_value_name = access->address.pointer_value_name;
+      memory.pointer_value_name = access.address.pointer_value_name;
       break;
     case prepare::PreparedAddressBaseKind::StringConstant:
-      if (!access->address.symbol_name.has_value()) {
+      if (!access.address.symbol_name.has_value()) {
         return memory_operand_record_error(PreparedMemoryOperandRecordError::MissingSymbolName);
       }
       memory.base_kind = MemoryBaseKind::StringConstant;
-      memory.string_symbol_name = access->address.symbol_name;
+      memory.string_symbol_name = access.address.symbol_name;
       if (const auto text_id =
               names.texts.find(prepare::prepared_link_name(
-                  names, *access->address.symbol_name));
+                  names, *access.address.symbol_name));
           text_id != c4c::kInvalidText) {
         memory.string_name = text_id;
       }
@@ -642,6 +637,21 @@ PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
       .record = memory,
       .error = PreparedMemoryOperandRecordError::None,
   };
+}
+
+PreparedMemoryOperandRecordResult make_memory_record_from_prepared_access(
+    const prepare::PreparedNameTables& names,
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedAddressingFunction& addressing,
+    c4c::BlockLabelId block_label,
+    std::size_t instruction_index) {
+  const auto* access =
+      prepare::find_prepared_memory_access(addressing, block_label, instruction_index);
+  if (access == nullptr) {
+    return memory_operand_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
+  return make_memory_record_from_prepared_access(names, value_locations, addressing, *access);
 }
 
 std::optional<abi::RegisterView> scalar_fp_register_view(bir::TypeKind type) {
@@ -799,6 +809,40 @@ std::optional<RegisterOperand> make_prepared_register_operand(
   };
 }
 
+std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
+    const prepare::PreparedValueHome& home,
+    const prepare::PreparedStoragePlanValue& storage,
+    bir::TypeKind type) {
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      storage.encoding != prepare::PreparedStorageEncodingKind::FrameSlot) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  auto scratch = abi::gp_register(scratches.front().index, *expected_view);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  return RegisterOperand{
+      .reg = *scratch,
+      .role = RegisterOperandRole::SpillAuthority,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = register_class_from_bank(storage.bank),
+      .prepared_bank = storage.bank,
+      .expected_view = expected_view,
+      .contiguous_width = storage.contiguous_width,
+      .occupied_register_references = occupied_register_references(*scratch),
+      .occupied_registers = occupied_register_views(*scratch),
+  };
+}
+
 MachineOpcode machine_opcode_from_memory_instruction(const MemoryInstructionRecord& instruction) {
   switch (instruction.memory_kind) {
     case MemoryInstructionKind::Load:
@@ -901,10 +945,10 @@ bool is_supported_memory_base(MemoryBaseKind base_kind) {
     case MemoryBaseKind::FrameSlot:
     case MemoryBaseKind::Symbol:
     case MemoryBaseKind::PointerValue:
+    case MemoryBaseKind::Register:
       return true;
     case MemoryBaseKind::StringConstant:
     case MemoryBaseKind::None:
-    case MemoryBaseKind::Register:
       return false;
   }
   return false;
@@ -1010,6 +1054,9 @@ std::string memory_address(const MemoryOperand& address) {
   if (address.base_kind == MemoryBaseKind::FrameSlot) {
     out << "[sp";
   } else if (address.base_kind == MemoryBaseKind::PointerValue &&
+             address.base_register.has_value()) {
+    out << "[" << abi::register_name(address.base_register->reg);
+  } else if (address.base_kind == MemoryBaseKind::Register &&
              address.base_register.has_value()) {
     out << "[" << abi::register_name(address.base_register->reg);
   } else {
@@ -1193,7 +1240,8 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
   }
   if (operand.record->base_kind != MemoryBaseKind::FrameSlot &&
       operand.record->base_kind != MemoryBaseKind::Symbol &&
-      operand.record->base_kind != MemoryBaseKind::PointerValue) {
+      operand.record->base_kind != MemoryBaseKind::PointerValue &&
+      operand.record->base_kind != MemoryBaseKind::Register) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
@@ -1239,7 +1287,8 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
       prepare::find_prepared_value_home(value_locations, *operand.record->result_value_id);
   if (result_home == nullptr ||
       result_home->value_name != *operand.record->result_value_name ||
-      result_home->kind != prepare::PreparedValueHomeKind::Register) {
+      (result_home->kind != prepare::PreparedValueHomeKind::Register &&
+       result_home->kind != prepare::PreparedValueHomeKind::StackSlot)) {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::MissingResultValueHome);
   }
@@ -1250,16 +1299,30 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
       result_storage->value_name != *operand.record->result_value_name) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::MissingResultStorage);
   }
-  if (result_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+  std::optional<RegisterOperand> result_register;
+  std::optional<std::int64_t> result_stack_offset_bytes;
+  if (result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register) {
+    result_register = make_prepared_register_operand(
+        *result_home, *result_storage, result_type, RegisterOperandRole::StoragePlan);
+    if (!result_register.has_value()) {
+      return memory_instruction_record_error(
+          PreparedMemoryOperandRecordError::RegisterConversionFailed);
+    }
+  } else if (result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+             result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+             result_storage->stack_offset_bytes.has_value()) {
+    result_register = make_load_result_stack_publication_scratch(
+        *result_home, *result_storage, result_type);
+    if (!result_register.has_value()) {
+      return memory_instruction_record_error(
+          PreparedMemoryOperandRecordError::RegisterConversionFailed);
+    }
+    result_stack_offset_bytes =
+        static_cast<std::int64_t>(*result_storage->stack_offset_bytes);
+  } else {
     return memory_instruction_record_error(
         PreparedMemoryOperandRecordError::UnsupportedResultStorage);
-  }
-
-  auto result_register = make_prepared_register_operand(
-      *result_home, *result_storage, result_type, RegisterOperandRole::StoragePlan);
-  if (!result_register.has_value()) {
-    return memory_instruction_record_error(
-        PreparedMemoryOperandRecordError::RegisterConversionFailed);
   }
 
   return PreparedMemoryInstructionRecordResult{
@@ -1271,6 +1334,7 @@ PreparedMemoryInstructionRecordResult make_load_memory_instruction_record(
               .result_value_name = *operand.record->result_value_name,
               .value_type = result_type,
               .result_register = *result_register,
+              .result_stack_offset_bytes = result_stack_offset_bytes,
           },
       .error = PreparedMemoryOperandRecordError::None,
   };
@@ -1325,7 +1389,8 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
   }
   if (operand.record->base_kind != MemoryBaseKind::FrameSlot &&
       operand.record->base_kind != MemoryBaseKind::Symbol &&
-      operand.record->base_kind != MemoryBaseKind::PointerValue) {
+      operand.record->base_kind != MemoryBaseKind::PointerValue &&
+      operand.record->base_kind != MemoryBaseKind::Register) {
     return memory_instruction_record_error(PreparedMemoryOperandRecordError::UnsupportedBase);
   }
   if (operand.record->base_kind == MemoryBaseKind::PointerValue) {
@@ -1543,6 +1608,220 @@ PreparedMemoryInstructionRecordResult make_prepared_store_memory_instruction_rec
       store.value);
 }
 
+std::optional<std::size_t> parse_va_list_field_suffix(std::string_view base,
+                                                      std::string_view slot_name) {
+  if (slot_name.size() <= base.size() + 1 ||
+      slot_name.substr(0, base.size()) != base ||
+      slot_name[base.size()] != '.') {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = base.size() + 1; index < slot_name.size(); ++index) {
+    const char ch = slot_name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10U + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+std::size_t scalar_type_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I16:
+      return 2;
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
+      return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I1:
+      return 0;
+  }
+  return 0;
+}
+
+struct VaListFieldAddress {
+  RegisterOperand base_register;
+  std::size_t field_offset_bytes = 0;
+  std::size_t field_size_bytes = 0;
+  std::size_t field_align_bytes = 0;
+};
+
+std::optional<VaListFieldAddress> find_va_list_field_address(
+    const module::BlockLoweringContext& context,
+    std::string_view slot_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.function.storage_plan == nullptr) {
+    return std::nullopt;
+  }
+  const auto* entry_plan =
+      prepare::find_prepared_variadic_entry_plan(
+          *context.function.prepared,
+          context.function.control_flow->function_name);
+  if (entry_plan == nullptr) {
+    return std::nullopt;
+  }
+  for (const auto& homes : entry_plan->helper_operand_homes) {
+    if (homes.helper != prepare::PreparedVariadicEntryHelperKind::VaStart ||
+        !homes.destination_va_list.has_value()) {
+      continue;
+    }
+    const auto& va_list_home = *homes.destination_va_list;
+    const auto base_name =
+        prepare::prepared_value_name(context.function.prepared->names,
+                                     va_list_home.value_name);
+    const auto field_offset =
+        parse_va_list_field_suffix(base_name, slot_name);
+    if (!field_offset.has_value()) {
+      continue;
+    }
+    const auto* field = [&]() -> const prepare::PreparedVariadicVaListField* {
+      for (const auto& candidate : entry_plan->va_list_layout.fields) {
+        if (candidate.offset_bytes == *field_offset) {
+          return &candidate;
+        }
+      }
+      return nullptr;
+    }();
+    if (field == nullptr) {
+      continue;
+    }
+    const auto* storage =
+        find_storage_plan_value(*context.function.storage_plan,
+                                va_list_home.value_id);
+    if (storage == nullptr || storage->value_name != va_list_home.value_name) {
+      continue;
+    }
+    if (va_list_home.kind != prepare::PreparedValueHomeKind::Register ||
+        !va_list_home.register_name.has_value()) {
+      continue;
+    }
+    const auto converted = abi::convert_prepared_register(
+        *va_list_home.register_name,
+        storage->bank,
+        register_class_from_bank(storage->bank),
+        abi::RegisterView::X);
+    if (!converted.has_value()) {
+      continue;
+    }
+    return VaListFieldAddress{
+        .base_register =
+            RegisterOperand{
+                .reg = *converted.reg,
+                .role = RegisterOperandRole::StoragePlan,
+                .value_id = va_list_home.value_id,
+                .value_name = va_list_home.value_name,
+                .prepared_class = register_class_from_bank(storage->bank),
+                .prepared_bank = storage->bank,
+                .expected_view = abi::RegisterView::X,
+                .contiguous_width = storage->contiguous_width,
+                .occupied_register_references =
+                    occupied_register_references(*converted.reg),
+                .occupied_registers = occupied_register_views(*converted.reg),
+            },
+        .field_offset_bytes = field->offset_bytes,
+        .field_size_bytes = field->size_bytes,
+        .field_align_bytes = field->size_bytes,
+    };
+  }
+  return std::nullopt;
+}
+
+MemoryOperand make_va_list_field_memory_operand(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const VaListFieldAddress& field,
+    std::size_t size_bytes,
+    std::size_t align_bytes) {
+  return MemoryOperand{
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .base_kind = MemoryBaseKind::Register,
+      .base_register = field.base_register,
+      .byte_offset = static_cast<std::int64_t>(field.field_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+PreparedMemoryInstructionRecordResult make_va_list_field_load_memory_instruction_record(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::LoadLocalInst& load) {
+  const auto field = find_va_list_field_address(context, load.slot_name);
+  if (!field.has_value() ||
+      load.byte_offset != 0 ||
+      field->field_size_bytes != scalar_type_size_bytes(load.result.type)) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
+  auto address = make_va_list_field_memory_operand(
+      context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
+  const auto result_name = named_value_id(context.function.prepared->names, load.result);
+  if (!result_name.has_value()) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingResultValueHome);
+  }
+  address.result_value_name = *result_name;
+  address.result_value_id =
+      find_value_home_id(*context.function.value_locations, *result_name);
+  return make_load_memory_instruction_record(
+      PreparedMemoryOperandRecordResult{
+          .record = address,
+          .error = PreparedMemoryOperandRecordError::None,
+      },
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      load.result.type);
+}
+
+PreparedMemoryInstructionRecordResult make_va_list_field_store_memory_instruction_record(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const bir::StoreLocalInst& store) {
+  const auto field = find_va_list_field_address(context, store.slot_name);
+  if (!field.has_value() ||
+      store.byte_offset != 0 ||
+      field->field_size_bytes != scalar_type_size_bytes(store.value.type)) {
+    return memory_instruction_record_error(
+        PreparedMemoryOperandRecordError::MissingPreparedMemoryAccess);
+  }
+  auto address = make_va_list_field_memory_operand(
+      context, instruction_index, *field, field->field_size_bytes, field->field_align_bytes);
+  const auto stored_name = named_value_id(context.function.prepared->names, store.value);
+  if (stored_name.has_value()) {
+    address.stored_value_name = *stored_name;
+    address.stored_value_id =
+        find_value_home_id(*context.function.value_locations, *stored_name);
+  }
+  return make_store_memory_instruction_record(
+      PreparedMemoryOperandRecordResult{
+          .record = address,
+          .error = PreparedMemoryOperandRecordError::None,
+      },
+      *context.function.value_locations,
+      *context.function.storage_plan,
+      store.value);
+}
+
 PreparedMemoryOperandRecordResult make_prepared_memory_operand_record(
     const prepare::PreparedNameTables& names,
     const prepare::PreparedValueLocationFunction& value_locations,
@@ -1710,14 +1989,18 @@ MemoryInstructionLoweringResult lower_memory_instruction(
 
   PreparedMemoryInstructionRecordResult prepared;
   if (load != nullptr) {
-    prepared = make_prepared_load_memory_instruction_record(
-        context.function.prepared->names,
-        *context.function.value_locations,
-        *context.function.storage_plan,
-        *addressing,
-        context.control_flow_block->block_label,
-        instruction_index,
-        *load);
+    prepared =
+        make_va_list_field_load_memory_instruction_record(context, instruction_index, *load);
+    if (!prepared.record.has_value()) {
+      prepared = make_prepared_load_memory_instruction_record(
+          context.function.prepared->names,
+          *context.function.value_locations,
+          *context.function.storage_plan,
+          *addressing,
+          context.control_flow_block->block_label,
+          instruction_index,
+          *load);
+    }
   } else if (global_load != nullptr) {
     prepared = make_prepared_load_memory_instruction_record(
         context.function.prepared->names,
@@ -1728,14 +2011,19 @@ MemoryInstructionLoweringResult lower_memory_instruction(
         instruction_index,
         *global_load);
   } else if (local_store != nullptr) {
-    prepared = make_prepared_store_memory_instruction_record(
-        context.function.prepared->names,
-        *context.function.value_locations,
-        *context.function.storage_plan,
-        *addressing,
-        context.control_flow_block->block_label,
-        instruction_index,
-        *local_store);
+    prepared =
+        make_va_list_field_store_memory_instruction_record(
+            context, instruction_index, *local_store);
+    if (!prepared.record.has_value()) {
+      prepared = make_prepared_store_memory_instruction_record(
+          context.function.prepared->names,
+          *context.function.value_locations,
+          *context.function.storage_plan,
+          *addressing,
+          context.control_flow_block->block_label,
+          instruction_index,
+          *local_store);
+    }
   } else {
     prepared = make_prepared_store_memory_instruction_record(
         context.function.prepared->names,

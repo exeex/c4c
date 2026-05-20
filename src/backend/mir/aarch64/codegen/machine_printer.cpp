@@ -209,6 +209,19 @@ std::optional<abi::RegisterReference> symbol_stack_source_store_scratch_register
   return std::nullopt;
 }
 
+std::string_view stack_publication_store_mnemonic(std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "strb";
+    case 2:
+      return "strh";
+    case 4:
+    case 8:
+      return "str";
+  }
+  return {};
+}
+
 std::string_view stack_source_load_mnemonic(std::size_t width_bytes) {
   switch (width_bytes) {
     case 1:
@@ -220,6 +233,70 @@ std::string_view stack_source_load_mnemonic(std::size_t width_bytes) {
       return "ldr";
   }
   return {};
+}
+
+std::optional<abi::RegisterReference> stack_publication_address_scratch(
+    abi::RegisterReference result) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (scratch.index != result.index) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+bool direct_stack_offset_is_encodable(std::int64_t offset, std::size_t width_bytes) {
+  if (offset < 0 || width_bytes == 0) {
+    return false;
+  }
+  const auto unsigned_offset = static_cast<std::uint64_t>(offset);
+  return unsigned_offset % width_bytes == 0 &&
+         unsigned_offset / width_bytes <= 4095U;
+}
+
+std::optional<std::vector<std::string>> load_result_stack_publication_lines(
+    const MemoryInstructionRecord& memory) {
+  if (!memory.result_stack_offset_bytes.has_value()) {
+    return std::vector<std::string>{};
+  }
+  if (!memory.result_register.has_value() || *memory.result_stack_offset_bytes < 0) {
+    return std::nullopt;
+  }
+  const auto mnemonic = stack_publication_store_mnemonic(memory.address.size_bytes);
+  if (mnemonic.empty()) {
+    return std::nullopt;
+  }
+  const auto result_name = register_name(*memory.result_register);
+  std::vector<std::string> lines;
+  if (direct_stack_offset_is_encodable(*memory.result_stack_offset_bytes,
+                                       memory.address.size_bytes)) {
+    std::ostringstream store;
+    store << mnemonic << " " << result_name << ", [sp";
+    if (*memory.result_stack_offset_bytes != 0) {
+      store << ", #" << *memory.result_stack_offset_bytes;
+    }
+    store << "]";
+    lines.push_back(store.str());
+    return lines;
+  }
+  const auto scratch = stack_publication_address_scratch(memory.result_register->reg);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  const auto offset = static_cast<std::uint64_t>(*memory.result_stack_offset_bytes);
+  const std::string scratch_name = abi::register_name(*scratch);
+  if (offset <= 4095U) {
+    lines.push_back("add " + scratch_name + ", sp, #" + std::to_string(offset));
+  } else {
+    lines = materialize_integer_constant_lines(*scratch, offset, 64);
+    if (lines.empty()) {
+      return std::nullopt;
+    }
+    lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  }
+  lines.push_back(std::string{mnemonic} + " " + std::string{result_name} +
+                  ", [" + scratch_name + "]");
+  return lines;
 }
 
 std::optional<abi::RegisterReference> local_address_store_scratch_register() {
@@ -1043,6 +1120,12 @@ mir::TargetInstructionPrintResult print_symbol_memory(const InstructionRecord& i
     std::ostringstream load;
     load << mnemonic << " " << register_name(*memory.result_register) << ", " << address;
     lines.push_back(load.str());
+    auto publication = load_result_stack_publication_lines(memory);
+    if (!publication.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "load result stack publication is not printable");
+    }
+    lines.insert(lines.end(), publication->begin(), publication->end());
     return target_printed(std::move(lines));
   }
   if (!memory.value.has_value()) {
@@ -1139,6 +1222,12 @@ mir::TargetInstructionPrintResult print_memory(const InstructionRecord& instruct
         << address->address;
     auto lines = address->lines;
     lines.push_back(out.str());
+    auto publication = load_result_stack_publication_lines(memory);
+    if (!publication.has_value()) {
+      return target_unsupported(bad_header(instruction) +
+                                "load result stack publication is not printable");
+    }
+    lines.insert(lines.end(), publication->begin(), publication->end());
     return target_printed(std::move(lines));
   }
   if (!memory.value.has_value()) {

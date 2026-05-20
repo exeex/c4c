@@ -1,68 +1,52 @@
 Status: Active
 Source Idea Path: ideas/open/330_aarch64_non_hfa_aggregate_va_arg_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 2.1
-Current Step Title: Localize Missing Ordinary Dispatch Of Prepared Va Arg Memory Operations
+Current Step ID: 2.3
+Current Step Title: Repair Remaining Non-HFA Aggregate Va Arg Copy Semantics If Needed
 
 # Current Packet
 
 ## Just Finished
 
-Step 2.1 localized the ordinary AArch64 dispatch break without implementation
-edits. The prepared BIR for `myprintf` contains the per-byte `LoadLocalInst` /
-`StoreLocalInst` copy sequence in the retained ordinary blocks before the
-observing calls:
+Step 2.3 repaired the expanded non-HFA aggregate `va_arg` source-pointer
+producer materialization/order observed after the Step 2.2 byte-copy
+publication repair. AArch64 dispatch now replays predecessor-terminator
+out-of-SSA select-materialization moves for stack-home sources, reloads
+prepared `va_list` field values from the live published base register during
+edge publication, lowers edge `add`/`sub` producers recursively, and suppresses
+stale block-entry stack-source moves that belong to predecessor-edge parallel
+copies.
 
-- `vaarg.join.14` has prepared accesses at inst 1-28 and the observing
-  `printf(@.str31, %lv.t7.0)` call/address materialization at inst 29.
-- `vaarg.join.39` has prepared accesses at inst 1-36 and the observing
-  `printf(@.str33, %lv.t9.0)` call/address materialization at inst 37.
+Generated `build/c_testsuite_aarch64_backend/src/00204.c.s` no longer lowers
+the `%t20`/`%t23`/`%t48` style non-HFA source-pointer copies from stale stack
+homes before their producers. The `vaarg.join.14` register path now
+materializes the source pointer before the byte loads that feed `printf("%.7s")`,
+and the `vaarg.join.39` overflow path computes the `%t23` source before the
+byte loads that feed `printf("%.9s")`. The representative program now prints
+through the string aggregate cases that previously exposed the unmaterialized
+source-pointer crash.
 
-Those records are attached to the join blocks, matched by exact
-`block_label`/`inst_index`, and are scheduled before the calls. They also have
-source addresses: the first copy stage loads from pointer-value bases `%t24`
-and `%t49`, while call setup materializes `%lv.t7.0` at stack offset 8 and
-`%lv.t9.0` at stack offset 15.
-
-The concrete break is in the ordinary memory-lowering path reached from
-`dispatch_prepared_block`. `dispatch_prepared_block` visits ordinary BIR
-instructions in block order and calls `lower_memory_instruction` for the byte
-loads/stores. For the initial pointer-value byte loads
-`%t25.*.memcpy.copy.* = bir.load_local i8 ..., addr %t24` and
-`%t50.*.memcpy.copy.* = bir.load_local i8 ..., addr %t49`, prepared addressing
-is present and the pointer source homes are register-backed, but the load
-results are stack-slot/frame-slot backed. `make_load_memory_instruction_record`
-currently accepts only register result homes and register result storage, so
-these prepared loads fail as handled-with-no-instruction before selection.
-Dispatch then continues to the later address materialization and call emission,
-leaving no copy instructions before `.str31`/`.str33`.
-
-Classification: not unattached, not attached to skipped/replaced blocks, not
-missing address operands, and not scheduled after the observing call. The first
-bad fact is filtering by load-result home/storage kind for stack-slot-result
-pointer loads inside ordinary memory lowering. The later frame-slot aggregate
-copy records are present too, but they depend on the first-stage pointer loads
-materializing the `%t25.*` / `%t50.*` temp bytes.
+The selected representative still fails later. The new first bad fact is
+downstream of the repaired non-HFA string aggregate source-pointer order: after
+printing all string cases and several floating aggregate cases, output becomes
+malformed in the later variadic aggregate/HFA or long-double region and the
+program segfaults. This is no longer the `%t20`/`%t23`/`%t48` non-HFA
+source-pointer-before-copy failure owned by this packet.
 
 ## Suggested Next
 
-Execute Step 2.2 as a narrow ordinary-dispatch repair: teach the prepared
-memory load path how to materialize pointer-value loads whose BIR result home is
-a stack slot, for example by loading through a scratch/register result and
-publishing/storing that byte to the prepared stack-slot result in the original
-BIR order.
-
-After that repair, re-check `vaarg.join.14` and `vaarg.join.39` before the
-observing calls. If the later `%lv.t7.aggregate.copy.*` /
-`%lv.t9.aggregate.copy.*` frame-slot copy records still do not emit, localize
-that as a separate ordinary memory-lowering suppression rather than widening
-call-boundary replay.
+Localize the downstream `00204.c` failure in the later variadic aggregate/HFA
+or long-double handling after the string cases. Start from the first malformed
+floating/long-double output near the later `printf` format strings in
+`myprintf`, then compare the prepared `va_arg` producer publication and emitted
+loads/stores for those aggregate cases.
 
 ## Watchouts
 
 Avoid replaying all prepared memory accesses at the call boundary. The missing
-records are already in the ordinary block before the call; the break is the
-ordinary memory record/result handling for stack-slot-result loads.
+records are already in the ordinary block before the call, and this packet now
+emits the pointer byte loads plus frame-slot copies before the observing
+`printf` calls.
 
 Preserve the source idea guardrails: do not special-case `00204.c`,
 `myprintf`, `%7s`, `%9s`, `x13`, `sp + 8`, `sp + 15`, one aggregate size, one
@@ -70,15 +54,29 @@ branch, or one emitted copy sequence. Do not weaken expectations,
 unsupported classifications, runner behavior, timeout policy, CTest
 registration, or proof-log behavior.
 
-The first-stage pointer loads are the first concrete break. The later
-frame-slot aggregate copy loads/stores still need verification after the temp
-bytes are actually materialized; do not assume they are fixed solely because
-the initial pointer load path starts emitting.
+Do not record stack-publication scratch registers as stable scalar homes; those
+registers are only temporary carriers for immediate stack publication and may be
+reused by later ordinary memory operations.
+
+Do not treat the current `x21` `va_list` field repair as sufficient by itself:
+the representative is still red, but the remaining crash is now after the
+non-HFA source-pointer producer order has been repaired.
+
+The delegated proof command pipes CTest through `tee`; inspect `test_after.log`
+instead of relying only on the shell status because the pipeline can mask a
+failing CTest result.
 
 ## Proof
 
 Ran delegated proof:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_prepared_memory_operand_records|backend_aarch64_memory_operand_contract|backend_aarch64_instruction_dispatch|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|c_testsuite_aarch64_backend_src_00204_c)$' | tee test_after.log`.
-Build succeeded. Result: 4/5 selected tests passed; the representative
-`c_testsuite_aarch64_backend_src_00204_c` still fails with the existing runtime
-mismatch. Proof log path: `test_after.log`.
+Build succeeded. Result: 4/5 selected tests passed:
+`backend_aarch64_prepared_memory_operand_records`,
+`backend_aarch64_memory_operand_contract`,
+`backend_aarch64_instruction_dispatch`, and
+`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`
+passed. `c_testsuite_aarch64_backend_src_00204_c` still fails with
+`RUNTIME_NONZERO` / segmentation fault. The post-repair crash moved past the
+non-HFA string aggregate `va_arg` source-pointer copies and is now localized to
+later variadic aggregate/HFA or long-double handling; proof log path:
+`test_after.log`.
