@@ -139,6 +139,38 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
   return true;
 }
 
+[[nodiscard]] PointerAddress runtime_pointer_address_from_local_slot_address(
+    const bir::Value& base_value,
+    const LocalSlotAddress& address) {
+  PointerAddress pointer_address{
+      .base_value = base_value,
+      .value_type = address.value_type,
+      .byte_offset = 0,
+      .storage_type_text = address.storage_type_text,
+      .type_text = address.type_text,
+  };
+  if (!address.array_element_slots.empty()) {
+    pointer_address.dynamic_element_count =
+        address.array_base_index < address.array_element_slots.size()
+            ? address.array_element_slots.size() - address.array_base_index
+            : 0;
+    pointer_address.dynamic_element_stride_bytes = type_size_bytes(address.value_type);
+  }
+  return pointer_address;
+}
+
+void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
+                                                const bir::Value& stored_value,
+                                                const LocalSlotAddressSlots& local_slot_address_slots,
+                                                PointerAddressMap* local_pointer_slot_addresses) {
+  const auto address_it = local_slot_address_slots.find(std::string(slot_name));
+  if (address_it == local_slot_address_slots.end()) {
+    return;
+  }
+  (*local_pointer_slot_addresses)[std::string(slot_name)] =
+      runtime_pointer_address_from_local_slot_address(stored_value, address_it->second);
+}
+
 static std::optional<ScalarLayoutLeafFacts> resolve_scalar_layout_leaf_facts_at_byte_offset(
     std::string_view type_text,
     std::size_t target_offset,
@@ -1539,6 +1571,12 @@ BirFunctionLowerer::LocalSlotStoreResult BirFunctionLowerer::try_lower_local_slo
         return LocalSlotStoreResult::Lowered;
       }
     }
+    if (context_.target_profile.arch == c4c::TargetArch::Aarch64 && stored_local_slot_address) {
+      publish_runtime_local_pointer_slot_address(ptr_it->second,
+                                                 value,
+                                                 *local_slot_address_slots,
+                                                 local_pointer_slot_addresses);
+    }
     if (!stored_local_slot_address && !stored_pointer_value_address) {
       local_pointer_slot_addresses->erase(ptr_it->second);
       local_slot_address_slots->erase(ptr_it->second);
@@ -1695,6 +1733,26 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
       // A tracked aggregate field can still be a mutable runtime cursor, such
       // as AArch64 va_list.overflow_arg_area. Reload the slot so repeated
       // va_arg stack paths observe the current cursor value.
+    }
+  }
+
+  if (context_.target_profile.arch == c4c::TargetArch::Aarch64) {
+    if (const auto pointer_slot_it = local_pointer_slot_addresses.find(slot);
+        pointer_slot_it != local_pointer_slot_addresses.end()) {
+      (*pointer_value_addresses)[result] = PointerAddress{
+          .base_value = bir::Value::named(bir::TypeKind::Ptr, result),
+          .value_type = pointer_slot_it->second.value_type,
+          .byte_offset = 0,
+          .dynamic_element_count = pointer_slot_it->second.dynamic_element_count,
+          .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
+          .storage_type_text = pointer_slot_it->second.storage_type_text,
+          .type_text = pointer_slot_it->second.type_text,
+      };
+      lowered_insts->push_back(bir::LoadLocalInst{
+          .result = bir::Value::named(bir::TypeKind::Ptr, result),
+          .slot_name = slot,
+      });
+      return true;
     }
   }
 
