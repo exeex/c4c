@@ -113,17 +113,30 @@ template <std::size_t N>
     const c4c::TargetProfile& target_profile,
     const bir::CallArgAbiInfo& abi,
     std::optional<std::size_t> abi_register_index) {
-  return target_profile.arch == c4c::TargetArch::Aarch64 &&
-         abi.type == bir::TypeKind::Ptr &&
-         abi.byval_copy &&
-         !abi.sret_pointer &&
-         abi.passed_in_register &&
-         !abi.passed_on_stack &&
-         abi.primary_class == bir::AbiValueClass::Integer &&
-         abi.size_bytes > 0 &&
-         abi.size_bytes <= 16 &&
-         abi_register_index.has_value() &&
-         call_arg_destination_register_name(target_profile, abi, *abi_register_index).has_value();
+  if (target_profile.arch != c4c::TargetArch::Aarch64 ||
+      abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_in_register ||
+      abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes == 0 ||
+      abi.size_bytes > 16 ||
+      !abi_register_index.has_value()) {
+    return false;
+  }
+  const auto register_name =
+      call_arg_destination_register_name(target_profile, abi, *abi_register_index);
+  if (!register_name.has_value()) {
+    return false;
+  }
+  const std::size_t register_width = std::max<std::size_t>((abi.size_bytes + 7) / 8, 1);
+  return !call_arg_destination_register_names(target_profile,
+                                             PreparedRegisterClass::General,
+                                             *abi_register_index,
+                                             *register_name,
+                                             register_width)
+              .empty();
 }
 
 [[nodiscard]] bool aarch64_indirect_byval_aggregate_pointer(
@@ -182,6 +195,19 @@ std::vector<std::string> call_arg_destination_register_names(
     case c4c::TargetArch::I686:
       return {};
     case c4c::TargetArch::Aarch64:
+      if (reg_class == PreparedRegisterClass::General) {
+        constexpr std::array<std::string_view, 8> kAarch64GeneralArgRegisters = {
+            "x0", "x1", "x2", "x3", "x4", "x5", "x6", "x7"};
+        if (const auto names =
+                abi_register_names_from_sequence(kAarch64GeneralArgRegisters,
+                                                 arg_index,
+                                                 contiguous_width);
+            !names.empty()) {
+          return names;
+        }
+        return {};
+      }
+      break;
     case c4c::TargetArch::Riscv64:
     case c4c::TargetArch::Unknown:
       break;
@@ -280,7 +306,16 @@ std::optional<std::size_t> call_arg_abi_register_index(
       continue;
     }
     if (aarch64_same_call_arg_register_bank(*candidate_abi, *abi)) {
-      ++register_index;
+      if (candidate_abi->type == bir::TypeKind::Ptr &&
+          candidate_abi->byval_copy &&
+          !candidate_abi->sret_pointer &&
+          candidate_abi->primary_class == bir::AbiValueClass::Integer &&
+          candidate_abi->size_bytes > 0 &&
+          candidate_abi->size_bytes <= 16) {
+        register_index += std::max<std::size_t>((candidate_abi->size_bytes + 7) / 8, 1);
+      } else {
+        ++register_index;
+      }
     }
   }
   return register_index;

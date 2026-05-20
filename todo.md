@@ -8,33 +8,43 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the long-double HFA/sret return residual. AArch64 F128 memory
-transport now resolves prepared pointer-value bases through the same prepared
-home/storage authority used by ordinary memory stores, so binary128 carrier
-stores through a caller-provided sret pointer print through the real pointer
-register instead of failing selection with an unprintable symbolic pointer.
+Step 2 closed the reviewer coverage gap for the current dirty stdarg/byval
+slice flagged in `review/326_stdarg_byval_route_review.md`. No new behavioral
+scope was added in this packet.
 
 Focused backend coverage was added in
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` as
-`block_dispatch_lowers_f128_pointer_store_from_prepared_carrier`. The test
-models a full-width F128 carrier store to a prepared pointer home in `x8`,
-proving the transport preserves pointer base authority and prints
-`str q5, [x8]`.
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` for the two
+broad dispatch repairs that were previously covered only by generated-code
+evidence:
 
-Generated-code evidence in `build/c_testsuite_aarch64_backend/src/00204.c.s`:
-`fr_hfa31` now copies the reloaded long-double lane into the caller-provided
-sret destination with `str q13, [x8]`. The same generic pointer-store path
-emits `[x8, #16]`, `[x8, #32]`, and `[x8, #48]` stores for the wider
-`fr_hfa32`/`fr_hfa33`/`fr_hfa34` sret shapes. With unbuffered runtime output,
-the return-value section now advances through `31.1`, `32.1 32.2`,
-`33.1 33.3`, and `34.1 34.4`.
+- `predecessor_add_publication_preserves_rhs_register_before_target_clobber`
+  exercises predecessor-edge Add publication where the RHS already lives in
+  the destination GPR and the LHS must be loaded into that same destination.
+  The fixture requires the RHS to be copied to scratch before the LHS load,
+  then consumed by the final Add.
+- `wide_local_load_publication_uses_latest_narrow_byte_store` exercises a wide
+  local-load store whose latest same-lane source is a prior narrow byte copy
+  from a prepared global symbol. The fixture requires the store publication to
+  rematerialize the byte source instead of treating the later prepared wide
+  frame-slot load as authoritative.
+
+The existing dirty implementation repairs remain the same: Add/Sub publication
+ordering preserves register-home source authority before target clobber, and
+widened local-load publication can source the latest same-lane byte store. The
+new focused tests are neutral dispatch fixtures and avoid `00204.c`-specific
+names.
 
 ## Suggested Next
 
-Continue Step 2 in the next `00204.c` residual. The new first bad fact is after
-the return-value section: runtime output reaches `stdarg:` and then segfaults
-before printing the expected first stdarg aggregate line
-`ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI`.
+Continue Step 2 only if the supervisor keeps this inside the variadic/stdarg
+owner family; otherwise split the remaining variadic cursor/format residual.
+The new first bad fact has moved past the first `%9s` high-lane source. With
+unbuffered runtime output, the program prints `stdarg:` and the first byval
+payload bytes now begin as `ABCDEFGHI`, but the separator bytes between the
+first `%9s` values are corrupted (`0xd0`, `0xd4`, `0xd8`, ...) and execution
+segfaults before completing the first stdarg line. The next residual is no
+longer the byval payload high lane; it is in the variadic/stdarg cursor or
+format traversal after the repaired aggregate bytes are consumed.
 
 ## Watchouts
 
@@ -62,9 +72,9 @@ the next failure is after the return-value block has completed.
 Untracked `review/*.md` files were present before this executor packet and were
 left untouched.
 
-Files changed in this packet: `src/backend/mir/aarch64/codegen/memory.cpp`,
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, and
-`todo.md`.
+Files touched by this packet: `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
+and `todo.md`. The implementation files remain dirty from the prior
+stdarg/byval repair slice.
 
 ## Proof
 
@@ -74,21 +84,17 @@ Ran the delegated proof command:
 `git diff --check`, then
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|c_testsuite_aarch64_backend_src_00204_c)$'`.
 
-Current result: `git diff --check` passed; build succeeded;
-`backend_aarch64_target_instruction_records`,
+Current result: build succeeded; `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, `backend_aarch64_instruction_dispatch`, and
 `backend_aarch64_return_lowering` passed.
 `c_testsuite_aarch64_backend_src_00204_c` still failed with `RUNTIME_NONZERO`
 / segmentation fault. `test_after.log` is the fresh proof log for the delegated
 build and CTest command.
 
-The overall `00204.c` output still shows earlier HFA argument wrong-output
-lines before `Return values:`. Within the return-value portion, float/double
-HFA returns still advance through `fr_hfa14` and `fr_hfa24`, and long-double
-HFA/sret returns now advance through `fr_hfa31`..`fr_hfa34`. The new first bad
-fact moves to the stdarg block: with unbuffered runtime output the program
-prints `stdarg:` and then segfaults before the first expected stdarg aggregate
-line. This slice is real progress because F128 HFA sret returns now copy their
-payload into the caller-provided `x8` destination while the previous `x8` sret,
-large-byval, callee lane-home, caller-side ABI lane store, spilled lane reload,
-and scalar GPR return-lowering repairs remain preserved.
+The new first bad fact remains unchanged from the prior dirty stdarg/byval
+slice: the failure is past the entry crash, the missing `x2` publication, and
+the corrupt first `%9s` high-lane source. With unbuffered runtime output, the
+program prints `stdarg:` and the first byval payload bytes begin as
+`ABCDEFGHI`, but the separator bytes between the first `%9s` values are
+corrupted (`0xd0`, `0xd4`, `0xd8`, ...) and execution segfaults before
+completing the first stdarg line.

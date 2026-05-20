@@ -830,6 +830,10 @@ struct SameBlockSelectProducer {
     const module::BlockLoweringContext& context,
     const bir::Inst* producer);
 
+[[nodiscard]] const prepare::PreparedMemoryAccess* prepared_memory_access(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index);
+
 [[nodiscard]] bool select_chain_contains_direct_global_load(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -875,6 +879,17 @@ struct SameBlockSelectProducer {
   for (const auto& slot : stack_layout.frame_slots) {
     if (slot.slot_id == slot_id) {
       return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const prepare::PreparedStackObject* find_stack_object(
+    const prepare::PreparedStackLayout& stack_layout,
+    prepare::PreparedObjectId object_id) {
+  for (const auto& object : stack_layout.objects) {
+    if (object.object_id == object_id) {
+      return &object;
     }
   }
   return nullptr;
@@ -1444,6 +1459,8 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic(bir::TypeKind type);
+
 [[nodiscard]] std::optional<std::string> gp_register_name(std::uint8_t index,
                                                           abi::RegisterView view) {
   auto reg = abi::gp_register(index, view);
@@ -1512,6 +1529,45 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
     return std::nullopt;
   }
   return slot->offset_bytes + static_cast<std::size_t>(access->address.byte_offset);
+}
+
+[[nodiscard]] bool emit_prepared_global_symbol_load_to_register(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    bir::TypeKind type,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::vector<std::string>& lines) {
+  if (context.function.prepared == nullptr) {
+    return false;
+  }
+  const auto* access = prepared_memory_access(context, instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::GlobalSymbol ||
+      !access->address.symbol_name.has_value() ||
+      !access->address.can_use_base_plus_offset) {
+    return false;
+  }
+  const auto symbol_name =
+      prepare::prepared_link_name(context.function.prepared->names,
+                                  *access->address.symbol_name);
+  const auto mnemonic = scalar_load_mnemonic(type);
+  const auto target_view = scalar_view_for_type(type);
+  const auto target = target_view.has_value()
+                          ? gp_register_name(target_index, *target_view)
+                          : std::nullopt;
+  const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
+  if (symbol_name.empty() || !mnemonic.has_value() || !target.has_value() ||
+      !address.has_value()) {
+    return false;
+  }
+  const auto symbol =
+      relocation_operand(symbol_name,
+                         static_cast<std::size_t>(access->address.byte_offset));
+  lines.push_back("adrp " + *address + ", " + symbol);
+  lines.push_back("add " + *address + ", " + *address + ", :lo12:" + symbol);
+  lines.push_back(std::string{*mnemonic} + " " + *target + ", [" + *address + "]");
+  return true;
 }
 
 [[nodiscard]] std::optional<std::size_t> parse_va_list_field_suffix(
@@ -1730,6 +1786,150 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   return std::nullopt;
 }
 
+[[nodiscard]] std::string_view local_slot_reference_name(
+    const module::BlockLoweringContext& context,
+    std::string_view raw_name,
+    SlotNameId slot_id) {
+  if (!raw_name.empty()) {
+    return raw_name;
+  }
+  if (context.function.prepared != nullptr && slot_id != c4c::kInvalidSlotName) {
+    return context.function.prepared->module.names.slot_names.spelling(slot_id);
+  }
+  return {};
+}
+
+[[nodiscard]] bool local_slot_reference_matches(const module::BlockLoweringContext& context,
+                                                const bir::LoadLocalInst& load,
+                                                const bir::StoreLocalInst& store) {
+  if (load.slot_id != c4c::kInvalidSlotName &&
+      store.slot_id != c4c::kInvalidSlotName) {
+    if (load.slot_id == store.slot_id) {
+      return true;
+    }
+  }
+  const auto load_name =
+      local_slot_reference_name(context, load.slot_name, load.slot_id);
+  const auto store_name =
+      local_slot_reference_name(context, store.slot_name, store.slot_id);
+  return !load_name.empty() && load_name == store_name;
+}
+
+[[nodiscard]] std::string_view prepared_frame_slot_object_name(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedFrameSlotId slot_id) {
+  if (context.function.prepared == nullptr) {
+    return {};
+  }
+  const auto* slot = find_frame_slot(context.function.prepared->stack_layout, slot_id);
+  const auto* object =
+      slot != nullptr
+          ? find_stack_object(context.function.prepared->stack_layout, slot->object_id)
+          : nullptr;
+  return object != nullptr
+             ? prepare::prepared_stack_object_name(context.function.prepared->names,
+                                                   *object)
+             : std::string_view{};
+}
+
+[[nodiscard]] std::string_view prepared_load_local_frame_object_name(
+    const module::BlockLoweringContext& context,
+    std::size_t load_instruction_index) {
+  const auto* access = prepared_memory_access(context, load_instruction_index);
+  if (access == nullptr ||
+      access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+      !access->address.frame_slot_id.has_value()) {
+    return {};
+  }
+  return prepared_frame_slot_object_name(context, *access->address.frame_slot_id);
+}
+
+[[nodiscard]] bool value_name_has_slot_prefix(std::string_view value_name,
+                                              std::string_view slot_name) {
+  return !slot_name.empty() && value_name.size() > slot_name.size() &&
+         value_name.substr(0, slot_name.size()) == slot_name &&
+         value_name[slot_name.size()] == '.';
+}
+
+[[nodiscard]] std::optional<std::size_t> parse_trailing_dot_offset(
+    std::string_view name) {
+  const auto dot = name.rfind('.');
+  if (dot == std::string_view::npos || dot + 1 >= name.size()) {
+    return std::nullopt;
+  }
+  std::size_t value = 0;
+  for (std::size_t index = dot + 1; index < name.size(); ++index) {
+    const char ch = name[index];
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    value = value * 10U + static_cast<std::size_t>(ch - '0');
+  }
+  return value;
+}
+
+[[nodiscard]] bool store_local_targets_logical_slot(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::string_view slot_name) {
+  const auto store_name =
+      local_slot_reference_name(context, store.slot_name, store.slot_id);
+  if (!store_name.empty() && store_name == slot_name) {
+    return true;
+  }
+  return store.value.kind == bir::Value::Kind::Named &&
+         value_name_has_slot_prefix(store.value.name, slot_name);
+}
+
+struct NarrowLocalStorePublication {
+  bir::Value stored_value;
+  std::size_t instruction_index = 0;
+};
+
+[[nodiscard]] std::optional<NarrowLocalStorePublication>
+find_latest_narrow_store_for_wide_local_load(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::size_t load_instruction_index) {
+  if (context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto load_bits = integer_bit_width(load.result.type);
+  if (!load_bits.has_value()) {
+    return std::nullopt;
+  }
+  const auto load_slot_name =
+      local_slot_reference_name(context, load.slot_name, load.slot_id);
+  const auto load_frame_object_name =
+      prepared_load_local_frame_object_name(context, load_instruction_index);
+  const auto load_lane_offset =
+      load.result.kind == bir::Value::Kind::Named
+          ? parse_trailing_dot_offset(load.result.name)
+          : std::nullopt;
+  for (std::size_t index = load_instruction_index; index > 0; --index) {
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index - 1]);
+    if (store == nullptr ||
+        (!local_slot_reference_matches(context, load, *store) &&
+         !store_local_targets_logical_slot(context, *store, load_slot_name) &&
+         !store_local_targets_logical_slot(context, *store, load_frame_object_name) &&
+         !(load_lane_offset.has_value() &&
+           store->value.kind == bir::Value::Kind::Named &&
+           parse_trailing_dot_offset(store->value.name) == load_lane_offset))) {
+      continue;
+    }
+    const auto store_bits = integer_bit_width(store->value.type);
+    if (!store_bits.has_value() || *store_bits != 8U || *store_bits >= *load_bits) {
+      return std::nullopt;
+    }
+    return NarrowLocalStorePublication{
+        .stored_value = store->value,
+        .instruction_index = index - 1,
+    };
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] const bir::Global* find_load_global_target(
     const module::BlockLoweringContext& context,
     const bir::LoadGlobalInst& load_global) {
@@ -1859,6 +2059,63 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   return false;
 }
 
+[[nodiscard]] bool prepared_value_home_reads_register_index(
+    const prepare::PreparedValueHome& home,
+    std::uint8_t register_index) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    return false;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home.register_name);
+  return parsed.has_value() && parsed->bank == abi::RegisterBank::GeneralPurpose &&
+         parsed->index == register_index;
+}
+
+[[nodiscard]] bool value_publication_may_read_register_index(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    std::uint8_t register_index,
+    unsigned depth = 0) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, value.name, before_instruction_index);
+  const auto* home = prepared_value_home_for_value(context, value);
+  if (producer == nullptr ||
+      (home != nullptr && value_has_current_block_entry_publication(context, *home))) {
+    return home != nullptr &&
+           prepared_value_home_reads_register_index(*home, register_index);
+  }
+
+  const auto producer_index =
+      producer_instruction_index(context, producer).value_or(before_instruction_index);
+  if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    auto operand = cast->operand;
+    operand.type = cast->operand.type;
+    return value_publication_may_read_register_index(
+        context, operand, producer_index, register_index, depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer); binary != nullptr) {
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    return value_publication_may_read_register_index(
+               context, lhs, producer_index, register_index, depth + 1) ||
+           value_publication_may_read_register_index(
+               context, rhs, producer_index, register_index, depth + 1);
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(producer); select != nullptr) {
+    return value_publication_may_read_register_index(
+               context, select->true_value, producer_index, register_index, depth + 1) ||
+           value_publication_may_read_register_index(
+               context, select->false_value, producer_index, register_index, depth + 1);
+  }
+  return false;
+}
+
 [[nodiscard]] bool emit_value_publication_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1901,6 +2158,28 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
     if (emit_prepared_va_list_field_load_to_register(
             context, *load_local, target_index, lines)) {
       return true;
+    }
+    if (index.has_value() &&
+        emit_prepared_global_symbol_load_to_register(context,
+                                                     *index,
+                                                     load_local->result.type,
+                                                     target_index,
+                                                     scratch_index,
+                                                     lines)) {
+      return true;
+    }
+    if (index.has_value()) {
+      const auto narrow_store =
+          find_latest_narrow_store_for_wide_local_load(context, *load_local, *index);
+      if (narrow_store.has_value() &&
+          emit_value_publication_to_register(context,
+                                             narrow_store->stored_value,
+                                             narrow_store->instruction_index,
+                                             target_index,
+                                             scratch_index,
+                                             lines)) {
+        return true;
+      }
     }
     const auto offset =
         index.has_value() ? prepared_local_load_offset(context, *index) : std::nullopt;
@@ -2105,14 +2384,37 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   lhs.type = binary->operand_type;
   auto rhs = binary->rhs;
   rhs.type = binary->operand_type;
-  if (!emit_value_publication_to_register(
-          context, lhs, before_instruction_index, target_index, scratch_index, lines)) {
-    return false;
-  }
   const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
-  if (!emit_value_publication_to_register(
-          context, rhs, before_instruction_index, scratch_index, nested_scratch_index, lines)) {
-    return false;
+  const bool rhs_reads_target = value_publication_may_read_register_index(
+      context, rhs, before_instruction_index, target_index);
+  const bool lhs_reads_scratch = value_publication_may_read_register_index(
+      context, lhs, before_instruction_index, scratch_index);
+  if (rhs_reads_target && !lhs_reads_scratch) {
+    if (!emit_value_publication_to_register(context,
+                                            rhs,
+                                            before_instruction_index,
+                                            scratch_index,
+                                            nested_scratch_index,
+                                            lines) ||
+        !emit_value_publication_to_register(context,
+                                            lhs,
+                                            before_instruction_index,
+                                            target_index,
+                                            scratch_index,
+                                            lines)) {
+      return false;
+    }
+  } else {
+    if (!emit_value_publication_to_register(
+            context, lhs, before_instruction_index, target_index, scratch_index, lines) ||
+        !emit_value_publication_to_register(context,
+                                            rhs,
+                                            before_instruction_index,
+                                            scratch_index,
+                                            nested_scratch_index,
+                                            lines)) {
+      return false;
+    }
   }
   const auto result = gp_register_name(target_index, abi::RegisterView::X);
   const auto rhs_name = gp_register_name(scratch_index, abi::RegisterView::X);
@@ -2252,6 +2554,71 @@ struct EdgeProducerContext {
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
+
+[[nodiscard]] bool edge_value_publication_may_read_register_index(
+    const module::BlockLoweringContext& edge_context,
+    const module::BlockLoweringContext& successor_context,
+    const bir::Value& value,
+    std::size_t successor_before_instruction_index,
+    std::uint8_t register_index,
+    unsigned depth = 0) {
+  if (depth > 64U || value.kind != bir::Value::Kind::Named || value.name.empty()) {
+    return false;
+  }
+  const auto producer = find_edge_named_producer(
+      edge_context, successor_context, value.name, successor_before_instruction_index);
+  if (!producer.has_value() || producer->producer == nullptr) {
+    const auto* home = prepared_value_home_for_value(successor_context, value);
+    return home != nullptr &&
+           prepared_value_home_reads_register_index(*home, register_index);
+  }
+  if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
+      cast != nullptr) {
+    auto operand = cast->operand;
+    operand.type = cast->operand.type;
+    return edge_value_publication_may_read_register_index(edge_context,
+                                                          successor_context,
+                                                          operand,
+                                                          producer->instruction_index,
+                                                          register_index,
+                                                          depth + 1);
+  }
+  if (const auto* binary = std::get_if<bir::BinaryInst>(producer->producer);
+      binary != nullptr) {
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    return edge_value_publication_may_read_register_index(edge_context,
+                                                          successor_context,
+                                                          lhs,
+                                                          producer->instruction_index,
+                                                          register_index,
+                                                          depth + 1) ||
+           edge_value_publication_may_read_register_index(edge_context,
+                                                          successor_context,
+                                                          rhs,
+                                                          producer->instruction_index,
+                                                          register_index,
+                                                          depth + 1);
+  }
+  if (const auto* select = std::get_if<bir::SelectInst>(producer->producer);
+      select != nullptr) {
+    return edge_value_publication_may_read_register_index(edge_context,
+                                                          successor_context,
+                                                          select->true_value,
+                                                          producer->instruction_index,
+                                                          register_index,
+                                                          depth + 1) ||
+           edge_value_publication_may_read_register_index(edge_context,
+                                                          successor_context,
+                                                          select->false_value,
+                                                          producer->instruction_index,
+                                                          register_index,
+                                                          depth + 1);
+  }
+  return false;
+}
 
 [[nodiscard]] bool emit_edge_load_local_to_register(
     const module::BlockLoweringContext& edge_context,
@@ -2479,24 +2846,45 @@ struct EdgeProducerContext {
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 successor_context,
-                                                 lhs,
-                                                 producer->instruction_index,
-                                                 target_index,
-                                                 scratch_index,
-                                                 lines)) {
-      return false;
-    }
     const std::uint8_t nested_scratch = scratch_index == 9 ? 10 : 9;
-    if (!emit_edge_value_publication_to_register(edge_context,
-                                                 successor_context,
-                                                 rhs,
-                                                 producer->instruction_index,
-                                                 scratch_index,
-                                                 nested_scratch,
-                                                 lines)) {
-      return false;
+    const bool rhs_reads_target = edge_value_publication_may_read_register_index(
+        edge_context, successor_context, rhs, producer->instruction_index, target_index);
+    const bool lhs_reads_scratch = edge_value_publication_may_read_register_index(
+        edge_context, successor_context, lhs, producer->instruction_index, scratch_index);
+    if (rhs_reads_target && !lhs_reads_scratch) {
+      if (!emit_edge_value_publication_to_register(edge_context,
+                                                   successor_context,
+                                                   rhs,
+                                                   producer->instruction_index,
+                                                   scratch_index,
+                                                   nested_scratch,
+                                                   lines) ||
+          !emit_edge_value_publication_to_register(edge_context,
+                                                   successor_context,
+                                                   lhs,
+                                                   producer->instruction_index,
+                                                   target_index,
+                                                   scratch_index,
+                                                   lines)) {
+        return false;
+      }
+    } else {
+      if (!emit_edge_value_publication_to_register(edge_context,
+                                                   successor_context,
+                                                   lhs,
+                                                   producer->instruction_index,
+                                                   target_index,
+                                                   scratch_index,
+                                                   lines) ||
+          !emit_edge_value_publication_to_register(edge_context,
+                                                   successor_context,
+                                                   rhs,
+                                                   producer->instruction_index,
+                                                   scratch_index,
+                                                   nested_scratch,
+                                                   lines)) {
+        return false;
+      }
     }
     const auto result = gp_register_name(target_index, abi::RegisterView::X);
     const auto rhs_name = gp_register_name(scratch_index, abi::RegisterView::X);
@@ -3009,6 +3397,25 @@ lower_store_global_value_publication(
          is_byval_formal_value_name(context, *access->address.pointer_value_name);
 }
 
+[[nodiscard]] bool store_local_value_is_wide_load_from_narrow_local_store(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index) {
+  if (store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, store.value.name, instruction_index);
+  const auto* load = producer != nullptr ? std::get_if<bir::LoadLocalInst>(producer) : nullptr;
+  if (load == nullptr) {
+    return false;
+  }
+  const auto producer_index = producer_instruction_index(context, producer);
+  return producer_index.has_value() &&
+         find_latest_narrow_store_for_wide_local_load(context, *load, *producer_index)
+             .has_value();
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_store_local_value_publication(
     const module::BlockLoweringContext& context,
@@ -3017,7 +3424,9 @@ lower_store_local_value_publication(
     const module::MachineInstruction& lowered_memory) {
   const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
   if (store == nullptr ||
-      !store_local_value_is_byval_frame_slot_load(context, *store, instruction_index)) {
+      (!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
+       !store_local_value_is_wide_load_from_narrow_local_store(
+           context, *store, instruction_index))) {
     return std::nullopt;
   }
   const auto* memory_record =
@@ -4024,7 +4433,8 @@ materialize_missing_frame_slot_call_arguments(
   for (const auto& argument : call_plan.arguments) {
     if (argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
         !argument.source_value_id.has_value() ||
-        argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr) {
+        argument.destination_register_bank != prepare::PreparedRegisterBank::Gpr ||
+        argument.destination_contiguous_width > 1) {
       continue;
     }
     const auto* home =

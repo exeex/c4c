@@ -8,6 +8,7 @@
 #include <charconv>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <string>
@@ -779,64 +780,69 @@ make_f128_q_register_operand_from_carrier(
   return arg_abi.size_bytes;
 }
 
-[[nodiscard]] bool aggregate_slot_name_matches_source(
+[[nodiscard]] std::optional<std::size_t> aggregate_slot_source_byte_offset(
     std::string_view slot_name,
     std::string_view source_name) {
   if (source_name.empty() || slot_name.size() <= source_name.size() + 1 ||
       slot_name.compare(0, source_name.size(), source_name) != 0 ||
       slot_name[source_name.size()] != '.') {
-    return false;
+    return std::nullopt;
   }
   const auto suffix = slot_name.substr(source_name.size() + 1);
   std::size_t byte_offset = 0;
   const auto* begin = suffix.data();
   const auto* end = begin + suffix.size();
   const auto [ptr, ec] = std::from_chars(begin, end, byte_offset);
-  return ec == std::errc{} && ptr == end;
+  if (ec != std::errc{} || ptr != end) {
+    return std::nullopt;
+  }
+  return byte_offset;
 }
 
 struct AggregateRegisterLaneStore {
+  std::size_t source_offset = 0;
   std::int64_t stack_offset = 0;
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 1;
   std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
 };
 
-[[nodiscard]] std::optional<MemoryOperand>
-make_byval_register_lane_prepared_source(
+[[nodiscard]] std::vector<AggregateRegisterLaneStore>
+collect_byval_register_lane_stores(
     const module::BlockLoweringContext& context,
-    const prepare::PreparedCallArgumentPlan& argument,
     const prepare::PreparedValueHome& source_home,
-    std::size_t size_bytes,
     std::size_t instruction_index) {
+  std::vector<AggregateRegisterLaneStore> stores;
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
       context.bir_block == nullptr ||
-      source_home.value_name == c4c::kInvalidValueName ||
-      size_bytes == 0) {
-    return std::nullopt;
+      source_home.value_name == c4c::kInvalidValueName) {
+    return stores;
   }
   const auto source_name =
       prepare::prepared_value_name(context.function.prepared->names,
                                    source_home.value_name);
   if (source_name.empty()) {
-    return std::nullopt;
+    return stores;
   }
   const auto* addressing = prepare::find_prepared_addressing(
       *context.function.prepared, context.function.control_flow->function_name);
   if (addressing == nullptr) {
-    return std::nullopt;
+    return stores;
   }
 
-  std::vector<AggregateRegisterLaneStore> stores;
   for (std::size_t index = 0;
        index < instruction_index && index < context.bir_block->insts.size();
        ++index) {
     const auto* store = std::get_if<bir::StoreLocalInst>(
         &context.bir_block->insts[index]);
-    if (store == nullptr ||
-        !aggregate_slot_name_matches_source(store->slot_name, source_name)) {
+    if (store == nullptr) {
+      continue;
+    }
+    const auto source_offset =
+        aggregate_slot_source_byte_offset(store->slot_name, source_name);
+    if (!source_offset.has_value()) {
       continue;
     }
     const auto* access =
@@ -864,6 +870,7 @@ make_byval_register_lane_prepared_source(
       continue;
     }
     stores.push_back(AggregateRegisterLaneStore{
+        .source_offset = *source_offset,
         .stack_offset =
             static_cast<std::int64_t>(slot->offset_bytes) +
             access->address.byte_offset,
@@ -874,28 +881,45 @@ make_byval_register_lane_prepared_source(
         .frame_slot_id = access->address.frame_slot_id,
     });
   }
-  if (stores.empty()) {
-    return std::nullopt;
-  }
   std::sort(stores.begin(), stores.end(),
             [](const AggregateRegisterLaneStore& lhs,
                const AggregateRegisterLaneStore& rhs) {
-              return lhs.stack_offset < rhs.stack_offset;
+              return lhs.source_offset < rhs.source_offset;
             });
+  return stores;
+}
 
-  const auto first_offset = stores.front().stack_offset;
-  if (first_offset < 0) {
+[[nodiscard]] std::optional<MemoryOperand>
+make_byval_register_lane_prepared_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t size_bytes,
+    std::size_t instruction_index) {
+  if (size_bytes == 0) {
     return std::nullopt;
   }
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, instruction_index);
+  if (stores.empty()) {
+    return std::nullopt;
+  }
+
+  if (stores.front().source_offset != 0 || stores.front().stack_offset < 0) {
+    return std::nullopt;
+  }
+  const auto first_offset = stores.front().stack_offset;
   std::size_t covered_bytes = 0;
   std::size_t source_align = stores.front().align_bytes;
   for (const auto& store : stores) {
-    const auto relative =
-        static_cast<std::size_t>(store.stack_offset - first_offset);
-    if (relative > covered_bytes) {
+    if (store.stack_offset < 0 ||
+        store.source_offset > covered_bytes ||
+        static_cast<std::int64_t>(store.source_offset) !=
+            store.stack_offset - first_offset) {
       return std::nullopt;
     }
-    covered_bytes = std::max(covered_bytes, relative + store.size_bytes);
+    covered_bytes =
+        std::max(covered_bytes, store.source_offset + store.size_bytes);
     source_align = std::min(source_align, store.align_bytes);
     if (covered_bytes >= size_bytes) {
       break;
@@ -921,6 +945,47 @@ make_byval_register_lane_prepared_source(
       .byte_offset_is_prepared_snapshot = true,
       .size_bytes = size_bytes,
       .align_bytes = source_align,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<MemoryOperand> aggregate_lane_store_memory(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const AggregateRegisterLaneStore& store,
+    std::size_t byte_delta,
+    std::size_t width_bytes,
+    std::size_t instruction_index) {
+  if (!store.frame_slot_id.has_value() ||
+      store.stack_offset < 0 ||
+      width_bytes == 0 ||
+      byte_delta >
+          static_cast<std::size_t>(
+              std::numeric_limits<std::int64_t>::max() - store.stack_offset)) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{
+                                   source_home.value_id},
+      .result_value_name = source_home.value_name,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = store.frame_slot_id,
+      .byte_offset = store.stack_offset + static_cast<std::int64_t>(byte_delta),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = width_bytes,
+      .align_bytes = std::min<std::size_t>(store.align_bytes, width_bytes),
       .can_use_base_plus_offset = true,
   };
 }
@@ -1136,8 +1201,187 @@ make_byval_register_lane_prepared_source(
                                  ? context.control_flow_block->block_label
                                  : c4c::kInvalidBlockLabel,
               .instruction_index = instruction_index,
+      },
+  };
+}
+
+[[nodiscard]] std::optional<std::vector<std::string>>
+fragmented_aggregate_register_lane_publication_lines(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& destination,
+    std::size_t size_bytes,
+    std::size_t source_instruction_index,
+    std::size_t instruction_index,
+    std::vector<MemoryOperand>& source_operands) {
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
+  if (stores.empty() || stores.front().source_offset != 0) {
+    return std::nullopt;
+  }
+  const auto scratch = aggregate_register_lane_scratch(destination);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  std::size_t covered_bytes = 0;
+  std::size_t lane_index = 0;
+  std::size_t lane_offset = 0;
+  const std::string scratch_x = abi::register_name(*scratch);
+  for (const auto& store : stores) {
+    if (store.source_offset > covered_bytes) {
+      return std::nullopt;
+    }
+    std::size_t store_offset = covered_bytes - store.source_offset;
+    while (covered_bytes < size_bytes && store_offset < store.size_bytes) {
+      const std::size_t lane_remaining = 8 - lane_offset;
+      const std::size_t store_remaining = store.size_bytes - store_offset;
+      const std::size_t total_remaining = size_bytes - covered_bytes;
+      const std::size_t max_chunk =
+          std::min({std::size_t{8}, lane_remaining, store_remaining, total_remaining});
+      const auto lane_register =
+          aggregate_register_lane_destination(destination, lane_index);
+      if (!lane_register.has_value()) {
+        return std::nullopt;
+      }
+      std::optional<MemoryOperand> source_memory;
+      std::size_t chunk_width = 0;
+      for (const std::size_t candidate : {std::size_t{8},
+                                          std::size_t{4},
+                                          std::size_t{2},
+                                          std::size_t{1}}) {
+        if (candidate > max_chunk) {
+          continue;
+        }
+        auto candidate_memory =
+            aggregate_lane_store_memory(context,
+                                        argument,
+                                        source_home,
+                                        store,
+                                        store_offset,
+                                        candidate,
+                                        instruction_index);
+        if (candidate_memory.has_value() &&
+            aggregate_register_lane_memory_is_printable(*candidate_memory, candidate) &&
+            !aggregate_register_lane_load_mnemonic(candidate).empty()) {
+          source_memory = std::move(candidate_memory);
+          chunk_width = candidate;
+          break;
+        }
+      }
+      if (!source_memory.has_value() || chunk_width == 0) {
+        return std::nullopt;
+      }
+      const auto mnemonic = aggregate_register_lane_load_mnemonic(chunk_width);
+      const bool first_chunk = lane_offset == 0;
+      const auto load_register =
+          first_chunk
+              ? aggregate_register_lane_load_register(*lane_register, chunk_width)
+              : aggregate_register_lane_load_register(*scratch, chunk_width);
+      lines.push_back(std::string{mnemonic} + " " +
+                      std::string{abi::register_name(load_register)} + ", " +
+                      memory_address(*source_memory));
+      source_operands.push_back(*source_memory);
+      if (!first_chunk) {
+        lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
+                        ", " + std::string{abi::register_name(*lane_register)} +
+                        ", " + scratch_x + ", lsl #" +
+                        std::to_string(lane_offset * 8));
+      }
+      covered_bytes += chunk_width;
+      store_offset += chunk_width;
+      lane_offset += chunk_width;
+      if (lane_offset == 8) {
+        lane_offset = 0;
+        ++lane_index;
+      }
+    }
+    if (covered_bytes >= size_bytes) {
+      break;
+    }
+  }
+  if (covered_bytes < size_bytes) {
+    return std::nullopt;
+  }
+  return lines;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_fragmented_aggregate_register_lane_publication_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveBundle& bundle,
+    const prepare::PreparedMoveResolution& move,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    const RegisterOperand& destination,
+    std::size_t size_bytes,
+    std::size_t source_instruction_index,
+    std::size_t instruction_index) {
+  std::vector<MemoryOperand> source_operands;
+  const auto lines = fragmented_aggregate_register_lane_publication_lines(
+      context,
+      argument,
+      source_home,
+      destination,
+      size_bytes,
+      source_instruction_index,
+      instruction_index,
+      source_operands);
+  if (!lines.has_value() || lines->empty()) {
+    return std::nullopt;
+  }
+
+  std::string asm_text;
+  for (std::size_t index = 0; index < lines->size(); ++index) {
+    if (index != 0) {
+      asm_text += '\n';
+    }
+    asm_text += (*lines)[index];
+  }
+
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> uses;
+  const auto destination_operand = make_register_operand(destination);
+  operands.push_back(destination_operand);
+  for (const auto& source : source_operands) {
+    const auto source_operand = make_memory_operand(source);
+    operands.push_back(source_operand);
+    uses.push_back(effect_from_operand(source_operand));
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = bundle.block_index,
+      .instruction_index = bundle.instruction_index,
+      .operands = operands,
+      .defs = {effect_from_operand(destination_operand)},
+      .uses = uses,
+      .side_effects = {MachineSideEffectKind::MemoryRead,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .operands = std::move(operands),
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
           },
   };
+  (void)move;
+  return make_call_boundary_machine_instruction(context, instruction_index,
+                                                std::move(target));
 }
 
 [[nodiscard]] std::optional<std::string_view> value_move_load_mnemonic(
@@ -1724,22 +1968,6 @@ make_value_stack_move_instruction(
     }
     auto source = make_byval_register_lane_prepared_source(
         context, *argument, *source_home, *lane_size, call_plan.instruction_index);
-    if (!source.has_value() && source_home->size_bytes.has_value()) {
-      source =
-          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
-      if (source.has_value()) {
-        source->size_bytes = *lane_size;
-      }
-    }
-    if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
-      append_call_diagnostic(
-          diagnostics,
-          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
-          context,
-          instruction_index,
-          "AArch64 aggregate register-lane call-argument publication requires a small prepared frame-slot source");
-      return std::nullopt;
-    }
     const auto destination_register_placement =
         move.destination_register_placement.has_value()
             ? move.destination_register_placement
@@ -1768,6 +1996,37 @@ make_value_stack_move_instruction(
     if (!destination.has_value()) {
       return std::nullopt;
       }
+    if (!source.has_value()) {
+      if (auto fragmented =
+              make_fragmented_aggregate_register_lane_publication_instruction(
+                  context,
+                  bundle,
+                  move,
+                  *argument,
+                  *source_home,
+                  *destination,
+                  *lane_size,
+                  call_plan.instruction_index,
+                  instruction_index)) {
+        return fragmented;
+      }
+    }
+    if (!source.has_value() && source_home->size_bytes.has_value()) {
+      source =
+          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+      if (source.has_value()) {
+        source->size_bytes = *lane_size;
+      }
+    }
+    if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires a small prepared frame-slot source");
+      return std::nullopt;
+    }
     move_record.source_register.reset();
       move_record.source_memory = *source;
       move_record.destination_register = *destination;

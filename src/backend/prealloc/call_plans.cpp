@@ -998,19 +998,32 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   aarch64_byval_register_lane_width(prepared.target_profile,
                                                      call->arg_abi[arg_index]);
               if (byval_lane_width > arg_plan.destination_contiguous_width) {
-                arg_plan.destination_contiguous_width = byval_lane_width;
-                arg_plan.destination_occupied_register_names =
+                auto occupied_register_names =
                     regalloc_detail::call_arg_destination_register_names(
                         prepared.target_profile,
                         PreparedRegisterClass::General,
                         *abi_register_index,
                         *arg_plan.destination_register_name,
                         byval_lane_width);
-                arg_plan.destination_register_placement =
-                    call_arg_destination_register_placement(prepared.target_profile,
-                                                            call->arg_abi[arg_index],
-                                                            *abi_register_index,
-                                                            byval_lane_width);
+                if (occupied_register_names.empty()) {
+                  arg_plan.destination_register_name = std::nullopt;
+                  arg_plan.destination_contiguous_width = 1;
+                  arg_plan.destination_occupied_register_names.clear();
+                  arg_plan.destination_register_bank = std::nullopt;
+                  arg_plan.destination_register_placement = std::nullopt;
+                  arg_plan.destination_stack_offset_bytes =
+                      regalloc_detail::call_arg_destination_stack_offset_bytes(
+                          prepared.target_profile, *call, arg_index);
+                } else {
+                  arg_plan.destination_contiguous_width = byval_lane_width;
+                  arg_plan.destination_occupied_register_names =
+                      std::move(occupied_register_names);
+                  arg_plan.destination_register_placement =
+                      call_arg_destination_register_placement(prepared.target_profile,
+                                                              call->arg_abi[arg_index],
+                                                              *abi_register_index,
+                                                              byval_lane_width);
+                }
               }
             }
 
