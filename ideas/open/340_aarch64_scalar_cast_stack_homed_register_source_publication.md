@@ -81,6 +81,27 @@ printer. This is not the closed idea 339 local storage/writeback sizing owner.
 - No expectation, runner, timeout, unsupported, CTest-registration, or
   proof-log-policy change is used to claim progress.
 
+## Lifecycle Note 2026-05-20
+
+Runbook execution exhausted the scalar-cast source-publication scope. Step 2
+repaired `make_prepared_consumer_register_source` and added focused backend
+coverage for selected scalar casts whose original source is stack-homed but has
+a prepared consumer stack-to-register move. Step 3 confirmed the old
+`scalar cast node requires a structured register source operand` diagnostic is
+absent from the focused proof.
+
+Closure was not accepted in this lifecycle pass because the required
+regression guard reported no new failures but failed its strict pass-count
+increase rule: `test_before.log` and `test_after.log` both record 6/7 passing.
+The active lifecycle state was therefore switched to the separately scoped
+follow-up idea
+`ideas/open/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md`.
+
+The remaining `00143` residual is out of scope for this idea: prepared BIR
+contains fallthrough fixed-offset local loads/stores for the Duff-device copy,
+but generated AArch64 for the matching fallthrough labels only advances the
+`from`/`to` pointer locals and omits the `ldrh`/`strh` data copy.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
