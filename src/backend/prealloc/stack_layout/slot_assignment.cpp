@@ -44,7 +44,7 @@ struct ObjectSliceLayout {
   std::unordered_map<std::string, SliceFamilyLayout> family_layouts;
   std::unordered_map<std::string, std::vector<SliceEntry>> family_entries;
   for (const auto& object : objects) {
-    if (!object.requires_home_slot || uses_copy_coalesced_slot(object)) {
+    if (uses_copy_coalesced_slot(object)) {
       continue;
     }
     if (!object.slot_name.has_value()) {
@@ -56,7 +56,8 @@ struct ObjectSliceLayout {
     }
     const std::string family_name(slice->first);
     auto& layout = family_layouts[family_name];
-    layout.fixed_location = layout.fixed_location || uses_fixed_location_slot(object);
+    layout.fixed_location =
+        layout.fixed_location || (object.requires_home_slot && uses_fixed_location_slot(object));
     const std::size_t size_bytes = normalize_size(object.type, object.size_bytes);
     const std::size_t align_bytes =
         normalize_alignment(object.type, object.align_bytes, size_bytes);
@@ -279,11 +280,16 @@ std::vector<PreparedFrameSlot> assign_frame_slots(const PreparedNameTables& name
   auto slice_family_layouts = build_slice_family_layout_map(names, objects);
 
   for (const auto& object : objects) {
-    if (!object.requires_home_slot || uses_copy_coalesced_slot(object)) {
+    if (uses_copy_coalesced_slot(object)) {
       continue;
     }
-    if (uses_fixed_location_slot(object) ||
-        belongs_to_fixed_slice_family(names, object, slice_family_layouts)) {
+    const bool fixed_location =
+        uses_fixed_location_slot(object) ||
+        belongs_to_fixed_slice_family(names, object, slice_family_layouts);
+    if (!object.requires_home_slot && !fixed_location) {
+      continue;
+    }
+    if (fixed_location) {
       if (is_parameter_owned_fixed_slot(object)) {
         parameter_fixed_location_objects.push_back(&object);
       } else {

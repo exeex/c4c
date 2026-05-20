@@ -1877,6 +1877,57 @@ prepare::PreparedBirModule prepare_call_escaped_local_slot_module() {
   return std::move(planner.prepared());
 }
 
+prepare::PreparedBirModule prepare_call_escaped_scalarized_local_family_module() {
+  bir::Module module;
+
+  bir::Function function;
+  function.name = "stack_layout_call_escaped_scalarized_local_family_activation";
+  function.return_type = bir::TypeKind::I32;
+  for (std::size_t index = 0; index < 6; ++index) {
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = "lv.scalar.call." + std::to_string(index),
+        .type = bir::TypeKind::I8,
+        .size_bytes = 1,
+        .align_bytes = 1,
+    });
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::CallInst{
+      .callee = "sink_ptr",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "lv.scalar.call.0")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Integer,
+          .passed_in_register = true,
+      }},
+      .return_type_name = "void",
+      .return_type = bir::TypeKind::Void,
+  });
+  entry.terminator = bir::ReturnTerminator{.value = bir::Value::immediate_i32(0)};
+
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  prepare::PreparedBirModule prepared;
+  prepared.module = std::move(module);
+  prepared.target_profile = riscv_target_profile();
+
+  prepare::PrepareOptions options;
+  options.run_legalize = false;
+  options.run_stack_layout = true;
+  options.run_liveness = false;
+  options.run_regalloc = false;
+
+  prepare::BirPreAlloc planner(std::move(prepared), options);
+  planner.run_stack_layout();
+  return std::move(planner.prepared());
+}
+
 prepare::PreparedBirModule prepare_sret_storage_local_slot_module() {
   bir::Module module;
 
@@ -3771,6 +3822,42 @@ int check_call_escaped_local_slot_activation(const prepare::PreparedBirModule& p
   return 0;
 }
 
+int check_call_escaped_scalarized_local_family_activation(
+    const prepare::PreparedBirModule& prepared) {
+  const auto* root_object = find_stack_object(prepared, "lv.scalar.call.0");
+  if (root_object == nullptr) {
+    return fail("expected the scalarized call-escaped root slot to produce a stack-layout object");
+  }
+  if (!root_object->address_exposed || !root_object->requires_home_slot ||
+      !root_object->permanent_home_slot) {
+    return fail("expected the scalarized root call arg to anchor a fixed home-slot family");
+  }
+
+  for (std::size_t index = 0; index < 6; ++index) {
+    const std::string name = "lv.scalar.call." + std::to_string(index);
+    const auto* object = find_stack_object(prepared, name);
+    if (object == nullptr) {
+      return fail("expected every scalarized call-escaped family member to remain visible");
+    }
+    const auto* slot = find_frame_slot(prepared, object->object_id);
+    if (slot == nullptr) {
+      return fail("expected every scalarized call-escaped family member to receive a frame slot");
+    }
+    if (!slot->fixed_location || slot->offset_bytes != index || slot->size_bytes != 1 ||
+        slot->align_bytes != 1) {
+      return fail("expected scalarized call-escaped family slots to reserve a contiguous frame extent");
+    }
+  }
+
+  if (prepared.stack_layout.frame_slots.size() != 6 ||
+      prepared.stack_layout.frame_size_bytes != 6 ||
+      prepared.stack_layout.frame_alignment_bytes != 1) {
+    return fail("expected scalarized call-escaped family metrics to cover the full byte extent");
+  }
+
+  return 0;
+}
+
 int check_sret_storage_local_slot_activation(const prepare::PreparedBirModule& prepared) {
   const auto* root_object = find_stack_object(prepared, "lv.call.sret.storage");
   if (root_object == nullptr) {
@@ -4802,6 +4889,14 @@ int main() {
 
   const auto call_escaped_prepared = prepare_call_escaped_local_slot_module();
   if (const int rc = check_call_escaped_local_slot_activation(call_escaped_prepared); rc != 0) {
+    return rc;
+  }
+
+  const auto call_escaped_scalarized_prepared =
+      prepare_call_escaped_scalarized_local_family_module();
+  if (const int rc = check_call_escaped_scalarized_local_family_activation(
+          call_escaped_scalarized_prepared);
+      rc != 0) {
     return rc;
   }
 
