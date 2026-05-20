@@ -107,3 +107,23 @@ Reject the route if it:
 - leaves the exact old failure mode in place behind a new abstraction, such
   that calls to `fa_s1` or `fa_s2` still branch without publishing the
   prepared aggregate bytes into the ABI register lanes the callee now reads.
+
+## Lifecycle Handoff
+
+2026-05-20: Step 4 validated the idea 328 capability and classified the
+remaining `00204.c` failure as a distinct adjacent owner. Generated AArch64
+for caller `arg` now publishes the prepared `s1` byte into `w0` before
+`bl fa_s1` and packs the prepared `s2` bytes into `x0` before `bl fa_s2`.
+The remaining crash is inside `myprintf`: after the `%9s` aggregate
+`va_arg` path, generated code reaches libc `printf` with `x0 == 0x1` instead
+of loading `.str33` (`"%.9s"`) into `x0`; the `%7s` path has the same
+missing `.str31` shape. That residual is not remaining caller-side byval
+aggregate lane publication and is not yet the parked HFA/floating residual.
+
+Close was not accepted in this lifecycle pass because the existing
+`test_before.log`/`test_after.log` regression-guard comparison for the
+12-test focused scope had no new failures but did not strictly increase the
+pass count. Keep this idea open and parked unless the supervisor accepts a
+non-decreasing close guard or provides closure-grade logs. The adjacent
+variadic aggregate post-`va_arg` call setup work is tracked separately in
+`ideas/open/329_aarch64_variadic_aggregate_va_arg_call_setup.md`.
