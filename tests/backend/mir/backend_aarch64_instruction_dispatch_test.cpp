@@ -12067,6 +12067,206 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
   return 0;
 }
 
+int generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.byval.generic.small");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.byval.generic.small.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.byval.generic.small.entry");
+  const auto aggregate_name = prepared.names.value_names.intern("packet");
+  const auto byte_name = prepared.names.value_names.intern("%packet.byte");
+  constexpr auto aggregate_value_id = prepare::PreparedValueId{13201};
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.byval.generic.small",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.byval.generic.small.entry",
+              .insts =
+                  {bir::StoreLocalInst{
+                       .slot_name = "packet.0",
+                       .value = bir::Value::named(bir::TypeKind::I8, "%packet.byte"),
+                       .byte_offset = 0,
+                       .align_bytes = 1,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 1,
+                               .align_bytes = 1,
+                               .address_space = bir::AddressSpace::Default,
+                           },
+                   },
+                   bir::CallInst{
+                       .callee = "consume_small_byval",
+                       .args = {bir::Value::named(bir::TypeKind::Ptr, "packet")},
+                       .arg_types = {bir::TypeKind::Ptr},
+                       .arg_abi =
+                           {bir::CallArgAbiInfo{
+                               .type = bir::TypeKind::Ptr,
+                               .size_bytes = 1,
+                               .align_bytes = 1,
+                               .primary_class = bir::AbiValueClass::Integer,
+                               .passed_in_register = true,
+                               .byval_copy = true,
+                           }},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = aggregate_value_id,
+               .function_name = function_name,
+               .value_name = aggregate_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{13201},
+               .offset_bytes = std::size_t{4096},
+               .size_bytes = std::size_t{1},
+               .align_bytes = std::size_t{1},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{13202},
+               .function_name = function_name,
+               .value_name = byte_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w12"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 1,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = aggregate_value_id,
+                      .to_value_id = aggregate_value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "generic_call_argument_move",
+                  }},
+          }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{13201},
+      .function_name = function_name,
+      .offset_bytes = 4096,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{13203},
+      .function_name = function_name,
+      .offset_bytes = 128,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .stored_value_name = byte_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{13203},
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 1,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 1,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = aggregate_value_id,
+              .source_slot_id = prepare::PreparedFrameSlotId{13201},
+              .source_stack_offset_bytes = std::size_t{4096},
+              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+  };
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 1, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected generic small byval call argument to lower one payload publication");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.front().target.payload);
+  if (move == nullptr || move->source_memory_materializes_address ||
+      !move->source_memory.has_value() || !move->destination_register.has_value() ||
+      move->source_memory->frame_slot_id != prepare::PreparedFrameSlotId{13203} ||
+      move->source_memory->byte_offset != 128 ||
+      move->source_memory->size_bytes != 1 ||
+      move->destination_register->reg != aarch64_abi::x_register(0) ||
+      move->move.reason != "call_arg_byval_aggregate_register_lanes") {
+    return fail("expected generic byval move to select prepared payload storage, not the object address");
+  }
+
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+  if (!printed.ok ||
+      printed.instruction_lines != std::vector<std::string>{"ldrb w0, [sp, #128]"}) {
+    return fail("expected generic small byval aggregate to load payload byte into w0");
+  }
+  for (const auto& line : printed.instruction_lines) {
+    if (line.find("#4096") != std::string::npos || line.find("add x0") != std::string::npos) {
+      return fail("generic small byval publication forwarded the prepared object address");
+    }
+  }
+  return 0;
+}
+
 int aarch64_variadic_byval_register_lanes_do_not_overlap() {
   const auto target = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   const bir::CallArgAbiInfo format_abi{
@@ -19102,6 +19302,11 @@ int main() {
     }
   if (const int status =
           small_byval_aggregate_call_argument_publishes_register_lanes();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          generic_small_byval_aggregate_call_argument_loads_prepared_payload_lane();
       status != 0) {
     return status;
   }
