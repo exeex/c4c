@@ -1,6 +1,7 @@
 #include "value_homes.hpp"
 
 #include "../control_flow.hpp"
+#include "../frame.hpp"
 #include "../names.hpp"
 #include "../target_register_profile.hpp"
 
@@ -14,10 +15,96 @@
 
 namespace c4c::backend::prepare::regalloc_detail {
 
+namespace {
+
+[[nodiscard]] bool same_aarch64_formal_register_bank(const bir::CallArgAbiInfo& lhs,
+                                                     const bir::CallArgAbiInfo& rhs) {
+  const auto is_float_bank = [](const bir::CallArgAbiInfo& abi) {
+    return abi.primary_class == bir::AbiValueClass::Sse ||
+           abi.primary_class == bir::AbiValueClass::X87;
+  };
+  if (is_float_bank(lhs) || is_float_bank(rhs)) {
+    return is_float_bank(lhs) == is_float_bank(rhs);
+  }
+  return lhs.primary_class == bir::AbiValueClass::Integer &&
+         rhs.primary_class == bir::AbiValueClass::Integer;
+}
+
+[[nodiscard]] std::optional<std::size_t> fixed_formal_abi_register_index(
+    const c4c::TargetProfile& target_profile,
+    const bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size()) {
+    return std::nullopt;
+  }
+  const auto& param = function.params[param_index];
+  if (!param.abi.has_value() || !param.abi->passed_in_register) {
+    return std::nullopt;
+  }
+  if (target_profile.arch != c4c::TargetArch::Aarch64) {
+    return param_index;
+  }
+
+  std::size_t register_index = 0;
+  for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
+    const auto& candidate = function.params[candidate_index];
+    if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+      continue;
+    }
+    if (same_aarch64_formal_register_bank(*candidate.abi, *param.abi)) {
+      ++register_index;
+    }
+  }
+  return register_index;
+}
+
+[[nodiscard]] const PreparedFrameSlot* find_frame_slot_by_id(
+    const PreparedStackLayout& stack_layout,
+    PreparedFrameSlotId slot_id) {
+  for (const auto& slot : stack_layout.frame_slots) {
+    if (slot.slot_id == slot_id) {
+      return &slot;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const PreparedFrameSlot* find_stack_passed_f128_formal_local_home(
+    const PreparedStackLayout* stack_layout,
+    const PreparedAddressingFunction* function_addressing,
+    ValueNameId value_name) {
+  if (stack_layout == nullptr || function_addressing == nullptr ||
+      value_name == kInvalidValueName) {
+    return nullptr;
+  }
+
+  const PreparedFrameSlot* matched_slot = nullptr;
+  for (const auto& access : function_addressing->accesses) {
+    if (access.stored_value_name != value_name ||
+        access.address.base_kind != PreparedAddressBaseKind::FrameSlot ||
+        !access.address.frame_slot_id.has_value()) {
+      continue;
+    }
+    const auto* slot = find_frame_slot_by_id(*stack_layout, *access.address.frame_slot_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    if (matched_slot != nullptr && matched_slot->slot_id != slot->slot_id) {
+      return nullptr;
+    }
+    matched_slot = slot;
+  }
+  return matched_slot;
+}
+
+}  // namespace
+
 PreparedValueHome classify_prepared_value_home(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
+    const PreparedStackLayout* stack_layout,
+    const PreparedAddressingFunction* function_addressing,
     const PreparedPointerCarrierMap& pointer_carriers,
     const PreparedRegallocValue& value) {
   PreparedValueHome home{
@@ -61,8 +148,24 @@ PreparedValueHome classify_prepared_value_home(
         home.register_name = value.assigned_register->register_name;
         return home;
       }
+      if (param.abi->passed_on_stack && param.type == bir::TypeKind::F128) {
+        if (const auto* slot = find_stack_passed_f128_formal_local_home(
+                stack_layout, function_addressing, value.value_name);
+            slot != nullptr) {
+          home.kind = PreparedValueHomeKind::StackSlot;
+          home.slot_id = slot->slot_id;
+          home.offset_bytes = slot->offset_bytes;
+          home.size_bytes = slot->size_bytes;
+          home.align_bytes = slot->align_bytes;
+          return home;
+        }
+      }
+      const auto abi_register_index =
+          fixed_formal_abi_register_index(target_profile, *function, param_index);
       if (const auto register_name =
-              call_arg_destination_register_name(target_profile, *param.abi, param_index);
+              abi_register_index.has_value()
+                  ? call_arg_destination_register_name(target_profile, *param.abi, *abi_register_index)
+                  : std::nullopt;
           register_name.has_value()) {
         home.kind = PreparedValueHomeKind::Register;
         home.register_name = *register_name;
@@ -182,6 +285,7 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
+    const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
     const PreparedRegallocFunction& regalloc_function) {
   const auto pointer_carriers =
@@ -191,7 +295,13 @@ std::vector<PreparedValueHome> build_prepared_value_homes(
   value_homes.reserve(regalloc_function.values.size());
   for (const auto& value : regalloc_function.values) {
     value_homes.push_back(
-        classify_prepared_value_home(names, target_profile, function, pointer_carriers, value));
+        classify_prepared_value_home(names,
+                                     target_profile,
+                                     function,
+                                     stack_layout,
+                                     function_addressing,
+                                     pointer_carriers,
+                                     value));
   }
   return value_homes;
 }

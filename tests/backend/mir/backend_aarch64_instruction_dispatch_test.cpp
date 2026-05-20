@@ -3672,6 +3672,108 @@ prepare::PreparedBirModule prepared_with_mixed_gpr_hfa_entry_formals() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_semantic_mixed_gpr_hfa_entry_formals() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function function;
+  function.name = "semantic.mixed.gpr.hfa.entry";
+  function.return_type = bir::TypeKind::Void;
+
+  auto add_param = [&](bir::TypeKind type,
+                       std::string name,
+                       bir::CallArgAbiInfo abi,
+                       bool is_byval,
+                       std::size_t size_bytes,
+                       std::size_t align_bytes) {
+    function.params.push_back(bir::Param{
+        .type = type,
+        .name = std::move(name),
+        .size_bytes = size_bytes,
+        .align_bytes = align_bytes,
+        .abi = abi,
+        .is_byval = is_byval,
+    });
+  };
+  auto byval_register_abi = [](std::size_t size_bytes,
+                               std::size_t align_bytes) {
+    auto abi = register_arg_abi(
+        bir::TypeKind::Ptr, size_bytes, align_bytes, bir::AbiValueClass::Integer);
+    abi.byval_copy = true;
+    return abi;
+  };
+
+  add_param(bir::TypeKind::Ptr, "%s1", byval_register_abi(1, 1), true, 1, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F32,
+              "%hfa14.hfa" + std::to_string(lane),
+              register_arg_abi(bir::TypeKind::F32, 4, 4, bir::AbiValueClass::Sse),
+              false,
+              4,
+              4);
+  }
+  add_param(bir::TypeKind::Ptr, "%s2", byval_register_abi(2, 1), true, 2, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F64,
+              "%hfa24.hfa" + std::to_string(lane),
+              register_arg_abi(bir::TypeKind::F64, 8, 8, bir::AbiValueClass::Sse),
+              false,
+              8,
+              8);
+  }
+  add_param(bir::TypeKind::Ptr, "%s3", byval_register_abi(3, 1), true, 3, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F128,
+              "%hfa34.hfa" + std::to_string(lane),
+              stack_arg_abi(bir::TypeKind::F128, 16, 16, bir::AbiValueClass::Sse),
+              false,
+              16,
+              16);
+  }
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.label_id = module.names.block_labels.intern("entry");
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    const std::string slot_name = "%hfa34.home." + std::to_string(lane);
+    const c4c::SlotNameId slot_id = module.names.slot_names.intern(slot_name);
+    function.local_slots.push_back(bir::LocalSlot{
+        .name = slot_name,
+        .slot_id = slot_id,
+        .type = bir::TypeKind::F128,
+        .size_bytes = 16,
+        .align_bytes = 16,
+    });
+    entry.insts.push_back(bir::StoreLocalInst{
+        .slot_name = slot_name,
+        .slot_id = slot_id,
+        .value = bir::Value::named(bir::TypeKind::F128,
+                                   "%hfa34.hfa" + std::to_string(lane)),
+        .align_bytes = 16,
+        .address = bir::MemoryAddress{
+            .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+            .base_name = slot_name,
+            .size_bytes = 16,
+            .align_bytes = 16,
+            .base_slot_id = slot_id,
+        },
+    });
+  }
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_f128_constant_argument(
     bool include_payload = true,
     bool include_source_value = true,
@@ -11638,6 +11740,63 @@ int block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals() {
   return 0;
 }
 
+int semantic_prealloc_publishes_mixed_gpr_hfa_formal_homes() {
+  auto prepared = prepared_semantic_mixed_gpr_hfa_entry_formals();
+  const auto* locations =
+      prepare::find_prepared_value_location_function(prepared, "semantic.mixed.gpr.hfa.entry");
+  if (locations == nullptr) {
+    return fail("expected semantic mixed GPR/HFA fixture to publish value homes");
+  }
+
+  auto require_register_home = [&](std::string_view value_name,
+                                   std::string_view register_name) -> int {
+    const auto* home =
+        prepare::find_prepared_value_home(prepared.names, *locations, value_name);
+    if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::Register ||
+        home->register_name != std::optional<std::string>{std::string(register_name)}) {
+      return fail("expected semantic fixed HFA lane to use ABI bank-local register home");
+    }
+    return 0;
+  };
+
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    if (const int status =
+            require_register_home("%hfa14.hfa" + std::to_string(lane),
+                                  "s" + std::to_string(lane));
+        status != 0) {
+      return status;
+    }
+    if (const int status =
+            require_register_home("%hfa24.hfa" + std::to_string(lane),
+                                  "d" + std::to_string(lane + 4));
+        status != 0) {
+      return status;
+    }
+  }
+
+  std::array<std::size_t, 4> f128_offsets{};
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    const auto* home =
+        prepare::find_prepared_value_home(prepared.names,
+                                          *locations,
+                                          "%hfa34.hfa" + std::to_string(lane));
+    if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !home->offset_bytes.has_value() || home->size_bytes != std::optional<std::size_t>{16} ||
+        home->align_bytes != std::optional<std::size_t>{16}) {
+      return fail("expected stack-passed f128 HFA lane to use a prepared local stack home");
+    }
+    f128_offsets[lane] = *home->offset_bytes;
+  }
+  std::sort(f128_offsets.begin(), f128_offsets.end());
+  for (std::size_t lane = 0; lane < f128_offsets.size(); ++lane) {
+    if (f128_offsets[lane] < 16 || f128_offsets[lane] % 16 != 0 ||
+        (lane != 0 && f128_offsets[lane] == f128_offsets[lane - 1])) {
+      return fail("expected f128 HFA local homes to be distinct aligned frame slots");
+    }
+  }
+  return 0;
+}
+
 int block_dispatch_exposes_f128_constant_argument_carrier_to_selection() {
   auto prepared = prepared_with_direct_call_f128_constant_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -14191,6 +14350,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          semantic_prealloc_publishes_mixed_gpr_hfa_formal_homes();
       status != 0) {
     return status;
   }

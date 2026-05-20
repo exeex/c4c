@@ -15,6 +15,8 @@ namespace regalloc_detail {
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
+    const PreparedStackLayout* stack_layout,
+    const PreparedAddressingFunction* function_addressing,
     const PreparedPointerCarrierMap& pointer_carriers,
     const PreparedRegallocValue& value);
 
@@ -22,6 +24,7 @@ namespace regalloc_detail {
     PreparedNameTables& names,
     const c4c::TargetProfile& target_profile,
     const c4c::backend::bir::Function* function,
+    const PreparedStackLayout* stack_layout,
     const PreparedAddressingFunction* function_addressing,
     const PreparedRegallocFunction& regalloc_function);
 
