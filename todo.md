@@ -8,28 +8,27 @@ Current Step Title: Repair the General Local Conversion Publication Rule
 
 ## Just Finished
 
-Step 2 repaired the local conversion result publication owner in
-`src/backend/mir/aarch64/codegen/dispatch.cpp`. The general
-`lower_store_local_value_publication` rule now recognizes local stores whose
-stored value is produced by a same-block scalar cast and emits publication
-into the selected store source register before the store is printed. The
-repair covers integer-to-float, float-to-integer, and float-width conversions
-across GPR/FPR homes instead of keying on `00175`, source locations, concrete
-registers, offsets, or one instruction sequence.
+Step 2 repaired a follow-up dispatch hazard in the local conversion result
+publication owner in `src/backend/mir/aarch64/codegen/dispatch.cpp`. The first
+Step 2 implementation made the new same-block scalar-cast path replace the
+older GP local-store publication path whenever a cast producer existed. That
+was too broad: unsupported cast forms, especially non-FP integer/pointer casts
+that the new helper intentionally does not lower, could prevent the established
+local-store publication rule from running.
 
-The former stale `char c = 97.0` store now materializes the floating immediate
-and converts it before the local home write:
-`fmov d16, x9`, `fcvtzs w13, d16`, `strb w13, [sp, #17]`.
-The adjacent local conversion facts are also repaired by the same path:
-`int e = 97.0` emits `fcvtzs w13, d16` before `str w13, [sp, #4]`, and
-`float f = 'a'; float g = 97;` emit `scvtf s13, w9` before the `str s13`
-stores.
+The local store publication rule now treats the scalar/FP conversion helper as
+a specialized first attempt. If it cannot emit and the selected store source is
+a GPR, dispatch clears any partial lines and falls back to the existing
+`emit_value_publication_to_register` path. This keeps the `00175` scalar/FP
+store conversion improvement while preserving the pre-existing local-store
+publication route for non-conversion cases.
 
 ## Suggested Next
 
-Execute Step 3: add focused backend coverage for local scalar/FP conversion
-store publication if an existing AArch64 backend test surface can pin the
-semantic rule without asserting incidental register numbers or stack offsets.
+Supervisor should decide whether to accept this monotonic Step 2 guard slice
+or route-review the broader rejected-baseline story. The delegated proof now
+matches `test_before.log`: `00005`, `00020`, `00103`, `00130`, and `00168`
+still fail in the same subset, while `00175` remains passing.
 
 ## Watchouts
 
@@ -37,14 +36,19 @@ semantic rule without asserting incidental register numbers or stack offsets.
   because the selected store already names the authoritative destination
   register; the missing piece was materializing the conversion into that
   register before the store.
-- Step 3 should avoid pinning the current scratch choices (`w13`, `s13`,
+- A temporary parent-commit comparison (`d22f1b86f`) showed the generated
+  assembly for `00020`, `00130`, and `00168` is unchanged from before
+  `04c16334c`; the assigned five-case subset is therefore not repaired to
+  passing by this dispatch-only slice. `00168` still uses an uninitialized
+  callee-saved value after the recursive call, which looks outside the local
+  scalar/FP conversion publication path.
+- Step 3 coverage should avoid pinning current scratch choices (`w13`, `s13`,
   `d16`) or stack offsets; those remain allocation details.
-- Direct-call guard stability still belongs to a later supervisor packet.
 
 ## Proof
 
 Ran the delegated proof command exactly:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00175_c$' | tee test_after.log`.
-The build was up to date after the earlier local compile, and
-`c_testsuite_aarch64_backend_src_00175_c` passed. Proof log:
-`test_after.log`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_(00005|00020|00103|00130|00168|00175)_c$' | tee test_after.log`.
+The build recompiled `dispatch.cpp`. The subset result matches the delegated
+`test_before.log` failure set: `00005`, `00020`, `00103`, `00130`, and `00168`
+fail; `00175` passes. Proof log: `test_after.log`.

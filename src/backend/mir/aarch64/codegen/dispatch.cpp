@@ -4045,22 +4045,24 @@ lower_store_local_value_publication(
       value.kind == bir::Value::Kind::Named
           ? find_same_block_named_producer(context, value.name, instruction_index)
           : nullptr;
-  const bool emitted = cast_producer != nullptr
-                           ? emit_scalar_conversion_cast_to_register(context,
-                                                                     *cast_producer,
-                                                                     producer_instruction_index(
-                                                                         context, producer_inst)
-                                                                         .value_or(
-                                                                             instruction_index),
-                                                                     *target_register,
-                                                                     lines)
-                           : abi::is_gp_register(target_register->reg) &&
-                                 emit_value_publication_to_register(context,
-                                                                    value,
-                                                                    instruction_index,
-                                                                    target_register->reg.index,
-                                                                    scratches.front().index,
-                                                                    lines);
+  bool emitted = false;
+  if (cast_producer != nullptr) {
+    emitted = emit_scalar_conversion_cast_to_register(
+        context,
+        *cast_producer,
+        producer_instruction_index(context, producer_inst).value_or(instruction_index),
+        *target_register,
+        lines);
+  }
+  if (!emitted && abi::is_gp_register(target_register->reg)) {
+    lines.clear();
+    emitted = emit_value_publication_to_register(context,
+                                                 value,
+                                                 instruction_index,
+                                                 target_register->reg.index,
+                                                 scratches.front().index,
+                                                 lines);
+  }
   if (!emitted || lines.empty()) {
     return std::nullopt;
   }
