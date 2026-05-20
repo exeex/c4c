@@ -207,7 +207,7 @@ if(CLANG_EXECUTABLE AND AARCH64_AS_EXECUTABLE)
             -DOUT_OBJ=${BACKEND_TEST_BINARY_ROOT}/aarch64_return_add_smoke.o
             -DOUT_BIN=${BACKEND_TEST_BINARY_ROOT}/aarch64_return_add_smoke.bin
             -DHOST_PROCESSOR=${CMAKE_HOST_SYSTEM_PROCESSOR}
-            "-DREQUIRED_SNIPPETS=.globl main|main:|mov w0, #2|add w0, w0, #3|ret"
+            "-DREQUIRED_SNIPPETS=.globl add_three|add_three:|add w13, w0, #3|mov x0, x13|ret|.globl main|main:|mov w0, #2|bl add_three|ret"
             -DEXPECTED_RUN_RC=5
             -P "${BACKEND_TEST_CMAKE_ROOT}/run_backend_aarch64_external_smoke.cmake"
   )

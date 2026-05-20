@@ -1,52 +1,56 @@
 Status: Active
 Source Idea Path: ideas/open/333_aarch64_opi_pointer_integer_operation_result_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize The OPI Result Publication Owner
+Current Step ID: 2
+Current Step Title: Repair The Classified Owner
 
 # Current Packet
 
 ## Just Finished
 
-Completed plan Step 1, "Localize The OPI Result Publication Owner". The first
-generated-code divergence is inside callee `addip0`, before the caller-side
-`pll` publication observes the bad value.
+Completed plan Step 2, "Repair The Classified Owner". The AArch64 scalar ALU
+prepared-record path in `src/backend/mir/aarch64/codegen/alu.cpp` no longer
+retargets a prepared binary result home to the return ABI register. Prepared
+scalar ALU records now keep the prepared result home, and the existing
+before-return move remains responsible for publishing the return ABI value.
 
-Semantic BIR is correct:
-
-`bir.func @addip0(i32 %p.x) -> i32 { %t0 = bir.add i32 %p.x, 0; bir.ret i32 %t0 }`
-
-Prepared AArch64 state is also internally consistent: `%p.x` is in `x0`,
-`%t0` has value id `3634`, type `i32`, and prepared result home
-`register:x13`; the prepared return move says to publish that same value id
-from `x13` to the function return ABI register `x0`
-(`placement=gpr:call_result#0/w1 reg=x0`, reason
-`return_register_to_register`).
-
-The emitted assembly violates the prepared result-home contract at the scalar
-ALU instruction:
+The repaired `addip0` callee now matches the prepared contract: source value
+`%p.x` enters in `w0`, prepared `%t0`/value id `3634` is computed into the
+prepared result home `w13`, the prepared return move publishes `x13 -> x0`, and
+the fallback return-ABI shortcut remains available only when no prepared scalar
+record was produced.
 
 ```asm
 addip0:
-    add w0, w0, #0
+    add w13, w0, #0
+    mov x0, x13
+    mov w0, w13
+    ret
+```
+
+Focused coverage was updated so the AArch64 external return-add smoke exercises
+a helper return instead of only a constant-folded `main`:
+
+```asm
+add_three:
+    add w13, w0, #3
     mov x0, x13
     ret
 ```
 
-The `add` computes the source value `1000` in `w0`, but the prepared home for
-`%t0` is `w13`. The following `mov x0, x13` matches the prepared return move
-and therefore returns stale `x13` instead of the computed result. This
-classifies the first owner as AArch64 scalar ALU result-home publication /
-return-ABI override in `src/backend/mir/aarch64/codegen/alu.cpp`: the binary
-lowering path lets a return-ABI register override the prepared scalar result
-home, while the separate prepared before-return move still reads the original
-prepared home.
+`backend_aarch64_return_lowering_test` now asserts the same contract for an
+`i32` register-backed scalar result: the scalar record computes into `w19`, and
+the return record reads the prepared `w19` source instead of expecting the ALU
+node itself to own ABI `w0`.
 
-Caller `opi` confirms this downstream:
+The representative still fails at `tests/c/external/c-testsuite/src/00204.c:476`
+(`pll(addip0(x))`), but the first generated-code owner has advanced from the
+callee ALU destination to caller-side call-result/cast publication. The repaired
+callee returns through `x0`, then `opi` captures that result into `%t1`/`x20`,
+but the zext result `%t2` is still published from stale `x19` instead of the
+call result:
 
 ```asm
-movz w9, #1000
-str w9, [sp]
 ldr w13, [sp]
 mov w0, w13
 bl addip0
@@ -58,19 +62,17 @@ bl pll
 
 Prepared caller state expects `%t1 = call i32 addip0(...)` in `x20`, `%t2 =
 zext i32 %t1 to i64` in `x13`, and the `pll` argument from `x13` to ABI
-`x0`. The caller-side `ubfx x13, x19, #0, #32` is a later publication problem
-for the same scalar result/cast handoff family, but the first divergence for
-the observed `pll(addip0(x))` failure is already in `addip0`'s emitted ALU
-destination versus prepared result home.
+`x0`. Runtime output now prints `c61bed1a` for that first OPI line, expected
+`3e8`, because `ubfx x13, x19, #0, #32` reads stale `x19` after the repaired
+callee return.
 
 ## Suggested Next
 
-Execute plan Step 2 by repairing AArch64 scalar ALU result publication so a
-binary result is emitted into its prepared result home, or so any return-ABI
-shortcut replaces the paired prepared return move coherently. Start in
-`src/backend/mir/aarch64/codegen/alu.cpp` around the path that builds the
-prepared scalar ALU record and overrides `result_register` with
-`find_return_abi_register`.
+Continue with the caller-side `%t1 -> %t2 -> pll` publication owner exposed by
+the repaired callee. This is not a MOVI, HFA/floating, byval, stdarg cursor,
+fixed-formal, local/value, or frame/formal issue. It is a call-result/cast
+handoff problem in generated `opi`: the call result is captured in `x20`, but
+the following zext/publication reads `x19`.
 
 ## Watchouts
 
@@ -78,25 +80,18 @@ Do not reopen the repaired MOVI BIR immediate cast fold unless new evidence
 shows a remaining MOVI mismatch. Keep HFA/byval/stdarg/fixed-formal/local-
 value guardrails and `review/326_stdarg_byval_route_review.md` untouched.
 
-Do not classify this as a standalone return-lowering, call-result capture, or
-`pll` call-argument issue. Return/call metadata is present and coherent in the
-prepared dumps; the first bad fact is that the scalar ALU instruction fails to
-publish `%t0` into its prepared home before the existing return move consumes
-that home. Also preserve the caller-side `%t1 -> %t2 -> pll` evidence: after
-the callee is fixed, the `opi` cast/call-output sequence may expose a second
-same-family stale-register use (`x19` instead of `%t1`/`x20`).
+Do not undo the scalar ALU prepared-home repair to make the representative
+appear to move differently. The current callee sequence is coherent with the
+prepared result home and return move. The remaining owner is the caller-side
+call-result/cast publication sequence after `bl addip0`.
 
 ## Proof
 
-Todo-only localization packet. Read-only inspection commands run:
+Ran the exact delegated proof command:
 
-- `build/c4cll --dump-bir --target aarch64-linux-gnu --mir-focus-function addip0 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-bir --target aarch64-linux-gnu --mir-focus-function opi tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function addip0 --mir-focus-value t0 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t0 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t2 tests/c/external/c-testsuite/src/00204.c`
-- `nl -ba build/c_testsuite_aarch64_backend/src/00204.c.s | sed -n '14208,14216p;14490,14502p'`
+`cmake --build build --target c4cll backend_aarch64_scalar_alu_records_test backend_aarch64_prepared_scalar_alu_records_test backend_aarch64_scalar_record_contract_test backend_aarch64_return_lowering_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(scalar_alu_records|prepared_scalar_alu_records|scalar_record_contract|return_lowering)|cli_aarch64_asm_external_return_add_smoke|cli_aarch64_asm_external_return_add_sub_chain_smoke|cli_dump_(bir|prepared_bir)_00204_stdarg)|c_testsuite_aarch64_backend_src_00204_c' > test_after.log 2>&1`
 
-No build or CTest was run, and `test_after.log` was not overwritten. Ran
-`git diff --check`: passed.
+Result: 10/11 selected tests passed. The only remaining failure is
+`c_testsuite_aarch64_backend_src_00204_c`, with the first current mismatch at
+`00204.c:476` from caller-side `ubfx x13, x19, #0, #32` after `bl addip0`.
+`test_after.log` contains the full proof output.

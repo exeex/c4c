@@ -961,12 +961,15 @@ int module_build_retains_return_abi_for_register_scalar_result() {
       ret != nullptr && ret->value.has_value()
           ? std::get_if<aarch64_module::codegen::RegisterOperand>(&ret->value->payload)
           : nullptr;
-  if (scalar == nullptr || ret_reg == nullptr ||
-      !scalar->result_register.has_value() ||
-      scalar->result_register->reg != aarch64_abi::w_register(0) ||
-      ret_reg->reg != aarch64_abi::w_register(0) ||
+  if (scalar == nullptr || ret_reg == nullptr || !scalar->result_register.has_value()) {
+    return fail("expected register-backed scalar return records");
+  }
+  if (scalar->result_register->reg != aarch64_abi::w_register(19)) {
+    return fail("expected register-backed scalar result to compute into prepared home");
+  }
+  if (ret_reg->reg != aarch64_abi::w_register(19) ||
       ret_reg->value_id != prepare::PreparedValueId{7}) {
-    return fail("expected register-backed scalar return to honor FunctionReturnAbi w0");
+    return fail("expected register-backed scalar return to read from prepared home");
   }
   return 0;
 }

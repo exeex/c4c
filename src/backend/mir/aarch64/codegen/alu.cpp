@@ -3000,20 +3000,6 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
             *binary);
     scalar_record = prepared.record;
     if (scalar_record.has_value()) {
-      const auto* result_home = find_named_value_home(binary->result, context.function);
-      auto return_register =
-          result_home == nullptr
-              ? std::optional<RegisterOperand>{}
-              : find_return_abi_register(context,
-                                         result_home->value_id,
-                                         result_home->value_name,
-                                         binary->result.type);
-      if (return_register.has_value()) {
-        scalar_record->result_register = *return_register;
-        if (scalar_record->scalar_alu.has_value()) {
-          scalar_record->scalar_alu->result_register = *return_register;
-        }
-      }
       if (scalar_record->scalar_alu.has_value() && scalar_record->inputs.size() == 2) {
         if (const auto* lhs_home = find_named_value_home(binary->lhs, context.function);
             lhs_home != nullptr) {
