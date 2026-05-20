@@ -1,6 +1,6 @@
 # AArch64 Direct-Call Argument And Formal Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -98,6 +98,15 @@ comes from later local scalar/FP conversion store/load publication. That
 residual is tracked separately in
 `ideas/open/347_aarch64_local_conversion_store_load_publication.md`; it should
 not drive more Step 2 implementation here.
+
+## Closure Note
+
+Closed after Step 4 validation. The delegated proof showed `^backend_` passing
+141/141 and the representative direct-call guardrails `00140`, `00159`,
+`00170`, and `00218` passing. The only remaining representative failure,
+`00175`, is the local conversion store/load publication residual split to
+`ideas/open/347_aarch64_local_conversion_store_load_publication.md`, not a
+direct-call argument/formal publication blocker.
 
 ## Reviewer Reject Signals
 
