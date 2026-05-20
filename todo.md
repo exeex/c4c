@@ -8,80 +8,58 @@ Current Step Title: Repair The Classified Owner
 
 ## Just Finished
 
-Completed a todo-only localization packet for the new Step 2 residual at
-`tests/c/external/c-testsuite/src/00204.c:481`,
-`pll(subim503808(x))`. The representative first bad fact is now inside callee
-`subim503808`, not in caller-side result publication.
+Continued plan Step 2, "Repair The Classified Owner", by repairing the
+`subim503808` scalar ALU rematerializable-immediate operand publication /
+live-source clobbering owner.
 
-Semantic BIR is correct:
+The bug was that `%t0 = bir.sub i32 0, 503808` had a rematerializable immediate
+home, but fallback return-chain lowering still materialized it through `w0`,
+which was also the live `%p.x` formal register for the next instruction. Then
+`%t1 = %p.x - %t0` read `w0` for both operands and returned zero.
 
-```text
-bir.func @subim503808(i32 %p.x) -> i32 {
-entry:
-  %t0 = bir.sub i32 0, 503808
-  %t1 = bir.sub i32 %p.x, %t0
-  bir.ret i32 %t1
-}
-```
+The repair keeps rematerializable-immediate homes authoritative when retargeting
+prepared scalar ALU operands, and narrows fallback scratch use to the real
+clobber case: when a rematerializable result would otherwise materialize into a
+register needed by its immediate consumer. Harmless return-ABI accumulator
+chains still use `w0`.
 
-For `x = 1000`, `%t0` should be `-503808` and `%t1` should be
-`1000 - (-503808) = 504808`, printed as `7b3e8`.
-
-Prepared callee facts are coherent:
-
-- `%p.x` value id `3645`, type `i32`, home `register:x0`
-- `%t0` value id `3646`, type `i32`, home `rematerializable_immediate
-  imm_i32=-503808`
-- `%t1` value id `3647`, type `i32`, result home `register:x21`
-- before-instruction moves for instruction index 1 publish both `%p.x` and
-  `%t0` as consumer inputs for `%t1`
-- before-return move publishes `%t1` from `x21` to return register `x0`
-
-The emitted callee violates that contract before the caller observes the value:
+Repaired `subim503808` generated sequence:
 
 ```asm
 subim503808:
-    mov w0, #0
-    movz w9, #45056
-    movk w9, #7, lsl #16
-    sub w0, w0, w9
-    sub w20, w0, w0
+    mov w9, #0
+    movz w10, #45056
+    movk w10, #7, lsl #16
+    sub w9, w9, w10
+    movz w9, #20480
+    movk w9, #65528, lsl #16
+    sub w20, w0, w9
     mov x0, x21
     mov w0, w20
     ret
 ```
 
-The immediate-materialization sequence computes `%t0 = -503808` into `w0`,
-which is also the live `%p.x`/formal input register. The following `%t1`
-subtract then reads `w0` for both operands (`sub w20, w0, w0`), producing zero.
-This classifies the owner as AArch64 scalar ALU rematerializable-immediate
-operand publication / live-source clobbering in the callee. It is distinct from
-the already repaired scalar ALU result-home/return-ABI override and the
-caller-side cast source publication repair.
+This preserves `%p.x` in `w0`, materializes `%t0` separately, and computes
+`1000 - (-503808) = 504808`, so `pll(subim503808(x))` now prints `7b3e8`.
 
-Caller `opi` is now coherent for this path: `%t15` is loaded into `x13`, passed
-to `subim503808` via `x0`, `%t16` is captured from return `x0` into `x20`,
-`%t17 = zext i32 %t16 to i64` reads `x20` into `x13`, and the `pll` argument
-is published from `x13` to `x0`:
+The representative now advances to
+`tests/c/external/c-testsuite/src/00204.c:500`, `pll(lsli1(x))`: expected
+`7d0`, actual `3e8`. The generated callee currently returns the input without
+emitting the left shift:
 
 ```asm
-ldr w13, [sp]
-mov w0, w13
-bl subim503808
-mov x20, x0
-ubfx x13, x20, #0, #32
-mov x0, x13
-bl pll
+lsli1:
+    mov x0, x13
+    mov w0, w13
+    ret
 ```
 
 ## Suggested Next
 
-Repair the scalar ALU/immediate owner so rematerializing a prepared immediate
-operand for a binary instruction does not clobber a live source register needed
-by the same instruction. The fix should make `%t1 = %p.x - %t0` use `%p.x`
-from the original `1000` source and `%t0` from a separate immediate/materialized
-source, then publish the result into prepared home `x21` before the existing
-return move.
+Localize the new shift residual for `lsli1`. Start from generated
+BIR/prepared/assembly for `lsli1` and caller `opi`; determine why `x << 1`
+returns the unshifted input even though caller-side call-result/cast
+publication is coherent.
 
 ## Watchouts
 
@@ -89,26 +67,19 @@ Do not reopen the repaired MOVI BIR immediate cast fold unless new evidence
 shows a remaining MOVI mismatch. Keep HFA/byval/stdarg/fixed-formal/local-
 value guardrails and `review/326_stdarg_byval_route_review.md` untouched.
 
-Do not classify this as MOVI, HFA/floating, byval, stdarg cursor,
-fixed-formal, local/value, frame/formal, return lowering, or caller
-call-result/cast publication. The caller-side path is coherent after the prior
-repair. The first bad fact is the callee scalar ALU materialization of `%t0`
-into `w0`, which clobbers `%p.x` before `%t1` is computed.
+Do not undo the scalar ALU result-home fix, cast source publication fix, or this
+rematerializable-immediate clobber fix to chase the new shift failure. The new
+first bad fact is separate from MOVI, HFA/floating, byval, stdarg cursor,
+fixed-formal, local/value, frame/formal, return lowering, immediate
+rematerialization, and caller call-result/cast publication.
 
 ## Proof
 
-Todo-only localization packet. Read-only inspection commands run:
+Ran the exact delegated proof command:
 
-- `nl -ba tests/c/external/c-testsuite/src/00204.c | sed -n '430,485p'`
-- `nl -ba build/c_testsuite_aarch64_backend/src/00204.c.s | sed -n '14248,14262p;14545,14555p'`
-- `build/c4cll --dump-bir --target aarch64-linux-gnu --mir-focus-function subim503808 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function subim503808 --mir-focus-value t0 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function subim503808 --mir-focus-value t1 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t15 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t16 tests/c/external/c-testsuite/src/00204.c`
-- `build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function opi --mir-focus-value t17 tests/c/external/c-testsuite/src/00204.c`
-- `sed -n '300,320p;650,665p' test_before.log`
+`cmake --build build --target c4cll backend_aarch64_scalar_alu_records_test backend_aarch64_prepared_scalar_alu_records_test backend_aarch64_scalar_record_contract_test backend_aarch64_return_lowering_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_(aarch64_(scalar_alu_records|prepared_scalar_alu_records|scalar_record_contract|return_lowering)|cli_aarch64_asm_external_return_add_smoke|cli_aarch64_asm_external_return_add_sub_chain_smoke|cli_dump_(bir|prepared_bir)_00204_stdarg)|c_testsuite_aarch64_backend_src_00204_c' > test_after.log 2>&1`
 
-No build, broad test, or `test_after.log` overwrite was performed. Baseline
-`test_before.log` records the current representative mismatch: expected
-`7b3e8`, actual `0`.
+Result: 10/11 selected tests passed. The focused backend tests all pass. The
+only remaining failure is `c_testsuite_aarch64_backend_src_00204_c`, now
+advanced to `00204.c:500` (`pll(lsli1(x))`), expected `7d0`, actual `3e8`.
+`test_after.log` contains the full proof output.

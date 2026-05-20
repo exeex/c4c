@@ -3002,7 +3002,8 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
     if (scalar_record.has_value()) {
       if (scalar_record->scalar_alu.has_value() && scalar_record->inputs.size() == 2) {
         if (const auto* lhs_home = find_named_value_home(binary->lhs, context.function);
-            lhs_home != nullptr) {
+            lhs_home != nullptr &&
+            lhs_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate) {
           const auto emitted_lhs =
               find_emitted_scalar_register(scalar_state, lhs_home->value_name);
           if (emitted_lhs.has_value()) {
@@ -3011,7 +3012,8 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           }
         }
         if (const auto* rhs_home = find_named_value_home(binary->rhs, context.function);
-            rhs_home != nullptr) {
+            rhs_home != nullptr &&
+            rhs_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate) {
           const auto emitted_rhs =
               find_emitted_scalar_register(scalar_state, rhs_home->value_name);
           if (emitted_rhs.has_value()) {
@@ -3061,6 +3063,47 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
         if (!result_register.has_value() && result_home != nullptr) {
           result_register = find_return_chain_register(
               context, instruction_index, *result_home, binary->result.type);
+        }
+        if (result_register.has_value() && result_home != nullptr &&
+            result_home->kind == prepare::PreparedValueHomeKind::RematerializableImmediate &&
+            authoritative_immediate.has_value() && context.bir_block != nullptr &&
+            context.function.prepared != nullptr &&
+            instruction_index + 1 < context.bir_block->insts.size()) {
+          const auto* next_binary =
+              std::get_if<bir::BinaryInst>(&context.bir_block->insts[instruction_index + 1]);
+          const auto current_name =
+              prepare::prepared_value_name(context.function.prepared->names,
+                                           result_home->value_name);
+          const bool next_lhs_consumes =
+              next_binary != nullptr && value_matches_name(next_binary->lhs, current_name);
+          const bool next_rhs_consumes =
+              next_binary != nullptr && value_matches_name(next_binary->rhs, current_name);
+          const bir::Value* other_operand =
+              next_lhs_consumes ? &next_binary->rhs
+                                : (next_rhs_consumes ? &next_binary->lhs : nullptr);
+          const auto* other_home =
+              other_operand != nullptr ? find_named_value_home(*other_operand, context.function)
+                                       : nullptr;
+          const auto other_reg =
+              other_home != nullptr && other_home->register_name.has_value()
+                  ? abi::parse_aarch64_register_name(*other_home->register_name)
+                  : std::nullopt;
+          if (other_reg.has_value() &&
+              other_reg->bank == result_register->reg.bank &&
+              other_reg->index == result_register->reg.index) {
+            const auto result_view = scalar_register_view(binary->result.type);
+            if (!result_view.has_value()) {
+              return std::nullopt;
+            }
+            auto scratch = scalar_gp_scratch_register(*result_view, {&*result_register});
+            if (!scratch.has_value()) {
+              return std::nullopt;
+            }
+            scratch->value_id = result_home->value_id;
+            scratch->value_name = result_home->value_name;
+            scratch->prepared_bank = prepare::PreparedRegisterBank::Gpr;
+            result_register = *scratch;
+          }
         }
         std::optional<std::int64_t> result_stack_offset_bytes;
         if (!result_register.has_value() && result_home != nullptr &&
