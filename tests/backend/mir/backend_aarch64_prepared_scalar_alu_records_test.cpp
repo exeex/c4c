@@ -1,4 +1,5 @@
 #include "src/backend/mir/aarch64/codegen/instruction.hpp"
+#include "src/backend/mir/aarch64/codegen/alu.hpp"
 #include "src/backend/mir/aarch64/codegen/returns.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/target_profile.hpp"
@@ -500,6 +501,186 @@ int prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts() {
     return fail("expected selected scalar node to expose frame-slot memory use");
   }
 
+  return 0;
+}
+
+int scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_results() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("f.load_local");
+  const auto block_label = prepared.names.block_labels.intern("entry");
+  const auto bir_block_label = prepared.module.names.block_labels.intern("entry");
+  const auto local_stack_slot = prepared.names.slot_names.intern("%lv.stack");
+  const auto local_register_slot = prepared.names.slot_names.intern("%lv.register");
+  const auto stack_load_name = prepared.names.value_names.intern("%loaded.stack");
+  const auto register_load_name = prepared.names.value_names.intern("%loaded.register");
+  const auto sum_name = prepared.names.value_names.intern("%sum");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "f.load_local",
+      .return_type = bir::TypeKind::I32,
+      .blocks = {bir::Block{
+          .label = "entry",
+          .insts = {bir::LoadLocalInst{
+                        .result = named_value(bir::TypeKind::I32, "%loaded.stack"),
+                        .slot_name = "%lv.stack",
+                        .slot_id = local_stack_slot,
+                        .align_bytes = 4,
+                    },
+                    bir::LoadLocalInst{
+                        .result = named_value(bir::TypeKind::I32, "%loaded.register"),
+                        .slot_name = "%lv.register",
+                        .slot_id = local_register_slot,
+                        .align_bytes = 4,
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Add,
+                        .result = named_value(bir::TypeKind::I32, "%sum"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = named_value(bir::TypeKind::I32, "%loaded.stack"),
+                        .rhs = named_value(bir::TypeKind::I32, "%loaded.register"),
+                    }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_block_label,
+      }},
+  });
+  auto& function = prepared.module.functions.back();
+  const auto& block = function.blocks.front();
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  auto& control_flow = prepared.control_flow.functions.back();
+
+  prepared.stack_layout.frame_slots = {
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{1},
+          .function_name = function_name,
+          .offset_bytes = 16,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+      prepare::PreparedFrameSlot{
+          .slot_id = prepare::PreparedFrameSlotId{2},
+          .function_name = function_name,
+          .offset_bytes = 24,
+          .size_bytes = 4,
+          .align_bytes = 4,
+      },
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 0,
+                  .result_value_name = stack_load_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{1},
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+              prepare::PreparedMemoryAccess{
+                  .function_name = function_name,
+                  .block_label = block_label,
+                  .inst_index = 1,
+                  .result_value_name = register_load_name,
+                  .address =
+                      prepare::PreparedAddress{
+                          .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                          .frame_slot_id = prepare::PreparedFrameSlotId{2},
+                          .size_bytes = 4,
+                          .align_bytes = 4,
+                          .can_use_base_plus_offset = true,
+                      },
+              },
+          },
+  });
+
+  prepare::PreparedValueLocationFunction locations{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{10},
+                  .function_name = function_name,
+                  .value_name = stack_load_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{20},
+                  .offset_bytes = std::size_t{200},
+                  .size_bytes = std::size_t{4},
+                  .align_bytes = std::size_t{4},
+              },
+              register_home(
+                  prepare::PreparedValueId{11}, function_name, register_load_name, "x13"),
+              register_home(prepare::PreparedValueId{12}, function_name, sum_name, "x0"),
+          },
+  };
+  prepare::PreparedStoragePlanFunction storage{
+      .function_name = function_name,
+      .values =
+          {
+              frame_slot_storage(prepare::PreparedValueId{10},
+                                 stack_load_name,
+                                 prepare::PreparedFrameSlotId{20},
+                                 200),
+              register_storage(prepare::PreparedValueId{11}, register_load_name, "x13"),
+              register_storage(prepare::PreparedValueId{12}, sum_name, "x0"),
+          },
+  };
+  prepared.value_locations.functions.push_back(locations);
+  prepared.storage_plans.functions.push_back(storage);
+
+  c4c::backend::aarch64::module::BlockLoweringContext context{
+      .function =
+          c4c::backend::aarch64::module::FunctionLoweringContext{
+              .prepared = &prepared,
+              .target_profile = &prepared.target_profile,
+              .control_flow = &control_flow,
+              .bir_function = &function,
+              .value_locations = &prepared.value_locations.functions.back(),
+              .storage_plan = &prepared.storage_plans.functions.back(),
+          },
+      .control_flow_block = &control_flow.blocks.front(),
+      .bir_block = &block,
+  };
+  aarch64_codegen::BlockScalarLoweringState scalar_state;
+  c4c::backend::aarch64::module::ModuleLoweringDiagnostics diagnostics;
+  auto lowered = aarch64_codegen::lower_scalar_instruction(
+      context, block.insts[2], 2, scalar_state, diagnostics);
+  if (!lowered.has_value()) {
+    return fail("expected scalar consumer of load-local values to lower");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&lowered->target.payload);
+  if (scalar == nullptr || !scalar->scalar_alu.has_value() ||
+      scalar->inputs.size() != 2) {
+    return fail("expected lowered scalar ALU record");
+  }
+  const auto* lhs =
+      std::get_if<aarch64_codegen::MemoryOperand>(&scalar->inputs[0].payload);
+  const auto* rhs =
+      std::get_if<aarch64_codegen::MemoryOperand>(&scalar->inputs[1].payload);
+  if (lhs == nullptr || rhs == nullptr ||
+      lhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      rhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      lhs->byte_offset != 16 || rhs->byte_offset != 24 ||
+      lhs->result_value_name != stack_load_name ||
+      rhs->result_value_name != register_load_name) {
+    return fail("expected scalar consumer to read load-local source homes");
+  }
   return 0;
 }
 
@@ -1173,6 +1354,11 @@ int main() {
   }
   if (const int status =
           prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          scalar_consumers_use_load_local_source_for_unpublished_stack_or_gp_register_results();
       status != 0) {
     return status;
   }

@@ -5,6 +5,7 @@
 #include "memory.hpp"
 #include "operands.hpp"
 
+#include <algorithm>
 #include <cstdint>
 #include <sstream>
 #include <string>
@@ -695,6 +696,10 @@ namespace mir = c4c::backend::mir;
   return nullptr;
 }
 
+[[nodiscard]] const prepare::PreparedValueHome* find_named_value_home(
+    const bir::Value& value,
+    const module::FunctionLoweringContext& context);
+
 [[nodiscard]] std::optional<MemoryOperand> make_prepared_scalar_load_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& home) {
@@ -781,6 +786,160 @@ namespace mir = c4c::backend::mir;
       .is_volatile = source_access->is_volatile,
       .can_use_base_plus_offset = true,
   };
+}
+
+[[nodiscard]] std::optional<std::size_t> find_same_block_load_local_producer_index(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return std::nullopt;
+  }
+  const std::size_t limit =
+      std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = limit; index > 0; --index) {
+    const std::size_t candidate_index = index - 1;
+    const auto* load =
+        std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[candidate_index]);
+    if (load != nullptr &&
+        load->result.kind == bir::Value::Kind::Named &&
+        load->result.name == value.name) {
+      return candidate_index;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] c4c::SlotNameId local_load_slot_id(const bir::LoadLocalInst& load) {
+  if (load.address.has_value() &&
+      load.address->base_slot_id != c4c::kInvalidSlotName) {
+    return load.address->base_slot_id;
+  }
+  return load.slot_id;
+}
+
+[[nodiscard]] c4c::SlotNameId local_store_slot_id(const bir::StoreLocalInst& store) {
+  if (store.address.has_value() &&
+      store.address->base_slot_id != c4c::kInvalidSlotName) {
+    return store.address->base_slot_id;
+  }
+  return store.slot_id;
+}
+
+[[nodiscard]] std::int64_t local_load_byte_offset(const bir::LoadLocalInst& load) {
+  return load.address.has_value()
+             ? load.address->byte_offset
+             : static_cast<std::int64_t>(load.byte_offset);
+}
+
+[[nodiscard]] std::int64_t local_store_byte_offset(const bir::StoreLocalInst& store) {
+  return store.address.has_value()
+             ? store.address->byte_offset
+             : static_cast<std::int64_t>(store.byte_offset);
+}
+
+[[nodiscard]] bool byte_ranges_overlap(std::int64_t lhs_offset,
+                                       std::size_t lhs_size,
+                                       std::int64_t rhs_offset,
+                                       std::size_t rhs_size) {
+  const auto lhs_end = lhs_offset + static_cast<std::int64_t>(lhs_size);
+  const auto rhs_end = rhs_offset + static_cast<std::int64_t>(rhs_size);
+  return lhs_offset < rhs_end && rhs_offset < lhs_end;
+}
+
+[[nodiscard]] bool store_may_alias_local_load(const bir::StoreLocalInst& store,
+                                              const bir::LoadLocalInst& load) {
+  const auto load_slot_id = local_load_slot_id(load);
+  const auto store_slot_id = local_store_slot_id(store);
+  if (load_slot_id != c4c::kInvalidSlotName ||
+      store_slot_id != c4c::kInvalidSlotName) {
+    if (load_slot_id == c4c::kInvalidSlotName ||
+        store_slot_id == c4c::kInvalidSlotName ||
+        load_slot_id != store_slot_id) {
+      return false;
+    }
+  } else if (!load.slot_name.empty() || !store.slot_name.empty()) {
+    if (load.slot_name.empty() || store.slot_name.empty() ||
+        load.slot_name != store.slot_name) {
+      return false;
+    }
+  }
+
+  const auto load_size = scalar_type_size_bytes(load.result.type);
+  const auto store_size = scalar_type_size_bytes(store.value.type);
+  if (!load_size.has_value() || !store_size.has_value()) {
+    return true;
+  }
+  return byte_ranges_overlap(local_load_byte_offset(load),
+                             *load_size,
+                             local_store_byte_offset(store),
+                             *store_size);
+}
+
+[[nodiscard]] bool has_intervening_store_to_local_load_source(
+    const module::BlockLoweringContext& context,
+    const bir::LoadLocalInst& load,
+    std::size_t producer_index,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr) {
+    return true;
+  }
+  const std::size_t limit =
+      std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = producer_index + 1; index < limit; ++index) {
+    const auto* store =
+        std::get_if<bir::StoreLocalInst>(&context.bir_block->insts[index]);
+    if (store != nullptr && store_may_alias_local_load(*store, load)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] bool load_local_home_needs_consumer_publication(
+    const prepare::PreparedValueHome& home) {
+  if (home.kind == prepare::PreparedValueHomeKind::StackSlot) {
+    return true;
+  }
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    return false;
+  }
+  const auto reg = abi::parse_aarch64_register_name(*home.register_name);
+  return reg.has_value() && abi::is_gp_register(*reg);
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_unpublished_load_local_source_operand(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  const auto producer_index =
+      find_same_block_load_local_producer_index(context, value, before_instruction_index);
+  if (!producer_index.has_value() || context.bir_block == nullptr) {
+    return std::nullopt;
+  }
+  const auto* load =
+      std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[*producer_index]);
+  if (load == nullptr ||
+      has_intervening_store_to_local_load_source(
+          context, *load, *producer_index, before_instruction_index)) {
+    return std::nullopt;
+  }
+  const auto* home = find_named_value_home(load->result, context.function);
+  if (home == nullptr || !load_local_home_needs_consumer_publication(*home)) {
+    return std::nullopt;
+  }
+  auto source = make_prepared_scalar_load_source(context, *home);
+  if (!source.has_value() ||
+      source->base_kind != MemoryBaseKind::FrameSlot ||
+      source->support != MemoryOperandSupportKind::Prepared ||
+      !source->can_use_base_plus_offset ||
+      !source->byte_offset_is_prepared_snapshot) {
+    return std::nullopt;
+  }
+  return source;
 }
 
 [[nodiscard]] std::string relocation_operand(std::string_view label,
@@ -1045,6 +1204,7 @@ namespace mir = c4c::backend::mir;
 [[nodiscard]] std::optional<OperandRecord> make_scalar_fallback_operand(
     const bir::Value& value,
     const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
     const BlockScalarLoweringState& scalar_state,
     module::ModuleLoweringDiagnostics& diagnostics) {
   if (value.kind == bir::Value::Kind::Immediate) {
@@ -1056,6 +1216,11 @@ namespace mir = c4c::backend::mir;
                       : find_emitted_scalar_register(scalar_state, home->value_name);
   if (emitted.has_value()) {
     return make_register_operand(*emitted);
+  }
+  auto load_source =
+      make_unpublished_load_local_source_operand(context, value, instruction_index);
+  if (load_source.has_value()) {
+    return make_memory_operand(*load_source);
   }
   if (home != nullptr) {
     auto value_home_operand = make_named_scalar_operand(value, context, diagnostics);
@@ -1906,7 +2071,10 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
 
     const bool is_remainder_opcode = alu.source_binary_opcode == bir::BinaryOpcode::SRem;
     std::vector<std::string> lines;
-    std::vector<const RegisterOperand*> lhs_occupied{&*scalar.result_register};
+    std::vector<const RegisterOperand*> lhs_occupied;
+    if (lhs_is_register) {
+      lhs_occupied.push_back(&*scalar.result_register);
+    }
     if (rhs_register != nullptr) {
       lhs_occupied.push_back(rhs_register);
     }
@@ -3163,6 +3331,11 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           if (emitted_lhs.has_value()) {
             scalar_record->scalar_alu->lhs = make_register_operand(*emitted_lhs);
             scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
+          } else if (auto load_source = make_unpublished_load_local_source_operand(
+                         context, binary->lhs, instruction_index);
+                     load_source.has_value()) {
+            scalar_record->scalar_alu->lhs = make_memory_operand(*load_source);
+            scalar_record->inputs[0] = scalar_record->scalar_alu->lhs;
           }
         }
         if (const auto* rhs_home = find_named_value_home(binary->rhs, context.function);
@@ -3172,6 +3345,11 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
               find_emitted_scalar_register(scalar_state, rhs_home->value_name);
           if (emitted_rhs.has_value()) {
             scalar_record->scalar_alu->rhs = make_register_operand(*emitted_rhs);
+            scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
+          } else if (auto load_source = make_unpublished_load_local_source_operand(
+                         context, binary->rhs, instruction_index);
+                     load_source.has_value()) {
+            scalar_record->scalar_alu->rhs = make_memory_operand(*load_source);
             scalar_record->inputs[1] = scalar_record->scalar_alu->rhs;
           }
         }
@@ -3277,9 +3455,11 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
           }
         }
         const auto lhs =
-            make_scalar_fallback_operand(binary->lhs, context, scalar_state, diagnostics);
+            make_scalar_fallback_operand(
+                binary->lhs, context, instruction_index, scalar_state, diagnostics);
         const auto rhs =
-            make_scalar_fallback_operand(binary->rhs, context, scalar_state, diagnostics);
+            make_scalar_fallback_operand(
+                binary->rhs, context, instruction_index, scalar_state, diagnostics);
         const auto operand_is_memory = [](const std::optional<OperandRecord>& operand) {
           if (!operand.has_value()) {
             return false;

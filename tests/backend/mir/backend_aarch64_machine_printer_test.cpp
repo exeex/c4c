@@ -2549,7 +2549,30 @@ int selected_scalar_alu_frame_slot_operands_materialize_before_printing() {
           .supported_integer_operation = true,
       }));
 
-  const auto result = print_common_instruction_nodes({mul, add});
+  auto mul_lhs_slot = frame_slot(56);
+  mul_lhs_slot.result_value_id = prepare::PreparedValueId{270};
+  mul_lhs_slot.result_value_name = c4c::ValueNameId{271};
+  auto mul_rhs_slot = frame_slot(64);
+  mul_rhs_slot.frame_slot_id = prepare::PreparedFrameSlotId{6};
+  mul_rhs_slot.result_value_id = prepare::PreparedValueId{272};
+  mul_rhs_slot.result_value_name = c4c::ValueNameId{273};
+  const auto stack_mul = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Mul,
+          .source_binary_opcode = bir::BinaryOpcode::Mul,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{274},
+          .result_value_name = c4c::ValueNameId{275},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(9),
+          .result_stack_offset_bytes = 72,
+          .lhs = aarch64_codegen::make_memory_operand(mul_lhs_slot),
+          .rhs = aarch64_codegen::make_memory_operand(mul_rhs_slot),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({mul, add, stack_mul});
   if (!result.ok) {
     return fail("expected scalar ALU frame-slot operands to print: " + result.diagnostic);
   }
@@ -2558,7 +2581,11 @@ int selected_scalar_alu_frame_slot_operands_materialize_before_printing() {
       "    mul w0, w1, w9\n"
       "    ldr x9, [sp, #40]\n"
       "    ldr x10, [sp, #48]\n"
-      "    add x13, x9, x10\n";
+      "    add x13, x9, x10\n"
+      "    ldr w9, [sp, #56]\n"
+      "    ldr w10, [sp, #64]\n"
+      "    mul w9, w9, w10\n"
+      "    str w9, [sp, #72]\n";
   return expect_assembly(result.assembly,
                          expected,
                          expected,

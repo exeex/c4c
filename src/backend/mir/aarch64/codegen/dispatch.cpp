@@ -315,6 +315,29 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return std::nullopt;
 }
 
+[[nodiscard]] bool has_same_block_load_local_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return false;
+  }
+  const std::size_t limit =
+      std::min(before_instruction_index, context.bir_block->insts.size());
+  for (std::size_t index = limit; index > 0; --index) {
+    const auto* load =
+        std::get_if<bir::LoadLocalInst>(&context.bir_block->insts[index - 1]);
+    if (load != nullptr &&
+        load->result.kind == bir::Value::Kind::Named &&
+        load->result.name == value.name) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 materialize_direct_global_select_chain_call_argument(
     const module::BlockLoweringContext& context,
@@ -342,6 +365,9 @@ materialize_direct_global_select_chain_call_argument(
   const auto producer_index =
       find_same_block_scalar_producer(context, value.name, before_instruction_index);
   if (!producer_index.has_value() || context.bir_block == nullptr) {
+    if (has_same_block_load_local_producer(context, value, before_instruction_index)) {
+      return true;
+    }
     if (auto prepared_register = make_named_prepared_result_register(context, value);
         prepared_register.has_value()) {
       record_emitted_scalar_register(scalar_state,
