@@ -1,8 +1,9 @@
 # AArch64 Fallthrough Fixed-Offset Local Load Store Emission
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md
+Closed: 2026-05-20
 
 ## Goal
 
@@ -59,6 +60,33 @@ omitted, so `b[1]` and later elements remain stale when `count % 8 == 7`.
   repaired.
 - No expectation, runner, timeout, unsupported classification,
   CTest-registration, or proof-log-policy change is used to claim progress.
+
+## Completion Note
+
+Idea 341 is complete. The fallthrough fixed-offset local copy emission path was
+repaired by the landed commits:
+
+- `f9179584e repair fallthrough local load store emission`
+- `aae292bfc repair remaining fallthrough copy emission`
+- `ce9427c2 restore prepared memory offset validation`
+
+The final Step 4 proof regenerated `00143` assembly without the empty
+`.LBB1_8` through `.LBB1_20` fallthrough copy blocks; those labels now contain
+the expected `ldrh`/`strh` data movement. Focused backend coverage includes
+multiple fallthrough-style fixed-offset i16 local copy blocks, and the prepared
+memory operand validation regression was corrected.
+
+`00143` remains `[RUNTIME_NONZERO]`, but the first bad generated-assembly fact
+has moved outside this idea: `.LBB1_29` stores `--n`, then reloads `n`,
+subtracts one again, and branches on the second `n - 1` compare. That residual
+is tracked separately by `ideas/open/342_aarch64_duff_do_while_latch_condition_emission.md`.
+
+Close gate: existing canonical logs plus the regression guard checker report
+`passed=4 failed=1 total=5` before and `passed=5 failed=1 total=6` after, with
+no new failing tests. The after log adds the owned prepared-memory operand
+record test, so the scope is not byte-identical, but the guard script reports
+PASS and the remaining failure is the separately classified latch-condition
+residual.
 
 ## Reviewer Reject Signals
 

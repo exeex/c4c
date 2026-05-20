@@ -1,40 +1,38 @@
-# AArch64 Fallthrough Fixed-Offset Local Load Store Emission Runbook
+# AArch64 Duff Do-While Latch Condition Emission Runbook
 
 Status: Active
-Source Idea: ideas/open/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md
-Activated From: ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md residual split
+Source Idea: ideas/open/342_aarch64_duff_do_while_latch_condition_emission.md
+Activated From: ideas/closed/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md residual split
 
 ## Purpose
 
-Repair the generated-code residual where fallthrough BIR blocks contain
-fixed-offset local loads and stores, but emitted AArch64 only advances pointer
-locals and omits the data-copy instructions.
+Repair the generated-code residual where the Duff-device do-while latch uses a
+second decrement in the branch decision path after the fixed-offset fallthrough
+copy emission was repaired.
 
 ## Goal
 
-Make AArch64 emission preserve fixed-offset local load/store operations in
-switch/Duff-device fallthrough blocks.
+Make AArch64 emission branch on the single post-decrement Duff loop counter
+value, not on a freshly subtracted second `n - 1` value.
 
 ## Core Rule
 
-Fix the fallthrough fixed-offset local load/store emission path generally. Do
-not special-case `00143`, Duff-device labels, block numbers, pointer-local
-names, source lines, or emitted instruction strings.
+Fix the latch-condition lowering or emission path generally. Do not special-case
+`00143`, `.LBB1_29`, Duff-device labels, block numbers, local name `n`, source
+lines, or emitted instruction strings.
 
 ## Read First
 
-- `ideas/open/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md`
-- `ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md`
-  lifecycle note for split evidence
-- `todo.md` from the completed idea 340 packet, if available in git history,
-  for temporary probe paths and focused proof command context
+- `ideas/open/342_aarch64_duff_do_while_latch_condition_emission.md`
+- `ideas/closed/341_aarch64_fallthrough_fixed_offset_local_load_store_emission.md`
+  completion note for split evidence
 - Current residual evidence:
-  - the old scalar-cast structured-source diagnostic is absent
-  - `00143` assembles, links, runs, and fails as `[RUNTIME_NONZERO]`
-  - prepared BIR contains fallthrough loads from `a[1]` through `a[7]` and
-    stores to `b[1]` through `b[7]`
-  - generated AArch64 fallthrough labels only update the `from`/`to` pointer
-    locals and omit the expected `ldrh`/`strh` data-copy operations
+  - fixed-offset fallthrough copy labels `.LBB1_8` through `.LBB1_20` now emit
+    `ldrh`/`strh` data movement
+  - `00143` still runs and fails as `[RUNTIME_NONZERO]`
+  - generated `.LBB1_29` stores `--n`, then reloads `n`, subtracts one again,
+    and branches on that second `n - 1` compare
+  - the double-decrement branch decision causes one fewer Duff-loop iteration
 
 ## Current Targets
 
@@ -43,99 +41,94 @@ names, source lines, or emitted instruction strings.
 - Useful narrow probes:
   - `ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_00143_c'`
   - `./build/c4cll --dump-prepared-bir --target aarch64-linux-gnu --mir-focus-function main tests/c/external/c-testsuite/src/00143.c`
-  - `./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00143.c -o /tmp/c4c_00143.s`
-- Focused backend coverage should exercise fallthrough blocks containing
-  fixed-offset local load/store operations and prove the corresponding AArch64
-  data movement is emitted.
+  - `./build/c4cll --codegen asm --target aarch64-linux-gnu tests/c/external/c-testsuite/src/00143.c -o /tmp/c4c_00143_latch.s`
+- Focused backend coverage should exercise a decrementing do-while latch where
+  the stored post-decrement value is also the branch condition value.
 
 ## Non-Goals
 
 - Do not edit expectation, unsupported, runner, timeout, CTest registration, or
   proof-log policy.
+- Do not reopen fixed-offset fallthrough copy emission unless generated
+  fallthrough copy blocks again omit required data movement.
 - Do not reopen scalar-cast source-publication work unless the old structured
   register-source diagnostic returns.
-- Do not broaden into frame layout, aggregate, variadic, compare, parser,
-  semantic HIR, or frontend rewrites without fresh first-bad-fact evidence.
+- Do not broaden into frame layout, aggregate, variadic, parser, semantic HIR,
+  or frontend rewrites without fresh first-bad-fact evidence.
 
 ## Working Model
 
-Prepared BIR still contains the required fixed-offset local loads and stores in
-the fallthrough blocks. The failure is likely between prepared BIR and emitted
-AArch64: lowering, selected-node construction, instruction scheduling, local
-access materialization, or printer emission drops those data-copy operations.
-
-Step 2 repaired one prepared-memory dispatch path and proved the case-0 copy
-sequence, but Step 3 showed the repair is incomplete. Prepared BIR still
-contains i16 fixed-offset local copy operations in Duff fallthrough blocks 9
-through 15, while generated labels `.LBB1_8` through `.LBB1_20` still only
-update `from`/`to` stack homes and branch onward. The next repair must cover
-all prepared fixed-offset local load/store copies in those fallthrough blocks,
-not only the path that emits the case-0 `.LBB1_27` copy sequence.
+The remaining representative failure is no longer in the fallthrough copy
+blocks. Generated AArch64 reaches the latch with copied data movement present,
+but the latch condition materializes two decrements: one stored as `--n`, then a
+second subtract on the reloaded `n` for the compare/branch. The likely owner is
+between latch-condition lowering, selected compare construction, branch
+emission, condition materialization, or local writeback reuse.
 
 ## Execution Rules
 
 - Keep routine localization and proof notes in `todo.md`.
-- Add focused backend coverage before or with the repair when the fallthrough
-  load/store behavior can be expressed without relying only on `00143`.
-- Preserve the scalar-cast boundary from idea 340 unless fresh evidence moves
-  the first bad fact back there.
+- Add focused backend coverage before or with the repair when the do-while latch
+  behavior can be expressed without relying only on `00143`.
+- Preserve the fixed-offset fallthrough copy boundary from idea 341 and the
+  scalar-cast boundary from idea 340 unless fresh evidence moves the first bad
+  fact back there.
 - Reclassify any remaining `00143` residual by prepared-state,
   generated-code, assembler/linker output, or runtime evidence before claiming
   completion.
 
 ## Steps
 
-### Step 1: Localize Fallthrough Load Store Drop Boundary
+### Step 1: Localize Duplicate Latch Decrement Boundary
 
-Goal: identify where fixed-offset local load/store operations in fallthrough
-blocks stop being visible to AArch64 instruction emission.
+Goal: identify where the Duff do-while latch branches on a second decremented
+value instead of the stored post-decrement value.
 
-Primary target: prepared BIR blocks that load from `a[1]` through `a[7]` and
-store to `b[1]` through `b[7]` but produce fallthrough assembly without the
-matching `ldrh`/`strh`.
+Primary target: generated `.LBB1_29` in `00143`, where `--n` is stored, `n` is
+reloaded, decremented again, and used for the branch condition.
 
 Actions:
 
 - Reproduce the `00143` runtime residual and regenerate prepared BIR plus
   AArch64 assembly probes.
-- Trace one omitted fallthrough load/store pair from prepared BIR through
-  lowering, selected-node construction, scheduling, and printer emission.
-- Identify whether the drop is caused by BIR traversal, selected instruction
-  construction, local access materialization, branch/fallthrough handling, or
-  printer admission.
+- Trace the latch counter update and branch condition from prepared BIR through
+  lowering, selected-node construction, compare/branch selection, scheduling,
+  local writeback, and printer emission.
+- Identify whether the duplicate decrement is caused by condition lowering,
+  selected compare construction, branch emission, local writeback reuse, or
+  another concrete backend boundary.
 - Record the concrete first bad owner and proposed repair boundary in
   `todo.md`.
 
 Completion check:
 
-- `todo.md` names the concrete lowering, selection, scheduling, local-access,
-  or printer-emission boundary where the fixed-offset local load/store is
-  lost.
+- `todo.md` names the concrete lowering, compare, branch, writeback, or
+  emission boundary where the second latch decrement is introduced.
 
-### Step 2: Repair Fallthrough Fixed-Offset Local Load Store Emission
+### Step 2: Repair Do-While Latch Condition Emission
 
-Goal: make emitted AArch64 preserve the prepared fixed-offset local load/store
-operations in fallthrough blocks.
+Goal: make emitted AArch64 use the single post-decrement counter value for the
+do-while latch branch.
 
 Primary target: the boundary localized in Step 1.
 
 Actions:
 
-- Implement the semantic repair without matching `00143`, label names, block
-  numbers, local names, source lines, or instruction strings.
-- Add or update focused backend coverage for fallthrough fixed-offset local
-  load/store emission.
-- Preserve existing scalar-cast source publication behavior and unrelated local
+- Implement the semantic repair without matching `00143`, `.LBB1_29`, label
+  names, block numbers, local names, source lines, or instruction strings.
+- Add or update focused backend coverage for decrementing do-while latch
+  condition emission.
+- Preserve fixed-offset fallthrough copy emission behavior and unrelated local
   storage/writeback behavior.
 
 Completion check:
 
-- Focused backend coverage proves fallthrough fixed-offset local loads and
-  stores survive to emitted AArch64 data-movement instructions.
+- Focused backend coverage proves a decrementing do-while latch does not branch
+  on a second decremented counter value.
 
 ### Step 3: Prove Representative And Reclassify Residuals
 
-Goal: verify the missing data-copy emission is repaired and classify any new
+Goal: verify the duplicate latch decrement is repaired and classify any new
 first bad fact.
 
 Primary target: `c_testsuite_aarch64_backend_src_00143_c`.
@@ -143,8 +136,8 @@ Primary target: `c_testsuite_aarch64_backend_src_00143_c`.
 Actions:
 
 - Run the supervisor-delegated focused proof command.
-- Confirm generated AArch64 for the fallthrough copy path contains the expected
-  load/store data movement.
+- Confirm generated AArch64 for the latch does not store `--n` and then branch
+  on a second `n - 1` compare.
 - If `00143` still fails, classify the new first bad fact from prepared BIR,
   generated assembly, assembler/linker output, or runtime output.
 - Update `todo.md` with proof results and any residual owner recommendation.
@@ -152,39 +145,4 @@ Actions:
 Completion check:
 
 - The focused proof either passes `00143` or records a new first bad fact that
-  is outside fallthrough fixed-offset local load/store emission.
-
-### Step 4: Repair Remaining Duff Fallthrough Copy Emission
-
-Goal: extend the fallthrough fixed-offset local load/store repair so every
-prepared Duff fallthrough copy emits the corresponding AArch64 data movement,
-not only the case-0 path.
-
-Primary target: prepared i16 fixed-offset local copy operations in fallthrough
-blocks 9 through 15 of `00143`, represented in generated assembly by the
-fallthrough label range currently observed as `.LBB1_8` through `.LBB1_20`.
-
-Actions:
-
-- Reproduce the Step 3 evidence and pick one missing non-case-0 copy pair,
-  such as the prepared `a[1]` to `b[1]` fixed-offset load/store, as the first
-  trace.
-- Compare the already-repaired case-0 emission path against the omitted
-  fallthrough paths and identify the general dispatch, lowering, selected-node,
-  scheduling, local-access, or printer condition that admits one path while
-  skipping the others.
-- Repair the shared semantic owner so prepared fixed-offset local load/store
-  operations in all fallthrough copy blocks survive to emitted `ldrh`/`strh`
-  data movement.
-- Add or update focused backend coverage with multiple fallthrough case blocks
-  containing i16 fixed-offset local copies. The coverage must fail if only one
-  case path is emitted.
-- Preserve the existing Step 2 focused coverage and the scalar-cast boundary
-  from idea 340.
-
-Completion check:
-
-- Focused backend coverage proves multiple Duff fallthrough fixed-offset local
-  copies emit AArch64 data movement, and `00143` generated assembly no longer
-  has prepared fallthrough copy blocks that only update pointer-local stack
-  homes.
+  is outside Duff do-while latch condition emission.
