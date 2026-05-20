@@ -94,6 +94,29 @@ int converts_prepared_assignment_and_saved_register_carriers() {
   if (!saved_reg.has_value() || saved_reg.reg != aarch64_abi::x_register(20)) {
     return fail("expected prepared saved-register carrier to convert through its bank metadata");
   }
+
+  const prepare::PreparedRegisterPlacement saved_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
+  const prepare::PreparedSavedRegister saved_with_placement{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .register_name = "x20",
+      .contiguous_width = 1,
+      .occupied_register_names = {"x20"},
+      .save_index = 0,
+      .placement = saved_placement,
+  };
+  const auto converted_saved_with_placement = aarch64_abi::convert_prepared_register(
+      saved_with_placement,
+      prepare::PreparedRegisterClass::General,
+      aarch64_abi::RegisterView::X);
+  if (!converted_saved_with_placement.has_value() ||
+      converted_saved_with_placement.reg != aarch64_abi::x_register(20)) {
+    return fail("expected prepared saved-register placement slot 0 to agree with frame x20");
+  }
   return 0;
 }
 
@@ -134,6 +157,12 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
       .slot_index = 1,
       .contiguous_width = 1,
   };
+  const prepare::PreparedRegisterPlacement first_callee_saved{
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+      .slot_index = 0,
+      .contiguous_width = 1,
+  };
   const prepare::PreparedRegisterPlacement fp_scratch{
       .bank = prepare::PreparedRegisterBank::Fpr,
       .pool = prepare::PreparedRegisterSlotPool::ReservedScratch,
@@ -161,6 +190,10 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
       callee_saved,
       prepare::PreparedRegisterClass::General,
       aarch64_abi::RegisterView::X);
+  const auto first_saved = aarch64_abi::convert_prepared_register(
+      first_callee_saved,
+      prepare::PreparedRegisterClass::General,
+      aarch64_abi::RegisterView::W);
   const auto scratch = aarch64_abi::convert_prepared_register(
       fp_scratch,
       prepare::PreparedRegisterClass::Float,
@@ -187,8 +220,11 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
                    aarch64_abi::PreparedRegisterConversionErrorKind::UnknownRegisterName)) {
     return fail("expected AArch64 prepared caller-saved slots outside the prealloc pool to fail closed");
   }
-  if (!saved.has_value() || saved.reg != aarch64_abi::x_register(20)) {
-    return fail("expected AArch64 to map callee-saved placement slot 1 to x20");
+  if (!saved.has_value() || saved.reg != aarch64_abi::x_register(21)) {
+    return fail("expected AArch64 to map callee-saved placement slot 1 to x21");
+  }
+  if (!first_saved.has_value() || first_saved.reg != aarch64_abi::w_register(20)) {
+    return fail("expected AArch64 to map callee-saved placement slot 0 to w20");
   }
   if (!scratch.has_value() ||
       scratch.reg != aarch64_abi::fp_simd_register(17, aarch64_abi::RegisterView::D)) {
@@ -204,7 +240,7 @@ int converts_structured_prepared_placements_inside_aarch64_target() {
   };
   const auto placement_first =
       aarch64_abi::convert_prepared_register(assignment, aarch64_abi::RegisterView::X);
-  if (!placement_first.has_value() || placement_first.reg != aarch64_abi::x_register(20)) {
+  if (!placement_first.has_value() || placement_first.reg != aarch64_abi::x_register(21)) {
     return fail("expected prepared assignment conversion to prefer structured placement over spelling");
   }
 

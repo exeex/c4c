@@ -1,5 +1,7 @@
 #include "abi.hpp"
 
+#include "../../../prealloc/target_register_profile.hpp"
+
 #include <cassert>
 #include <charconv>
 #include <system_error>
@@ -197,22 +199,54 @@ std::optional<RegisterReference> call_abi_register(
   return std::nullopt;
 }
 
-std::optional<RegisterReference> prepared_caller_saved_register(
+std::optional<prepare::PreparedRegisterClass> prepared_profile_class(
+    prepare::PreparedRegisterBank bank) {
+  switch (bank) {
+    case prepare::PreparedRegisterBank::Gpr:
+    case prepare::PreparedRegisterBank::AggregateAddress:
+      return prepare::PreparedRegisterClass::General;
+    case prepare::PreparedRegisterBank::Fpr:
+      return prepare::PreparedRegisterClass::Float;
+    case prepare::PreparedRegisterBank::Vreg:
+      return prepare::PreparedRegisterClass::Vector;
+    case prepare::PreparedRegisterBank::None:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+bool prepared_profile_placement_matches(
+    const prepare::PreparedRegisterPlacement& requested,
+    const prepare::PreparedRegisterPlacement& candidate) {
+  if (requested.pool != candidate.pool ||
+      requested.slot_index != candidate.slot_index ||
+      requested.contiguous_width != candidate.contiguous_width) {
+    return false;
+  }
+  if (requested.bank == candidate.bank) {
+    return true;
+  }
+  return requested.bank == prepare::PreparedRegisterBank::AggregateAddress &&
+         candidate.bank == prepare::PreparedRegisterBank::Gpr;
+}
+
+std::optional<RegisterReference> prepared_callee_saved_scalar_register(
     const prepare::PreparedRegisterPlacement& placement) {
-  if (placement.slot_index != 0 || placement.contiguous_width != 1) {
+  const auto reg_class = prepared_profile_class(placement.bank);
+  if (!reg_class.has_value()) {
     return std::nullopt;
   }
 
-  switch (placement.bank) {
-    case prepare::PreparedRegisterBank::Gpr:
-      return x_register(13);
-    case prepare::PreparedRegisterBank::Fpr:
-      return d_register(13);
-    case prepare::PreparedRegisterBank::Vreg:
-      return v_register(13);
-    case prepare::PreparedRegisterBank::AggregateAddress:
-    case prepare::PreparedRegisterBank::None:
-      return std::nullopt;
+  const auto target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  const auto spans = prepare::callee_saved_register_spans(target_profile,
+                                                          *reg_class,
+                                                          placement.contiguous_width);
+  for (const auto& span : spans) {
+    if (!span.placement.has_value() ||
+        !prepared_profile_placement_matches(placement, *span.placement)) {
+      continue;
+    }
+    return parse_aarch64_register_name(span.register_name);
   }
   return std::nullopt;
 }
@@ -225,13 +259,26 @@ std::optional<RegisterReference> placement_register(
     case prepare::PreparedRegisterSlotPool::CallResult:
       return call_abi_register(placement);
     case prepare::PreparedRegisterSlotPool::CallerSaved:
-      return prepared_caller_saved_register(placement);
+      if (placement.slot_index != 0 || placement.contiguous_width != 1) {
+        return std::nullopt;
+      }
+      switch (placement.bank) {
+        case prepare::PreparedRegisterBank::Gpr:
+          return x_register(13);
+        case prepare::PreparedRegisterBank::Fpr:
+          return d_register(13);
+        case prepare::PreparedRegisterBank::Vreg:
+          return v_register(13);
+        case prepare::PreparedRegisterBank::AggregateAddress:
+        case prepare::PreparedRegisterBank::None:
+          return std::nullopt;
+      }
       break;
     case prepare::PreparedRegisterSlotPool::CalleeSaved:
       switch (placement.bank) {
         case prepare::PreparedRegisterBank::Gpr:
         case prepare::PreparedRegisterBank::AggregateAddress:
-          return indexed_register(callee_saved_gp_registers(), placement.slot_index);
+          return prepared_callee_saved_scalar_register(placement);
         case prepare::PreparedRegisterBank::Fpr:
         case prepare::PreparedRegisterBank::Vreg:
           return indexed_register(callee_saved_fp_simd_registers(), placement.slot_index);
@@ -794,11 +841,6 @@ PreparedRegisterConversionResult convert_prepared_register(
     const prepare::PreparedSavedRegister& saved_register,
     std::optional<prepare::PreparedRegisterClass> prepared_class,
     std::optional<RegisterView> expected_view) {
-  if (saved_register.placement.has_value()) {
-    return convert_prepared_register(*saved_register.placement,
-                                     prepared_class,
-                                     expected_view);
-  }
   return convert_prepared_register(saved_register.register_name,
                                    saved_register.bank,
                                    prepared_class,

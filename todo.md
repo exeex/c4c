@@ -1,62 +1,44 @@
 Status: Active
 Source Idea Path: ideas/open/337_aarch64_callee_saved_scalar_home_preservation.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Missing Callee-Saved Preservation
+Current Step ID: 2
+Current Step Title: Repair The Preservation Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the `00168` factorial residual to the prepared-to-AArch64
-register-placement handoff, not liveness, regalloc, frame planning, or
-prologue/epilogue emission.
+Step 2 repaired the AArch64 prepared-to-codegen scalar callee-saved placement
+owner. `gpr:callee_saved#0/w1` and `gpr:callee_saved#1/w1` now resolve through
+the prepared AArch64 callee-saved scalar profile used by regalloc/frame
+planning, so operand emission maps them to `w20/x20` and `x21` instead of
+indexing the full ABI callee-saved array from `x19`.
 
-Concrete evidence:
-
-- `build/c4cll --codegen asm --target aarch64-unknown-linux-gnu
-  tests/c/external/c-testsuite/src/00168.c` still emits `factorial` with
-  `mov w19, w0`, `bl factorial`, then `mul w0, w19, w21`, while the prologue
-  saves/restores only `x20`, `x21`, and `x30`.
-- Focused prepared dump
-  `build/c4cll --dump-prepared-bir --target aarch64-unknown-linux-gnu
-  --mir-focus-function factorial --mir-focus-value p.i
-  tests/c/external/c-testsuite/src/00168.c` shows `%p.i` is live across the
-  recursive call and is represented in preservation authority:
-  `preserve value=%p.i value_id=0 route=callee_saved_register save_index=0
-  placement=gpr:callee_saved#0/w1 reg=x20 bank=gpr`.
-- The same dump's prepared frame plan saves that authority as
-  `saved_register bank=gpr placement=gpr:callee_saved#0/w1 reg=x20` plus
-  `gpr:callee_saved#1/w1 reg=x21`, so frame planning and prologue inputs are
-  carrying `x20`/`x21`.
-- Source inspection with `c4c-clang-tool-ccdb` found the split authority:
-  `src/backend/prealloc/target_register_profile.cpp:209` defines the prepared
-  AArch64 callee-saved GPR pool as `x20`, `x21`, but
-  `src/backend/mir/aarch64/abi/abi.cpp:381` defines codegen's AArch64 ABI
-  callee-saved GPR array starting at `x19`, `x20`, `x21`, ...; placement
-  conversion in `abi.cpp:220` maps `gpr:callee_saved#0/w1` through that ABI
-  array, so emitted operands become `x19/w19` while the prepared frame plan
-  still saves `x20`.
+The focused conversion test now pins the handoff: saved-register frame records
+with `gpr:callee_saved#0/w1` keep the published frame register `x20`, direct
+placement conversion maps slot 0 to `w20`, and assignment conversion still
+prefers structured placement over stale spelling. The `00168` AArch64
+c-testsuite case now passes in the delegated proof.
 
 ## Suggested Next
 
-Start Step 2 with a semantic handoff repair: make AArch64 codegen's conversion
-of prepared callee-saved placements use the same physical register authority
-that prealloc/frame planning published, or otherwise derive both emitted
-operands and saved-register frame records from one shared AArch64 prepared
-callee-saved pool. Prove that `gpr:callee_saved#0/w1` no longer means `x20` to
-the frame plan but `x19` to operand emission.
+Supervisor should review/commit this Step 2 slice, then decide whether the
+active plan needs a Step 3 closure packet or a broader validation packet around
+AArch64 prepared scalar homes.
 
 ## Watchouts
 
-Do not fix this by blindly saving `x19` in the frame while leaving the two
-callee-saved placement maps divergent; that would preserve the narrow current
-assembly but leave the prepared/frame handoff internally inconsistent. Also do
-not reopen return-publication suppression: the recursive return reaches `x0`,
-and the residual is the caller's `%p.i` home being emitted in a different
-callee-saved register from the one the frame plan saves.
+The repair is intentionally scoped to scalar GPR/AggregateAddress callee-saved
+prepared placements. Caller-saved prepared slots and FP/vector callee-saved
+placement policy were left unchanged because the delegated residual was the
+live scalar-home mismatch. Saved-register records now convert from their
+explicit frame register name, while physical value assignments still prefer
+structured placement.
 
 ## Proof
 
-`git diff --check` passed. Output captured in `test_after.log` (empty on
-success).
+`cmake --build build --target c4cll backend_aarch64_prepared_register_conversion_test backend_aarch64_return_lowering_test backend_prepare_frame_stack_call_contract_test backend_prepare_liveness_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(prepared_register_conversion|return_lowering)|backend_prepare_(frame_stack_call_contract|liveness)|c_testsuite_aarch64_backend_src_00168_c' > test_after.log 2>&1`
+passed. `git diff --check` also passed. Proof log: `test_after.log`.
+
+Supervisor follow-up validation:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.
