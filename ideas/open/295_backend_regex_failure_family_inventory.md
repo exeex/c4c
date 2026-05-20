@@ -671,6 +671,31 @@ Step 3/4 split 2026-05-20:
   generated-code evidence tying the current first bad fact to those exact
   closure boundaries.
 
+Step 3/4 split 2026-05-20:
+
+- Step 2 classification committed as `701516e60` found the post-337
+  backend-regex residual surface at 354 selected tests, with 325 passed, 26
+  failed, and 3 timed out.
+- Local/internal backend tests selected by the backend regex are clean. The
+  remaining residuals are external `c_testsuite_aarch64_backend_*` failures.
+- The next focused owner is idea 338,
+  `ideas/open/338_aarch64_scalar_cast_register_source_operand_facts.md`,
+  covering the 9-case AArch64 scalar cast machine-printer operand-fact bucket:
+  `00143`, `00173`, `00175`, `00176`, `00181`, `00185`, `00204`, `00205`,
+  and `00216`.
+- The split is based on direct printer diagnostics: selected scalar cast
+  machine nodes for `sign_extend` and `zero_extend` reach the AArch64 printer
+  without a structured register source operand.
+- This is adjacent to closed idea 334's scalar `mul`/`add` operand-fact owner
+  but is a distinct scalar cast register-source operand-fact boundary. Do not
+  reopen closed owners 334 through 337 from counts alone.
+- Runtime nonzero/crash, runtime mismatch, timeout/output-storm, and other
+  parked buckets remain under this umbrella until a later classification pass
+  justifies another focused split.
+- Active implementation should move to idea 338 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
