@@ -161,3 +161,17 @@ HFA/aggregate output section: expected
 Resume from generated-code classification of that HFA/aggregate output
 mismatch. Do not reopen byval aggregate lane publication unless fresh evidence
 again shows prepared byval bytes failing to reach their AAPCS64 call lanes.
+
+2026-05-20: Parked after commit `b5975e0cd` repaired the HFA overflow
+assignment and scalar-FP symbol-load placement owners. The focused proof now
+passes the prepared `00204.c` handoff dump plus byval payload helpers, and the
+representative HFA long-double, double, and float sections match expected
+output. The remaining `00204.c` first bad fact is later in `MOVI`: expected
+`abcd0000`, actual `ffffffffabcd0000`; nearby MOVI values also show
+sign-extension where expected output uses zero-extension, for example expected
+`aaaaaaaa`, actual `ffffffffaaaaaaaa`.
+
+This idea is not closed: the close-time representative is still red. The MOVI
+sign-extension residual is outside this HFA/floating source scope and is
+tracked separately under
+`ideas/open/332_aarch64_movi_zero_extension_materialization.md`.
