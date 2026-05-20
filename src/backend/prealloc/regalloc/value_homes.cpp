@@ -39,16 +39,28 @@ namespace {
   }
   const auto& param = function.params[param_index];
   if (!param.abi.has_value() || !param.abi->passed_in_register) {
+    if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+        param.abi.has_value() &&
+        param.abi->type == bir::TypeKind::Ptr &&
+        param.abi->sret_pointer) {
+      return 0;
+    }
     return std::nullopt;
   }
   if (target_profile.arch != c4c::TargetArch::Aarch64) {
     return param_index;
+  }
+  if (param.abi->type == bir::TypeKind::Ptr && param.abi->sret_pointer) {
+    return 0;
   }
 
   std::size_t register_index = 0;
   for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
     const auto& candidate = function.params[candidate_index];
     if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+      continue;
+    }
+    if (candidate.abi->type == bir::TypeKind::Ptr && candidate.abi->sret_pointer) {
       continue;
     }
     if (same_aarch64_formal_register_bank(*candidate.abi, *param.abi)) {
@@ -131,8 +143,22 @@ PreparedValueHome classify_prepared_value_home(
     const std::string_view value_name = prepared_value_name(names, value.value_name);
     for (std::size_t param_index = 0; param_index < function->params.size(); ++param_index) {
       const auto& param = function->params[param_index];
-      if (param.name != value_name || !param.abi.has_value() || param.is_varargs || param.is_sret ||
-          param.is_byval) {
+      const bool aarch64_sret_pointer_param =
+          target_profile.arch == c4c::TargetArch::Aarch64 &&
+          param.is_sret &&
+          param.abi.has_value() &&
+          param.abi->type == bir::TypeKind::Ptr &&
+          param.abi->sret_pointer;
+      const bool aarch64_indirect_byval_param =
+          target_profile.arch == c4c::TargetArch::Aarch64 &&
+          param.is_byval &&
+          param.abi.has_value() &&
+          param.abi->type == bir::TypeKind::Ptr &&
+          param.abi->byval_copy &&
+          param.size_bytes > 16;
+      if (param.name != value_name || !param.abi.has_value() || param.is_varargs ||
+          (param.is_sret && !aarch64_sret_pointer_param) ||
+          (param.is_byval && !aarch64_indirect_byval_param)) {
         continue;
       }
       if (function->is_variadic && value.assigned_stack_slot.has_value()) {

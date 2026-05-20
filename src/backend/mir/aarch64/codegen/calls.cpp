@@ -261,6 +261,31 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   }
 }
 
+[[nodiscard]] std::optional<std::string> register_name_with_expected_view(
+    const std::optional<std::string>& register_name,
+    std::optional<abi::RegisterView> expected_view) {
+  if (!register_name.has_value() || !expected_view.has_value()) {
+    return register_name;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*register_name);
+  if (!parsed.has_value() || parsed->view == *expected_view) {
+    return register_name;
+  }
+  if (abi::is_gp_register(*parsed)) {
+    if (const auto viewed = abi::gp_register(parsed->index, *expected_view);
+        viewed.has_value()) {
+      return std::string{abi::register_name(*viewed)};
+    }
+  }
+  if (abi::is_fp_simd_register(*parsed)) {
+    if (const auto viewed = abi::fp_simd_register(parsed->index, *expected_view);
+        viewed.has_value()) {
+      return std::string{abi::register_name(*viewed)};
+    }
+  }
+  return register_name;
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_register_operand_from_prepared_authority(
     const std::optional<std::string>& register_name,
     const std::optional<prepare::PreparedRegisterPlacement>& placement,
@@ -776,7 +801,7 @@ make_byval_register_lane_prepared_source(
       context.control_flow_block == nullptr ||
       context.bir_block == nullptr ||
       source_home.value_name == c4c::kInvalidValueName ||
-      size_bytes == 0 || size_bytes > 16) {
+      size_bytes == 0) {
     return std::nullopt;
   }
   const auto source_name =
@@ -883,6 +908,67 @@ make_byval_register_lane_prepared_source(
       .byte_offset_is_prepared_snapshot = true,
       .size_bytes = size_bytes,
       .align_bytes = source_align,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] std::optional<std::size_t> aarch64_indirect_byval_argument_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_in_register ||
+      abi.passed_on_stack ||
+      abi.primary_class != bir::AbiValueClass::Integer ||
+      abi.size_bytes <= 16) {
+    return std::nullopt;
+  }
+  return abi.size_bytes;
+}
+
+[[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (!call_plan.memory_return.has_value() ||
+      !call_plan.memory_return->sret_arg_index.has_value() ||
+      *call_plan.memory_return->sret_arg_index != argument.arg_index ||
+      call_plan.memory_return->encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !call_plan.memory_return->slot_id.has_value() ||
+      !call_plan.memory_return->stack_offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id,
+      .result_value_name = std::nullopt,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = call_plan.memory_return->slot_id,
+      .byte_offset = static_cast<std::int64_t>(*call_plan.memory_return->stack_offset_bytes),
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = call_plan.memory_return->size_bytes,
+      .align_bytes = call_plan.memory_return->align_bytes,
       .can_use_base_plus_offset = true,
   };
 }
@@ -1796,12 +1882,25 @@ make_value_stack_move_instruction(
       argument != nullptr &&
       argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
-      argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::Gpr ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress) &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
-    auto address_source = make_frame_slot_call_argument_address_source(
+    auto address_source = make_sret_memory_return_address_source(
+        context, call_plan, *argument, instruction_index);
+    if (!address_source.has_value()) {
+      address_source = make_frame_slot_call_argument_address_source(
         context, *argument, *source_home, instruction_index);
+    }
+    if (!address_source.has_value()) {
+      if (const auto byval_size = aarch64_indirect_byval_argument_size_bytes(
+              context, *argument, call_plan.instruction_index);
+          byval_size.has_value()) {
+        address_source = make_byval_register_lane_prepared_source(
+            context, *argument, *source_home, *byval_size, call_plan.instruction_index);
+      }
+    }
     auto source =
         address_source.has_value()
             ? address_source
@@ -2706,8 +2805,10 @@ std::vector<module::MachineInstruction> lower_before_return_moves(
             ? std::optional<prepare::PreparedRegisterBank>{
                   move.destination_register_placement->bank}
             : std::nullopt;
+    const auto source_register_name =
+        register_name_with_expected_view(source_home->register_name, expected_view);
     auto source = make_register_operand_from_prepared_authority(
-        source_home->register_name,
+        source_register_name,
         std::nullopt,
         destination_bank,
         RegisterOperandRole::CallAbi,

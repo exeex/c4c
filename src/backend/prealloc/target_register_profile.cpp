@@ -443,6 +443,11 @@ std::optional<std::string> call_arg_destination_register_name(
     const c4c::TargetProfile& target_profile,
     const bir::CallArgAbiInfo& abi,
     std::size_t arg_index) {
+  if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+      abi.type == bir::TypeKind::Ptr &&
+      abi.sret_pointer) {
+    return std::string("x8");
+  }
   if (target_profile.arch == c4c::TargetArch::X86_64 &&
       abi.type == bir::TypeKind::Ptr &&
       abi.byval_copy &&
@@ -492,6 +497,11 @@ std::optional<PreparedRegisterPlacement> call_arg_destination_register_placement
     const bir::CallArgAbiInfo& abi,
     std::size_t arg_index,
     std::size_t contiguous_width) {
+  if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+      abi.type == bir::TypeKind::Ptr &&
+      abi.sret_pointer) {
+    return std::nullopt;
+  }
   if (!call_arg_destination_register_name(target_profile, abi, arg_index).has_value()) {
     return std::nullopt;
   }

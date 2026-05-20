@@ -3,8 +3,10 @@
 #include "target_register_profile.hpp"
 
 #include <algorithm>
+#include <charconv>
 #include <optional>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace c4c::backend::prepare {
@@ -517,6 +519,27 @@ struct DirectCalleeResolution {
   }
   plan.storage_slot_name = slot_name_id;
 
+  const auto storage_spelling = names.slot_names.spelling(slot_name_id);
+  const auto aggregate_slot_matches_storage =
+      [&](SlotNameId candidate_slot_name) -> std::optional<std::size_t> {
+    const auto candidate = names.slot_names.spelling(candidate_slot_name);
+    if (storage_spelling.empty() ||
+        candidate.size() <= storage_spelling.size() + 1 ||
+        candidate.compare(0, storage_spelling.size(), storage_spelling) != 0 ||
+        candidate[storage_spelling.size()] != '.') {
+      return std::nullopt;
+    }
+    std::size_t byte_offset = 0;
+    const auto suffix = candidate.substr(storage_spelling.size() + 1);
+    const auto* begin = suffix.data();
+    const auto* end = begin + suffix.size();
+    const auto parsed = std::from_chars(begin, end, byte_offset);
+    if (parsed.ec != std::errc{} || parsed.ptr != end) {
+      return std::nullopt;
+    }
+    return byte_offset;
+  };
+
   for (const auto& object : stack_layout.objects) {
     if (object.function_name != function_name || object.slot_name != slot_name_id) {
       continue;
@@ -534,6 +557,30 @@ struct DirectCalleeResolution {
       plan.stack_offset_bytes = frame_slot->offset_bytes;
     }
     break;
+  }
+  if (plan.encoding == PreparedStorageEncodingKind::None) {
+    const PreparedFrameSlot* selected_slot = nullptr;
+    std::optional<std::size_t> selected_byte_offset;
+    for (const auto& object : stack_layout.objects) {
+      if (object.function_name != function_name || !object.slot_name.has_value()) {
+        continue;
+      }
+      const auto byte_offset = aggregate_slot_matches_storage(*object.slot_name);
+      if (!byte_offset.has_value() ||
+          (selected_byte_offset.has_value() && *byte_offset >= *selected_byte_offset)) {
+        continue;
+      }
+      if (const auto* frame_slot = find_prepared_frame_slot(stack_layout, object.object_id);
+          frame_slot != nullptr) {
+        selected_slot = frame_slot;
+        selected_byte_offset = byte_offset;
+      }
+    }
+    if (selected_slot != nullptr) {
+      plan.encoding = PreparedStorageEncodingKind::FrameSlot;
+      plan.slot_id = selected_slot->slot_id;
+      plan.stack_offset_bytes = selected_slot->offset_bytes;
+    }
   }
 
   return plan;
@@ -897,7 +944,12 @@ void populate_call_plans(PreparedBirModule& prepared) {
                 binding->destination_occupied_register_names;
             arg_plan.destination_stack_offset_bytes = binding->destination_stack_offset_bytes;
             if (binding->destination_register_name.has_value()) {
-              arg_plan.destination_register_bank = arg_plan.value_bank;
+              arg_plan.destination_register_bank =
+                  arg_index < call->arg_abi.size() &&
+                          call->arg_abi[arg_index].type == bir::TypeKind::Ptr &&
+                          call->arg_abi[arg_index].sret_pointer
+                      ? PreparedRegisterBank::Gpr
+                      : arg_plan.value_bank;
               arg_plan.destination_register_placement =
                   binding->destination_register_placement;
               if (!arg_plan.destination_register_placement.has_value() &&
@@ -921,7 +973,12 @@ void populate_call_plans(PreparedBirModule& prepared) {
                   register_binding->destination_contiguous_width;
               arg_plan.destination_occupied_register_names =
                   register_binding->destination_occupied_register_names;
-              arg_plan.destination_register_bank = arg_plan.value_bank;
+              arg_plan.destination_register_bank =
+                  arg_index < call->arg_abi.size() &&
+                          call->arg_abi[arg_index].type == bir::TypeKind::Ptr &&
+                          call->arg_abi[arg_index].sret_pointer
+                      ? PreparedRegisterBank::Gpr
+                      : arg_plan.value_bank;
               arg_plan.destination_register_placement =
                   register_binding->destination_register_placement;
               if (!arg_plan.destination_register_placement.has_value() &&

@@ -8,57 +8,77 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the prepared parameter-home owner for AArch64 fixed formals
-with interleaved GPR/FPR pressure. Prealloc now computes fixed-formal ABI
-register indexes per AArch64 register bank before publishing parameter homes,
-so the `fa4` HFA lane homes are `hfa14 -> s0..s3` and `hfa24 -> d4..d7`
-instead of flat-index shifted homes like `s1..s4` and partial `d6/d7`.
+Step 2 repaired the next large-aggregate/sret owner after the `fa4` fixed
+formal repair. AArch64 now classifies byval aggregates larger than 16 bytes as
+indirect pointer arguments in a GPR instead of stack payload lanes, and sret
+pointers now use the AAPCS64 `x8` transport without consuming normal `x0..x7`
+argument slots.
 
-Prealloc also uses prepared addressing metadata to seed stack-passed F128
-formal lanes into their local frame slots. The generated `fa4` entry now loads
-incoming `hfa34` `q` lanes from caller stack offsets `sp+320/336/352/368` and
-stores them into local homes at `sp+16/32/48/64`, avoiding the prior overlap
-with small byval aggregate homes at `sp+0..5`.
+The prepared call plan now derives memory-return homes from split aggregate
+frame slots such as `%t0.0`, `%t0.1`, etc. when no exact `%t0` object exists.
+Call-boundary lowering can materialize frame-slot addresses for sret storage
+and indirect large-byval aggregate arguments while preserving the existing
+small byval lane-copy route.
 
-Focused backend coverage was updated in
-`backend_aarch64_instruction_dispatch`: a semantic prepared-route fixture now
-drives the interleaved byval/HFA/F128 shape through prealloc and asserts the
-published `s0..s3`, `d4..d7`, and distinct aligned stack-passed F128 homes.
-The existing hand-built dispatch fixture still verifies the resulting entry
-publication sequence.
+Focused backend coverage was added in
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` for the
+repaired owners:
+`semantic_split_sret_memory_return_discovers_first_aggregate_frame_slot`,
+`sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0`,
+`large_byval_aggregate_indirect_argument_materializes_frame_address`, and
+`before_return_fpr_move_retargets_source_view_for_hfa_lane`.
 
-`00204.c` is still not green, but the targeted `fa4` line now matches the
-expected output exactly: `0 14.1 14.4 12 24.1 24.4 345 34.1 34.4`. The first
-observed output mismatch in the full test is now earlier/later unrelated
-aggregate-return fallout: after `WXYZ0123456789ab`, the expected
-`cdefghijklmnopqrs` line is blank, and return-value output later corrupts
-starting at `fr_s4`/HFA return paths. This slice is real progress because the
-generated-code evidence no longer contains shifted `fa4` FPR homes, missing
-`hfa24` lane homes, or stack-passed F128 homes copied into the low byval area.
+Generated-code evidence in `build/c_testsuite_aarch64_backend/src/00204.c.s`:
+`fa_s17` is now called with `add x0, sp, #1064; bl fa_s17` and the callee reads
+through `x0`; sret return callees such as `fr_s4` use `%ret.sret` in `x8` and
+store bytes through `[x8]`. The runtime output now includes the previously
+missing `cdefghijklmnopqrs` argument line and all aggregate string return lines
+through `cdefghijklmnopqrs`.
+
+The remaining first bad fact is now HFA/floating return publication. Prepared
+BIR for `fr_hfa12` says lane 1 lives in `%t0.ret.aggregate.lane.1` with home
+`d20` and a before-return move to `s1`; generated assembly loads the lane from
+the frame slot into scratch `s8`, not into that prepared home. The return
+boundary can now view-retarget `d20` as `s20` for the ABI move, but the upstream
+HFA lane-home publication is still missing, so `fr_hfa12()` prints `0.0 12.1`
+instead of `12.1 12.2`.
 
 ## Suggested Next
 
-Continue Step 2 on the next remaining `00204.c` owner outside `fa4` fixed
-formal homes. The fresh failing output points at aggregate and HFA return
-materialization: first the `fa_s17`/large-aggregate line is blank, then return
-values become corrupt from `fr_s4` and HFA returns.
+Continue Step 2 in the HFA/floating lane-home publication owner. The narrow
+owner is frame-slot/global aggregate lane loads and before-return/call-result
+publication for FPR homes: prepared homes name `d20`/`d21`, while generated
+loads and consumers still use scratch `s8`/`s9`/`s16` in several HFA paths.
 
 ## Watchouts
 
-The generated `arg -> fa4` caller remains coherent:
-`ldrb w0` for `s1`, `s0..s3` for `hfa14`, `ldrh w1` for `s2`, `d4..d7` for
-`hfa24`, `x2` for `s3`, and four outgoing stack `q` stores for `hfa34`.
+Do not revert the `x8` sret transport or the large-byval indirect pointer
+classification to chase the HFA return failure. Those changes are what restore
+the `cdefghijklmnopqrs` large-aggregate output and the aggregate string return
+block.
 
-The generated `fa4` callee now has no `fmov s1, s0` / `fmov d6, d4` style
-entry shuffles. It directly stores `s0..s3`, `d4..d7`, and stack-loaded
-`q16` lanes into prepared local homes. Remaining `00204.c` failure should not
-be chased by changing this fixed-formal owner unless new evidence points back
-to it.
+Do not broaden frame-slot load retargeting blindly. A trial retarget of all
+prepared frame-slot load results to their register homes made HFA homes visible
+but left dependent scalar uses on the old scratch register, corrupting earlier
+HFA argument output. The next fix needs to update the lane-home publication and
+consumer authority together.
 
 Untracked `review/*.md` files were present before this executor packet and were
 left untouched.
 
+Files changed in this packet: `src/backend/bir/lir_to_bir/calling.cpp`,
+`src/backend/prealloc/target_register_profile.cpp`,
+`src/backend/prealloc/regalloc/call_return_abi.cpp`,
+`src/backend/prealloc/regalloc/value_homes.cpp`,
+`src/backend/prealloc/call_plans.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch.cpp`,
+`src/backend/mir/aarch64/codegen/calls.cpp`,
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, and
+`todo.md`.
+
 ## Proof
+
+`git diff --check` passed.
 
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$'`.
@@ -66,8 +86,8 @@ Ran the delegated proof command:
 Current result: build succeeded;
 `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and
-`backend_aarch64_instruction_dispatch` passed, including the new semantic
-mixed GPR/HFA/F128 prepared-home coverage. `c_testsuite_aarch64_backend_src_00204_c`
+`backend_aarch64_instruction_dispatch` passed. `c_testsuite_aarch64_backend_src_00204_c`
 still failed with `RUNTIME_NONZERO` / segmentation fault after printing the
-now-correct fixed mixed `fa4` line. `test_after.log` is the fresh proof log
-for this packet and remaining blocker.
+restored large-aggregate argument and aggregate-return strings. The first
+remaining bad return line is `0.0 12.1` for `fr_hfa12()`; `test_after.log` is
+the fresh proof log for this packet and remaining blocker.

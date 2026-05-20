@@ -4212,16 +4212,28 @@ lower_missing_fused_compare_operand_publications(
   }
   const auto& param = function.params[param_index];
   if (!param.abi.has_value() || !param.abi->passed_in_register) {
+    if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+        param.abi.has_value() &&
+        param.abi->type == bir::TypeKind::Ptr &&
+        param.abi->sret_pointer) {
+      return 0;
+    }
     return std::nullopt;
   }
   if (target_profile.arch != c4c::TargetArch::Aarch64) {
     return param_index;
+  }
+  if (param.abi->type == bir::TypeKind::Ptr && param.abi->sret_pointer) {
+    return 0;
   }
 
   std::size_t register_index = 0;
   for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
     const auto& candidate = function.params[candidate_index];
     if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+      continue;
+    }
+    if (candidate.abi->type == bir::TypeKind::Ptr && candidate.abi->sret_pointer) {
       continue;
     }
     if (entry_formal_same_aarch64_register_bank(*candidate.abi, *param.abi)) {

@@ -4019,6 +4019,103 @@ prepare::PreparedBirModule prepared_semantic_aarch64_stack_call_argument() {
       });
 }
 
+prepare::PreparedBirModule prepared_semantic_split_sret_memory_return() {
+  bir::Module module;
+  module.target_triple = "aarch64-unknown-linux-gnu";
+
+  bir::Function callee;
+  callee.name = "make_split_sret";
+  callee.return_type = bir::TypeKind::Void;
+  callee.is_declaration = true;
+  module.functions.push_back(std::move(callee));
+
+  bir::Function function;
+  function.name = "dispatch.semantic.split.sret";
+  function.return_type = bir::TypeKind::Void;
+
+  const auto storage_name = module.names.slot_names.intern("ret");
+  const auto slot0_name = module.names.slot_names.intern("ret.0");
+  const auto slot8_name = module.names.slot_names.intern("ret.8");
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "ret.0",
+      .slot_id = slot0_name,
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  function.local_slots.push_back(bir::LocalSlot{
+      .name = "ret.8",
+      .slot_id = slot8_name,
+      .type = bir::TypeKind::I64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+
+  bir::Block entry;
+  entry.label = "entry";
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "ret.0",
+      .slot_id = slot0_name,
+      .value = bir::Value::immediate_i64(0),
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "ret.0",
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .base_slot_id = slot0_name,
+      },
+  });
+  entry.insts.push_back(bir::StoreLocalInst{
+      .slot_name = "ret.8",
+      .slot_id = slot8_name,
+      .value = bir::Value::immediate_i64(0),
+      .byte_offset = 8,
+      .align_bytes = 8,
+      .address = bir::MemoryAddress{
+          .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+          .base_name = "ret.8",
+          .size_bytes = 8,
+          .align_bytes = 8,
+          .base_slot_id = slot8_name,
+      },
+  });
+  entry.insts.push_back(bir::CallInst{
+      .callee = "make_split_sret",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "ret")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi = {bir::CallArgAbiInfo{
+          .type = bir::TypeKind::Ptr,
+          .size_bytes = 16,
+          .align_bytes = 8,
+          .primary_class = bir::AbiValueClass::Memory,
+          .sret_pointer = true,
+      }},
+      .return_type = bir::TypeKind::Void,
+      .result_abi = bir::CallResultAbiInfo{
+          .type = bir::TypeKind::Void,
+          .primary_class = bir::AbiValueClass::Memory,
+          .returned_in_memory = true,
+      },
+      .calling_convention = bir::CallingConv::C,
+      .sret_storage_name = "ret",
+      .sret_storage_name_id = storage_name,
+  });
+  entry.terminator = bir::ReturnTerminator{};
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  return prepare::prepare_semantic_bir_module_with_options(
+      module,
+      c4c::target_profile_from_triple("aarch64-unknown-linux-gnu"),
+      prepare::PrepareOptions{
+          .run_legalize = true,
+          .run_stack_layout = true,
+          .run_liveness = true,
+          .run_regalloc = true,
+      });
+}
+
 prepare::PreparedBirModule prepared_semantic_f128_constant_helper_operand() {
   bir::Module module;
   module.target_triple = "aarch64-unknown-linux-gnu";
@@ -9888,6 +9985,56 @@ int semantic_stack_call_argument_publishes_destination_offset() {
   return 0;
 }
 
+int semantic_split_sret_memory_return_discovers_first_aggregate_frame_slot() {
+  auto prepared = prepared_semantic_split_sret_memory_return();
+  if (prepared.call_plans.functions.size() != 1 ||
+      prepared.call_plans.functions.front().calls.size() != 1) {
+    return fail("expected one prepared split sret call plan");
+  }
+
+  const auto& call = prepared.call_plans.functions.front().calls.front();
+  if (!call.memory_return.has_value()) {
+    return fail("expected split sret call to carry memory-return plan");
+  }
+  const auto& memory_return = *call.memory_return;
+  if (memory_return.sret_arg_index != std::optional<std::size_t>{0} ||
+      memory_return.storage_slot_name == c4c::kInvalidSlotName ||
+      prepared.names.slot_names.spelling(memory_return.storage_slot_name) != "ret" ||
+      memory_return.encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !memory_return.slot_id.has_value() ||
+      !memory_return.stack_offset_bytes.has_value() ||
+      memory_return.size_bytes != 16 ||
+      memory_return.align_bytes != 8) {
+    return fail("expected split sret memory-return plan to select ret.0 frame slot: encoding=" +
+                std::to_string(static_cast<int>(memory_return.encoding)) +
+                " has_slot=" + (memory_return.slot_id.has_value() ? "yes" : "no") +
+                " has_offset=" +
+                (memory_return.stack_offset_bytes.has_value() ? "yes" : "no") +
+                " size=" + std::to_string(memory_return.size_bytes) +
+                " align=" + std::to_string(memory_return.align_bytes));
+  }
+
+  const auto selected_slot = memory_return.slot_id;
+  bool selected_ret0 = false;
+  for (const auto& object : prepared.stack_layout.objects) {
+    if (object.function_name != prepared.call_plans.functions.front().function_name ||
+        object.slot_name == std::nullopt ||
+        prepared.names.slot_names.spelling(*object.slot_name) != "ret.0") {
+      continue;
+    }
+    for (const auto& slot : prepared.stack_layout.frame_slots) {
+      if (slot.object_id == object.object_id &&
+          selected_slot == std::optional<prepare::PreparedFrameSlotId>{slot.slot_id}) {
+        selected_ret0 = true;
+      }
+    }
+  }
+  if (!selected_ret0) {
+    return fail("expected split sret memory-return plan to choose ret.0, not a later lane");
+  }
+  return 0;
+}
+
 int semantic_stack_call_argument_lowers_aggregate_address_stack_copy() {
   constexpr auto function_name = c4c::FunctionNameId{101};
   constexpr auto block_label = c4c::BlockLabelId{102};
@@ -10667,6 +10814,513 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
   if (!printed.ok || printed.instruction_lines.size() != 1 ||
       printed.instruction_lines.front() != "add x1, sp, #48") {
     return fail("expected frame-slot address call argument to print as add-from-sp");
+  }
+  return 0;
+}
+
+int sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0() {
+  constexpr auto function_name = c4c::FunctionNameId{121};
+  constexpr auto block_label = c4c::BlockLabelId{122};
+  constexpr auto sret_value_id = prepare::PreparedValueId{123};
+  constexpr auto sret_value_name = c4c::ValueNameId{124};
+  constexpr auto scalar_value_id = prepare::PreparedValueId{125};
+  constexpr auto scalar_value_name = c4c::ValueNameId{126};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = sret_value_id,
+               .function_name = function_name,
+               .value_name = sret_value_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{17},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{24},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = scalar_value_id,
+               .function_name = function_name,
+               .value_name = scalar_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x5"},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 3,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                       .from_value_id = sret_value_id,
+                       .to_value_id = sret_value_id,
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{0},
+                       .destination_register_name = std::string{"x8"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x8"},
+                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                   },
+                   prepare::PreparedMoveResolution{
+                       .from_value_id = scalar_value_id,
+                       .to_value_id = scalar_value_id,
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{1},
+                       .destination_register_name = std::string{"x0"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x0"},
+                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                   }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{0},
+                       .destination_register_name = std::string{"x8"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x8"},
+                   },
+                   prepare::PreparedAbiBinding{
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{1},
+                       .destination_register_name = std::string{"x0"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x0"},
+                   }},
+          }},
+  };
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 3,
+      .memory_return =
+          prepare::PreparedMemoryReturnPlan{
+              .sret_arg_index = std::size_t{0},
+              .storage_slot_name = c4c::SlotNameId{3},
+              .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .slot_id = prepare::PreparedFrameSlotId{17},
+              .stack_offset_bytes = std::size_t{64},
+              .size_bytes = 24,
+              .align_bytes = 8,
+          },
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+               .instruction_index = 3,
+               .arg_index = 0,
+               .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+               .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .source_value_id = sret_value_id,
+               .source_slot_id = prepare::PreparedFrameSlotId{17},
+               .source_stack_offset_bytes = std::size_t{64},
+               .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+               .destination_register_name = std::string{"x8"},
+               .destination_contiguous_width = 1,
+               .destination_occupied_register_names = {"x8"},
+               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+           },
+           prepare::PreparedCallArgumentPlan{
+               .instruction_index = 3,
+               .arg_index = 1,
+               .value_bank = prepare::PreparedRegisterBank::Gpr,
+               .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+               .source_value_id = scalar_value_id,
+               .source_register_name = std::string{"x5"},
+               .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+               .destination_register_name = std::string{"x0"},
+               .destination_contiguous_width = 1,
+               .destination_occupied_register_names = {"x0"},
+               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+           }},
+  };
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{.block_label = block_label}},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 3, diagnostics);
+  if (lowered.size() != 2 || !diagnostics.empty()) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected sret x8 and normal x0 call-boundary moves to lower: lowered=" +
+                std::to_string(lowered.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto* sret_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered[0].target.payload);
+  const auto* scalar_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered[1].target.payload);
+  if (sret_move == nullptr || scalar_move == nullptr ||
+      !sret_move->source_memory.has_value() ||
+      !sret_move->source_memory_materializes_address ||
+      !sret_move->destination_register.has_value() ||
+      sret_move->destination_register->reg != aarch64_module::abi::x_register(8) ||
+      sret_move->source_memory->byte_offset != 64 ||
+      !scalar_move->source_register.has_value() ||
+      !scalar_move->destination_register.has_value() ||
+      scalar_move->source_register->reg != aarch64_module::abi::x_register(5) ||
+      scalar_move->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    return fail("expected sret to materialize x8 without consuming normal x0");
+  }
+
+  const auto printed_sret =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered[0].target);
+  const auto printed_scalar =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered[1].target);
+  if (!printed_sret.ok || !printed_scalar.ok ||
+      printed_sret.instruction_lines != std::vector<std::string>{"add x8, sp, #64"} ||
+      printed_scalar.instruction_lines != std::vector<std::string>{"mov x0, x5"}) {
+    return fail("expected printable sret x8 address and following x0 scalar move");
+  }
+  return 0;
+}
+
+int large_byval_aggregate_indirect_argument_materializes_frame_address() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.large.byval.indirect");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.large.byval.indirect.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.large.byval.indirect.entry");
+  const auto aggregate_name = prepared.names.value_names.intern("arg");
+  const auto lane0_name = prepared.names.value_names.intern("%lane0");
+  const auto lane8_name = prepared.names.value_names.intern("%lane8");
+  const auto lane16_name = prepared.names.value_names.intern("%lane16");
+
+  std::vector<bir::Inst> insts;
+  auto add_lane_store = [&](std::string slot_name,
+                            std::string value_name,
+                            std::size_t byte_offset) {
+    insts.push_back(bir::StoreLocalInst{
+        .slot_name = std::move(slot_name),
+        .value = bir::Value::named(bir::TypeKind::I64, std::move(value_name)),
+        .byte_offset = byte_offset,
+        .align_bytes = 8,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .byte_offset = static_cast<std::int64_t>(byte_offset),
+                .size_bytes = 8,
+                .align_bytes = 8,
+                .address_space = bir::AddressSpace::Default,
+            },
+    });
+  };
+  add_lane_store("arg.16", "%lane16", 16);
+  add_lane_store("arg.0", "%lane0", 0);
+  add_lane_store("arg.8", "%lane8", 8);
+  insts.push_back(bir::CallInst{
+      .callee = "consume_large_byval",
+      .args = {bir::Value::named(bir::TypeKind::Ptr, "arg")},
+      .arg_types = {bir::TypeKind::Ptr},
+      .arg_abi =
+          {bir::CallArgAbiInfo{
+              .type = bir::TypeKind::Ptr,
+              .size_bytes = 24,
+              .align_bytes = 8,
+              .primary_class = bir::AbiValueClass::Integer,
+              .passed_in_register = true,
+              .byval_copy = true,
+          }},
+      .return_type = bir::TypeKind::Void,
+      .calling_convention = bir::CallingConv::C,
+  });
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.large.byval.indirect",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.large.byval.indirect.entry",
+          .insts = std::move(insts),
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{127},
+              .function_name = function_name,
+              .value_name = aggregate_name,
+              .kind = prepare::PreparedValueHomeKind::StackSlot,
+              .slot_id = prepare::PreparedFrameSlotId{43},
+              .offset_bytes = std::size_t{96},
+              .size_bytes = std::size_t{24},
+              .align_bytes = std::size_t{8},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 3,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{127},
+                      .to_value_id = prepare::PreparedValueId{127},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_indirect_byval_pointer",
+                  }},
+          }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{43},
+      .function_name = function_name,
+      .offset_bytes = 96,
+      .size_bytes = 24,
+      .align_bytes = 8,
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .stored_value_name = lane16_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{43},
+                       .byte_offset = 16,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .stored_value_name = lane0_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{43},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .stored_value_name = lane8_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{43},
+                       .byte_offset = 8,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+
+  const prepare::PreparedCallPlan call_plan{
+      .block_index = 0,
+      .instruction_index = 3,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 3,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+              .source_value_id = prepare::PreparedValueId{127},
+              .source_slot_id = prepare::PreparedFrameSlotId{43},
+              .source_stack_offset_bytes = std::size_t{96},
+              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 1,
+              .destination_occupied_register_names = {"x0"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+  };
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 3, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected large byval indirect argument to lower one address move");
+  }
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.front().target.payload);
+  if (move == nullptr || !move->source_memory.has_value() ||
+      !move->source_memory_materializes_address ||
+      !move->destination_register.has_value() ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0) ||
+      move->source_memory->base_kind !=
+          aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      move->source_memory->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{prepare::PreparedFrameSlotId{43}} ||
+      move->source_memory->byte_offset != 96 ||
+      move->source_memory->size_bytes != 24) {
+    return fail("expected large byval aggregate to publish a frame address in x0");
+  }
+
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      lowered.front().target);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "add x0, sp, #96") {
+    return fail("expected large byval indirect argument to print add x0, sp, #96");
+  }
+  return 0;
+}
+
+int before_return_fpr_move_retargets_source_view_for_hfa_lane() {
+  constexpr auto function_name = c4c::FunctionNameId{131};
+  constexpr auto block_label = c4c::BlockLabelId{132};
+  constexpr auto value_id = prepare::PreparedValueId{133};
+  constexpr auto value_name = c4c::ValueNameId{134};
+
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+  const prepare::PreparedControlFlowFunction control_flow{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  };
+  const prepare::PreparedValueLocationFunction value_locations{
+      .function_name = function_name,
+      .value_homes = {prepare::PreparedValueHome{
+          .value_id = value_id,
+          .function_name = function_name,
+          .value_name = value_name,
+          .kind = prepare::PreparedValueHomeKind::Register,
+          .register_name = std::string{"d20"},
+          .size_bytes = std::size_t{4},
+          .align_bytes = std::size_t{4},
+      }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 2,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = value_id,
+                      .to_value_id = value_id,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{1},
+                      .destination_register_name = std::string{"s1"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"s1"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .destination_register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Fpr,
+                              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                              .slot_index = 1,
+                              .contiguous_width = 1,
+                          },
+                  }},
+          }},
+  };
+  const aarch64_module::FunctionLoweringContext function_context{
+      .prepared = &prepared,
+      .control_flow = &control_flow,
+      .value_locations = &value_locations,
+  };
+  const aarch64_module::BlockLoweringContext block_context{
+      .function = function_context,
+      .control_flow_block = &control_flow.blocks.front(),
+      .block_index = 0,
+  };
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto lowered =
+      aarch64_codegen::lower_before_return_moves(block_context, 2, diagnostics);
+  if (lowered.size() != 1 || !diagnostics.empty()) {
+    return fail("expected before-return HFA lane move to lower");
+  }
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &lowered.front().target.payload);
+  if (move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::s_register(20) ||
+      move->destination_register->reg != aarch64_module::abi::s_register(1) ||
+      move->source_register->expected_view != aarch64_abi::RegisterView::S ||
+      move->destination_register->expected_view != aarch64_abi::RegisterView::S ||
+      lowered.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected) {
+    return fail("expected before-return lane source d20 to publish as s20 -> s1");
+  }
+
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(
+      lowered.front().target);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "fmov s1, s20") {
+    return fail("expected before-return FPR view retarget to print fmov s1, s20");
   }
   return 0;
 }
@@ -14253,6 +14907,11 @@ int main() {
       status != 0) {
     return status;
   }
+  if (const int status =
+          semantic_split_sret_memory_return_discovers_first_aggregate_frame_slot();
+      status != 0) {
+    return status;
+  }
     if (const int status =
             semantic_stack_call_argument_lowers_aggregate_address_stack_copy();
         status != 0) {
@@ -14270,6 +14929,21 @@ int main() {
   }
   if (const int status =
           prepared_frame_slot_address_call_argument_materializes_address_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          sret_call_argument_materializes_x8_and_keeps_next_gpr_at_x0();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          large_byval_aggregate_indirect_argument_materializes_frame_address();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          before_return_fpr_move_retargets_source_view_for_hfa_lane();
       status != 0) {
     return status;
   }

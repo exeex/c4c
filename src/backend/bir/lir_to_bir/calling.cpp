@@ -1015,6 +1015,11 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       abi.primary_class = bir::AbiValueClass::Integer;
       abi.passed_in_register = true;
       abi.passed_on_stack = false;
+    } else if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+               layout.size_bytes > 16) {
+      abi.primary_class = bir::AbiValueClass::Integer;
+      abi.passed_in_register = true;
+      abi.passed_on_stack = false;
     }
     return abi;
   };
