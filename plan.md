@@ -1,187 +1,187 @@
-# AArch64 Unsigned Div Rem Producer Publication Plan
+# AArch64 Frame Slot Layout Consistency Plan
 
 Status: Active
-Source Idea: ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md
-Activated From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
+Source Idea: ideas/open/316_aarch64_frame_slot_layout_consistency.md
+Activated From: ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md
 
 ## Purpose
 
-Repair AArch64 scalar producer publication for unsigned division and unsigned
-remainder values so later scalar consumers, truncations, comparisons, loop
-updates, and selected stores read the actual `udiv`/`urem` result instead of
-stale scratch or condition state.
+Repair AArch64 frame-slot and frame-size consistency when local aggregate or
+stack-slot storage can exceed the allocation reserved by a function prologue.
 
-Goal: make unsigned div/rem producers publish their computed result into the
-register or storage location consumed by later AArch64 scalar and selected
-store operations.
+Goal: ensure emitted AArch64 local aggregate and stack-slot accesses fit inside
+the frame allocation or otherwise target proven valid owned storage.
 
-Core Rule: repair the semantic unsigned div/rem producer-publication path; do
-not special-case `00182`, the LED digit array, temporary names, registers, or
-one emitted instruction neighborhood.
+Core Rule: repair the frame layout contract; do not special-case `00182`,
+`00216`, `print_led`, `buf`, one offset, one function, or one emitted
+instruction neighborhood.
 
 ## Read First
 
-- `ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md`
-- `ideas/open/348_aarch64_indexed_aggregate_address_writeback.md` for the
-  split context and why `00182` is no longer owned by indexed aggregate
-  address/writeback.
-- Recent scalar publication owners before editing, especially
-  `ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md`
-  and any closed direct-call, return, or local-conversion publication owners
-  referenced by the source idea.
+- `ideas/open/316_aarch64_frame_slot_layout_consistency.md`
+- `ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md` for the
+  fresh `00182` reactivation evidence and why the remaining failure is no
+  longer unsigned div/rem producer publication.
+- The frame layout, frame slot assignment, local aggregate lowering, and
+  AArch64 prologue emission paths before editing.
 
 ## Current Targets
 
-- AArch64 lowering and printing path from prepared unsigned division/remainder
-  scalar operation through emitted producer result publication.
-- Consumers of unsigned div/rem results, including truncation, stores, loop
-  updates, comparisons, and selected aggregate store values.
-- Focused backend coverage that proves unsigned div/rem producers feed later
-  scalar consumers before using `00182` as external proof.
+- Current `00182.c` local array representative: `main` declares
+  `char buf[5*MAX_DIGITS]`, generated AArch64 allocates only 48 bytes, passes
+  `sp` as the buffer argument, and saves `x30` inside the overwritten region.
+- Any still relevant focused `00216.c` frame-size or large-slot evidence, only
+  after checking whether the current generated artifacts still reproduce a
+  frame-size/slot-offset divergence.
+- Focused backend or prepared-layout coverage that proves local aggregate and
+  stack-slot storage remain within the function frame allocation.
 
 ## Non-Goals
 
-- Do not change expectations, unsupported classifications, runner behavior,
-  timeout policy, proof-log policy, CTest registration, or external test
-  contracts.
-- Do not fold in recursive call argument preservation for `00176` or `00181`.
-- Do not repair dynamic indexed aggregate selected-address/writeback behavior
-  already owned by idea 348 unless fresh evidence proves the same unsigned
-  div/rem producer boundary is involved.
-- Do not expand into signed division/remainder, multiplication, logical shift,
-  boolean/comparison materialization, FP expression lowering, semantic
-  `lir_to_bir` admission, frame-slot layout, or aggregate call-boundary
-  publication without fresh first-bad-fact evidence.
+- Do not reopen idea 314's large stack-offset instruction-spelling owner.
+- Do not repair `00204.c` large frame setup/teardown materialization.
+- Do not widen into scalar stack publication, unsigned div/rem producer
+  publication, f128 transport, semantic admission, runner behavior, timeout
+  policy, expectation changes, unsupported-classification changes, or CTest
+  registration.
+- Do not use filename-only, function-name-only, literal-offset-only,
+  diagnostic-string-only, or c-testsuite-number-specific fixes.
 
 ## Working Model
 
-- The split evidence says `00182` reaches selected global stores for the digit
-  array, but the value being stored comes from unsigned remainder/truncation,
-  and the loop update consumes an unsupported unsigned division producer.
-- The suspected failure mode is scalar producer publication: generated AArch64
-  leaves consumers reading stale scratch or condition state rather than the
-  actual `udiv` or unsigned remainder result.
-- `00182` is an external proof target, not an implementation selector.
-  Focused backend coverage should identify the repaired producer-publication
-  owner first.
+- After the unsigned div/rem repair, `00182` now reaches the LED output write
+  path and segfaults because the caller frame does not reserve enough storage
+  for the local buffer passed to `print_led`.
+- The current first bad fact is a frame-size/local-array storage divergence:
+  the generated function prologue allocation is smaller than the local
+  aggregate storage that later code writes through.
+- Historical `00216.c` evidence belongs to the same general owner only if
+  current artifacts still show frame allocation and stack-slot offsets
+  disagreeing.
 
 ## Execution Rules
 
-- Start by localizing whether the first bad fact is unsigned division
-  production, unsigned remainder synthesis, result materialization, truncation
-  handoff, selected-store handoff, or loop-update consumer handoff.
-- Prefer focused backend coverage for unsigned division and remainder values
-  feeding ordinary scalar consumers before selected-store coverage.
-- Treat a fix that only recognizes `00182`, one temporary, one global array,
-  one register, or one exact instruction sequence as route drift.
-- Preserve adjacent scalar publication behavior while repairing this owner.
-- Escalate to a separate source idea instead of broadening this plan if fresh
-  evidence reaches signed div/rem, multiply, shift, comparison, frame layout,
-  semantic admission, or recursive call preservation.
+- Start from the current `00182` local array failure and identify where frame
+  size, frame slots, and local aggregate storage requirements diverge.
+- Add focused layout or backend coverage before relying on external
+  c-testsuite proof.
+- Preserve frame-slot identity, width, alignment, call-boundary behavior, and
+  legal large-offset materialization from idea 314.
+- Treat any fix that recognizes only `00182`, `print_led`, `buf`, `00216`, one
+  offset, or one emitted instruction sequence as route drift.
+- Escalate to a separate source idea if fresh evidence reaches large-frame
+  setup/teardown, scalar stack publication, unsigned div/rem publication, f128
+  transport, semantic admission, or unrelated runtime mismatch work.
 
 ## Steps
 
-### Step 1: Localize Unsigned Div Rem Producer Boundary
+### Step 1: Localize Current Frame Layout Boundary
 
-Goal: identify the first boundary where an unsigned division or unsigned
-remainder result stops being the value consumed by later generated code.
+Goal: identify the exact boundary where local aggregate storage requirements
+stop contributing to the emitted AArch64 frame allocation or stack-slot layout.
 
-Primary target: AArch64 prepared scalar-operation lowering and generated code
-for unsigned div/rem producers and their immediate consumers.
+Primary target: frame layout, frame slot assignment, local aggregate storage,
+and AArch64 prologue/allocation emission for the current `00182.c` local array
+representative.
 
 Actions:
 
-- Inspect the AArch64 lowering path for unsigned division and unsigned
-  remainder from prepared scalar operation through result publication.
-- Trace at least one unsigned division consumer and one unsigned remainder
-  consumer through generated AArch64.
-- Include `00182` only as evidence for the current external symptom; do not use
-  its digit buffer shape as the implementation contract.
-- Record whether the first bad boundary is producer instruction emission,
-  remainder synthesis after `udiv`, result register publication, truncation
-  handoff, selected-store value handoff, or loop-update consumer handoff.
+- Trace how `char buf[5*MAX_DIGITS]` is represented before AArch64 emission,
+  including required size, alignment, slot identity, and address passed to
+  `print_led`.
+- Compare required local aggregate storage against the prologue allocation and
+  any emitted stack addresses used for the buffer.
+- Check whether current `00216.c` artifacts still expose a frame-size or
+  stack-slot mismatch; classify stale historical evidence explicitly.
+- Record the first boundary as one of: layout sizing, slot assignment, frame
+  allocation emission, local aggregate address formation, or call-boundary
+  storage handoff.
 
 Completion check:
 
 - `todo.md` records the concrete first bad boundary, representative generated
-  evidence, and the narrow proof subset for the first implementation packet.
+  or prepared-layout evidence, and the narrow proof subset for the first
+  implementation packet.
 
-### Step 2: Add Focused Unsigned Div Rem Producer Coverage
+### Step 2: Add Focused Frame Layout Coverage
 
-Goal: prove the semantic producer-publication bug with focused backend coverage
-before relying on external c-testsuite proof.
+Goal: prove the frame allocation and emitted local aggregate or stack-slot
+addresses agree before relying on external c-testsuite proof.
 
 Actions:
 
-- Add or extend focused backend tests for unsigned division and unsigned
-  remainder feeding ordinary scalar consumers.
-- Add selected-store coverage only after the ordinary scalar consumer boundary
-  is clear or if localization proves the selected-store handoff is the first
-  bad boundary.
-- Keep test names and assertions semantic; do not encode `00182`, digit-array
-  details, temporary names, or emitted register names as the contract.
+- Add or extend focused backend/prepared-layout tests that cover local
+  aggregate storage larger than the minimal scalar frame.
+- Assert semantic layout properties: required aggregate size, frame allocation,
+  and emitted stack accesses staying inside owned storage.
+- Include large-slot evidence only if current localization proves it remains
+  part of the same frame-size/slot-offset contract.
+- Keep test contracts independent of `00182`, `print_led`, `buf`, `00216`, or
+  literal offsets except as representative expected sizes derived from source
+  types.
 
 Completion check:
 
 - Focused coverage fails without the repair or existing focused coverage is
-  identified that already exposes the unsigned div/rem publication boundary.
+  identified that already exposes the frame-size/slot-offset divergence.
 
-### Step 3: Repair Unsigned Div Rem Result Publication
+### Step 3: Repair Frame Size And Slot Consistency
 
-Goal: make AArch64 lowering publish `udiv` and unsigned remainder results into
-the scalar value consumed by later operations.
+Goal: make emitted AArch64 frame allocation and stack/local aggregate accesses
+agree for the localized frame-layout owner.
 
 Actions:
 
-- Repair the localized owner from Step 1 in the smallest shared AArch64
-  lowering or publication helper that owns unsigned div/rem results.
-- Ensure truncations, stores, loop updates, comparisons, and selected-store
-  values consume the actual unsigned div/rem result.
-- Preserve behavior for adjacent scalar cast, return, direct-call,
-  local-conversion, aggregate selected-address, and recursive-call paths.
+- Repair the localized owner from Step 1 in the smallest shared frame layout,
+  frame slot, or AArch64 prologue/allocation helper that owns the mismatch.
+- Ensure local arrays and aggregates reserve enough frame storage before their
+  addresses are passed to callees that write through them.
+- Preserve existing legal stack-offset materialization and adjacent frame-slot
+  behavior.
 
 Completion check:
 
-- Focused backend coverage from Step 2 passes, and the delegated proof subset
-  shows no regression in supervisor-selected adjacent scalar publication and
-  selected-store guardrails.
+- Focused coverage from Step 2 passes, and the delegated proof subset shows no
+  regression in supervisor-selected frame, stack-offset, and adjacent backend
+  guardrails.
 
 ### Step 4: Prove External Representative And Reclassify Residuals
 
-Goal: verify that the semantic repair advances `00182` past the stale unsigned
-div/rem producer publication failure.
+Goal: verify that the frame-layout repair advances `00182` past the local-array
+frame-size segfault and classify any remaining first bad fact.
 
 Actions:
 
-- Run the supervisor-selected external proof for `00182` after focused backend
+- Run the supervisor-selected external proof for `00182` after focused layout
   proof is stable.
-- Confirm generated consumers no longer read stale scratch or condition state
-  where they should observe unsigned division or remainder results.
+- Confirm generated AArch64 no longer lets `print_led` or equivalent callees
+  overwrite the caller's saved return address through under-allocated local
+  buffer storage.
+- Recheck relevant current `00216.c` evidence if Step 1 kept it in scope.
 - If `00182` remains red, reclassify it by its new first bad fact rather than
   widening this plan by assumption.
 
 Completion check:
 
-- `todo.md` records whether `00182` passed, advanced past the stale
-  unsigned-div/rem producer failure, or exposed a new first bad fact.
+- `todo.md` records whether `00182` passed, advanced past the local-array frame
+  allocation failure, or exposed a new first bad fact.
 
 ### Step 5: Broader Guard And Closure Decision
 
 Goal: decide whether the source idea is complete or whether another focused
-runbook is needed for remaining in-scope unsigned div/rem publication work.
+runbook is needed for remaining in-scope frame-layout work.
 
 Actions:
 
 - Run the supervisor-chosen broader backend guard after focused proof is
   stable.
-- Confirm adjacent scalar publication and selected-store guardrails remain
-  stable.
+- Confirm relevant frame-slot, large-offset, and adjacent backend guardrails
+  remain stable.
 - If the idea is complete, request lifecycle close with matching regression
-  logs. If not, leave `todo.md` with the remaining unsigned div/rem boundary
-  and exact blocker.
+  logs. If not, leave `todo.md` with the remaining frame-layout boundary and
+  exact blocker.
 
 Completion check:
 
-- The lifecycle state either has closure-ready proof for idea 350 or a clear
-  remaining unsigned div/rem producer-publication route that does not broaden
-  beyond the source idea.
+- The lifecycle state either has closure-ready proof for idea 316 or a clear
+  remaining frame-layout route that does not broaden beyond the source idea.

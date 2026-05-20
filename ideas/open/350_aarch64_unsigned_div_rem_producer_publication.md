@@ -1,8 +1,23 @@
 # AArch64 Unsigned Div Rem Producer Publication
 
-Status: Open
+Status: Parked
 Created: 2026-05-20
 Split From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
+
+## Parking Note
+
+Parked on 2026-05-20 after the unsigned div/rem producer publication repair
+landed as scoped progress. Focused backend coverage for unsigned division and
+unsigned remainder producers now passes, and `00182` advanced past the stale
+unsigned div/rem publication boundary to a fresh local-array frame-size
+segfault. The remaining representative failure is owned by
+`ideas/open/316_aarch64_frame_slot_layout_consistency.md`.
+
+Close was rejected under the lifecycle close gate because the matching
+`test_before.log`/`test_after.log` guard stayed at 3/4 with no strict
+pass-count increase, even though it introduced no new failing tests and
+reclassified the first bad fact. Reactivate this idea only if fresh evidence
+shows unsigned div/rem consumers still read stale scratch or condition state.
 
 ## Goal
 
