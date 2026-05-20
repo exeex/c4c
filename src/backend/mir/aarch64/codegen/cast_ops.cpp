@@ -835,6 +835,190 @@ mir::TargetInstructionPrintResult print_scalar_cast_instruction(
       "scalar cast node is outside the printable simple integer subset"));
 }
 
+std::optional<module::MachineInstruction> lower_stack_scalar_float_width_cast(
+    const module::BlockLoweringContext& context,
+    const bir::CastInst& cast,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.value_locations == nullptr ||
+      context.function.storage_plan == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      cast.result.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+
+  const bool is_float_extend =
+      cast.opcode == bir::CastOpcode::FPExt &&
+      cast.operand.type == bir::TypeKind::F32 &&
+      cast.result.type == bir::TypeKind::F64;
+  const bool is_float_truncate =
+      cast.opcode == bir::CastOpcode::FPTrunc &&
+      cast.operand.type == bir::TypeKind::F64 &&
+      cast.result.type == bir::TypeKind::F32;
+  if (!is_float_extend && !is_float_truncate) {
+    return std::nullopt;
+  }
+
+  const auto* result_home =
+      find_named_value_home(context.function.prepared->names,
+                            *context.function.value_locations,
+                            cast.result);
+  const auto* result_storage =
+      result_home != nullptr
+          ? find_storage_plan_value(*context.function.storage_plan,
+                                    result_home->value_id)
+          : nullptr;
+  if (result_home == nullptr || result_storage == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto scratch = abi::reserved_mir_scratch_fp_simd_registers().front();
+  const auto result_scratch_view =
+      abi::fp_simd_register(scratch.index,
+                            is_float_extend ? abi::RegisterView::D
+                                            : abi::RegisterView::S);
+  const auto source_scratch_view =
+      abi::fp_simd_register(scratch.index,
+                            is_float_extend ? abi::RegisterView::S
+                                            : abi::RegisterView::D);
+  if (!result_scratch_view.has_value() || !source_scratch_view.has_value()) {
+    return std::nullopt;
+  }
+
+  const auto* source_home =
+      find_named_value_home(context.function.prepared->names,
+                            *context.function.value_locations,
+                            cast.operand);
+  std::vector<std::string> lines;
+  std::optional<std::string> source_name;
+  OperandRecord source;
+  if (const auto error =
+          make_prepared_scalar_operand(context.function.prepared->names,
+                                       *context.function.value_locations,
+                                       *context.function.storage_plan,
+                                       cast.operand,
+                                       source);
+      error == PreparedScalarAluRecordError::None) {
+    const auto* source_register = std::get_if<RegisterOperand>(&source.payload);
+    if (source.kind == OperandKind::Register && source_register != nullptr &&
+        abi::is_fp_simd_register(source_register->reg)) {
+      source_name =
+          fp_register_name_with_view(*source_register,
+                                     is_float_extend ? abi::RegisterView::S
+                                                     : abi::RegisterView::D);
+    }
+  }
+  if (!source_name.has_value() &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home->offset_bytes.has_value()) {
+    std::ostringstream load;
+    load << "ldr " << abi::register_name(*source_scratch_view) << ", [sp";
+    if (*source_home->offset_bytes != 0) {
+      load << ", #" << *source_home->offset_bytes;
+    }
+    load << "]";
+    lines.push_back(load.str());
+    source_name = std::string{abi::register_name(*source_scratch_view)};
+  }
+  if (!source_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<std::string> result_name;
+  const bool result_is_stack =
+      result_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      result_home->offset_bytes.has_value();
+  const bool result_is_register =
+      result_home->kind == prepare::PreparedValueHomeKind::Register &&
+      result_storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+      result_home->register_name.has_value();
+  if (result_is_stack) {
+    result_name = std::string{abi::register_name(*result_scratch_view)};
+  } else if (result_is_register) {
+    if (const auto result_register =
+            make_prepared_register_operand(*result_home,
+                                           *result_storage,
+                                           cast.result.type,
+                                           RegisterOperandRole::StoragePlan)) {
+      result_name =
+          fp_register_name_with_view(*result_register,
+                                     is_float_extend ? abi::RegisterView::D
+                                                     : abi::RegisterView::S);
+    }
+  }
+  if (!result_name.has_value()) {
+    return std::nullopt;
+  }
+
+  std::ostringstream asm_text;
+  asm_text << "fcvt " << *result_name << ", " << *source_name;
+  lines.push_back(asm_text.str());
+  if (result_is_stack) {
+    std::ostringstream store;
+    store << "str " << *result_name << ", [sp";
+    if (*result_home->offset_bytes != 0) {
+      store << ", #" << *result_home->offset_bytes;
+    }
+    store << "]";
+    lines.push_back(store.str());
+  }
+
+  std::string asm_payload;
+  for (std::size_t index = 0; index < lines.size(); ++index) {
+    if (index != 0) {
+      asm_payload += '\n';
+    }
+    asm_payload += lines[index];
+  }
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .defs = {MachineEffectResource{
+          .kind = MachineEffectResourceKind::PreparedValue,
+          .value_id = result_home->value_id,
+          .value_name = result_home->value_name,
+      }},
+      .uses = source_home != nullptr
+                  ? std::vector<MachineEffectResource>{MachineEffectResource{
+                        .kind = MachineEffectResourceKind::PreparedValue,
+                        .value_id = source_home->value_id,
+                        .value_name = source_home->value_name,
+                    }}
+                  : std::vector<MachineEffectResource>{},
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_payload),
+          },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          mir::MachineOrigin{
+              .reason = mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow->function_name,
+              .block_label = context.control_flow_block->block_label,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
 std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
@@ -859,6 +1043,30 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
       *context.function.storage_plan,
       *cast);
   if (!prepared.record.has_value()) {
+    if (auto stack_cast =
+            lower_stack_scalar_float_width_cast(context, *cast, instruction_index)) {
+      const auto* result_home =
+          find_named_value_home(context.function.prepared->names,
+                                *context.function.value_locations,
+                                cast->result);
+      const auto* result_storage =
+          result_home != nullptr
+              ? find_storage_plan_value(*context.function.storage_plan,
+                                        result_home->value_id)
+              : nullptr;
+      if (result_home != nullptr && result_storage != nullptr) {
+        if (const auto result_register =
+                make_prepared_register_operand(*result_home,
+                                               *result_storage,
+                                               cast->result.type,
+                                               RegisterOperandRole::StoragePlan)) {
+          record_emitted_scalar_register(scalar_state,
+                                         result_home->value_name,
+                                         *result_register);
+        }
+      }
+      return stack_cast;
+    }
     return std::nullopt;
   }
 
