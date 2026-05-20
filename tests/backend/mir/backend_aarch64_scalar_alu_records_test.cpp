@@ -377,6 +377,7 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::Div) != "div" ||
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Shl) ||
+      !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::LShr) ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Shl) !=
           aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::LShr) !=
@@ -411,8 +412,8 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
   return 0;
 }
 
-int shift_left_immediate_records_select_and_print_width_correct_alu_nodes() {
-  auto shift = scalar_alu_record(
+int shift_immediate_records_select_and_print_width_correct_alu_nodes() {
+  auto shift_left = scalar_alu_record(
       aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight,
       bir::BinaryOpcode::Shl,
       bir::TypeKind::I32,
@@ -428,22 +429,44 @@ int shift_left_immediate_records_select_and_print_width_correct_alu_nodes() {
           .signed_value = 1,
           .unsigned_value = 1,
       }));
-  shift.supported_integer_operation = true;
+  shift_left.supported_integer_operation = true;
 
-  const auto instruction = aarch64_codegen::make_scalar_instruction(
-      aarch64_codegen::make_scalar_alu_instruction_record(shift));
-  const auto* scalar =
-      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&instruction.payload);
-  if (instruction.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
-      instruction.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
-      scalar == nullptr || !scalar->scalar_alu.has_value() ||
-      scalar->source_binary_opcode != bir::BinaryOpcode::Shl) {
+  const auto left_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(shift_left));
+  const auto* left_scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&left_instruction.payload);
+  if (left_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      left_instruction.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
+      left_scalar == nullptr || !left_scalar->scalar_alu.has_value() ||
+      left_scalar->source_binary_opcode != bir::BinaryOpcode::Shl) {
     return fail("expected shift-left record to select a scalar shift machine node");
   }
-  const auto printed = aarch64_codegen::make_scalar_alu_print_lines(instruction, *scalar);
-  if (!printed.lines.has_value() || printed.lines->size() != 1 ||
-      printed.lines->front() != "lsl w0, w1, #1") {
+  const auto left_printed =
+      aarch64_codegen::make_scalar_alu_print_lines(left_instruction, *left_scalar);
+  if (!left_printed.lines.has_value() || left_printed.lines->size() != 1 ||
+      left_printed.lines->front() != "lsl w0, w1, #1") {
     return fail("expected shift-left record to print width-correct lsl immediate");
+  }
+
+  auto shift_right = shift_left;
+  shift_right.source_binary_opcode = bir::BinaryOpcode::LShr;
+  const auto right_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(shift_right));
+  const auto* right_scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&right_instruction.payload);
+  if (right_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      right_instruction.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
+      right_scalar == nullptr || !right_scalar->scalar_alu.has_value() ||
+      right_scalar->source_binary_opcode != bir::BinaryOpcode::LShr) {
+    return fail("expected logical-shift-right record to select a scalar shift machine node");
+  }
+  const auto right_printed =
+      aarch64_codegen::make_scalar_alu_print_lines(right_instruction, *right_scalar);
+  if (!right_printed.lines.has_value() || right_printed.lines->size() != 1 ||
+      right_printed.lines->front() != "lsr w0, w1, #1") {
+    return fail("expected logical-shift-right record to print width-correct lsr immediate");
   }
 
   return 0;
@@ -552,7 +575,7 @@ int main() {
       status != 0) {
     return status;
   }
-  if (const int status = shift_left_immediate_records_select_and_print_width_correct_alu_nodes();
+  if (const int status = shift_immediate_records_select_and_print_width_correct_alu_nodes();
       status != 0) {
     return status;
   }
