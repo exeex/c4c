@@ -108,3 +108,12 @@ different homes such as `sp + 556` / `sp + 560`; long-double HFA branches also
 reach `.str44` calls without publishing the selected long-double values as
 `printf` arguments. Resume classification from that residual, not from the
 closed non-HFA string aggregate materialization route.
+
+2026-05-20: Terminal handoff after Step 2 advanced through the HFA/floating
+return-value block and the adjacent stdarg/byval aggregate repairs. The new
+first bad fact is no longer HFA/floating publication: with unbuffered runtime
+output, `00204.c` reaches `stdarg:`, and the first byval payload bytes begin as
+`ABCDEFGHI`, but separator bytes between the first `%9s` values are corrupted
+(`0xd0`, `0xd4`, `0xd8`, ...) before a segmentation fault. Active execution
+split to `ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`;
+do not continue the stdarg cursor/format residual under idea 326.
