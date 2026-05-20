@@ -1,6 +1,6 @@
 # AArch64 Variadic Aggregate Va Arg Post-Consumption Call Setup
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-20
 Split From: ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md
 
@@ -101,3 +101,24 @@ Reject the route if it:
 - proves only the external `00204.c` run while nearby focused backend output
   lacks assertions for the post-`va_arg` call operand publication being
   repaired.
+
+## Lifecycle Handoff
+
+2026-05-20: Step 4 validated the post-`va_arg` ordinary-call operand
+publication repair for the focused `00204.c` representative. Generated
+`myprintf` now publishes `.str31` / `.str33` into `x0` and the aggregate
+text-buffer pointer into `x1` before `bl printf` on the `%7s` and `%9s`
+branches. The old first bad fact where libc `printf` could be reached with
+`x0 == x1` instead of the fixed format string pointer is gone.
+
+The remaining representative mismatch is a distinct adjacent non-HFA
+aggregate `va_arg` materialization issue: the selected aggregate source bytes
+are not copied into the branch-local stack buffers before the following
+ordinary call observes those buffers. This residual is split to
+`ideas/open/330_aarch64_non_hfa_aggregate_va_arg_materialization.md`.
+
+This idea is inactive after the split. It was not archived in this lifecycle
+packet because the delegated ownership explicitly excluded `ideas/closed/*`,
+and the existing strict close-gate regression comparison did not accept
+closure: `test_before.log` and `test_after.log` both show 11 passed and 1
+failed, with no newly failing tests but no strict pass-count increase.
