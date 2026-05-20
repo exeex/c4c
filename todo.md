@@ -1,92 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/334_aarch64_scalar_machine_node_operand_fact_printing.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Scalar Operand Fact Divergence
+Current Step ID: 2
+Current Step Title: Repair The Classified Operand-Fact Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the first owner for the current scalar machine-node printer
-failures. Both representatives enter the same broad owner class: prepared
-scalar operand conversion does not publish stack-slot scalar values as coherent
-prepared frame-slot operands, so selection falls back to producer/load-source
-memory facts. The two representatives then fail in different printer contract
-branches.
+Step 2 repaired the scalar prepared-operand publication owner. Stack-slot
+scalar values can now be represented as prepared frame-slot `MemoryOperand`
+facts in both the prepared scalar ALU record path and the fallback selected
+machine-node operand path. The fallback path now prefers coherent value
+home/storage operands before producer/load-source memory facts, which prevents
+register-backed sources such as `%t157` from consuming scratch registers as
+local-load memory operands.
 
-`00164.c` representative:
+Focused coverage added:
 
-- CTest first bad fact from `test_after.log`:
-  `c_testsuite_aarch64_backend_src_00164_c` reaches function 0 block 40
-  instruction 6 and fails printing scalar opcode `mul` with
-  `scalar mul/div/rem node has incomplete printable rhs facts`.
-- Prepared source operation in `main`/`logic.end.146`:
-  `%t159 = bir.mul i32 %t157, %t158`.
-- Source operands and homes:
-  `%t157` is `%lv.b`, prepared home/register storage `x21`, width 1;
-  `%t158` is `%lv.c`, prepared home stack slot `slot#58+stack232`, width 1;
-  result `%t159` has prepared home stack slot `slot#59+stack236`, width 1.
-- Prepared moves before block 40 instruction 6 include `%t157 -> %t159`
-  as `consumer_register_to_stack` and `%t158 -> %t159` as
-  `consumer_stack_to_stack`; prepared frame plan is coherent at
-  `frame_size=256`, `frame_alignment=4`.
-- Selected operand facts diverge before printing: `make_prepared_scalar_operand`
-  accepts immediates and register-backed named values but returns
-  `UnsupportedOperandStorage` for stack-slot `%t158`, so the prepared scalar
-  ALU record is abandoned and `try_make_prepared_scalar_instruction_record`
-  falls back through `make_scalar_fallback_operand`. The fallback can only use
-  emitted registers or `make_prepared_scalar_load_source` producer memory facts,
-  not the value's prepared stack home as a complete scalar operand fact.
-- The printer then reaches the mul/div/rem materializer with a RHS memory-like
-  operand for `%t158` that is not materializable under the required
-  register/memory/immediate contract, producing the exact missing fact
-  `scalar mul/div/rem node has incomplete printable rhs facts`.
+- `backend_aarch64_prepared_scalar_alu_records_test` now verifies that a
+  stack-slot scalar operand becomes a prepared frame-slot memory operand with
+  value id/name, slot id, offset, size, alignment, and selected memory-use
+  facts preserved.
+- `backend_aarch64_machine_printer_test` now verifies selected scalar ALU
+  frame-slot operands materialize before printing for both a `mul` RHS and an
+  `add` with two frame-slot sources.
 
-`00214.c` representative:
+Representative results:
 
-- CTest first bad fact from `test_after.log`:
-  `c_testsuite_aarch64_backend_src_00214_c` reaches function 0 block 4
-  instruction 2 and fails printing scalar opcode `add` with
-  `scalar add/sub/bitwise memory operands require prepared frame-slot sources`.
-- Prepared source operation in `extend_brk`/`block_3`:
-  `%t16 = bir.add i64 %t14, %t15`.
-- Source operands and homes:
-  `%t14 = bir.load_global i64 @_brk_end`, prepared home stack slot
-  `slot#11+stack40`, width 1; `%t15 = bir.load_local i64 %lv.mask`, prepared
-  home stack slot `slot#12+stack48`, width 1; result `%t16` has prepared
-  register home/storage `x13`, width 1.
-- Prepared moves before block 4 instruction 2 include `%t14 -> %t16` and
-  `%t15 -> %t16` as `consumer_stack_to_register`; prepared frame plan is
-  coherent at `frame_size=96`, `frame_alignment=8`, with slot offsets 40 and
-  48 present.
-- Selected operand facts diverge at the same conversion boundary:
-  stack-slot `%t14`/`%t15` cannot be represented by
-  `make_prepared_scalar_operand`, so fallback chooses producer memory facts.
-  For `%t14`, the producer access is `base=global_symbol result=%t14
-  symbol=_brk_end size=8`; for `%t15`, the producer access is
-  `base=frame_slot result=%t15 frame_slot=#0 size=8`. The add/sub/bitwise
-  printer rejects the non-frame-slot memory source before materialization,
-  producing the exact missing fact
-  `scalar add/sub/bitwise memory operands require prepared frame-slot sources`.
-
-Owner classification: scalar prepared-operand publication / selected
-machine-node operand fact support. This is not a frame-layout/prologue owner:
-current prepared frame sizes, alignments, and slot offsets cover the involved
-homes. The partial generated assembly prologue evidence remains downstream and
-should not be treated as the first owner until the scalar operand-fact printer
-failure is removed. This is also separate from fixed-formal, byval, stdarg,
-HFA/floating, MOVI, large-offset spelling, local/value publication, and the
-previous OPI scalar ALU result-home/cast/immediate/shift owners.
+- `c_testsuite_aarch64_backend_src_00214_c` now passes in the delegated proof;
+  the old scalar `add` diagnostic
+  `scalar add/sub/bitwise memory operands require prepared frame-slot sources`
+  is gone.
+- `c_testsuite_aarch64_backend_src_00164_c` advances past the old scalar `mul`
+  diagnostic `scalar mul/div/rem node has incomplete printable rhs facts` and
+  now fails later as a runtime mismatch. First output mismatch is the 8th print
+  at `tests/c/external/c-testsuite/src/00164.c:28`, expected `46`, actual
+  `-635898024`. The generated assembly for that region reads uninitialized
+  stack slots around `sp+#148`, `sp+#152`, and `sp+#156`, so this residual is
+  not the repaired scalar operand-fact printer owner.
 
 ## Suggested Next
 
-Execute Step 2 by repairing the prepared scalar operand conversion so
-stack-slot scalar values can reach selected AArch64 scalar ALU records as
-complete prepared frame-slot operand facts, while preserving existing register
-and immediate behavior. The repair should be general for scalar ALU operands;
-do not key on `00164.c`, `00214.c`, instruction indices, symbols, stack offsets,
-or diagnostic strings.
+Run plan-owner lifecycle review for Step 2. The source idea's current printer
+diagnostics are repaired, one representative passes, and the other has advanced
+to a runtime mismatch that appears to belong to a separate value/publication or
+local-slot initialization owner.
 
 ## Watchouts
 
@@ -98,5 +57,19 @@ diagnostic-string-only workaround. Keep the unrelated transient
 
 ## Proof
 
-Lifecycle split/activation only. No build, CTest, or regression guard was run
-for activation.
+Delegated proof command:
+
+`cmake --build build --target c4cll backend_aarch64_scalar_alu_records_test backend_aarch64_prepared_scalar_alu_records_test backend_aarch64_scalar_record_contract_test backend_aarch64_machine_printer_test backend_aarch64_operand_resolution_test backend_aarch64_memory_operand_records_test -j 2 && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(scalar_alu_records|prepared_scalar_alu_records|scalar_record_contract|machine_printer|operand_resolution|memory_operand_records)|c_testsuite_aarch64_backend_src_(00164|00214)_c' > test_after.log 2>&1`
+
+Result: build succeeded; CTest selected 8 tests. Passed 7/8:
+`backend_aarch64_operand_resolution`,
+`backend_aarch64_memory_operand_records`,
+`backend_aarch64_scalar_record_contract`,
+`backend_aarch64_scalar_alu_records`,
+`backend_aarch64_prepared_scalar_alu_records`,
+`backend_aarch64_machine_printer`, and
+`c_testsuite_aarch64_backend_src_00214_c`. Failed 1/8:
+`c_testsuite_aarch64_backend_src_00164_c` with the advanced runtime mismatch
+described above. Proof log: `test_after.log`.
+
+`git diff --check` passed.

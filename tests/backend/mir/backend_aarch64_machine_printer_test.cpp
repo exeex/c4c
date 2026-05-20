@@ -2506,6 +2506,65 @@ int selected_scalar_stack_publication_materializes_large_offset() {
                          "scalar stack publication large-offset materialization");
 }
 
+int selected_scalar_alu_frame_slot_operands_materialize_before_printing() {
+  auto rhs_slot = frame_slot(32);
+  rhs_slot.size_bytes = 4;
+  rhs_slot.align_bytes = 4;
+  rhs_slot.result_value_id = prepare::PreparedValueId{251};
+  rhs_slot.result_value_name = c4c::ValueNameId{252};
+  const auto mul = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Mul,
+          .source_binary_opcode = bir::BinaryOpcode::Mul,
+          .operand_type = bir::TypeKind::I32,
+          .result_value_id = prepare::PreparedValueId{250},
+          .result_value_name = c4c::ValueNameId{251},
+          .result_type = bir::TypeKind::I32,
+          .result_register = wreg(0),
+          .lhs = aarch64_codegen::make_register_operand(wreg(1)),
+          .rhs = aarch64_codegen::make_memory_operand(rhs_slot),
+          .supported_integer_operation = true,
+      }));
+
+  auto lhs_slot = frame_slot(40);
+  lhs_slot.result_value_id = prepare::PreparedValueId{260};
+  lhs_slot.result_value_name = c4c::ValueNameId{261};
+  auto add_rhs_slot = frame_slot(48);
+  add_rhs_slot.frame_slot_id = prepare::PreparedFrameSlotId{5};
+  add_rhs_slot.result_value_id = prepare::PreparedValueId{262};
+  add_rhs_slot.result_value_name = c4c::ValueNameId{263};
+  const auto add = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Add,
+          .source_binary_opcode = bir::BinaryOpcode::Add,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{264},
+          .result_value_name = c4c::ValueNameId{265},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(13),
+          .lhs = aarch64_codegen::make_memory_operand(lhs_slot),
+          .rhs = aarch64_codegen::make_memory_operand(add_rhs_slot),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({mul, add});
+  if (!result.ok) {
+    return fail("expected scalar ALU frame-slot operands to print: " + result.diagnostic);
+  }
+  const std::string expected =
+      "    ldr w9, [sp, #32]\n"
+      "    mul w0, w1, w9\n"
+      "    ldr x9, [sp, #40]\n"
+      "    ldr x10, [sp, #48]\n"
+      "    add x13, x9, x10\n";
+  return expect_assembly(result.assembly,
+                         expected,
+                         expected,
+                         "scalar ALU frame-slot operand materialization");
+}
+
 int selected_unsigned_power_of_two_reductions_print_from_structured_operands() {
   const auto udiv = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -6876,6 +6935,11 @@ int main() {
     return result;
   }
   if (const int result = selected_scalar_stack_publication_materializes_large_offset();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_scalar_alu_frame_slot_operands_materialize_before_printing();
       result != 0) {
     return result;
   }

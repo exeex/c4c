@@ -100,6 +100,25 @@ namespace mir = c4c::backend::mir;
   }
 }
 
+[[nodiscard]] std::optional<std::size_t> scalar_type_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::Ptr:
+      return std::size_t{8};
+    default:
+      return std::nullopt;
+  }
+}
+
 [[nodiscard]] std::optional<unsigned> unsigned_power_of_two_log2(
     const ImmediateOperand& immediate,
     bir::TypeKind type) {
@@ -837,6 +856,27 @@ namespace mir = c4c::backend::mir;
     });
   }
 
+  if (const auto* memory = std::get_if<mir::Memory>(&resolved.operand.payload);
+      memory != nullptr && resolved.frame_slot_id.has_value()) {
+    const auto size_bytes = scalar_type_size_bytes(value.type);
+    if (!size_bytes.has_value()) {
+      return std::nullopt;
+    }
+    return make_memory_operand(MemoryOperand{
+        .surface = RecordSurfaceKind::RecordOnly,
+        .support = MemoryOperandSupportKind::Prepared,
+        .result_value_id = resolved.value_id,
+        .result_value_name = resolved.value_name,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = resolved.frame_slot_id,
+        .byte_offset = memory->displacement,
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = *size_bytes,
+        .align_bytes = *size_bytes,
+        .can_use_base_plus_offset = true,
+    });
+  }
+
   if (!resolved.register_reference.has_value()) {
     return std::nullopt;
   }
@@ -1018,6 +1058,10 @@ namespace mir = c4c::backend::mir;
     return make_register_operand(*emitted);
   }
   if (home != nullptr) {
+    auto value_home_operand = make_named_scalar_operand(value, context, diagnostics);
+    if (value_home_operand.has_value()) {
+      return value_home_operand;
+    }
     auto source = make_prepared_scalar_load_source(context, *home);
     if (source.has_value()) {
       return make_memory_operand(*source);
@@ -2720,6 +2764,30 @@ PreparedScalarAluRecordError make_prepared_scalar_operand(
       return PreparedScalarAluRecordError::UnsupportedOperandType;
     }
     out = make_immediate_operand(*immediate);
+    return PreparedScalarAluRecordError::None;
+  }
+
+  if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      storage->slot_id.has_value() && storage->stack_offset_bytes.has_value()) {
+    const auto size_bytes = scalar_type_size_bytes(value.type);
+    if (!size_bytes.has_value()) {
+      return PreparedScalarAluRecordError::UnsupportedOperandType;
+    }
+    out = make_memory_operand(MemoryOperand{
+        .surface = RecordSurfaceKind::RecordOnly,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = value_locations.function_name,
+        .result_value_id = home->value_id,
+        .result_value_name = home->value_name,
+        .base_kind = MemoryBaseKind::FrameSlot,
+        .frame_slot_id = storage->slot_id,
+        .byte_offset = static_cast<std::int64_t>(*storage->stack_offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = *size_bytes,
+        .align_bytes = home->align_bytes.value_or(*size_bytes),
+        .can_use_base_plus_offset = true,
+    });
     return PreparedScalarAluRecordError::None;
   }
 

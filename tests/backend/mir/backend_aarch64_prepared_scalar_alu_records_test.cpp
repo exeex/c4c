@@ -66,6 +66,21 @@ prepare::PreparedStoragePlanValue register_storage(prepare::PreparedValueId valu
   };
 }
 
+prepare::PreparedStoragePlanValue frame_slot_storage(prepare::PreparedValueId value_id,
+                                                     c4c::ValueNameId value_name,
+                                                     prepare::PreparedFrameSlotId slot_id,
+                                                     std::size_t stack_offset_bytes) {
+  return prepare::PreparedStoragePlanValue{
+      .value_id = value_id,
+      .value_name = value_name,
+      .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+      .bank = prepare::PreparedRegisterBank::Gpr,
+      .contiguous_width = 1,
+      .slot_id = slot_id,
+      .stack_offset_bytes = stack_offset_bytes,
+  };
+}
+
 prepare::PreparedStoragePlanValue fpr_storage(prepare::PreparedValueId value_id,
                                               c4c::ValueNameId value_name,
                                               const char* register_name) {
@@ -439,6 +454,52 @@ int prepared_scalar_alu_registers_prefer_storage_register_placement() {
       lhs->occupied_registers.size() != 1 || lhs->occupied_registers.front() != "x13") {
     return fail("expected occupied register display to follow typed placement conversion");
   }
+  return 0;
+}
+
+int prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts() {
+  auto fixture = make_i64_fixture();
+  fixture.locations.value_homes[1].kind = prepare::PreparedValueHomeKind::StackSlot;
+  fixture.locations.value_homes[1].register_name = std::nullopt;
+  fixture.locations.value_homes[1].slot_id = prepare::PreparedFrameSlotId{44};
+  fixture.locations.value_homes[1].offset_bytes = std::size_t{88};
+  fixture.locations.value_homes[1].size_bytes = std::size_t{8};
+  fixture.locations.value_homes[1].align_bytes = std::size_t{8};
+  fixture.storage.values[1] = frame_slot_storage(
+      prepare::PreparedValueId{11}, fixture.rhs_name, prepare::PreparedFrameSlotId{44}, 88);
+
+  const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+      fixture.names,
+      fixture.locations,
+      fixture.storage,
+      binary(bir::BinaryOpcode::Add, bir::TypeKind::I64));
+  if (!result.record.has_value() ||
+      result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+      !result.record->scalar_alu.has_value()) {
+    return fail("expected stack-slot scalar operand to prepare as frame-slot memory");
+  }
+
+  const auto& alu = *result.record->scalar_alu;
+  const auto* rhs = std::get_if<aarch64_codegen::MemoryOperand>(&alu.rhs.payload);
+  if (alu.rhs.kind != aarch64_codegen::OperandKind::Memory || rhs == nullptr ||
+      rhs->support != aarch64_codegen::MemoryOperandSupportKind::Prepared ||
+      rhs->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      rhs->frame_slot_id != prepare::PreparedFrameSlotId{44} ||
+      rhs->byte_offset != 88 || !rhs->byte_offset_is_prepared_snapshot ||
+      rhs->size_bytes != 8 || rhs->align_bytes != 8 || !rhs->can_use_base_plus_offset ||
+      rhs->result_value_id != prepare::PreparedValueId{11} ||
+      rhs->result_value_name != fixture.rhs_name) {
+    return fail("expected prepared stack-slot scalar operand to preserve frame-slot facts");
+  }
+
+  const auto machine = aarch64_codegen::make_scalar_instruction(*result.record);
+  if (machine.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      machine.operands.size() != 2 || machine.uses.size() != 2 ||
+      machine.uses[1].kind != aarch64_codegen::MachineEffectResourceKind::Memory ||
+      machine.uses[1].frame_slot_id != prepare::PreparedFrameSlotId{44}) {
+    return fail("expected selected scalar node to expose frame-slot memory use");
+  }
+
   return 0;
 }
 
@@ -1107,6 +1168,11 @@ int main() {
     return status;
   }
   if (const int status = prepared_scalar_alu_registers_prefer_storage_register_placement();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_scalar_alu_stack_slot_operands_become_frame_slot_memory_facts();
       status != 0) {
     return status;
   }
