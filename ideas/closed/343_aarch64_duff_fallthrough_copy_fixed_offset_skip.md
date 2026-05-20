@@ -1,8 +1,9 @@
 # AArch64 Duff Fallthrough Copy Fixed-Offset Skip
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/342_aarch64_duff_do_while_latch_condition_emission.md
+Closed: 2026-05-20
 
 ## Goal
 
@@ -62,6 +63,33 @@ every other short offset.
   a new first bad fact after the fixed-offset skip is repaired.
 - No expectation, runner, timeout, unsupported classification,
   CTest-registration, or proof-log-policy change is used to claim progress.
+
+## Completion Note
+
+Closed on 2026-05-20 after the fixed-offset skip was localized and repaired.
+The repair landed in `src/backend/prealloc/stack_layout/coordinator.cpp`, with
+focused backend coverage proving that fallthrough copy chains whose prepared
+BIR offsets advance by two bytes no longer skip every other generated AArch64
+short-copy offset.
+
+Step 3 re-ran the representative classification. Prepared addressing still
+maps consecutive Duff fallthrough slots, and generated AArch64 now emits the
+consecutive short-copy offsets `[sp]`, `[sp,#2]`, `[sp,#4]`, and onward. The
+Duff latch repair from idea 342 also remains intact: the latch branches on the
+single post-decrement counter value.
+
+`c_testsuite_aarch64_backend_src_00143_c` still fails `[RUNTIME_NONZERO]`, but
+the remaining first bad fact is outside this idea. Semantic BIR freezes
+`*from++` and `*to++` dereferences to direct `%lv.a.0` and `%lv.b.0` base
+slots across the loopback instead of consuming the loop-carried `%lv.from` and
+`%lv.to` pointer state. That residual was split to
+`ideas/open/344_semantic_bir_loop_carried_pointer_deref_provenance.md`.
+
+Close-time regression guard used matched representative logs for
+`c_testsuite_aarch64_backend_src_00143_c`. The strict pass-increase check is
+not applicable because the representative is intentionally split as a still
+failing residual, so the non-decreasing guard was used: before and after both
+reported 0 passed and 1 failed out of 1, with no new failing tests.
 
 ## Reviewer Reject Signals
 
