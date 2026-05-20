@@ -1,74 +1,145 @@
-# Review A: Idea 132 Reopened LIR Signature Type-Ref Repair
+# Review A: Post-337 Backend Regex Inventory Route
 
 ## Scope
 
-Requested review of the current implementation slice from the repaired active-plan point to `HEAD`, focusing on commit `2c722228 Own LIR function signature type tags`.
+Requested review of whether the current active idea 295 route should continue
+with Step 2 classification from `test_after.log`, or whether lifecycle state
+should be rewritten before further execution.
 
-Chosen base commit: `b5c50f53 [plan+idea] Reopen parser rendered record template cleanup for rebuilt LIR regression`
+Active source idea path:
+`ideas/open/295_backend_regex_failure_family_inventory.md`
 
-Why this base is correct: it is the lifecycle checkpoint that reopened idea 132, created the active repair `plan.md`, and linked the plan/todo state back to `ideas/open/132_parser_rendered_record_template_lookup_mirror_cleanup.md`. The later `f79589e1` commit is todo metadata only, not the repaired active-plan point.
+Chosen base commit: `033d19aa0 [plan] activate backend regex inventory`
 
-Commit count since base: 2
+Why this base is correct: it is the latest activation commit for idea 295 after
+closed idea 337, and it created the current active umbrella `plan.md` and
+`todo.md`. The packet explicitly allowed this checkpoint if multiple idea 295
+activations made base selection ambiguous.
 
-Reviewed diff: `git diff b5c50f53..HEAD`
+Commit count since base: 1 committed change (`ecf313ab9 [todo_only] capture
+post-337 backend regex inventory`), plus the current uncommitted `todo.md`
+metadata edit.
+
+Reviewed diff: `git diff 033d19aa0..HEAD`, current dirty `todo.md`, active
+plan/todo, source idea 295, closed ideas 334-337, and `test_after.log`.
 
 ## Findings
 
-No blocking findings.
+### Medium: `todo.md` Step Metadata Now Points At Repair, Not Classification
 
-## Route Drift / Overfit Check
+`todo.md:4-5` says the current step is Step 2,
+`Repair The Classified Operand-Fact Owner`. That conflicts with the active
+runbook's Step 2 title and goal, `Classify Residual Failures`, at
+`plan.md:95-120`, and with the source idea/runbook core rule that this umbrella
+must not implement repairs before a focused lifecycle switch (`plan.md:18-22`,
+`plan.md:144-160`).
 
-The implementation stays aligned with the reopened repair runbook. The target failure was a mismatch between the printed function signature and structured LIR signature return metadata. The fix changes the ownership and authority path in LIR lowering rather than matching `declared_pair`, weakening `frontend_lir_function_signature_type_ref`, or relaxing the verifier.
+The body of `todo.md` is otherwise aligned with classification:
+`todo.md:59-63` says to classify the residual failures from `test_after.log`
+and not split an owner until classification evidence is recorded.
 
-Evidence:
+This is a lifecycle metadata defect, not an implementation route failure. It
+should be repaired before delegating the next executor packet because executor
+routing depends on the regex-friendly `Current Step ID` and
+`Current Step Title` fields.
 
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:37` adds `lir_owned_type_spec`, which copies `TypeSpec::tag` strings into LIR-owned storage before they are retained in `LirFunction.return_type`, `LirFunction.params`, and `LirFunction.signature_params`.
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:43` changes aggregate type-ref construction so the structured `StructNameId` comes from the structured tag spelling, not from rendered mirror text.
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:1280` and `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:1321` now store LIR-owned return type tags for declarations and definitions.
-- `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:123` and `src/codegen/lir/hir_to_lir/hir_to_lir.cpp:137` now store LIR-owned parameter tags for signature metadata and function params.
-- `src/codegen/lir/ir.hpp:613` and `src/codegen/lir/ir.hpp:617` add module-owned tag storage rather than borrowing frontend/HIR string lifetime.
+### Medium: `test_after.log` Is Good Classification Input, But Not Enough To Reopen Closed Owners
 
-This is semantic repair of the LIR metadata authority path, not testcase-overfit.
+The current log supports continuing Step 2 classification:
 
-## Lifetime / Ownership Review
+- `todo.md:17-25` records 354 selected, 325 passed, 26 failed, 3 timed out, with
+  local/internal backend tests passing and all failures in external
+  `c_testsuite_aarch64_backend_*`.
+- `test_after.log:1213-1268` confirms 29 failed/timed-out tests out of 354 and
+  lists the external AArch64 failures.
+- The log includes first-stage tags needed for an initial bucket pass, for
+  example scalar-cast machine-printer diagnostics at `test_after.log:786-808`,
+  `test_after.log:922-930`, `test_after.log:947-969`, runtime nonzero at
+  `test_after.log:304-307` and `test_after.log:477-491`, runtime mismatch at
+  `test_after.log:892-918` and `test_after.log:1081-1133`, and timeouts at
+  `test_after.log:1206-1210`.
 
-The lifetime fix is directionally sound. `LirModule::intern_type_tag` stores copied strings in module-owned storage and returns stable `c_str()` pointers for retained `TypeSpec` copies. The use of shared storage also preserves tag lifetime across ordinary `LirModule` copies.
+However, the log alone should not reopen closed ideas 334-337 or select a
+focused owner. It does not include generated assembly or first-bad generated-code
+evidence for the runtime failures. That matters because some current failures
+overlap prior idea 336 membership, such as `00112`, `00159`, and `00170`
+(`test_after.log:477-491`, `test_after.log:892-918`,
+`test_after.log:975-1003`). Those failures are not enough to reopen return
+publication from counts or names alone.
 
-No immediate lifetime hazard was found in the repaired function-signature path.
+### Low: Closed-Owner Boundaries Are Not Currently Contradicted
 
-Residual watch item: `todo.md` correctly notes that globals or stack-object TypeSpec tags were not broadened in this packet. That is not a blocker for this repaired failure, because the failing verifier path compares `LirFunction.return_type` and `LirFunction.signature_*` metadata, but it is worth keeping as a future ownership audit item if later LIR-held `TypeSpec` copies are expected to outlive or diverge from their HIR source.
+The current route does not show testcase-overfit in the post-337 diff: since
+`033d19aa0`, only `todo.md` inventory/progress changed in committed history,
+and the current dirty state is another `todo.md` metadata edit. There are no
+post-337 implementation or expectation changes to review as overfit.
 
-## Plan Alignment
+The current log also gives useful boundary checks:
 
-Plan-alignment judgment: `on track`
+- Closed idea 334's representatives `00164` and `00214` pass in the current
+  backend-regex run (`test_after.log:325`, `test_after.log:499`), matching the
+  closure note that the old scalar `mul`/`add` printer diagnostics were gone
+  (`ideas/closed/334_aarch64_scalar_machine_node_operand_fact_printing.md:94-112`).
+- Closed idea 335's representative `00164` passes (`test_after.log:499`), which
+  does not contradict its local-slot publication closure
+  (`ideas/closed/335_aarch64_uninitialized_local_slot_runtime_residual.md:77-94`).
+- Closed idea 337's representative `00168` passes (`test_after.log:518`), which
+  does not contradict its callee-saved scalar-home closure
+  (`ideas/closed/337_aarch64_callee_saved_scalar_home_preservation.md:68-89`).
 
-The diff matches active Step 2's goal of repairing the structured authority path that caused the mismatched return type-ref. The todo update also records the first bad fact and explains why the fix is semantic rather than name-specific.
+Idea 336 is more nuanced: some focused representatives pass after the closure,
+but residual names from the original 22-case bucket still appear in the current
+failure list. That is a proof-sufficiency watch item for Step 2 classification,
+not a reason to reopen 336 without generated-code evidence. The active plan
+already says closed owners through 337 stay closed unless fresh generated-code
+or proof evidence contradicts a boundary (`plan.md:40-41`, `plan.md:112-115`).
 
-## Idea Alignment
+### Low: The Hook Reminder Reveals Cadence Pressure, Not A Route Reset
+
+`scripts/plan_review_state.py show` reports `code_review_pending: true`,
+`counter: 6`, and `review_limit: 6` for current Step 2. The reminder itself
+does not prove route drift. It usefully surfaced the stale Step 2 title and the
+need to keep classification separate from repair. After the todo metadata is
+repaired, this does not require a plan rewrite.
+
+## Judgments
 
 Idea-alignment judgment: `matches source idea`
 
-The reopened source idea says the rebuilt LIR failure invalidates the close proof and must be repaired as structured identity propagation/mirror authority, not as a new unrelated initiative. The current fix does that.
+The intended route remains idea 295's umbrella inventory/classification route:
+capture the post-337 backend regex surface, classify residual failures, compare
+against closed owners using evidence, and split before implementation.
 
-## Technical Debt
+Runbook-transcription judgment: `plan matches idea`
 
-Technical-debt judgment: `watch`
+`plan.md` accurately transcribes the source idea. The problem is in `todo.md`
+execution metadata, not in the plan.
 
-The new LIR tag storage is acceptable for this slice. The remaining debt is scope boundary debt: only function return/parameter/signature TypeSpec retention is covered. That is reasonable for the repaired failure, but should not be treated as proof that every LIR-held TypeSpec tag has been audited.
+Route-alignment judgment: `drifting`
 
-## Validation
+The actual next action should still be Step 2 classification, but the current
+step title is implementation-flavored and can misroute the next executor if
+left as-is.
+
+Technical-debt judgment: `action needed`
+
+Action is limited to lifecycle scratchpad repair: update `todo.md` Step 2 title
+and packet wording to classification, not repair. No source idea rewrite is
+needed.
 
 Validation sufficiency: `needs broader proof`
 
-The focused before/after guard is strong for the repaired regression:
+`test_after.log` is sufficient input for classification, but not sufficient to
+select or reopen a focused owner. Any candidate bucket that overlaps closed
+ideas 334-337 needs generated-code, diagnostic, ABI, or lowering evidence before
+Step 3 owner selection.
 
-- before: `frontend_lir_function_signature_type_ref` failed with `LirFunction.signature_return_type_ref: return mirror for function 'declared_pair' names a different structured return type than %struct.Big`
-- after: `frontend_lir_function_signature_type_ref` passed 1/1
+Reviewer recommendation: `rewrite plan/todo before more execution`
 
-The supervisor also reported a sanity subset covering parser, HIR lookup, LIR function signature type-ref, extern-decl type-ref, and call type-ref passing 5/5. That is enough to continue the route, but because the commit touches shared LIR aggregate type-ref construction and LIR module metadata ownership, the active Step 3 baseline/reclose readiness still needs broader proof before a renewed close.
-
-## Recommendation
-
-Reviewer recommendation: `continue current route`
-
-Continue to Step 3 baseline/reclose readiness. No plan/todo rewrite is required for this implementation slice. Keep the remaining non-signature LIR-held TypeSpec ownership question as a watch item rather than expanding this repair retroactively.
+Interpret this as a todo-only rewrite unless the plan owner sees additional
+state damage: keep active idea 295 and `plan.md`, but repair `todo.md` so
+`Current Step Title` is `Classify Residual Failures` and the next packet is
+explicitly classification-only from `test_after.log`. After that, continue the
+current route with a narrow Step 2 classification packet. Do not implement under
+the umbrella, do not reopen closed owners from counts, and do not split a new
+owner until classification evidence is recorded.

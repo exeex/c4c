@@ -1,9 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Capture Current Backend Regex Inventory
-你該做code review了
+Current Step ID: 2
+Current Step Title: Classify Residual Failures
 
 # Current Packet
 
@@ -58,14 +57,19 @@ Current failing tests:
 
 ## Suggested Next
 
-Delegate Step 2 to classify the residual failures into local-vs-external and
-first-bad-stage buckets using `test_after.log`; do not split an owner until
-the classification evidence is recorded.
+Delegate Step 2 (`Classify Residual Failures`) as a classification-only packet:
+use `test_after.log` to split the residual failures into local-vs-external and
+first-bad-stage buckets, then record the classified inventory in `todo.md`.
+Do not implement, select a focused owner, or reopen a closed owner from counts
+alone.
 
 ## Watchouts
 
 - Do not implement under the umbrella inventory plan.
 - Do not reopen closed owners through idea 337 from counts alone.
+- Treat `test_after.log` as classification input only; owner selection needs
+  generated-code, diagnostic, ABI, or lowering evidence that identifies a
+  semantic capability boundary.
 - Treat timeout and output-storm cases as unsafe for broad reruns unless the
   delegated command includes timeout and stale-process cleanup.
 - Do not change expectations, runner behavior, unsupported classifications, or
