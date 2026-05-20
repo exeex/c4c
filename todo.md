@@ -1,76 +1,50 @@
 Status: Active
-Source Idea Path: ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md
+Source Idea Path: ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Caller And Callee Byval Placement Agreement
+Current Step ID: 1
+Current Step Title: Localize Later Stdarg Field Mismatch
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 completed the caller/callee byval slot agreement repair and the
-outgoing stack argument base repair for the fixed non-HFA AArch64 byval
-transition.
+Lifecycle switched from idea 328 to idea 331 after commit `941d0c1cb`
+completed the fixed non-HFA byval placement repair. The old `fa1(s8..s13)`
+caller/callee rounded-slot mismatch is gone: the byval `Arguments:` and
+`Return values:` sections now match through the repaired fixed aggregate case.
 
-Implemented changes:
+Close for idea 328 was rejected because the available canonical focused logs
+show no regressions but no strict pass-count increase:
+`passed=6 failed=1 total=7` before and after. The idea remains open but
+inactive with a handoff note.
 
-- caller byval stack-lane publication now accepts stack-passed byval ABI
-  metadata, allows frame-slot byval sources without a source register bank,
-  recovers the call argument plan by ABI index for byval lane moves, and
-  synthesizes missing stack-lane moves from the prepared call plan
-- caller stack-lane publication falls back to byte loads/stores when prepared
-  aggregate source bytes are byte-aligned and wider chunks are not printable
-- outgoing stack argument destinations now use a distinct outgoing-area base
-  (`x16 = sp - outgoing_stack_bytes`) and the call node lowers/restores `sp`
-  around the `bl`, so stack argument stores no longer alias caller frame slots
-  at `[sp + 0]`
-- callee entry formal unpack now counts rounded byval GPR slots, starts
-  `%p.a/%p.b/%p.c/%p.d` at `x0/x1/x3/x5`, and forces `%p.e/%p.f` to the
-  incoming stack when the two-slot aggregate would cross past `x7`
-- callee stack-sourced byval formals now copy aggregate bytes from the
-  incoming argument area into the prepared byval home instead of loading a
-  pointer-sized scalar
-- the x86_64 byval stack-argument carrier index contract was restored
-  narrowly so `backend_prepare_frame_stack_call_contract` again sees the
-  target ABI carrier destination
-
-Focused dispatch coverage now asserts the rounded byval register-to-stack
-formal starts, the caller stack-lane publication, and the distinct outgoing
-stack argument base. Generated `arg` now stages `s12` at `[x16 + 0..11]` and
-`s13` at `[x16 + 16..28]`, then emits `sub sp, sp, #32; bl fa1; add sp, sp,
-#32`. The `fa1` caller/callee placement agrees for `s8..s13`.
-
-The remaining first bad fact from `test_after.log` is outside the original
-missing `s12/s13` publication: `c_testsuite_aarch64_backend_src_00204_c`
-still fails starting in the later `stdarg:` section. The first visible actual
-line is `ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` where the expected line has
-six `ABCDEFGHI` fields. The byval `Arguments:` and `Return values:` sections
-now match through the repaired fixed aggregate case.
+Current first bad fact for this active plan: `c_testsuite_aarch64_backend_src_00204_c`
+still fails in the later `stdarg:` block. The first visible actual line is
+`ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` where the expected output has six
+`ABCDEFGHI` fields before `stdarg:`.
 
 ## Suggested Next
 
-Next packet should stay in the later `00204.c` stdarg/HFA/MOVI bucket if the
-supervisor wants to continue runtime repair. The fixed byval caller/callee
-slot placement and outgoing-area base are now covered by focused tests.
+Localize the stdarg field mismatch from generated `myprintf`: trace the
+expected six `ABCDEFGHI` fields through format traversal, `va_list` cursor
+state, selected aggregate bytes, destination buffers, and the observing call
+operands. Record the first generated-code divergence and the narrowest proof
+command before editing implementation files.
 
 ## Watchouts
 
-Do not revert the caller stack stores or the rounded callee unpack as a way to
-hide the later `00204.c` runtime mismatch; that would reintroduce the original
-byval bug. The outgoing base uses `x16` rather than the reserved MIR scratch
-pair because later argument materialization can clobber `x9/x10` before stack
-argument stores.
+Do not reopen fixed byval rounded-slot placement, outgoing stack argument
+base, HFA/floating publication, non-HFA aggregate materialization, or
+post-`va_arg` call setup without generated-code evidence that the first bad
+fact moved back to that owner.
 
 ## Proof
 
-`test_after.log` contains the delegated proof:
-`git diff --check && cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_frame_stack_call_contract|backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication|backend_runtime_byval_helper_payload_8_to_13|backend_runtime_byval_helper_payload_9_to_14|c_testsuite_aarch64_backend_src_00204_c)$'`.
+Supervisor validation before the handoff commit passed
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` at 100%.
 
-Result: `git diff --check` passed and the build passed. The focused CTest
-subset is no worse than the accepted known runtime bucket: `backend_prepare_frame_stack_call_contract`,
-`backend_aarch64_instruction_dispatch`, `backend_aarch64_machine_printer`,
-`backend_cli_dump_prepared_bir_00204_stdarg_prepared_handoff_aarch64_publication`,
-`backend_runtime_byval_helper_payload_8_to_13`, and
-`backend_runtime_byval_helper_payload_9_to_14` passed. The only remaining
-failure is `c_testsuite_aarch64_backend_src_00204_c`, starting later in
-`stdarg:`.
+Existing focused close-gate logs are non-regressive but not closure-accepted
+under the strict guard:
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+reported `passed=6 failed=1 total=7` before and after, `delta=0`, and
+`result: FAIL` because the passed count did not strictly increase.

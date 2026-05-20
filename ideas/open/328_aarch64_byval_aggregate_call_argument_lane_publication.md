@@ -1,6 +1,6 @@
 # AArch64 Byval Aggregate Call Argument Register-Lane Publication
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-19
 Split From: ideas/open/327_aarch64_fixed_formal_entry_publication.md
 
@@ -151,3 +151,26 @@ coherent register-to-stack transition when too few GPR argument registers
 remain for a whole aggregate. Preserve the earlier single-aggregate
 register-lane publication repairs; do not collapse the residual into a named
 `00204.c` or `fa1` workaround.
+
+2026-05-20: Step 2 completed the fixed non-HFA byval caller/callee placement
+repair in commit `941d0c1cb`. Caller and callee now agree on rounded byval
+slot starts across the register-to-stack transition: generated `arg` stages
+`s12` at `[x16 + 0..11]` and `s13` at `[x16 + 16..28]`, lowers the outgoing
+stack area with `sub sp, sp, #32; bl fa1; add sp, sp, #32`, and generated
+`fa1` materializes `s8..s13` from matching homes. The byval `Arguments:` and
+`Return values:` sections now match through the repaired fixed aggregate
+case.
+
+Close rejected: the available canonical close-gate logs cover the focused
+7-test scope and show no newly failing tests, but the strict regression guard
+reported unchanged pass count (`passed=6 failed=1 total=7` before and after).
+Broad supervisor validation before commit also passed
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` at 100%.
+Keep this idea open but inactive until a supervisor accepts a suitable
+closure-grade regression basis.
+
+The remaining representative failure is outside this idea. The first visible
+new bad line is in the later `stdarg:` block: actual output begins
+`ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` where the expected output has six
+`ABCDEFGHI` fields before `stdarg:`. Continue that residual under
+`ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`.

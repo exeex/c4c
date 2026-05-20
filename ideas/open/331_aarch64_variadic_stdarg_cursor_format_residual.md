@@ -107,3 +107,17 @@ Close was not accepted in this lifecycle turn because the available
 regression guard rejected them for non-increasing pass count. Keep this idea
 open but inactive until a supervisor accepts closure with an appropriate
 regression-guard basis.
+
+2026-05-20: Reactivated after idea 328's fixed non-HFA byval placement repair
+in commit `941d0c1cb`. The byval `Arguments:` and `Return values:` sections
+now match through the repaired fixed aggregate case, so the old byval
+caller/callee rounded-slot fault is no longer the representative blocker.
+
+The current first bad fact is again in the later `stdarg:` block. The first
+visible actual line is `ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` where the
+expected output has six `ABCDEFGHI` fields before `stdarg:`. Broad supervisor
+validation before the handoff commit passed
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` at 100%.
+Resume from stdarg field production, cursor progression, or argument
+publication evidence; do not reopen fixed byval placement without fresh
+generated-code evidence.
