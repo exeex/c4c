@@ -1,6 +1,6 @@
 # AArch64 Indexed Aggregate Address And Writeback
 
-Status: Open
+Status: Parked
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -116,3 +116,31 @@ Reject the route if it:
   generated AArch64 still stores through a stale base, wrong byte offset,
   stale temporary, or fixed global snapshot when the source program selected a
   dynamic aggregate element.
+
+## Lifecycle Handoff
+
+2026-05-20: Step 3 repairs made the selected-address/writeback representatives
+`00130`, `00187`, and `00195` pass in the delegated subset. The remaining red
+representatives from the 348 proof subset were reclassified by new first bad
+facts and should not be continued as routine indexed aggregate address
+writeback work:
+
+- `00176` still has indexed global swap/writeback symptoms, but current
+  generated `partition`/`quicksort` evidence also reuses caller-clobbered
+  `w0`/`w1` after recursive `bl` calls. That first bad fact is split to
+  `ideas/open/349_aarch64_recursive_call_argument_preservation.md`.
+- `00181` now localizes to the same recursive call-boundary preservation
+  shape in generated `Hanoi`, not selected aggregate address publication.
+  It is split to
+  `ideas/open/349_aarch64_recursive_call_argument_preservation.md`.
+- `00182` reaches selected global stores for the digit array, but the stored
+  scalar value comes from unsigned `urem`/`trunc` and the loop update consumes
+  an unsupported `udiv` producer. That first bad fact is split to
+  `ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md`.
+
+The active 348 runbook is deactivated rather than closed because this
+delegation forbids touching `ideas/closed/` and no close-time regression guard
+was requested. Resume 348 only if fresh generated-code evidence again shows an
+in-scope dynamic indexed aggregate selected-address/writeback failure after
+the residual call-preservation and unsigned div/rem publication owners are
+handled.
