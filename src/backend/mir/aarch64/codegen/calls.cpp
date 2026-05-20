@@ -749,7 +749,8 @@ make_f128_q_register_operand_from_carrier(
 [[nodiscard]] bool is_aarch64_byval_register_lane_move(
     const prepare::PreparedMoveResolution& move) {
   return move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-         move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+         (move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register ||
+          move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot) &&
          move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
          move.reason == "call_arg_byval_aggregate_register_lanes";
 }
@@ -1630,6 +1631,87 @@ make_value_stack_move_instruction(
                                                 std::move(target));
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_byval_register_lane_stack_publication_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    const MemoryOperand& source,
+    const MemoryOperand& destination) {
+  if (source.size_bytes == 0 || source.size_bytes != destination.size_bytes) {
+    return std::nullopt;
+  }
+
+  std::string asm_text;
+  std::size_t offset = 0;
+  for (const auto width : aggregate_stack_copy_chunks(source.size_bytes)) {
+    auto source_chunk = aggregate_register_lane_memory(source, offset, width);
+    auto destination_chunk =
+        aggregate_register_lane_memory(destination, offset, width);
+    if (!aggregate_register_lane_memory_is_printable(source_chunk, width) ||
+        !aggregate_register_lane_memory_is_printable(destination_chunk, width)) {
+      return std::nullopt;
+    }
+    const auto scratch = aggregate_stack_copy_scratch(width);
+    const auto load_mnemonic = aggregate_stack_copy_load_mnemonic(width);
+    const auto store_mnemonic = aggregate_stack_copy_store_mnemonic(width);
+    if (!scratch.has_value() || load_mnemonic.empty() || store_mnemonic.empty()) {
+      return std::nullopt;
+    }
+    if (!asm_text.empty()) {
+      asm_text += '\n';
+    }
+    asm_text += std::string{load_mnemonic};
+    asm_text += " ";
+    asm_text += std::string{abi::register_name(*scratch)};
+    asm_text += ", ";
+    asm_text += memory_address(source_chunk);
+    asm_text += '\n';
+    asm_text += std::string{store_mnemonic};
+    asm_text += " ";
+    asm_text += std::string{abi::register_name(*scratch)};
+    asm_text += ", ";
+    asm_text += memory_address(destination_chunk);
+    offset += width;
+  }
+  if (asm_text.empty()) {
+    return std::nullopt;
+  }
+
+  const auto source_operand = make_memory_operand(source);
+  const auto destination_operand = make_memory_operand(destination);
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = {source_operand, destination_operand},
+      .defs = {effect_from_operand(destination_operand)},
+      .uses = {effect_from_operand(source_operand)},
+      .side_effects = {MachineSideEffectKind::MemoryRead,
+                       MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .operands = {source_operand, destination_operand},
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index,
+                                                std::move(target));
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -2222,6 +2304,76 @@ make_value_stack_move_instruction(
     move_record.source_memory = *source;
     move_record.source_memory_materializes_address = address_source.has_value();
     move_record.destination_register = *destination;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      (argument->value_bank == prepare::PreparedRegisterBank::Gpr ||
+       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr) &&
+      is_aarch64_byval_register_lane_move(move) &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto lane_size =
+        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack-lane call-argument publication requires a small ABI byval size");
+      return std::nullopt;
+    }
+    auto source = make_byval_register_lane_prepared_source(
+        context, *argument, *source_home, *lane_size, call_plan.instruction_index);
+    if (!source.has_value() && source_home->size_bytes.has_value()) {
+      source =
+          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+      if (source.has_value()) {
+        source->size_bytes = *lane_size;
+      }
+    }
+    if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack-lane call-argument publication requires prepared source bytes");
+      return std::nullopt;
+    }
+    const auto destination = make_stack_call_argument_destination(
+        context, *argument, *source_home, move, binding, *source, instruction_index);
+    if (!destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack-lane call-argument publication requires a prepared destination stack offset");
+      return std::nullopt;
+    }
+    auto lowered = make_byval_register_lane_stack_publication_instruction(
+        context, instruction_index, *source, *destination);
+    if (!lowered.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 aggregate stack-lane call-argument publication requires printable prepared source and destination stack slots");
+      return std::nullopt;
+    }
+    return lowered;
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&

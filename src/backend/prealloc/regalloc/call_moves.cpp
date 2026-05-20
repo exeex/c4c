@@ -265,7 +265,8 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
               arg_abi->primary_class == bir::AbiValueClass::Integer &&
               arg_abi->size_bytes > 0 &&
               arg_abi->size_bytes <= 16 &&
-              consumed_kind == PreparedMoveStorageKind::Register;
+              (consumed_kind == PreparedMoveStorageKind::Register ||
+               consumed_kind == PreparedMoveStorageKind::StackSlot);
         if (f128_constant_arg) {
           append_f128_constant_call_arg_move_resolution_record(
               regalloc_function,
