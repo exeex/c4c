@@ -378,9 +378,12 @@ int deferred_scalar_forms_are_explicit_records_not_generic_support() {
           aarch64_codegen::ScalarAluOperationKind::Div) != "div" ||
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::Shl) ||
       !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::LShr) ||
+      !aarch64_codegen::is_scalar_alu_integer_opcode(bir::BinaryOpcode::AShr) ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::Shl) !=
           aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
       aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::LShr) !=
+          aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
+      aarch64_codegen::scalar_alu_operation_from_binary_opcode(bir::BinaryOpcode::AShr) !=
           aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight ||
       aarch64_codegen::scalar_alu_operation_kind_name(
           aarch64_codegen::ScalarAluOperationKind::LogicalShiftRight) !=
@@ -467,6 +470,26 @@ int shift_immediate_records_select_and_print_width_correct_alu_nodes() {
   if (!right_printed.lines.has_value() || right_printed.lines->size() != 1 ||
       right_printed.lines->front() != "lsr w0, w1, #1") {
     return fail("expected logical-shift-right record to print width-correct lsr immediate");
+  }
+
+  auto arithmetic_right = shift_left;
+  arithmetic_right.source_binary_opcode = bir::BinaryOpcode::AShr;
+  const auto arithmetic_instruction = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(arithmetic_right));
+  const auto* arithmetic_scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(&arithmetic_instruction.payload);
+  if (arithmetic_instruction.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      arithmetic_instruction.opcode != aarch64_codegen::MachineOpcode::LogicalShiftRight ||
+      arithmetic_scalar == nullptr || !arithmetic_scalar->scalar_alu.has_value() ||
+      arithmetic_scalar->source_binary_opcode != bir::BinaryOpcode::AShr) {
+    return fail("expected arithmetic-shift-right record to select a scalar shift machine node");
+  }
+  const auto arithmetic_printed =
+      aarch64_codegen::make_scalar_alu_print_lines(arithmetic_instruction, *arithmetic_scalar);
+  if (!arithmetic_printed.lines.has_value() || arithmetic_printed.lines->size() != 1 ||
+      arithmetic_printed.lines->front() != "asr w0, w1, #1") {
+    return fail("expected arithmetic-shift-right record to print width-correct asr immediate");
   }
 
   return 0;

@@ -2074,7 +2074,8 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   }
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
       (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::Shl ||
-       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::LShr)) {
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::LShr ||
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::AShr)) {
     const auto& alu = *scalar.scalar_alu;
     if (scalar.inputs.size() != 2) {
       return {.lines = std::nullopt,
@@ -2134,8 +2135,12 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       return {.lines = std::nullopt,
               .diagnostic = "scalar shift node has incomplete printable lhs facts"};
     }
-    const std::string_view mnemonic =
-        alu.source_binary_opcode == bir::BinaryOpcode::Shl ? "lsl" : "lsr";
+    std::string_view mnemonic = "asr";
+    if (alu.source_binary_opcode == bir::BinaryOpcode::Shl) {
+      mnemonic = "lsl";
+    } else if (alu.source_binary_opcode == bir::BinaryOpcode::LShr) {
+      mnemonic = "lsr";
+    }
     std::ostringstream out;
     out << mnemonic << " " << *result << ", " << lhs->name << ", #"
         << rhs_immediate->unsigned_value;
@@ -2516,13 +2521,13 @@ bool is_scalar_alu_integer_opcode(bir::BinaryOpcode opcode) {
     case bir::BinaryOpcode::Xor:
     case bir::BinaryOpcode::Shl:
     case bir::BinaryOpcode::LShr:
+    case bir::BinaryOpcode::AShr:
       return true;
     case bir::BinaryOpcode::Mul:
     case bir::BinaryOpcode::SDiv:
     case bir::BinaryOpcode::UDiv:
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
-    case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::Eq:
     case bir::BinaryOpcode::Ne:
     case bir::BinaryOpcode::Slt:
@@ -2576,8 +2581,8 @@ ScalarAluOperationKind scalar_alu_operation_from_binary_opcode(
     case bir::BinaryOpcode::Shl:
       return ScalarAluOperationKind::LogicalShiftRight;
     case bir::BinaryOpcode::LShr:
-      return ScalarAluOperationKind::LogicalShiftRight;
     case bir::BinaryOpcode::AShr:
+      return ScalarAluOperationKind::LogicalShiftRight;
     case bir::BinaryOpcode::SRem:
     case bir::BinaryOpcode::URem:
     case bir::BinaryOpcode::Eq:
@@ -2881,7 +2886,8 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
     return scalar_alu_record_error(error);
   }
   if (binary.opcode == bir::BinaryOpcode::Shl ||
-      binary.opcode == bir::BinaryOpcode::LShr) {
+      binary.opcode == bir::BinaryOpcode::LShr ||
+      binary.opcode == bir::BinaryOpcode::AShr) {
     const auto* shift_amount = std::get_if<ImmediateOperand>(&rhs.payload);
     const auto bit_width = integer_scalar_bit_width(binary.operand_type);
     if (rhs.kind != OperandKind::Immediate || shift_amount == nullptr ||

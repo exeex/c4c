@@ -287,7 +287,8 @@ int shift_immediate_prepares_result_home_and_shift_operand() {
   fixture.storage.values[2] =
       register_storage(prepare::PreparedValueId{12}, fixture.result_name, "w13");
 
-  for (const auto opcode : {bir::BinaryOpcode::Shl, bir::BinaryOpcode::LShr}) {
+  for (const auto opcode :
+       {bir::BinaryOpcode::Shl, bir::BinaryOpcode::LShr, bir::BinaryOpcode::AShr}) {
     const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
         fixture.names,
         fixture.locations,
@@ -323,7 +324,7 @@ int shift_immediate_prepares_result_home_and_shift_operand() {
           register_shift.names,
           register_shift.locations,
           register_shift.storage,
-          binary(bir::BinaryOpcode::LShr, bir::TypeKind::I32));
+          binary(bir::BinaryOpcode::AShr, bir::TypeKind::I32));
   if (unsupported_register_shift.record.has_value() ||
       unsupported_register_shift.error !=
           aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
@@ -334,7 +335,7 @@ int shift_immediate_prepares_result_home_and_shift_operand() {
       fixture.names,
       fixture.locations,
       fixture.storage,
-      binary_with_rhs(bir::BinaryOpcode::LShr,
+      binary_with_rhs(bir::BinaryOpcode::AShr,
                       bir::TypeKind::I32,
                       bir::Value::immediate_i32(32)));
   if (out_of_range.record.has_value() ||
