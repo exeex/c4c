@@ -1577,6 +1577,7 @@ struct CallInstructionRecord {
   std::vector<prepare::PreparedCallPreservedValue> preserved_values;
   std::vector<prepare::PreparedClobberedRegister> clobbered_registers;
   const prepare::PreparedCallPlan* source_call = nullptr;
+  std::size_t outgoing_stack_argument_bytes = 0;
   const prepare::PreparedVariadicEntryPlanFunction* source_variadic_entry = nullptr;
   const prepare::PreparedVariadicEntryHelperOperandHomes*
       source_variadic_helper_operand_homes = nullptr;

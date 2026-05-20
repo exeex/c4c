@@ -4842,6 +4842,52 @@ lower_missing_fused_compare_operand_publications(
          rhs.primary_class == bir::AbiValueClass::Integer;
 }
 
+[[nodiscard]] std::size_t entry_formal_aarch64_register_slot_count(
+    const bir::CallArgAbiInfo& abi) {
+  if (abi.type == bir::TypeKind::Ptr && abi.byval_copy &&
+      !abi.sret_pointer &&
+      abi.primary_class == bir::AbiValueClass::Integer &&
+      abi.size_bytes > 0 && abi.size_bytes <= 16) {
+    return align_to(std::max<std::size_t>(abi.size_bytes, 8), 8) / 8;
+  }
+  return 1;
+}
+
+[[nodiscard]] std::optional<std::size_t> entry_formal_aarch64_register_slot_start(
+    const bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size() ||
+      !function.params[param_index].abi.has_value()) {
+    return std::nullopt;
+  }
+  const auto& param_abi = *function.params[param_index].abi;
+  if (!param_abi.passed_in_register ||
+      (param_abi.type == bir::TypeKind::Ptr && param_abi.sret_pointer)) {
+    return std::nullopt;
+  }
+
+  std::size_t register_index = 0;
+  for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
+    const auto& candidate = function.params[candidate_index];
+    if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+      continue;
+    }
+    if (candidate.abi->type == bir::TypeKind::Ptr && candidate.abi->sret_pointer) {
+      continue;
+    }
+    if (entry_formal_same_aarch64_register_bank(*candidate.abi, param_abi)) {
+      register_index += entry_formal_aarch64_register_slot_count(*candidate.abi);
+    }
+  }
+
+  const auto required_slots = entry_formal_aarch64_register_slot_count(param_abi);
+  if (param_abi.primary_class == bir::AbiValueClass::Integer &&
+      register_index + required_slots > 8U) {
+    return std::nullopt;
+  }
+  return register_index;
+}
+
 [[nodiscard]] std::optional<std::size_t> entry_formal_abi_register_index(
     const c4c::TargetProfile& target_profile,
     const bir::Function& function,
@@ -4866,20 +4912,7 @@ lower_missing_fused_compare_operand_publications(
     return 0;
   }
 
-  std::size_t register_index = 0;
-  for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
-    const auto& candidate = function.params[candidate_index];
-    if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
-      continue;
-    }
-    if (candidate.abi->type == bir::TypeKind::Ptr && candidate.abi->sret_pointer) {
-      continue;
-    }
-    if (entry_formal_same_aarch64_register_bank(*candidate.abi, *param.abi)) {
-      ++register_index;
-    }
-  }
-  return register_index;
+  return entry_formal_aarch64_register_slot_start(function, param_index);
 }
 
 [[nodiscard]] std::optional<abi::RegisterReference> entry_formal_source_register(
@@ -4986,22 +5019,38 @@ lower_missing_fused_compare_operand_publications(
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }
 
-[[nodiscard]] bool entry_formal_uses_incoming_stack(const bir::Param& param) {
-  return param.abi.has_value() && param.abi->passed_on_stack;
+[[nodiscard]] bool entry_formal_uses_incoming_stack(
+    const c4c::TargetProfile& target_profile,
+    const bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size()) {
+    return false;
+  }
+  const auto& param = function.params[param_index];
+  if (!param.abi.has_value()) {
+    return false;
+  }
+  if (param.abi->passed_on_stack) {
+    return true;
+  }
+  return target_profile.arch == c4c::TargetArch::Aarch64 &&
+         param.abi->passed_in_register &&
+         entry_formal_aarch64_register_slot_start(function, param_index) == std::nullopt;
 }
 
 [[nodiscard]] std::optional<std::size_t> entry_formal_incoming_stack_offset(
+    const c4c::TargetProfile& target_profile,
     const bir::Function& function,
     std::size_t param_index) {
   if (param_index >= function.params.size() ||
-      !entry_formal_uses_incoming_stack(function.params[param_index])) {
+      !entry_formal_uses_incoming_stack(target_profile, function, param_index)) {
     return std::nullopt;
   }
 
   std::size_t next_offset = 0;
   for (std::size_t index = 0; index < function.params.size(); ++index) {
     const auto& param = function.params[index];
-    if (!entry_formal_uses_incoming_stack(param)) {
+    if (!entry_formal_uses_incoming_stack(target_profile, function, index)) {
       continue;
     }
     next_offset = align_to(next_offset, entry_formal_stack_argument_alignment_bytes(*param.abi));
@@ -5081,6 +5130,30 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
   lines.push_back("strb " + source_name + ", [" + address_name + "]");
 }
 
+void append_entry_formal_byte_load(std::vector<std::string>& lines,
+                                   abi::RegisterReference byte_destination,
+                                   std::size_t stack_offset_bytes) {
+  const std::string destination_name{abi::register_name(byte_destination)};
+  if (stack_offset_bytes <= 4095U) {
+    std::string line = "ldrb " + destination_name + ", [sp";
+    if (stack_offset_bytes != 0U) {
+      line += ", #";
+      line += std::to_string(stack_offset_bytes);
+    }
+    line += "]";
+    lines.push_back(std::move(line));
+    return;
+  }
+
+  const auto address_scratch = abi::reserved_mir_scratch_gp_registers()[1];
+  const std::string address_name{abi::register_name(address_scratch)};
+  auto address_lines =
+      materialize_integer_constant_lines(address_scratch, stack_offset_bytes, 64);
+  lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+  lines.push_back("add " + address_name + ", sp, " + address_name);
+  lines.push_back("ldrb " + destination_name + ", [" + address_name + "]");
+}
+
 [[nodiscard]] std::vector<std::string> entry_formal_byval_aggregate_store_lines(
     const bir::Param& param,
     abi::RegisterReference source,
@@ -5133,6 +5206,38 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
   return lines;
 }
 
+[[nodiscard]] std::vector<std::string>
+entry_formal_byval_aggregate_stack_source_publication_lines(
+    const bir::Param& param,
+    const prepare::PreparedValueHome& home,
+    std::size_t source_stack_offset_bytes) {
+  if (!param.abi.has_value() || param.type != bir::TypeKind::Ptr ||
+      !param.abi->byval_copy ||
+      param.abi->primary_class != bir::AbiValueClass::Integer ||
+      home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home.offset_bytes.has_value() || param.size_bytes == 0U) {
+    return {};
+  }
+
+  const auto value_scratch = abi::reserved_mir_scratch_gp_registers()[0];
+  const auto value_scratch_w =
+      abi::gp_register(value_scratch.index, abi::RegisterView::W);
+  if (!value_scratch_w.has_value()) {
+    return {};
+  }
+
+  std::vector<std::string> lines;
+  for (std::size_t byte_index = 0; byte_index < param.size_bytes; ++byte_index) {
+    append_entry_formal_byte_load(lines,
+                                  *value_scratch_w,
+                                  source_stack_offset_bytes + byte_index);
+    append_entry_formal_byte_store(lines,
+                                   *value_scratch_w,
+                                   *home.offset_bytes + byte_index);
+  }
+  return lines;
+}
+
 [[nodiscard]] std::optional<abi::RegisterReference> entry_formal_destination_register(
     const prepare::PreparedValueHome& home,
     bir::TypeKind type) {
@@ -5166,10 +5271,16 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
     return {};
   }
   const auto incoming_offset =
-      entry_formal_incoming_stack_offset(*context.function.bir_function, param_index);
+      entry_formal_incoming_stack_offset(context.function.prepared->target_profile,
+                                         *context.function.bir_function,
+                                         param_index);
   const auto frame_size = entry_formal_frame_size_bytes(context.function);
   if (!incoming_offset.has_value() || !frame_size.has_value()) {
     return {};
+  }
+  if (param.is_byval) {
+    return entry_formal_byval_aggregate_stack_source_publication_lines(
+        param, home, *frame_size + *incoming_offset);
   }
   if (home.kind == prepare::PreparedValueHomeKind::None &&
       param.type == bir::TypeKind::F128) {
@@ -5306,7 +5417,9 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
       continue;
     }
     std::vector<std::string> lines;
-    if (entry_formal_uses_incoming_stack(param)) {
+    if (entry_formal_uses_incoming_stack(context.function.prepared->target_profile,
+                                         *context.function.bir_function,
+                                         param_index)) {
       lines = entry_formal_stack_source_publication_lines(context, param, *home, param_index);
     } else {
       const auto source = entry_formal_source_register(

@@ -281,6 +281,13 @@ std::optional<std::size_t> call_arg_abi_register_index(
     std::size_t arg_index) {
   const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
   if (!abi.has_value() || !abi->passed_in_register) {
+    if (target_profile.arch == c4c::TargetArch::X86_64 &&
+        abi.has_value() &&
+        abi->type == bir::TypeKind::Ptr &&
+        abi->byval_copy &&
+        !abi->sret_pointer) {
+      return arg_index;
+    }
     if (target_profile.arch == c4c::TargetArch::Aarch64 &&
         abi.has_value() &&
         abi->type == bir::TypeKind::Ptr &&

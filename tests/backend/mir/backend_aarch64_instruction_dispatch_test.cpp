@@ -10733,7 +10733,9 @@ int semantic_stack_call_argument_lowers_aggregate_address_stack_copy() {
       !source->base_register.has_value() ||
       source->base_register->reg != aarch64_module::abi::x_register(20) ||
       source->size_bytes != 16 ||
-      destination->base_kind != aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      destination->base_kind != aarch64_module::codegen::MemoryBaseKind::Register ||
+      !destination->base_register.has_value() ||
+      destination->base_register->reg != aarch64_module::abi::x_register(16) ||
       destination->byte_offset != 0 ||
       destination->size_bytes != 16 ||
       destination->stored_value_name != source->result_value_name) {
@@ -10743,9 +10745,56 @@ int semantic_stack_call_argument_lowers_aggregate_address_stack_copy() {
       copy->inline_asm_template.find("str ") == std::string::npos ||
       copy->inline_asm_template.find("[x20]") == std::string::npos ||
       copy->inline_asm_template.find("[x20, #8]") == std::string::npos ||
-      copy->inline_asm_template.find("[sp]") == std::string::npos ||
-      copy->inline_asm_template.find("[sp, #8]") == std::string::npos) {
+      copy->inline_asm_template.find("[x16]") == std::string::npos ||
+      copy->inline_asm_template.find("[x16, #8]") == std::string::npos ||
+      copy->inline_asm_template.find("[sp]") != std::string::npos) {
     return fail("expected aggregate stack copy to materialize load/store assembly");
+  }
+  return 0;
+}
+
+int semantic_stack_call_argument_uses_distinct_outgoing_area_base() {
+  auto prepared = prepared_semantic_aarch64_stack_call_argument();
+  if (prepared.control_flow.functions.empty()) {
+    return fail("expected prepared stack-call-argument control-flow function");
+  }
+  const auto& function_cf = prepared.control_flow.functions.front();
+  if (function_cf.blocks.empty()) {
+    return fail("expected prepared stack-call-argument entry block");
+  }
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, function_cf.blocks.front(), 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      !result.visited_terminator) {
+    return fail("expected stack-call-argument block to dispatch: visited=" +
+                std::to_string(result.visited_operations) +
+                " term=" + (result.visited_terminator ? std::string{"yes"} : std::string{"no"}) +
+                " diag=" +
+                (diagnostics.entries.empty() ? std::string{"none"}
+                                             : diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-call-argument route to print: " + printed.diagnostic);
+  }
+  if (printed.assembly.find("sub x16, sp, #16") == std::string::npos ||
+      printed.assembly.find("str x") == std::string::npos ||
+      printed.assembly.find("[x16]") == std::string::npos ||
+      printed.assembly.find("sub sp, sp, #16\n    bl consume_byval\n    add sp, sp, #16") ==
+          std::string::npos) {
+    return fail("expected stack call argument to use a distinct outgoing stack area");
+  }
+  if (printed.assembly.find("str x0, [sp]") != std::string::npos ||
+      printed.assembly.find("str x9, [sp]") != std::string::npos ||
+      printed.assembly.find("str w9, [sp]") != std::string::npos) {
+    return fail("stack call argument store aliases the caller frame base");
   }
   return 0;
 }
@@ -11235,6 +11284,7 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
       .align_bytes = 8,
       .primary_class = bir::AbiValueClass::Integer,
       .passed_in_register = true,
+      .passed_on_stack = true,
       .byval_copy = true,
   };
   prepared.module.functions.push_back(bir::Function{
@@ -11401,7 +11451,6 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
               .source_value_id = aggregate_value_id,
               .source_slot_id = prepare::PreparedFrameSlotId{13002},
               .source_stack_offset_bytes = std::size_t{7776},
-              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
               .destination_stack_offset_bytes = std::size_t{32},
           }},
   };
@@ -11414,17 +11463,23 @@ int overflow_byval_aggregate_call_argument_publishes_prepared_stack_lanes() {
   aarch64_module::ModuleLoweringDiagnostics diagnostics;
   const auto lowered =
       aarch64_codegen::lower_before_call_moves(block_context, call_plan, 2, diagnostics);
-  if (lowered.size() != 1 || !diagnostics.empty()) {
-    return fail("expected overflow byval stack-lane publication to lower one move");
+  if (lowered.size() != 2 || !diagnostics.empty()) {
+    return fail("expected overflow byval stack-lane publication to lower base setup and one move");
+  }
+  const auto base_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+  if (!base_printed.ok ||
+      base_printed.instruction_lines != std::vector<std::string>{"sub x16, sp, #48"}) {
+    return fail("expected overflow byval stack lanes to materialize outgoing stack base");
   }
   const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(lowered.front().target);
+      aarch64_codegen::print_machine_instruction_line_payloads(lowered.back().target);
   if (!printed.ok ||
       printed.instruction_lines !=
           std::vector<std::string>{"ldr x9, [sp, #96]",
-                                   "str x9, [sp, #32]",
+                                   "str x9, [x16, #32]",
                                    "ldr x9, [sp, #104]",
-                                   "str x9, [sp, #40]"}) {
+                                   "str x9, [x16, #40]"}) {
     return fail("expected overflow byval stack lanes to publish from prepared source lanes");
   }
   for (const auto& line : printed.instruction_lines) {
@@ -13940,21 +13995,29 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
   if (result.visited_operations != 1 || !result.visited_terminator ||
-      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
       !diagnostics.empty()) {
     for (const auto& diagnostic : diagnostics.entries) {
       std::cerr << diagnostic.message << "\n";
     }
-    return fail("expected f128 frame-slot call dispatch to emit outgoing stack store, call, and return");
+    return fail("expected f128 frame-slot call dispatch to emit outgoing stack store, call, and return: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block=" + std::to_string(block.instructions.size()));
   }
 
   const auto* transport =
       std::get_if<aarch64_codegen::F128TransportRecord>(
-          &block.instructions.front().target.payload);
+          &block.instructions[1].target.payload);
+  const auto base_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.front().target);
+  if (!base_printed.ok ||
+      base_printed.instruction_lines != std::vector<std::string>{"sub x16, sp, #48"}) {
+    return fail("expected f128 outgoing stack argument to materialize outgoing stack base");
+  }
   if (transport == nullptr ||
-      block.instructions.front().target.family !=
+      block.instructions[1].target.family !=
           aarch64_codegen::InstructionFamily::F128Transport ||
-      block.instructions.front().target.selection.status !=
+      block.instructions[1].target.selection.status !=
           aarch64_codegen::MachineNodeSelectionStatus::Selected ||
       transport->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
       transport->value_id != prepare::PreparedValueId{151} ||
@@ -13962,7 +14025,9 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
       transport->source_carrier != &prepared.f128_carriers.functions.front().carriers.front() ||
       !transport->memory.has_value() ||
       transport->memory->stored_value_id != prepare::PreparedValueId{151} ||
-      transport->memory->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      transport->memory->base_kind != aarch64_codegen::MemoryBaseKind::Register ||
+      !transport->memory->base_register.has_value() ||
+      transport->memory->base_register->reg != aarch64_module::abi::x_register(16) ||
       transport->memory->byte_offset != 32 ||
       transport->memory->size_bytes != 16 ||
       transport->memory->align_bytes != 16 ||
@@ -13971,10 +14036,10 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
   }
 
   const auto printed =
-      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.front().target);
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions[1].target);
   if (!printed.ok || printed.instruction_lines.size() != 2 ||
       printed.instruction_lines[0] != "ldr q16, [sp, #80]" ||
-      printed.instruction_lines[1] != "str q16, [sp, #32]") {
+      printed.instruction_lines[1] != "str q16, [x16, #32]") {
     return fail("expected f128 outgoing stack argument to print load/store stack handoff");
   }
   return 0;
@@ -14085,6 +14150,132 @@ int block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals() {
   if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
           block.instructions.back().target.payload)) {
     return fail("expected return terminator after mixed fixed formal publication");
+  }
+  return 0;
+}
+
+prepare::PreparedBirModule prepared_with_byval_register_to_stack_formals() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.entry.byval.register.stack.formals");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.entry.byval.register.stack.formals.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.entry.byval.register.stack.formals.entry");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.entry.byval.register.stack.formals",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.entry.byval.register.stack.formals.entry",
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+  });
+
+  auto next_value_id = std::uint64_t{260};
+  auto byval_register_abi = [](std::size_t size_bytes) {
+    auto abi = register_arg_abi(
+        bir::TypeKind::Ptr, size_bytes, 1, bir::AbiValueClass::Integer);
+    abi.byval_copy = true;
+    return abi;
+  };
+  auto add_param = [&](std::string name,
+                       std::size_t size_bytes,
+                       std::size_t home_offset) {
+    prepared.module.functions.front().params.push_back(bir::Param{
+        .type = bir::TypeKind::Ptr,
+        .name = name,
+        .size_bytes = size_bytes,
+        .align_bytes = 1,
+        .abi = byval_register_abi(size_bytes),
+        .is_byval = true,
+    });
+    prepared.value_locations.functions.front().value_homes.push_back(
+        prepare::PreparedValueHome{
+            .value_id = prepare::PreparedValueId{next_value_id++},
+            .function_name = function_name,
+            .value_name = prepared.names.value_names.intern(name),
+            .kind = prepare::PreparedValueHomeKind::StackSlot,
+            .offset_bytes = std::size_t{home_offset},
+            .size_bytes = std::size_t{size_bytes},
+            .align_bytes = std::size_t{1},
+        });
+  };
+
+  add_param("%p.a", 8, 0);
+  add_param("%p.b", 9, 8);
+  add_param("%p.c", 10, 17);
+  add_param("%p.d", 11, 27);
+  add_param("%p.e", 12, 38);
+  add_param("%p.f", 13, 50);
+
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 80,
+      .frame_alignment_bytes = 16,
+  });
+  return prepared;
+}
+
+int block_dispatch_uses_rounded_byval_slots_for_register_to_stack_formals() {
+  auto prepared = prepared_with_byval_register_to_stack_formals();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 0 ||
+      !result.visited_terminator || result.emitted_instructions != 7 ||
+      block.instructions.size() != 7) {
+    return fail("expected byval register-to-stack formals to publish before return");
+  }
+
+  const std::array<std::string_view, 6> required_fragments = {
+      "strb w0, [sp]\n",
+      "strb w1, [sp, #8]\n",
+      "strb w3, [sp, #17]\n",
+      "strb w5, [sp, #27]\n",
+      "ldrb w9, [sp, #80]\nstrb w9, [sp, #38]",
+      "ldrb w9, [sp, #96]\nstrb w9, [sp, #50]",
+  };
+  for (std::size_t index = 0; index < required_fragments.size(); ++index) {
+    const auto* publication =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+            &block.instructions[index].target.payload);
+    if (publication == nullptr ||
+        block.instructions[index].target.family !=
+            aarch64_codegen::InstructionFamily::Assembler ||
+        !publication->has_inline_asm_payload ||
+        publication->inline_asm_template.find(required_fragments[index]) ==
+            std::string::npos ||
+        publication->inline_asm_template.find("w7") != std::string::npos) {
+      return fail("expected fixed byval formals to consume rounded GPR slots and spill whole aggregates to incoming stack");
+    }
+  }
+  if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator after byval register-to-stack formal publication");
   }
   return 0;
 }
@@ -16691,6 +16882,11 @@ int main() {
         status != 0) {
       return status;
     }
+    if (const int status =
+            semantic_stack_call_argument_uses_distinct_outgoing_area_base();
+        status != 0) {
+      return status;
+    }
   if (const int status =
           small_byval_aggregate_call_argument_publishes_register_lanes();
       status != 0) {
@@ -16838,6 +17034,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_uses_rounded_byval_slots_for_register_to_stack_formals();
       status != 0) {
     return status;
   }

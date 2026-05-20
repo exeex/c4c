@@ -53,6 +53,31 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }
 
+[[nodiscard]] std::size_t outgoing_stack_argument_size_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  return align_to(std::max<std::size_t>(abi.size_bytes, 8), 8);
+}
+
+[[nodiscard]] std::size_t outgoing_stack_argument_bytes(
+    const bir::CallInst& call,
+    const prepare::PreparedCallPlan& call_plan) {
+  std::size_t bytes = 0;
+  for (const auto& argument : call_plan.arguments) {
+    if (!argument.destination_stack_offset_bytes.has_value() ||
+        argument.arg_index >= call.arg_abi.size()) {
+      continue;
+    }
+    bytes = std::max(bytes,
+                     *argument.destination_stack_offset_bytes +
+                         outgoing_stack_argument_size_bytes(call.arg_abi[argument.arg_index]));
+  }
+  return align_to(bytes, kStackPointerAlignmentBytes);
+}
+
+[[nodiscard]] abi::RegisterReference outgoing_stack_argument_base_register() {
+  return abi::x_register(16);
+}
+
 [[nodiscard]] bool entry_param_uses_incoming_stack(const bir::Param& param) {
   return param.abi.has_value() && param.abi->passed_on_stack;
 }
@@ -274,6 +299,13 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
           argument.source_encoding == prepare::PreparedStorageEncodingKind::Immediate) ||
          argument.source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id})) {
       return &argument;
+    }
+  }
+  if (move.reason == "call_arg_byval_aggregate_register_lanes") {
+    for (const auto& argument : call_plan.arguments) {
+      if (argument.arg_index == *move.destination_abi_index) {
+        return &argument;
+      }
     }
   }
   return nullptr;
@@ -699,6 +731,9 @@ make_f128_q_register_operand_from_carrier(
   if (memory.base_kind == MemoryBaseKind::PointerValue && memory.base_register.has_value()) {
     return !memory_address(memory).empty();
   }
+  if (memory.base_kind == MemoryBaseKind::Register && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
   return memory.base_kind == MemoryBaseKind::FrameSlot &&
          call_boundary_frame_slot_direct_offset_is_encodable(memory, width_bytes) &&
          !memory_address(memory).empty();
@@ -875,8 +910,8 @@ make_f128_q_register_operand_from_carrier(
   }
   const auto& arg_abi = call->arg_abi[*move.destination_abi_index];
   if (arg_abi.type != bir::TypeKind::Ptr || !arg_abi.byval_copy ||
-      arg_abi.sret_pointer || !arg_abi.passed_in_register ||
-      arg_abi.passed_on_stack ||
+      arg_abi.sret_pointer ||
+      (!arg_abi.passed_in_register && !arg_abi.passed_on_stack) ||
       arg_abi.primary_class != bir::AbiValueClass::Integer ||
       arg_abi.size_bytes == 0 || arg_abi.size_bytes > 16) {
     return std::nullopt;
@@ -1120,6 +1155,30 @@ make_byval_register_lane_prepared_source(
   return abi.size_bytes;
 }
 
+[[nodiscard]] std::optional<std::size_t> aarch64_stack_byval_argument_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  if (abi.type != bir::TypeKind::Ptr ||
+      !abi.byval_copy ||
+      abi.sret_pointer ||
+      !abi.passed_on_stack ||
+      abi.size_bytes == 0) {
+    return std::nullopt;
+  }
+  return abi.size_bytes;
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -1243,7 +1302,12 @@ make_byval_register_lane_prepared_source(
                              ? argument.source_value_id
                              : std::optional<prepare::PreparedValueId>{move.from_value_id},
       .stored_value_name = source_home.value_name,
-      .base_kind = MemoryBaseKind::FrameSlot,
+      .base_kind = MemoryBaseKind::Register,
+      .base_register = RegisterOperand{
+          .reg = outgoing_stack_argument_base_register(),
+          .role = RegisterOperandRole::Physical,
+          .expected_view = abi::RegisterView::X,
+      },
       .byte_offset = static_cast<std::int64_t>(*destination_stack_offset),
       .byte_offset_is_prepared_snapshot = true,
       .size_bytes = source.size_bytes,
@@ -1307,6 +1371,42 @@ make_byval_register_lane_prepared_source(
               .instruction_index = instruction_index,
       },
   };
+}
+
+[[nodiscard]] module::MachineInstruction make_outgoing_stack_base_instruction(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::size_t outgoing_bytes) {
+  const auto scratch = outgoing_stack_argument_base_register();
+  std::ostringstream asm_text;
+  asm_text << "sub " << abi::register_name(scratch) << ", sp, #" << outgoing_bytes;
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{
+          .status = MachineNodeSelectionStatus::Selected,
+      },
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .defs = {MachineEffectResource{
+          .kind = MachineEffectResourceKind::Register,
+          .reg = scratch,
+      }},
+      .side_effects = {MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = asm_text.str(),
+      },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
 [[nodiscard]] std::optional<std::vector<std::string>>
@@ -1675,6 +1775,10 @@ make_value_stack_move_instruction(
     const MemoryOperand& source,
     const MemoryOperand& destination) {
   const auto source_base = abi::register_name(source.base_register->reg);
+  const std::string destination_base =
+      destination.base_kind == MemoryBaseKind::Register && destination.base_register.has_value()
+          ? std::string{abi::register_name(destination.base_register->reg)}
+          : std::string{"sp"};
   std::string asm_text;
   std::size_t offset = 0;
   for (const auto width : aggregate_stack_copy_chunks(source.size_bytes)) {
@@ -1699,7 +1803,7 @@ make_value_stack_move_instruction(
     asm_text += std::string{abi::register_name(*scratch)};
     asm_text += ", ";
     asm_text += stack_copy_address(
-        "sp", destination.byte_offset + static_cast<std::int64_t>(offset));
+        destination_base, destination.byte_offset + static_cast<std::int64_t>(offset));
     offset += width;
   }
 
@@ -1744,9 +1848,28 @@ make_byval_register_lane_stack_publication_instruction(
     return std::nullopt;
   }
 
+  auto chunks = aggregate_stack_copy_chunks(source.size_bytes);
+  bool printable_chunks = true;
+  std::size_t printable_offset = 0;
+  for (const auto width : chunks) {
+    auto source_chunk =
+        aggregate_register_lane_memory(source, printable_offset, width);
+    auto destination_chunk =
+        aggregate_register_lane_memory(destination, printable_offset, width);
+    if (!aggregate_register_lane_memory_is_printable(source_chunk, width) ||
+        !aggregate_register_lane_memory_is_printable(destination_chunk, width)) {
+      printable_chunks = false;
+      break;
+    }
+    printable_offset += width;
+  }
+  if (!printable_chunks) {
+    chunks.assign(source.size_bytes, std::size_t{1});
+  }
+
   std::string asm_text;
   std::size_t offset = 0;
-  for (const auto width : aggregate_stack_copy_chunks(source.size_bytes)) {
+  for (const auto width : chunks) {
     auto source_chunk = aggregate_register_lane_memory(source, offset, width);
     auto destination_chunk =
         aggregate_register_lane_memory(destination, offset, width);
@@ -2421,7 +2544,8 @@ make_byval_register_lane_stack_publication_instruction(
       (argument->value_bank == prepare::PreparedRegisterBank::Gpr ||
        argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       is_aarch64_byval_register_lane_move(move) &&
-      (argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
+      (!argument->source_register_bank.has_value() ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
        argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
       (binding == nullptr ||
        binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
@@ -2522,7 +2646,11 @@ make_byval_register_lane_stack_publication_instruction(
           "AArch64 aggregate stack call-argument source register disagrees with prepared value home");
       return std::nullopt;
     }
-    const auto size_bytes = source_home->size_bytes;
+    const auto size_bytes =
+        source_home->size_bytes.has_value()
+            ? source_home->size_bytes
+            : aarch64_stack_byval_argument_size_bytes(
+                  context, *argument, call_plan.instruction_index);
     if (!size_bytes.has_value() || *size_bytes == 0) {
       append_call_diagnostic(
           diagnostics,
@@ -3233,6 +3361,31 @@ const prepare::PreparedCallPlan* require_prepared_call_plan(
   return call_plan;
 }
 
+[[nodiscard]] bool prepared_argument_is_small_byval_stack_lane(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size() ||
+      argument.source_encoding != prepare::PreparedStorageEncodingKind::FrameSlot ||
+      !argument.source_value_id.has_value() ||
+      !argument.destination_stack_offset_bytes.has_value()) {
+    return false;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return false;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  return abi.type == bir::TypeKind::Ptr &&
+         abi.byval_copy &&
+         !abi.sret_pointer &&
+         abi.primary_class == bir::AbiValueClass::Integer &&
+         abi.size_bytes > 0 &&
+         abi.size_bytes <= 16;
+}
+
 std::vector<module::MachineInstruction> lower_before_call_moves(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -3247,10 +3400,56 @@ std::vector<module::MachineInstruction> lower_before_call_moves(
       prepare::PreparedMovePhase::BeforeCall,
       context.block_index,
       instruction_index);
+  const prepare::PreparedMoveBundle synthetic_bundle{
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+  };
   if (bundle == nullptr) {
-    return lowered;
+    bundle = &synthetic_bundle;
   }
+  if (context.bir_block != nullptr && instruction_index < context.bir_block->insts.size()) {
+    if (const auto* call =
+            std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+        call != nullptr) {
+      const std::size_t outgoing_bytes =
+          outgoing_stack_argument_bytes(*call, call_plan);
+      if (outgoing_bytes > 0) {
+        lowered.push_back(
+            make_outgoing_stack_base_instruction(context, instruction_index, outgoing_bytes));
+      }
+    }
+  }
+  std::vector<std::size_t> lowered_stack_byval_args;
   for (const auto& move : bundle->moves) {
+    if (auto instruction =
+            lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
+      if (move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+          move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+          move.reason == "call_arg_byval_aggregate_register_lanes" &&
+          move.destination_abi_index.has_value()) {
+        lowered_stack_byval_args.push_back(*move.destination_abi_index);
+      }
+      lowered.push_back(std::move(*instruction));
+    }
+  }
+  for (const auto& argument : call_plan.arguments) {
+    if (!prepared_argument_is_small_byval_stack_lane(context, argument, instruction_index) ||
+        std::find(lowered_stack_byval_args.begin(),
+                  lowered_stack_byval_args.end(),
+                  argument.arg_index) != lowered_stack_byval_args.end()) {
+      continue;
+    }
+    prepare::PreparedMoveResolution move{
+        .from_value_id = *argument.source_value_id,
+        .to_value_id = *argument.source_value_id,
+        .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+        .destination_storage_kind = prepare::PreparedMoveStorageKind::StackSlot,
+        .destination_abi_index = argument.arg_index,
+        .destination_stack_offset_bytes = argument.destination_stack_offset_bytes,
+        .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+        .reason = "call_arg_byval_aggregate_register_lanes",
+    };
     if (auto instruction =
             lower_before_call_move(context, call_plan, *bundle, move, instruction_index, diagnostics)) {
       lowered.push_back(std::move(*instruction));
@@ -3598,6 +3797,8 @@ std::optional<module::MachineInstruction> lower_prepared_call_instruction(
       .preserved_values = call_plan.preserved_values,
       .clobbered_registers = call_plan.clobbered_registers,
       .source_call = &call_plan,
+      .outgoing_stack_argument_bytes =
+          outgoing_stack_argument_bytes(call_inst, call_plan),
       .source_variadic_entry = variadic_entry_plan,
       .source_variadic_helper_operand_homes = variadic_helper_operand_homes,
       .variadic_entry_helper = variadic_helper,
@@ -4535,7 +4736,14 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
     }
     std::ostringstream out;
     out << mnemonic << " " << register_name(*callee);
-    return target_printed({out.str()});
+    if (call.outgoing_stack_argument_bytes == 0) {
+      return target_printed({out.str()});
+    }
+    return target_printed({
+        "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
+        out.str(),
+        "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
+    });
   }
   if (!call.direct_callee.has_value() || call.direct_callee_label.empty() ||
       call.source_call == nullptr || !call.wrapper_kind.has_value()) {
@@ -4545,7 +4753,14 @@ mir::TargetInstructionPrintResult print_call(const InstructionRecord& instructio
 
   std::ostringstream out;
   out << mnemonic << " " << call.direct_callee_label;
-  return target_printed({out.str()});
+  if (call.outgoing_stack_argument_bytes == 0) {
+    return target_printed({out.str()});
+  }
+  return target_printed({
+      "sub sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
+      out.str(),
+      "add sp, sp, #" + std::to_string(call.outgoing_stack_argument_bytes),
+  });
 }
 
 mir::TargetInstructionPrintResult print_call_boundary_move(
