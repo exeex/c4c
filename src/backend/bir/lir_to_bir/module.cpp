@@ -34,6 +34,148 @@ constexpr std::string_view kModuleCapabilityBucketSummary =
     "families such as variadic, stack-state, absolute-value, memcpy, memset, "
     "and inline-asm placeholders";
 
+struct Aarch64HfaLaneName {
+  std::string_view base;
+  std::size_t lane_index = 0;
+};
+
+std::optional<Aarch64HfaLaneName> parse_aarch64_hfa_lane_name(std::string_view name) {
+  const auto marker = name.rfind(".hfa");
+  if (marker == std::string_view::npos || marker == 0) {
+    return std::nullopt;
+  }
+  const auto digits = name.substr(marker + 4);
+  if (digits.empty()) {
+    return std::nullopt;
+  }
+  std::size_t lane_index = 0;
+  for (const char ch : digits) {
+    if (ch < '0' || ch > '9') {
+      return std::nullopt;
+    }
+    lane_index = lane_index * 10 + static_cast<std::size_t>(ch - '0');
+  }
+  return Aarch64HfaLaneName{.base = name.substr(0, marker), .lane_index = lane_index};
+}
+
+bool is_aarch64_fp_abi_lane(const bir::CallArgAbiInfo& abi) {
+  return abi.primary_class == bir::AbiValueClass::Sse &&
+         (abi.type == bir::TypeKind::F32 || abi.type == bir::TypeKind::F64 ||
+          abi.type == bir::TypeKind::F128) &&
+         !abi.byval_copy && !abi.sret_pointer;
+}
+
+void mark_aarch64_stack_arg(bir::CallArgAbiInfo& abi) {
+  abi.passed_in_register = false;
+  abi.passed_on_stack = true;
+}
+
+template <typename NameAt, typename AbiAt>
+void apply_aarch64_fixed_hfa_lane_register_pressure(std::size_t count,
+                                                    NameAt name_at,
+                                                    AbiAt abi_at) {
+  std::size_t next_fp_register = 0;
+  for (std::size_t index = 0; index < count;) {
+    auto* abi = abi_at(index);
+    if (abi == nullptr || !is_aarch64_fp_abi_lane(*abi)) {
+      ++index;
+      continue;
+    }
+
+    const auto first_lane = parse_aarch64_hfa_lane_name(name_at(index));
+    std::size_t lane_count = 1;
+    if (first_lane.has_value() && first_lane->lane_index == 0) {
+      const auto lane_type = abi->type;
+      for (std::size_t candidate = index + 1; candidate < count; ++candidate) {
+        auto* candidate_abi = abi_at(candidate);
+        const auto candidate_lane = parse_aarch64_hfa_lane_name(name_at(candidate));
+        if (!candidate_lane.has_value() ||
+            candidate_lane->base != first_lane->base ||
+            candidate_lane->lane_index != lane_count ||
+            candidate_abi == nullptr ||
+            !is_aarch64_fp_abi_lane(*candidate_abi) ||
+            candidate_abi->type != lane_type) {
+          break;
+        }
+        ++lane_count;
+      }
+    }
+
+    if (next_fp_register + lane_count > 8) {
+      for (std::size_t lane = 0; lane < lane_count; ++lane) {
+        if (auto* lane_abi = abi_at(index + lane); lane_abi != nullptr) {
+          mark_aarch64_stack_arg(*lane_abi);
+        }
+      }
+      next_fp_register = 8;
+    } else {
+      next_fp_register += lane_count;
+    }
+    index += lane_count;
+  }
+}
+
+void apply_aarch64_fixed_hfa_param_pressure(bir::Function& function) {
+  apply_aarch64_fixed_hfa_lane_register_pressure(
+      function.params.size(),
+      [&](std::size_t index) -> std::string_view { return function.params[index].name; },
+      [&](std::size_t index) -> bir::CallArgAbiInfo* {
+        return function.params[index].abi.has_value() ? &*function.params[index].abi : nullptr;
+      });
+}
+
+void apply_aarch64_fixed_hfa_call_pressure(const bir::Function& callee,
+                                           bir::CallInst& call) {
+  const std::size_t count = std::min(callee.params.size(), call.arg_abi.size());
+  apply_aarch64_fixed_hfa_lane_register_pressure(
+      count,
+      [&](std::size_t index) -> std::string_view { return callee.params[index].name; },
+      [&](std::size_t index) -> bir::CallArgAbiInfo* { return &call.arg_abi[index]; });
+}
+
+void apply_aarch64_fixed_hfa_pressure(c4c::TargetArch arch, bir::Module& module) {
+  if (arch != c4c::TargetArch::Aarch64) {
+    return;
+  }
+
+  std::unordered_map<LinkNameId, const bir::Function*> functions_by_link_name;
+  std::unordered_map<std::string_view, const bir::Function*> functions_by_name;
+  for (auto& function : module.functions) {
+    apply_aarch64_fixed_hfa_param_pressure(function);
+    if (function.link_name_id != kInvalidLinkName) {
+      functions_by_link_name.emplace(function.link_name_id, &function);
+    }
+    functions_by_name.emplace(function.name, &function);
+  }
+
+  for (auto& function : module.functions) {
+    for (auto& block : function.blocks) {
+      for (auto& inst : block.insts) {
+        auto* call = std::get_if<bir::CallInst>(&inst);
+        if (call == nullptr || call->is_indirect) {
+          continue;
+        }
+        const bir::Function* callee = nullptr;
+        if (call->callee_link_name_id != kInvalidLinkName) {
+          const auto found = functions_by_link_name.find(call->callee_link_name_id);
+          if (found != functions_by_link_name.end()) {
+            callee = found->second;
+          }
+        }
+        if (callee == nullptr) {
+          const auto found = functions_by_name.find(call->callee);
+          if (found != functions_by_name.end()) {
+            callee = found->second;
+          }
+        }
+        if (callee != nullptr) {
+          apply_aarch64_fixed_hfa_call_pressure(*callee, *call);
+        }
+      }
+    }
+  }
+}
+
 bool is_opaque_runtime_pointer_address(const PointerAddress& address) {
   return address.value_type == bir::TypeKind::Void && address.byte_offset == 0 &&
          address.dynamic_element_count == 0 && address.dynamic_element_stride_bytes == 0 &&
@@ -1245,6 +1387,8 @@ std::optional<bir::Module> lower_module(BirLoweringContext& context,
     intern_known_local_slots(&module, &*lowered_function);
     module.functions.push_back(std::move(*lowered_function));
   }
+
+  apply_aarch64_fixed_hfa_pressure(context.target_profile.arch, module);
 
   context.note(
       "module",

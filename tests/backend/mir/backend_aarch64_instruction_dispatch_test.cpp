@@ -1,4 +1,5 @@
 #include "src/backend/bir/bir.hpp"
+#include "src/backend/bir/lir_to_bir.hpp"
 #include "src/backend/mir/aarch64/codegen/asm_emitter.hpp"
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
@@ -16,6 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -28,6 +30,7 @@ namespace aarch64_abi = c4c::backend::aarch64::abi;
 namespace aarch64_codegen = c4c::backend::aarch64::codegen;
 namespace aarch64_module = c4c::backend::aarch64::module;
 namespace bir = c4c::backend::bir;
+namespace lir = c4c::codegen::lir;
 namespace mir = c4c::backend::mir;
 namespace prepare = c4c::backend::prepare;
 
@@ -978,6 +981,167 @@ bir::CallArgAbiInfo register_arg_abi(bir::TypeKind type,
       .primary_class = primary_class,
       .passed_in_register = true,
   };
+}
+
+bir::CallArgAbiInfo stack_arg_abi(bir::TypeKind type,
+                                  std::size_t size_bytes,
+                                  std::size_t align_bytes,
+                                  bir::AbiValueClass primary_class) {
+  return bir::CallArgAbiInfo{
+      .type = type,
+      .size_bytes = size_bytes,
+      .align_bytes = align_bytes,
+      .primary_class = primary_class,
+      .passed_on_stack = true,
+  };
+}
+
+c4c::TypeSpec scalar_type(c4c::TypeBase base) {
+  c4c::TypeSpec type{};
+  type.base = base;
+  return type;
+}
+
+void append_hfa_signature_lane(lir::LirFunction& function,
+                               std::string name,
+                               c4c::TypeBase base,
+                               lir::LirTypeRef type_ref) {
+  function.params.push_back({name, scalar_type(base)});
+  function.signature_params.push_back(lir::LirSignatureParam{
+      .name = std::move(name),
+      .type = scalar_type(base),
+      .is_byval = false,
+  });
+  function.signature_param_type_refs.push_back(std::move(type_ref));
+}
+
+lir::LirCallArg make_lir_call_arg(std::string type, std::string operand) {
+  return lir::LirCallArg{
+      .type = type,
+      .operand = lir::LirOperand(std::move(operand)),
+      .type_ref = lir::LirTypeRef(std::move(type)),
+  };
+}
+
+lir::LirModule make_aarch64_mixed_hfa_pressure_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+
+  const auto callee_link = module.link_names.intern("mixed_hfa_pressure_callee");
+  const auto caller_link = module.link_names.intern("mixed_hfa_pressure_caller");
+
+  lir::LirFunction callee;
+  callee.name = "mixed_hfa_pressure_callee";
+  callee.link_name_id = callee_link;
+  callee.return_type = scalar_type(c4c::TB_VOID);
+  callee.signature_return_type_ref = lir::LirTypeRef("void");
+  callee.signature_has_void_param_list = false;
+  append_hfa_signature_lane(callee, "%p.a.hfa0", c4c::TB_FLOAT, lir::LirTypeRef("float"));
+  append_hfa_signature_lane(callee, "%p.a.hfa1", c4c::TB_FLOAT, lir::LirTypeRef("float"));
+  append_hfa_signature_lane(callee, "%p.a.hfa2", c4c::TB_FLOAT, lir::LirTypeRef("float"));
+  append_hfa_signature_lane(callee, "%p.a.hfa3", c4c::TB_FLOAT, lir::LirTypeRef("float"));
+  append_hfa_signature_lane(callee, "%p.b.hfa0", c4c::TB_DOUBLE, lir::LirTypeRef("double"));
+  append_hfa_signature_lane(callee, "%p.b.hfa1", c4c::TB_DOUBLE, lir::LirTypeRef("double"));
+  append_hfa_signature_lane(callee, "%p.b.hfa2", c4c::TB_DOUBLE, lir::LirTypeRef("double"));
+  append_hfa_signature_lane(callee, "%p.c.hfa0", c4c::TB_LONGDOUBLE, lir::LirTypeRef("fp128"));
+  append_hfa_signature_lane(callee, "%p.c.hfa1", c4c::TB_LONGDOUBLE, lir::LirTypeRef("fp128"));
+  lir::LirBlock callee_entry;
+  callee_entry.id = callee.alloc_block();
+  callee_entry.label = "entry";
+  callee.entry = callee_entry.id;
+  callee_entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  callee.blocks.push_back(std::move(callee_entry));
+  module.functions.push_back(std::move(callee));
+
+  lir::LirFunction caller;
+  caller.name = "mixed_hfa_pressure_caller";
+  caller.link_name_id = caller_link;
+  caller.return_type = scalar_type(c4c::TB_VOID);
+  caller.signature_return_type_ref = lir::LirTypeRef("void");
+  caller.signature_has_void_param_list = false;
+  const std::array<std::pair<std::string_view, c4c::TypeBase>, 9> caller_params = {{
+      {"%a0", c4c::TB_FLOAT},
+      {"%a1", c4c::TB_FLOAT},
+      {"%a2", c4c::TB_FLOAT},
+      {"%a3", c4c::TB_FLOAT},
+      {"%b0", c4c::TB_DOUBLE},
+      {"%b1", c4c::TB_DOUBLE},
+      {"%b2", c4c::TB_DOUBLE},
+      {"%c0", c4c::TB_LONGDOUBLE},
+      {"%c1", c4c::TB_LONGDOUBLE},
+  }};
+  for (const auto& [name, base] : caller_params) {
+    const char* type_name = base == c4c::TB_FLOAT
+                                ? "float"
+                                : (base == c4c::TB_DOUBLE ? "double" : "fp128");
+    append_hfa_signature_lane(caller,
+                              std::string{name},
+                              base,
+                              lir::LirTypeRef(type_name));
+  }
+
+  lir::LirBlock caller_entry;
+  caller_entry.id = caller.alloc_block();
+  caller_entry.label = "entry";
+  caller.entry = caller_entry.id;
+  caller_entry.insts.push_back(lir::LirCallOp{
+      .return_type = lir::LirTypeRef("void"),
+      .callee = lir::LirOperand("@mixed_hfa_pressure_callee"),
+      .direct_callee_link_name_id = callee_link,
+      .arg_type_refs = {lir::LirTypeRef("float"),
+                        lir::LirTypeRef("float"),
+                        lir::LirTypeRef("float"),
+                        lir::LirTypeRef("float"),
+                        lir::LirTypeRef("double"),
+                        lir::LirTypeRef("double"),
+                        lir::LirTypeRef("double"),
+                        lir::LirTypeRef("fp128"),
+                        lir::LirTypeRef("fp128")},
+      .callee_signature = lir::LirCallSignature{
+          .return_type_ref = lir::LirTypeRef("void"),
+          .fixed_param_types = {"float",
+                                "float",
+                                "float",
+                                "float",
+                                "double",
+                                "double",
+                                "double",
+                                "fp128",
+                                "fp128"},
+          .fixed_param_type_refs = {lir::LirTypeRef("float"),
+                                    lir::LirTypeRef("float"),
+                                    lir::LirTypeRef("float"),
+                                    lir::LirTypeRef("float"),
+                                    lir::LirTypeRef("double"),
+                                    lir::LirTypeRef("double"),
+                                    lir::LirTypeRef("double"),
+                                    lir::LirTypeRef("fp128"),
+                                    lir::LirTypeRef("fp128")},
+          .has_void_param_list = false,
+      },
+      .structured_args = {make_lir_call_arg("float", "%a0"),
+                          make_lir_call_arg("float", "%a1"),
+                          make_lir_call_arg("float", "%a2"),
+                          make_lir_call_arg("float", "%a3"),
+                          make_lir_call_arg("double", "%b0"),
+                          make_lir_call_arg("double", "%b1"),
+                          make_lir_call_arg("double", "%b2"),
+                          make_lir_call_arg("fp128", "%c0"),
+                          make_lir_call_arg("fp128", "%c1")},
+  });
+  caller_entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  caller.blocks.push_back(std::move(caller_entry));
+  module.functions.push_back(std::move(caller));
+  return module;
 }
 
 prepare::PreparedBirModule prepared_with_variadic_entry_formal_stack_homes() {
@@ -3080,6 +3244,222 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_argument() 
                   .stack_offset_bytes = 80,
               },
           },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_stack_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.f128.frame.stack.arg");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.f128.frame.stack.arg.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.f128.frame.stack.arg.entry");
+  const auto actual_link = prepared.names.link_names.intern("actual_f128_function");
+  const auto arg_name = prepared.names.value_names.intern("%f128.frame.stack.arg");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.f128.frame.stack.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.call.f128.frame.stack.arg.entry",
+          .insts = {bir::CallInst{
+              .callee = "actual_f128_function",
+              .callee_link_name_id = actual_link,
+              .args = {bir::Value::named(bir::TypeKind::F128, "%f128.frame.stack.arg")},
+              .arg_types = {bir::TypeKind::F128},
+              .arg_abi = {stack_arg_abi(
+                  bir::TypeKind::F128, 16, 16, bir::AbiValueClass::Sse)},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{151},
+                  .function_name = function_name,
+                  .value_name = arg_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{9},
+                  .offset_bytes = std::size_t{80},
+                  .size_bytes = std::size_t{16},
+                  .align_bytes = std::size_t{16},
+              },
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeCall,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{151},
+                              .to_value_id = prepare::PreparedValueId{151},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::StackSlot,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_stack_offset_bytes = std::size_t{32},
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "f128_call_arg_frame_slot_to_stack",
+                          },
+                      },
+                  .abi_bindings =
+                      {
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::StackSlot,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_stack_offset_bytes = std::size_t{32},
+                          },
+                      },
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"actual_f128_function"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Vreg,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                      .source_value_id = prepare::PreparedValueId{151},
+                      .source_slot_id = prepare::PreparedFrameSlotId{9},
+                      .source_stack_offset_bytes = std::size_t{80},
+                      .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+                      .destination_stack_offset_bytes = std::size_t{32},
+                  },
+              },
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {
+              prepare::PreparedF128Carrier{
+                  .function_name = function_name,
+                  .value_id = prepare::PreparedValueId{151},
+                  .value_name = arg_name,
+                  .source_type = bir::TypeKind::F128,
+                  .kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+                  .total_size_bytes = 16,
+                  .total_align_bytes = 16,
+                  .slot_id = prepare::PreparedFrameSlotId{9},
+                  .stack_offset_bytes = 80,
+              },
+          },
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_stack_passed_f128_hfa_formals() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.entry.f128.hfa.stack.formals");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.entry.f128.hfa.stack.formals.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.entry.f128.hfa.stack.formals.entry");
+  const auto first_name = prepared.names.value_names.intern("%p.c.hfa0");
+  const auto second_name = prepared.names.value_names.intern("%p.c.hfa1");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.entry.f128.hfa.stack.formals",
+      .return_type = bir::TypeKind::Void,
+      .params = {bir::Param{
+                     .type = bir::TypeKind::F128,
+                     .name = "%p.c.hfa0",
+                     .size_bytes = 16,
+                     .align_bytes = 16,
+                     .abi = stack_arg_abi(
+                         bir::TypeKind::F128, 16, 16, bir::AbiValueClass::Sse),
+                 },
+                 bir::Param{
+                     .type = bir::TypeKind::F128,
+                     .name = "%p.c.hfa1",
+                     .size_bytes = 16,
+                     .align_bytes = 16,
+                     .abi = stack_arg_abi(
+                         bir::TypeKind::F128, 16, 16, bir::AbiValueClass::Sse),
+                 }},
+      .blocks = {bir::Block{
+          .label = "dispatch.entry.f128.hfa.stack.formals.entry",
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{201},
+                  .function_name = function_name,
+                  .value_name = first_name,
+                  .kind = prepare::PreparedValueHomeKind::None,
+                  .size_bytes = std::size_t{16},
+                  .align_bytes = std::size_t{16},
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{202},
+                  .function_name = function_name,
+                  .value_name = second_name,
+                  .kind = prepare::PreparedValueHomeKind::None,
+                  .size_bytes = std::size_t{16},
+                  .align_bytes = std::size_t{16},
+              },
+          },
+  });
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
   });
   return prepared;
 }
@@ -10728,6 +11108,64 @@ int block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_c
   return 0;
 }
 
+int lir_to_bir_marks_overflowing_aarch64_fixed_hfa_group_stack_passed() {
+  const auto lowering = c4c::backend::try_lower_to_bir_with_options(
+      make_aarch64_mixed_hfa_pressure_lir_module(), c4c::backend::BirLoweringOptions{});
+  if (!lowering.module.has_value()) {
+    for (const auto& note : lowering.notes) {
+      std::cerr << note.phase << ": " << note.message << "\n";
+    }
+    return fail("expected mixed fixed-HFA pressure fixture to lower to BIR");
+  }
+
+  const bir::Function* callee = nullptr;
+  const bir::CallInst* caller_call = nullptr;
+  for (const auto& function : lowering.module->functions) {
+    if (function.name == "mixed_hfa_pressure_callee") {
+      callee = &function;
+    }
+    if (function.name != "mixed_hfa_pressure_caller") {
+      continue;
+    }
+    for (const auto& block : function.blocks) {
+      for (const auto& inst : block.insts) {
+        if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
+          caller_call = call;
+        }
+      }
+    }
+  }
+  if (callee == nullptr || callee->params.size() != 9 ||
+      caller_call == nullptr || caller_call->arg_abi.size() != 9) {
+    return fail("expected mixed fixed-HFA fixture to expose callee params and caller arg ABI");
+  }
+
+  auto is_register_lane = [](const bir::CallArgAbiInfo& abi) {
+    return abi.primary_class == bir::AbiValueClass::Sse &&
+           abi.passed_in_register && !abi.passed_on_stack;
+  };
+  auto is_stack_lane = [](const bir::CallArgAbiInfo& abi) {
+    return abi.primary_class == bir::AbiValueClass::Sse &&
+           !abi.passed_in_register && abi.passed_on_stack;
+  };
+
+  for (std::size_t index = 0; index < 7; ++index) {
+    if (!callee->params[index].abi.has_value() ||
+        !is_register_lane(*callee->params[index].abi) ||
+        !is_register_lane(caller_call->arg_abi[index])) {
+      return fail("expected preceding fixed-HFA lanes to consume FP/SIMD registers");
+    }
+  }
+  if (!callee->params[7].abi.has_value() || !callee->params[8].abi.has_value() ||
+      !is_stack_lane(*callee->params[7].abi) ||
+      !is_stack_lane(*callee->params[8].abi) ||
+      !is_stack_lane(caller_call->arg_abi[7]) ||
+      !is_stack_lane(caller_call->arg_abi[8])) {
+    return fail("expected overflowing two-lane F128 HFA to spill as an all-or-nothing group");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register() {
   auto prepared = prepared_with_direct_call_f128_frame_slot_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -10763,6 +11201,109 @@ int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register() {
       move->destination_register->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
       move->destination_register->expected_view != aarch64_module::abi::RegisterView::Q) {
     return fail("expected prepared f128 frame-slot argument to select stack+80 -> q3");
+  }
+  return 0;
+}
+
+int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot() {
+  auto prepared = prepared_with_direct_call_f128_frame_slot_stack_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      !diagnostics.empty()) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected f128 frame-slot call dispatch to emit outgoing stack store, call, and return");
+  }
+
+  const auto* transport =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions.front().target.payload);
+  if (transport == nullptr ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::F128Transport ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      transport->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
+      transport->value_id != prepare::PreparedValueId{151} ||
+      transport->carrier_kind != prepare::PreparedF128CarrierKind::MemoryBacked ||
+      transport->source_carrier != &prepared.f128_carriers.functions.front().carriers.front() ||
+      !transport->memory.has_value() ||
+      transport->memory->stored_value_id != prepare::PreparedValueId{151} ||
+      transport->memory->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      transport->memory->byte_offset != 32 ||
+      transport->memory->size_bytes != 16 ||
+      transport->memory->align_bytes != 16 ||
+      transport->source_carrier->stack_offset_bytes != std::optional<std::size_t>{80}) {
+    return fail("expected prepared f128 frame-slot argument to select stack+80 -> outgoing stack+32");
+  }
+
+  const auto printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(block.instructions.front().target);
+  if (!printed.ok || printed.instruction_lines.size() != 2 ||
+      printed.instruction_lines[0] != "ldr q16, [sp, #80]" ||
+      printed.instruction_lines[1] != "str q16, [sp, #32]") {
+    return fail("expected f128 outgoing stack argument to print load/store stack handoff");
+  }
+  return 0;
+}
+
+int block_dispatch_seeds_stack_passed_f128_hfa_formals_with_none_home() {
+  auto prepared = prepared_with_stack_passed_f128_hfa_formals();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 0 ||
+      !result.visited_terminator || result.emitted_instructions != 3 ||
+      block.instructions.size() != 3) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected stack-passed f128 HFA formals to seed local carriers before return");
+  }
+
+  const std::array<std::string_view, 2> expected_publications = {
+      "ldr q16, [sp, #64]\nstr q16, [sp]",
+      "ldr q16, [sp, #80]\nstr q16, [sp, #16]",
+  };
+  for (std::size_t index = 0; index < expected_publications.size(); ++index) {
+    const auto* publication =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+            &block.instructions[index].target.payload);
+    if (publication == nullptr ||
+        block.instructions[index].target.family !=
+            aarch64_codegen::InstructionFamily::Assembler ||
+        block.instructions[index].target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        !publication->has_inline_asm_payload ||
+        publication->inline_asm_template != expected_publications[index]) {
+      return fail("expected stack-passed f128 HFA formal publication from incoming stack");
+    }
+  }
+  if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator after f128 HFA stack formal publication");
   }
   return 0;
 }
@@ -13294,7 +13835,22 @@ int main() {
     return status;
   }
   if (const int status =
+          lir_to_bir_marks_overflowing_aarch64_fixed_hfa_group_stack_passed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
           block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_f128_frame_slot_argument_to_stack_slot();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_seeds_stack_passed_f128_hfa_formals_with_none_home();
       status != 0) {
     return status;
   }

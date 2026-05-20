@@ -1,4 +1,5 @@
 #include "calls.hpp"
+#include "f128.hpp"
 #include "machine_printer.hpp"
 #include "memory.hpp"
 #include "variadic.hpp"
@@ -1955,6 +1956,70 @@ make_value_stack_move_instruction(
     }
     return make_aggregate_stack_copy_instruction(
         context, instruction_index, *source, *destination);
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home->size_bytes == std::optional<std::size_t>{16} &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->value_bank == prepare::PreparedRegisterBank::Vreg &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::StackSlot)) {
+    const auto source = make_frame_slot_call_argument_source(
+        context, *argument, *source_home, instruction_index);
+    if (!source.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 stack call-argument move requires a prepared frame-slot source");
+      return std::nullopt;
+    }
+    const auto destination = make_stack_call_argument_destination(
+        context, *argument, *source_home, move, binding, *source, instruction_index);
+    if (!destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 stack call-argument move requires a prepared destination stack offset");
+      return std::nullopt;
+    }
+    if (f128_carriers == nullptr) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 stack call-argument move requires prepared f128 carrier facts");
+      return std::nullopt;
+    }
+    auto prepared = make_prepared_f128_carrier_transport_record(
+        *f128_carriers,
+        source_home->value_name,
+        F128TransportKind::StoreToMemory,
+        *destination);
+    if (!prepared.record.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 stack call-argument move requires a complete source carrier");
+      return std::nullopt;
+    }
+    return make_call_boundary_machine_instruction(
+        context,
+        instruction_index,
+        make_f128_transport_instruction(std::move(*prepared.record)));
   }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&

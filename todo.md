@@ -8,50 +8,53 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the next fixed HFA/floating residual after the fixed `hfa14`
-lane collision. Fresh generated-code evidence showed `fa_hfa34` received all
-four binary128 lanes in `q0`, `q1`, `q2`, and `q3`, stored them at `[sp]`,
-`[sp,#16]`, `[sp,#32]`, and `[sp,#48]`, but only published `v0`, `v1`, and
-`v2` before its `printf` call; lane `d` was reloaded into a temporary and never
-published as ABI argument `q3`.
+Step 2 repaired the localized fixed mixed-HFA all-or-nothing failure for the
+`fa3(hfa14, hfa23, hfa32)` boundary. The BIR module handoff now recognizes
+consecutive flattened fixed-HFA lane names, applies AArch64 FP/SIMD register
+pressure as a group, and marks the whole group stack-passed when
+`next_fp + lane_count > 8`. This keeps the two-lane `f128` `hfa32` group out
+of `q7` when only one FP/SIMD argument register remains.
 
-The concrete owner was AArch64 call-boundary frame-slot argument publication in
-`src/backend/mir/aarch64/codegen/calls.cpp`: stack-backed 16-byte `f128`
-arguments selected for ABI q registers had prepared move/binding facts, but the
-frame-slot source path only accepted scalar FPR/GPR destinations. The repair
-adds a general prepared frame-slot `f128` to q-register call-argument path,
-prints `ldr qN, [sp, #offset]`, and selects that node for prepared 16-byte
-frame-slot sources.
+The caller and callee now agree for the repaired `hfa32` group. Generated
+`arg` code before `bl fa3` loads `%t136` and `%t138` from their frame slots and
+stores them to outgoing stack offsets `[sp]` and `[sp,#16]`. Generated `fa3`
+entry code loads incoming `[sp,#192]` and `[sp,#208]` after its frame
+allocation and seeds the local F128 carrier slots before the existing
+`store_local` lowering consumes `%p.c.hfa0` and `%p.c.hfa1`. The previous
+split-register publication through `q7` is gone.
 
-Focused coverage now exercises the repaired owner in target instruction
-records, machine printing, and instruction dispatch. Fresh generated
-`fa_hfa34` assembly now emits the fourth-lane publication before `printf`, and
-the proof output prints `34.1 34.2 34.3 34.4` for the fixed `hfa34` line.
+Focused backend coverage now pins the repaired owner. The
+`backend_aarch64_instruction_dispatch` bucket includes a LIR-to-BIR mixed
+fixed-HFA pressure fixture that verifies the overflowing two-lane `fp128`
+group is stack-passed on both the callee formal ABI and caller call ABI, plus
+dispatch fixtures for the F128 frame-slot to outgoing-stack handoff and the
+callee entry publication that seeds stack-passed F128 HFA lanes with `none`
+homes.
+
+`00204.c` is still not green. The new first bad fact has moved: the observing
+`fa3` line now prints the repaired binary128 values as `32.1 32.2`, but the
+preceding `hfa23` double values still print as `0.0 0.0`, giving
+`14.1 14.4 0.0 0.0 32.1 32.2`. The remaining corruption and later segfault are
+therefore downstream of a different fixed-HFA/double publication or earlier
+state issue, not the localized mixed-HFA `hfa32` all-or-nothing split.
 
 ## Suggested Next
 
-Continue Step 2 on the newly exposed representative failure after fixed
-`fa_hfa34`. The fresh proof still fails with `RUNTIME_NONZERO` / segmentation
-fault. The next concrete first bad fact is the fixed mixed-HFA `fa3` output:
-it starts with the repaired float lanes `14.1 14.4`, but then prints `0.0 0.0`
-for the `hfa23` double lanes and corrupts the following `hfa32` long-double
-lane. Generated `fa3` evidence shows `%p.c.hfa1` has `home kind=none`, the
-caller publishes only `q7` for `hfa32`, and `fa3` reloads `q5` from `[sp,#16]`
-without an initialized second binary128 lane. Localize whether the next owner
-is HFA fixed-argument classification/publication when remaining FPR/SIMD
-argument registers cannot hold the whole HFA, or a related formal-entry home
-publication gap.
+Continue Step 2 with the new first bad fact: localize why the `fa3` `hfa23`
+double lanes reaching `d4..d6` produce `0.0` for the observed first and third
+double values while the repaired `hfa32` stack lanes are now correct. Keep this
+separate from the fixed `hfa32` all-or-nothing repair; do not unwind the group
+spill or F128 stack handoff paths without fresh regression evidence.
 
 ## Watchouts
 
-The proof is not green. Treat this as a repaired `hfa14` lane collision plus
-repaired binary128 frame-slot-to-q call-argument publication, not as completed
-`00204.c` support. Do not special-case `fa_hfa34`, `fa3`, `fa4`, one lane
-count, one literal, one emitted register, one stack slot, or one test case. Do
-not reopen committed HFA lane-home, F128 transport/address, call ABI
-register-indexing, binary128 literal, `fa_hfa13` scalar lane, `hfa14`, or
-`fa_hfa34` frame-slot publication repairs without fresh evidence proving
-regression.
+The HFA grouping bridge is intentionally general over flattened lane names
+ending in `.hfaN`; it is not a special case for `fa3`, `hfa32`, one register,
+one stack slot, or one emitted instruction sequence. The AArch64 F128 stack
+argument copy path uses existing prepared F128 carrier transport. The callee
+entry bridge only seeds stack-passed F128 formals whose prepared home is still
+`none`, matching the current prepared-route representation for these spilled
+fixed-HFA lanes.
 
 Untracked `review/*.md` files were present before this executor packet and were
 left untouched.
@@ -61,11 +64,14 @@ left untouched.
 Ran the delegated proof command:
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$'`.
 
-Current result: build succeeded; `backend_aarch64_target_instruction_records`,
+Current result: build succeeded with no work to do;
+`backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`
-passed. `c_testsuite_aarch64_backend_src_00204_c` still failed with
-`RUNTIME_NONZERO` / segmentation fault after the fixed `fa_hfa34` line and the
-new mixed-HFA `fa3` first bad fact. `test_after.log` is the fresh proof log for
-this dirty state.
+passed, including the new focused HFA/F128 owner coverage.
+`c_testsuite_aarch64_backend_src_00204_c` still failed with `RUNTIME_NONZERO`
+/ segmentation fault. The fresh first bad output is still the
+mixed-HFA `fa3` line `14.1 14.4 0.0 0.0 32.1 32.2`, followed by corrupted
+later output. `test_after.log` is the fresh proof log for this repair and
+remaining blocker.
 
-Also ran `git diff --check`, which passed.
+Also ran `git diff --check`; it passed with no whitespace errors.

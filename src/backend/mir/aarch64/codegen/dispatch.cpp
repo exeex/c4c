@@ -37,6 +37,16 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace bir = c4c::backend::bir;
 namespace prepare = c4c::backend::prepare;
 
+constexpr std::size_t kStackPointerAlignmentBytes = 16;
+
+[[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
+  if (alignment == 0) {
+    return value;
+  }
+  const std::size_t remainder = value % alignment;
+  return remainder == 0 ? value : value + (alignment - remainder);
+}
+
 [[nodiscard]] bool registers_alias(const RegisterOperand& lhs,
                                    const RegisterOperand& rhs) {
   return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
@@ -4126,9 +4136,32 @@ lower_missing_fused_compare_operand_publications(
       return abi::RegisterView::S;
     case bir::TypeKind::F64:
       return abi::RegisterView::D;
+    case bir::TypeKind::F128:
+      return abi::RegisterView::Q;
     case bir::TypeKind::Void:
     case bir::TypeKind::I128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> entry_formal_load_opcode(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return "ldrb";
+    case bir::TypeKind::I16:
+      return "ldrh";
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
     case bir::TypeKind::F128:
+      return "ldr";
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
       return std::nullopt;
   }
   return std::nullopt;
@@ -4147,10 +4180,10 @@ lower_missing_fused_compare_operand_publications(
     case bir::TypeKind::I64:
     case bir::TypeKind::Ptr:
     case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
       return "str";
     case bir::TypeKind::Void:
     case bir::TypeKind::I128:
-    case bir::TypeKind::F128:
       return std::nullopt;
   }
   return std::nullopt;
@@ -4209,6 +4242,117 @@ lower_missing_fused_compare_operand_publications(
   lines.push_back(std::string{*opcode} + " " + source_name + ", [" +
                   std::string{abi::register_name(scratch)} + "]");
   return lines;
+}
+
+[[nodiscard]] std::vector<std::string> entry_formal_load_lines(
+    abi::RegisterReference destination,
+    bir::TypeKind type,
+    std::size_t stack_offset_bytes) {
+  const auto opcode = entry_formal_load_opcode(type);
+  if (!opcode.has_value()) {
+    return {};
+  }
+  const std::string destination_name{abi::register_name(destination)};
+  std::vector<std::string> lines;
+  if (stack_offset_bytes <= 4095U) {
+    std::string line = std::string{*opcode} + " " + destination_name + ", [sp";
+    if (stack_offset_bytes != 0U) {
+      line += ", #";
+      line += std::to_string(stack_offset_bytes);
+    }
+    line += "]";
+    lines.push_back(std::move(line));
+    return lines;
+  }
+  const auto scratch = abi::reserved_mir_scratch_gp_registers()[1];
+  lines = materialize_integer_constant_lines(scratch, stack_offset_bytes, 64);
+  lines.push_back("add " + std::string{abi::register_name(scratch)} +
+                  ", sp, " + std::string{abi::register_name(scratch)});
+  lines.push_back(std::string{*opcode} + " " + destination_name + ", [" +
+                  std::string{abi::register_name(scratch)} + "]");
+  return lines;
+}
+
+[[nodiscard]] std::size_t entry_formal_stack_argument_size_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  return align_to(std::max<std::size_t>(abi.size_bytes, 8), 8);
+}
+
+[[nodiscard]] std::size_t entry_formal_stack_argument_alignment_bytes(
+    const bir::CallArgAbiInfo& abi) {
+  const std::size_t abi_alignment = abi.align_bytes == 0 ? abi.size_bytes : abi.align_bytes;
+  return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
+}
+
+[[nodiscard]] bool entry_formal_uses_incoming_stack(const bir::Param& param) {
+  return param.abi.has_value() && param.abi->passed_on_stack;
+}
+
+[[nodiscard]] std::optional<std::size_t> entry_formal_incoming_stack_offset(
+    const bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size() ||
+      !entry_formal_uses_incoming_stack(function.params[param_index])) {
+    return std::nullopt;
+  }
+
+  std::size_t next_offset = 0;
+  for (std::size_t index = 0; index < function.params.size(); ++index) {
+    const auto& param = function.params[index];
+    if (!entry_formal_uses_incoming_stack(param)) {
+      continue;
+    }
+    next_offset = align_to(next_offset, entry_formal_stack_argument_alignment_bytes(*param.abi));
+    if (index == param_index) {
+      return next_offset;
+    }
+    next_offset += entry_formal_stack_argument_size_bytes(*param.abi);
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool function_has_call(const bir::Function& function) {
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      if (std::holds_alternative<bir::CallInst>(inst)) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<std::size_t> entry_formal_frame_size_bytes(
+    const module::FunctionLoweringContext& context) {
+  const auto* frame = context.frame_plan;
+  const auto* function = context.bir_function;
+  if (frame == nullptr || function == nullptr ||
+      frame->has_dynamic_stack || context.dynamic_stack_plan != nullptr) {
+    return std::nullopt;
+  }
+
+  std::size_t frame_alignment =
+      std::max<std::size_t>(frame->frame_alignment_bytes, kStackPointerAlignmentBytes);
+  std::size_t prepared_frame_size = frame->frame_size_bytes;
+  for (const auto& saved : frame->saved_callee_registers) {
+    if (!saved.slot_placement.has_value() ||
+        !saved.slot_placement->stack_offset_bytes.has_value() ||
+        !saved.slot_placement->size_bytes.has_value() ||
+        !saved.slot_placement->align_bytes.has_value()) {
+      return std::nullopt;
+    }
+    prepared_frame_size = std::max(
+        prepared_frame_size,
+        *saved.slot_placement->stack_offset_bytes + *saved.slot_placement->size_bytes);
+    frame_alignment = std::max(frame_alignment, *saved.slot_placement->align_bytes);
+  }
+
+  std::size_t frame_size = align_to(prepared_frame_size, frame_alignment);
+  if (function_has_call(*function)) {
+    frame_size = align_to(prepared_frame_size + 16, frame_alignment);
+  }
+  return frame_size == 0 ? std::optional<std::size_t>{}
+                         : std::optional<std::size_t>{frame_size};
 }
 
 void append_entry_formal_byte_store(std::vector<std::string>& lines,
@@ -4311,6 +4455,60 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
   return std::nullopt;
 }
 
+[[nodiscard]] std::vector<std::string> entry_formal_stack_source_publication_lines(
+    const module::BlockLoweringContext& context,
+    const bir::Param& param,
+    const prepare::PreparedValueHome& home,
+    std::size_t param_index) {
+  if (context.function.bir_function == nullptr) {
+    return {};
+  }
+  const auto incoming_offset =
+      entry_formal_incoming_stack_offset(*context.function.bir_function, param_index);
+  const auto frame_size = entry_formal_frame_size_bytes(context.function);
+  if (!incoming_offset.has_value() || !frame_size.has_value()) {
+    return {};
+  }
+  if (home.kind == prepare::PreparedValueHomeKind::None &&
+      param.type == bir::TypeKind::F128) {
+    const auto scratch_base = abi::reserved_mir_scratch_fp_simd_registers().front();
+    const auto scratch = abi::fp_simd_register(scratch_base.index, abi::RegisterView::Q);
+    if (!scratch.has_value()) {
+      return {};
+    }
+    auto lines = entry_formal_load_lines(*scratch,
+                                         param.type,
+                                         *frame_size + *incoming_offset);
+    auto stores = entry_formal_store_lines(*scratch, param.type, *incoming_offset);
+    lines.insert(lines.end(), stores.begin(), stores.end());
+    return lines;
+  }
+  if (home.kind == prepare::PreparedValueHomeKind::Register) {
+    const auto destination = entry_formal_destination_register(home, param.type);
+    if (!destination.has_value()) {
+      return {};
+    }
+    return entry_formal_load_lines(*destination, param.type, *frame_size + *incoming_offset);
+  }
+  if (home.kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home.offset_bytes.has_value()) {
+    return {};
+  }
+  const auto view = entry_formal_register_view(param.type);
+  if (!view.has_value()) {
+    return {};
+  }
+  const auto scratch_base = abi::reserved_mir_scratch_fp_simd_registers().front();
+  const auto scratch = abi::fp_simd_register(scratch_base.index, *view);
+  if (!scratch.has_value()) {
+    return {};
+  }
+  auto lines = entry_formal_load_lines(*scratch, param.type, *frame_size + *incoming_offset);
+  auto stores = entry_formal_store_lines(*scratch, param.type, *home.offset_bytes);
+  lines.insert(lines.end(), stores.begin(), stores.end());
+  return lines;
+}
+
 [[nodiscard]] std::vector<std::string> entry_formal_register_move_lines(
     abi::RegisterReference source,
     abi::RegisterReference destination) {
@@ -4405,26 +4603,30 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
     if (home == nullptr) {
       continue;
     }
-    const auto source = entry_formal_source_register(
-        context.function.prepared->target_profile, param, param_index);
-    if (!source.has_value()) {
-      continue;
-    }
     std::vector<std::string> lines;
-    if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
-        home->offset_bytes.has_value()) {
-      if (param.is_byval) {
-        lines = entry_formal_byval_aggregate_store_lines(param,
-                                                         *source,
-                                                         *home->offset_bytes);
-      } else {
-        lines = entry_formal_store_lines(*source, param.type, *home->offset_bytes);
+    if (entry_formal_uses_incoming_stack(param)) {
+      lines = entry_formal_stack_source_publication_lines(context, param, *home, param_index);
+    } else {
+      const auto source = entry_formal_source_register(
+          context.function.prepared->target_profile, param, param_index);
+      if (!source.has_value()) {
+        continue;
       }
-    } else if (!param.is_byval &&
-               home->kind == prepare::PreparedValueHomeKind::Register) {
-      const auto destination = entry_formal_destination_register(*home, param.type);
-      if (destination.has_value()) {
-        lines = entry_formal_register_move_lines(*source, *destination);
+      if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+          home->offset_bytes.has_value()) {
+        if (param.is_byval) {
+          lines = entry_formal_byval_aggregate_store_lines(param,
+                                                           *source,
+                                                           *home->offset_bytes);
+        } else {
+          lines = entry_formal_store_lines(*source, param.type, *home->offset_bytes);
+        }
+      } else if (!param.is_byval &&
+                 home->kind == prepare::PreparedValueHomeKind::Register) {
+        const auto destination = entry_formal_destination_register(*home, param.type);
+        if (destination.has_value()) {
+          lines = entry_formal_register_move_lines(*source, *destination);
+        }
       }
     }
     if (lines.empty()) {
