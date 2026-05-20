@@ -103,6 +103,22 @@ template <std::size_t N>
          call_arg_destination_register_name(target_profile, *abi, arg_index).has_value();
 }
 
+[[nodiscard]] bool aarch64_register_passed_byval_aggregate(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallArgAbiInfo& abi,
+    std::size_t arg_index) {
+  return target_profile.arch == c4c::TargetArch::Aarch64 &&
+         abi.type == bir::TypeKind::Ptr &&
+         abi.byval_copy &&
+         !abi.sret_pointer &&
+         abi.passed_in_register &&
+         !abi.passed_on_stack &&
+         abi.primary_class == bir::AbiValueClass::Integer &&
+         abi.size_bytes > 0 &&
+         abi.size_bytes <= 16 &&
+         call_arg_destination_register_name(target_profile, abi, arg_index).has_value();
+}
+
 }  // namespace
 
 std::vector<std::string> call_arg_destination_register_names(
@@ -205,16 +221,19 @@ PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_p
     return PreparedMoveStorageKind::None;
   }
 
-  if (target_profile.arch == c4c::TargetArch::X86_64 &&
-      abi->type == bir::TypeKind::Ptr &&
-      abi->byval_copy &&
-      !abi->sret_pointer &&
-      call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
-    return PreparedMoveStorageKind::Register;
-  }
+    if (target_profile.arch == c4c::TargetArch::X86_64 &&
+        abi->type == bir::TypeKind::Ptr &&
+        abi->byval_copy &&
+        !abi->sret_pointer &&
+        call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
+      return PreparedMoveStorageKind::Register;
+    }
+    if (aarch64_register_passed_byval_aggregate(target_profile, *abi, arg_index)) {
+      return PreparedMoveStorageKind::Register;
+    }
 
-  if (abi->passed_on_stack || abi->byval_copy || abi->sret_pointer ||
-      abi->primary_class == bir::AbiValueClass::Memory) {
+    if (abi->passed_on_stack || abi->byval_copy || abi->sret_pointer ||
+        abi->primary_class == bir::AbiValueClass::Memory) {
     return PreparedMoveStorageKind::StackSlot;
   }
   if (call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {

@@ -1000,6 +1000,25 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
     return layout;
   };
 
+  const auto lower_byval_call_arg_abi =
+      [&](const AggregateTypeLayout& layout) -> bir::CallArgAbiInfo {
+    bir::CallArgAbiInfo abi{
+        .type = bir::TypeKind::Ptr,
+        .size_bytes = layout.size_bytes,
+        .align_bytes = layout.align_bytes,
+        .primary_class = bir::AbiValueClass::Memory,
+        .passed_on_stack = true,
+        .byval_copy = true,
+    };
+    if (context_.target_profile.arch == c4c::TargetArch::Aarch64 &&
+        layout.size_bytes > 0 && layout.size_bytes <= 16) {
+      abi.primary_class = bir::AbiValueClass::Integer;
+      abi.passed_in_register = true;
+      abi.passed_on_stack = false;
+    }
+    return abi;
+  };
+
   const auto maybe_resolve_direct_calloc_pointer_address =
       [&](std::string_view symbol_name,
           const ParsedTypedCall& typed_call) -> std::optional<PointerAddress> {
@@ -1139,13 +1158,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
-              .type = bir::TypeKind::Ptr,
-              .size_bytes = aggregate_layout->size_bytes,
-              .align_bytes = aggregate_layout->align_bytes,
-              .primary_class = bir::AbiValueClass::Memory,
-              .byval_copy = true,
-          });
+            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
           continue;
         }
         if (trimmed_param_type == "ptr") {
@@ -1179,13 +1192,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
-              .type = bir::TypeKind::Ptr,
-              .size_bytes = aggregate_layout->size_bytes,
-              .align_bytes = aggregate_layout->align_bytes,
-              .primary_class = bir::AbiValueClass::Memory,
-              .byval_copy = true,
-          });
+            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
           continue;
         }
         const auto arg_operand = c4c::codegen::lir::LirOperand(
@@ -1198,13 +1205,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(bir::CallArgAbiInfo{
-              .type = bir::TypeKind::Ptr,
-              .size_bytes = aggregate_layout->size_bytes,
-              .align_bytes = aggregate_layout->align_bytes,
-              .primary_class = bir::AbiValueClass::Memory,
-              .byval_copy = true,
-          });
+            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
           continue;
         }
         const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -1267,13 +1268,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        lowered_arg_abi.push_back(bir::CallArgAbiInfo{
-            .type = bir::TypeKind::Ptr,
-            .size_bytes = aggregate_layout->size_bytes,
-            .align_bytes = aggregate_layout->align_bytes,
-            .primary_class = bir::AbiValueClass::Memory,
-            .byval_copy = true,
-        });
+          lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
         continue;
       }
       const auto arg_operand =
@@ -1286,13 +1281,7 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        lowered_arg_abi.push_back(bir::CallArgAbiInfo{
-            .type = bir::TypeKind::Ptr,
-            .size_bytes = aggregate_layout->size_bytes,
-            .align_bytes = aggregate_layout->align_bytes,
-            .primary_class = bir::AbiValueClass::Memory,
-            .byval_copy = true,
-        });
+          lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
         continue;
       }
       const auto arg = lower_value(arg_operand, *arg_type, value_aliases);

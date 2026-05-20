@@ -26,8 +26,26 @@ namespace {
   if (destination_placement.has_value() && assigned_register.placement.has_value()) {
     return *destination_placement == *assigned_register.placement;
   }
-  return destination_register_name ==
-         std::optional<std::string>{assigned_register.register_name};
+    return destination_register_name ==
+           std::optional<std::string>{assigned_register.register_name};
+  }
+
+[[nodiscard]] std::size_t call_arg_destination_register_width(
+    const c4c::TargetProfile& target_profile,
+    const PreparedRegallocValue& source,
+    const std::optional<bir::CallArgAbiInfo>& arg_abi) {
+  if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+      arg_abi.has_value() &&
+      arg_abi->type == bir::TypeKind::Ptr &&
+      arg_abi->byval_copy &&
+      arg_abi->passed_in_register &&
+      !arg_abi->passed_on_stack &&
+      arg_abi->primary_class == bir::AbiValueClass::Integer &&
+      arg_abi->size_bytes > 0 &&
+      arg_abi->size_bytes <= 16) {
+    return std::max<std::size_t>((arg_abi->size_bytes + 7) / 8, 1);
+  }
+  return published_register_group_width(source);
 }
 
 [[nodiscard]] std::optional<PreparedRegisterPlacement> indexed_result_placement(
@@ -212,10 +230,10 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
             consumed_kind == PreparedMoveStorageKind::Register ? abi_register_name : std::nullopt;
         const auto destination_stack_offset =
             consumed_kind == PreparedMoveStorageKind::StackSlot ? stack_offset : std::nullopt;
-        const std::size_t destination_contiguous_width =
-            consumed_kind == PreparedMoveStorageKind::Register
-                ? published_register_group_width(*source)
-                : 1;
+          const std::size_t destination_contiguous_width =
+              consumed_kind == PreparedMoveStorageKind::Register
+                  ? call_arg_destination_register_width(target_profile, *source, arg_abi)
+                  : 1;
         const auto destination_register_placement =
             consumed_kind == PreparedMoveStorageKind::Register && arg_abi.has_value()
                 ? f128_call_arg_destination_placement(
@@ -225,15 +243,26 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                                              destination_contiguous_width),
                       arg.type)
                 : std::nullopt;
-        const auto destination_occupied_register_names =
-            consumed_kind == PreparedMoveStorageKind::Register &&
-                    destination_register_name.has_value()
-                ? call_arg_destination_register_names(target_profile,
-                                                      source->register_class,
+          const auto destination_occupied_register_names =
+              consumed_kind == PreparedMoveStorageKind::Register &&
+                      destination_register_name.has_value()
+                  ? call_arg_destination_register_names(target_profile,
+                                                        source->register_class,
                                                       arg_index,
                                                       *destination_register_name,
-                                                      destination_contiguous_width)
-                : std::vector<std::string>{};
+                                                        destination_contiguous_width)
+                  : std::vector<std::string>{};
+          const bool aarch64_byval_register_lanes =
+              target_profile.arch == c4c::TargetArch::Aarch64 &&
+              arg_abi.has_value() &&
+              arg_abi->type == bir::TypeKind::Ptr &&
+              arg_abi->byval_copy &&
+              arg_abi->passed_in_register &&
+              !arg_abi->passed_on_stack &&
+              arg_abi->primary_class == bir::AbiValueClass::Integer &&
+              arg_abi->size_bytes > 0 &&
+              arg_abi->size_bytes <= 16 &&
+              consumed_kind == PreparedMoveStorageKind::Register;
         if (f128_constant_arg) {
           append_f128_constant_call_arg_move_resolution_record(
               regalloc_function,
@@ -272,14 +301,17 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                                       false,
                                       false,
                                       std::nullopt,
-                                      PreparedMoveResolutionOpKind::Move,
-                                      PreparedMoveAuthorityKind::None,
-                                      storage_transfer_reason("call_arg",
-                                                              source_kind,
-                                                              consumed_kind),
-                                      std::nullopt,
-                                      std::nullopt,
-                                      destination_register_placement);
+                                        PreparedMoveResolutionOpKind::Move,
+                                        PreparedMoveAuthorityKind::None,
+                                        aarch64_byval_register_lanes
+                                            ? std::string{
+                                                  "call_arg_byval_aggregate_register_lanes"}
+                                            : storage_transfer_reason("call_arg",
+                                                                      source_kind,
+                                                                      consumed_kind),
+                                        std::nullopt,
+                                        std::nullopt,
+                                        destination_register_placement);
       }
     }
   }

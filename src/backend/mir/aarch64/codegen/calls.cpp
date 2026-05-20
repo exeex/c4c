@@ -3,6 +3,8 @@
 #include "memory.hpp"
 #include "variadic.hpp"
 
+#include <algorithm>
+#include <charconv>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -22,6 +24,11 @@ namespace abi = c4c::backend::aarch64::abi;
 namespace {
 
 [[nodiscard]] MachineEffectResource effect_from_operand(const OperandRecord& operand);
+[[nodiscard]] bool same_gp_register_index(abi::RegisterReference lhs,
+                                          abi::RegisterReference rhs);
+[[nodiscard]] bool call_boundary_frame_slot_direct_offset_is_encodable(
+    const MemoryOperand& memory,
+    std::size_t load_width_bytes);
 
 prepare::PreparedRegisterClass register_class_from_bank(
     prepare::PreparedRegisterBank bank) {
@@ -442,6 +449,116 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return chunks;
 }
 
+[[nodiscard]] std::string_view aggregate_register_lane_load_mnemonic(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return "ldrb";
+    case 2:
+      return "ldrh";
+    case 4:
+    case 8:
+      return "ldr";
+  }
+  return {};
+}
+
+[[nodiscard]] abi::RegisterReference aggregate_register_lane_load_register(
+    abi::RegisterReference reg,
+    std::size_t width_bytes) {
+  return width_bytes == 8 ? abi::x_register(reg.index) : abi::w_register(reg.index);
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_scratch(
+    const RegisterOperand& destination) {
+  for (const auto scratch : abi::reserved_mir_scratch_gp_registers()) {
+    if (same_gp_register_index(scratch, destination.reg)) {
+      continue;
+    }
+    bool aliases_occupied = false;
+    for (const auto occupied : destination.occupied_register_references) {
+      if (same_gp_register_index(scratch, occupied)) {
+        aliases_occupied = true;
+        break;
+      }
+    }
+    if (!aliases_occupied) {
+      return abi::x_register(scratch.index);
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] MemoryOperand aggregate_register_lane_memory(
+    MemoryOperand memory,
+    std::size_t byte_offset,
+    std::size_t width_bytes) {
+  memory.byte_offset += static_cast<std::int64_t>(byte_offset);
+  memory.size_bytes = width_bytes;
+  memory.align_bytes = std::min<std::size_t>(memory.align_bytes, width_bytes);
+  return memory;
+}
+
+[[nodiscard]] bool aggregate_register_lane_memory_is_printable(
+    const MemoryOperand& memory,
+    std::size_t width_bytes) {
+  if (memory.base_kind == MemoryBaseKind::PointerValue && memory.base_register.has_value()) {
+    return !memory_address(memory).empty();
+  }
+  return memory.base_kind == MemoryBaseKind::FrameSlot &&
+         call_boundary_frame_slot_direct_offset_is_encodable(memory, width_bytes) &&
+         !memory_address(memory).empty();
+}
+
+[[nodiscard]] std::optional<std::size_t> aggregate_register_lane_printable_chunk(
+    const MemoryOperand& memory,
+    std::size_t source_offset,
+    std::size_t remaining) {
+  static constexpr std::size_t kCandidateChunks[] = {8, 4, 2, 1};
+  for (const std::size_t chunk_width : kCandidateChunks) {
+    if (chunk_width > remaining) {
+      continue;
+    }
+    const auto chunk_memory =
+        aggregate_register_lane_memory(memory, source_offset, chunk_width);
+    if (aggregate_register_lane_memory_is_printable(chunk_memory, chunk_width) &&
+        !aggregate_register_lane_load_mnemonic(chunk_width).empty()) {
+      return chunk_width;
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<abi::RegisterReference> aggregate_register_lane_destination(
+    const RegisterOperand& destination,
+    std::size_t lane_index) {
+  if (lane_index < destination.occupied_register_references.size()) {
+    return abi::x_register(destination.occupied_register_references[lane_index].index);
+  }
+  if (destination.reg.index + lane_index > 30) {
+    return std::nullopt;
+  }
+  return abi::x_register(static_cast<std::uint8_t>(destination.reg.index + lane_index));
+}
+
+[[nodiscard]] bool is_aggregate_register_lane_publication(
+    const CallBoundaryMoveInstructionRecord& move) {
+  return move.phase == prepare::PreparedMovePhase::BeforeCall &&
+           move.move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+           move.move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+           move.move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.move.reason == "call_arg_byval_aggregate_register_lanes" &&
+           move.source_memory.has_value() &&
+         !move.source_memory_materializes_address &&
+         move.source_memory->support == MemoryOperandSupportKind::Prepared &&
+         move.source_memory->size_bytes > 0 &&
+           move.source_memory->size_bytes <= 16 &&
+           move.destination_register.has_value() &&
+           move.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr &&
+         move.destination_register->expected_view == abi::RegisterView::X &&
+           abi::is_gp_register(move.destination_register->reg);
+}
+
 [[nodiscard]] const prepare::PreparedFrameSlot* find_frame_slot_by_id(
     const prepare::PreparedStackLayout& stack_layout,
     prepare::PreparedFrameSlotId slot_id) {
@@ -534,6 +651,186 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
       .align_bytes = source_access->address.align_bytes,
       .address_space = source_access->address_space,
       .is_volatile = source_access->is_volatile,
+      .can_use_base_plus_offset = true,
+  };
+}
+
+[[nodiscard]] bool is_aarch64_byval_register_lane_move(
+    const prepare::PreparedMoveResolution& move) {
+  return move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+         move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+         move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+         move.reason == "call_arg_byval_aggregate_register_lanes";
+}
+
+[[nodiscard]] std::optional<std::size_t> byval_register_lane_size_bytes(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMoveResolution& move,
+    std::size_t instruction_index) {
+  if (!is_aarch64_byval_register_lane_move(move) ||
+      context.bir_block == nullptr ||
+      !move.destination_abi_index.has_value() ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return std::nullopt;
+  }
+  const auto* call = std::get_if<bir::CallInst>(
+      &context.bir_block->insts[instruction_index]);
+  if (call == nullptr || *move.destination_abi_index >= call->arg_abi.size()) {
+    return std::nullopt;
+  }
+  const auto& arg_abi = call->arg_abi[*move.destination_abi_index];
+  if (arg_abi.type != bir::TypeKind::Ptr || !arg_abi.byval_copy ||
+      arg_abi.sret_pointer || !arg_abi.passed_in_register ||
+      arg_abi.passed_on_stack ||
+      arg_abi.primary_class != bir::AbiValueClass::Integer ||
+      arg_abi.size_bytes == 0 || arg_abi.size_bytes > 16) {
+    return std::nullopt;
+  }
+  return arg_abi.size_bytes;
+}
+
+[[nodiscard]] bool aggregate_slot_name_matches_source(
+    std::string_view slot_name,
+    std::string_view source_name) {
+  if (source_name.empty() || slot_name.size() <= source_name.size() + 1 ||
+      slot_name.compare(0, source_name.size(), source_name) != 0 ||
+      slot_name[source_name.size()] != '.') {
+    return false;
+  }
+  const auto suffix = slot_name.substr(source_name.size() + 1);
+  std::size_t byte_offset = 0;
+  const auto* begin = suffix.data();
+  const auto* end = begin + suffix.size();
+  const auto [ptr, ec] = std::from_chars(begin, end, byte_offset);
+  return ec == std::errc{} && ptr == end;
+}
+
+struct AggregateRegisterLaneStore {
+  std::int64_t stack_offset = 0;
+  std::size_t size_bytes = 0;
+  std::size_t align_bytes = 1;
+  std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
+};
+
+[[nodiscard]] std::optional<MemoryOperand>
+make_byval_register_lane_prepared_source(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t size_bytes,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      source_home.value_name == c4c::kInvalidValueName ||
+      size_bytes == 0 || size_bytes > 16) {
+    return std::nullopt;
+  }
+  const auto source_name =
+      prepare::prepared_value_name(context.function.prepared->names,
+                                   source_home.value_name);
+  if (source_name.empty()) {
+    return std::nullopt;
+  }
+  const auto* addressing = prepare::find_prepared_addressing(
+      *context.function.prepared, context.function.control_flow->function_name);
+  if (addressing == nullptr) {
+    return std::nullopt;
+  }
+
+  std::vector<AggregateRegisterLaneStore> stores;
+  for (std::size_t index = 0;
+       index < instruction_index && index < context.bir_block->insts.size();
+       ++index) {
+    const auto* store = std::get_if<bir::StoreLocalInst>(
+        &context.bir_block->insts[index]);
+    if (store == nullptr ||
+        !aggregate_slot_name_matches_source(store->slot_name, source_name)) {
+      continue;
+    }
+    const auto* access =
+        prepare::find_prepared_memory_access(*addressing,
+                                             context.control_flow_block->block_label,
+                                             index);
+    if (access == nullptr ||
+        access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
+        !access->address.frame_slot_id.has_value() ||
+        access->address.size_bytes == 0) {
+      continue;
+    }
+    if (store->value.kind == bir::Value::Kind::Named) {
+      const auto stored_value_name =
+          context.function.prepared->names.value_names.find(store->value.name);
+      if (stored_value_name != c4c::kInvalidValueName &&
+          access->stored_value_name != std::optional<c4c::ValueNameId>{stored_value_name}) {
+        continue;
+      }
+    }
+    const auto* slot =
+        find_frame_slot_by_id(context.function.prepared->stack_layout,
+                              *access->address.frame_slot_id);
+    if (slot == nullptr) {
+      continue;
+    }
+    stores.push_back(AggregateRegisterLaneStore{
+        .stack_offset =
+            static_cast<std::int64_t>(slot->offset_bytes) +
+            access->address.byte_offset,
+        .size_bytes = access->address.size_bytes,
+        .align_bytes = access->address.align_bytes == 0
+                           ? std::size_t{1}
+                           : access->address.align_bytes,
+        .frame_slot_id = access->address.frame_slot_id,
+    });
+  }
+  if (stores.empty()) {
+    return std::nullopt;
+  }
+  std::sort(stores.begin(), stores.end(),
+            [](const AggregateRegisterLaneStore& lhs,
+               const AggregateRegisterLaneStore& rhs) {
+              return lhs.stack_offset < rhs.stack_offset;
+            });
+
+  const auto first_offset = stores.front().stack_offset;
+  if (first_offset < 0) {
+    return std::nullopt;
+  }
+  std::size_t covered_bytes = 0;
+  std::size_t source_align = stores.front().align_bytes;
+  for (const auto& store : stores) {
+    const auto relative =
+        static_cast<std::size_t>(store.stack_offset - first_offset);
+    if (relative > covered_bytes) {
+      return std::nullopt;
+    }
+    covered_bytes = std::max(covered_bytes, relative + store.size_bytes);
+    source_align = std::min(source_align, store.align_bytes);
+    if (covered_bytes >= size_bytes) {
+      break;
+    }
+  }
+  if (covered_bytes < size_bytes || !stores.front().frame_slot_id.has_value()) {
+    return std::nullopt;
+  }
+
+  return MemoryOperand{
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .support = MemoryOperandSupportKind::Prepared,
+      .function_name = context.function.control_flow->function_name,
+      .block_label = context.control_flow_block->block_label,
+      .instruction_index = instruction_index,
+      .result_value_id = argument.source_value_id.has_value()
+                             ? argument.source_value_id
+                             : std::optional<prepare::PreparedValueId>{source_home.value_id},
+      .result_value_name = std::nullopt,
+      .base_kind = MemoryBaseKind::FrameSlot,
+      .frame_slot_id = stores.front().frame_slot_id,
+      .byte_offset = first_offset,
+      .byte_offset_is_prepared_snapshot = true,
+      .size_bytes = size_bytes,
+      .align_bytes = source_align,
       .can_use_base_plus_offset = true,
   };
 }
@@ -975,6 +1272,8 @@ make_value_stack_move_instruction(
       .source_bundle = &bundle,
       .source_move = &move,
   };
+  const auto aggregate_lane_size =
+      byval_register_lane_size_bytes(context, move, call_plan.instruction_index);
 
   const bool selected_gpr_argument_move =
       argument != nullptr &&
@@ -1031,11 +1330,11 @@ make_value_stack_move_instruction(
     return std::nullopt;
   }
 
-  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
-      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
-      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
-      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
-      source_home != nullptr &&
+    if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+        move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+        move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+        move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+        source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::Register &&
       source_home->register_name.has_value() && argument != nullptr &&
       (selected_gpr_argument_move || selected_scalar_fpr_argument_move ||
@@ -1105,14 +1404,202 @@ make_value_stack_move_instruction(
     }
     move_record.source_register = *source;
     move_record.destination_register = *destination;
-    move_record.source_f128_carrier =
-        selected_f128_argument_move ? source_f128_carrier : nullptr;
-  }
+      move_record.source_f128_carrier =
+          selected_f128_argument_move ? source_f128_carrier : nullptr;
+    }
 
   if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
       move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::Register &&
+      source_home->register_name.has_value() &&
+      argument != nullptr &&
+      (argument->source_encoding == prepare::PreparedStorageEncodingKind::Register ||
+       argument->source_encoding == prepare::PreparedStorageEncodingKind::ComputedAddress ||
+       argument->source_encoding == prepare::PreparedStorageEncodingKind::SymbolAddress) &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      is_aarch64_byval_register_lane_move(move) &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
+    const auto lane_size =
+        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires a small ABI byval size");
+      return std::nullopt;
+    }
+    if (argument->source_register_name.has_value() &&
+        *argument->source_register_name != *source_home->register_name) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingTypedRegisterAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument source register disagrees with prepared value home");
+      return std::nullopt;
+    }
+    auto source = make_byval_register_lane_prepared_source(
+        context, *argument, *source_home, *lane_size, call_plan.instruction_index);
+    if (!source.has_value() && source_home->size_bytes.has_value()) {
+      auto source_register = make_register_operand_from_prepared_authority(
+          source_home->register_name,
+          argument->source_register_placement,
+          argument->source_register_bank.has_value()
+              ? argument->source_register_bank
+              : std::optional<prepare::PreparedRegisterBank>{
+                    prepare::PreparedRegisterBank::Gpr},
+          RegisterOperandRole::CallAbi,
+          source_home->value_id,
+          source_home->value_name,
+          1,
+          {},
+          abi::RegisterView::X,
+          diagnostics,
+          context,
+          instruction_index);
+      if (source_register.has_value()) {
+        source = make_aggregate_call_argument_source(
+            context,
+            *argument,
+            *source_home,
+            *source_register,
+            *lane_size,
+            source_home->pointer_byte_delta.value_or(0),
+            instruction_index);
+      }
+    }
+    const auto destination_register_placement =
+        move.destination_register_placement.has_value()
+            ? move.destination_register_placement
+            : argument->destination_register_placement;
+    const auto destination_register_name =
+        destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : move.destination_register_name;
+    auto destination = make_register_operand_from_prepared_authority(
+        destination_register_name,
+        destination_register_placement,
+        argument->destination_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : argument->source_value_id,
+        source_home->value_name,
+        std::max(move.destination_contiguous_width,
+                 argument->destination_contiguous_width),
+        !move.destination_occupied_register_names.empty()
+            ? move.destination_occupied_register_names
+            : argument->destination_occupied_register_names,
+        abi::RegisterView::X,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires prepared source bytes and destination register");
+      return std::nullopt;
+      }
+    move_record.source_register.reset();
+      move_record.source_memory = *source;
+      move_record.destination_register = *destination;
+    move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+    }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr &&
+      is_aarch64_byval_register_lane_move(move) &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::AggregateAddress ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr) &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register)) {
+    const auto lane_size =
+        aggregate_lane_size.has_value() ? aggregate_lane_size : source_home->size_bytes;
+    if (!lane_size.has_value() || *lane_size == 0 || *lane_size > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires a small ABI byval size");
+      return std::nullopt;
+    }
+    auto source = make_byval_register_lane_prepared_source(
+        context, *argument, *source_home, *lane_size, call_plan.instruction_index);
+    if (!source.has_value() && source_home->size_bytes.has_value()) {
+      source =
+          make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+      if (source.has_value()) {
+        source->size_bytes = *lane_size;
+      }
+    }
+    if (!source.has_value() || source->size_bytes == 0 || source->size_bytes > 16) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 aggregate register-lane call-argument publication requires a small prepared frame-slot source");
+      return std::nullopt;
+    }
+    const auto destination_register_placement =
+        move.destination_register_placement.has_value()
+            ? move.destination_register_placement
+            : argument->destination_register_placement;
+    const auto destination_register_name =
+        destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : move.destination_register_name;
+    auto destination = make_register_operand_from_prepared_authority(
+        destination_register_name,
+        destination_register_placement,
+        argument->destination_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : argument->source_value_id,
+        source_home->value_name,
+        std::max(move.destination_contiguous_width,
+                 argument->destination_contiguous_width),
+        !move.destination_occupied_register_names.empty()
+            ? move.destination_occupied_register_names
+            : argument->destination_occupied_register_names,
+        abi::RegisterView::X,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!destination.has_value()) {
+      return std::nullopt;
+      }
+    move_record.source_register.reset();
+      move_record.source_memory = *source;
+      move_record.destination_register = *destination;
+    move_record.move.reason = "call_arg_byval_aggregate_register_lanes";
+    }
+
+    if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      !is_aarch64_byval_register_lane_move(move) &&
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       argument != nullptr &&
@@ -2633,13 +3120,25 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
         .diagnostic =
             "call-boundary move node requires prepared register source and destination"};
   }
-  if (instruction.source_immediate.has_value() &&
-      instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
-    return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    if (instruction.source_immediate.has_value() &&
+        instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+  if (is_aggregate_register_lane_publication(instruction)) {
+    if (instruction.source_memory->base_kind == MemoryBaseKind::PointerValue &&
+        instruction.source_memory->base_register.has_value()) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
+    if (instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+        instruction.source_memory->frame_slot_id.has_value() &&
+        instruction.source_memory->byte_offset_is_prepared_snapshot &&
+        instruction.source_memory->can_use_base_plus_offset) {
+      return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
+    }
   }
-  if (instruction.source_memory.has_value() &&
-      instruction.source_memory->support == MemoryOperandSupportKind::Prepared &&
-      instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+    if (instruction.source_memory.has_value() &&
+        instruction.source_memory->support == MemoryOperandSupportKind::Prepared &&
+        instruction.source_memory->base_kind == MemoryBaseKind::FrameSlot &&
       instruction.source_memory->frame_slot_id.has_value() &&
       instruction.source_memory->byte_offset_is_prepared_snapshot &&
       instruction.source_memory->can_use_base_plus_offset &&
@@ -2791,6 +3290,68 @@ std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
     return {};
   }
   lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  return lines;
+}
+
+std::optional<std::vector<std::string>> print_aggregate_register_lane_publication_lines(
+    const CallBoundaryMoveInstructionRecord& move) {
+  if (!is_aggregate_register_lane_publication(move)) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  const auto scratch = aggregate_register_lane_scratch(*move.destination_register);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  const std::string scratch_x = abi::register_name(*scratch);
+  std::size_t remaining = move.source_memory->size_bytes;
+  std::size_t lane_index = 0;
+  std::size_t source_offset = 0;
+  while (remaining > 0) {
+    const std::size_t lane_bytes = std::min<std::size_t>(remaining, 8);
+    const auto lane_register =
+        aggregate_register_lane_destination(*move.destination_register, lane_index);
+    if (!lane_register.has_value()) {
+      return std::nullopt;
+    }
+    std::size_t lane_offset = 0;
+    while (lane_offset < lane_bytes) {
+      const auto printable_chunk =
+          aggregate_register_lane_printable_chunk(*move.source_memory,
+                                                  source_offset + lane_offset,
+                                                  lane_bytes - lane_offset);
+      if (!printable_chunk.has_value()) {
+        return std::nullopt;
+      }
+      const std::size_t chunk_width = *printable_chunk;
+      const auto chunk_memory =
+          aggregate_register_lane_memory(*move.source_memory,
+                                         source_offset + lane_offset,
+                                         chunk_width);
+      const auto mnemonic = aggregate_register_lane_load_mnemonic(chunk_width);
+      if (mnemonic.empty()) {
+        return std::nullopt;
+      }
+      const bool first_chunk = lane_offset == 0;
+      const auto load_register =
+          first_chunk
+              ? aggregate_register_lane_load_register(*lane_register, chunk_width)
+              : aggregate_register_lane_load_register(*scratch, chunk_width);
+      lines.push_back(std::string{mnemonic} + " " +
+                      std::string{abi::register_name(load_register)} + ", " +
+                      memory_address(chunk_memory));
+      if (!first_chunk) {
+        lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
+                        ", " + std::string{abi::register_name(*lane_register)} +
+                        ", " + scratch_x + ", lsl #" +
+                        std::to_string(lane_offset * 8));
+      }
+      lane_offset += chunk_width;
+    }
+    remaining -= lane_bytes;
+    source_offset += lane_bytes;
+    ++lane_index;
+  }
   return lines;
 }
 
@@ -3051,16 +3612,20 @@ mir::TargetInstructionPrintResult print_call_boundary_move(
     return target_unsupported(bad_header(instruction) +
                               "call-boundary move node is missing prepared move provenance");
   }
-  if ((!move.source_register.has_value() && !move.source_immediate.has_value() &&
-       !move.source_memory.has_value()) ||
-      !move.destination_register.has_value()) {
-    return target_unsupported(
-        bad_header(instruction) +
-        "call-boundary move node requires prepared register source and destination");
+    if ((!move.source_register.has_value() && !move.source_immediate.has_value() &&
+         !move.source_memory.has_value()) ||
+        !move.destination_register.has_value()) {
+      return target_unsupported(
+          bad_header(instruction) +
+          "call-boundary move node requires prepared register source and destination");
+    }
+  if (const auto lines = print_aggregate_register_lane_publication_lines(move);
+      lines.has_value()) {
+    return target_printed(*lines);
   }
-  if (move.source_memory.has_value()) {
-    if (move.source_memory->support != MemoryOperandSupportKind::Prepared ||
-        move.source_memory->base_kind != MemoryBaseKind::FrameSlot ||
+    if (move.source_memory.has_value()) {
+      if (move.source_memory->support != MemoryOperandSupportKind::Prepared ||
+          move.source_memory->base_kind != MemoryBaseKind::FrameSlot ||
         !move.source_memory->frame_slot_id.has_value() ||
         !move.source_memory->byte_offset_is_prepared_snapshot ||
         !move.source_memory->can_use_base_plus_offset) {

@@ -1,4 +1,5 @@
 #include "call_plans.hpp"
+#include "regalloc/call_return_abi.hpp"
 #include "target_register_profile.hpp"
 
 #include <algorithm>
@@ -151,6 +152,22 @@ namespace {
     return std::nullopt;
   }
   return id;
+}
+
+[[nodiscard]] std::size_t aarch64_byval_register_lane_width(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallArgAbiInfo& abi) {
+  if (target_profile.arch == c4c::TargetArch::Aarch64 &&
+      abi.type == bir::TypeKind::Ptr &&
+      abi.byval_copy &&
+      abi.passed_in_register &&
+      !abi.passed_on_stack &&
+      abi.primary_class == bir::AbiValueClass::Integer &&
+      abi.size_bytes > 0 &&
+      abi.size_bytes <= 16) {
+    return std::max<std::size_t>((abi.size_bytes + 7) / 8, 1);
+  }
+  return 1;
 }
 
 [[nodiscard]] const PreparedRegallocFunction* find_regalloc_function(
@@ -911,11 +928,33 @@ void populate_call_plans(PreparedBirModule& prepared) {
                                                             call->arg_abi[arg_index],
                                                             arg_index,
                                                             arg_plan.destination_contiguous_width);
+                }
               }
             }
-          }
 
-          if (arg_index < call->args.size()) {
+            if (arg_index < call->arg_abi.size() &&
+                arg_plan.destination_register_name.has_value()) {
+              const std::size_t byval_lane_width =
+                  aarch64_byval_register_lane_width(prepared.target_profile,
+                                                     call->arg_abi[arg_index]);
+              if (byval_lane_width > arg_plan.destination_contiguous_width) {
+                arg_plan.destination_contiguous_width = byval_lane_width;
+                arg_plan.destination_occupied_register_names =
+                    regalloc_detail::call_arg_destination_register_names(
+                        prepared.target_profile,
+                        PreparedRegisterClass::General,
+                        arg_index,
+                        *arg_plan.destination_register_name,
+                        byval_lane_width);
+                arg_plan.destination_register_placement =
+                    call_arg_destination_register_placement(prepared.target_profile,
+                                                            call->arg_abi[arg_index],
+                                                            arg_index,
+                                                            byval_lane_width);
+              }
+            }
+
+            if (arg_index < call->args.size()) {
             if (const auto value_name_id = maybe_named_value_id(prepared.names, call->args[arg_index]);
                 value_name_id.has_value() && value_locations != nullptr) {
               if (const auto* home = find_prepared_value_home(*value_locations, *value_name_id);
