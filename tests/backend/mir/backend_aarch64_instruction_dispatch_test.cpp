@@ -9001,6 +9001,275 @@ int small_byval_aggregate_call_argument_publishes_register_lanes() {
     return fail("expected size-2 byval aggregate to publish low halfword from prepared frame slot into w0");
   }
 
+  const auto prepared_function_name =
+      prepared.names.function_names.intern("dispatch.byval.reconstructed");
+  const auto prepared_entry_label =
+      prepared.names.block_labels.intern("dispatch.byval.reconstructed.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.byval.reconstructed.entry");
+  const auto aggregate_value_name = prepared.names.value_names.intern("arg");
+  const auto lane0_value_name = prepared.names.value_names.intern("%lane0");
+  const auto lane8_value_name = prepared.names.value_names.intern("%lane8");
+  prepared.module.target_triple = prepared.target_profile.triple;
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.byval.reconstructed",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.byval.reconstructed.entry",
+              .insts =
+                  {bir::StoreLocalInst{
+                       .slot_name = "arg.8",
+                       .value = bir::Value::named(bir::TypeKind::I64, "%lane8"),
+                       .byte_offset = 8,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 8,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                               .address_space = bir::AddressSpace::Default,
+                           },
+                   },
+                   bir::StoreLocalInst{
+                       .slot_name = "arg.0",
+                       .value = bir::Value::named(bir::TypeKind::I64, "%lane0"),
+                       .byte_offset = 0,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                               .address_space = bir::AddressSpace::Default,
+                           },
+                   },
+                   bir::CallInst{
+                       .callee = "consume_byval",
+                       .args = {bir::Value::named(bir::TypeKind::Ptr, "arg")},
+                       .arg_types = {bir::TypeKind::Ptr},
+                       .arg_abi =
+                           {bir::CallArgAbiInfo{
+                               .type = bir::TypeKind::Ptr,
+                               .size_bytes = 16,
+                               .align_bytes = 8,
+                               .primary_class = bir::AbiValueClass::Integer,
+                               .passed_in_register = true,
+                               .byval_copy = true,
+                           }},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = prepared_function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = prepared_entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = prepared_function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{117},
+               .function_name = prepared_function_name,
+               .value_name = aggregate_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x5"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{118},
+               .function_name = prepared_function_name,
+               .value_name = lane0_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x10"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{119},
+               .function_name = prepared_function_name,
+               .value_name = lane8_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x11"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = prepared_function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 2,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{117},
+                      .to_value_id = prepare::PreparedValueId{117},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 2,
+                      .destination_occupied_register_names = {"x0", "x1"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_byval_aggregate_register_lanes",
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = prepared_function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{118}, lane0_value_name, "x10"),
+           register_storage(prepare::PreparedValueId{119}, lane8_value_name, "x11")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{41},
+      .function_name = prepared_function_name,
+      .offset_bytes = 96,
+      .size_bytes = 16,
+      .align_bytes = 8,
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = prepared_function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = prepared_function_name,
+               .block_label = prepared_entry_label,
+               .inst_index = 0,
+               .stored_value_name = lane8_value_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{41},
+                       .byte_offset = 8,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = prepared_function_name,
+               .block_label = prepared_entry_label,
+               .inst_index = 1,
+               .stored_value_name = lane0_value_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{41},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  const prepare::PreparedCallPlan reconstructed_call_plan{
+      .block_index = 0,
+      .instruction_index = 2,
+      .arguments =
+          {prepare::PreparedCallArgumentPlan{
+              .instruction_index = 2,
+              .arg_index = 0,
+              .value_bank = prepare::PreparedRegisterBank::Gpr,
+              .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+              .source_value_id = prepare::PreparedValueId{117},
+              .source_register_name = std::string{"x5"},
+              .source_register_bank = prepare::PreparedRegisterBank::AggregateAddress,
+              .destination_register_name = std::string{"x0"},
+              .destination_contiguous_width = 2,
+              .destination_occupied_register_names = {"x0", "x1"},
+              .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+          }},
+  };
+  const auto& reconstructed_function_cf = prepared.control_flow.functions.back();
+  const auto& reconstructed_block_cf = reconstructed_function_cf.blocks.front();
+  const auto reconstructed_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, reconstructed_function_cf);
+  const auto reconstructed_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          reconstructed_function_context, reconstructed_block_cf, 0);
+  aarch64_module::ModuleLoweringDiagnostics reconstructed_diagnostics;
+  const auto reconstructed_lowered =
+      aarch64_codegen::lower_before_call_moves(
+          reconstructed_block_context,
+          reconstructed_call_plan,
+          2,
+          reconstructed_diagnostics);
+  if (reconstructed_lowered.size() != 1 || !reconstructed_diagnostics.empty()) {
+    return fail("expected reconstructed prepared aggregate source to lower one byval register-lane move");
+  }
+  const auto* reconstructed_move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &reconstructed_lowered.front().target.payload);
+  if (reconstructed_move == nullptr ||
+      reconstructed_move->source_register.has_value() ||
+      !reconstructed_move->source_memory.has_value() ||
+      !reconstructed_move->destination_register.has_value() ||
+      reconstructed_move->source_memory->base_kind !=
+          aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      reconstructed_move->source_memory->frame_slot_id !=
+          std::optional<prepare::PreparedFrameSlotId>{41} ||
+      reconstructed_move->source_memory->byte_offset != 96 ||
+      reconstructed_move->source_memory->size_bytes != 16 ||
+      reconstructed_move->destination_register->reg !=
+          aarch64_module::abi::x_register(0)) {
+    return fail("expected byval lane move to use reconstructed prepared frame bytes");
+  }
+  const auto reconstructed_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          reconstructed_lowered.front().target);
+  if (!reconstructed_printed.ok ||
+      reconstructed_printed.instruction_lines.size() != 2 ||
+      reconstructed_printed.instruction_lines[0] != "ldr x0, [sp, #96]" ||
+      reconstructed_printed.instruction_lines[1] != "ldr x1, [sp, #104]") {
+    return fail("expected reconstructed byval bytes to publish x0/x1 lanes in stack-offset order");
+  }
+
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = prepared_function_name,
+      .calls =
+          {prepare::PreparedCallPlan{
+              .block_index = 0,
+              .instruction_index = 2,
+              .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+              .direct_callee_name = std::string{"consume_byval"},
+              .arguments = reconstructed_call_plan.arguments,
+          }},
+  });
+  const auto dispatched_function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, reconstructed_function_cf);
+  const auto dispatched_block_context =
+      aarch64_codegen::make_block_lowering_context(
+          dispatched_function_context, reconstructed_block_cf, 0);
+  aarch64_module::MachineBlock dispatched_block;
+  aarch64_module::ModuleLoweringDiagnostics dispatched_diagnostics;
+  const auto dispatched_result =
+      aarch64_codegen::dispatch_prepared_block(
+          dispatched_block_context, dispatched_block, dispatched_diagnostics);
+  if (!dispatched_diagnostics.empty() ||
+      dispatched_result.visited_operations != 3 ||
+      !dispatched_result.visited_terminator ||
+      dispatched_block.instructions.size() != 5) {
+    return fail("expected reconstructed byval block dispatch to lower stores, lane move, call, and return");
+  }
+  const auto dispatched_printed =
+      print_route_block(prepared_function_name, dispatched_block);
+  const auto lane0_pos = dispatched_printed.assembly.find("ldr x0, [sp, #96]");
+  const auto lane1_pos = dispatched_printed.assembly.find("ldr x1, [sp, #104]");
+  const auto call_pos = dispatched_printed.assembly.find("bl consume_byval");
+  if (!dispatched_printed.ok ||
+      lane0_pos == std::string::npos ||
+      lane1_pos == std::string::npos ||
+      call_pos == std::string::npos ||
+      !(lane0_pos < lane1_pos && lane1_pos < call_pos)) {
+    return fail("expected reconstructed byval lane publication to print before bl consume_byval");
+  }
+
   return 0;
 }
 
