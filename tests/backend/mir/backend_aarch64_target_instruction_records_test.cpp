@@ -2292,6 +2292,68 @@ int f128_call_boundary_move_record_selects_structured_q_register_subset() {
   return 0;
 }
 
+int f128_frame_slot_call_boundary_move_record_selects_q_register_load() {
+  const prepare::PreparedMoveBundle bundle{
+      .function_name = c4c::FunctionNameId{12},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 4,
+      .instruction_index = 8,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{81},
+                  .to_value_id = prepare::PreparedValueId{81},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{3},
+                  .destination_register_name = std::string{"q3"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"q3"},
+                  .block_index = 4,
+                  .instruction_index = 8,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "f128 before-call frame arg move",
+              },
+          },
+  };
+  const auto value_name = c4c::ValueNameId{19};
+  auto source = f128_frame_slot_memory_operand(
+      bundle.function_name, c4c::BlockLabelId{7}, bundle.instruction_index);
+  source.support = aarch64_codegen::MemoryOperandSupportKind::Prepared;
+  source.byte_offset_is_prepared_snapshot = true;
+  source.can_use_base_plus_offset = true;
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = bundle.function_name,
+          .phase = bundle.phase,
+          .block_index = bundle.block_index,
+          .instruction_index = bundle.instruction_index,
+          .move = bundle.moves.front(),
+          .source_memory = source,
+          .destination_register =
+              q_value_register(prepare::PreparedValueId{81}, value_name, 3),
+          .source_bundle = &bundle,
+          .source_move = &bundle.moves.front(),
+      });
+  const auto* payload =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(&move.payload);
+
+  if (payload == nullptr ||
+      move.selection.status != aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      move.operands.size() != 2 || move.uses.size() != 1 || move.defs.size() != 1 ||
+      !payload->source_memory.has_value() ||
+      payload->source_memory->base_kind != aarch64_codegen::MemoryBaseKind::FrameSlot ||
+      payload->source_memory->size_bytes != 16 ||
+      !payload->destination_register.has_value() ||
+      payload->destination_register->reg != aarch64_abi::q_register(3) ||
+      payload->destination_register->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      payload->destination_register->expected_view != aarch64_abi::RegisterView::Q) {
+    return fail("expected f128 frame-slot call-boundary move to select q-register load");
+  }
+
+  return 0;
+}
+
 int scalar_fpr_call_boundary_move_record_selects_fixed_hfa_lane_publication() {
   const prepare::PreparedMoveBundle bundle{
       .function_name = c4c::FunctionNameId{12},
@@ -4352,6 +4414,10 @@ int main() {
     return status;
   }
   if (const int status = f128_call_boundary_move_record_selects_structured_q_register_subset();
+      status != 0) {
+    return status;
+  }
+  if (const int status = f128_frame_slot_call_boundary_move_record_selects_q_register_load();
       status != 0) {
     return status;
   }

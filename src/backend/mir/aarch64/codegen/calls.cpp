@@ -1737,6 +1737,61 @@ make_value_stack_move_instruction(
       !is_aarch64_byval_register_lane_move(move) &&
       source_home != nullptr &&
       source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      source_home->size_bytes == std::optional<std::size_t>{16} &&
+      argument != nullptr &&
+      argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+      argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      binding != nullptr &&
+      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) {
+    auto source =
+        make_frame_slot_call_argument_source(context, *argument, *source_home, instruction_index);
+    const auto destination_register_placement =
+        binding->destination_register_placement.has_value()
+            ? binding->destination_register_placement
+            : (move.destination_register_placement.has_value()
+                   ? move.destination_register_placement
+                   : argument->destination_register_placement);
+    const auto destination_register_name =
+        destination_register_placement.has_value()
+            ? std::optional<std::string>{}
+            : (binding->destination_register_name.has_value()
+                   ? binding->destination_register_name
+                   : move.destination_register_name);
+    auto destination = make_register_operand_from_prepared_authority(
+        destination_register_name,
+        destination_register_placement,
+        argument->destination_register_bank,
+        RegisterOperandRole::CallAbi,
+        move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                              : argument->source_value_id,
+        source_home->value_name,
+        binding->destination_contiguous_width,
+        binding->destination_occupied_register_names,
+        abi::RegisterView::Q,
+        diagnostics,
+        context,
+        instruction_index);
+    if (!source.has_value() || !destination.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::MissingValueAuthority,
+          context,
+          instruction_index,
+          "AArch64 binary128 frame-slot call-argument move requires a prepared frame-slot source and q-register destination");
+      return std::nullopt;
+    }
+    move_record.source_memory = *source;
+    move_record.destination_register = *destination;
+  }
+
+  if (bundle.phase == prepare::PreparedMovePhase::BeforeCall &&
+      move.destination_kind == prepare::PreparedMoveDestinationKind::CallArgumentAbi &&
+      move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
+      !is_aarch64_byval_register_lane_move(move) &&
+      source_home != nullptr &&
+      source_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       argument != nullptr &&
       argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
       argument->source_value_id == std::optional<prepare::PreparedValueId>{move.from_value_id} &&
@@ -3287,7 +3342,10 @@ MachineNodeStatusRecord call_boundary_move_selection_status(
       instruction.source_memory->byte_offset_is_prepared_snapshot &&
       instruction.source_memory->can_use_base_plus_offset &&
       (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Gpr ||
-       instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr)) {
+       instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Fpr ||
+       (instruction.destination_register->prepared_bank == prepare::PreparedRegisterBank::Vreg &&
+        instruction.destination_register->expected_view == abi::RegisterView::Q &&
+        instruction.source_memory->size_bytes == 16))) {
     return MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected};
   }
   if (instruction.source_memory.has_value()) {
@@ -3391,6 +3449,8 @@ std::optional<std::size_t> call_boundary_load_width_bytes(
     case abi::RegisterView::D:
     case abi::RegisterView::X:
       return 8U;
+    case abi::RegisterView::Q:
+      return 16U;
     default:
       return std::nullopt;
   }
@@ -3404,7 +3464,7 @@ bool call_boundary_frame_slot_direct_offset_is_encodable(
     return false;
   }
   if (load_width_bytes != 1 && load_width_bytes != 2 && load_width_bytes != 4 &&
-      load_width_bytes != 8) {
+      load_width_bytes != 8 && load_width_bytes != 16) {
     return false;
   }
   const auto offset = static_cast<std::uint64_t>(memory.byte_offset);

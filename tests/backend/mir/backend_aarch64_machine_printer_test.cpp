@@ -5101,6 +5101,49 @@ int selected_call_boundary_frame_slot_source_materializes_large_offset() {
                          "call-boundary frame-slot source materialization");
 }
 
+int selected_call_boundary_f128_frame_slot_argument_prints_q_load() {
+  const prepare::PreparedMoveBundle call_boundary_bundle{
+      .function_name = c4c::FunctionNameId{2},
+      .phase = prepare::PreparedMovePhase::BeforeCall,
+      .block_index = 0,
+      .instruction_index = 4,
+      .moves =
+          {
+              prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{72},
+                  .to_value_id = prepare::PreparedValueId{72},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                  .destination_storage_kind = prepare::PreparedMoveStorageKind::Register,
+                  .destination_abi_index = std::size_t{3},
+                  .destination_register_name = std::string{"q3"},
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+              },
+          },
+  };
+  const auto move = aarch64_codegen::make_call_boundary_move_instruction(
+      aarch64_codegen::CallBoundaryMoveInstructionRecord{
+          .function_name = call_boundary_bundle.function_name,
+          .phase = call_boundary_bundle.phase,
+          .block_index = call_boundary_bundle.block_index,
+          .instruction_index = call_boundary_bundle.instruction_index,
+          .move = call_boundary_bundle.moves.front(),
+          .source_memory = f128_frame_slot(80),
+          .destination_register = qreg(3),
+          .source_bundle = &call_boundary_bundle,
+          .source_move = &call_boundary_bundle.moves.front(),
+      });
+
+  const auto result = print_common_instruction_nodes({move});
+  if (!result.ok) {
+    return fail("expected f128 frame-slot call argument to print q-register load: " +
+                result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    ldr q3, [sp, #80]\n",
+                         "    ldr q3, [sp, #80]\n",
+                         "f128 frame-slot call argument publication");
+}
+
 int selected_after_call_result_register_move_prints_prepared_mov() {
   const prepare::PreparedMoveBundle call_boundary_bundle{
       .function_name = c4c::FunctionNameId{2},
@@ -6996,6 +7039,11 @@ int main() {
   }
   if (const int result =
           selected_call_boundary_frame_slot_source_materializes_large_offset();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_call_boundary_f128_frame_slot_argument_prints_q_load();
       result != 0) {
     return result;
   }

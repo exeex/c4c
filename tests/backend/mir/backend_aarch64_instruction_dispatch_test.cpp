@@ -2939,6 +2939,151 @@ prepare::PreparedBirModule prepared_with_direct_call_f128_argument_register_move
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_direct_call_f128_frame_slot_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.call.f128.frame.arg");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.call.f128.frame.arg.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.call.f128.frame.arg.entry");
+  const auto actual_link = prepared.names.link_names.intern("actual_f128_function");
+  const auto arg_name = prepared.names.value_names.intern("%f128.frame.arg");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.call.f128.frame.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.call.f128.frame.arg.entry",
+          .insts = {bir::CallInst{
+              .callee = "actual_f128_function",
+              .callee_link_name_id = actual_link,
+              .args = {bir::Value::named(bir::TypeKind::F128, "%f128.frame.arg")},
+              .arg_types = {bir::TypeKind::F128},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{151},
+                  .function_name = function_name,
+                  .value_name = arg_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{9},
+                  .offset_bytes = std::size_t{80},
+                  .size_bytes = std::size_t{16},
+                  .align_bytes = std::size_t{16},
+              },
+          },
+      .move_bundles =
+          {
+              prepare::PreparedMoveBundle{
+                  .function_name = function_name,
+                  .phase = prepare::PreparedMovePhase::BeforeCall,
+                  .block_index = 0,
+                  .instruction_index = 0,
+                  .moves =
+                      {
+                          prepare::PreparedMoveResolution{
+                              .from_value_id = prepare::PreparedValueId{151},
+                              .to_value_id = prepare::PreparedValueId{151},
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"q3"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"q3"},
+                              .block_index = 0,
+                              .instruction_index = 0,
+                              .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                              .reason = "f128_call_arg_frame_slot_to_q_register",
+                          },
+                      },
+                  .abi_bindings =
+                      {
+                          prepare::PreparedAbiBinding{
+                              .destination_kind =
+                                  prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                              .destination_storage_kind =
+                                  prepare::PreparedMoveStorageKind::Register,
+                              .destination_abi_index = std::size_t{0},
+                              .destination_register_name = std::string{"q3"},
+                              .destination_contiguous_width = 1,
+                              .destination_occupied_register_names = {"q3"},
+                          },
+                      },
+              },
+          },
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"actual_f128_function"},
+          .arguments =
+              {
+                  prepare::PreparedCallArgumentPlan{
+                      .instruction_index = 0,
+                      .arg_index = 0,
+                      .value_bank = prepare::PreparedRegisterBank::Vreg,
+                      .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                      .source_value_id = prepare::PreparedValueId{151},
+                      .source_slot_id = prepare::PreparedFrameSlotId{9},
+                      .source_stack_offset_bytes = std::size_t{80},
+                      .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+                      .destination_register_name = std::string{"q3"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"q3"},
+                      .destination_register_bank = prepare::PreparedRegisterBank::Vreg,
+                  },
+              },
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {
+              prepare::PreparedF128Carrier{
+                  .function_name = function_name,
+                  .value_id = prepare::PreparedValueId{151},
+                  .value_name = arg_name,
+                  .source_type = bir::TypeKind::F128,
+                  .kind = prepare::PreparedF128CarrierKind::MemoryBacked,
+                  .total_size_bytes = 16,
+                  .total_align_bytes = 16,
+                  .slot_id = prepare::PreparedFrameSlotId{9},
+                  .stack_offset_bytes = 80,
+              },
+          },
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_f128_constant_argument(
     bool include_payload = true,
     bool include_source_value = true,
@@ -10583,6 +10728,45 @@ int block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_c
   return 0;
 }
 
+int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register() {
+  auto prepared = prepared_with_direct_call_f128_frame_slot_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      !diagnostics.empty()) {
+    return fail("expected f128 frame-slot call dispatch to emit q-register load, call, and return");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[0].target.payload);
+  if (move == nullptr ||
+      block.instructions[0].target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      !move->source_memory.has_value() || move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_memory->base_kind != aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      move->source_memory->byte_offset != 80 ||
+      move->source_memory->size_bytes != 16 ||
+      move->destination_register->reg != aarch64_module::abi::q_register(3) ||
+      move->destination_register->prepared_bank != prepare::PreparedRegisterBank::Vreg ||
+      move->destination_register->expected_view != aarch64_module::abi::RegisterView::Q) {
+    return fail("expected prepared f128 frame-slot argument to select stack+80 -> q3");
+  }
+  return 0;
+}
+
 int block_dispatch_exposes_f128_constant_argument_carrier_to_selection() {
   auto prepared = prepared_with_direct_call_f128_constant_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -13106,6 +13290,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_call();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register();
       status != 0) {
     return status;
   }
