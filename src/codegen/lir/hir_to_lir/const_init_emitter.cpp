@@ -671,7 +671,7 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
       return std::to_string(p.value);
     } else if constexpr (std::is_same_v<T, FloatLiteral>) {
       if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
-        return fp_literal(expected_ts.base, p.value);
+        return fp_literal(expected_ts.base, p.value, p.spelling);
       return fp_to_hex(p.value);
     } else if constexpr (std::is_same_v<T, CharLiteral>) {
       return std::to_string(p.value);
@@ -918,7 +918,8 @@ std::string ConstInitEmitter::emit_const_scalar_expr(ExprId id, const TypeSpec& 
         }
         if (const auto* f = std::get_if<FloatLiteral>(&op_e.payload)) {
           if (is_float_base(expected_ts.base) && expected_ts.ptr_level == 0 && expected_ts.array_rank == 0)
-            return fp_literal(expected_ts.base, -f->value);
+            return fp_literal(expected_ts.base, -f->value,
+                              f->spelling.empty() ? std::string{} : std::string("-") + f->spelling);
           return fp_to_hex(-f->value);
         }
       }

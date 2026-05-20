@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cctype>
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
@@ -942,8 +943,188 @@ inline std::string fp_to_fp128_literal(double v) {
   const auto hi = static_cast<unsigned long long>(val128 >> 64);
   const auto lo = static_cast<unsigned long long>(val128);
   char buf[40];
-  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", lo, hi);
+  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", hi, lo);
   return buf;
+}
+
+inline std::optional<unsigned __int128> checked_mul_u128(unsigned __int128 lhs,
+                                                        unsigned __int128 rhs) {
+  constexpr unsigned __int128 kMax = ~static_cast<unsigned __int128>(0);
+  if (rhs != 0 && lhs > kMax / rhs) return std::nullopt;
+  return lhs * rhs;
+}
+
+inline std::optional<unsigned __int128> checked_add_u128(unsigned __int128 lhs,
+                                                        unsigned __int128 rhs) {
+  constexpr unsigned __int128 kMax = ~static_cast<unsigned __int128>(0);
+  if (lhs > kMax - rhs) return std::nullopt;
+  return lhs + rhs;
+}
+
+inline std::optional<unsigned __int128> pow10_u128(int exponent) {
+  unsigned __int128 result = 1;
+  for (int i = 0; i < exponent; ++i) {
+    auto next = checked_mul_u128(result, 10);
+    if (!next) return std::nullopt;
+    result = *next;
+  }
+  return result;
+}
+
+inline int u128_bit_width(unsigned __int128 value) {
+  if (value == 0) return 0;
+  int width = 0;
+  while (value != 0) {
+    ++width;
+    value >>= 1;
+  }
+  return width;
+}
+
+inline std::optional<std::string> fp_to_fp128_literal(std::string_view spelling) {
+  std::string text(spelling);
+  text.erase(std::remove_if(text.begin(), text.end(),
+                            [](unsigned char c) { return std::isspace(c) != 0; }),
+             text.end());
+  if (text.empty()) return std::nullopt;
+
+  bool negative = false;
+  std::size_t pos = 0;
+  if (text[pos] == '+' || text[pos] == '-') {
+    negative = text[pos] == '-';
+    ++pos;
+  }
+
+  std::string digits;
+  int fractional_digits = 0;
+  bool after_decimal = false;
+  for (; pos < text.size(); ++pos) {
+    const unsigned char ch = static_cast<unsigned char>(text[pos]);
+    if (std::isdigit(ch)) {
+      digits.push_back(static_cast<char>(ch));
+      if (after_decimal) ++fractional_digits;
+      continue;
+    }
+    if (text[pos] == '.') {
+      if (after_decimal) return std::nullopt;
+      after_decimal = true;
+      continue;
+    }
+    break;
+  }
+  if (digits.empty()) return std::nullopt;
+
+  int decimal_exponent = -fractional_digits;
+  if (pos < text.size() && (text[pos] == 'e' || text[pos] == 'E')) {
+    ++pos;
+    bool exp_negative = false;
+    if (pos < text.size() && (text[pos] == '+' || text[pos] == '-')) {
+      exp_negative = text[pos] == '-';
+      ++pos;
+    }
+    int explicit_exponent = 0;
+    bool saw_exp_digit = false;
+    for (; pos < text.size(); ++pos) {
+      const unsigned char ch = static_cast<unsigned char>(text[pos]);
+      if (!std::isdigit(ch)) break;
+      saw_exp_digit = true;
+      explicit_exponent = explicit_exponent * 10 + (text[pos] - '0');
+    }
+    if (!saw_exp_digit) return std::nullopt;
+    decimal_exponent += exp_negative ? -explicit_exponent : explicit_exponent;
+  }
+
+  while (pos < text.size()) {
+    const char ch = text[pos++];
+    if (ch == 'l' || ch == 'L' || ch == 'f' || ch == 'F' ||
+        ch == 'i' || ch == 'I' || ch == 'j' || ch == 'J') {
+      continue;
+    }
+    if (std::isdigit(static_cast<unsigned char>(ch))) continue;
+    return std::nullopt;
+  }
+
+  unsigned __int128 significand = 0;
+  for (char ch : digits) {
+    auto scaled = checked_mul_u128(significand, 10);
+    if (!scaled) return std::nullopt;
+    auto next = checked_add_u128(*scaled, static_cast<unsigned __int128>(ch - '0'));
+    if (!next) return std::nullopt;
+    significand = *next;
+  }
+  if (significand == 0) {
+    const unsigned long long hi = negative ? 0x8000000000000000ULL : 0ULL;
+    char buf[40];
+    std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", hi, 0ULL);
+    return std::string(buf);
+  }
+
+  unsigned __int128 numerator = significand;
+  unsigned __int128 denominator = 1;
+  if (decimal_exponent >= 0) {
+    const auto scale10 = pow10_u128(decimal_exponent);
+    if (!scale10) return std::nullopt;
+    const auto scaled = checked_mul_u128(numerator, *scale10);
+    if (!scaled) return std::nullopt;
+    numerator = *scaled;
+  } else {
+    const auto scale10 = pow10_u128(-decimal_exponent);
+    if (!scale10) return std::nullopt;
+    denominator = *scale10;
+  }
+
+  int exponent = u128_bit_width(numerator) - u128_bit_width(denominator);
+  if (exponent >= 0) {
+    if (numerator < (denominator << exponent)) --exponent;
+  } else {
+    if ((numerator << -exponent) < denominator) --exponent;
+  }
+
+  constexpr int kPrecisionBits = 113;
+  constexpr int kFractionBits = 112;
+  constexpr int kExponentBias = 16383;
+  if (exponent < -16382 || exponent > 16383) return std::nullopt;
+
+  const int scale = kFractionBits - exponent;
+  unsigned __int128 scaled_num = numerator;
+  unsigned __int128 scaled_den = denominator;
+  if (scale >= 0) {
+    if (scale >= 128 || (scaled_num != 0 && u128_bit_width(scaled_num) + scale > 128)) {
+      return std::nullopt;
+    }
+    scaled_num <<= scale;
+  } else {
+    const int den_shift = -scale;
+    if (den_shift >= 128 || (scaled_den != 0 && u128_bit_width(scaled_den) + den_shift > 128)) {
+      return std::nullopt;
+    }
+    scaled_den <<= -scale;
+  }
+
+  unsigned __int128 rounded = scaled_num / scaled_den;
+  const unsigned __int128 remainder = scaled_num % scaled_den;
+  if (remainder != 0 && u128_bit_width(remainder) + 1 > 128) return std::nullopt;
+  const unsigned __int128 twice_remainder = remainder << 1;
+  if (twice_remainder > scaled_den || (twice_remainder == scaled_den && (rounded & 1) != 0)) {
+    ++rounded;
+  }
+
+  const unsigned __int128 precision_limit = static_cast<unsigned __int128>(1) << kPrecisionBits;
+  if (rounded >= precision_limit) {
+    rounded >>= 1;
+    ++exponent;
+  }
+  if (exponent > 16383) return std::nullopt;
+
+  unsigned __int128 payload = rounded - (static_cast<unsigned __int128>(1) << kFractionBits);
+  payload |= static_cast<unsigned __int128>(exponent + kExponentBias) << kFractionBits;
+  if (negative) payload |= static_cast<unsigned __int128>(1) << 127;
+
+  const auto low = static_cast<unsigned long long>(payload & 0xFFFFFFFFFFFFFFFFULL);
+  const auto high = static_cast<unsigned long long>(payload >> 64);
+  char buf[40];
+  std::snprintf(buf, sizeof(buf), "0xL%016llX%016llX", high, low);
+  return std::string(buf);
 }
 
 inline std::string fp_to_x86_fp80_literal(double v) {
@@ -994,6 +1175,13 @@ inline std::string fp_literal(TypeBase b, double v) {
     default:
       return fp_to_hex(v);
   }
+}
+
+inline std::string fp_literal(TypeBase b, double v, std::string_view spelling) {
+  if (b == TB_LONGDOUBLE && !llvm_target_is_amd64_sysv(active_target_triple())) {
+    if (auto literal = fp_to_fp128_literal(spelling)) return *literal;
+  }
+  return fp_literal(b, v);
 }
 
 inline int hex_digit(unsigned char c) {

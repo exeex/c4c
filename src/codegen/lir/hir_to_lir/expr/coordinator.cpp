@@ -458,11 +458,11 @@ std::string StmtEmitter::emit_rval_payload(FnCtx&, const IntLiteral& x, const Ex
 std::string StmtEmitter::emit_rval_payload(FnCtx&, const FloatLiteral& x, const Expr& e) {
   if (is_complex_base(e.type.spec.base)) {
     const TypeSpec elem_ts = complex_component_ts(e.type.spec.base);
-    const std::string imag_v = fp_literal(elem_ts.base, x.value);
+    const std::string imag_v = fp_literal(elem_ts.base, x.value, x.spelling);
     return "{ " + llvm_ty(elem_ts) + " " + emit_const_int_like(0, elem_ts) + ", " +
            llvm_ty(elem_ts) + " " + imag_v + " }";
   }
-  return is_float_base(e.type.spec.base) ? fp_literal(e.type.spec.base, x.value) : fp_to_hex(x.value);
+  return is_float_base(e.type.spec.base) ? fp_literal(e.type.spec.base, x.value, x.spelling) : fp_to_hex(x.value);
 }
 
 std::string StmtEmitter::emit_rval_payload(FnCtx&, const CharLiteral& x, const Expr&) {

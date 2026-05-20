@@ -8,46 +8,44 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the AArch64 prepared call argument ABI register numbering for
-register-passed call arguments by deriving the physical ABI register slot from
-the argument's register bank instead of the overall argument index. The shared
-helper lives in `src/backend/prealloc/regalloc/call_return_abi.cpp`, and the
-move/binding/plan surfaces now pass that per-bank slot into the existing target
-register-name and placement helpers.
+Step 2 repaired the target long-double literal/data representation owner for
+AArch64 by preserving raw float literal spellings in HIR and using those
+spellings to format non-x86 `long double` constants as LLVM `fp128` binary128
+payloads. The shared `fp128` formatter now emits high bits before low bits in
+LLVM `0xL...` spelling, so BIR global initializer byte lowering receives a
+true binary128 payload instead of a double-rounded or x87-shaped payload.
 
-The `.str44` evidence moved from the old `x0`, `q1`, `q2` shape to the AAPCS64
-shape for the representative variadic calls: generated `00204.c.s` now shows
-`adrp/add x0, .str44`, then `mov v0.16b, ...` and `mov v1.16b, ...` before
-`bl printf`. This preserves the repaired HFA lane-home and F128 carrier-view
-transport while fixing the call-boundary placement.
+Generated `build/c_testsuite_aarch64_backend/src/00204.c.s` now encodes
+`hfa31 = { 31.1L }` as the Clang-matching little-endian binary128 bytes:
+`9a 99 99 99 99 99 99 99 99 99 99 99 99 f1 03 40`. The existing `.str44`
+publication remains intact with `adrp/add x0, .str44`, `mov v0.16b, ...`, and
+`mov v1.16b, ...` before `bl printf`.
 
-One direct related source outside the original owned list was required:
-`src/backend/prealloc/regalloc.cpp` publishes the prepared call ABI bindings
-that `call_plans.cpp` consumes. Leaving that source on the old overall-index
-rule kept stale q-register facts in prepared call plans.
+Direct related source outside the original owned code list was required:
+`src/frontend/hir/hir_ir.hpp` and `src/frontend/hir/impl/expr/expr.cpp` own the
+HIR float literal payload and were the only place the raw parser spelling could
+be carried into constant lowering.
 
 ## Suggested Next
 
-Continue Step 2 with the separate target long-double literal/data
-representation owner. The remaining first bad fact is still that selected
-long-double bytes are x87-style 80-bit/padded payloads rather than AArch64
-binary128 payloads before the now-correct q0/q1 `.str44` call consumes them.
+Continue Step 2 with the remaining HFA multi-lane argument/return publication
+failure. After the binary128 data repair, the first visible `00204.c` mismatch
+is no longer the `31.1L` global bytes; the run now prints `13.1 0.0 -nan`
+where the expected HFA argument line is `13.1 13.2 13.3`, and later segfaults
+after corrupted return-value output.
 
 ## Watchouts
 
-Do not reopen the closed non-HFA aggregate string materialization route unless
-fresh generated-code evidence shows selected `%7s` / `%9s` bytes are again
-missing before their observing `printf` calls. The Step 2 code changes are
-intended to affect only HFA-classified aggregate `va_arg` plans with prepared
-lane homes.
+The new decimal-to-binary128 formatter is intentionally bounded to literals
+that fit through the local `unsigned __int128` path and falls back to the
+existing double-based conversion for oversized or unsupported spellings. That
+keeps this packet on literal/data representation without expanding into a full
+arbitrary-precision frontend initiative.
 
-The calls-owned F128 call-boundary adjustments, F128 carrier-view transport,
-and prepared frame-slot address retargeting now produce `.str44` argument
-publication plus selected q-register transport from concrete stack homes. Do
-not special-case `%hfa31`, `%hfa32`, `.str44`, one register, one frame slot id,
-or one stack offset. The ABI register numbering rule is now general per AArch64
-register bank for prepared call-argument naming and placement; do not rewrite
-expectations or paper over the separate long-double payload encoding mismatch.
+Do not reopen the already committed HFA lane-home, F128 transport, memory
+retargeting, or call ABI register-indexing surfaces for this payload repair.
+The remaining failure is not the `31.1L` byte sequence and should be proved from
+fresh generated-code evidence rather than expectation rewrites.
 
 ## Proof
 
@@ -57,8 +55,8 @@ Ran the delegated proof command:
 Current result: build succeeded; `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`
 passed. `c_testsuite_aarch64_backend_src_00204_c` still failed with
-`RUNTIME_NONZERO` / segmentation fault after printing long-double mismatch
-output. The `.str44` placement is repaired to q0/q1, so the remaining recorded
-first bad fact is the separate long-double payload encoding mismatch. Also ran
-`git diff --check`, which passed. `test_after.log` is the fresh proof log for
-this dirty state.
+`RUNTIME_NONZERO` / segmentation fault. The repaired `hfa31` bytes and `.str44`
+q0/q1 publication were confirmed in generated `00204.c.s`; the fresh remaining
+first bad fact is HFA multi-lane argument output, starting with `13.1 0.0 -nan`
+instead of `13.1 13.2 13.3`. Also ran `git diff --check`, which passed.
+`test_after.log` is the fresh proof log for this dirty state.

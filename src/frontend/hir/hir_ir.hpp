@@ -613,6 +613,7 @@ struct IntLiteral {
 
 struct FloatLiteral {
   double value = 0.0;
+  std::string spelling;
 };
 
 struct StringLiteral {

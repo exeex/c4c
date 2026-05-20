@@ -155,7 +155,7 @@ ExprId Lowerer::lower_expr(FunctionCtx* ctx, const Node* n) {
     case NK_FLOAT_LIT: {
       TypeSpec ts = n->type;
       if (!has_concrete_type(ts)) ts = classify_float_literal_type(const_cast<Node*>(n));
-      return append_expr(n, FloatLiteral{n->fval}, ts);
+      return append_expr(n, FloatLiteral{n->fval, n->sval ? n->sval : ""}, ts);
     }
     case NK_STR_LIT: {
       StringLiteral s{};
