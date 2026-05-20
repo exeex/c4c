@@ -7244,7 +7244,8 @@ prepare::PreparedBirModule prepared_with_select_produced_stack_source_cast() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
+prepare::PreparedBirModule prepared_with_stack_published_i16_select_store(
+    bool compare_from_same_block_cast = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -7261,37 +7262,53 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
   const auto false_name = prepared.names.value_names.intern("%false");
   const auto select_name = prepared.names.value_names.intern("%selected");
 
+  std::vector<bir::Inst> insts;
+  if (compare_from_same_block_cast) {
+    insts.push_back(bir::CastInst{
+        .opcode = bir::CastOpcode::SExt,
+        .result = bir::Value::named(bir::TypeKind::I64, "%compare"),
+        .operand = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+    });
+  }
+  const std::size_t select_index = insts.size();
+  insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = bir::Value::named(bir::TypeKind::I16, "%selected"),
+      .compare_type =
+          compare_from_same_block_cast ? bir::TypeKind::I64 : bir::TypeKind::I32,
+      .lhs = compare_from_same_block_cast
+                 ? bir::Value::named(bir::TypeKind::I64, "%compare")
+                 : bir::Value::named(bir::TypeKind::I32, "%lhs"),
+      .rhs = compare_from_same_block_cast
+                 ? bir::Value::immediate_i64(0)
+                 : bir::Value::named(bir::TypeKind::I32, "%rhs"),
+      .true_value = bir::Value::named(bir::TypeKind::I16, "%true"),
+      .false_value = bir::Value::named(bir::TypeKind::I16, "%false"),
+  });
+  const std::size_t store_index = insts.size();
+  insts.push_back(bir::StoreLocalInst{
+      .slot_id = c4c::SlotNameId{41},
+      .value = bir::Value::named(bir::TypeKind::I16, "%selected"),
+      .byte_offset = 0,
+      .align_bytes = 2,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+              .byte_offset = 0,
+              .size_bytes = 2,
+              .align_bytes = 2,
+              .address_space = bir::AddressSpace::Default,
+              .base_slot_id = c4c::SlotNameId{41},
+          },
+  });
+
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.select.store",
       .return_type = bir::TypeKind::Void,
       .blocks =
           {bir::Block{
               .label = "dispatch.select.store.entry",
-              .insts =
-                  {bir::SelectInst{
-                       .predicate = bir::BinaryOpcode::Eq,
-                       .result = bir::Value::named(bir::TypeKind::I16, "%selected"),
-                       .compare_type = bir::TypeKind::I32,
-                       .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
-                       .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
-                       .true_value = bir::Value::named(bir::TypeKind::I16, "%true"),
-                       .false_value = bir::Value::named(bir::TypeKind::I16, "%false"),
-                   },
-                   bir::StoreLocalInst{
-                       .slot_id = c4c::SlotNameId{41},
-                       .value = bir::Value::named(bir::TypeKind::I16, "%selected"),
-                       .byte_offset = 0,
-                       .align_bytes = 2,
-                       .address =
-                           bir::MemoryAddress{
-                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
-                               .byte_offset = 0,
-                               .size_bytes = 2,
-                               .align_bytes = 2,
-                               .address_space = bir::AddressSpace::Default,
-                               .base_slot_id = c4c::SlotNameId{41},
-                           },
-                   }},
+              .insts = std::move(insts),
               .terminator = bir::Terminator{bir::ReturnTerminator{}},
               .label_id = bir_entry_label,
           }},
@@ -7449,7 +7466,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
           {prepare::PreparedMemoryAccess{
                .function_name = function_name,
                .block_label = entry_label,
-               .inst_index = 0,
+               .inst_index = select_index,
                .result_value_name = lhs_name,
                .address =
                    prepare::PreparedAddress{
@@ -7463,7 +7480,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
            prepare::PreparedMemoryAccess{
                .function_name = function_name,
                .block_label = entry_label,
-               .inst_index = 0,
+               .inst_index = select_index,
                .result_value_name = rhs_name,
                .address =
                    prepare::PreparedAddress{
@@ -7477,7 +7494,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
            prepare::PreparedMemoryAccess{
                .function_name = function_name,
                .block_label = entry_label,
-               .inst_index = 0,
+               .inst_index = select_index,
                .result_value_name = true_name,
                .address =
                    prepare::PreparedAddress{
@@ -7491,7 +7508,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
            prepare::PreparedMemoryAccess{
                .function_name = function_name,
                .block_label = entry_label,
-               .inst_index = 0,
+               .inst_index = select_index,
                .result_value_name = false_name,
                .address =
                    prepare::PreparedAddress{
@@ -7505,7 +7522,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
            prepare::PreparedMemoryAccess{
                .function_name = function_name,
                .block_label = entry_label,
-               .inst_index = 1,
+               .inst_index = store_index,
                .stored_value_name = select_name,
                .address =
                    prepare::PreparedAddress{
@@ -17418,6 +17435,55 @@ int block_dispatch_publishes_stack_homed_scalar_select_before_store_consumer() {
   return 0;
 }
 
+int block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_cast() {
+  auto prepared = prepared_with_stack_published_i16_select_store(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() != 1 || result.visited_operations != 3 ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3) {
+    return fail("expected unpublished compare producer, stack-homed select, store consumer, and return: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected unpublished-compare scalar select route to print: " +
+                printed.diagnostic);
+  }
+  const auto compare = printed.assembly.find("sxtw ");
+  const auto csel = printed.assembly.find("csel ", compare);
+  const auto publication = printed.assembly.find("strh ", csel);
+  const auto consumer_reload = printed.assembly.find("ldrh ", publication);
+  const auto destination_store = printed.assembly.find("strh ", consumer_reload);
+  if (compare == std::string::npos || csel == std::string::npos ||
+      publication == std::string::npos ||
+      consumer_reload == std::string::npos ||
+      destination_store == std::string::npos ||
+      printed.assembly.find("[sp, #16]", publication) == std::string::npos ||
+      printed.assembly.find("[sp, #24]", destination_store) == std::string::npos) {
+    return fail("expected scalar select to materialize its compare cast and publish its stack home before the store consumer reloads it: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
   {
     auto prepared = prepared_with_simple_integer_cast(
@@ -17938,6 +18004,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_stack_homed_scalar_select_before_store_consumer();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_cast();
       status != 0) {
     return status;
   }

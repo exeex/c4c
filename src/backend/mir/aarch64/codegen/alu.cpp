@@ -1428,6 +1428,26 @@ struct MaterializedControlSource {
   return materialize_control_register_source(operand, view, lines, std::move(occupied));
 }
 
+[[nodiscard]] std::optional<MaterializedControlSource>
+materialize_control_binary_result_source(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    abi::RegisterView view,
+    BlockScalarLoweringState& scalar_state,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied);
+
+[[nodiscard]] bool append_control_value_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    abi::RegisterView view,
+    std::string_view target,
+    BlockScalarLoweringState& scalar_state,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied);
+
 [[nodiscard]] const bir::BinaryInst* find_same_block_binary_result(
     const module::BlockLoweringContext& context,
     std::string_view value_name,
@@ -1442,6 +1462,25 @@ struct MaterializedControlSource {
         binary->result.kind == bir::Value::Kind::Named &&
         binary->result.name == value_name) {
       return binary;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] const bir::CastInst* find_same_block_cast_result(
+    const module::BlockLoweringContext& context,
+    std::string_view value_name,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr || value_name.empty()) {
+    return nullptr;
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    const auto* cast =
+        std::get_if<bir::CastInst>(&context.bir_block->insts[index - 1]);
+    if (cast != nullptr &&
+        cast->result.kind == bir::Value::Kind::Named &&
+        cast->result.name == value_name) {
+      return cast;
     }
   }
   return nullptr;
@@ -1621,6 +1660,124 @@ struct MaterializedControlSource {
   return true;
 }
 
+[[nodiscard]] bool append_control_cast_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::CastInst& cast,
+    std::size_t before_instruction_index,
+    abi::RegisterView view,
+    const RegisterOperand& target_register,
+    BlockScalarLoweringState& scalar_state,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied) {
+  if (scalar_register_view(cast.result.type) != std::optional<abi::RegisterView>{view}) {
+    return false;
+  }
+  const auto source_view = scalar_register_view(cast.operand.type);
+  const auto source_bits = integer_scalar_bit_width(cast.operand.type);
+  const auto result_bits = integer_scalar_bit_width(cast.result.type);
+  if (!source_view.has_value() || !source_bits.has_value() ||
+      !result_bits.has_value()) {
+    return false;
+  }
+  const auto source_register = abi::gp_register(target_register.reg.index, *source_view);
+  if (!source_register.has_value()) {
+    return false;
+  }
+  const std::string source_name = abi::register_name(*source_register);
+  if (!append_control_value_to_register(context,
+                                        cast.operand,
+                                        before_instruction_index,
+                                        *source_view,
+                                        source_name,
+                                        scalar_state,
+                                        lines,
+                                        std::move(occupied))) {
+    return false;
+  }
+  const std::string target_name = abi::register_name(target_register.reg);
+  switch (cast.opcode) {
+    case bir::CastOpcode::SExt:
+      if (*source_bits >= *result_bits) {
+        return false;
+      }
+      if (*source_bits == 8U) {
+        lines.push_back("sxtb " + target_name + ", " + source_name);
+      } else if (*source_bits == 16U) {
+        lines.push_back("sxth " + target_name + ", " + source_name);
+      } else if (*source_bits == 32U && *result_bits == 64U) {
+        lines.push_back("sxtw " + target_name + ", " + source_name);
+      } else {
+        return false;
+      }
+      return true;
+    case bir::CastOpcode::ZExt:
+      if (*source_bits < 32U) {
+        const auto widened = abi::gp_register(target_register.reg.index,
+                                              abi::RegisterView::X);
+        if (!widened.has_value()) {
+          return false;
+        }
+        lines.push_back("ubfx " + abi::register_name(*widened) + ", " +
+                        abi::register_name(*widened) + ", #0, #" +
+                        std::to_string(*source_bits));
+      }
+      return *source_bits < *result_bits;
+    case bir::CastOpcode::Trunc:
+      return *source_bits > *result_bits;
+    default:
+      return false;
+  }
+}
+
+[[nodiscard]] std::optional<MaterializedControlSource>
+materialize_control_binary_result_source(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    abi::RegisterView view,
+    BlockScalarLoweringState& scalar_state,
+    std::vector<std::string>& lines,
+    std::vector<const RegisterOperand*> occupied) {
+  if (value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto scratch = scalar_gp_scratch_register(view, occupied);
+  if (!scratch.has_value()) {
+    return std::nullopt;
+  }
+  const std::string target = abi::register_name(scratch->reg);
+  if (const auto* binary =
+          find_same_block_binary_result(context, value.name, before_instruction_index);
+      binary != nullptr) {
+    if (!append_control_binary_to_register(context,
+                                           *binary,
+                                           view,
+                                           target,
+                                           scalar_state,
+                                           lines,
+                                           occupied)) {
+      return std::nullopt;
+    }
+    return MaterializedControlSource{.name = target, .occupied_register = *scratch};
+  }
+  if (const auto* cast =
+          find_same_block_cast_result(context, value.name, before_instruction_index);
+      cast != nullptr) {
+    if (!append_control_cast_to_register(context,
+                                         *cast,
+                                         before_instruction_index,
+                                         view,
+                                         *scratch,
+                                         scalar_state,
+                                         lines,
+                                         std::move(occupied))) {
+      return std::nullopt;
+    }
+    return MaterializedControlSource{.name = target, .occupied_register = *scratch};
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool append_control_value_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1634,8 +1791,40 @@ struct MaterializedControlSource {
     if (const auto* producer =
             find_same_block_binary_result(context, value.name, before_instruction_index);
         producer != nullptr) {
-      return append_control_binary_to_register(
-          context, *producer, view, target, scalar_state, lines, std::move(occupied));
+      const auto original_line_count = lines.size();
+      if (append_control_binary_to_register(
+              context, *producer, view, target, scalar_state, lines, occupied)) {
+        return true;
+      }
+      lines.resize(original_line_count);
+    }
+    if (const auto* producer =
+            find_same_block_cast_result(context, value.name, before_instruction_index);
+        producer != nullptr) {
+      const auto target_register =
+          abi::parse_aarch64_register_name(std::string{target});
+      if (!target_register.has_value() || !abi::is_gp_register(*target_register)) {
+        return false;
+      }
+      const auto original_line_count = lines.size();
+      if (append_control_cast_to_register(context,
+                                          *producer,
+                                          before_instruction_index,
+                                          view,
+                                          RegisterOperand{.reg = *target_register},
+                                          scalar_state,
+                                          lines,
+                                          occupied)) {
+        return true;
+      }
+      lines.resize(original_line_count);
+    }
+    if (auto source = make_unpublished_load_local_source_operand(
+            context, value, before_instruction_index);
+        source.has_value()) {
+      auto operand = make_memory_operand(*source);
+      return append_move_control_value_to_register(
+          operand, view, target, lines, std::move(occupied));
     }
   }
   auto operand = make_control_publication_operand(value, context, scalar_state, true);
@@ -1802,13 +1991,19 @@ lower_scalar_select_publication(
       select.lhs, context, scalar_state, true);
   auto rhs_operand = make_control_publication_operand(
       select.rhs, context, scalar_state, true);
-  if (!lhs_operand.has_value() || !rhs_operand.has_value()) {
-    return std::nullopt;
-  }
 
   std::vector<std::string> lines;
-  const auto lhs =
-      materialize_control_register_source(*lhs_operand, *compare_view, lines, {});
+  const std::vector<const RegisterOperand*> lhs_occupied;
+  const auto lhs = lhs_operand.has_value()
+                       ? materialize_control_register_source(
+                             *lhs_operand, *compare_view, lines, lhs_occupied)
+                       : materialize_control_binary_result_source(context,
+                                                                  select.lhs,
+                                                                  instruction_index,
+                                                                  *compare_view,
+                                                                  scalar_state,
+                                                                  lines,
+                                                                  lhs_occupied);
   if (!lhs.has_value()) {
     return std::nullopt;
   }
@@ -1816,11 +2011,18 @@ lower_scalar_select_publication(
   if (lhs->occupied_register.has_value()) {
     compare_occupied.push_back(&*lhs->occupied_register);
   }
-  const auto rhs =
-      materialize_control_compare_rhs(*rhs_operand,
-                                      *compare_view,
-                                      lines,
-                                      std::move(compare_occupied));
+  const auto rhs = rhs_operand.has_value()
+                       ? materialize_control_compare_rhs(*rhs_operand,
+                                                         *compare_view,
+                                                         lines,
+                                                         compare_occupied)
+                       : materialize_control_binary_result_source(context,
+                                                                  select.rhs,
+                                                                  instruction_index,
+                                                                  *compare_view,
+                                                                  scalar_state,
+                                                                  lines,
+                                                                  compare_occupied);
   if (!rhs.has_value()) {
     return std::nullopt;
   }
