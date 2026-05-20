@@ -8,41 +8,40 @@ Current Step Title: Repair The Narrow Publication Boundary
 
 ## Just Finished
 
-Step 2 repaired the callee-side fixed-formal register publication boundary in
-`src/backend/mir/aarch64/codegen/dispatch.cpp`: entry formal publication now
-records a scalar register home as authoritative in `BlockScalarLoweringState`
-after consuming the ABI source register into that home. Later scalar lowering
-therefore retargets operands from stale storage-plan registers to the prepared
-formal home instead of re-reading stale carriers.
+Step 2 repaired the caller-side direct-call local frame-address publication
+boundary in `src/backend/mir/aarch64/codegen/calls.cpp`: before-call pointer
+arguments whose prepared source is a register home now prefer prepared
+frame-slot address materialization or the matching local stack object when the
+BIR call argument is a pointer. The call-boundary move then materializes that
+frame address directly into the destination ABI register before `bl` instead
+of moving a stale register source.
 
-Focused dispatch coverage now proves a scalar fixed formal arriving in the
-ABI source register is published into its prepared register home before a later
-multiply, and the multiply consumes that prepared home rather than stale
-storage. The repair is general over entry formal register homes and uses the
-existing formal publication/prepared-home machinery; it does not match
-`myfunc`, `w20`, parameter index 0, or any representative filename.
+Focused dispatch coverage now proves a register-homed local pointer call
+argument with a matching prepared local stack object is lowered as a frame
+address materialization into the ABI register. The generated representative
+assembly for the repaired shapes now publishes local frame addresses with
+`add xN, sp, #...` before the direct calls. The repair is general over
+prepared pointer call arguments, frame-slot address materializations, and
+local stack-object metadata; it does not match `x20`, `x21`, `f1`,
+`convert_like_real`, function names, filenames, or the representative set.
 
-The delegated representative proof shows `00159` now passes. `00170` also
-remains passing, so the outgoing stack-slot immediate guard stayed stable.
+The delegated representative proof now shows `00140` and `00218` pass.
+Existing guards `00159` and `00170` remain passing.
 
 Remaining first bad facts after this slice:
 
-- `00140`: still caller-side address or aggregate publication/byval handling;
-  the representative still segfaults.
-- `00175`: direct-call scalar and FP argument publication advanced; remaining
-  failures are local store/load conversion publication after the call series,
-  not stale direct-call `w13`/`s13` argument moves.
-- `00218`: still caller-side address publication; prepared `%lv.convs` is
-  expected in `x21`, but emitted `main` still calls `convert_like_real` with
-  stale `x21`.
+- `00175`: still fails with local store/load conversion publication residuals
+  after the direct-call series. The direct-call scalar and FP argument moves
+  remain advanced; the remaining mismatch is the later local conversion output
+  (`97 17`, `97 -581795216`, `0.000000 0.000000`) rather than stale direct-call
+  ABI argument publication.
 
 ## Suggested Next
 
-Continue Step 2 with the next narrow publication boundary: repair the
-remaining `00175` local store/load conversion publication path if the
-supervisor keeps this representative as the next target, or route to `00140`
-/ `00218` address or aggregate publication if the next packet should prioritize
-those representative failures.
+Continue Step 2 by repairing the remaining `00175` local store/load conversion
+publication path if the supervisor keeps that residual in this owner, or ask
+for reclassification if that first bad fact is outside direct-call
+argument/formal publication.
 
 ## Watchouts
 
@@ -61,12 +60,18 @@ those representative failures.
 - The completed fixed-formal repair records register homes as authoritative
   only through entry formal publication and intentionally leaves byval and
   stack formal handling on their existing paths.
-- `00140` has an aggregate/byval dimension and should not be reduced to only
-  a scalar register shuffle.
+- The completed local frame-address repair handles pointer call arguments
+  whose stale register home is backed by prepared frame-slot address or local
+  stack-object metadata; do not weaken it into a register-name shortcut.
+- `00140` now passes, but it still exercises aggregate/byval and pointer
+  address publication together; keep nearby aggregate paths under semantic
+  coverage rather than relying only on this representative.
 - `00170` now passes in the delegated representative subset; keep it as a
   regression guard for outgoing stack-slot immediate publication.
 - `00159` now passes and remains the explicit callee-side scalar formal
   consumption guardrail.
+- `00218` now passes and is the explicit local frame-address call-argument
+  publication guardrail.
 - Do not absorb pointer/null result publication, FP comparison
   materialization, aggregate/table memory corruption, libc/file/string
   residuals, semantic `lir_to_bir` admission, or timeout/output-storm buckets
@@ -82,10 +87,13 @@ Delegated proof command was run exactly:
 `set +e; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64|backend_cli_aarch64' && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c'; } > test_after.log 2>&1; rc=$?; printf 'proof_rc=%s\n' "$rc"; exit 0`.
 
 Result: `proof_rc=8`. The AArch64 backend/backend CLI subset passed 31/31.
-The representative c-testsuite subset passed `00159` and `00170`, and still
-failed `00140`, `00175`, and `00218`. The representative pass count advanced
-from 1/5 in `test_before.log` to 2/5 in `test_after.log`.
+The representative c-testsuite subset passed `00140`, `00159`, `00170`, and
+`00218`, and still failed `00175`. The representative pass count advanced from
+2/5 in `test_before.log` to 4/5 in `test_after.log`.
 
 Supervisor regression guard accepted this as PASS against the prior
-`test_before.log`: `00159` was resolved with no new failures. The accepted
-after-log was rolled forward to `test_before.log`.
+`test_before.log`: `00140` and `00218` were resolved with no new failures. The
+accepted `test_after.log` was rolled forward to `test_before.log`.
+
+Focused pre-proof check also passed:
+`ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_target_instruction_records'`.
