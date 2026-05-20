@@ -1,155 +1,183 @@
-# Backend Regex Failure Family Inventory Plan
+# AArch64 Byval Aggregate Call Argument Lane Publication Plan
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md
 
 ## Purpose
 
-Refresh the main-build backend-regex failure inventory and select the next
-focused semantic owner before any implementation work starts.
+Repair the resumed AArch64 caller-side byval aggregate lane publication
+failure where a small byval aggregate is passed as a temporary address instead
+of packed into the AAPCS64 integer argument register lane.
 
-Goal: turn the current `ctest -R backend` residual surface into classified
-failure families, then split or activate one focused repair idea only when the
-evidence identifies a real backend capability.
+Goal: make small byval aggregate call arguments publish their payload bytes
+from prepared storage into the ABI argument lanes before `bl`, while
+preserving prior rounded-placement and upper-lane repairs.
 
-Core Rule: do not treat the backend regex as one monolithic failure bucket, and
-do not reopen closed or parked owners from counts alone.
+Core Rule: repair the general byval aggregate call-argument publication rule;
+do not special-case `00204`, `arg`, `fa_s1`, `s1`, one stack offset, one
+register, or one emitted call sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- Current `test_before.log` / `test_after.log` only as historical artifacts;
-  regenerate inventory logs when this plan executes.
-- Recent open parked ideas before selecting a new owner:
-  `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`,
-  `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`,
-  `ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`,
-  `ideas/open/332_aarch64_movi_zero_extension_materialization.md`, and
-  `ideas/open/340_aarch64_scalar_cast_stack_homed_register_source_publication.md`.
+- `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`
+- Current generated AArch64 and prepared/BIR evidence for
+  `c_testsuite_aarch64_backend_src_00204_c`
+- Prior idea 328 lifecycle notes for:
+  - single aggregate register-lane publication
+  - rounded byval register-slot placement and register-to-stack transition
+  - partial upper-lane `%9s` byval aggregate publication
 
 ## Current Targets
 
-- Main build tree backend regex inventory from `/workspaces/c4c/build`.
-- External `c_testsuite_aarch64_backend_*` residuals selected by
-  `ctest -R backend`.
-- Failure-family classification that can justify a focused semantic owner.
+- Caller-side AArch64 byval aggregate argument lowering for `00204`.
+- The current first bad fact: `fa_s1(s1)` receives the prepared byval
+  temporary address in `x0` instead of the one-byte payload packed into `w0`.
+- Focused backend coverage for small byval aggregate payload publication from
+  prepared storage into AAPCS64 integer argument lanes.
 
 ## Non-Goals
 
-- Do not implement compiler or backend fixes under this umbrella plan.
+- Do not reopen fixed-formal entry publication unless fresh evidence shows a
+  callee consumes an unpublished fixed formal before first use.
+- Do not reopen HFA/floating variadic, stdarg cursor, non-HFA aggregate
+  `va_arg`, MOVI, local/value-home, frame/formal, or scalar-cast owners
+  without a new first bad fact tying them to this route.
 - Do not change expectations, unsupported classifications, allowlists, CTest
   registration, timeout policy, runner behavior, or proof-log policy.
-- Do not archive parked ideas or mutate `ideas/closed/*`.
-- Do not reopen closed AArch64 focused owners without generated-code or proof
-  evidence contradicting their closure boundary.
-- Do not split a new idea from filename recurrence alone.
+- Do not rewrite AAPCS64 aggregate classification broadly unless the localized
+  byval lane evidence requires it.
 
 ## Working Model
 
-- The backend regex includes local backend tests plus registered AArch64
-  c-testsuite backend runtime tests.
-- Recent focused owners have closed or parked after advancing the AArch64
-  backend residual surface.
-- The next useful action is a fresh inventory and classification pass, not
-  implementation.
+- Idea 328 previously repaired several byval subcases, but the fresh
+  post-347 inventory found a current smaller byval regression or newly exposed
+  subcase.
+- The selected representative is inside idea 328's source scope because the
+  caller reaches a byval aggregate call boundary without publishing payload
+  bytes into the integer argument lane the callee reads.
+- The first implementation packet should re-localize against current
+  generated artifacts before editing, because prior repairs may have changed
+  the relevant helper boundaries.
 
 ## Execution Rules
 
-- Capture current results from the main build tree.
-- Classify failures by observable first bad fact: local backend/unit failure,
-  frontend/prepared-node or machine-printer diagnostic, semantic `lir_to_bir`
-  admission, assembler/linker failure, runtime nonzero/crash, runtime
-  mismatch, timeout, or output-storm.
-- Compare candidates against open parked ideas before creating a new idea.
-- If a focused owner is found, write the durable split decision into
-  `todo.md`; lifecycle authority can then create or activate the focused idea
-  in a later packet.
-- Keep broad runtime scans bounded and avoid relying on stale processes or
-  stale generated artifacts.
+- Localize before editing and record the first generated-code fact in
+  `todo.md`.
+- Preserve stack-passed handling for larger byval aggregates and prior
+  register-to-stack transition behavior.
+- Prefer semantic publication from prepared aggregate storage over
+  testcase-shaped callsite matching.
+- Add or update focused backend coverage before treating the representative as
+  acceptance proof.
+- Use `c_testsuite_aarch64_backend_src_00204_c` as representative proof after
+  focused coverage establishes the repaired rule.
 
 ## Steps
 
-### Step 1: Capture Fresh Backend Regex Inventory
+### Step 1: Relocalize The Current Byval Lane First Bad Fact
 
-Goal: replace stale residual counts with a current main-build inventory.
+Goal: confirm the current `00204` byval lane failure against fresh generated
+artifacts.
 
-Primary target: `/workspaces/c4c/build`.
-
-Actions:
-
-- Build with `cmake --build --preset default`.
-- Run the backend regex inventory from the main build tree:
-  `ctest --test-dir build -j10 -R backend --output-on-failure | tee test_after.log`.
-- Record selected, passed, failed, and timed-out counts in `todo.md`.
-- Note whether local backend/unit/CLI tests are clean or failing separately
-  from `c_testsuite_aarch64_backend_*`.
-
-Completion check:
-
-- `todo.md` records a fresh backend-regex result with current counts and
-  distinguishes local backend failures from external AArch64 c-testsuite
-  failures.
-
-### Step 2: Classify Current Failure Families
-
-Goal: group the current failures by semantic owner instead of by filename.
-
-Primary target: failing tests and generated artifacts under the main build
-tree.
+Primary target: generated AArch64, prepared records, and semantic/prepared
+handoff for `c_testsuite_aarch64_backend_src_00204_c`.
 
 Actions:
 
-- Extract failing test names and failure modes from `test_after.log`.
-- For compile-stage failures, inspect diagnostics and available generated or
-  prepared artifacts.
-- For runtime failures, inspect representative output and generated AArch64
-  only enough to classify the first bad fact.
-- Quarantine timeout or output-storm cases unless a safe bounded reproduction
-  exists.
-- Record the family buckets and representative evidence in `todo.md`.
+- Trace `fa_s1(s1)` from semantic byval argument through prepared aggregate
+  storage, call-argument lowering, emitted `x0`/`w0`, and callee entry
+  consumption.
+- Confirm whether the caller passes a temporary address in `x0` rather than
+  the one-byte payload in `w0`.
+- Check nearby `fa_s2` and prior repaired byval shapes enough to avoid
+  regressing already-covered register-lane and rounded-placement behavior.
+- Record the first-bad-fact summary in `todo.md`.
 
 Completion check:
 
-- `todo.md` lists failure buckets with representative tests and first-bad-fact
-  evidence sufficient to decide whether a focused semantic owner exists.
+- `todo.md` names the current concrete source bytes, prepared storage,
+  destination ABI lane, emitted callsite fact, and why the owner is caller-side
+  byval aggregate lane publication.
 
-### Step 3: Select The Next Focused Owner
+### Step 2: Repair General Small Byval Payload Publication
 
-Goal: decide whether the inventory justifies activating or creating a focused
-repair idea.
+Goal: publish small byval aggregate payload bytes into AAPCS64 integer
+argument lanes before the call.
+
+Primary target: the AArch64 call-argument lowering path identified by Step 1.
 
 Actions:
 
-- Compare the strongest current bucket against existing open parked ideas.
-- Prefer reactivating an existing open idea when the first bad fact falls
-  inside its scope.
-- Create a new focused idea only when the bucket is distinct and includes
-  concrete semantic evidence, in-scope/out-of-scope boundaries, acceptance
-  criteria, and reviewer reject signals.
-- Do not select a bucket whose evidence is only a failing count, stale artifact,
-  or named testcase recurrence.
+- Repair the helper or lowering path that chooses address publication instead
+  of payload packing for register-passed small byval aggregates.
+- Keep the repair general across small byval sizes and source storage forms
+  covered by the existing ABI classification.
+- Preserve prior behavior for larger stack-passed byval aggregates, rounded
+  register-slot consumption, and partial upper-lane publication.
 
 Completion check:
 
-- `todo.md` names the selected focused owner or explains why no owner is ready.
-- If a new focused idea is required, the idea file exists under `ideas/open/`
-  with reviewer reject signals.
+- The localized callsite no longer passes the byval temporary address for a
+  register-passed small aggregate, and the diff contains no testcase-shaped
+  shortcut or expectation change.
 
-### Step 4: Deactivate Or Switch From The Umbrella
+### Step 3: Add Focused Backend Coverage
 
-Goal: leave the lifecycle ready for focused implementation, not broad
-inventory execution.
+Goal: pin the repaired byval payload publication contract outside the external
+representative.
+
+Primary target: existing AArch64 backend call lowering or prepared handoff
+coverage.
 
 Actions:
 
-- Preserve durable inventory findings in the umbrella source idea only if a
-  lifecycle switch or deactivation requires them.
-- Switch to the selected focused idea when lifecycle authority is delegated to
-  do so.
-- If no owner is ready, deactivate with a clear blocker and remaining
-  classification needs.
+- Add or extend focused backend coverage for a small byval aggregate whose
+  payload must be packed into an integer argument lane before `bl`.
+- Include a guard that distinguishes payload publication from passing the
+  prepared temporary address.
+- Preserve or run adjacent coverage for rounded byval placement and upper-lane
+  byval publication when available.
 
 Completion check:
 
-- The active lifecycle state is no longer this umbrella before implementation
-  starts, or `todo.md` explains the exact ambiguity blocking a focused owner.
+- Focused backend coverage proves payload bytes reach the ABI lane and fails
+  or would have failed for address-passing behavior.
+
+### Step 4: Prove Representative Progress
+
+Goal: prove the `00204` representative advances past the current `fa_s1`
+byval lane first bad fact.
+
+Primary target: `c_testsuite_aarch64_backend_src_00204_c`.
+
+Actions:
+
+- Run the supervisor-delegated representative proof for `00204`.
+- Confirm `fa_s1(s1)` and nearby small byval call outputs advance or pass.
+- If `00204` still fails, classify the next first bad fact before claiming
+  this idea complete.
+
+Completion check:
+
+- `00204` no longer shows the targeted byval temporary-address call argument
+  fault, or `todo.md` records the next distinct first bad fact.
+
+### Step 5: Guard Adjacent Byval And Variadic Repairs
+
+Goal: ensure the repair does not regress prior byval and adjacent variadic
+publication owners.
+
+Primary target: focused backend tests and representative guards selected by
+the supervisor.
+
+Actions:
+
+- Run the delegated focused backend and representative guard subset.
+- Include prior byval placement, upper-lane publication, fixed-formal entry,
+  and local/value-home guardrails when the supervisor selects them.
+- Treat expectation weakening or newly unsupported tests as route drift.
+
+Completion check:
+
+- Adjacent byval/variadic guardrails remain stable and proof results are
+  recorded in `todo.md`.

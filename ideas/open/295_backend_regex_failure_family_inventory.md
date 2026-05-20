@@ -780,6 +780,25 @@ Step 3 split 2026-05-20 post-345:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked buckets.
 
+Step 4 switch 2026-05-20 post-347:
+
+- The fresh backend-regex inventory selected 354 tests and classified the
+  current residual surface down to 21 external AArch64 failures.
+- The selected existing focused owner is idea 328,
+  `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`.
+- The current first bad fact is again caller-side byval aggregate lane
+  publication in `00204`: `fa_s1(s1)` reaches the call boundary with the
+  address of the prepared byval temporary in `x0` (`add x0, sp, #928`) instead
+  of packing the one-byte payload into `w0` as required by the callee and
+  AAPCS64 integer argument lane classification.
+- This is fresh generated-code evidence inside idea 328's existing scope and
+  not a reopen from failing counts alone. Dynamic indexed aggregate/global
+  access and FP expression/comparison lowering remain viable future owners but
+  were not selected for this switch.
+- Active implementation should move to idea 328 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the remaining parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

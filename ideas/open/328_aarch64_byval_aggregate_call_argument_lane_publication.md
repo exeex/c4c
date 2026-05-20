@@ -1,6 +1,6 @@
 # AArch64 Byval Aggregate Call Argument Register-Lane Publication
 
-Status: Parked - scope satisfied; close deferred
+Status: Open
 Created: 2026-05-19
 Split From: ideas/open/327_aarch64_fixed_formal_entry_publication.md
 
@@ -200,3 +200,12 @@ register-lane publication and should continue under
 `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`. Keep this idea
 parked unless fresh generated-code evidence shows another caller-side byval
 aggregate lane publication fault.
+
+2026-05-20: Reactivated from umbrella inventory idea 295 after a fresh
+backend-regex classification found such a caller-side byval aggregate lane
+publication fault. The current `00204` first bad fact is `fa_s1(s1)`: generated
+caller `arg` prepares the one-byte byval payload in a stack temporary but
+branches with the temporary address in `x0` (`add x0, sp, #928`) instead of
+packing the payload byte into `w0` before `bl fa_s1`. Resume from that current
+generated-code shape, preserving prior rounded byval placement and partial
+upper-lane publication repairs.
