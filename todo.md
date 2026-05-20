@@ -1,56 +1,38 @@
 Status: Active
 Source Idea Path: ideas/open/351_aarch64_nested_select_false_value_materialization.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Nested Select Value Boundary
+Current Step ID: 2
+Current Step Title: Add Focused Nested Select Coverage and Repair Select Operand Preservation
 
 # Current Packet
 
 ## Just Finished
 
-Step 1: Localize Nested Select Value Boundary completed. The first bad
-boundary is scratch register reuse inside AArch64 scalar select false-operand
-materialization, specifically `lower_scalar_select_publication` in
-`src/backend/mir/aarch64/codegen/alu.cpp`.
+Step 2/3: Add Focused Nested Select Coverage and Repair Select Operand
+Preservation completed. Added instruction-dispatch coverage for a nested scalar
+select whose final false operand is the previously accumulated stack-published
+select result, and repaired `lower_scalar_select_publication` so the false
+operand is materialized into the final result before the true scratch is filled.
 
-Representative prepared evidence from `/tmp/c4c_00182_print_led.prepared_bir.txt`:
-`print_led` keeps the digit lookup as a nested select chain where
-`%t36.outer0` selects `elt0` for `i == 0` and otherwise carries accumulated
-false value `%t36.outer0.sel1`; `%t36.outer0.sel1` is stack-homed at offset
-396, and final `%t36.outer0` is register-homed in `x21`.
-
-Representative generated evidence from `/tmp/c4c_00182.s`: the `sel1` result
-is computed and published with `csel w9, w10, w9, eq` followed by
-`str w9, [sp, #396]`. The final select then evaluates `cmp x13, #0`, reloads
-the true operand into the same scratch with `mov w9, w20`, copies that clobbered
-scratch into the false/result register with `mov w21, w9`, and emits
-`csel w21, w9, w21, eq`. Thus the final `csel` sees `d[0]` for both true and
-false operands.
-
-This does not look like idea 345's closed stack-home publication failure:
-the prior select home at `[sp, #396]` is published, but the final false operand
-is materialized from the already-clobbered emitted scratch instead of preserving
-or reloading the accumulated false value. Condition-code handling is not the
-first bad boundary because the intervening `mov` instructions do not clobber
-NZCV.
+The repair is semantic to scalar select publication: the final `csel` still
+selects between the true scratch and result register, but the result register
+now already holds the preserved false value. Direct frame-slot loads no longer
+require an unused address scratch when the `[sp, #imm]` form is encodable,
+which keeps the stricter occupied-register set usable for direct stack homes.
 
 ## Suggested Next
 
-Execute Step 2/3 as a focused implementation packet: add a backend scalar
-select test where a nested select's final condition is false and the false
-operand is the accumulated previous select, then repair
-`lower_scalar_select_publication` so the false operand is preserved or
-rematerialized before the true operand scratch can overwrite it.
+Execute Step 3/3 as the supervisor chooses: review the now-green representative
+and decide whether the active idea can close after broader guard validation or
+needs a small follow-up around select publication invariants.
 
 ## Watchouts
 
 - Do not special-case `00182`, `print_led`, LED line renderers, the digit
   array, `d[0]`, one temporary, one register, or one emitted instruction
   sequence.
-- The fix should be semantic to scalar select operand materialization. A likely
-  shape is to detect when the false operand source aliases the true scratch or
-  result register, then materialize in an order or from a home that preserves
-  the accumulated false value across final true-value materialization.
+- The new focused test asserts order around final false preservation before
+  true scratch materialization, not a named C testcase shape.
 - Do not reopen frame-slot/frame-size layout consistency from idea 316 unless
   fresh evidence shows a current frame allocation or stack-slot divergence.
 - Do not reopen unsigned div/rem producer publication, direct-call lowering,
@@ -64,10 +46,13 @@ rematerialized before the true operand scratch can overwrite it.
 ## Proof
 
 Ran delegated proof:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00182_c)$' | tee test_after.log`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_scalar_alu_records|backend_aarch64_prepared_scalar_alu_records|backend_aarch64_scalar_cast_records|backend_aarch64_prepared_scalar_cast_records|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00182_c)$' | tee test_after.log`
 
-Result: build was up to date; backend guard tests passed 6/6, and
-`c_testsuite_aarch64_backend_src_00182_c` still fails with the known runtime
-mismatch where output renders seven `7` digits. This is sufficient for the
-localization packet because the red external representative matches the
-recorded first bad boundary. Proof log: `test_after.log`.
+Result: build completed and all selected tests passed, including
+`c_testsuite_aarch64_backend_src_00182_c`. Proof log: `test_after.log`.
+
+Supervisor broader guard after the scalar select publication repair:
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed 141/141.

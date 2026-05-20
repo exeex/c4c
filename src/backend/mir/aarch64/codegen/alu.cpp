@@ -1501,6 +1501,11 @@ materialize_control_binary_result_source(
       return false;
     }
     if (memory->base_kind == MemoryBaseKind::FrameSlot) {
+      if (scalar_frame_slot_direct_offset_is_encodable(*memory)) {
+        lines.push_back("ldr " + std::string{target} + ", " +
+                        memory_address(*memory));
+        return true;
+      }
       const auto address_scratch =
           scalar_gp_scratch_register(abi::RegisterView::X, occupied);
       if (!address_scratch.has_value() ||
@@ -2037,23 +2042,23 @@ lower_scalar_select_publication(
   }
   const std::string true_name = abi::register_name(true_scratch->reg);
   if (!append_control_value_to_register(context,
-                                        select.true_value,
-                                        instruction_index,
-                                        *result_view,
-                                        true_name,
-                                        scalar_state,
-                                        lines,
-                                        {&result_register})) {
-    return std::nullopt;
-  }
-  if (!append_control_value_to_register(context,
                                         select.false_value,
                                         instruction_index,
                                         *result_view,
                                         *result,
                                         scalar_state,
                                         lines,
-                                        {&*true_scratch})) {
+                                        {&result_register, &*true_scratch})) {
+    return std::nullopt;
+  }
+  if (!append_control_value_to_register(context,
+                                        select.true_value,
+                                        instruction_index,
+                                        *result_view,
+                                        true_name,
+                                        scalar_state,
+                                        lines,
+                                        {&result_register, &*true_scratch})) {
     return std::nullopt;
   }
 

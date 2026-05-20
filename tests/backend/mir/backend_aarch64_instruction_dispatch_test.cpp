@@ -7630,6 +7630,164 @@ prepare::PreparedBirModule prepared_with_stack_published_i16_select_store(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_nested_select_false_operand() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.select.nested.false");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.select.nested.false.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.select.nested.false.entry");
+  const auto seed_name = prepared.names.value_names.intern("%seed");
+  const auto compare_name = prepared.names.value_names.intern("%compare");
+  const auto previous_name = prepared.names.value_names.intern("%previous");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.select.nested.false",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.select.nested.false.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%compare"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%seed"),
+                       .rhs = bir::Value::immediate_i32(0),
+                   },
+                   bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%previous"),
+                       .compare_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%compare"),
+                       .rhs = bir::Value::immediate_i32(0),
+                       .true_value = bir::Value::immediate_i32(2),
+                       .false_value = bir::Value::immediate_i32(3),
+                   },
+                   bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%selected"),
+                       .compare_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%compare"),
+                       .rhs = bir::Value::immediate_i32(1),
+                       .true_value = bir::Value::immediate_i32(7),
+                       .false_value = bir::Value::named(bir::TypeKind::I32, "%previous"),
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{50},
+               .function_name = function_name,
+               .value_name = seed_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{59},
+               .offset_bytes = std::size_t{12},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{51},
+               .function_name = function_name,
+               .value_name = compare_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w4",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{54},
+               .function_name = function_name,
+               .value_name = previous_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{60},
+               .offset_bytes = std::size_t{16},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{58},
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w21",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{50},
+                              seed_name,
+                              prepare::PreparedFrameSlotId{59},
+                              12),
+           register_storage(prepare::PreparedValueId{51}, compare_name, "w4"),
+           frame_slot_storage(prepare::PreparedValueId{54},
+                              previous_name,
+                              prepare::PreparedFrameSlotId{60},
+                              16),
+           register_storage(prepare::PreparedValueId{58}, selected_name, "w21")},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{59},
+               .object_id = prepare::PreparedObjectId{59},
+               .function_name = function_name,
+               .offset_bytes = 12,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{60},
+               .object_id = prepare::PreparedObjectId{60},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .result_value_name = seed_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{59},
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f64_scalar_alu(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Mul,
     bool use_fpr_storage = true,
@@ -18921,6 +19079,59 @@ int block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_
   return 0;
 }
 
+int block_dispatch_preserves_nested_select_false_operand_before_true_scratch() {
+  auto prepared = prepared_with_nested_select_false_operand();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 3 ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4) {
+    return fail("expected nested scalar selects plus return: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected nested scalar select route to print: " +
+                printed.diagnostic);
+  }
+  const auto first_select = printed.assembly.find("csel w9");
+  const auto first_publication = printed.assembly.find("str w9, [sp, #16]", first_select);
+  const auto final_compare = printed.assembly.find("cmp w4, #1", first_publication);
+  const auto false_preserve = printed.assembly.find("mov w21, w9", final_compare);
+  const auto true_materialize = printed.assembly.find("mov w9, #7", final_compare);
+  const auto final_select =
+      printed.assembly.find("csel w21, w9, w21, eq", final_compare);
+  if (first_select == std::string::npos ||
+      first_publication == std::string::npos ||
+      final_compare == std::string::npos ||
+      false_preserve == std::string::npos ||
+      true_materialize == std::string::npos ||
+      final_select == std::string::npos ||
+      !(final_compare < false_preserve && false_preserve < true_materialize &&
+        true_materialize < final_select)) {
+    return fail("expected final nested select to preserve previous false value before true scratch materialization: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
   {
     auto prepared = prepared_with_simple_integer_cast(
@@ -19659,6 +19870,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_stack_homed_scalar_select_with_unpublished_compare_cast();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_preserves_nested_select_false_operand_before_true_scratch();
       status != 0) {
     return status;
   }
