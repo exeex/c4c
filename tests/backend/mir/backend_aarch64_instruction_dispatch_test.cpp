@@ -11325,6 +11325,209 @@ int before_return_fpr_move_retargets_source_view_for_hfa_lane() {
   return 0;
 }
 
+int hfa_return_frame_slot_lane_load_publishes_prepared_home() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.hfa.return.lane.home");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.hfa.return.lane.home.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.hfa.return.lane.home.entry");
+  const auto lane_name = prepared.names.value_names.intern("%lane1");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.hfa.return.lane.home",
+      .return_type = bir::TypeKind::F32,
+      .return_abi =
+          bir::CallResultAbiInfo{
+              .type = bir::TypeKind::F32,
+              .primary_class = bir::AbiValueClass::Sse,
+              .register_count = 2,
+          },
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.hfa.return.lane.home.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                      .result = bir::Value::named(bir::TypeKind::F32, "%lane1"),
+                      .slot_name = "%aggregate.4",
+                      .byte_offset = 0,
+                      .align_bytes = 4,
+                      .address =
+                          bir::MemoryAddress{
+                              .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                              .byte_offset = 0,
+                              .size_bytes = 4,
+                              .align_bytes = 4,
+                              .address_space = bir::AddressSpace::Default,
+                              .base_slot_id = c4c::SlotNameId{51},
+                          },
+                  }},
+              .terminator =
+                  bir::Terminator{bir::ReturnTerminator{
+                      .value = bir::Value::named(bir::TypeKind::F32, "%lane1"),
+                      .return_lanes =
+                          {bir::Value::named(bir::TypeKind::F32, "%lane1")},
+                  }},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{135},
+              .function_name = function_name,
+              .value_name = lane_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = std::string{"d20"},
+              .size_bytes = std::size_t{4},
+              .align_bytes = std::size_t{4},
+          }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 1,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{135},
+                      .to_value_id = prepare::PreparedValueId{135},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{1},
+                      .destination_register_name = std::string{"s1"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"s1"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .destination_register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Fpr,
+                              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                              .slot_index = 1,
+                              .contiguous_width = 1,
+                          },
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedStoragePlanValue{
+              .value_id = prepare::PreparedValueId{135},
+              .value_name = lane_name,
+              .encoding = prepare::PreparedStorageEncodingKind::Register,
+              .bank = prepare::PreparedRegisterBank::Fpr,
+              .contiguous_width = 1,
+              .register_name = std::string{"s8"},
+              .occupied_register_names = {"s8"},
+              .register_placement =
+                  prepare::PreparedRegisterPlacement{
+                      .bank = prepare::PreparedRegisterBank::Fpr,
+                      .pool = prepare::PreparedRegisterSlotPool::ReservedScratch,
+                      .slot_index = 0,
+                      .contiguous_width = 1,
+                  },
+          }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{52},
+      .object_id = prepare::PreparedObjectId{52},
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 48;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .result_value_name = lane_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{52},
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      !diagnostics.empty() || block.instructions.size() < 2) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected HFA return lane load and before-return move to lower: ops=" +
+                std::to_string(result.visited_operations) +
+                " term=" + std::to_string(result.visited_terminator) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &block.instructions[0].target.payload);
+  const auto* move =
+      std::get_if<aarch64_codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (memory == nullptr || !memory->result_register.has_value() ||
+      memory->result_register->reg != aarch64_abi::s_register(20) ||
+      memory->result_register->value_name != lane_name ||
+      move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_abi::s_register(20) ||
+      move->destination_register->reg != aarch64_abi::s_register(1)) {
+    return fail("expected frame-slot HFA lane load to publish s20 before s1 return move");
+  }
+
+  const auto load_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          block.instructions[0].target);
+  const auto move_printed =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          block.instructions[1].target);
+  if (!load_printed.ok || !move_printed.ok ||
+      load_printed.instruction_lines != std::vector<std::string>{"ldr s20, [sp, #32]"} ||
+      move_printed.instruction_lines != std::vector<std::string>{"fmov s1, s20"}) {
+    return fail("expected printable HFA lane load home and return publication");
+  }
+  return 0;
+}
+
 int prepared_branch_condition_stack_home_publishes_before_branch_use() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -14944,6 +15147,11 @@ int main() {
   }
   if (const int status =
           before_return_fpr_move_retargets_source_view_for_hfa_lane();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          hfa_return_frame_slot_lane_load_publishes_prepared_home();
       status != 0) {
     return status;
   }
