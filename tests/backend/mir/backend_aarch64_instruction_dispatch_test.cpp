@@ -12064,16 +12064,22 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
       prepared.names.function_names.intern("dispatch.fallthrough.local.copy");
   const auto block_label =
       prepared.names.block_labels.intern("dispatch.fallthrough.local.copy.block");
+  const auto fallthrough_label =
+      prepared.names.block_labels.intern("dispatch.fallthrough.local.copy.next");
   const auto exit_label =
       prepared.names.block_labels.intern("dispatch.fallthrough.local.copy.exit");
   const auto bir_block_label =
       prepared.module.names.block_labels.intern("dispatch.fallthrough.local.copy.block");
+  const auto bir_fallthrough_label =
+      prepared.module.names.block_labels.intern("dispatch.fallthrough.local.copy.next");
   const auto bir_exit_label =
       prepared.module.names.block_labels.intern("dispatch.fallthrough.local.copy.exit");
   const auto pad0_name = prepared.names.value_names.intern("%pad0");
   const auto pad1_name = prepared.names.value_names.intern("%pad1");
   const auto pad2_name = prepared.names.value_names.intern("%pad2");
   const auto copy_name = prepared.names.value_names.intern("%copy.i16");
+  const auto fallthrough_copy_name =
+      prepared.names.value_names.intern("%fallthrough.copy.i16");
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.fallthrough.local.copy",
@@ -12117,10 +12123,50 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
                     }},
                .terminator =
                    bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.fallthrough.local.copy.next",
+                       .target_label_id = bir_fallthrough_label,
+                   }},
+               .label_id = bir_block_label,
+           },
+           bir::Block{
+               .label = "dispatch.fallthrough.local.copy.next",
+               .insts =
+                    {bir::LoadLocalInst{
+                        .result = bir::Value::named(bir::TypeKind::I16,
+                                                    "%fallthrough.copy.i16"),
+                        .slot_name = "%source.next",
+                        .byte_offset = 4,
+                        .align_bytes = 2,
+                        .address =
+                            bir::MemoryAddress{
+                                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                                .base_name = "%source.next",
+                                .byte_offset = 4,
+                                .size_bytes = 2,
+                                .align_bytes = 2,
+                            },
+                    },
+                    bir::StoreLocalInst{
+                        .slot_name = "%dest.next",
+                        .value = bir::Value::named(bir::TypeKind::I16,
+                                                   "%fallthrough.copy.i16"),
+                        .byte_offset = 4,
+                        .align_bytes = 2,
+                        .address =
+                            bir::MemoryAddress{
+                                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                                .base_name = "%dest.next",
+                                .byte_offset = 4,
+                                .size_bytes = 2,
+                                .align_bytes = 2,
+                            },
+                    }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
                        .target_label = "dispatch.fallthrough.local.copy.exit",
                        .target_label_id = bir_exit_label,
                    }},
-               .label_id = bir_block_label,
+               .label_id = bir_fallthrough_label,
            },
            bir::Block{
                .label = "dispatch.fallthrough.local.copy.exit",
@@ -12133,6 +12179,11 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
       .blocks =
           {prepare::PreparedControlFlowBlock{
                .block_label = block_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = fallthrough_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = fallthrough_label,
                .terminator_kind = bir::TerminatorKind::Branch,
                .branch_target_label = exit_label,
            },
@@ -12171,6 +12222,13 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
                .value_name = copy_name,
                .kind = prepare::PreparedValueHomeKind::Register,
                .register_name = std::string{"w10"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{904},
+               .function_name = function_name,
+               .value_name = fallthrough_copy_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w11"},
            }},
   });
   prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
@@ -12179,7 +12237,9 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
           {register_storage(prepare::PreparedValueId{900}, pad0_name, "w5"),
            register_storage(prepare::PreparedValueId{901}, pad1_name, "w6"),
            register_storage(prepare::PreparedValueId{902}, pad2_name, "w7"),
-           register_storage(prepare::PreparedValueId{903}, copy_name, "w10")},
+           register_storage(prepare::PreparedValueId{903}, copy_name, "w10"),
+           register_storage(
+               prepare::PreparedValueId{904}, fallthrough_copy_name, "w11")},
   });
   prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
       .slot_id = prepare::PreparedFrameSlotId{910},
@@ -12192,6 +12252,20 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
       .slot_id = prepare::PreparedFrameSlotId{911},
       .function_name = function_name,
       .offset_bytes = 32,
+      .size_bytes = 8,
+      .align_bytes = 2,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{912},
+      .function_name = function_name,
+      .offset_bytes = 52,
+      .size_bytes = 8,
+      .align_bytes = 2,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{913},
+      .function_name = function_name,
+      .offset_bytes = 68,
       .size_bytes = 8,
       .align_bytes = 2,
   });
@@ -12227,29 +12301,71 @@ int fallthrough_fixed_offset_local_copy_lowers_with_prepared_memory_indices() {
                        .align_bytes = 2,
                        .can_use_base_plus_offset = true,
                    },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = fallthrough_label,
+               .inst_index = 1,
+               .result_value_name = fallthrough_copy_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{912},
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = fallthrough_label,
+               .inst_index = 2,
+               .stored_value_name = fallthrough_copy_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{913},
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
            }},
   });
 
   const auto& function_cf = prepared.control_flow.functions.front();
-  const auto& block_cf = function_cf.blocks.front();
   const auto function_context = aarch64_codegen::make_function_lowering_context(
       prepared, prepared.target_profile, function_cf);
-  const auto block_context =
-      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
-  aarch64_module::MachineBlock block;
-  aarch64_module::ModuleLoweringDiagnostics diagnostics;
-  const auto result =
-      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
-  if (!diagnostics.empty() || result.visited_operations != 5 ||
-      !result.visited_terminator) {
-    return fail("expected branch-block fixed-offset local copy to dispatch without diagnostics");
-  }
+  struct ExpectedCopyBlock {
+    std::size_t block_index;
+    std::size_t visited_operations;
+    std::string_view load;
+    std::string_view store;
+  };
+  const std::array<ExpectedCopyBlock, 2> expected_blocks = {
+      ExpectedCopyBlock{0, 5, "ldrh w10, [sp, #18]", "strh w10, [sp, #34]"},
+      ExpectedCopyBlock{1, 2, "ldrh w11, [sp, #52]", "strh w11, [sp, #68]"},
+  };
+  for (const auto& expected : expected_blocks) {
+    const auto& block_cf = function_cf.blocks[expected.block_index];
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(
+            function_context, block_cf, expected.block_index);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (!diagnostics.empty() ||
+        result.visited_operations != expected.visited_operations ||
+        !result.visited_terminator) {
+      return fail("expected fixed-offset local copy block to dispatch without diagnostics");
+    }
 
-  const auto printed = print_route_block(function_cf.function_name, block);
-  if (!printed.ok ||
-      printed.assembly.find("ldrh w10, [sp, #18]") == std::string::npos ||
-      printed.assembly.find("strh w10, [sp, #34]") == std::string::npos) {
-    return fail("expected fixed-offset branch-block local copy to print ldrh/strh");
+    const auto printed = print_route_block(function_cf.function_name, block);
+    if (!printed.ok ||
+        printed.assembly.find(expected.load) == std::string::npos ||
+        printed.assembly.find(expected.store) == std::string::npos) {
+      return fail("expected fixed-offset local copy block to print ldrh/strh");
+    }
   }
   return 0;
 }

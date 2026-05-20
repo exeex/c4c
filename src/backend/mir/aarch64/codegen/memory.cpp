@@ -385,7 +385,12 @@ std::optional<c4c::ValueNameId> named_value_id(
 PreparedMemoryOperandRecordError validate_structured_memory_address_facts(
     const bir::MemoryAddress& address,
     const MemoryOperand& memory) {
-  if (address.byte_offset != memory.byte_offset ||
+  const bool prepared_frame_slot_local_address =
+      memory.base_kind == MemoryBaseKind::FrameSlot &&
+      (address.base_kind == bir::MemoryAddress::BaseKind::LocalSlot ||
+       address.base_kind == bir::MemoryAddress::BaseKind::PointerValue);
+  if ((!prepared_frame_slot_local_address &&
+       address.byte_offset != memory.byte_offset) ||
       (address.size_bytes != 0 && address.size_bytes != memory.size_bytes) ||
       (address.align_bytes != 0 && address.align_bytes != memory.align_bytes) ||
       address.address_space != memory.address_space ||
@@ -446,7 +451,8 @@ PreparedMemoryOperandRecordError validate_memory_base_identity(
   switch (memory.base_kind) {
     case MemoryBaseKind::FrameSlot:
       if (address != nullptr &&
-          address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot) {
+          address->base_kind != bir::MemoryAddress::BaseKind::LocalSlot &&
+          address->base_kind != bir::MemoryAddress::BaseKind::PointerValue) {
         return PreparedMemoryOperandRecordError::UnsupportedBase;
       }
       return PreparedMemoryOperandRecordError::None;

@@ -2761,6 +2761,37 @@ struct EdgeProducerContext {
              : nullptr;
 }
 
+[[nodiscard]] bool prepared_memory_access_matches_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedMemoryAccess* access,
+    const bir::Inst& inst) {
+  if (access == nullptr) {
+    return false;
+  }
+  return std::visit(
+      [&](const auto& op) {
+        using T = std::decay_t<decltype(op)>;
+        if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
+                      std::is_same_v<T, bir::LoadGlobalInst>) {
+          const auto result_name = prepared_named_value_id(context, op.result);
+          return result_name.has_value() &&
+                 access->result_value_name.has_value() &&
+                 *access->result_value_name == *result_name;
+        } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
+                             std::is_same_v<T, bir::StoreGlobalInst>) {
+          if (op.value.kind != bir::Value::Kind::Named) {
+            return !access->stored_value_name.has_value();
+          }
+          const auto stored_name = prepared_named_value_id(context, op.value);
+          return stored_name.has_value() &&
+                 access->stored_value_name.has_value() &&
+                 *access->stored_value_name == *stored_name;
+        }
+        return false;
+      },
+      inst);
+}
+
 [[nodiscard]] bool emit_edge_value_publication_to_register(
     const module::BlockLoweringContext& edge_context,
     const module::BlockLoweringContext& successor_context,
@@ -5883,27 +5914,24 @@ InstructionDispatchResult dispatch_prepared_block(
           std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
       const std::size_t memory_instruction_index =
           is_memory_inst ? ++prepared_memory_instruction_index : instruction_index;
+      const auto* retained_index_access =
+          is_memory_inst ? prepared_memory_access(context, instruction_index) : nullptr;
+      const auto* prepared_index_access =
+          is_memory_inst ? prepared_memory_access(context, memory_instruction_index) : nullptr;
       const bool use_prepared_memory_index =
           is_memory_inst &&
-          instruction_index != 0 &&
           memory_instruction_index != instruction_index &&
-          prepared_memory_access(context, instruction_index) == nullptr &&
-          prepared_memory_access(context, memory_instruction_index) != nullptr;
+          !prepared_memory_access_matches_instruction(
+              context, retained_index_access, inst) &&
+          prepared_memory_access_matches_instruction(
+              context, prepared_index_access, inst);
       const std::size_t memory_lowering_index =
           use_prepared_memory_index ? memory_instruction_index : instruction_index;
-      const bool can_retry_prepared_memory_index = std::visit(
-          [](const auto& op) {
-            using T = std::decay_t<decltype(op)>;
-            if constexpr (std::is_same_v<T, bir::LoadLocalInst> ||
-                          std::is_same_v<T, bir::LoadGlobalInst>) {
-              return op.result.type == bir::TypeKind::I8;
-            } else if constexpr (std::is_same_v<T, bir::StoreLocalInst> ||
-                                 std::is_same_v<T, bir::StoreGlobalInst>) {
-              return op.value.type == bir::TypeKind::I8;
-            }
-            return false;
-          },
-          inst);
+      const bool can_retry_prepared_memory_index =
+          is_memory_inst &&
+          memory_instruction_index != memory_lowering_index &&
+          prepared_memory_access_matches_instruction(
+              context, prepared_index_access, inst);
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
         if (auto dynamic_stack = lower_dynamic_stack_helper_call(
                 context, *call, instruction_index, diagnostics)) {
