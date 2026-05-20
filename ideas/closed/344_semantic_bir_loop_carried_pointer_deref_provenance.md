@@ -1,8 +1,27 @@
 # Semantic BIR Loop-Carried Pointer Dereference Provenance
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/343_aarch64_duff_fallthrough_copy_fixed_offset_skip.md
+
+## Completion Note
+
+Closed: 2026-05-20
+
+The semantic BIR loop-carried pointer dereference failure was repaired and
+reclassified. Step 3 evidence showed the Duff copy loop no longer freezes
+`*from++` and `*to++` dereferences to repeated direct `%lv.a.0`/`%lv.b.0`
+base-slot accesses; regenerated semantic/prepared BIR loads `%lv.from` and
+`%lv.to`, advances those pointer values, and dereferences through pointer-value
+addresses instead of stale direct local slots.
+
+`c_testsuite_aarch64_backend_src_00143_c` still fails with exit 1, but the
+remaining first bad fact is outside this semantic-provenance idea. The residual
+is AArch64 scalar select result publication/materialization: prepared BIR has
+stack-homed `i16` select results feeding stores to local array slots, while
+generated AArch64 computes `csel` into a register and then reloads an
+unpublished select-result stack home before storing. That residual is split to
+`ideas/open/345_aarch64_scalar_select_result_publication.md`.
 
 ## Goal
 
