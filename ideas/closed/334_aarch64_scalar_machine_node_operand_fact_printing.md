@@ -1,7 +1,8 @@
 # AArch64 Scalar Machine-Node Operand Fact Printing
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
+Closed: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -89,6 +90,26 @@ generally. It is not a request to special-case those two files.
   any next first bad fact is explicitly classified for lifecycle handoff.
 - Adjacent AArch64 scalar, memory operand, frame-slot, and machine-printer
   guardrails remain stable.
+
+## Closure Note
+
+Closed after implementation slice `f0588520a` repaired the scalar prepared
+operand publication owner. Focused backend coverage now proves prepared
+frame-slot memory operands for stack-slot scalar ALU records and selected
+scalar ALU frame-slot materialization before printing for `mul` and `add`
+paths.
+
+Close gate used the focused regression guard logs already present in
+`test_before.log` and `test_after.log`: the matching eight-test scope improved
+from 6 passed / 2 failed to 7 passed / 1 failed, with
+`c_testsuite_aarch64_backend_src_00214_c` resolved and no new failures. The
+old scalar `mul` and scalar `add` printer diagnostics are gone.
+
+The remaining `c_testsuite_aarch64_backend_src_00164_c` failure advanced to a
+runtime mismatch involving reads from apparently uninitialized stack slots near
+`sp+#148`, `sp+#152`, and `sp+#156`. That residual is split to
+`ideas/open/335_aarch64_uninitialized_local_slot_runtime_residual.md` and is
+outside this scalar operand-fact printer idea.
 
 ## Reviewer Reject Signals
 
