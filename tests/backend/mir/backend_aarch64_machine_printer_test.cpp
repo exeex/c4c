@@ -2690,6 +2690,50 @@ int selected_unsigned_power_of_two_reductions_print_from_structured_operands() {
                          "unsigned power-of-two reduction structured printer");
 }
 
+int selected_non_power_unsigned_div_rem_print_from_structured_operands() {
+  const auto udiv = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::UDiv,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{144},
+          .result_value_name = c4c::ValueNameId{145},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(0),
+          .lhs = aarch64_codegen::make_register_operand(xreg(1)),
+          .rhs = aarch64_codegen::make_register_operand(xreg(2)),
+          .supported_integer_operation = true,
+      }));
+  const auto urem = aarch64_codegen::make_scalar_instruction(
+      aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
+          .surface = aarch64_codegen::RecordSurfaceKind::RecordOnly,
+          .operation = aarch64_codegen::ScalarAluOperationKind::Div,
+          .source_binary_opcode = bir::BinaryOpcode::URem,
+          .operand_type = bir::TypeKind::I64,
+          .result_value_id = prepare::PreparedValueId{146},
+          .result_value_name = c4c::ValueNameId{147},
+          .result_type = bir::TypeKind::I64,
+          .result_register = xreg(3),
+          .lhs = aarch64_codegen::make_register_operand(xreg(4)),
+          .rhs = aarch64_codegen::make_register_operand(xreg(5)),
+          .supported_integer_operation = true,
+      }));
+
+  const auto result = print_common_instruction_nodes({udiv, urem});
+  if (!result.ok) {
+    return fail("expected non-power unsigned div/rem to print: " + result.diagnostic);
+  }
+  return expect_assembly(result.assembly,
+                         "    udiv x0, x1, x2\n"
+                         "    udiv x3, x4, x5\n"
+                         "    msub x3, x3, x5, x4\n",
+                         "    udiv x0, x1, x2\n"
+                         "    udiv x3, x4, x5\n"
+                         "    msub x3, x3, x5, x4\n",
+                         "non-power unsigned div/rem structured printer");
+}
+
 int narrow_unsigned_reductions_print_explicit_zero_extension() {
   const auto udiv8 = aarch64_codegen::make_scalar_instruction(
       aarch64_codegen::make_scalar_alu_instruction_record(aarch64_codegen::ScalarAluRecord{
@@ -7021,6 +7065,11 @@ int main() {
   }
   if (const int result =
           selected_unsigned_power_of_two_reductions_print_from_structured_operands();
+      result != 0) {
+    return result;
+  }
+  if (const int result =
+          selected_non_power_unsigned_div_rem_print_from_structured_operands();
       result != 0) {
     return result;
   }

@@ -13039,6 +13039,151 @@ int predecessor_add_publication_preserves_rhs_register_before_target_clobber() {
   return 0;
 }
 
+prepare::PreparedBirModule prepared_with_unsigned_div_rem_scalar_consumer(
+    bir::BinaryOpcode opcode) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.unsigned.divrem");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.unsigned.divrem.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.unsigned.divrem.entry");
+  const auto lhs_name = prepared.names.value_names.intern("%unsigned.lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%unsigned.rhs");
+  const auto producer_name = prepared.names.value_names.intern("%unsigned.producer");
+  const auto consumer_name = prepared.names.value_names.intern("%unsigned.consumer");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.unsigned.divrem",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.unsigned.divrem.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = opcode,
+                       .result = bir::Value::named(bir::TypeKind::I64,
+                                                   "%unsigned.producer"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::named(bir::TypeKind::I64, "%unsigned.lhs"),
+                       .rhs = bir::Value::named(bir::TypeKind::I64, "%unsigned.rhs"),
+                   },
+                   bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I64,
+                                                   "%unsigned.consumer"),
+                       .operand_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::named(bir::TypeKind::I64,
+                                                "%unsigned.producer"),
+                       .rhs = bir::Value::immediate_i64(1),
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{430},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x1"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{431},
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x2"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{432},
+               .function_name = function_name,
+               .value_name = producer_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{432},
+               .offset_bytes = std::size_t{48},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{433},
+               .function_name = function_name,
+               .value_name = consumer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{430}, lhs_name, "x1"),
+           register_storage(prepare::PreparedValueId{431}, rhs_name, "x2"),
+           frame_slot_storage(prepare::PreparedValueId{432},
+                              producer_name,
+                              prepare::PreparedFrameSlotId{432},
+                              48),
+           register_storage(prepare::PreparedValueId{433}, consumer_name, "x0")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{432},
+      .function_name = function_name,
+      .offset_bytes = 48,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  return prepared;
+}
+
+int unsigned_div_rem_publication_feeds_later_scalar_consumer() {
+  for (const auto opcode : {bir::BinaryOpcode::UDiv, bir::BinaryOpcode::URem}) {
+    auto prepared = prepared_with_unsigned_div_rem_scalar_consumer(opcode);
+    const auto& function_cf = prepared.control_flow.functions.front();
+    const auto& block_cf = function_cf.blocks.front();
+    const auto function_context = aarch64_codegen::make_function_lowering_context(
+        prepared, prepared.target_profile, function_cf);
+    const auto block_context =
+        aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+    aarch64_module::MachineBlock block;
+    aarch64_module::ModuleLoweringDiagnostics diagnostics;
+    const auto result =
+        aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+    if (!diagnostics.empty() || result.visited_operations != 2 ||
+        result.emitted_instructions != 3 || block.instructions.size() != 3) {
+      return fail("expected unsigned div/rem producer, scalar consumer, and return to dispatch");
+    }
+
+    const auto printed = print_route_block(function_cf.function_name, block);
+    if (!printed.ok) {
+      return fail("expected unsigned div/rem scalar consumer route to print: " +
+                  printed.diagnostic);
+    }
+    const auto producer =
+        printed.assembly.find(opcode == bir::BinaryOpcode::UDiv ? "udiv " : "msub ");
+    const auto publication = printed.assembly.find("str x", producer);
+    const auto consumer = printed.assembly.find("add x0", publication);
+    if (producer == std::string::npos || publication == std::string::npos ||
+        consumer == std::string::npos ||
+        printed.assembly.find("[sp, #48]", publication) == std::string::npos) {
+      return fail("expected unsigned div/rem producer to publish before scalar consumer: " +
+                  printed.assembly);
+    }
+  }
+
+  return 0;
+}
+
 int wide_local_load_publication_uses_latest_narrow_byte_store() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -19732,6 +19877,10 @@ int main() {
   }
   if (const int status =
           predecessor_add_publication_preserves_rhs_register_before_target_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status = unsigned_div_rem_publication_feeds_later_scalar_consumer();
       status != 0) {
     return status;
   }

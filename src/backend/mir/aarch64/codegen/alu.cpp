@@ -338,12 +338,13 @@ namespace mir = c4c::backend::mir;
 
 [[nodiscard]] bool is_scalar_alu_publication_opcode(bir::BinaryOpcode opcode) {
   return is_scalar_alu_integer_opcode(opcode) || opcode == bir::BinaryOpcode::Mul ||
-         opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::SRem;
+         opcode == bir::BinaryOpcode::SDiv || opcode == bir::BinaryOpcode::SRem ||
+         opcode == bir::BinaryOpcode::UDiv || opcode == bir::BinaryOpcode::URem;
 }
 
 [[nodiscard]] ScalarAluOperationKind scalar_alu_publication_operation(
     bir::BinaryOpcode opcode) {
-  if (opcode == bir::BinaryOpcode::SRem) {
+  if (opcode == bir::BinaryOpcode::SRem || opcode == bir::BinaryOpcode::URem) {
     return ScalarAluOperationKind::Div;
   }
   return scalar_alu_operation_from_binary_opcode(opcode);
@@ -2249,7 +2250,10 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
   if (scalar.scalar_alu.has_value() && scalar.scalar_alu->supported_integer_operation &&
       (scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::Mul ||
        scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SDiv ||
-       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SRem)) {
+       scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::SRem ||
+       ((scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::UDiv ||
+         scalar.scalar_alu->source_binary_opcode == bir::BinaryOpcode::URem) &&
+        scalar.scalar_alu->operation == ScalarAluOperationKind::Div))) {
     const auto& alu = *scalar.scalar_alu;
     if (scalar.inputs.size() != 2) {
       return {.lines = std::nullopt,
@@ -2293,7 +2297,8 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
                   "scalar mul/div/rem node has incomplete printable result register facts"};
     }
 
-    const bool is_remainder_opcode = alu.source_binary_opcode == bir::BinaryOpcode::SRem;
+    const bool is_remainder_opcode = alu.source_binary_opcode == bir::BinaryOpcode::SRem ||
+                                     alu.source_binary_opcode == bir::BinaryOpcode::URem;
     std::vector<std::string> lines;
     std::vector<const RegisterOperand*> lhs_occupied;
     if (lhs_is_register) {
@@ -2367,13 +2372,16 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
       lines.push_back(out.str());
       return append_scalar_alu_stack_publication(lines, alu, *result);
     }
-    if (alu.source_binary_opcode == bir::BinaryOpcode::SDiv) {
+    if (alu.source_binary_opcode == bir::BinaryOpcode::SDiv ||
+        alu.source_binary_opcode == bir::BinaryOpcode::UDiv) {
       std::ostringstream out;
-      out << "sdiv " << *result << ", " << lhs->name << ", " << *rhs;
+      out << (alu.source_binary_opcode == bir::BinaryOpcode::UDiv ? "udiv " : "sdiv ")
+          << *result << ", " << lhs->name << ", " << *rhs;
       lines.push_back(out.str());
       return append_scalar_alu_stack_publication(lines, alu, *result);
     }
-    if (alu.source_binary_opcode == bir::BinaryOpcode::SRem) {
+    if (alu.source_binary_opcode == bir::BinaryOpcode::SRem ||
+        alu.source_binary_opcode == bir::BinaryOpcode::URem) {
       std::optional<std::string> divisor = rhs;
       if (rhs_register != nullptr && scalar_registers_alias(*scalar.result_register,
                                                             *rhs_register)) {
@@ -2411,7 +2419,8 @@ ScalarAluPrintResult make_scalar_alu_print_lines(
         quotient = scratch;
       }
       std::ostringstream div;
-      div << "sdiv " << *quotient << ", " << lhs->name << ", " << *divisor;
+      div << (alu.source_binary_opcode == bir::BinaryOpcode::URem ? "udiv " : "sdiv ")
+          << *quotient << ", " << lhs->name << ", " << *divisor;
       lines.push_back(div.str());
       std::ostringstream msub;
       msub << "msub " << *result << ", " << *quotient << ", " << *divisor << ", "
@@ -3309,7 +3318,14 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
       binary.operand_type == binary.result.type;
-  if (!is_integer_operation && !may_be_unsigned_reduction) {
+  const bool may_be_unsigned_div_rem_publication =
+      (binary.opcode == bir::BinaryOpcode::UDiv ||
+       binary.opcode == bir::BinaryOpcode::URem) &&
+      scalar_register_view(binary.operand_type).has_value() &&
+      scalar_register_view(binary.result.type).has_value() &&
+      binary.operand_type == binary.result.type;
+  if (!is_integer_operation && !may_be_unsigned_reduction &&
+      !may_be_unsigned_div_rem_publication) {
     return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
   }
   if (binary.result.kind != bir::Value::Kind::Named || binary.result.name.empty()) {
@@ -3355,30 +3371,42 @@ PreparedScalarAluRecordResult make_prepared_scalar_alu_record(
       return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
     }
   }
+  if (binary.opcode == bir::BinaryOpcode::UDiv ||
+      binary.opcode == bir::BinaryOpcode::URem) {
+    const auto* divisor = std::get_if<ImmediateOperand>(&rhs.payload);
+    const auto bit_width = integer_scalar_bit_width(binary.operand_type);
+    if (rhs.kind == OperandKind::Immediate && divisor != nullptr &&
+        bit_width.has_value() && *bit_width < 64U &&
+        divisor->unsigned_value >= (std::uint64_t{1} << *bit_width)) {
+      return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
+    }
+  }
 
-  ScalarAluOperationKind operation = scalar_alu_operation_from_binary_opcode(binary.opcode);
-  bool supported_integer_operation = is_integer_operation;
+  ScalarAluOperationKind operation = scalar_alu_publication_operation(binary.opcode);
+  bool supported_integer_operation = is_integer_operation || may_be_unsigned_div_rem_publication;
   std::optional<unsigned> post_zero_extend_result_bits;
   std::optional<unsigned> post_sign_extend_result_bits =
       scalar_alu_post_sign_extend_bits(binary.opcode, binary.operand_type, binary.result.type);
-  if (!supported_integer_operation &&
+  if (may_be_unsigned_reduction &&
       scalar_register_view(binary.operand_type).has_value() &&
       scalar_register_view(binary.result.type).has_value() &&
       binary.operand_type == binary.result.type &&
       is_unsigned_power_of_two_reduction_opcode(binary.opcode)) {
     const auto reduction_operation =
         unsigned_reduction_operation(binary.opcode, binary.operand_type, rhs);
-    if (!reduction_operation.has_value()) {
+    if (!supported_integer_operation && !reduction_operation.has_value()) {
       return scalar_alu_record_error(PreparedScalarAluRecordError::UnsupportedOpcode);
     }
-    const auto* divisor = std::get_if<ImmediateOperand>(&rhs.payload);
-    const auto replacement =
-        unsigned_reduction_replacement_immediate(binary.opcode, binary.operand_type, *divisor);
-    rhs = make_immediate_operand(*replacement);
-    operation = *reduction_operation;
-    supported_integer_operation = true;
-    post_zero_extend_result_bits =
-        unsigned_reduction_post_zero_extend_bits(binary.result.type);
+    if (reduction_operation.has_value()) {
+      const auto* divisor = std::get_if<ImmediateOperand>(&rhs.payload);
+      const auto replacement =
+          unsigned_reduction_replacement_immediate(binary.opcode, binary.operand_type, *divisor);
+      rhs = make_immediate_operand(*replacement);
+      operation = *reduction_operation;
+      supported_integer_operation = true;
+      post_zero_extend_result_bits =
+          unsigned_reduction_post_zero_extend_bits(binary.result.type);
+    }
   }
 
   return PreparedScalarAluRecordResult{
@@ -3698,7 +3726,9 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
             binary->opcode != bir::BinaryOpcode::Xor &&
             binary->opcode != bir::BinaryOpcode::Mul &&
             binary->opcode != bir::BinaryOpcode::SDiv &&
-            binary->opcode != bir::BinaryOpcode::SRem) {
+            binary->opcode != bir::BinaryOpcode::SRem &&
+            binary->opcode != bir::BinaryOpcode::UDiv &&
+            binary->opcode != bir::BinaryOpcode::URem) {
           return std::nullopt;
         }
         if (result_home == nullptr || !result_register.has_value() || !lhs.has_value() ||

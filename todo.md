@@ -1,54 +1,66 @@
 Status: Active
 Source Idea Path: ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Unsigned Div Rem Producer Boundary
+Current Step ID: 5
+Current Step Title: Broader Guard And Closure Decision
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the unsigned div/rem producer-publication boundary for
-`ideas/open/350_aarch64_unsigned_div_rem_producer_publication.md`.
+Step 4 reclassified the residual `00182` failure after the unsigned div/rem
+repair.
 
-First bad boundary: producer instruction emission and result publication for
-non-power-of-two unsigned div/rem. The AArch64 scalar ALU path has focused
-power-of-two reductions for `UDiv`/`URem`, but ordinary non-power unsigned
-division/remainder do not become printable scalar ALU publication nodes:
-`is_scalar_alu_publication_opcode(...)` includes integer ALU, `Mul`, `SDiv`,
-and `SRem`, but not `UDiv`/`URem`; the existing prepared scalar ALU records
-test explicitly expects non-power unsigned reductions to fail closed.
+The unsigned div/rem producer publication fix remains in place and the focused
+backend coverage stays green. `00182` advanced past the original boundary:
+generated assembly now contains `udiv`/`msub` for `x % 10L` around lines
+553-557 and `udiv` plus `str x20, [sp]` for `x / 10L` around lines 971-974 in
+`build/c_testsuite_aarch64_backend/src/00182.c.s`.
 
-Representative generated evidence:
+Precise new first bad fact: the residual segfault is caused by frame-size/local
+array storage, not unsigned div/rem publication. In
+`tests/c/external/c-testsuite/src/00182.c`, `main` declares
+`char buf[5*MAX_DIGITS]` with `MAX_DIGITS == 32`, so the buffer needs 160
+bytes. Generated `main` allocates only 48 bytes (`sub sp, sp, #48`), passes
+`sp` as the buffer argument to `print_led`, and saves `x30` at `[sp, #24]`.
+Once digit extraction now reaches the printing loops, `print_led` writes the
+LED text into that undersized caller frame and overwrites main's saved return
+address with output bytes. GDB shows `pc`/`x30` corrupted with ASCII output
+data (`0x20200a20205f20`, `0x7c20200a20205f20`).
 
-- Unsigned remainder consumer: `tests/c/external/c-testsuite/src/00182.c`
-  contains `d[n++] = (int)(x%10L);`. In
-  `build/c_testsuite_aarch64_backend/src/00182.c.s`, the corresponding loop
-  has no `udiv`/`msub` remainder synthesis. Around lines 547-570 it loads
-  `x`, sets `w20` from `cmp x13, #0`, then does `mov w13, w20` before storing
-  `w13` through selected global `d[]` stores. That means the selected-store
-  value handoff is already consuming stale condition state because the `URem`
-  producer never emitted/published a remainder result.
-- Unsigned division consumer: the same source loop contains `x = x/10L;`.
-  Around lines 943-970 of the generated assembly, the loop update path checks
-  `n >= 32`, then reaches `ldr x13, [sp]` followed by `str x20, [sp]` and
-  branches back to the loop header. There is no `udiv` instruction and no
-  publication of a quotient value into the stack slot for `x`, so the loop
-  update consumer receives stale `w20`/`x20` state instead of `x / 10`.
-
-Boundary classification: not truncation handoff, selected-store value handoff,
-or loop-update consumer handoff as first bad fact. Those consumers are visibly
-bad in `00182`, but both are downstream of the missing non-power `UDiv`/`URem`
-producer emission/publication. Remainder synthesis after `udiv` is also
-missing because the `udiv` producer itself is not emitted for the non-power
-case.
+Blocker: making `00182` pass now requires repairing local aggregate/array frame
+layout or stack allocation sizing for caller local buffers. That is outside
+idea 350's unsigned div/rem producer-publication owner and should be split or
+reviewed before implementation continues.
 
 ## Suggested Next
 
-Execute Step 2 by adding focused backend coverage for ordinary non-power
-unsigned div/rem producers feeding scalar consumers before using `00182` as
-external proof. Suggested narrow subset for Step 2/3:
-`ctest --test-dir build --output-on-failure -R '^(backend_aarch64_prepared_scalar_alu_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00182_c)$'`.
+Lifecycle decision: accept the uncommitted unsigned div/rem implementation and
+focused tests as scoped progress for idea 350 despite the strict no-pass-count
+guard failure, provided supervisor review confirms the diff is not
+testcase-overfit and the recorded focused backend proof remains fresh. The
+source idea's acceptance criteria require `00182` to advance past stale
+unsigned div/rem producer publication or be reclassified by a new first bad
+fact; this packet did that. Do not rework idea 350 solely to force a CTest pass
+count increase through the newly exposed local-array frame-size failure.
+
+The residual `00182` segfault should be owned outside idea 350. Use existing
+open idea `ideas/open/316_aarch64_frame_slot_layout_consistency.md` as the
+focused frame-size/frame-slot owner; it has been reactivated with the fresh
+`00182` local array evidence instead of creating a duplicate new idea.
+
+Supervisor next action for idea 350: run the selected broader guard/reviewer
+check for overfit and adjacent scalar publication stability. If accepted,
+commit the implementation/test changes with this `todo.md` progress. If that
+review finds testcase-shaped matching, expectation weakening, or stale
+unsigned div/rem consumers still present, reject the slice and rework within
+idea 350.
+
+Supervisor acceptance update: lifecycle accepted this as scoped progress for
+idea 350 because `00182` advanced to a new frame-layout first bad fact after
+the unsigned div/rem repair. The strict subset regression guard remained 3/4
+and failed to produce a pass-count increase, so acceptance is based on the
+recorded first-bad-fact advance rather than strict guard improvement.
 
 ## Watchouts
 
@@ -58,18 +70,28 @@ external proof. Suggested narrow subset for Step 2/3:
   or indexed aggregate selected-address/writeback from idea 348.
 - Do not change expectations, unsupported classifications, runner behavior,
   timeout policy, CTest registration, or proof-log behavior.
-- Keep the Step 2 focused tests semantic: ordinary `UDiv` should produce a
-  quotient consumed by a scalar use, and ordinary `URem` should synthesize and
-  publish a remainder consumed by a scalar use. Selected-store/`00182` should
-  remain representative external proof after that core producer boundary is
-  covered.
+- Do not try to make `00182` pass inside idea 350 by special-casing the LED
+  buffer or by weakening expectations. The remaining failure is caller frame
+  allocation for local arrays.
 
 ## Proof
 
-No build or test rerun was required for this localization packet. Evidence came
-from existing generated assembly
-`build/c_testsuite_aarch64_backend/src/00182.c.s`, source
-`tests/c/external/c-testsuite/src/00182.c`, and focused read/AST-backed symbol
-inspection of the AArch64 scalar ALU publication path. Ran `ctest --test-dir
-build -N` only to identify the proposed narrow Step 2/3 subset; no root-level
-logs were modified.
+Ran the delegated proof command exactly:
+
+`cmake --build --preset default && ctest --test-dir build --output-on-failure -R '^(backend_aarch64_prepared_scalar_alu_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00182_c)$' | tee test_after.log`
+
+Result: build passed; focused backend tests
+`backend_aarch64_prepared_scalar_alu_records`,
+`backend_aarch64_machine_printer`, and
+`backend_aarch64_instruction_dispatch` passed. `00182` still failed, now as
+`RUNTIME_NONZERO` with `Segmentation fault`; baseline `test_before.log` had
+the same test red as `RUNTIME_MISMATCH`. This is a strict first-bad-fact
+advance, not a pass-count improvement because the subset remains 3/4. Lifecycle
+acceptance for idea 350 therefore depends on scoped-progress review rather than
+the strict regression-count guard. Proof log path: `test_after.log`.
+
+Supervisor acceptance validation: strict subset regression guard remained 3/4
+and failed the pass-count-increase criterion, but lifecycle accepted the scoped
+progress because `00182` advanced to the frame-layout/local-array first bad
+fact described above. Broader backend validation PASS:
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.

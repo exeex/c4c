@@ -1063,22 +1063,48 @@ int unsigned_power_of_two_reductions_prepare_as_shift_and_mask() {
   }
 
   for (const auto opcode : {bir::BinaryOpcode::SDiv,
-                            bir::BinaryOpcode::SRem,
-                            bir::BinaryOpcode::UDiv,
-                            bir::BinaryOpcode::URem}) {
+                            bir::BinaryOpcode::SRem}) {
     auto fixture = make_i64_fixture();
-    const auto rhs = opcode == bir::BinaryOpcode::UDiv ||
-                             opcode == bir::BinaryOpcode::URem
-                         ? bir::Value::immediate_i64(12)
-                         : bir::Value::immediate_i64(8);
     const auto result = aarch64_codegen::make_prepared_scalar_alu_record(
         fixture.names,
         fixture.locations,
         fixture.storage,
-        binary_with_rhs(opcode, bir::TypeKind::I64, rhs));
+        binary_with_rhs(opcode, bir::TypeKind::I64, bir::Value::immediate_i64(8)));
     if (result.record.has_value() ||
         result.error != aarch64_codegen::PreparedScalarAluRecordError::UnsupportedOpcode) {
-      return fail("expected signed reductions and non-power unsigned reductions to fail closed");
+      return fail("expected signed reductions to fail closed");
+    }
+  }
+
+  return 0;
+}
+
+int non_power_unsigned_div_rem_prepare_as_scalar_publications() {
+  for (const auto opcode : {bir::BinaryOpcode::UDiv, bir::BinaryOpcode::URem}) {
+    auto fixture = make_i64_fixture();
+    const auto result = aarch64_codegen::make_prepared_scalar_alu_instruction_record(
+        fixture.names,
+        fixture.locations,
+        fixture.storage,
+        binary_with_rhs(opcode, bir::TypeKind::I64, bir::Value::immediate_i64(10)));
+    if (!result.record.has_value() ||
+        result.error != aarch64_codegen::PreparedScalarAluRecordError::None ||
+        !result.record->scalar_alu.has_value()) {
+      return fail("expected non-power unsigned div/rem scalar publication to prepare");
+    }
+    const auto& alu = *result.record->scalar_alu;
+    const auto* rhs = std::get_if<aarch64_codegen::ImmediateOperand>(&alu.rhs.payload);
+    if (alu.operation != aarch64_codegen::ScalarAluOperationKind::Div ||
+        alu.source_binary_opcode != opcode ||
+        !alu.supported_integer_operation ||
+        alu.operand_type != bir::TypeKind::I64 ||
+        alu.result_type != bir::TypeKind::I64 ||
+        rhs == nullptr ||
+        rhs->unsigned_value != 10 ||
+        alu.post_zero_extend_result_bits.has_value() ||
+        !result.record->result_register.has_value() ||
+        result.record->result_register->reg != aarch64_abi::x_register(0)) {
+      return fail("expected non-power unsigned div/rem to publish an ordinary scalar result");
     }
   }
 
@@ -1383,6 +1409,10 @@ int main() {
     return status;
   }
   if (const int status = unsigned_power_of_two_reductions_prepare_as_shift_and_mask();
+      status != 0) {
+    return status;
+  }
+  if (const int status = non_power_unsigned_div_rem_prepare_as_scalar_publications();
       status != 0) {
     return status;
   }
