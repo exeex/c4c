@@ -10186,6 +10186,224 @@ int semantic_symbol_address_argument_avoids_deferred_call_boundary_move() {
   return 0;
 }
 
+int scalar_byte_load_call_argument_materializes_loaded_value_not_cursor() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.byte.call");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.byte.call.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.byte.call.entry");
+  const auto callee_link = prepared.names.link_names.intern("sink_i32");
+  const auto cursor_name = prepared.names.value_names.intern("%cursor");
+  const auto byte_name = prepared.names.value_names.intern("%loaded.byte");
+  const auto arg_name = prepared.names.value_names.intern("%loaded.int");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.byte.call",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.byte.call.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I8,
+                                                   "%loaded.byte"),
+                       .byte_offset = 0,
+                       .align_bytes = 1,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind =
+                                   bir::MemoryAddress::BaseKind::PointerValue,
+                               .base_value =
+                                   bir::Value::named(bir::TypeKind::Ptr, "%cursor"),
+                               .byte_offset = 0,
+                               .size_bytes = 1,
+                               .align_bytes = 1,
+                           },
+                   },
+                   bir::CastInst{
+                       .opcode = bir::CastOpcode::ZExt,
+                       .result = bir::Value::named(bir::TypeKind::I32,
+                                                   "%loaded.int"),
+                       .operand = bir::Value::named(bir::TypeKind::I8,
+                                                    "%loaded.byte"),
+                   },
+                   bir::CallInst{
+                       .callee = "sink_i32",
+                       .callee_link_name_id = callee_link,
+                       .args = {bir::Value::named(bir::TypeKind::I32,
+                                                  "%loaded.int")},
+                       .arg_types = {bir::TypeKind::I32},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{501},
+               .function_name = function_name,
+               .value_name = cursor_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{502},
+               .function_name = function_name,
+               .value_name = byte_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{50},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{1},
+               .align_bytes = std::size_t{1},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{503},
+               .function_name = function_name,
+               .value_name = arg_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 2,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{503},
+                      .to_value_id = prepare::PreparedValueId{503},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"w0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w0"},
+                      .block_index = 0,
+                      .instruction_index = 2,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"w0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w0"},
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{501}, cursor_name, "x13"),
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{502},
+               .value_name = byte_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{50},
+               .stack_offset_bytes = std::size_t{64},
+           },
+           register_storage(prepare::PreparedValueId{503}, arg_name, "x13")},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 2,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"sink_i32"},
+          .arguments =
+              {prepare::PreparedCallArgumentPlan{
+                  .instruction_index = 2,
+                  .arg_index = 0,
+                  .value_bank = prepare::PreparedRegisterBank::Gpr,
+                  .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .source_value_id = prepare::PreparedValueId{503},
+                  .source_register_name = std::string{"x13"},
+                  .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                  .destination_register_name = std::string{"w0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"w0"},
+                  .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+              }},
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .result_value_name = byte_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = cursor_name,
+                      .size_bytes = 1,
+                      .align_bytes = 1,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{50},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 1,
+      .align_bytes = 1,
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 3 ||
+      !result.visited_terminator) {
+    return fail("expected byte-load scalar call argument block to dispatch");
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected byte-load scalar call argument route to print: " +
+                printed.diagnostic);
+  }
+  if (printed.assembly.find("ldrb w13, [x9]") == std::string::npos ||
+      printed.assembly.find("bl sink_i32") == std::string::npos) {
+    return fail("expected loaded byte value to be materialized for w0 call argument");
+  }
+  return 0;
+}
+
 int semantic_stack_call_argument_publishes_destination_offset() {
   auto prepared = prepared_semantic_aarch64_stack_call_argument();
   if (prepared.call_plans.functions.size() != 1 ||
@@ -16029,6 +16247,11 @@ int main() {
   }
   if (const int status =
           semantic_symbol_address_argument_avoids_deferred_call_boundary_move();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          scalar_byte_load_call_argument_materializes_loaded_value_not_cursor();
       status != 0) {
     return status;
   }

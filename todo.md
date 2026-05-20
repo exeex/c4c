@@ -1,82 +1,67 @@
 Status: Active
 Source Idea Path: ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Stdarg Cursor/Format Residual
+Current Step ID: 2
+Current Step Title: Repair The Classified Stdarg Owner
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the first stdarg cursor/format residual without
-implementation or test edits.
+Step 2 repaired the localized stdarg cursor/format owner for scalar
+call-argument publication. A loaded byte that is promoted for a scalar call
+argument is now rematerialized into its prepared register from the actual byte
+producer before the call-boundary move reuses that register.
 
-The first generated-code divergence is in `myprintf`'s default character path
-for `putchar(*s)`, not in the repaired `%9s` aggregate payload copy. In
-`tests/c/external/c-testsuite/src/00204.c`, the first stdarg call at line 316
-uses format `"%9s %9s %9s %9s %9s %9s"`. After the first `%9s` match,
-`match()` leaves `s` on the `s` in the first specifier, the loop increment
-advances `s` to the separator at `.str49+3`, and source line 308 should call
-`putchar(*s)` with byte `0x20`.
+Focused backend coverage was added in
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` as
+`scalar_byte_load_call_argument_materializes_loaded_value_not_cursor`. The
+fixture models a neutral `sink_i32(*cursor)` shape: the cursor remains live in
+`x13`, the byte load initially has a stack home, and the promoted scalar
+argument's prepared register home also names `x13`. The test requires dispatch
+to materialize the loaded byte through the pointer into the call argument path,
+instead of treating the live cursor register as the scalar argument value.
+
+The repair is in `src/backend/mir/aarch64/codegen/dispatch.cpp`. When a simple
+scalar cast cannot be selected through the structured scalar-cast path but has
+complete prepared register storage, dispatch now publishes the cast result
+from its real same-block producer into the prepared register and records that
+emitted scalar register for later call-argument retargeting. The fallback is
+storage-authority guarded so existing missing-storage cast cases still fail
+closed.
 
 Generated-code evidence in
-`build/c_testsuite_aarch64_backend/src/00204.c.s`:
-
-- Lines 6780..6838 copy the first `struct s9` payload and call
-  `printf("%.9s", ...)`; the payload bytes are the expected `ABCDEFGHI`.
-- Lines 8182..8196 show the first `stdarg()` caller passing the first two
-  lanes through `x1`/`x2` and later aggregate lanes through stack overflow
-  slots, so this is not the prior byval lane-publication owner.
-- Lines 16021..16022 define `.str49` as `%9s %9s ...`; the first separator is
-  byte `32` at `.str49+3`.
-- Lines 7697..7702 lower the default `putchar(*s)` path as:
-  `ldr x13, [sp]`; `ldrb w9, [x13]`; `strb w9, [sp, #1044]`; `mov w0, w13`;
-  `bl putchar`.
-
-Expected state at the first separator: `w0 == 0x20` from the loaded byte in
-`w9`. Observed generated state: `w0` is copied from `w13`, the low 32 bits of
-the format cursor pointer. That explains the observed separator corruption
-(`0xd0`, `0xd4`, `0xd8`, ...) as pointer-low-byte output while the cursor
-advances through `.str49`, and it also explains why the first payload can begin
-correctly with `ABCDEFGHI` before the line diverges.
-
-Likely owner surfaces for Step 2/3:
-
-- `src/backend/mir/aarch64/codegen/dispatch.cpp` scalar call-argument
-  publication, especially `lower_scalar_call_argument_producers`,
-  `materialize_scalar_call_argument_value`,
-  `materialize_call_boundary_source_to_destination`, and the
-  `retarget_call_boundary_source_to_emitted_scalar` path in
-  `dispatch_prepared_block`. The current generated code suggests the
-  dereferenced byte producer is not authoritative for the call argument, so
-  the before-call move keeps or retargets to the pointer cursor register.
-- `src/backend/mir/aarch64/codegen/calls.cpp` before-call move construction
-  and selected prepared register source/destination lowering for scalar GPR
-  call arguments. The call argument for `putchar(*s)` must use the I8/I32
-  value produced by the load, with a `w0` destination view, not the pointer
-  value held in `x13`.
-- If code inspection shows the wrong source value was planned before MIR,
-  inspect the prealloc call-argument plan/value-home surfaces that assign the
-  `putchar` argument source value. Fresh evidence currently points to scalar
-  call-argument publication/source authority, not HFA/byval aggregate
-  materialization.
+`build/c_testsuite_aarch64_backend/src/00204.c.s`: the first default
+`putchar(*s)` separator path no longer lowers as `ldrb w9, [x13]` followed by
+`mov w0, w13`. It now reloads through a preserved cursor register and passes
+the loaded byte:
+`ldr x13, [sp]`; `ldrb w9, [x13]`; `strb w9, [sp, #1044]`; `mov x9, x13`;
+`ldrb w13, [x9]`; `sxtb w13, w13`; `mov w0, w13`; `bl putchar`.
 
 ## Suggested Next
 
-Execute Step 2: add focused backend coverage for scalar call-argument
-publication from a loaded byte value while a pointer cursor remains live, then
-repair the source authority if the test exposes the same bug. A representative
-dispatch fixture should avoid `00204.c`/`myprintf` names and model a simple
-`sink_i32(*cursor)` or `put_byte(*cursor)` call where the generated call
-argument must move the loaded byte value into `w0`, not the cursor pointer in
-`xN`.
+Continue Step 2 only if the supervisor keeps this inside the stdarg byval
+overflow argument owner. The new first bad fact has moved past the first
+separator. With unbuffered runtime output, the first stdarg line now begins
+`ABCDEFGHI ABCDEFGHI ABCDEFGHI`, then the fourth `%9s` payload is corrupt and
+execution still segfaults before completing the line.
 
-A second focused fixture, if needed, should cover the same authority through a
-stored temporary byte before the call: load byte from pointer/global, store or
-publish it through a local temporary, then call a one-argument scalar function.
-The assertion should be semantic around source value/register view where
-possible; exact emitted text is acceptable only for the final call argument
-move if no structured record exposes the source choice.
+Generated-code evidence: for the first `myprintf("%9s %9s %9s %9s %9s %9s",
+...)` call, register-passed aggregate lanes for the first three `struct s9`
+arguments are loaded from `[sp, #184]`, `[sp, #4352]`, `[sp, #4360]`,
+`[sp, #4368]`, `[sp, #4376]`, and `[sp, #4384]`. The fourth, fifth, and sixth
+aggregate arguments should be copied to outgoing stack slots from the prepared
+overflow lanes at `[sp, #4392]`/`[sp, #4400]`,
+`[sp, #4408]`/`[sp, #4416]`, and `[sp, #4424]`/`[sp, #4432]`. Instead, the
+generated call setup at lines 8196..8201 loads outgoing stack words from
+uninitialized `[sp, #7776]`, `[sp, #7784]`, and `[sp, #7792]` before `bl
+myprintf`.
+
+The next representative focused test should cover small byval aggregate
+overflow call arguments after the usable GPR argument lanes are exhausted:
+three two-lane aggregates consume `x1`..`x6`, and the next two-lane aggregate
+must publish its prepared source lanes to outgoing stack argument slots from
+the same prepared lane sources, not from unrelated stack offsets.
 
 ## Watchouts
 
@@ -95,13 +80,21 @@ Do not chase the `%9s` aggregate bytes for this first residual: the first
 aggregate payload reaches `printf("%.9s", ...)` with the expected bytes before
 the default separator path diverges.
 
+The repaired scalar separator path should not be reopened unless generated
+code again passes the cursor pointer to `putchar`. The live residual is now
+the first overflow byval stack argument for the fourth `%9s` payload.
+
 ## Proof
 
-No build or CTest proof was required or run for this localization-only packet.
-Existing executor proof remains in `test_after.log`.
+`git diff --check` passed.
 
-Smallest proof for the next focused backend packet:
-`cmake --build --preset default --target backend_aarch64_instruction_dispatch_test && ctest --test-dir build -j --output-on-failure -R '^backend_aarch64_instruction_dispatch$'`.
-
-Acceptance proof after a repair should use the supervisor-selected subset:
+Ran the delegated proof command:
+`git diff --check`, then
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|c_testsuite_aarch64_backend_src_00204_c)$'`.
+
+Current result: build succeeded; `backend_aarch64_target_instruction_records`,
+`backend_aarch64_machine_printer`, `backend_aarch64_instruction_dispatch`, and
+`backend_aarch64_return_lowering` passed.
+`c_testsuite_aarch64_backend_src_00204_c` still failed with `RUNTIME_NONZERO`
+/ segmentation fault. `test_after.log` is the fresh proof log for the delegated
+build and CTest command.

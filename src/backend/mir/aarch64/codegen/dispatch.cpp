@@ -4176,6 +4176,89 @@ dynamic_stack_helper_kind(std::string_view callee) {
       inst);
 }
 
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_cast_publication_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* cast = std::get_if<bir::CastInst>(&inst);
+  const auto result = instruction_result_value(inst);
+  if (cast == nullptr || !result.has_value()) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, *result);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for_value(context, *result);
+  if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* storage = [&]() -> const prepare::PreparedStoragePlanValue* {
+    if (context.function.storage_plan == nullptr) {
+      return nullptr;
+    }
+    for (const auto& value : context.function.storage_plan->values) {
+      if (value.value_id == home->value_id) {
+        return &value;
+      }
+    }
+    return nullptr;
+  }();
+  if (storage == nullptr ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      storage->register_name != home->register_name) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_view_for_type(result->type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() || parsed->bank != abi::RegisterBank::GeneralPurpose) {
+    return std::nullopt;
+  }
+  const auto target_register = abi::gp_register(parsed->index, *expected_view);
+  if (!target_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  std::optional<std::uint8_t> scratch_index;
+  for (const auto& scratch : scratches) {
+    if (scratch.index != parsed->index) {
+      scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!scratch_index.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          *result,
+                                          instruction_index + 1,
+                                          parsed->index,
+                                          *scratch_index,
+                                          lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  RegisterOperand emitted{
+      .reg = *target_register,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+      .expected_view = expected_view,
+  };
+  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
 [[nodiscard]] std::optional<bir::Value> find_bir_value_for_prepared_name(
     const module::BlockLoweringContext& context,
     c4c::ValueNameId value_name,
@@ -5623,6 +5706,9 @@ InstructionDispatchResult dispatch_prepared_block(
       } else if (is_fused_compare_branch_support_instruction(context, inst, scalar_state)) {
         continue;
       } else if (auto lowered = lower_scalar_cast_instruction(
+              context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
+      } else if (auto lowered = lower_scalar_cast_publication_to_prepared_register(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (is_current_block_join_parallel_copy_source(context, inst)) {
