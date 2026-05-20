@@ -13590,6 +13590,247 @@ int prepared_branch_condition_stack_home_publishes_before_branch_use() {
   return 0;
 }
 
+int materialized_compare_branch_reuses_emitted_latch_operand() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.branch.latch.reuse");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.branch.latch.entry");
+  const auto true_label =
+      prepared.names.block_labels.intern("dispatch.branch.latch.true");
+  const auto false_label =
+      prepared.names.block_labels.intern("dispatch.branch.latch.false");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.latch.entry");
+  const auto bir_true_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.latch.true");
+  const auto bir_false_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.latch.false");
+  const auto loaded_name = prepared.names.value_names.intern("%loaded");
+  const auto decremented_name = prepared.names.value_names.intern("%decremented");
+  const auto condition_name = prepared.names.value_names.intern("%condition");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.branch.latch.reuse",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.branch.latch.entry",
+               .insts =
+                   {bir::LoadLocalInst{
+                        .result = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                        .slot_name = "%counter",
+                        .byte_offset = 0,
+                        .align_bytes = 4,
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Sub,
+                        .result =
+                            bir::Value::named(bir::TypeKind::I32, "%decremented"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs = bir::Value::named(bir::TypeKind::I32, "%loaded"),
+                        .rhs = bir::Value::immediate_i32(1),
+                    },
+                    bir::StoreLocalInst{
+                        .slot_name = "%counter",
+                        .value =
+                            bir::Value::named(bir::TypeKind::I32, "%decremented"),
+                        .byte_offset = 0,
+                        .align_bytes = 4,
+                    },
+                    bir::BinaryInst{
+                        .opcode = bir::BinaryOpcode::Sgt,
+                        .result =
+                            bir::Value::named(bir::TypeKind::I32, "%condition"),
+                        .operand_type = bir::TypeKind::I32,
+                        .lhs =
+                            bir::Value::named(bir::TypeKind::I32, "%decremented"),
+                        .rhs = bir::Value::immediate_i32(0),
+                    }},
+               .terminator =
+                   bir::Terminator{bir::CondBranchTerminator{
+                       .condition =
+                           bir::Value::named(bir::TypeKind::I32, "%condition"),
+                       .true_label = "dispatch.branch.latch.true",
+                       .false_label = "dispatch.branch.latch.false",
+                       .true_label_id = bir_true_label,
+                       .false_label_id = bir_false_label,
+                   }},
+               .label_id = bir_entry_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.latch.true",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_true_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.latch.false",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_false_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = entry_label,
+               .terminator_kind = bir::TerminatorKind::CondBranch,
+               .true_label = true_label,
+               .false_label = false_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = true_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = false_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .branch_conditions =
+          {prepare::PreparedBranchCondition{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+              .condition_value =
+                  bir::Value::named(bir::TypeKind::I32, "%condition"),
+              .predicate = bir::BinaryOpcode::Sgt,
+              .compare_type = bir::TypeKind::I32,
+              .lhs = bir::Value::named(bir::TypeKind::I32, "%decremented"),
+              .rhs = bir::Value::immediate_i32(0),
+              .can_fuse_with_branch = true,
+              .true_label = true_label,
+              .false_label = false_label,
+          }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{211},
+               .function_name = function_name,
+               .value_name = loaded_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w19"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{212},
+               .function_name = function_name,
+               .value_name = decremented_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{213},
+               .function_name = function_name,
+               .value_name = condition_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{213},
+               .offset_bytes = std::size_t{36},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{211}, loaded_name, "w19"),
+           register_storage(prepare::PreparedValueId{212}, decremented_name, "w20"),
+           frame_slot_storage(prepare::PreparedValueId{213},
+                              condition_name,
+                              prepare::PreparedFrameSlotId{213},
+                              36)},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{212},
+      .function_name = function_name,
+      .offset_bytes = 32,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{213},
+      .function_name = function_name,
+      .offset_bytes = 36,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 48;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = loaded_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{212},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .stored_value_name = decremented_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{212},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 4 || !result.visited_terminator ||
+      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+      !diagnostics.empty()) {
+    return fail("expected materialized latch compare branch to lower without diagnostics: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected materialized latch compare route to print: " +
+                printed.diagnostic);
+  }
+  const auto first_sub = printed.assembly.find("sub w20");
+  if (first_sub == std::string::npos ||
+      printed.assembly.find("sub w20", first_sub + 1) != std::string::npos ||
+      printed.assembly.find("cmp w20, #0") == std::string::npos ||
+      printed.assembly.find("cmp w9, #0") != std::string::npos) {
+    return fail("expected branch compare to reuse the emitted latch decrement: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int predecessor_join_source_publication_materializes_edge_compare() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -17597,6 +17838,11 @@ int main() {
   }
   if (const int status =
           prepared_branch_condition_stack_home_publishes_before_branch_use();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_compare_branch_reuses_emitted_latch_operand();
       status != 0) {
     return status;
   }

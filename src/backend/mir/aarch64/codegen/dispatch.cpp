@@ -1095,7 +1095,8 @@ lower_fused_compare_branch_from_emitted_cast(
 
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_materialized_compare_condition_branch(
-    const module::BlockLoweringContext& context) {
+    const module::BlockLoweringContext& context,
+    const BlockScalarLoweringState& scalar_state) {
   if (context.function.control_flow == nullptr ||
       context.function.prepared == nullptr ||
       context.control_flow_block == nullptr ||
@@ -1140,13 +1141,13 @@ lower_materialized_compare_condition_branch(
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
   const auto rhs_reg = abi::gp_register(scratches[1].index, *operand_view);
-  const auto lhs_name = lhs_reg.has_value()
-                            ? std::optional<std::string>{abi::register_name(*lhs_reg)}
-                            : std::nullopt;
-  const auto rhs_name = rhs_reg.has_value()
-                            ? std::optional<std::string>{abi::register_name(*rhs_reg)}
-                            : std::nullopt;
-  if (!lhs_name.has_value() || !rhs_name.has_value() ||
+  const auto lhs_scratch_name =
+      lhs_reg.has_value() ? std::optional<std::string>{abi::register_name(*lhs_reg)}
+                          : std::nullopt;
+  const auto rhs_scratch_name =
+      rhs_reg.has_value() ? std::optional<std::string>{abi::register_name(*rhs_reg)}
+                          : std::nullopt;
+  if (!lhs_scratch_name.has_value() || !rhs_scratch_name.has_value() ||
       branch_condition->true_label == c4c::kInvalidBlockLabel ||
       branch_condition->false_label == c4c::kInvalidBlockLabel) {
     return std::nullopt;
@@ -1155,13 +1156,29 @@ lower_materialized_compare_condition_branch(
   std::vector<std::string> lines;
   auto lhs = binary->lhs;
   lhs.type = binary->operand_type;
-  if (!emit_value_publication_to_register(context,
-                                          lhs,
-                                          *producer_index,
-                                          scratches[0].index,
-                                          scratches[1].index,
-                                          lines)) {
-    return std::nullopt;
+  std::optional<std::uint8_t> lhs_register_index;
+  auto lhs_name = emitted_register_name(context, lhs, scalar_state, *operand_view);
+  if (lhs_name.has_value()) {
+    const auto value_name = prepared_named_value_id(context, lhs);
+    if (!value_name.has_value()) {
+      return std::nullopt;
+    }
+    const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+    if (!emitted.has_value() ||
+        emitted->reg.bank != abi::RegisterBank::GeneralPurpose) {
+      return std::nullopt;
+    }
+    lhs_register_index = emitted->reg.index;
+  } else {
+    if (!emit_value_publication_to_register(context,
+                                            lhs,
+                                            *producer_index,
+                                            scratches[0].index,
+                                            scratches[1].index,
+                                            lines)) {
+      return std::nullopt;
+    }
+    lhs_name = *lhs_scratch_name;
   }
 
   std::string rhs;
@@ -1171,15 +1188,36 @@ lower_materialized_compare_condition_branch(
   } else {
     auto rhs_value = binary->rhs;
     rhs_value.type = binary->operand_type;
-    if (!emit_value_publication_to_register(context,
-                                            rhs_value,
-                                            *producer_index,
-                                            scratches[1].index,
-                                            scratches[0].index,
-                                            lines)) {
-      return std::nullopt;
+    if (auto emitted_rhs =
+            emitted_register_name(context, rhs_value, scalar_state, *operand_view);
+        emitted_rhs.has_value()) {
+      rhs = *emitted_rhs;
+    } else {
+      const auto rhs_target_index =
+          lhs_register_index == std::optional<std::uint8_t>{scratches[1].index}
+              ? scratches[0].index
+              : scratches[1].index;
+      const auto rhs_scratch_index =
+          rhs_target_index == scratches[0].index ? scratches[1].index
+                                                 : scratches[0].index;
+      if (lhs_register_index ==
+          std::optional<std::uint8_t>{rhs_scratch_index}) {
+        return std::nullopt;
+      }
+      if (!emit_value_publication_to_register(context,
+                                              rhs_value,
+                                              *producer_index,
+                                              rhs_target_index,
+                                              rhs_scratch_index,
+                                              lines)) {
+        return std::nullopt;
+      }
+      const auto rhs_reg = abi::gp_register(rhs_target_index, *operand_view);
+      if (!rhs_reg.has_value()) {
+        return std::nullopt;
+      }
+      rhs = abi::register_name(*rhs_reg);
     }
-    rhs = *rhs_name;
   }
 
   lines.push_back("cmp " + *lhs_name + ", " + rhs);
@@ -6239,7 +6277,8 @@ InstructionDispatchResult dispatch_prepared_block(
             lower_fused_compare_branch_from_emitted_cast(context, scalar_state)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
-    } else if (auto lowered = lower_materialized_compare_condition_branch(context)) {
+    } else if (auto lowered =
+                   lower_materialized_compare_condition_branch(context, scalar_state)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else {
