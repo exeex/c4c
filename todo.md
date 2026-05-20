@@ -8,31 +8,27 @@ Current Step Title: Repair The Narrow Publication Boundary
 
 ## Just Finished
 
-Step 2 repaired the next caller-side direct-call publication subcase in
-`src/backend/mir/aarch64/codegen/calls.cpp`: prepared register/FPR
-`CallArgumentAbi` moves whose source value is produced by an immediate scalar
-cast in the same block now lower to a selected call-boundary publication
-sequence that materializes/converts directly into the ABI argument register
-before the direct `bl`. Focused dispatch coverage now proves both an immediate
-FP-to-integer source published to `w0` and an immediate integer-to-FP source
-published to `s0` through the prepared move/binding records, without matching
-specific filenames or stale source registers.
+Step 2 repaired the callee-side fixed-formal register publication boundary in
+`src/backend/mir/aarch64/codegen/dispatch.cpp`: entry formal publication now
+records a scalar register home as authoritative in `BlockScalarLoweringState`
+after consuming the ABI source register into that home. Later scalar lowering
+therefore retargets operands from stale storage-plan registers to the prepared
+formal home instead of re-reading stale carriers.
 
-The delegated representative proof shows `00175` advanced but did not pass:
-its direct `charfunc`, `intfunc`, and `floatfunc` calls now print the expected
-`c`, `99`, and `99.000000` values. The remaining `00175` mismatch is after
-the direct-call sequence in local store/load conversion publication:
-`97 17`, `97 -160045680`, and `0.000000 0.000000` are still printed where
-`97 97`, `97 97`, and `97.000000 97.000000` are expected.
+Focused dispatch coverage now proves a scalar fixed formal arriving in the
+ABI source register is published into its prepared register home before a later
+multiply, and the multiply consumes that prepared home rather than stale
+storage. The repair is general over entry formal register homes and uses the
+existing formal publication/prepared-home machinery; it does not match
+`myfunc`, `w20`, parameter index 0, or any representative filename.
+
+The delegated representative proof shows `00159` now passes. `00170` also
+remains passing, so the outgoing stack-slot immediate guard stayed stable.
 
 Remaining first bad facts after this slice:
 
 - `00140`: still caller-side address or aggregate publication/byval handling;
   the representative still segfaults.
-- `00159`: still callee-side scalar formal consumption; prepared `myfunc`
-  publishes `%p.x` in incoming `x0`, but emitted `myfunc` still reads stale
-  `w20` in `mul w0, w20, w20`. This is not resolved by caller-side
-  `CallArgumentAbi` publication.
 - `00175`: direct-call scalar and FP argument publication advanced; remaining
   failures are local store/load conversion publication after the call series,
   not stale direct-call `w13`/`s13` argument moves.
@@ -42,11 +38,11 @@ Remaining first bad facts after this slice:
 
 ## Suggested Next
 
-Continue Step 2 with the next narrow publication boundary: either repair the
+Continue Step 2 with the next narrow publication boundary: repair the
 remaining `00175` local store/load conversion publication path if the
-supervisor keeps this representative as the next target, or split the
-callee-side fixed formal consumption gap for `00159` if the next packet should
-leave `calls.cpp`.
+supervisor keeps this representative as the next target, or route to `00140`
+/ `00218` address or aggregate publication if the next packet should prioritize
+those representative failures.
 
 ## Watchouts
 
@@ -62,14 +58,15 @@ leave `calls.cpp`.
   cast producers; it still consumes prepared move/binding/source-home facts
   and uses reserved MIR scratch registers rather than matching source register
   names.
-- The `00159` callee formal gap appears to require the fixed-formal consumer
-  path to make incoming `x0` authoritative for later scalar lowering; a
-  caller-side move repair alone will not change `mul w0, w20, w20`.
+- The completed fixed-formal repair records register homes as authoritative
+  only through entry formal publication and intentionally leaves byval and
+  stack formal handling on their existing paths.
 - `00140` has an aggregate/byval dimension and should not be reduced to only
   a scalar register shuffle.
 - `00170` now passes in the delegated representative subset; keep it as a
   regression guard for outgoing stack-slot immediate publication.
-- `00159` is the explicit callee-side scalar formal consumption guardrail.
+- `00159` now passes and remains the explicit callee-side scalar formal
+  consumption guardrail.
 - Do not absorb pointer/null result publication, FP comparison
   materialization, aggregate/table memory corruption, libc/file/string
   residuals, semantic `lir_to_bir` admission, or timeout/output-storm buckets
@@ -85,13 +82,10 @@ Delegated proof command was run exactly:
 `set +e; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64|backend_cli_aarch64' && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c'; } > test_after.log 2>&1; rc=$?; printf 'proof_rc=%s\n' "$rc"; exit 0`.
 
 Result: `proof_rc=8`. The AArch64 backend/backend CLI subset passed 31/31.
-The representative c-testsuite subset passed `00170` and still failed `00140`,
-`00159`, `00175`, and `00218`. `00175` advanced from stale direct-call
-argument outputs to correct direct-call outputs, with only the later local
-store/load conversion outputs still mismatching as listed above.
+The representative c-testsuite subset passed `00159` and `00170`, and still
+failed `00140`, `00175`, and `00218`. The representative pass count advanced
+from 1/5 in `test_before.log` to 2/5 in `test_after.log`.
 
-Supervisor review accepted this as valid partial route progress after reviewer
-acceptance, no new failing tests, backend/backend CLI staying 31/31, `00170`
-staying green, and `00175` direct-call output advancement. The strict
-monotonic regression guard did not pass because the representative pass count
-remained 1/5, so the before/after logs are retained rather than rolled forward.
+Supervisor regression guard accepted this as PASS against the prior
+`test_before.log`: `00159` was resolved with no new failures. The accepted
+after-log was rolled forward to `test_before.log`.

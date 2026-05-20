@@ -5592,6 +5592,41 @@ entry_formal_byval_aggregate_stack_source_publication_lines(
   return std::nullopt;
 }
 
+void record_entry_formal_register_home(
+    BlockScalarLoweringState& scalar_state,
+    const prepare::PreparedValueHome& home,
+    bir::TypeKind type) {
+  const auto destination = entry_formal_destination_register(home, type);
+  if (!destination.has_value()) {
+    return;
+  }
+  prepare::PreparedRegisterClass prepared_class = prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank prepared_bank = prepare::PreparedRegisterBank::None;
+  if (destination->bank == abi::RegisterBank::GeneralPurpose) {
+    prepared_class = prepare::PreparedRegisterClass::General;
+    prepared_bank = prepare::PreparedRegisterBank::Gpr;
+  } else if (destination->bank == abi::RegisterBank::FpSimd) {
+    prepared_class = (destination->view == abi::RegisterView::Q)
+                         ? prepare::PreparedRegisterClass::Vector
+                         : prepare::PreparedRegisterClass::Float;
+    prepared_bank = (destination->view == abi::RegisterView::Q)
+                        ? prepare::PreparedRegisterBank::Vreg
+                        : prepare::PreparedRegisterBank::Fpr;
+  }
+  record_emitted_scalar_register(
+      scalar_state,
+      home.value_name,
+      RegisterOperand{
+          .reg = *destination,
+          .role = RegisterOperandRole::StoragePlan,
+          .value_id = home.value_id,
+          .value_name = home.value_name,
+          .prepared_class = prepared_class,
+          .prepared_bank = prepared_bank,
+          .expected_view = destination->view,
+      });
+}
+
 [[nodiscard]] std::vector<std::string> entry_formal_stack_source_publication_lines(
     const module::BlockLoweringContext& context,
     const bir::Param& param,
@@ -5722,7 +5757,8 @@ entry_formal_byval_aggregate_stack_source_publication_lines(
 }
 
 [[nodiscard]] std::vector<module::MachineInstruction> lower_entry_formal_publications(
-    const module::BlockLoweringContext& context) {
+    const module::BlockLoweringContext& context,
+    BlockScalarLoweringState& scalar_state) {
   std::vector<module::MachineInstruction> lowered;
   if (context.block_index != 0 || context.function.prepared == nullptr ||
       context.function.value_locations == nullptr ||
@@ -5751,6 +5787,10 @@ entry_formal_byval_aggregate_stack_source_publication_lines(
                                          *context.function.bir_function,
                                          param_index)) {
       lines = entry_formal_stack_source_publication_lines(context, param, *home, param_index);
+      if (!lines.empty() && !param.is_byval &&
+          home->kind == prepare::PreparedValueHomeKind::Register) {
+        record_entry_formal_register_home(scalar_state, *home, param.type);
+      }
     } else {
       const auto source = entry_formal_source_register(
           context.function.prepared->target_profile,
@@ -5773,6 +5813,7 @@ entry_formal_byval_aggregate_stack_source_publication_lines(
         const auto destination = entry_formal_destination_register(*home, param.type);
         if (destination.has_value()) {
           lines = entry_formal_register_move_lines(*source, *destination);
+          record_entry_formal_register_home(scalar_state, *home, param.type);
         }
       }
     }
@@ -5916,7 +5957,7 @@ InstructionDispatchResult dispatch_prepared_block(
     }
     return false;
   };
-  for (auto& entry_formal : lower_entry_formal_publications(context)) {
+  for (auto& entry_formal : lower_entry_formal_publications(context, scalar_state)) {
     block.instructions.push_back(std::move(entry_formal));
   }
   for (auto& block_entry_move : lower_value_moves(

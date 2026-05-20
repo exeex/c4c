@@ -1310,6 +1310,99 @@ prepare::PreparedBirModule prepared_with_variadic_entry_formal_register_home() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_scalar_fixed_formal_register_home() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.fixed.formal.scalar");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.fixed.formal.scalar.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.fixed.formal.scalar.entry");
+  const auto param_name = prepared.names.value_names.intern("%p.x");
+  const auto result_name = prepared.names.value_names.intern("%square");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.fixed.formal.scalar",
+      .return_type = bir::TypeKind::Void,
+      .params =
+          {bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "%p.x",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .abi = register_arg_abi(bir::TypeKind::I32,
+                                      4,
+                                      4,
+                                      bir::AbiValueClass::Integer),
+          }},
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.fixed.formal.scalar.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::Mul,
+                      .result = bir::Value::named(bir::TypeKind::I32, "%square"),
+                      .operand_type = bir::TypeKind::I32,
+                      .lhs = bir::Value::named(bir::TypeKind::I32, "%p.x"),
+                      .rhs = bir::Value::named(bir::TypeKind::I32, "%p.x"),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{31},
+               .function_name = function_name,
+               .value_name = param_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{32},
+               .function_name = function_name,
+               .value_name = result_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w0"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{31},
+               .value_name = param_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"w20"},
+               .occupied_register_names = {"w20"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{32},
+               .value_name = result_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"w0"},
+               .occupied_register_names = {"w0"},
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_variadic_entry_byval_aggregate_stack_home() {
   auto prepared = prepared_with_variadic_entry_helper_call(true, true, true);
   auto& function = prepared.module.functions.front();
@@ -10318,6 +10411,70 @@ int variadic_entry_fixed_formal_publishes_register_home_before_helper() {
   return 0;
 }
 
+int fixed_formal_register_home_feeds_later_scalar_lowering() {
+  auto prepared = prepared_with_scalar_fixed_formal_register_home();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      !result.visited_terminator || result.emitted_instructions != 3 ||
+      block.instructions.size() != 3) {
+    return fail("expected fixed formal publication, scalar multiply, and return without diagnostics");
+  }
+
+  const auto* publication =
+      std::get_if<aarch64_module::codegen::AssemblerInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (publication == nullptr ||
+      block.instructions.front().target.family !=
+          aarch64_module::codegen::InstructionFamily::Assembler ||
+      block.instructions.front().target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      !publication->has_inline_asm_payload ||
+      publication->inline_asm_template != "mov w13, w0") {
+    return fail("expected fixed formal to publish incoming ABI register into prepared home");
+  }
+
+  const auto* scalar =
+      std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (scalar == nullptr || !scalar->scalar_alu.has_value()) {
+    return fail("expected scalar multiply after fixed formal publication");
+  }
+  const auto lhs =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &scalar->scalar_alu->lhs.payload);
+  const auto rhs =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &scalar->scalar_alu->rhs.payload);
+  if (lhs == nullptr || rhs == nullptr ||
+      lhs->value_name != prepared.names.value_names.find("%p.x") ||
+      rhs->value_name != prepared.names.value_names.find("%p.x") ||
+      lhs->reg.index != 13 || rhs->reg.index != 13 ||
+      lhs->reg.view != aarch64_abi::RegisterView::W ||
+      rhs->reg.view != aarch64_abi::RegisterView::W) {
+    return fail("expected scalar multiply to consume prepared fixed-formal home, not stale storage");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("mul w0, w13, w13") == std::string::npos ||
+      printed.assembly.find("mul w0, w20, w20") != std::string::npos) {
+    return fail("expected printed scalar multiply to read prepared fixed-formal home");
+  }
+  return 0;
+}
+
 int variadic_entry_byval_aggregate_publishes_frame_slot_before_helper() {
   auto prepared = prepared_with_variadic_entry_byval_aggregate_stack_home();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -18458,6 +18615,10 @@ int main() {
   }
   if (const int status =
           variadic_entry_fixed_formal_publishes_register_home_before_helper();
+      status != 0) {
+    return status;
+  }
+  if (const int status = fixed_formal_register_home_feeds_later_scalar_lowering();
       status != 0) {
     return status;
   }
