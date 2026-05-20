@@ -7715,6 +7715,311 @@ prepare::PreparedBirModule prepared_with_f64_scalar_alu(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_f64_select_global_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.f64.select.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.f64.select.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f64.select.store.entry");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  const auto global_name = prepared.names.link_names.intern("g.f64.selected");
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g.f64.selected",
+      .link_name_id = global_name,
+      .type = bir::TypeKind::F64,
+      .size_bytes = 8,
+      .align_bytes = 8,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f64.select.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f64.select.store.entry",
+              .insts =
+                  {bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::F64, "%selected"),
+                       .compare_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::immediate_i64(1),
+                       .rhs = bir::Value::immediate_i64(1),
+                       .true_value =
+                           bir::Value::immediate_f64_bits(0x4028AE147AE147AEULL),
+                       .false_value =
+                           bir::Value::immediate_f64_bits(0x404C63D70A3D70A4ULL),
+                   },
+                   bir::StoreGlobalInst{
+                       .global_name_id = global_name,
+                       .value = bir::Value::named(bir::TypeKind::F64, "%selected"),
+                       .byte_offset = 16,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::GlobalSymbol,
+                               .byte_offset = 16,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_link_name_id = global_name,
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+              .value_id = prepare::PreparedValueId{80},
+              .function_name = function_name,
+              .value_name = selected_name,
+              .kind = prepare::PreparedValueHomeKind::Register,
+              .register_name = "d9",
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values = {fpr_storage(prepare::PreparedValueId{80}, selected_name, "d9")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 1,
+              .stored_value_name = selected_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                      .symbol_name = global_name,
+                      .byte_offset = 16,
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_f64_select_global_call_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.f64.select.call");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.f64.select.call.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f64.select.call.entry");
+  const auto global_name = prepared.names.link_names.intern("g.f64.call");
+  const auto bir_global_name = prepared.module.names.link_names.intern("g.f64.call");
+  const auto callee_link = prepared.names.link_names.intern("consume_f64");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  constexpr prepare::PreparedValueId kSelectedValue{84};
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g.f64.call",
+      .link_name_id = bir_global_name,
+      .type = bir::TypeKind::F64,
+      .size_bytes = 16,
+      .align_bytes = 8,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f64.select.call",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f64.select.call.entry",
+              .insts =
+                  {bir::LoadGlobalInst{
+                       .result = bir::Value::named(bir::TypeKind::F64, "%lhs"),
+                       .global_name = "g.f64.call",
+                       .global_name_id = bir_global_name,
+                       .byte_offset = 0,
+                       .align_bytes = 8,
+                   },
+                   bir::LoadGlobalInst{
+                       .result = bir::Value::named(bir::TypeKind::F64, "%rhs"),
+                       .global_name = "g.f64.call",
+                       .global_name_id = bir_global_name,
+                       .byte_offset = 8,
+                       .align_bytes = 8,
+                   },
+                   bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::F64, "%selected"),
+                       .compare_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::immediate_i64(1),
+                       .rhs = bir::Value::immediate_i64(1),
+                       .true_value = bir::Value::named(bir::TypeKind::F64, "%lhs"),
+                       .false_value = bir::Value::named(bir::TypeKind::F64, "%rhs"),
+                   },
+                   bir::CallInst{
+                       .callee = "consume_f64",
+                       .callee_link_name_id = callee_link,
+                       .args = {bir::Value::named(bir::TypeKind::F64, "%selected")},
+                       .arg_types = {bir::TypeKind::F64},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{82},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "d8",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{83},
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "d9",
+           },
+           prepare::PreparedValueHome{
+               .value_id = kSelectedValue,
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "d20",
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 3,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = kSelectedValue,
+                      .to_value_id = kSelectedValue,
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"d0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"d0"},
+                      .block_index = 0,
+                      .instruction_index = 3,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "call_arg_selected_f64_to_abi",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"d0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"d0"},
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {fpr_storage(prepare::PreparedValueId{82}, lhs_name, "d8"),
+           fpr_storage(prepare::PreparedValueId{83}, rhs_name, "d9"),
+           fpr_storage(kSelectedValue, selected_name, "d20")},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 3,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_f64"},
+          .arguments =
+              {prepare::PreparedCallArgumentPlan{
+                  .instruction_index = 3,
+                  .arg_index = 0,
+                  .value_bank = prepare::PreparedRegisterBank::Fpr,
+                  .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .source_value_id = kSelectedValue,
+                  .source_register_name = std::string{"d20"},
+                  .source_register_bank = prepare::PreparedRegisterBank::Fpr,
+                  .destination_register_name = std::string{"d0"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"d0"},
+                  .destination_register_bank = prepare::PreparedRegisterBank::Fpr,
+              }},
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = lhs_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = rhs_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 8,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 const char* dispatch_register_for_type(bir::TypeKind type, unsigned index) {
   if (type == bir::TypeKind::F64) {
     return index == 0 ? "d0" : "d1";
@@ -18563,6 +18868,101 @@ int block_dispatch_lowers_prepared_f64_scalar_alu_with_fpr_registers() {
   return 0;
 }
 
+int block_dispatch_publishes_f64_select_before_global_store() {
+  auto prepared = prepared_with_f64_select_global_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() != 1 || result.visited_operations != 2 ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3) {
+    return fail("expected f64 select publication, selected global store, and return: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto* publication =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &block.instructions.front().target.payload);
+  const auto* memory =
+      std::get_if<aarch64_codegen::MemoryInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (publication == nullptr || !publication->has_inline_asm_payload ||
+      memory == nullptr ||
+      memory->memory_kind != aarch64_codegen::MemoryInstructionKind::Store ||
+      !memory->value.has_value() ||
+      memory->value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected store-owned f64 select publication before selected store");
+  }
+  const auto* stored_register =
+      std::get_if<aarch64_codegen::RegisterOperand>(&memory->value->payload);
+  if (stored_register == nullptr ||
+      stored_register->reg != aarch64_abi::d_register(9)) {
+    return fail("expected f64 selected store to consume prepared FPR home");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("fcsel d9") == std::string::npos ||
+      printed.assembly.find("str d9, [") == std::string::npos) {
+    return fail("expected f64 select publication to feed the global store: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int block_dispatch_publishes_f64_select_before_call_argument_move() {
+  auto prepared = prepared_with_f64_select_global_call_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() != 1 || result.visited_operations != 4 ||
+      !result.visited_terminator || block.instructions.size() < 5) {
+    return fail("expected f64 select publication before call argument move: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected f64 select call route to print: " + printed.diagnostic);
+  }
+  const auto select = printed.assembly.find("fcsel d20");
+  const auto move = printed.assembly.find("fmov d0, d20");
+  const auto call = printed.assembly.find("bl consume_f64");
+  if (select == std::string::npos || move == std::string::npos ||
+      call == std::string::npos || !(select < move && move < call)) {
+    return fail("expected selected f64 global readback to feed call ABI move: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
   auto prepared = prepared_with_f64_scalar_alu(bir::BinaryOpcode::Add, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -19124,6 +19524,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_f64_scalar_alu_with_fpr_registers();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_f64_select_before_global_store();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_f64_select_before_call_argument_move();
       status != 0) {
     return status;
   }
