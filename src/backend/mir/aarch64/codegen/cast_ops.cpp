@@ -1091,7 +1091,7 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
     return std::nullopt;
   }
 
-  const auto prepared = make_prepared_scalar_cast_instruction_record(
+  auto prepared = make_prepared_scalar_cast_instruction_record(
       context.function.prepared->names,
       *context.function.value_locations,
       *context.function.storage_plan,
@@ -1122,6 +1122,21 @@ std::optional<module::MachineInstruction> lower_scalar_cast_instruction(
       return stack_cast;
     }
     return std::nullopt;
+  }
+
+  if (prepared.record->scalar_cast.has_value() && prepared.record->inputs.size() == 1) {
+    if (const auto* source_home =
+            find_named_value_home(context.function.prepared->names,
+                                  *context.function.value_locations,
+                                  cast->operand);
+        source_home != nullptr) {
+      const auto emitted =
+          find_emitted_scalar_register(scalar_state, source_home->value_name);
+      if (emitted.has_value()) {
+        prepared.record->scalar_cast->source = make_register_operand(*emitted);
+        prepared.record->inputs[0] = prepared.record->scalar_cast->source;
+      }
+    }
   }
 
   InstructionRecord target = make_scalar_instruction(*prepared.record);
