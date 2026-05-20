@@ -9912,8 +9912,23 @@ int prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary() 
     return fail("expected prior format string materialization to publish directly into x0");
   }
 
+  const auto* payload_address =
+      std::get_if<aarch64_module::codegen::AddressMaterializationRecord>(
+          &addresses[1].target.payload);
+  if (payload_address == nullptr ||
+      payload_address->kind !=
+          aarch64_module::codegen::AddressMaterializationKind::StringConstant ||
+      !payload_address->result_register.has_value() ||
+      payload_address->result_register->reg != aarch64_module::abi::x_register(1) ||
+      payload_address->result_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{2}}) {
+    return fail("expected prior aggregate-member string materialization to publish directly into x1");
+  }
+
   const auto printed_fmt =
       aarch64_codegen::print_machine_instruction_line_payloads(addresses.front().target);
+  const auto printed_payload =
+      aarch64_codegen::print_machine_instruction_line_payloads(addresses[1].target);
   const auto printed_call =
       aarch64_codegen::print_machine_instruction_line_payloads(
           aarch64_codegen::make_call_instruction(aarch64_codegen::CallInstructionRecord{
@@ -9927,13 +9942,16 @@ int prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary() 
               .wrapper_kind = call_plan.wrapper_kind,
               .source_call = &call_plan,
           }));
-  if (!printed_fmt.ok || !printed_call.ok ||
+  if (!printed_fmt.ok || !printed_payload.ok || !printed_call.ok ||
       printed_fmt.instruction_lines.size() != 2 ||
       printed_fmt.instruction_lines[0] != "adrp x0, .fmt" ||
       printed_fmt.instruction_lines[1] != "add x0, x0, :lo12:.fmt" ||
+      printed_payload.instruction_lines.size() != 2 ||
+      printed_payload.instruction_lines[0] != "adrp x1, .payload" ||
+      printed_payload.instruction_lines[1] != "add x1, x1, :lo12:.payload" ||
       printed_call.instruction_lines.size() != 1 ||
       printed_call.instruction_lines[0] != "bl printf") {
-    return fail("expected printed prior call-argument string publication before bl printf");
+    return fail("expected printed prior call-argument string publications before bl printf");
   }
 
   return 0;
