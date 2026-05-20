@@ -1,6 +1,6 @@
 # AArch64 Byval Aggregate Call Argument Register-Lane Publication
 
-Status: Parked - scope satisfied; close deferred
+Status: Open
 Created: 2026-05-19
 Split From: ideas/open/327_aarch64_fixed_formal_entry_publication.md
 
@@ -174,3 +174,14 @@ new bad line is in the later `stdarg:` block: actual output begins
 `ABCDEFGHI ABCDEFGHI ABCDEFGHI stdarg:` where the expected output has six
 `ABCDEFGHI` fields before `stdarg:`. Continue that residual under
 `ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md`.
+
+2026-05-20: Reactivated after idea 331 localized the advanced stdarg payload
+residual to caller-side split aggregate lane materialization/publication before
+`myprintf`. The first `stdarg:` payload line now prints all six `ABCDEFGHI`
+fields; the new first bad fact is the second payload line, where each `%9s`
+aggregate reaches `myprintf` as `ABCDEFGH` because the ninth byte is stranded
+in temporary stack slots while the high byval lane is loaded from unpopulated
+aggregate lane slots. Resume from the partial upper-lane publication handoff in
+`src/backend/bir/lir_to_bir/memory/local_slots.cpp` and
+`src/backend/mir/aarch64/codegen/calls.cpp`, preserving the earlier rounded
+byval placement repair.

@@ -121,3 +121,15 @@ validation before the handoff commit passed
 Resume from stdarg field production, cursor progression, or argument
 publication evidence; do not reopen fixed byval placement without fresh
 generated-code evidence.
+
+2026-05-20: Step 4 classified the advanced stdarg payload residual as outside
+this stdarg cursor/format idea. The first `stdarg:` payload line is fixed and
+prints six `ABCDEFGHI` fields. The next first bad fact is the second payload
+line, expected `lmnopqr ABCDEFGHI ...` but observed `lmnopqr ABCDEFGH ...`.
+Generated evidence shows the ninth byte exists before call publication, then
+is stored to separate temporary stack slots while the high byval lane is loaded
+from unpopulated aggregate lane slots. `myprintf` cursor progression, aggregate
+`va_arg` copy count, format traversal, and destination buffering are downstream
+observers. Handoff back to
+`ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md` for
+partial upper-lane byval aggregate publication.
