@@ -223,9 +223,6 @@ std::optional<RegisterReference> placement_register(
     case prepare::PreparedRegisterSlotPool::CallArgument:
       return call_abi_register(placement);
     case prepare::PreparedRegisterSlotPool::CallResult:
-      if (placement.slot_index != 0) {
-        return std::nullopt;
-      }
       return call_abi_register(placement);
     case prepare::PreparedRegisterSlotPool::CallerSaved:
       return prepared_caller_saved_register(placement);

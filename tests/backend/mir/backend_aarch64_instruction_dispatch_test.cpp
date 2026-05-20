@@ -2892,7 +2892,8 @@ prepare::PreparedBirModule prepared_with_direct_call_result_register_move() {
   return prepared;
 }
 
-prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves() {
+prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves(
+    bool include_lane_stores = false) {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
   prepared.module.target_triple = prepared.target_profile.triple;
@@ -2904,6 +2905,8 @@ prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves() {
   const auto actual_link = prepared.names.link_names.intern("actual_hfa_function");
   const auto lane0_name = prepared.names.value_names.intern("%hfa_result.0");
   const auto lane1_name = prepared.names.value_names.intern("%hfa_result.1");
+  const auto lane0_slot = prepared.module.names.slot_names.intern("%hfa_result.agg.0");
+  const auto lane1_slot = prepared.module.names.slot_names.intern("%hfa_result.agg.4");
 
   bir::CallInst call;
   call.result = bir::Value::named(bir::TypeKind::F32, "%hfa_result.0");
@@ -2920,13 +2923,49 @@ prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves() {
       .register_count = 2,
   };
   call.calling_convention = bir::CallingConv::C;
+  std::vector<bir::Inst> insts;
+  insts.push_back(std::move(call));
+  if (include_lane_stores) {
+    insts.push_back(bir::StoreLocalInst{
+        .slot_name = "%hfa_result.agg.0",
+        .slot_id = lane0_slot,
+        .value = bir::Value::named(bir::TypeKind::F32, "%hfa_result.0"),
+        .byte_offset = 0,
+        .align_bytes = 4,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .base_name = "%hfa_result.agg.0",
+                .byte_offset = 0,
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .base_slot_id = lane0_slot,
+            },
+    });
+    insts.push_back(bir::StoreLocalInst{
+        .slot_name = "%hfa_result.agg.4",
+        .slot_id = lane1_slot,
+        .value = bir::Value::named(bir::TypeKind::F32, "%hfa_result.1"),
+        .byte_offset = 4,
+        .align_bytes = 4,
+        .address =
+            bir::MemoryAddress{
+                .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                .base_name = "%hfa_result.agg.4",
+                .byte_offset = 4,
+                .size_bytes = 4,
+                .align_bytes = 4,
+                .base_slot_id = lane1_slot,
+            },
+    });
+  }
 
   prepared.module.functions.push_back(bir::Function{
       .name = "dispatch.hfa.call.result",
       .return_type = bir::TypeKind::Void,
       .blocks = {bir::Block{
           .label = "dispatch.hfa.call.result.entry",
-          .insts = {std::move(call)},
+          .insts = std::move(insts),
           .terminator = bir::Terminator{bir::ReturnTerminator{}},
           .label_id = bir_entry_label,
       }},
@@ -2948,14 +2987,16 @@ prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves() {
                   .function_name = function_name,
                   .value_name = lane0_name,
                   .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"s13"},
+                  .register_name =
+                      include_lane_stores ? std::string{"s0"} : std::string{"s13"},
               },
               prepare::PreparedValueHome{
                   .value_id = prepare::PreparedValueId{62},
                   .function_name = function_name,
                   .value_name = lane1_name,
                   .kind = prepare::PreparedValueHomeKind::Register,
-                  .register_name = std::string{"s14"},
+                  .register_name =
+                      include_lane_stores ? std::string{"s1"} : std::string{"s14"},
               },
           },
       .move_bundles =
@@ -3063,6 +3104,98 @@ prepare::PreparedBirModule prepared_with_direct_hfa_call_result_lane_moves() {
           .direct_callee_name = std::string{"actual_hfa_function"},
       }},
   });
+  if (include_lane_stores) {
+    prepared.stack_layout = prepare::PreparedStackLayout{
+        .frame_slots =
+            {prepare::PreparedFrameSlot{
+                .slot_id = prepare::PreparedFrameSlotId{61},
+                .object_id = prepare::PreparedObjectId{61},
+                .function_name = function_name,
+                .offset_bytes = 0,
+                .size_bytes = 8,
+                .align_bytes = 4,
+                .fixed_location = true,
+            }},
+        .frame_size_bytes = 16,
+        .frame_alignment_bytes = 16,
+    };
+    prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+        .function_name = function_name,
+        .values =
+            {
+                prepare::PreparedStoragePlanValue{
+                    .value_id = prepare::PreparedValueId{61},
+                    .value_name = lane0_name,
+                    .encoding = prepare::PreparedStorageEncodingKind::Register,
+                    .bank = prepare::PreparedRegisterBank::Fpr,
+                    .contiguous_width = 1,
+                    .register_name = std::string{"s9"},
+                    .occupied_register_names = {"s9"},
+                    .register_placement =
+                        prepare::PreparedRegisterPlacement{
+                            .bank = prepare::PreparedRegisterBank::Fpr,
+                            .pool = prepare::PreparedRegisterSlotPool::CallerSaved,
+                            .slot_index = 0,
+                            .contiguous_width = 1,
+                        },
+                },
+                prepare::PreparedStoragePlanValue{
+                    .value_id = prepare::PreparedValueId{62},
+                    .value_name = lane1_name,
+                    .encoding = prepare::PreparedStorageEncodingKind::Register,
+                    .bank = prepare::PreparedRegisterBank::Fpr,
+                    .contiguous_width = 1,
+                    .register_name = std::string{"s13"},
+                    .occupied_register_names = {"s13"},
+                    .register_placement =
+                        prepare::PreparedRegisterPlacement{
+                            .bank = prepare::PreparedRegisterBank::Fpr,
+                            .pool = prepare::PreparedRegisterSlotPool::CalleeSaved,
+                            .slot_index = 0,
+                            .contiguous_width = 1,
+                        },
+                },
+            },
+    });
+    prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+        .function_name = function_name,
+        .frame_size_bytes = 16,
+        .frame_alignment_bytes = 16,
+        .accesses =
+            {
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = entry_label,
+                    .inst_index = 1,
+                    .stored_value_name = lane0_name,
+                    .address =
+                        prepare::PreparedAddress{
+                            .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                            .frame_slot_id = prepare::PreparedFrameSlotId{61},
+                            .byte_offset = 0,
+                            .size_bytes = 4,
+                            .align_bytes = 4,
+                            .can_use_base_plus_offset = true,
+                        },
+                },
+                prepare::PreparedMemoryAccess{
+                    .function_name = function_name,
+                    .block_label = entry_label,
+                    .inst_index = 2,
+                    .stored_value_name = lane1_name,
+                    .address =
+                        prepare::PreparedAddress{
+                            .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                            .frame_slot_id = prepare::PreparedFrameSlotId{61},
+                            .byte_offset = 4,
+                            .size_bytes = 4,
+                            .align_bytes = 4,
+                            .can_use_base_plus_offset = true,
+                        },
+                },
+            },
+    });
+  }
   return prepared;
 }
 
@@ -12293,6 +12426,70 @@ int block_dispatch_lowers_prepared_hfa_result_lanes_from_distinct_fprs() {
   return 0;
 }
 
+int block_dispatch_stores_hfa_call_result_lanes_from_abi_publication() {
+  auto prepared = prepared_with_direct_hfa_call_result_lane_moves(true);
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 3 || !result.visited_terminator ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6 ||
+      !diagnostics.empty()) {
+    std::string messages;
+    for (const auto& entry : diagnostics.entries) {
+      messages += " [";
+      messages += entry.message;
+      messages += "]";
+    }
+    return fail("expected HFA call, lane publications, two lane stores, and return; got visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                messages);
+  }
+
+  const auto* lane0_store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &block.instructions[3].target.payload);
+  const auto* lane1_store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &block.instructions[4].target.payload);
+  if (lane0_store == nullptr || lane1_store == nullptr ||
+      lane0_store->memory_kind !=
+          aarch64_module::codegen::MemoryInstructionKind::Store ||
+      lane1_store->memory_kind !=
+          aarch64_module::codegen::MemoryInstructionKind::Store ||
+      !lane0_store->value.has_value() ||
+      !lane1_store->value.has_value()) {
+    return fail("expected selected HFA aggregate lane stores");
+  }
+  const auto* lane0_value =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &lane0_store->value->payload);
+  const auto* lane1_value =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &lane1_store->value->payload);
+  if (lane0_value == nullptr || lane1_value == nullptr ||
+      lane0_value->reg != aarch64_module::abi::s_register(0) ||
+      lane1_value->reg != aarch64_module::abi::s_register(1) ||
+      lane0_value->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      lane1_value->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      lane0_value->role != aarch64_module::codegen::RegisterOperandRole::CallAbi ||
+      lane1_value->role != aarch64_module::codegen::RegisterOperandRole::CallAbi) {
+    return fail("expected HFA stores to consume ABI result lanes instead of stale FPR homes");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_f128_argument_q_register_move_before_direct_call() {
   auto prepared = prepared_with_direct_call_f128_argument_register_move();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -15202,6 +15399,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_hfa_result_lanes_from_distinct_fprs();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_stores_hfa_call_result_lanes_from_abi_publication();
       status != 0) {
     return status;
   }

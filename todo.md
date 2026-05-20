@@ -8,45 +8,41 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 repaired the classified HFA/floating return lane-home publication owner
-for frame-slot lane loads that feed before-return ABI moves. AArch64 memory
-lowering now retargets a frame-slot load result to the prepared register home
-when that prepared value is the source of a same-block `BeforeReturn`
-`FunctionReturnAbi` FPR register move. This keeps the HFA/floating load
-publication owner and the return-boundary consumer on the same FPR home without
-retargeting GPR scalar frame-slot returns away from their ABI return register.
+Step 2 repaired the caller-side HFA/floating call-result publication owner for
+aggregate result stores after a call. AArch64 dispatch now records prepared
+after-call `CallResultAbi` FPR lane moves as live scalar publications and lets
+floating local stores consume that live call-result publication instead of the
+stale storage-plan/home register when the stored value is an HFA/floating call
+result lane.
+
+The repair also fixes AArch64 prepared `CallResult` placement conversion for
+multi-lane results. `CallResult` placements now convert slots 0..7 through the
+same ABI register mapping as call arguments, so HFA result lane 1+ can publish
+as `s1`/`d1`, `s2`/`d2`, and so on instead of only slot 0 being convertible.
 
 Focused backend coverage was added in
 `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` as
-`hfa_return_frame_slot_lane_load_publishes_prepared_home`. The test builds a
-prepared HFA lane load whose storage plan starts in scratch `s8`, whose value
-home is `d20`, and whose before-return ABI move targets `s1`; it proves the
-lowered load publishes `s20` and the return move consumes `s20`.
+`block_dispatch_stores_hfa_call_result_lanes_from_abi_publication`. The test
+models a prepared two-lane F32 HFA result whose stale storage plan names FPR
+homes such as caller/callee-saved FPR placements, while the call-result ABI
+bundle names `s0`/`s1`; it proves the selected aggregate stores consume
+`s0`/`s1` with `CallAbi` FPR authority.
 
 Generated-code evidence in `build/c_testsuite_aarch64_backend/src/00204.c.s`:
-`fr_hfa12` now lowers lane 1 as `ldr s20, [sp, #4]` followed by `fmov s1, s20`
-instead of loading the lane into scratch `s8` while the return move observed
-`s20`. `fr_hfa13` now publishes lanes through `s20`/`s21`, and the double HFA
-paths publish through `d20`/`d21` before return.
-
-The delegated proof still exposes a later HFA return residual in the caller.
-After `bl fr_hfa12`, generated code stores `s9`/`s13` to the local aggregate
-result area instead of consuming the return ABI lanes from `s0`/`s1`, so the
-return-value runtime line remains `2.0 12.1`. This is no longer the original
-callee-side lane home mismatch: the callee publishes lane 1 through the
-prepared `s20` home and returns it with `fmov s1, s20`.
-
-The blocking `backend_aarch64_return_lowering` regression from the first
-frame-slot retarget was fixed by scoping the new path to FPR return ABI moves.
-The existing scalar memory-loaded return still honors `FunctionReturnAbi w0`.
+after `bl fr_hfa12`, the caller now stores `s0` and `s1` to the aggregate
+result area instead of `s9`/`s13`. Nearby repaired shapes also now store from
+ABI result lanes: `fr_hfa13` uses `s0`/`s1`/`s2`, `fr_hfa14` uses
+`s0`/`s1`/`s2`/`s3`, `fr_hfa23` uses `d0`/`d1`/`d2`, and `fr_hfa24` uses
+`d0`/`d1`/`d2`/`d3`.
 
 ## Suggested Next
 
-Continue Step 2 in the caller-side HFA/floating call-result publication owner.
-The new first bad fact is after-call aggregate result storage for HFA returns:
-the caller should publish and consume ABI result lanes from `s0`/`s1` before
-storing the local aggregate, but `ret` after `bl fr_hfa12` stores stale or
-wrong scratch/home registers such as `s9`/`s13`.
+Continue Step 2 in the remaining callee-side HFA/floating lane publication
+residual. The new first bad fact is no longer caller-side aggregate storage
+after `bl fr_hfa12`; that now uses `s0`/`s1`. `00204.c` first goes wrong at
+the four-lane float HFA return: `fr_hfa14` prepares lanes `s0`/`s1`/`s2` but
+does not publish lane 3 into `s3`, so `printf("%.1f %.1f\n", fr_hfa14().a,
+fr_hfa14().d)` prints `14.1 0.0`.
 
 ## Watchouts
 
@@ -61,15 +57,17 @@ value feeds a same-block before-return FPR ABI register move. GPR scalar
 returns must continue to use the return ABI register selected by return
 lowering.
 
-Four-lane HFA returns still expose a separate residual: lane 3 can spill through
-`s16`/`d16` to a stack slot without a corresponding `s3`/`d3` return move. Treat
-that as a lane-capacity/call-result publication follow-up, not a reason to undo
-the repaired `d20`/`d21` lane-home publication.
+Four-lane HFA returns still expose a separate callee-side residual: lane 3 can
+spill through `s16`/`d16` to a stack slot without a corresponding `s3`/`d3`
+return move. Treat that as the next lane-capacity publication repair, not a
+reason to undo the repaired caller-side ABI lane stores or the `d20`/`d21`
+lane-home publication.
 
 Untracked `review/*.md` files were present before this executor packet and were
 left untouched.
 
-Files changed in this packet: `src/backend/mir/aarch64/codegen/dispatch.cpp`,
+Files changed in this packet: `src/backend/mir/aarch64/abi/abi.cpp`,
+`src/backend/mir/aarch64/codegen/dispatch.cpp`,
 `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`, and
 `todo.md`.
 
@@ -79,20 +77,22 @@ Files changed in this packet: `src/backend/mir/aarch64/codegen/dispatch.cpp`,
 
 Ran the delegated proof command:
 `git diff --check`, then
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_return_lowering|backend_aarch64_instruction_dispatch|c_testsuite_aarch64_backend_src_00204_c)$'`.
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_target_instruction_records|backend_aarch64_machine_printer|backend_aarch64_instruction_dispatch|backend_aarch64_return_lowering|c_testsuite_aarch64_backend_src_00204_c)$'`.
 
 Current result: `git diff --check` passed; build succeeded;
-`backend_aarch64_return_lowering` and `backend_aarch64_instruction_dispatch`
-passed. `c_testsuite_aarch64_backend_src_00204_c` still failed with
-`RUNTIME_NONZERO` / segmentation fault. `test_after.log` is the fresh proof log
-for the delegated build and CTest command.
+`backend_aarch64_target_instruction_records`,
+`backend_aarch64_machine_printer`, `backend_aarch64_instruction_dispatch`, and
+`backend_aarch64_return_lowering` passed.
+`c_testsuite_aarch64_backend_src_00204_c` still failed with `RUNTIME_NONZERO`
+/ segmentation fault. `test_after.log` is the fresh proof log for the delegated
+build and CTest command.
 
-The overall `00204.c` output still shows earlier HFA argument/caller-side
-wrong-output lines before `Return values:`. Within the return-value portion, the
-first bad return fact remains caller-side HFA call-result publication after
-`bl fr_hfa12`, where the caller stores `s9`/`s13` instead of ABI result lanes
-`s0`/`s1` before reloading the aggregate for printing. This slice is real
-progress because callee-side HFA return lane-home publication now emits
-`ldr s20, [sp, #4]` and `fmov s1, s20` for `fr_hfa12`, plus `s20`/`s21` and
-`d20`/`d21` lane-home publication for nearby HFA return shapes, while the
-scalar GPR return-lowering regression is fixed.
+The overall `00204.c` output still shows earlier HFA argument wrong-output
+lines before `Return values:`. Within the return-value portion, caller-side HFA
+aggregate result storage now advances through `fr_hfa12`/`fr_hfa13`; the first
+bad return fact is the callee-side four-lane `fr_hfa14` lane 3 publication,
+where `.d` prints `0.0`. This slice is real progress because the caller-side
+aggregate stores now consume ABI lanes (`s0`/`s1` for `fr_hfa12`, wider
+`s0..s3` and `d0..d3` for nearby shapes) instead of stale scratch/home FPRs,
+while the previous `x8` sret, large-byval, callee lane-home, and scalar GPR
+return-lowering repairs remain preserved.

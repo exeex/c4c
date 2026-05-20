@@ -1358,6 +1358,39 @@ void retarget_pointer_store_value_to_emitted_scalar(
   memory_record->value = make_register_operand(*emitted);
 }
 
+void retarget_fpr_call_result_store_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named ||
+      (store->value.type != bir::TypeKind::F32 &&
+       store->value.type != bir::TypeKind::F64)) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store ||
+      memory_record->value_type != store->value.type) {
+    return;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value()) {
+    return;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  if (!emitted.has_value() ||
+      emitted->role != RegisterOperandRole::CallAbi ||
+      emitted->prepared_bank != prepare::PreparedRegisterBank::Fpr ||
+      emitted->reg.bank != abi::RegisterBank::FpSimd) {
+    return;
+  }
+  memory_record->value = make_register_operand(*emitted);
+}
+
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset) {
   std::string operand{label};
@@ -3829,6 +3862,72 @@ void record_call_result_source_register(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
     BlockScalarLoweringState& scalar_state) {
+  if (context.function.value_locations != nullptr) {
+    const auto* bundle = prepare::find_prepared_move_bundle(
+        *context.function.value_locations,
+        prepare::PreparedMovePhase::AfterCall,
+        call_plan.block_index,
+        call_plan.instruction_index);
+    if (bundle != nullptr) {
+      for (const auto& move : bundle->moves) {
+        if (move.destination_kind !=
+                prepare::PreparedMoveDestinationKind::CallResultAbi ||
+            move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
+            move.op_kind != prepare::PreparedMoveResolutionOpKind::Move) {
+          continue;
+        }
+        const auto* home =
+            prepare::find_prepared_value_home(*context.function.value_locations,
+                                              move.to_value_id);
+        if (home == nullptr || home->value_name == c4c::kInvalidValueName) {
+          continue;
+        }
+        const auto expected_view =
+            move.destination_register_name.has_value()
+                ? abi::parse_aarch64_register_name(*move.destination_register_name)
+                : std::nullopt;
+        if (!expected_view.has_value() ||
+            expected_view->bank != abi::RegisterBank::FpSimd) {
+          continue;
+        }
+        abi::PreparedRegisterConversionResult converted;
+        if (move.destination_register_placement.has_value()) {
+          converted = abi::convert_prepared_register(
+              *move.destination_register_placement,
+              prepare::PreparedRegisterClass::Float,
+              expected_view->view);
+        } else if (move.destination_register_name.has_value()) {
+          converted = abi::convert_prepared_register(
+              *move.destination_register_name,
+              prepare::PreparedRegisterBank::Fpr,
+              prepare::PreparedRegisterClass::Float,
+              expected_view->view);
+        } else {
+          continue;
+        }
+        if (!converted.reg.has_value() ||
+            converted.reg->bank != abi::RegisterBank::FpSimd) {
+          continue;
+        }
+        record_emitted_scalar_register(
+            scalar_state,
+            home->value_name,
+            RegisterOperand{
+                .reg = *converted.reg,
+                .role = RegisterOperandRole::CallAbi,
+                .value_id = home->value_id,
+                .value_name = home->value_name,
+                .prepared_class = prepare::PreparedRegisterClass::Float,
+                .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+                .expected_view = converted.reg->view,
+                .contiguous_width = move.destination_contiguous_width,
+                .occupied_register_references = {*converted.reg},
+                .occupied_registers = {abi::register_name(*converted.reg)},
+            });
+      }
+    }
+  }
+
   if (!call_plan.result.has_value() ||
       !call_plan.result->destination_value_id.has_value() ||
       !call_plan.result->source_register_name.has_value() ||
@@ -5163,6 +5262,8 @@ InstructionDispatchResult dispatch_prepared_block(
           }
           if (lowered_ordinary_memory.instruction.has_value()) {
             retarget_pointer_store_value_to_emitted_scalar(
+                context, inst, scalar_state, *lowered_ordinary_memory.instruction);
+            retarget_fpr_call_result_store_value_to_emitted_scalar(
                 context, inst, scalar_state, *lowered_ordinary_memory.instruction);
             if (auto value_publication =
                     lower_store_local_value_publication(
