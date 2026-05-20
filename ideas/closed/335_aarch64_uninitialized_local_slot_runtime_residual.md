@@ -1,8 +1,9 @@
 # AArch64 Uninitialized Local Slot Runtime Residual
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/334_aarch64_scalar_machine_node_operand_fact_printing.md
+Closed: 2026-05-20
 
 ## Goal
 
@@ -72,6 +73,25 @@ home assignment, spill/reload sequencing, or store/load ordering.
   newly classified residual outside this owner.
 - Adjacent AArch64 local-slot, spill/reload, frame-slot, and scalar arithmetic
   guardrails remain stable.
+
+## Completion Note
+
+Closed after commit `171690fce repair AArch64 load local publication`.
+The repair retargets unpublished `bir.load_local` scalar operands to prepared
+source frame-slot accesses when safe, fixes load-local prepared register
+emission in dispatch, and adds focused AArch64 backend coverage for stack-home
+and GP-home scalar consumers plus the machine-printer frame-slot operand guard.
+
+Close proof:
+
+- `c_testsuite_aarch64_backend_src_00164_c` passes.
+- The closed scalar-printer representative
+  `c_testsuite_aarch64_backend_src_00214_c` still passes.
+- Backend validation passed with `ctest --test-dir build -j
+  --output-on-failure -R '^backend_'`.
+- The close regression guard passed using canonical `test_before.log` and
+  `test_after.log`: before 4/1/5, after 5/0/5, resolved
+  `c_testsuite_aarch64_backend_src_00164_c`, no new failures.
 
 ## Reviewer Reject Signals
 
