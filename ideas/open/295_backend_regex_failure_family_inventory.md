@@ -784,8 +784,8 @@ Step 4 switch 2026-05-20 post-347:
 
 - The fresh backend-regex inventory selected 354 tests and classified the
   current residual surface down to 21 external AArch64 failures.
-- The selected existing focused owner is idea 328,
-  `ideas/open/328_aarch64_byval_aggregate_call_argument_lane_publication.md`.
+- The selected existing focused owner was closed adjacent owner idea 328,
+  `ideas/closed/328_aarch64_byval_aggregate_call_argument_lane_publication.md`.
 - The current first bad fact is again caller-side byval aggregate lane
   publication in `00204`: `fa_s1(s1)` reaches the call boundary with the
   address of the prepared byval temporary in `x0` (`add x0, sp, #928`) instead
@@ -796,6 +796,32 @@ Step 4 switch 2026-05-20 post-347:
   access and FP expression/comparison lowering remain viable future owners but
   were not selected for this switch.
 - Active implementation should move to idea 328 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the remaining parked buckets.
+
+Step 4 switch 2026-05-20 post-328:
+
+- Step 3 of the active umbrella runbook selected focused owner idea 348,
+  `ideas/open/348_aarch64_indexed_aggregate_address_writeback.md`, from the
+  committed post-328 residual classification.
+- The selected bucket is indexed aggregate addressing/writeback: `00130`,
+  `00176`, `00182`, `00187`, `00195`, with `00181` as a nearby recursive
+  pointer/global-array crash. The owner is based on generated-code first-bad
+  facts, not failing counts.
+- Representative evidence includes wrong local byte placement for `arr[1][3]`,
+  unchanged global quicksort state after indexed swaps, lost LED buffer
+  digits, a local buffer terminator landing at the wrong byte, repeated stale
+  `d9` stores while walking `point_array+N`, and recursive global tower array
+  mutation through fixed snapshots instead of selected element addresses.
+- Existing parked aggregate ideas do not own this bucket by current evidence:
+  their scopes are variadic, byval, `va_arg`, call-boundary, or publication
+  boundaries rather than dynamic indexed aggregate address/writeback.
+- Remaining buckets stay parked under this umbrella: boolean/comparison
+  materialization, FP comparison/expression lowering, semantic admission,
+  static aggregate initializer/relocation materialization, recursive scalar
+  state, pointer indirection, loop/update state, runtime timeout/output-storm,
+  and other unresolved runtime residuals.
+- Active implementation should move to idea 348 before code edits begin. This
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the remaining parked buckets.
 
