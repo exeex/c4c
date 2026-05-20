@@ -1679,12 +1679,17 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
   if (tracks_pointer_value_slot) {
     if (const auto pointer_alias = local_pointer_value_aliases.find(slot);
         pointer_alias != local_pointer_value_aliases.end()) {
-      (*value_aliases)[result] = pointer_alias->second;
-      if (const auto addr_it = local_address_slots.find(slot);
-          addr_it != local_address_slots.end()) {
-        (*global_pointer_slots)[result] = addr_it->second;
+      if (context_.target_profile.arch != c4c::TargetArch::Aarch64) {
+        (*value_aliases)[result] = pointer_alias->second;
+        if (const auto addr_it = local_address_slots.find(slot);
+            addr_it != local_address_slots.end()) {
+          (*global_pointer_slots)[result] = addr_it->second;
+        }
+        return true;
       }
-      return true;
+      // A tracked aggregate field can still be a mutable runtime cursor, such
+      // as AArch64 va_list.overflow_arg_area. Reload the slot so repeated
+      // va_arg stack paths observe the current cursor value.
     }
   }
 

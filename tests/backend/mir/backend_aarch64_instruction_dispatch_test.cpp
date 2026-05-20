@@ -1145,6 +1145,84 @@ lir::LirModule make_aarch64_mixed_hfa_pressure_lir_module() {
   return module;
 }
 
+lir::LirModule make_aarch64_tracked_pointer_field_reload_lir_module() {
+  lir::LirModule module;
+  module.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  module.type_decls.push_back("%struct.ptrbox = type { ptr }");
+
+  lir::LirFunction function;
+  function.name = "aarch64_tracked_pointer_field_reload";
+  function.signature_text = "define void @aarch64_tracked_pointer_field_reload(ptr %cursor)";
+  function.return_type = scalar_type(c4c::TB_VOID);
+  function.signature_return_type_ref = lir::LirTypeRef("void");
+  c4c::TypeSpec ptr_type{};
+  ptr_type.base = c4c::TB_VOID;
+  ptr_type.ptr_level = 1;
+  function.params.push_back({"%cursor", ptr_type});
+  function.signature_params.push_back(lir::LirSignatureParam{
+      .name = "%cursor",
+      .type = ptr_type,
+      .is_byval = false,
+  });
+  function.signature_param_type_refs.push_back(lir::LirTypeRef("ptr"));
+  function.alloca_insts.push_back(lir::LirAllocaOp{
+      .result = lir::LirOperand("%lv.box"),
+      .type_str = "%struct.ptrbox",
+      .count = lir::LirOperand(""),
+      .align = 8,
+  });
+
+  lir::LirBlock entry;
+  entry.id = function.alloc_block();
+  entry.label = "entry";
+  function.entry = entry.id;
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%field"),
+      .element_type = "%struct.ptrbox",
+      .ptr = lir::LirOperand("%lv.box"),
+      .indices = {"i32 0", "i32 0"},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%cursor"),
+      .ptr = lir::LirOperand("%field"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%first"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%field"),
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%advanced"),
+      .element_type = "i8",
+      .ptr = lir::LirOperand("%first"),
+      .indices = {"i64 16"},
+  });
+  entry.insts.push_back(lir::LirStoreOp{
+      .type_str = "ptr",
+      .val = lir::LirOperand("%advanced"),
+      .ptr = lir::LirOperand("%field"),
+  });
+  entry.insts.push_back(lir::LirLoadOp{
+      .result = lir::LirOperand("%second"),
+      .type_str = "ptr",
+      .ptr = lir::LirOperand("%field"),
+  });
+  entry.insts.push_back(lir::LirGepOp{
+      .result = lir::LirOperand("%after_second"),
+      .element_type = "i8",
+      .ptr = lir::LirOperand("%second"),
+      .indices = {"i64 16"},
+  });
+  entry.terminator = lir::LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
 prepare::PreparedBirModule prepared_with_variadic_entry_formal_stack_homes() {
   auto prepared = prepared_with_variadic_entry_helper_call(true, true, true);
   auto& function = prepared.module.functions.front();
@@ -13698,6 +13776,64 @@ int lir_to_bir_marks_overflowing_aarch64_fixed_hfa_group_stack_passed() {
   return 0;
 }
 
+int lir_to_bir_reloads_mutated_aarch64_tracked_pointer_field() {
+  const auto lowering = c4c::backend::try_lower_to_bir_with_options(
+      make_aarch64_tracked_pointer_field_reload_lir_module(),
+      c4c::backend::BirLoweringOptions{});
+  if (!lowering.module.has_value()) {
+    for (const auto& note : lowering.notes) {
+      std::cerr << note.phase << ": " << note.message << "\n";
+    }
+    return fail("expected tracked pointer-field reload fixture to lower to BIR");
+  }
+
+  const bir::Function* function = nullptr;
+  for (const auto& candidate : lowering.module->functions) {
+    if (candidate.name == "aarch64_tracked_pointer_field_reload") {
+      function = &candidate;
+      break;
+    }
+  }
+  if (function == nullptr || function->blocks.empty()) {
+    return fail("expected tracked pointer-field reload function in lowered module");
+  }
+
+  bool saw_second_local_load = false;
+  bool saw_after_second_uses_reloaded_pointer = false;
+  bool saw_after_second_uses_stale_advanced_pointer = false;
+  for (const auto& block : function->blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<bir::LoadLocalInst>(&inst)) {
+        if (load->result.name == "%second" && load->result.type == bir::TypeKind::Ptr &&
+            load->slot_name == "%lv.box.0") {
+          saw_second_local_load = true;
+        }
+      } else if (const auto* binary = std::get_if<bir::BinaryInst>(&inst)) {
+        if (binary->result.name != "%after_second" ||
+            binary->opcode != bir::BinaryOpcode::Add ||
+            binary->operand_type != bir::TypeKind::Ptr ||
+            binary->rhs != bir::Value::immediate_i64(16)) {
+          continue;
+        }
+        if (binary->lhs == bir::Value::named(bir::TypeKind::Ptr, "%second")) {
+          saw_after_second_uses_reloaded_pointer = true;
+        }
+        if (binary->lhs == bir::Value::named(bir::TypeKind::Ptr, "%advanced")) {
+          saw_after_second_uses_stale_advanced_pointer = true;
+        }
+      }
+    }
+  }
+
+  if (!saw_second_local_load) {
+    return fail("expected mutated AArch64 tracked pointer field to reload from local storage");
+  }
+  if (!saw_after_second_uses_reloaded_pointer || saw_after_second_uses_stale_advanced_pointer) {
+    return fail("expected follow-on GEP to use the reloaded pointer, not the stale pointer alias");
+  }
+  return 0;
+}
+
 int block_dispatch_lowers_prepared_f128_frame_slot_argument_to_q_register() {
   auto prepared = prepared_with_direct_call_f128_frame_slot_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -16620,6 +16756,11 @@ int main() {
   }
   if (const int status =
           lir_to_bir_marks_overflowing_aarch64_fixed_hfa_group_stack_passed();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          lir_to_bir_reloads_mutated_aarch64_tracked_pointer_field();
       status != 0) {
     return status;
   }
