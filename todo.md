@@ -8,65 +8,35 @@ Current Step Title: Repair The Narrow Publication Boundary
 
 ## Just Finished
 
-Step 1 localized the current representative AArch64 direct-call ABI
-publication/consumption first bad facts using existing generated assembly under
-`build/c_testsuite_aarch64_backend/src/*.c.s` plus focused
-`--dump-prepared-bir` snapshots written under `/tmp`.
+Step 2 repaired the first caller-side overflow stack publication subcase in
+`src/backend/mir/aarch64/codegen/calls.cpp`: prepared immediate
+`CallArgumentAbi` ABI bindings whose destination is an outgoing stack slot now
+lower to a selected immediate store through the outgoing stack argument base
+before the direct `bl`. Focused dispatch coverage now proves a ninth direct
+call argument literal is stored through `x16` before the call, and the
+delegated representative proof shows `00170` advanced from failing to passing.
 
-- `00140`: caller-side address or aggregate publication. Prepared `main`
-  records direct same-module `f1` calls with `%lv.f` in `x20` and ABI moves to
-  `x0`/`x1`/`x4`/`x5`, but emitted `main` never initializes `%lv.f` into
-  `x20`; it calls `f1` with stale `x20`, causing the aggregate/address
-  argument path to fault. Callee `f1` also consumes the byval aggregate from
-  incoming stack slots and pointer formal from `x1`, so this case covers both
-  caller aggregate/address publication and callee byval formal consumption.
-- `00159`: callee-side scalar formal consumption. Prepared `myfunc` says `%p.x`
-  is in incoming `x0`, but emitted `myfunc` computes `mul w0, w20, w20`.
-  Caller `main` publishes immediates `3` and `4` into `w0` before `bl myfunc`,
-  so the first bad fact is the direct callee reading stale `w20` instead of its
-  incoming scalar formal.
-- `00170`: caller-side overflow/stack publication. Prepared `printf` call
-  records args 0-7 in `x0`-`x7` and arg8 literal `75` at outgoing
-  `stack+0`; emitted code subtracts outgoing stack space but never stores
-  `75` to that slot before `bl printf`, so the eighth variadic integer prints
-  as `0`.
-- `00175`: caller-side scalar and FP register publication. Prepared same-module
-  calls require converted scalar temps in `x13` to move to `x0`, and FP temps
-  in `d13` to move to `s0`; emitted `main` calls `charfunc`/`intfunc` with
-  stale `w13` for the `99.0` conversions and calls `floatfunc` with stale
-  `s13` for all three FP cases. The direct callees themselves consume incoming
-  `w0`/`s0` normally, so the first bad fact is caller publication.
-- `00218`: caller-side address publication. Prepared `main` records
-  `%lv.convs` in `x21` and an ABI move to `x0` for `convert_like_real`; emitted
-  `main` uses `mov x0, x21` before `bl convert_like_real`, but never publishes
-  `&convs` into `x21`. `convert_like_real` then correctly reads from incoming
-  `x0`, so the stale address comes from the caller.
+Remaining first bad facts after this slice:
 
-Closed-owner comparison: these facts do not reopen 309 because the failing
-calls are direct, not indirect `blr` preservation; do not reopen 311 because
-the selected call-boundary printer and aggregate stack-copy diagnostics are
-past assembly emission; do not reopen 336 because no correct return value is
-being overwritten in an epilogue; do not reopen 337 because the first bad facts
-exist before call entry/argument use rather than after a live callee-saved home
-is clobbered across a call; and do not reopen 345 because none of the observed
-failures is a `csel` result-publication consumer reload.
-
-First implementation target: repair AArch64 direct-call consumption of
-prepared `CallArgumentAbi` move/binding records in
-`src/backend/mir/aarch64/codegen/calls.cpp`, starting with register
-publication from prepared source homes to ABI argument registers and overflow
-stack-slot publication before the branch. Keep the callee-side fixed-formal
-entry consumption rule for incoming ABI registers as the paired target because
-`00159` proves that caller publication alone will not cover the family.
+- `00140`: still caller-side address or aggregate publication/byval handling;
+  the representative still segfaults.
+- `00159`: still callee-side scalar formal consumption; prepared `myfunc`
+  publishes `%p.x` in incoming `x0`, but emitted `myfunc` still reads stale
+  `w20` in `mul w0, w20, w20`. This is not resolved by caller-side
+  `CallArgumentAbi` publication.
+- `00175`: still caller-side scalar and FP register publication for computed
+  same-module call operands; emitted calls still read stale `w13`/`s13` for
+  the converted arguments.
+- `00218`: still caller-side address publication; prepared `%lv.convs` is
+  expected in `x21`, but emitted `main` still calls `convert_like_real` with
+  stale `x21`.
 
 ## Suggested Next
 
-Execute `plan.md` Step 2 against the AArch64 direct-call `CallArgumentAbi`
-publication path: add focused coverage for prepared register/immediate/frame or
-address source moves into `x0`-`x7`/`s0` and overflow stack slots, then repair
-`calls.cpp` so the prepared ABI move/binding records are emitted before `bl`.
-Include one focused callee-formal entry check for an incoming scalar formal
-home that must be consumed from `x0`.
+Continue Step 2 with the next narrow publication boundary: either repair the
+computed register/FPR caller publication path that leaves `00175` reading stale
+`w13`/`s13`, or split the callee-side fixed formal consumption gap for `00159`
+if the supervisor wants a non-`calls.cpp` packet.
 
 ## Watchouts
 
@@ -74,9 +44,16 @@ home that must be consumed from `x0`.
 - Do not special-case `x20`, `x21`, `w13`, `d13`, argument 8, or the five
   representative filenames; the repair must consume the prepared move/binding
   contracts generally.
+- The completed stack-immediate repair is general over prepared immediate
+  stack-slot ABI bindings; do not regress the selected store through the
+  outgoing stack base before `bl`.
+- The `00159` callee formal gap appears to require the fixed-formal consumer
+  path to make incoming `x0` authoritative for later scalar lowering; a
+  caller-side move repair alone will not change `mul w0, w20, w20`.
 - `00140` has an aggregate/byval dimension and should not be reduced to only
   a scalar register shuffle.
-- `00170` needs outgoing stack-slot publication, not only register moves.
+- `00170` now passes in the delegated representative subset; keep it as a
+  regression guard for outgoing stack-slot immediate publication.
 - `00159` is the explicit callee-side scalar formal consumption guardrail.
 - Do not absorb pointer/null result publication, FP comparison
   materialization, aggregate/table memory corruption, libc/file/string
@@ -89,10 +66,11 @@ home that must be consumed from `x0`.
 
 ## Proof
 
-No build, CTest, or implementation proof was required for this
-localization-only packet. Existing generated artifacts under
-`build/c_testsuite_aarch64_backend/src/00140.c.s`,
-`00159.c.s`, `00170.c.s`, `00175.c.s`, and `00218.c.s` were used. Focused
-prepared dumps were generated with `./build/c4cll --dump-prepared-bir --target
-aarch64-linux-gnu --mir-focus-function ...` into `/tmp/c4c_*_*.prepared.txt`;
-no root-level proof logs were created or modified.
+Delegated proof command was run exactly:
+`set +e; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64|backend_cli_aarch64' && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c'; } > test_after.log 2>&1; rc=$?; printf 'proof_rc=%s\n' "$rc"; exit 0`.
+
+Result: `proof_rc=8`. The AArch64 backend/backend CLI subset passed 31/31.
+The representative c-testsuite subset passed `00170` and still failed `00140`,
+`00159`, `00175`, and `00218` with the residual first bad facts listed above.
+After supervisor regression guard acceptance, the accepted after-log was rolled
+forward to `test_before.log`.

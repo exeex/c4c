@@ -12778,6 +12778,232 @@ int prepared_frame_slot_stack_call_argument_lowers_to_selected_store() {
   return 0;
 }
 
+int prepared_immediate_stack_call_argument_lowers_before_direct_call() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.immediate.stack.arg");
+  const auto block_label =
+      prepared.names.block_labels.intern("dispatch.immediate.stack.arg.entry");
+  const auto bir_block_label =
+      prepared.module.names.block_labels.intern("dispatch.immediate.stack.arg.entry");
+  const auto callee_link = prepared.module.names.link_names.intern("consume_overflow");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.immediate.stack.arg",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.immediate.stack.arg.entry",
+          .insts = {bir::CallInst{
+              .callee = "consume_overflow",
+              .callee_link_name_id = callee_link,
+              .args = {bir::Value::immediate_i32(0),
+                       bir::Value::immediate_i32(1),
+                       bir::Value::immediate_i32(2),
+                       bir::Value::immediate_i32(3),
+                       bir::Value::immediate_i32(4),
+                       bir::Value::immediate_i32(5),
+                       bir::Value::immediate_i32(6),
+                       bir::Value::immediate_i32(7),
+                       bir::Value::immediate_i32(75)},
+              .arg_types = {bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32,
+                            bir::TypeKind::I32},
+              .arg_abi =
+                  {bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_in_register = true,
+                   },
+                   bir::CallArgAbiInfo{
+                       .type = bir::TypeKind::I32,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .primary_class = bir::AbiValueClass::Integer,
+                       .passed_on_stack = true,
+                   }},
+              .return_type = bir::TypeKind::Void,
+              .calling_convention = bir::CallingConv::C,
+          }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_block_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = block_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 0,
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::StackSlot,
+                      .destination_abi_index = std::size_t{8},
+                      .destination_stack_offset_bytes = std::size_t{0},
+                  }},
+          }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 0,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_overflow"},
+          .arguments =
+              {prepare::PreparedCallArgumentPlan{
+                  .instruction_index = 0,
+                  .arg_index = 8,
+                  .value_bank = prepare::PreparedRegisterBank::Gpr,
+                  .source_encoding = prepare::PreparedStorageEncodingKind::Immediate,
+                  .source_literal = bir::Value::immediate_i32(75),
+                  .destination_stack_offset_bytes = std::size_t{0},
+              }},
+      }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      !result.visited_terminator || block.instructions.size() != 4) {
+    return fail("expected immediate stack call argument, call, and return to dispatch: emitted=" +
+                std::to_string(block.instructions.size()) +
+                " visited=" + std::to_string(result.visited_operations) +
+                " term=" + (result.visited_terminator ? std::string{"yes"} : "no") +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty() ? std::string{}
+                                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto* store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &block.instructions[1].target.payload);
+  const auto* immediate =
+      store != nullptr && store->value.has_value()
+          ? std::get_if<aarch64_module::codegen::ImmediateOperand>(
+                &store->value->payload)
+          : nullptr;
+  const auto* call =
+      std::get_if<aarch64_module::codegen::CallInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (store == nullptr || immediate == nullptr || call == nullptr ||
+      block.instructions[1].target.selection.status !=
+          aarch64_module::codegen::MachineNodeSelectionStatus::Selected ||
+      store->memory_kind != aarch64_module::codegen::MemoryInstructionKind::Store ||
+      store->address.base_kind != aarch64_module::codegen::MemoryBaseKind::Register ||
+      !store->address.base_register.has_value() ||
+      store->address.base_register->reg != aarch64_module::abi::x_register(16) ||
+      store->address.byte_offset != 0 ||
+      store->address.size_bytes != 4 ||
+      immediate->signed_value != 75 ||
+      call->direct_callee_label != "consume_overflow") {
+    return fail("expected immediate stack argument store through outgoing stack base before call: base=" +
+                (store != nullptr && store->address.base_register.has_value()
+                     ? std::string{aarch64_module::abi::register_name(
+                           store->address.base_register->reg)}
+                     : std::string{"none"}) +
+                " offset=" +
+                (store != nullptr ? std::to_string(store->address.byte_offset)
+                                  : std::string{"none"}) +
+                " size=" +
+                (store != nullptr ? std::to_string(store->address.size_bytes)
+                                  : std::string{"none"}) +
+                " imm=" +
+                (immediate != nullptr ? std::to_string(immediate->signed_value)
+                                      : std::string{"none"}));
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("sub x16, sp, #16") == std::string::npos ||
+      printed.assembly.find("movz w9, #75") == std::string::npos ||
+      printed.assembly.find("str w9, [x16]") == std::string::npos ||
+      printed.assembly.find("sub sp, sp, #16\n    bl consume_overflow") ==
+          std::string::npos) {
+    return fail("expected immediate stack argument to print before direct call: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+  return 0;
+}
+
 int prepared_frame_slot_address_call_argument_materializes_address_register() {
   constexpr auto function_name = c4c::FunctionNameId{81};
   constexpr auto block_label = c4c::BlockLabelId{82};
@@ -18213,6 +18439,11 @@ int main() {
   }
   if (const int status =
           prepared_frame_slot_stack_call_argument_lowers_to_selected_store();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prepared_immediate_stack_call_argument_lowers_before_direct_call();
       status != 0) {
     return status;
   }

@@ -3203,9 +3203,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     module::ModuleLoweringDiagnostics& diagnostics) {
   if (bundle.phase != prepare::PreparedMovePhase::BeforeCall ||
       binding.destination_kind != prepare::PreparedMoveDestinationKind::CallArgumentAbi ||
-      binding.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-      !binding.destination_abi_index.has_value() ||
-      !binding.destination_register_name.has_value()) {
+      !binding.destination_abi_index.has_value()) {
     return std::nullopt;
   }
 
@@ -3214,7 +3212,9 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       if (candidate.arg_index == *binding.destination_abi_index &&
           candidate.source_encoding == prepare::PreparedStorageEncodingKind::Immediate &&
           candidate.source_literal.has_value() &&
-          candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr) {
+          (binding.destination_storage_kind ==
+               prepare::PreparedMoveStorageKind::StackSlot ||
+           candidate.destination_register_bank == prepare::PreparedRegisterBank::Gpr)) {
         return &candidate;
       }
     }
@@ -3236,6 +3236,64 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
         context,
         instruction_index,
         "AArch64 immediate call-argument move requires a scalar integer literal");
+    return std::nullopt;
+  }
+
+  if (binding.destination_storage_kind ==
+      prepare::PreparedMoveStorageKind::StackSlot) {
+    if (!binding.destination_stack_offset_bytes.has_value()) {
+      return std::nullopt;
+    }
+    const auto value_type = scalar_integer_type_from_size(
+        scalar_size_from_register_view(expected_view));
+    if (!value_type.has_value()) {
+      append_call_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          "AArch64 immediate stack call-argument move requires a 4 or 8 byte scalar integer literal");
+      return std::nullopt;
+    }
+    MemoryOperand destination{
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .support = MemoryOperandSupportKind::Prepared,
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .instruction_index = instruction_index,
+        .stored_value_id = argument->source_value_id,
+        .stored_value_name = c4c::kInvalidValueName,
+        .base_kind = MemoryBaseKind::Register,
+        .base_register = RegisterOperand{
+            .reg = outgoing_stack_argument_base_register(),
+            .role = RegisterOperandRole::Physical,
+            .expected_view = abi::RegisterView::X,
+        },
+        .byte_offset =
+            static_cast<std::int64_t>(*binding.destination_stack_offset_bytes),
+        .byte_offset_is_prepared_snapshot = true,
+        .size_bytes = scalar_size_from_register_view(expected_view),
+        .align_bytes = scalar_size_from_register_view(expected_view),
+        .can_use_base_plus_offset = true,
+    };
+    return make_call_boundary_machine_instruction(
+        context,
+        instruction_index,
+        make_memory_instruction(MemoryInstructionRecord{
+            .memory_kind = MemoryInstructionKind::Store,
+            .address = std::move(destination),
+            .value = make_immediate_operand(*source_immediate),
+            .value_type = *value_type,
+        }));
+  }
+
+  if (binding.destination_storage_kind !=
+          prepare::PreparedMoveStorageKind::Register ||
+      !binding.destination_register_name.has_value()) {
     return std::nullopt;
   }
 
