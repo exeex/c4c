@@ -1,26 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/316_aarch64_frame_slot_layout_consistency.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add Focused Frame Layout Coverage and Repair Frame Size And Slot Consistency
+Current Step ID: 4
+Current Step Title: Prove External Representative And Reclassify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2/3 added focused prepared stack-layout coverage for a call-escaped
-scalarized local family and repaired shared slot assignment so a fixed sliced
-family pulls all sibling slice objects into contiguous fixed frame slots. The
-new fixture would have observed the previous one-byte-frame failure: escaping
-`lv.scalar.call.0` now assigns six fixed one-byte frame slots at offsets 0..5
-and reports `frame_size=6`.
+Step 4 proved that `00182` advanced past the old caller local-array
+underallocation: prepared `main` now reports `frame_size=160` for
+`%lv.buf.0..159`, and generated `main` reserves 192 bytes, passes `sp` to
+`print_led`, and saves `x20/x21/x30` at `sp+160`, `sp+168`, and `sp+176`.
+The new first bad fact is not frame-layout/slot consistency. Prepared
+`print_led` keeps the digit extraction and lookup semantics intact
+(`urem x, 10`, store to `d[n]`, then select `d[i]`), but generated AArch64
+lowers each final digit lookup so the last `cmp i, #0` clobbers the accumulated
+false select value and always passes `d[0]` to `topline`, `midline`, and
+`botline`. Because `d[0] == 7` for `1234567`, the runtime output renders seven
+`7` digits.
 
 ## Suggested Next
 
-Execute Step 3/3 as a narrow packet: localize the new `00182` runtime mismatch
-after the frame-underallocation repair and determine whether the next owner is
-prepared call/address materialization, AArch64 call lowering, or another shared
-prepared-frame contract.
+Split/escalate the residual out of idea 316 to an AArch64 scalar select/value
+materialization owner. The smallest next packet should add focused coverage for
+a nested select chain where the final select condition is false and the selected
+value must come from the accumulated false operand rather than the first
+element.
 
 ## Watchouts
 
@@ -30,18 +36,24 @@ prepared-frame contract.
   unless fresh evidence shows stale div/rem consumers still exist.
 - Do not change expectations, unsupported classifications, runner behavior,
   timeout policy, CTest registration, or proof-log behavior.
-- `00182` advanced past the prior underallocated-frame segmentation fault, but
-  now fails with `RUNTIME_MISMATCH`: expected the mixed digit display and
-  produced seven `7` digits. Do not treat the Step 2 frame-layout owner as the
-  remaining first bad fact without fresh evidence.
-- `00216` is still red in the external runner with `RUNTIME_NONZERO`
-  segmentation fault. Existing Step 1 evidence said its prepared frame size did
-  not match the one-byte scalarized-buffer failure; keep it as an external
-  guard unless fresh artifacts expose a current out-of-frame slot.
+- `00182` residual classification: AArch64 scalar select/value materialization.
+  It is not frame-layout/slot consistency, prepared call/address
+  materialization, AArch64 call lowering, or unsigned div/rem/digit semantics
+  based on the current prepared/generated evidence.
+- Concrete generated symptom: in `build/c_testsuite_aarch64_backend/src/00182.c.s`,
+  each digit-render loop builds a select chain from `__static_local_print_led_3`,
+  then ends with `cmp x13, #0; mov w9, w20; mov w21, w9; csel w21, w9, w21, eq`
+  before calling the line renderer. Both csel operands now hold `d[0]`, so the
+  accumulated `d[1..31]` false value is lost.
+- `00216` remains red with `RUNTIME_NONZERO` segmentation fault, but current
+  generated frame evidence still does not expose an idea-316 frame-layout
+  residual: `foo` allocates 1664 bytes and the highest observed `sp` offset is
+  1640; `test_correct_filling` allocates 144 bytes and `test_zero_init`
+  allocates 96 bytes.
 
 ## Proof
 
-Step 2/3 proof command:
+Step 4 proof command:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_prepare_stack_layout|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00182_c|c_testsuite_aarch64_backend_src_00216_c)$' | tee test_after.log`
 
@@ -50,13 +62,8 @@ Result: build completed and focused backend/prepared tests passed
 `backend_prepare_frame_stack_call_contract`,
 `backend_cli_dump_prepared_bir_local_arg_call_contract`,
 `backend_aarch64_memory_operand_contract`). External representative
-`c_testsuite_aarch64_backend_src_00182_c` now fails with `RUNTIME_MISMATCH`
-instead of the prior segmentation fault; `c_testsuite_aarch64_backend_src_00216_c`
-still fails with `RUNTIME_NONZERO` segmentation fault. Proof log:
-`test_after.log`.
-
-Supervisor broader guard after the shared stack-layout repair:
-
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-Result: passed 141/141.
+`c_testsuite_aarch64_backend_src_00182_c` fails with `RUNTIME_MISMATCH`
+rendering seven `7` digits, and
+`c_testsuite_aarch64_backend_src_00216_c` still fails with `RUNTIME_NONZERO`
+segmentation fault. Because the command pipes through `tee`, the shell command
+exited 0 while CTest reported 2 failed tests. Proof log: `test_after.log`.
