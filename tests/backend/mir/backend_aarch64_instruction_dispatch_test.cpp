@@ -3,6 +3,7 @@
 #include "src/backend/mir/aarch64/codegen/calls.hpp"
 #include "src/backend/mir/aarch64/codegen/codegen.hpp"
 #include "src/backend/mir/aarch64/codegen/dispatch.hpp"
+#include "src/backend/mir/aarch64/codegen/globals.hpp"
 #include "src/backend/mir/aarch64/codegen/machine_printer.hpp"
 #include "src/backend/mir/aarch64/codegen/traversal.hpp"
 #include "src/backend/mir/aarch64/module/module.hpp"
@@ -9828,6 +9829,116 @@ int stack_home_symbol_address_argument_materializes_directly_to_call_register() 
   return 0;
 }
 
+int prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary() {
+  auto prepared = prepared_with_direct_variadic_call_stack_symbol_address_argument();
+  auto& block = prepared.module.functions.front().blocks.front();
+  block.insts.insert(
+      block.insts.begin(),
+      {bir::BinaryInst{
+           .opcode = bir::BinaryOpcode::Add,
+           .result = bir::Value::named(bir::TypeKind::I32, "%pre0"),
+           .operand_type = bir::TypeKind::I32,
+           .lhs = bir::Value::immediate_i32(1),
+           .rhs = bir::Value::immediate_i32(2),
+       },
+       bir::BinaryInst{
+           .opcode = bir::BinaryOpcode::Add,
+           .result = bir::Value::named(bir::TypeKind::I32, "%pre1"),
+           .operand_type = bir::TypeKind::I32,
+           .lhs = bir::Value::immediate_i32(3),
+           .rhs = bir::Value::immediate_i32(4),
+       }});
+
+  auto& value_locations = prepared.value_locations.functions.front();
+  auto& fmt_home = value_locations.value_homes.front();
+  fmt_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  fmt_home.register_name.reset();
+  fmt_home.slot_id = prepare::PreparedFrameSlotId{7};
+  fmt_home.offset_bytes = std::size_t{64};
+  fmt_home.size_bytes = std::size_t{8};
+  fmt_home.align_bytes = std::size_t{8};
+  auto& move_bundle = value_locations.move_bundles.front();
+  move_bundle.instruction_index = 2;
+  for (auto& move : move_bundle.moves) {
+    move.instruction_index = 2;
+  }
+
+  auto& fmt_storage = prepared.storage_plans.functions.front().values.front();
+  fmt_storage.encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  fmt_storage.register_name.reset();
+  fmt_storage.register_placement.reset();
+  fmt_storage.occupied_register_names.clear();
+  fmt_storage.slot_id = prepare::PreparedFrameSlotId{7};
+  fmt_storage.stack_offset_bytes = std::size_t{64};
+
+  auto& call_plan = prepared.call_plans.functions.front().calls.front();
+  call_plan.instruction_index = 2;
+  for (auto& argument : call_plan.arguments) {
+    argument.instruction_index = 2;
+  }
+  call_plan.arguments.front().source_register_name.reset();
+  call_plan.arguments.front().source_register_placement.reset();
+  for (auto& materialization :
+       prepared.addressing.functions.front().address_materializations) {
+    materialization.inst_index = 0;
+  }
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto addresses =
+      aarch64_codegen::lower_address_materializations(block_context, 2, diagnostics);
+  const auto moves =
+      aarch64_codegen::lower_before_call_moves(block_context, call_plan, 2, diagnostics);
+  if (!diagnostics.empty() || addresses.size() != 2 || !moves.empty()) {
+    return fail("expected prior stack-home symbol call arguments to publish through address materializations only");
+  }
+
+  const auto* fmt_address =
+      std::get_if<aarch64_module::codegen::AddressMaterializationRecord>(
+          &addresses.front().target.payload);
+  if (fmt_address == nullptr ||
+      fmt_address->kind !=
+          aarch64_module::codegen::AddressMaterializationKind::StringConstant ||
+      !fmt_address->result_register.has_value() ||
+      fmt_address->result_register->reg != aarch64_module::abi::x_register(0) ||
+      fmt_address->result_value_id !=
+          std::optional<prepare::PreparedValueId>{prepare::PreparedValueId{1}}) {
+    return fail("expected prior format string materialization to publish directly into x0");
+  }
+
+  const auto printed_fmt =
+      aarch64_codegen::print_machine_instruction_line_payloads(addresses.front().target);
+  const auto printed_call =
+      aarch64_codegen::print_machine_instruction_line_payloads(
+          aarch64_codegen::make_call_instruction(aarch64_codegen::CallInstructionRecord{
+              .direct_callee =
+                  aarch64_codegen::SymbolOperand{
+                      .link_name = c4c::LinkNameId{1},
+                      .type = bir::TypeKind::Ptr,
+                      .is_extern = true,
+                  },
+              .direct_callee_label = "printf",
+              .wrapper_kind = call_plan.wrapper_kind,
+              .source_call = &call_plan,
+          }));
+  if (!printed_fmt.ok || !printed_call.ok ||
+      printed_fmt.instruction_lines.size() != 2 ||
+      printed_fmt.instruction_lines[0] != "adrp x0, .fmt" ||
+      printed_fmt.instruction_lines[1] != "add x0, x0, :lo12:.fmt" ||
+      printed_call.instruction_lines.size() != 1 ||
+      printed_call.instruction_lines[0] != "bl printf") {
+    return fail("expected printed prior call-argument string publication before bl printf");
+  }
+
+  return 0;
+}
+
 int load_global_call_argument_uses_got_for_got_required_global() {
   auto prepared = prepared_with_load_global_call_argument(
       bir::GlobalAddressMaterializationPolicy::GotRequired);
@@ -12573,6 +12684,11 @@ int main() {
   }
   if (const int status =
           stack_home_symbol_address_argument_materializes_directly_to_call_register();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary();
       status != 0) {
     return status;
   }

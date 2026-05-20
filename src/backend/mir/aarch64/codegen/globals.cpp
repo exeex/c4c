@@ -769,22 +769,36 @@ std::vector<module::MachineInstruction> lower_address_materializations(
   }
   const auto* call_plan = find_prepared_call_plan(context, instruction_index);
   for (const auto& materialization : addressing->address_materializations) {
-    if (materialization.block_label != context.control_flow_block->block_label ||
-        materialization.inst_index != instruction_index) {
+    if (materialization.block_label != context.control_flow_block->block_label) {
       continue;
     }
-    auto prepared = make_address_record_from_prepared_materialization(
-        context.function.prepared->names,
-        *context.function.value_locations,
-        *context.function.storage_plan,
-        *addressing,
-        materialization);
+    const bool exact_instruction = materialization.inst_index == instruction_index;
+    const bool prior_call_argument_materialization =
+        !exact_instruction && call_plan != nullptr &&
+        materialization.inst_index <= instruction_index;
+    if (!exact_instruction && !prior_call_argument_materialization) {
+      continue;
+    }
+
+    PreparedAddressMaterializationRecordResult prepared =
+        exact_instruction
+            ? make_address_record_from_prepared_materialization(
+                  context.function.prepared->names,
+                  *context.function.value_locations,
+                  *context.function.storage_plan,
+                  *addressing,
+                  materialization)
+            : address_materialization_record_error(
+                  PreparedAddressMaterializationRecordError::UnsupportedResultStorage);
     if (!prepared.record.has_value() &&
         prepared.error == PreparedAddressMaterializationRecordError::
                               UnsupportedResultStorage &&
         call_plan != nullptr) {
       prepared = make_call_argument_address_record(
           context.function.prepared->names, *addressing, materialization, *call_plan);
+    }
+    if (!exact_instruction && !prepared.record.has_value()) {
+      continue;
     }
     auto instruction = lower_address_materialization_record(
         context,

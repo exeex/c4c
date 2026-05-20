@@ -1863,7 +1863,7 @@ make_value_stack_move_instruction(
         }
         for (const auto& materialization : addressing->address_materializations) {
           if (materialization.block_label == context.control_flow_block->block_label &&
-              materialization.inst_index == instruction_index &&
+              materialization.inst_index <= instruction_index &&
               materialization.result_value_name == source_home->value_name) {
             return true;
           }
