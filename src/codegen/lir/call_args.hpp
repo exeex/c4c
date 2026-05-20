@@ -40,6 +40,8 @@ struct OwnedLirTypedCallArg {
   std::string type;
   std::string operand;
   LirTypeRef type_ref;
+  std::size_t aarch64_hfa_lane_count = 0;
+  std::size_t aarch64_hfa_lane_index = 0;
 };
 
 struct FormattedLirTypedCall {
@@ -316,7 +318,9 @@ inline std::vector<OwnedLirTypedCallArg> own_lir_typed_call_args(
   owned_args.reserve(parsed.args.size());
   for (const auto& arg : parsed.args) {
     owned_args.push_back(
-        {std::string(arg.type), std::string(arg.operand), LirTypeRef(std::string(arg.type))});
+        {.type = std::string(arg.type),
+         .operand = std::string(arg.operand),
+         .type_ref = LirTypeRef(std::string(arg.type))});
   }
   return owned_args;
 }

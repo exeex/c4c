@@ -249,14 +249,21 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
                                           hfa->aggregate_align});
         emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, arg_ts), arg, tmp_addr});
         PreparedCallArg out;
+        const std::string lane_base = fresh_tmp(ctx);
         for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
           const std::string lane_ptr = fresh_tmp(ctx);
           emit_lir_op(ctx,
                       lir::LirGepOp{lane_ptr, "i8", tmp_addr, false,
                                     {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
-          const std::string lane = fresh_tmp(ctx);
+          const std::string lane = lane_base + ".hfa" + std::to_string(lane_index);
           emit_lir_op(ctx, lir::LirLoadOp{lane, hfa->elem_ty, lane_ptr});
-          out.args.push_back({hfa->elem_ty, lane, LirTypeRef(hfa->elem_ty)});
+          out.args.push_back({.type = hfa->elem_ty,
+                              .operand = lane,
+                              .type_ref = LirTypeRef(hfa->elem_ty),
+                              .aarch64_hfa_lane_count =
+                                  static_cast<std::size_t>(hfa->elem_count),
+                              .aarch64_hfa_lane_index =
+                                  static_cast<std::size_t>(lane_index)});
         }
         return out;
       }
@@ -291,14 +298,21 @@ PreparedCallArg StmtEmitter::prepare_call_arg(FnCtx& ctx, const CallExpr& call,
     emit_lir_op(ctx, lir::LirAllocaOp{obj_ptr, llvm_value_ty(mod_, out_arg_ts), {}, 0});
     emit_lir_op(ctx, lir::LirStoreOp{llvm_value_ty(mod_, out_arg_ts), arg, obj_ptr});
     PreparedCallArg out;
+    const std::string lane_base = fresh_tmp(ctx);
     for (int lane_index = 0; lane_index < hfa->elem_count; ++lane_index) {
       const std::string lane_ptr = fresh_tmp(ctx);
       emit_lir_op(ctx,
                   lir::LirGepOp{lane_ptr, "i8", obj_ptr, false,
                                 {"i64 " + std::to_string(lane_index * hfa->elem_size)}});
-      const std::string lane = fresh_tmp(ctx);
+      const std::string lane = lane_base + ".hfa" + std::to_string(lane_index);
       emit_lir_op(ctx, lir::LirLoadOp{lane, hfa->elem_ty, lane_ptr});
-      out.args.push_back({hfa->elem_ty, lane, LirTypeRef(hfa->elem_ty)});
+      out.args.push_back({.type = hfa->elem_ty,
+                          .operand = lane,
+                          .type_ref = LirTypeRef(hfa->elem_ty),
+                          .aarch64_hfa_lane_count =
+                              static_cast<std::size_t>(hfa->elem_count),
+                          .aarch64_hfa_lane_index =
+                              static_cast<std::size_t>(lane_index)});
     }
     return out;
   }

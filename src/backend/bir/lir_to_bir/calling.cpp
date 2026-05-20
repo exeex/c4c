@@ -704,6 +704,14 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
   const auto& global_types = global_types_;
   const auto& function_symbols = function_symbols_;
   const auto& type_decls = type_decls_;
+  const auto apply_call_arg_metadata =
+      [&](std::size_t index, bir::CallArgAbiInfo abi) -> bir::CallArgAbiInfo {
+    if (index < call.structured_args.size()) {
+      abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
+      abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+    }
+    return abi;
+  };
 
   const auto resolve_runtime_pointer_address =
       [&](std::string_view operand_name) -> std::optional<PointerAddress> {
@@ -1163,7 +1171,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
+          lowered_arg_abi.push_back(
+              apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
           continue;
         }
         if (trimmed_param_type == "ptr") {
@@ -1175,9 +1184,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(
-              *compute_call_arg_abi(context_.target_profile,
-                                                       bir::TypeKind::Ptr));
+          lowered_arg_abi.push_back(apply_call_arg_metadata(
+              index, *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr)));
           continue;
         }
         const auto arg_type =
@@ -1197,7 +1205,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
+          lowered_arg_abi.push_back(
+              apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
           continue;
         }
         const auto arg_operand = c4c::codegen::lir::LirOperand(
@@ -1210,7 +1219,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
           }
           lowered_arg_types.push_back(bir::TypeKind::Ptr);
           lowered_args.push_back(*arg);
-            lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
+          lowered_arg_abi.push_back(
+              apply_call_arg_metadata(index, lower_byval_call_arg_abi(*aggregate_layout)));
           continue;
         }
         const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -1219,8 +1229,8 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(*arg_type);
         lowered_args.push_back(*arg);
-        lowered_arg_abi.push_back(
-            *compute_call_arg_abi(context_.target_profile, *arg_type));
+        lowered_arg_abi.push_back(apply_call_arg_metadata(
+            index, *compute_call_arg_abi(context_.target_profile, *arg_type)));
       }
     } else if (c4c::codegen::lir::trim_lir_arg_text(call.args_str).empty()) {
       callee_name = resolved_direct_callee_name(*direct_callee);
@@ -1252,9 +1262,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-        lowered_arg_abi.push_back(
-            *compute_call_arg_abi(context_.target_profile,
-                                                     bir::TypeKind::Ptr));
+        auto abi = *compute_call_arg_abi(context_.target_profile, bir::TypeKind::Ptr);
+        if (index < call.structured_args.size()) {
+          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
+          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+        }
+        lowered_arg_abi.push_back(abi);
         continue;
       }
       const auto arg_type =
@@ -1273,7 +1286,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
+        auto abi = lower_byval_call_arg_abi(*aggregate_layout);
+        if (index < call.structured_args.size()) {
+          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
+          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+        }
+        lowered_arg_abi.push_back(abi);
         continue;
       }
       const auto arg_operand =
@@ -1286,7 +1304,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
         }
         lowered_arg_types.push_back(bir::TypeKind::Ptr);
         lowered_args.push_back(*arg);
-          lowered_arg_abi.push_back(lower_byval_call_arg_abi(*aggregate_layout));
+        auto abi = lower_byval_call_arg_abi(*aggregate_layout);
+        if (index < call.structured_args.size()) {
+          abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
+          abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+        }
+        lowered_arg_abi.push_back(abi);
         continue;
       }
       const auto arg = lower_value(arg_operand, *arg_type, value_aliases);
@@ -1295,8 +1318,12 @@ bool BirFunctionLowerer::lower_call_inst(const c4c::codegen::lir::LirCallOp& cal
       }
       lowered_arg_types.push_back(*arg_type);
       lowered_args.push_back(*arg);
-      lowered_arg_abi.push_back(
-          *compute_call_arg_abi(context_.target_profile, *arg_type));
+      auto abi = *compute_call_arg_abi(context_.target_profile, *arg_type);
+      if (index < call.structured_args.size()) {
+        abi.aarch64_hfa_lane_count = call.structured_args[index].aarch64_hfa_lane_count;
+        abi.aarch64_hfa_lane_index = call.structured_args[index].aarch64_hfa_lane_index;
+      }
+      lowered_arg_abi.push_back(abi);
     }
     is_indirect_call = true;
   }

@@ -475,6 +475,8 @@ struct CallArgAbiInfo {
   bool passed_on_stack = false;
   bool byval_copy = false;
   bool sret_pointer = false;
+  std::size_t aarch64_hfa_lane_count = 0;
+  std::size_t aarch64_hfa_lane_index = 0;
 };
 
 struct CallResultAbiInfo {

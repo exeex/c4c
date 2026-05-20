@@ -77,11 +77,42 @@ template <std::size_t N>
   return remainder == 0 ? value : value + (alignment - remainder);
 }
 
+[[nodiscard]] std::size_t scalar_type_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return 1;
+    case bir::TypeKind::I32:
+    case bir::TypeKind::F32:
+      return 4;
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+    case bir::TypeKind::F64:
+      return 8;
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F128:
+      return 16;
+    case bir::TypeKind::Void:
+      return 0;
+  }
+  return 0;
+}
+
 [[nodiscard]] std::size_t call_stack_argument_size_bytes(const bir::CallArgAbiInfo& abi) {
+  if (abi.aarch64_hfa_lane_count > 0) {
+    return std::max<std::size_t>(scalar_type_size_bytes(abi.type), 1);
+  }
   return align_up(std::max<std::size_t>(abi.size_bytes, 8), 8);
 }
 
 [[nodiscard]] std::size_t call_stack_argument_alignment_bytes(const bir::CallArgAbiInfo& abi) {
+  if (abi.aarch64_hfa_lane_count > 0) {
+    if (abi.aarch64_hfa_lane_index > 0) {
+      return 1;
+    }
+    return std::min<std::size_t>(
+        std::max<std::size_t>(scalar_type_size_bytes(abi.type), 8), 16);
+  }
   const std::size_t abi_alignment = abi.align_bytes == 0 ? abi.size_bytes : abi.align_bytes;
   return std::min<std::size_t>(std::max<std::size_t>(abi_alignment, 8), 16);
 }

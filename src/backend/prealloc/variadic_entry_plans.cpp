@@ -53,6 +53,13 @@ void remove_missing_variadic_entry_fact(PreparedVariadicEntryPlanFunction& funct
   return remainder == 0 ? value : value + (alignment - remainder);
 }
 
+[[nodiscard]] std::size_t aapcs64_hfa_overflow_stride_bytes(std::size_t payload_size_bytes,
+                                                            std::size_t lane_size_bytes) {
+  const std::size_t stack_alignment =
+      std::min<std::size_t>(std::max<std::size_t>(lane_size_bytes, 8), 16);
+  return align_prepared_offset(payload_size_bytes, stack_alignment);
+}
+
 [[nodiscard]] std::optional<ValueNameId> maybe_named_value_id(const PreparedNameTables& names,
                                                               const bir::Value& value) {
   if (value.kind != bir::Value::Kind::Named || value.name.empty()) {
@@ -627,6 +634,9 @@ make_aapcs64_aggregate_va_arg_access_plan(
     plan.register_save_lane_size_bytes = hfa_shape->lane_size_bytes;
     plan.register_save_lane_destination_homes =
         std::move(hfa_shape->lane_destination_homes);
+    plan.overflow_stride_bytes =
+        aapcs64_hfa_overflow_stride_bytes(payload_abi.size_bytes,
+                                          hfa_shape->lane_size_bytes);
   }
 
   if (const auto overflow_field = find_variadic_va_list_field(

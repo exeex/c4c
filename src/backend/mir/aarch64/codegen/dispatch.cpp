@@ -1382,6 +1382,38 @@ bool memory_load_result_feeds_before_return_fpr_abi(
   return false;
 }
 
+[[nodiscard]] const prepare::PreparedStoragePlanValue* find_storage_plan_value(
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    prepare::PreparedValueId value_id) {
+  for (const auto& value : storage_plan.values) {
+    if (value.value_id == value_id) {
+      return &value;
+    }
+  }
+  return nullptr;
+}
+
+[[nodiscard]] bool symbol_fp_load_has_explicit_storage_placement(
+    const module::BlockLoweringContext& context,
+    const MemoryInstructionRecord& memory_record) {
+  if (memory_record.address.base_kind != MemoryBaseKind::Symbol ||
+      (memory_record.value_type != bir::TypeKind::F32 &&
+       memory_record.value_type != bir::TypeKind::F64) ||
+      !memory_record.result_value_id.has_value() ||
+      !memory_record.result_register.has_value() ||
+      !abi::is_fp_simd_register(memory_record.result_register->reg) ||
+      context.function.storage_plan == nullptr) {
+    return false;
+  }
+  const auto* storage =
+      find_storage_plan_value(*context.function.storage_plan,
+                              *memory_record.result_value_id);
+  return storage != nullptr &&
+         storage->encoding == prepare::PreparedStorageEncodingKind::Register &&
+         storage->bank == prepare::PreparedRegisterBank::Fpr &&
+         storage->register_placement.has_value();
+}
+
 void retarget_memory_result_to_prepared_home(
     const module::BlockLoweringContext& context,
     module::MachineInstruction& instruction) {
@@ -1400,6 +1432,9 @@ void retarget_memory_result_to_prepared_home(
       !memory_record->result_value_id.has_value() ||
       !memory_record->result_register.has_value() ||
       context.function.value_locations == nullptr) {
+    return;
+  }
+  if (symbol_fp_load_has_explicit_storage_placement(context, *memory_record)) {
     return;
   }
 

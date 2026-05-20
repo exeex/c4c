@@ -82,22 +82,45 @@ void apply_aarch64_fixed_hfa_lane_register_pressure(std::size_t count,
       continue;
     }
 
-    const auto first_lane = parse_aarch64_hfa_lane_name(name_at(index));
     std::size_t lane_count = 1;
-    if (first_lane.has_value() && first_lane->lane_index == 0) {
-      const auto lane_type = abi->type;
-      for (std::size_t candidate = index + 1; candidate < count; ++candidate) {
-        auto* candidate_abi = abi_at(candidate);
-        const auto candidate_lane = parse_aarch64_hfa_lane_name(name_at(candidate));
-        if (!candidate_lane.has_value() ||
-            candidate_lane->base != first_lane->base ||
-            candidate_lane->lane_index != lane_count ||
-            candidate_abi == nullptr ||
-            !is_aarch64_fp_abi_lane(*candidate_abi) ||
-            candidate_abi->type != lane_type) {
+    if (abi->aarch64_hfa_lane_count > 0 && abi->aarch64_hfa_lane_index == 0) {
+      lane_count = abi->aarch64_hfa_lane_count;
+      for (std::size_t lane = 1; lane < lane_count && index + lane < count; ++lane) {
+        auto* lane_abi = abi_at(index + lane);
+        if (lane_abi == nullptr ||
+            lane_abi->aarch64_hfa_lane_count != lane_count ||
+            lane_abi->aarch64_hfa_lane_index != lane ||
+            !is_aarch64_fp_abi_lane(*lane_abi) ||
+            lane_abi->type != abi->type) {
+          lane_count = lane;
           break;
         }
-        ++lane_count;
+      }
+    } else {
+      const auto first_lane = parse_aarch64_hfa_lane_name(name_at(index));
+      const auto lane_type = abi->type;
+      if (first_lane.has_value() && first_lane->lane_index == 0) {
+        for (std::size_t candidate = index + 1; candidate < count; ++candidate) {
+          auto* candidate_abi = abi_at(candidate);
+          const auto candidate_lane = parse_aarch64_hfa_lane_name(name_at(candidate));
+          if (!candidate_lane.has_value() ||
+              candidate_lane->base != first_lane->base ||
+              candidate_lane->lane_index != lane_count ||
+              candidate_abi == nullptr ||
+              !is_aarch64_fp_abi_lane(*candidate_abi) ||
+              candidate_abi->type != lane_type) {
+            break;
+          }
+          ++lane_count;
+        }
+      }
+    }
+    if (lane_count > 1) {
+      for (std::size_t lane = 0; lane < lane_count && index + lane < count; ++lane) {
+        if (auto* lane_abi = abi_at(index + lane); lane_abi != nullptr) {
+          lane_abi->aarch64_hfa_lane_count = lane_count;
+          lane_abi->aarch64_hfa_lane_index = lane;
+        }
       }
     }
 
@@ -130,6 +153,14 @@ void apply_aarch64_fixed_hfa_call_pressure(const bir::Function& callee,
   apply_aarch64_fixed_hfa_lane_register_pressure(
       count,
       [&](std::size_t index) -> std::string_view { return callee.params[index].name; },
+      [&](std::size_t index) -> bir::CallArgAbiInfo* { return &call.arg_abi[index]; });
+  apply_aarch64_fixed_hfa_lane_register_pressure(
+      call.arg_abi.size(),
+      [&](std::size_t index) -> std::string_view {
+        return index < call.args.size() && call.args[index].kind == bir::Value::Kind::Named
+                   ? std::string_view(call.args[index].name)
+                   : std::string_view{};
+      },
       [&](std::size_t index) -> bir::CallArgAbiInfo* { return &call.arg_abi[index]; });
 }
 

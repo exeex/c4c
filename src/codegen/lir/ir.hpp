@@ -287,6 +287,8 @@ struct LirCallArg {
   std::string type;
   LirOperand operand;
   LirTypeRef type_ref;
+  std::size_t aarch64_hfa_lane_count = 0;
+  std::size_t aarch64_hfa_lane_index = 0;
 };
 
 // Typed call instruction.
