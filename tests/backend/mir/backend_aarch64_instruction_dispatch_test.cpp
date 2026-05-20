@@ -2194,6 +2194,323 @@ prepare::PreparedBirModule prepared_with_direct_variadic_call_stack_symbol_addre
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_non_hfa_va_arg_byte_copy_before_printf() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.non_hfa.va_arg.copy");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.non_hfa.va_arg.copy.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.non_hfa.va_arg.copy.entry");
+  const auto printf_link = prepared.names.link_names.intern("printf");
+  const auto fmt_text = prepared.names.texts.intern(".fmt.7s");
+  const auto fmt_value_name = prepared.names.value_names.intern("@.fmt.7s");
+  const auto base_value_name = prepared.names.value_names.intern("%vaarg.base");
+  const auto src_value_name = prepared.names.value_names.intern("%vaarg.src");
+  const auto byte0_value_name = prepared.names.value_names.intern("%vaarg.byte0");
+  const auto byte1_value_name = prepared.names.value_names.intern("%vaarg.byte1");
+  const auto dst_value_name = prepared.names.value_names.intern("%vaarg.dst");
+
+  prepared.module.names.texts.intern(".fmt.7s");
+  prepared.module.string_constants.push_back(
+      bir::StringConstant{.name = ".fmt.7s", .name_id = fmt_text, .bytes = "%.7s\n"});
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.non_hfa.va_arg.copy",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.non_hfa.va_arg.copy.entry",
+          .insts =
+              {bir::BinaryInst{
+                   .opcode = bir::BinaryOpcode::Add,
+                   .result = bir::Value::named(bir::TypeKind::Ptr, "%vaarg.src"),
+                   .operand_type = bir::TypeKind::Ptr,
+                   .lhs = bir::Value::named(bir::TypeKind::Ptr, "%vaarg.base"),
+                   .rhs = bir::Value::immediate_i64(8),
+               },
+               bir::LoadLocalInst{
+                   .result = bir::Value::named(bir::TypeKind::I8, "%vaarg.byte0"),
+                   .byte_offset = 0,
+                   .align_bytes = 1,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                           .base_value = bir::Value::named(bir::TypeKind::Ptr, "%vaarg.src"),
+                           .byte_offset = 0,
+                           .size_bytes = 1,
+                           .align_bytes = 1,
+                       },
+               },
+               bir::LoadLocalInst{
+                   .result = bir::Value::named(bir::TypeKind::I8, "%vaarg.byte1"),
+                   .byte_offset = 1,
+                   .align_bytes = 1,
+                   .address =
+                       bir::MemoryAddress{
+                           .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                           .base_value = bir::Value::named(bir::TypeKind::Ptr, "%vaarg.src"),
+                           .byte_offset = 1,
+                           .size_bytes = 1,
+                           .align_bytes = 1,
+                       },
+               },
+               bir::CallInst{
+                   .callee = "printf",
+                   .callee_link_name_id = printf_link,
+                   .args = {bir::Value::named(bir::TypeKind::Ptr, "@.fmt.7s"),
+                            bir::Value::named(bir::TypeKind::Ptr, "%vaarg.dst")},
+                   .arg_types = {bir::TypeKind::Ptr, bir::TypeKind::Ptr},
+                   .return_type = bir::TypeKind::I32,
+                   .calling_convention = bir::CallingConv::C,
+                   .is_variadic = true,
+               }},
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{201},
+               .function_name = function_name,
+               .value_name = fmt_value_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{31},
+               .offset_bytes = std::size_t{80},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{202},
+               .function_name = function_name,
+               .value_name = base_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x21"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{203},
+               .function_name = function_name,
+               .value_name = src_value_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{204},
+               .function_name = function_name,
+               .value_name = byte0_value_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{1},
+               .align_bytes = std::size_t{1},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{205},
+               .function_name = function_name,
+               .value_name = byte1_value_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .offset_bytes = std::size_t{65},
+               .size_bytes = std::size_t{1},
+               .align_bytes = std::size_t{1},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{206},
+               .function_name = function_name,
+               .value_name = dst_value_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 3,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{206},
+                      .to_value_id = prepare::PreparedValueId{206},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{1},
+                      .destination_register_name = std::string{"x1"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x1"},
+                      .block_index = 0,
+                      .instruction_index = 3,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "non_hfa_va_arg_destination_address_to_printf",
+                  }},
+              .abi_bindings =
+                  {prepare::PreparedAbiBinding{
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{1},
+                      .destination_register_name = std::string{"x1"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x1"},
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{201},
+               .value_name = fmt_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{31},
+               .stack_offset_bytes = std::size_t{80},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{202},
+               .value_name = base_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"x21"},
+               .occupied_register_names = {"x21"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{203},
+               .value_name = src_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"x20"},
+               .occupied_register_names = {"x20"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{204},
+               .value_name = byte0_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .stack_offset_bytes = std::size_t{64},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{205},
+               .value_name = byte1_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .stack_offset_bytes = std::size_t{65},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{206},
+               .value_name = dst_value_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::AggregateAddress,
+               .slot_id = prepare::PreparedFrameSlotId{30},
+               .stack_offset_bytes = std::size_t{64},
+           }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 3,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternVariadic,
+          .direct_callee_name = std::string{"printf"},
+          .arguments =
+              {prepare::PreparedCallArgumentPlan{
+                   .instruction_index = 3,
+                   .arg_index = 0,
+                   .value_bank = prepare::PreparedRegisterBank::Gpr,
+                   .source_encoding = prepare::PreparedStorageEncodingKind::SymbolAddress,
+                   .source_value_id = prepare::PreparedValueId{201},
+                   .source_symbol_name = std::string{"@.fmt.7s"},
+                   .source_register_name = std::string{"x13"},
+                   .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .destination_register_name = std::string{"x0"},
+                   .destination_contiguous_width = 1,
+                   .destination_occupied_register_names = {"x0"},
+                   .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+               },
+               prepare::PreparedCallArgumentPlan{
+                   .instruction_index = 3,
+                   .arg_index = 1,
+                   .value_bank = prepare::PreparedRegisterBank::AggregateAddress,
+                   .source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                   .source_value_id = prepare::PreparedValueId{206},
+                   .source_slot_id = prepare::PreparedFrameSlotId{30},
+                   .source_stack_offset_bytes = std::size_t{64},
+                   .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .destination_register_name = std::string{"x1"},
+                   .destination_contiguous_width = 1,
+                   .destination_occupied_register_names = {"x1"},
+                   .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+               }},
+      }},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 96,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = byte0_value_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                       .pointer_value_name = src_value_name,
+                       .byte_offset = 0,
+                       .size_bytes = 1,
+                       .align_bytes = 1,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .result_value_name = byte1_value_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                       .pointer_value_name = src_value_name,
+                       .byte_offset = 1,
+                       .size_bytes = 1,
+                       .align_bytes = 1,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+      .address_materializations =
+          {prepare::PreparedAddressMaterialization{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .kind = prepare::PreparedAddressMaterializationKind::StringConstant,
+               .result_value_name = fmt_value_name,
+               .text_name = fmt_text,
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_result_register_move() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -9957,6 +10274,58 @@ int prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary() 
   return 0;
 }
 
+int non_hfa_va_arg_byte_loads_publish_stack_bytes_before_observing_call() {
+  auto prepared = prepared_with_non_hfa_va_arg_byte_copy_before_printf();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 4 ||
+      !result.visited_terminator || result.emitted_instructions != 7 ||
+      block.instructions.size() != 7) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected non-HFA va_arg byte copy block to lower before printf: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected non-HFA va_arg byte copy route to print: " +
+                printed.diagnostic);
+  }
+  const auto src_add = printed.assembly.find("add x20, x21, #8");
+  const auto load0 = printed.assembly.find("ldrb w9, [x20]");
+  const auto store0 = printed.assembly.find("strb w9, [sp, #64]");
+  const auto load1 = printed.assembly.find("ldrb w9, [x20, #1]");
+  const auto store1 = printed.assembly.find("strb w9, [sp, #65]");
+  const auto fmt_arg = printed.assembly.find("adrp x0, .fmt.7s");
+  const auto dst_arg = printed.assembly.find("ldr x1, [sp, #64]");
+  const auto call = printed.assembly.find("bl printf");
+  if (src_add == std::string::npos || load0 == std::string::npos ||
+      store0 == std::string::npos || load1 == std::string::npos ||
+      store1 == std::string::npos || fmt_arg == std::string::npos ||
+      dst_arg == std::string::npos || call == std::string::npos ||
+      !(src_add < load0 && load0 < store0 && store0 < load1 && load1 < store1 &&
+        store1 < fmt_arg && fmt_arg < dst_arg && dst_arg < call)) {
+    return fail("expected non-HFA va_arg pointer byte loads to publish stack bytes before bl printf: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int load_global_call_argument_uses_got_for_got_required_global() {
   auto prepared = prepared_with_load_global_call_argument(
       bir::GlobalAddressMaterializationPolicy::GotRequired);
@@ -12707,6 +13076,11 @@ int main() {
   }
   if (const int status =
           prior_stack_home_symbol_address_argument_publishes_at_later_call_boundary();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          non_hfa_va_arg_byte_loads_publish_stack_bytes_before_observing_call();
       status != 0) {
     return status;
   }
