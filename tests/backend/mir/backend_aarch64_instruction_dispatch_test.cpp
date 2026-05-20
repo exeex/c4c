@@ -5692,6 +5692,118 @@ prepare::PreparedBirModule prepared_with_f128_frame_slot_store(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_f128_pointer_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.f128.ptr.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.f128.ptr.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.f128.ptr.store.entry");
+  const auto stored_name = prepared.names.value_names.intern("%stored.f128");
+  const auto pointer_name = prepared.names.value_names.intern("%ret.sret");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.f128.ptr.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.f128.ptr.store.entry",
+              .insts =
+                  {bir::StoreLocalInst{
+                      .value = bir::Value::named(bir::TypeKind::F128, "%stored.f128"),
+                      .byte_offset = 0,
+                      .align_bytes = 16,
+                      .address =
+                          bir::MemoryAddress{
+                              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                              .base_value = bir::Value::named(bir::TypeKind::Ptr, "%ret.sret"),
+                              .byte_offset = 0,
+                              .size_bytes = 16,
+                              .align_bytes = 16,
+                              .address_space = bir::AddressSpace::Default,
+                          },
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{113},
+               .function_name = function_name,
+               .value_name = stored_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "q5",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{114},
+               .function_name = function_name,
+               .value_name = pointer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x8",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {fpr_storage(prepare::PreparedValueId{113}, stored_name, "q5"),
+           register_storage(prepare::PreparedValueId{114}, pointer_name, "x8")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 0,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .stored_value_name = stored_name,
+              .address_space = bir::AddressSpace::Default,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                      .pointer_value_name = pointer_name,
+                      .byte_offset = 0,
+                      .size_bytes = 16,
+                      .align_bytes = 16,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+  prepared.f128_carriers.functions.push_back(prepare::PreparedF128CarrierFunction{
+      .function_name = function_name,
+      .carriers =
+          {prepare::PreparedF128Carrier{
+              .function_name = function_name,
+              .value_id = prepare::PreparedValueId{113},
+              .value_name = stored_name,
+              .source_type = bir::TypeKind::F128,
+              .kind = prepare::PreparedF128CarrierKind::FullWidthRegister,
+              .total_size_bytes = 16,
+              .total_align_bytes = 16,
+              .register_bank = prepare::PreparedRegisterBank::Vreg,
+              .register_class = prepare::PreparedRegisterClass::Vector,
+              .contiguous_width = 1,
+              .register_name = std::string{"q5"},
+              .occupied_register_names = {"q5"},
+          }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f128_load_add_store_route() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -13773,6 +13885,70 @@ int block_dispatch_lowers_f128_frame_slot_store_from_prepared_carrier() {
   return 0;
 }
 
+int block_dispatch_lowers_f128_pointer_store_from_prepared_carrier() {
+  auto prepared = prepared_with_f128_pointer_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected dispatch to select f128 pointer store transport plus return");
+  }
+
+  const auto* transport =
+      std::get_if<aarch64_codegen::F128TransportRecord>(
+          &block.instructions.front().target.payload);
+  if (transport == nullptr ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      transport->transport_kind != aarch64_codegen::F128TransportKind::StoreToMemory ||
+      transport->value_id != prepare::PreparedValueId{113} ||
+      transport->carrier_kind != prepare::PreparedF128CarrierKind::FullWidthRegister ||
+      !transport->reg.has_value() ||
+      transport->reg->reg != aarch64_abi::q_register(5) ||
+      !transport->memory.has_value() ||
+      transport->memory->base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      transport->memory->stored_value_id != prepare::PreparedValueId{113} ||
+      transport->memory->pointer_value_id != prepare::PreparedValueId{114} ||
+      !transport->memory->base_register.has_value() ||
+      transport->memory->base_register->reg != aarch64_abi::x_register(8) ||
+      transport->memory->byte_offset != 0 ||
+      transport->memory->size_bytes != 16 ||
+      transport->memory->align_bytes != 16 ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::F128Transport ||
+      block.instructions.front().target.side_effects.size() != 1 ||
+      block.instructions.front().target.side_effects.front() !=
+          aarch64_codegen::MachineSideEffectKind::MemoryWrite) {
+    return fail("expected f128 pointer store transport to preserve pointer base authority");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected f128 pointer store route to print: " + printed.diagnostic);
+  }
+  const std::string expected =
+      "    str q5, [x8]\n"
+      "    ret\n";
+  if (printed.assembly != expected) {
+    std::cerr << printed.assembly;
+    return fail("expected f128 pointer store route to print through prepared pointer home");
+  }
+  return 0;
+}
+
 int block_dispatch_prints_representative_f128_load_helper_store_route() {
   auto prepared = prepared_with_f128_load_add_store_route();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -15186,6 +15362,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_f128_frame_slot_store_from_prepared_carrier();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_lowers_f128_pointer_store_from_prepared_carrier();
       status != 0) {
     return status;
   }

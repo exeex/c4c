@@ -809,6 +809,41 @@ std::optional<RegisterOperand> make_prepared_register_operand(
   };
 }
 
+PreparedMemoryOperandRecordError resolve_pointer_value_base_register(
+    const prepare::PreparedValueLocationFunction& value_locations,
+    const prepare::PreparedStoragePlanFunction& storage_plan,
+    MemoryOperand& operand) {
+  if (operand.base_kind != MemoryBaseKind::PointerValue) {
+    return PreparedMemoryOperandRecordError::None;
+  }
+  if (!operand.pointer_value_id.has_value() || !operand.pointer_value_name.has_value()) {
+    return PreparedMemoryOperandRecordError::MissingPointerValueHome;
+  }
+  const auto* pointer_home =
+      prepare::find_prepared_value_home(value_locations, *operand.pointer_value_id);
+  if (pointer_home == nullptr ||
+      pointer_home->value_name != *operand.pointer_value_name ||
+      pointer_home->kind != prepare::PreparedValueHomeKind::Register) {
+    return PreparedMemoryOperandRecordError::MissingPointerValueHome;
+  }
+  const auto* pointer_storage = find_storage_plan_value(storage_plan, *operand.pointer_value_id);
+  if (pointer_storage == nullptr ||
+      pointer_storage->value_name != *operand.pointer_value_name) {
+    return PreparedMemoryOperandRecordError::MissingPointerValueStorage;
+  }
+  if (pointer_storage->encoding != prepare::PreparedStorageEncodingKind::Register) {
+    return PreparedMemoryOperandRecordError::UnsupportedPointerValueStorage;
+  }
+  auto base_register =
+      make_prepared_register_operand(
+          *pointer_home, *pointer_storage, bir::TypeKind::Ptr, RegisterOperandRole::StoragePlan);
+  if (!base_register.has_value()) {
+    return PreparedMemoryOperandRecordError::RegisterConversionFailed;
+  }
+  operand.base_register = *base_register;
+  return PreparedMemoryOperandRecordError::None;
+}
+
 std::optional<RegisterOperand> make_load_result_stack_publication_scratch(
     const prepare::PreparedValueHome& home,
     const prepare::PreparedStoragePlanValue& storage,
@@ -2192,6 +2227,27 @@ MemoryInstructionLoweringResult lower_f128_transport_instruction(
         instruction_index,
         "AArch64 f128 transport requires prepared frame-slot stack offsets");
     return MemoryInstructionLoweringResult{.handled = true};
+  }
+  if (memory.record->base_kind == MemoryBaseKind::PointerValue) {
+    if (context.function.storage_plan == nullptr) {
+      append_memory_diagnostic(
+          diagnostics,
+          module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+          context,
+          instruction_index,
+          memory_error_message(PreparedMemoryOperandRecordError::MissingPointerValueStorage));
+      return MemoryInstructionLoweringResult{.handled = true};
+    }
+    if (const auto error = resolve_pointer_value_base_register(
+            *context.function.value_locations, *context.function.storage_plan, *memory.record);
+        error != PreparedMemoryOperandRecordError::None) {
+      append_memory_diagnostic(diagnostics,
+                               module::ModuleLoweringDiagnosticKind::UnsupportedInstructionFamily,
+                               context,
+                               instruction_index,
+                               memory_error_message(error));
+      return MemoryInstructionLoweringResult{.handled = true};
+    }
   }
   if (carrier_value_name == c4c::kInvalidValueName) {
     append_memory_diagnostic(
