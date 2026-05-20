@@ -33,6 +33,9 @@ constexpr std::size_t kStackPointerAlignmentBytes = 16;
 [[nodiscard]] bool call_boundary_frame_slot_direct_offset_is_encodable(
     const MemoryOperand& memory,
     std::size_t load_width_bytes);
+std::vector<std::string> materialize_call_boundary_frame_slot_address_lines(
+    abi::RegisterReference scratch,
+    const MemoryOperand& memory);
 
 [[nodiscard]] std::size_t align_to(std::size_t value, std::size_t alignment) {
   if (alignment == 0) {
@@ -946,12 +949,62 @@ struct AggregateRegisterLaneStore {
   std::optional<prepare::PreparedFrameSlotId> frame_slot_id;
 };
 
+struct AggregateRegisterLaneLoadSource {
+  std::string value_name;
+  std::string slot_name;
+};
+
+struct AggregateRegisterLanePartialStore {
+  std::string slot_name;
+  std::size_t byte_offset = 0;
+  AggregateRegisterLaneStore store;
+};
+
+[[nodiscard]] std::optional<std::string_view> find_aggregate_lane_load_source_slot(
+    const std::vector<AggregateRegisterLaneLoadSource>& load_sources,
+    std::string_view value_name) {
+  for (auto it = load_sources.rbegin(); it != load_sources.rend(); ++it) {
+    if (it->value_name == value_name) {
+      return std::string_view{it->slot_name};
+    }
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool append_aggregate_lane_partial_source_stores(
+    std::string_view slot_name,
+    std::size_t source_offset,
+    std::size_t source_size_bytes,
+    std::optional<std::size_t> source_home_offset,
+    const std::vector<AggregateRegisterLanePartialStore>& partial_stores,
+    std::vector<AggregateRegisterLaneStore>* stores) {
+  bool appended = false;
+  for (const auto& partial : partial_stores) {
+    if (partial.slot_name != slot_name || partial.byte_offset >= source_size_bytes) {
+      continue;
+    }
+    auto adjusted = partial.store;
+    adjusted.source_offset = source_offset + partial.byte_offset;
+    adjusted.size_bytes = std::min(adjusted.size_bytes,
+                                   source_size_bytes - partial.byte_offset);
+    if (!source_home_offset.has_value() || adjusted.stack_offset < 0 ||
+        static_cast<std::size_t>(adjusted.stack_offset) < *source_home_offset) {
+      continue;
+    }
+    stores->push_back(std::move(adjusted));
+    appended = true;
+  }
+  return appended;
+}
+
 [[nodiscard]] std::vector<AggregateRegisterLaneStore>
 collect_byval_register_lane_stores(
     const module::BlockLoweringContext& context,
     const prepare::PreparedValueHome& source_home,
     std::size_t instruction_index) {
   std::vector<AggregateRegisterLaneStore> stores;
+  std::vector<AggregateRegisterLaneLoadSource> load_sources;
+  std::vector<AggregateRegisterLanePartialStore> partial_stores;
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
       context.control_flow_block == nullptr ||
@@ -974,14 +1027,20 @@ collect_byval_register_lane_stores(
   for (std::size_t index = 0;
        index < instruction_index && index < context.bir_block->insts.size();
        ++index) {
+    if (const auto* load = std::get_if<bir::LoadLocalInst>(
+            &context.bir_block->insts[index]);
+        load != nullptr && load->result.kind == bir::Value::Kind::Named &&
+        !load->slot_name.empty()) {
+      load_sources.push_back(AggregateRegisterLaneLoadSource{
+          .value_name = load->result.name,
+          .slot_name = load->slot_name,
+      });
+      continue;
+    }
+
     const auto* store = std::get_if<bir::StoreLocalInst>(
         &context.bir_block->insts[index]);
     if (store == nullptr) {
-      continue;
-    }
-    const auto source_offset =
-        aggregate_slot_source_byte_offset(store->slot_name, source_name);
-    if (!source_offset.has_value()) {
       continue;
     }
     const auto* access =
@@ -1008,8 +1067,7 @@ collect_byval_register_lane_stores(
     if (slot == nullptr) {
       continue;
     }
-    stores.push_back(AggregateRegisterLaneStore{
-        .source_offset = *source_offset,
+    AggregateRegisterLaneStore lane_store{
         .stack_offset =
             static_cast<std::int64_t>(slot->offset_bytes) +
             access->address.byte_offset,
@@ -1018,7 +1076,63 @@ collect_byval_register_lane_stores(
                            ? std::size_t{1}
                            : access->address.align_bytes,
         .frame_slot_id = access->address.frame_slot_id,
-    });
+    };
+
+    if (store->address.has_value() &&
+        store->address->base_kind == bir::MemoryAddress::BaseKind::LocalSlot &&
+        store->address->byte_offset >= 0 && !store->address->base_name.empty()) {
+      auto partial_store = lane_store;
+      if (context.function.value_locations != nullptr &&
+          source_home.offset_bytes.has_value() &&
+          store->value.kind == bir::Value::Kind::Named) {
+        const auto stored_value_name =
+            context.function.prepared->names.value_names.find(store->value.name);
+        const auto* stored_home =
+            stored_value_name == c4c::kInvalidValueName
+                ? nullptr
+                : prepare::find_prepared_value_home(*context.function.value_locations,
+                                                    stored_value_name);
+        if (stored_home != nullptr &&
+            stored_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+            stored_home->offset_bytes.has_value() && stored_home->slot_id.has_value() &&
+            *stored_home->offset_bytes >= *source_home.offset_bytes) {
+          partial_store.stack_offset = static_cast<std::int64_t>(*stored_home->offset_bytes);
+          partial_store.size_bytes = stored_home->size_bytes.value_or(access->address.size_bytes);
+          partial_store.align_bytes =
+              stored_home->align_bytes.value_or(access->address.align_bytes == 0
+                                                    ? std::size_t{1}
+                                                    : access->address.align_bytes);
+          partial_store.frame_slot_id = stored_home->slot_id;
+        }
+      }
+      partial_stores.push_back(AggregateRegisterLanePartialStore{
+          .slot_name = store->address->base_name,
+          .byte_offset = static_cast<std::size_t>(store->address->byte_offset),
+          .store = partial_store,
+      });
+    }
+
+    const auto source_offset =
+        aggregate_slot_source_byte_offset(store->slot_name, source_name);
+    if (!source_offset.has_value()) {
+      continue;
+    }
+    lane_store.source_offset = *source_offset;
+
+    if (store->value.kind == bir::Value::Kind::Named) {
+      if (const auto load_source_slot =
+              find_aggregate_lane_load_source_slot(load_sources, store->value.name);
+          load_source_slot.has_value() &&
+          append_aggregate_lane_partial_source_stores(*load_source_slot,
+                                                      *source_offset,
+                                                      access->address.size_bytes,
+                                                      source_home.offset_bytes,
+                                                      partial_stores,
+                                                      &stores)) {
+        continue;
+      }
+    }
+    stores.push_back(std::move(lane_store));
   }
   std::sort(stores.begin(), stores.end(),
             [](const AggregateRegisterLaneStore& lhs,
@@ -1451,6 +1565,7 @@ fragmented_aggregate_register_lane_publication_lines(
         return std::nullopt;
       }
       std::optional<MemoryOperand> source_memory;
+      bool source_memory_needs_materialized_address = false;
       std::size_t chunk_width = 0;
       for (const std::size_t candidate : {std::size_t{8},
                                           std::size_t{4},
@@ -1468,9 +1583,19 @@ fragmented_aggregate_register_lane_publication_lines(
                                         candidate,
                                         instruction_index);
         if (candidate_memory.has_value() &&
-            aggregate_register_lane_memory_is_printable(*candidate_memory, candidate) &&
             !aggregate_register_lane_load_mnemonic(candidate).empty()) {
+          const bool printable =
+              aggregate_register_lane_memory_is_printable(*candidate_memory, candidate);
+          const bool materializable =
+              !printable &&
+              candidate_memory->base_kind == MemoryBaseKind::FrameSlot &&
+              !materialize_call_boundary_frame_slot_address_lines(
+                   *scratch, *candidate_memory).empty();
+          if (!printable && !materializable) {
+            continue;
+          }
           source_memory = std::move(candidate_memory);
+          source_memory_needs_materialized_address = materializable;
           chunk_width = candidate;
           break;
         }
@@ -1484,9 +1609,16 @@ fragmented_aggregate_register_lane_publication_lines(
           first_chunk
               ? aggregate_register_lane_load_register(*lane_register, chunk_width)
               : aggregate_register_lane_load_register(*scratch, chunk_width);
+      if (source_memory_needs_materialized_address) {
+        auto address_lines =
+            materialize_call_boundary_frame_slot_address_lines(*scratch, *source_memory);
+        lines.insert(lines.end(), address_lines.begin(), address_lines.end());
+      }
       lines.push_back(std::string{mnemonic} + " " +
                       std::string{abi::register_name(load_register)} + ", " +
-                      memory_address(*source_memory));
+                      (source_memory_needs_materialized_address
+                           ? ("[" + scratch_x + "]")
+                           : memory_address(*source_memory)));
       source_operands.push_back(*source_memory);
       if (!first_chunk) {
         lines.push_back("orr " + std::string{abi::register_name(*lane_register)} +
@@ -1506,7 +1638,7 @@ fragmented_aggregate_register_lane_publication_lines(
       break;
     }
   }
-  if (covered_bytes < size_bytes) {
+  if (covered_bytes == 0) {
     return std::nullopt;
   }
   return lines;
@@ -1936,6 +2068,151 @@ make_byval_register_lane_stack_publication_instruction(
   };
   return make_call_boundary_machine_instruction(context, instruction_index,
                                                 std::move(target));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+make_fragmented_byval_register_lane_stack_publication_instruction(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    const prepare::PreparedValueHome& source_home,
+    std::size_t size_bytes,
+    std::size_t source_instruction_index,
+    std::size_t instruction_index,
+    const MemoryOperand& destination) {
+  const auto stores =
+      collect_byval_register_lane_stores(context, source_home, source_instruction_index);
+  if (stores.empty() || stores.front().source_offset != 0) {
+    return std::nullopt;
+  }
+
+  std::string asm_text;
+  std::vector<OperandRecord> operands;
+  std::vector<MachineEffectResource> uses;
+  std::size_t covered_bytes = 0;
+  for (const auto& store : stores) {
+    if (store.source_offset > covered_bytes) {
+      return std::nullopt;
+    }
+    std::size_t store_offset = covered_bytes - store.source_offset;
+    while (covered_bytes < size_bytes && store_offset < store.size_bytes) {
+      const std::size_t store_remaining = store.size_bytes - store_offset;
+      const std::size_t total_remaining = size_bytes - covered_bytes;
+      const std::size_t max_chunk = std::min<std::size_t>(store_remaining, total_remaining);
+      std::optional<MemoryOperand> source_memory;
+      bool source_memory_needs_materialized_address = false;
+      std::size_t chunk_width = 0;
+      for (const std::size_t candidate : {std::size_t{8},
+                                          std::size_t{4},
+                                          std::size_t{2},
+                                          std::size_t{1}}) {
+        if (candidate > max_chunk) {
+          continue;
+        }
+        auto candidate_source = aggregate_lane_store_memory(context,
+                                                           argument,
+                                                           source_home,
+                                                           store,
+                                                           store_offset,
+                                                           candidate,
+                                                           instruction_index);
+        auto candidate_destination =
+            aggregate_register_lane_memory(destination, covered_bytes, candidate);
+        if (!candidate_source.has_value() ||
+            !aggregate_register_lane_memory_is_printable(candidate_destination, candidate)) {
+          continue;
+        }
+        const bool printable =
+            aggregate_register_lane_memory_is_printable(*candidate_source, candidate);
+        const auto scratch = aggregate_stack_copy_scratch(candidate);
+        const bool materializable =
+            !printable && scratch.has_value() &&
+            candidate_source->base_kind == MemoryBaseKind::FrameSlot &&
+            !materialize_call_boundary_frame_slot_address_lines(
+                 abi::x_register(scratch->index), *candidate_source).empty();
+        if ((!printable && !materializable) || !scratch.has_value() ||
+            aggregate_stack_copy_load_mnemonic(candidate).empty() ||
+            aggregate_stack_copy_store_mnemonic(candidate).empty()) {
+          continue;
+        }
+        source_memory = std::move(candidate_source);
+        source_memory_needs_materialized_address = materializable;
+        chunk_width = candidate;
+        break;
+      }
+      if (!source_memory.has_value() || chunk_width == 0) {
+        return std::nullopt;
+      }
+
+      const auto scratch = aggregate_stack_copy_scratch(chunk_width);
+      const auto load_mnemonic = aggregate_stack_copy_load_mnemonic(chunk_width);
+      const auto store_mnemonic = aggregate_stack_copy_store_mnemonic(chunk_width);
+      if (!scratch.has_value() || load_mnemonic.empty() || store_mnemonic.empty()) {
+        return std::nullopt;
+      }
+      const auto destination_chunk =
+          aggregate_register_lane_memory(destination, covered_bytes, chunk_width);
+      if (!asm_text.empty()) {
+        asm_text += '\n';
+      }
+      if (source_memory_needs_materialized_address) {
+        auto address_lines = materialize_call_boundary_frame_slot_address_lines(
+            abi::x_register(scratch->index), *source_memory);
+        for (const auto& line : address_lines) {
+          asm_text += line;
+          asm_text += '\n';
+        }
+      }
+      asm_text += std::string{load_mnemonic} + " " +
+                  std::string{abi::register_name(*scratch)} + ", " +
+                  (source_memory_needs_materialized_address
+                       ? ("[" + std::string{abi::register_name(abi::x_register(scratch->index))} +
+                          "]")
+                       : memory_address(*source_memory));
+      asm_text += '\n';
+      asm_text += std::string{store_mnemonic} + " " +
+                  std::string{abi::register_name(*scratch)} + ", " +
+                  memory_address(destination_chunk);
+      const auto source_operand = make_memory_operand(*source_memory);
+      operands.push_back(source_operand);
+      uses.push_back(effect_from_operand(source_operand));
+      covered_bytes += chunk_width;
+      store_offset += chunk_width;
+    }
+  }
+  if (covered_bytes == 0 || asm_text.empty()) {
+    return std::nullopt;
+  }
+
+  const auto destination_operand = make_memory_operand(destination);
+  operands.push_back(destination_operand);
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection = MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .operands = operands,
+      .defs = {effect_from_operand(destination_operand)},
+      .uses = uses,
+      .side_effects = {MachineSideEffectKind::MemoryRead,
+                       MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload =
+          AssemblerInstructionRecord{
+              .operands = std::move(operands),
+              .has_inline_asm_payload = true,
+              .side_effects = true,
+              .inline_asm_template = std::move(asm_text),
+          },
+  };
+  return make_call_boundary_machine_instruction(context, instruction_index, std::move(target));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction> lower_before_call_move(
@@ -2588,6 +2865,17 @@ make_byval_register_lane_stack_publication_instruction(
           instruction_index,
           "AArch64 aggregate stack-lane call-argument publication requires a prepared destination stack offset");
       return std::nullopt;
+    }
+    if (auto fragmented =
+            make_fragmented_byval_register_lane_stack_publication_instruction(
+                context,
+                *argument,
+                *source_home,
+                *lane_size,
+                call_plan.instruction_index,
+                instruction_index,
+                *destination)) {
+      return fragmented;
     }
     auto lowered = make_byval_register_lane_stack_publication_instruction(
         context, instruction_index, *source, *destination);
