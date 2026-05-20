@@ -387,6 +387,7 @@ PreparedMemoryOperandRecordError validate_structured_memory_address_facts(
     const MemoryOperand& memory) {
   const bool prepared_frame_slot_local_address =
       memory.base_kind == MemoryBaseKind::FrameSlot &&
+      memory.byte_offset == 0 &&
       (address.base_kind == bir::MemoryAddress::BaseKind::LocalSlot ||
        address.base_kind == bir::MemoryAddress::BaseKind::PointerValue);
   if ((!prepared_frame_slot_local_address &&
