@@ -883,6 +883,9 @@ void populate_call_plans(PreparedBirModule& prepared) {
               .source_register_placement = std::nullopt,
               .destination_register_placement = std::nullopt,
           };
+          const auto abi_register_index =
+              regalloc_detail::call_arg_abi_register_index(
+                  prepared.target_profile, *call, arg_index);
 
           if (const auto* binding = find_call_abi_binding(before_call_bundle,
                                                           PreparedMoveDestinationKind::CallArgumentAbi,
@@ -898,11 +901,11 @@ void populate_call_plans(PreparedBirModule& prepared) {
               arg_plan.destination_register_placement =
                   binding->destination_register_placement;
               if (!arg_plan.destination_register_placement.has_value() &&
-                  arg_index < call->arg_abi.size()) {
+                  arg_index < call->arg_abi.size() && abi_register_index.has_value()) {
                 arg_plan.destination_register_placement =
                     call_arg_destination_register_placement(prepared.target_profile,
                                                             call->arg_abi[arg_index],
-                                                            arg_index,
+                                                            *abi_register_index,
                                                             arg_plan.destination_contiguous_width);
               }
             }
@@ -922,18 +925,18 @@ void populate_call_plans(PreparedBirModule& prepared) {
               arg_plan.destination_register_placement =
                   register_binding->destination_register_placement;
               if (!arg_plan.destination_register_placement.has_value() &&
-                  arg_index < call->arg_abi.size()) {
+                  arg_index < call->arg_abi.size() && abi_register_index.has_value()) {
                 arg_plan.destination_register_placement =
                     call_arg_destination_register_placement(prepared.target_profile,
                                                             call->arg_abi[arg_index],
-                                                            arg_index,
+                                                            *abi_register_index,
                                                             arg_plan.destination_contiguous_width);
                 }
               }
             }
 
             if (arg_index < call->arg_abi.size() &&
-                arg_plan.destination_register_name.has_value()) {
+                arg_plan.destination_register_name.has_value() && abi_register_index.has_value()) {
               const std::size_t byval_lane_width =
                   aarch64_byval_register_lane_width(prepared.target_profile,
                                                      call->arg_abi[arg_index]);
@@ -943,13 +946,13 @@ void populate_call_plans(PreparedBirModule& prepared) {
                     regalloc_detail::call_arg_destination_register_names(
                         prepared.target_profile,
                         PreparedRegisterClass::General,
-                        arg_index,
+                        *abi_register_index,
                         *arg_plan.destination_register_name,
                         byval_lane_width);
                 arg_plan.destination_register_placement =
                     call_arg_destination_register_placement(prepared.target_profile,
                                                             call->arg_abi[arg_index],
-                                                            arg_index,
+                                                            *abi_register_index,
                                                             byval_lane_width);
               }
             }

@@ -8,49 +8,30 @@ Current Step Title: Repair The Classified HFA/Floating Owner
 
 ## Just Finished
 
-Step 2 localization advanced the remaining `.str44` failure past HFA lane-home
-publication, F128 carrier-view transport, and prepared frame-slot address
-retargeting. The generated `.str44` paths now load selected long-double HFA
-lanes from concrete prepared homes, for example `%hfa31` copies the selected
-16-byte lane into `sp + 192` / `sp + 200`, loads `ldr q13, [sp, #192]`,
-stores the local F128 object home at `sp + 32`, reloads from `sp + 32`, and
-emits concrete q call-boundary moves. `%hfa32` similarly loads selected lanes
-from `sp + 208` and `sp + 224` before the q moves.
+Step 2 repaired the AArch64 prepared call argument ABI register numbering for
+register-passed call arguments by deriving the physical ABI register slot from
+the argument's register bank instead of the overall argument index. The shared
+helper lives in `src/backend/prealloc/regalloc/call_return_abi.cpp`, and the
+move/binding/plan surfaces now pass that per-bank slot into the existing target
+register-name and placement helpers.
 
-Two precise bad facts remain and both sit outside this packet's currently
-owned dirty files. First, the selected long-double bytes are not AArch64
-binary128 bytes. Clang for `--target=aarch64-linux-gnu` emits `31.1L` as
-binary128 xwords `0x999999999999999a` and `0x4003f19999999999`, i.e.
-little-endian bytes `9a 99 99 99 99 99 99 99 99 99 99 99 99 f1 03 40`.
-The generated `hfa31` object in `00204.c.s` is instead bytes
-`99 99 99 99 99 f1 03 40 00 00 00 00 00 00 00 a0`, an x87-style
-80-bit/padded payload. The `va_arg` selection copies those bytes through the
-register-save-area or overflow path into the now-correct homes, so payload
-contents are already wrong before the `.str44` call consumes them.
+The `.str44` evidence moved from the old `x0`, `q1`, `q2` shape to the AAPCS64
+shape for the representative variadic calls: generated `00204.c.s` now shows
+`adrp/add x0, .str44`, then `mov v0.16b, ...` and `mov v1.16b, ...` before
+`bl printf`. This preserves the repaired HFA lane-home and F128 carrier-view
+transport while fixing the call-boundary placement.
 
-Second, the observed AAPCS64 call-boundary placement for
-`printf("%.1Lf,%.1Lf", ...)` is off by one in the vector register bank.
-A Clang AArch64 reference call with one GPR format argument and two
-long-double varargs passes the long doubles in `q0` and `q1`. The prepared
-call plan for `myprintf` block 43, instruction 5 records `arg0` as `x0` but
-records `arg1` / `arg2` as `q1` / `q2`, and generated assembly follows that
-with `mov v1.16b, ...` and `mov v2.16b, ...`. The exact owner surface for the
-ABI register numbering is prepared call ABI planning/move generation, notably
-`src/backend/prealloc/regalloc/call_return_abi.cpp`,
-`src/backend/prealloc/regalloc/call_moves.cpp`, and
-`src/backend/prealloc/call_plans.cpp`; those files were not delegated as owned
-files for this packet. The long-double byte owner is the target long-double
-constant/data representation path, likely around the LIR/constant-data
-emission surfaces that choose `fp128` versus x87 payload bytes.
+One direct related source outside the original owned list was required:
+`src/backend/prealloc/regalloc.cpp` publishes the prepared call ABI bindings
+that `call_plans.cpp` consumes. Leaving that source on the old overall-index
+rule kept stale q-register facts in prepared call plans.
 
 ## Suggested Next
 
-Continue Step 2 only after the supervisor chooses the next owner. The smallest
-backend packet is to repair AArch64 prepared call argument ABI register
-numbering so FPR/Vreg argument registers are counted per register bank rather
-than by the overall argument index. A separate packet is needed for the target
-long-double literal/data representation mismatch if this plan owns that
-frontend/LIR surface.
+Continue Step 2 with the separate target long-double literal/data
+representation owner. The remaining first bad fact is still that selected
+long-double bytes are x87-style 80-bit/padded payloads rather than AArch64
+binary128 payloads before the now-correct q0/q1 `.str44` call consumes them.
 
 ## Watchouts
 
@@ -64,9 +45,9 @@ The calls-owned F128 call-boundary adjustments, F128 carrier-view transport,
 and prepared frame-slot address retargeting now produce `.str44` argument
 publication plus selected q-register transport from concrete stack homes. Do
 not special-case `%hfa31`, `%hfa32`, `.str44`, one register, one frame slot id,
-or one stack offset. The next backend repair should be a general AArch64
-per-bank call ABI register index rule; it should not rewrite expectations or
-paper over the separate long-double payload encoding mismatch.
+or one stack offset. The ABI register numbering rule is now general per AArch64
+register bank for prepared call-argument naming and placement; do not rewrite
+expectations or paper over the separate long-double payload encoding mismatch.
 
 ## Proof
 
@@ -76,8 +57,8 @@ Ran the delegated proof command:
 Current result: build succeeded; `backend_aarch64_target_instruction_records`,
 `backend_aarch64_machine_printer`, and `backend_aarch64_instruction_dispatch`
 passed. `c_testsuite_aarch64_backend_src_00204_c` still failed with
-`RUNTIME_NONZERO` / segmentation fault. The failure is now localized to the
-two concrete bad facts above: selected long-double bytes are x87-style
-80-bit/padded rather than AArch64 binary128, and the prepared `.str44`
-variadic `printf` ABI placement uses `q1` / `q2` where Clang uses `q0` /
-`q1`. `test_after.log` is the fresh proof log for this dirty state.
+`RUNTIME_NONZERO` / segmentation fault after printing long-double mismatch
+output. The `.str44` placement is repaired to q0/q1, so the remaining recorded
+first bad fact is the separate long-double payload encoding mismatch. Also ran
+`git diff --check`, which passed. `test_after.log` is the fresh proof log for
+this dirty state.

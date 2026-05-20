@@ -41,6 +41,7 @@ using regalloc_detail::choose_eviction_candidate;
 using regalloc_detail::choose_register_span;
 using regalloc_detail::build_prepared_value_homes;
 using regalloc_detail::call_arg_destination_register_names;
+using regalloc_detail::call_arg_abi_register_index;
 using regalloc_detail::call_arg_destination_stack_offset_bytes;
 using regalloc_detail::call_arg_storage_kind;
 using regalloc_detail::call_result_destination_register_names;
@@ -294,9 +295,11 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
         }
         const auto& arg = call->args[arg_index];
         const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
+        const auto abi_register_index =
+            call_arg_abi_register_index(target_profile, *call, arg_index);
         const auto abi_register_name =
-            arg_abi.has_value()
-                ? call_arg_destination_register_name(target_profile, *arg_abi, arg_index)
+            arg_abi.has_value() && abi_register_index.has_value()
+                ? call_arg_destination_register_name(target_profile, *arg_abi, *abi_register_index)
                 : std::nullopt;
         const auto stack_offset = call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
         const auto* source =
@@ -306,21 +309,22 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
         const std::size_t destination_contiguous_width =
             source != nullptr ? published_register_group_width(*source) : 1;
         const auto abi_register_placement =
-            destination_storage_kind == PreparedMoveStorageKind::Register && arg_abi.has_value()
+            destination_storage_kind == PreparedMoveStorageKind::Register && arg_abi.has_value() &&
+                    abi_register_index.has_value()
                 ? f128_call_arg_destination_placement(
                       call_arg_destination_register_placement(target_profile,
                                                              *arg_abi,
-                                                             arg_index,
+                                                             *abi_register_index,
                                                              destination_contiguous_width),
                       arg.type)
                 : std::nullopt;
         const auto destination_occupied_register_names =
             destination_storage_kind == PreparedMoveStorageKind::Register &&
-                    abi_register_name.has_value()
+                    abi_register_name.has_value() && abi_register_index.has_value()
                 ? call_arg_destination_register_names(target_profile,
                                                       source != nullptr ? source->register_class
                                                                          : PreparedRegisterClass::None,
-                                                      arg_index,
+                                                      *abi_register_index,
                                                       *abi_register_name,
                                                       destination_contiguous_width)
                 : std::vector<std::string>{};
@@ -376,7 +380,10 @@ void append_prepared_call_abi_bindings(const PreparedNameTables& names,
                 });
           }
           const auto byval_register_placement =
-              call_arg_destination_register_placement(target_profile, *arg_abi, arg_index, 1);
+              abi_register_index.has_value()
+                  ? call_arg_destination_register_placement(
+                        target_profile, *arg_abi, *abi_register_index, 1)
+                  : std::nullopt;
           append_prepared_abi_binding(function_locations,
                                       PreparedMovePhase::BeforeCall,
                                       block_index,

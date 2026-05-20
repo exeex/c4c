@@ -221,9 +221,11 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
             call_arg_storage_kind(target_profile, *call, arg_index);
         const PreparedMoveStorageKind source_kind = assigned_storage_kind(*source);
         const auto arg_abi = resolve_call_arg_abi(target_profile, *call, arg_index);
+        const auto abi_register_index =
+            call_arg_abi_register_index(target_profile, *call, arg_index);
         const auto abi_register_name =
-            arg_abi.has_value()
-                ? call_arg_destination_register_name(target_profile, *arg_abi, arg_index)
+            arg_abi.has_value() && abi_register_index.has_value()
+                ? call_arg_destination_register_name(target_profile, *arg_abi, *abi_register_index)
                 : std::nullopt;
         const auto stack_offset = call_arg_destination_stack_offset_bytes(target_profile, *call, arg_index);
         const auto destination_register_name =
@@ -235,21 +237,22 @@ void append_call_arg_move_resolution(const PreparedNameTables& names,
                   ? call_arg_destination_register_width(target_profile, *source, arg_abi)
                   : 1;
         const auto destination_register_placement =
-            consumed_kind == PreparedMoveStorageKind::Register && arg_abi.has_value()
+            consumed_kind == PreparedMoveStorageKind::Register && arg_abi.has_value() &&
+                    abi_register_index.has_value()
                 ? f128_call_arg_destination_placement(
                       call_arg_destination_register_placement(target_profile,
                                                              *arg_abi,
-                                                             arg_index,
+                                                             *abi_register_index,
                                                              destination_contiguous_width),
                       arg.type)
                 : std::nullopt;
           const auto destination_occupied_register_names =
               consumed_kind == PreparedMoveStorageKind::Register &&
-                      destination_register_name.has_value()
+                      destination_register_name.has_value() && abi_register_index.has_value()
                   ? call_arg_destination_register_names(target_profile,
                                                         source->register_class,
-                                                      arg_index,
-                                                      *destination_register_name,
+                                                        *abi_register_index,
+                                                        *destination_register_name,
                                                         destination_contiguous_width)
                   : std::vector<std::string>{};
           const bool aarch64_byval_register_lanes =

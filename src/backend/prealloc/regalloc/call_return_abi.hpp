@@ -33,6 +33,11 @@ namespace regalloc_detail {
     const bir::CallInst& call,
     std::size_t arg_index);
 
+[[nodiscard]] std::optional<std::size_t> call_arg_abi_register_index(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index);
+
 [[nodiscard]] PreparedMoveStorageKind call_arg_storage_kind(
     const c4c::TargetProfile& target_profile,
     const bir::CallInst& call,

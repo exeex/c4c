@@ -100,13 +100,19 @@ template <std::size_t N>
          abi->type == bir::TypeKind::Ptr &&
          abi->byval_copy &&
          !abi->sret_pointer &&
-         call_arg_destination_register_name(target_profile, *abi, arg_index).has_value();
+         [&]() {
+           const auto abi_register_index =
+               call_arg_abi_register_index(target_profile, call, arg_index);
+           return abi_register_index.has_value() &&
+                  call_arg_destination_register_name(target_profile, *abi, *abi_register_index)
+                      .has_value();
+         }();
 }
 
 [[nodiscard]] bool aarch64_register_passed_byval_aggregate(
     const c4c::TargetProfile& target_profile,
     const bir::CallArgAbiInfo& abi,
-    std::size_t arg_index) {
+    std::optional<std::size_t> abi_register_index) {
   return target_profile.arch == c4c::TargetArch::Aarch64 &&
          abi.type == bir::TypeKind::Ptr &&
          abi.byval_copy &&
@@ -116,7 +122,21 @@ template <std::size_t N>
          abi.primary_class == bir::AbiValueClass::Integer &&
          abi.size_bytes > 0 &&
          abi.size_bytes <= 16 &&
-         call_arg_destination_register_name(target_profile, abi, arg_index).has_value();
+         abi_register_index.has_value() &&
+         call_arg_destination_register_name(target_profile, abi, *abi_register_index).has_value();
+}
+
+[[nodiscard]] bool aarch64_same_call_arg_register_bank(const bir::CallArgAbiInfo& lhs,
+                                                       const bir::CallArgAbiInfo& rhs) {
+  const auto is_float_bank = [](const bir::CallArgAbiInfo& abi) {
+    return abi.primary_class == bir::AbiValueClass::Sse ||
+           abi.primary_class == bir::AbiValueClass::X87;
+  };
+  if (is_float_bank(lhs) || is_float_bank(rhs)) {
+    return is_float_bank(lhs) == is_float_bank(rhs);
+  }
+  return lhs.primary_class == bir::AbiValueClass::Integer &&
+         rhs.primary_class == bir::AbiValueClass::Integer;
 }
 
 }  // namespace
@@ -213,6 +233,31 @@ std::optional<bir::CallArgAbiInfo> resolve_call_arg_abi(
   return infer_call_arg_abi(target_profile, call.arg_types[arg_index]);
 }
 
+std::optional<std::size_t> call_arg_abi_register_index(
+    const c4c::TargetProfile& target_profile,
+    const bir::CallInst& call,
+    std::size_t arg_index) {
+  const auto abi = resolve_call_arg_abi(target_profile, call, arg_index);
+  if (!abi.has_value() || !abi->passed_in_register) {
+    return std::nullopt;
+  }
+  if (target_profile.arch != c4c::TargetArch::Aarch64) {
+    return arg_index;
+  }
+
+  std::size_t register_index = 0;
+  for (std::size_t candidate_index = 0; candidate_index < arg_index; ++candidate_index) {
+    const auto candidate_abi = resolve_call_arg_abi(target_profile, call, candidate_index);
+    if (!candidate_abi.has_value() || !candidate_abi->passed_in_register) {
+      continue;
+    }
+    if (aarch64_same_call_arg_register_bank(*candidate_abi, *abi)) {
+      ++register_index;
+    }
+  }
+  return register_index;
+}
+
 PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_profile,
                                               const bir::CallInst& call,
                                               std::size_t arg_index) {
@@ -225,10 +270,19 @@ PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_p
         abi->type == bir::TypeKind::Ptr &&
         abi->byval_copy &&
         !abi->sret_pointer &&
-        call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
+        [&]() {
+          const auto abi_register_index =
+              call_arg_abi_register_index(target_profile, call, arg_index);
+          return abi_register_index.has_value() &&
+                 call_arg_destination_register_name(target_profile, *abi, *abi_register_index)
+                     .has_value();
+        }()) {
       return PreparedMoveStorageKind::Register;
     }
-    if (aarch64_register_passed_byval_aggregate(target_profile, *abi, arg_index)) {
+    const auto aarch64_register_index =
+        call_arg_abi_register_index(target_profile, call, arg_index);
+    if (aarch64_register_passed_byval_aggregate(
+            target_profile, *abi, aarch64_register_index)) {
       return PreparedMoveStorageKind::Register;
     }
 
@@ -236,7 +290,11 @@ PreparedMoveStorageKind call_arg_storage_kind(const c4c::TargetProfile& target_p
         abi->primary_class == bir::AbiValueClass::Memory) {
     return PreparedMoveStorageKind::StackSlot;
   }
-  if (call_arg_destination_register_name(target_profile, *abi, arg_index).has_value()) {
+  const auto destination_register_index =
+      call_arg_abi_register_index(target_profile, call, arg_index);
+  if (destination_register_index.has_value() &&
+      call_arg_destination_register_name(target_profile, *abi, *destination_register_index)
+          .has_value()) {
     return PreparedMoveStorageKind::Register;
   }
   if (abi->type != bir::TypeKind::Void) {
