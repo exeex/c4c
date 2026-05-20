@@ -1,8 +1,21 @@
 # AArch64 Scalar Select Result Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
+Closed: 2026-05-20
 Split From: ideas/closed/344_semantic_bir_loop_carried_pointer_deref_provenance.md
+
+## Completion Note
+
+Closed after the active runbook localized scalar select publication, repaired
+stack-home publication for scalar `csel` results and same-block scalar-cast
+producer materialization, added focused backend coverage, and proved
+`c_testsuite_aarch64_backend_src_00143_c` with the delegated backend subset.
+
+Close gate: `python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+passed for the canonical 142-test scope. The scope improved from 141/142 to
+142/142, resolving `c_testsuite_aarch64_backend_src_00143_c` with no new
+failures.
 
 ## Goal
 
