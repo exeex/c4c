@@ -112,6 +112,7 @@ int expect_indirect_call_prefers_structured_callee_signature_over_stale_suffix()
 int expect_indirect_call_signature_mismatch_fails_despite_stale_suffix_match();
 int expect_aarch64_direct_hfa_call_uses_fp_lanes_not_byval();
 int expect_aarch64_variadic_hfa_call_uses_fp_lanes();
+int expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
 int expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
 int expect_aarch64_hfa_call_result_uses_fp_lanes_not_sret();
 int expect_structured_incoming_byval_param_materializes_from_type_ref();
@@ -3262,6 +3263,137 @@ int expect_aarch64_variadic_hfa_call_uses_fp_lanes() {
     }
   }
   return fail("AArch64 variadic HFA call should be represented as FP lanes");
+}
+
+LirModule make_aarch64_hfa_local_aggregate_copy_module() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("aarch64-unknown-linux-gnu");
+  module.link_name_texts = std::make_shared<c4c::TextTable>();
+  module.link_names.attach_text_table(module.link_name_texts.get());
+  module.struct_names.attach_text_table(module.link_name_texts.get());
+  module.type_decls.push_back("%struct.Hfa1 = type { float }");
+  module.type_decls.push_back("%struct.Hfa2 = type { float, float }");
+
+  const c4c::StructNameId hfa1_id = module.struct_names.intern("%struct.Hfa1");
+  const c4c::StructNameId hfa2_id = module.struct_names.intern("%struct.Hfa2");
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa1_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("float")}},
+  });
+  module.record_struct_decl(lir::LirStructDecl{
+      .name_id = hfa2_id,
+      .fields = {lir::LirStructField{lir::LirTypeRef("float")},
+                 lir::LirStructField{lir::LirTypeRef("float")}},
+  });
+  const lir::LirTypeRef hfa1_ref = lir::LirTypeRef::struct_type("%struct.Hfa1", hfa1_id);
+  const lir::LirTypeRef hfa2_ref = lir::LirTypeRef::struct_type("%struct.Hfa2", hfa2_id);
+
+  LirFunction function;
+  function.name = "aarch64_hfa_local_aggregate_copy";
+  function.signature_text = "define void @aarch64_hfa_local_aggregate_copy()";
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%src1"),
+      .type_str = hfa1_ref,
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%dst1"),
+      .type_str = hfa1_ref,
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%src2"),
+      .type_str = hfa2_ref,
+      .align = 4,
+  });
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%dst2"),
+      .type_str = hfa2_ref,
+      .align = 4,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%single"),
+      .type_str = hfa1_ref,
+      .ptr = LirOperand("%src1"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = hfa1_ref,
+      .val = LirOperand("%single"),
+      .ptr = LirOperand("%dst1"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%pair"),
+      .type_str = hfa2_ref,
+      .ptr = LirOperand("%src2"),
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = hfa2_ref,
+      .val = LirOperand("%pair"),
+      .ptr = LirOperand("%dst2"),
+  });
+  entry.terminator = LirRet{
+      .value_str = std::nullopt,
+      .type_str = "void",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+  return module;
+}
+
+int expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes() {
+  auto result = try_lower_to_bir_with_options(
+      make_aarch64_hfa_local_aggregate_copy_module(), BirLoweringOptions{});
+  if (!result.module.has_value() || result.module->functions.empty()) {
+    return fail("AArch64 HFA local aggregate-copy fixture should lower semantically");
+  }
+
+  bool saw_singleton_lane_load = false;
+  bool saw_singleton_lane_store = false;
+  bool saw_pair_lane_zero_load = false;
+  bool saw_pair_lane_four_load = false;
+  bool saw_stale_singleton_store = false;
+  const auto& function = result.module->functions.front();
+  for (const auto& block : function.blocks) {
+    for (const auto& inst : block.insts) {
+      const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+      if (load != nullptr && load->slot_name == "%src1.0" &&
+          load->result.name == "%dst1.aggregate.copy.0" &&
+          load->result.type == TypeKind::F32) {
+        saw_singleton_lane_load = true;
+      }
+      if (load != nullptr && load->slot_name == "%src2.0" &&
+          load->result.name == "%dst2.aggregate.copy.0" &&
+          load->result.type == TypeKind::F32) {
+        saw_pair_lane_zero_load = true;
+      }
+      if (load != nullptr && load->slot_name == "%src2.4" &&
+          load->result.name == "%dst2.aggregate.copy.4" &&
+          load->result.type == TypeKind::F32) {
+        saw_pair_lane_four_load = true;
+      }
+
+      const auto* store = std::get_if<c4c::backend::bir::StoreLocalInst>(&inst);
+      if (store != nullptr && store->slot_name == "%dst1.0" &&
+          store->value.name == "%dst1.aggregate.copy.0" &&
+          store->value.type == TypeKind::F32) {
+        saw_singleton_lane_store = true;
+      }
+      if (store != nullptr && store->slot_name == "%dst1.0" &&
+          store->value.name == "%single") {
+        saw_stale_singleton_store = true;
+      }
+    }
+  }
+
+  if (!saw_singleton_lane_load || !saw_singleton_lane_store ||
+      !saw_pair_lane_zero_load || !saw_pair_lane_four_load ||
+      saw_stale_singleton_store) {
+    return fail("AArch64 singleton and multi-lane HFA aggregate copies should use explicit lane loads");
+  }
+  return 0;
 }
 
 LirModule make_aarch64_hfa_return_fp_lane_module() {
@@ -6578,6 +6710,11 @@ int main() {
           expect_aarch64_variadic_hfa_call_uses_fp_lanes();
       aarch64_variadic_hfa_call_status != 0) {
     return aarch64_variadic_hfa_call_status;
+  }
+  if (const int aarch64_hfa_local_copy_status =
+          expect_aarch64_hfa_local_aggregate_copy_uses_explicit_lanes();
+      aarch64_hfa_local_copy_status != 0) {
+    return aarch64_hfa_local_copy_status;
   }
   if (const int aarch64_hfa_return_status =
           expect_aarch64_hfa_return_uses_fp_lanes_not_sret();
