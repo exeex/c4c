@@ -7129,6 +7129,121 @@ prepare::PreparedBirModule prepared_with_simple_integer_cast(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_select_produced_stack_source_cast() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.select.cast");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.select.cast.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.select.cast.entry");
+  const auto select_name = prepared.names.value_names.intern("%selected");
+  const auto cast_name = prepared.names.value_names.intern("%cast");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.select.cast",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.select.cast.entry",
+              .insts =
+                  {bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I16, "%selected"),
+                       .compare_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                       .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                       .true_value = bir::Value::named(bir::TypeKind::I16, "%true"),
+                       .false_value = bir::Value::named(bir::TypeKind::I16, "%false"),
+                   },
+                   bir::CastInst{
+                       .opcode = bir::CastOpcode::SExt,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%cast"),
+                       .operand = bir::Value::named(bir::TypeKind::I16, "%selected"),
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{30},
+               .function_name = function_name,
+               .value_name = select_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{41},
+               .offset_bytes = std::size_t{16},
+               .size_bytes = std::size_t{2},
+               .align_bytes = std::size_t{2},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{31},
+               .function_name = function_name,
+               .value_name = cast_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "w0",
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeInstruction,
+              .block_index = 0,
+              .instruction_index = 1,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{30},
+                      .to_value_id = prepare::PreparedValueId{31},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w0"},
+                      .block_index = 0,
+                      .instruction_index = 1,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "consumer_stack_to_register",
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{30},
+                              select_name,
+                              prepare::PreparedFrameSlotId{41},
+                              16),
+           register_storage(prepare::PreparedValueId{31}, cast_name, "w0")},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{41},
+              .object_id = prepare::PreparedObjectId{41},
+              .function_name = function_name,
+              .offset_bytes = 16,
+              .size_bytes = 2,
+              .align_bytes = 2,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f64_scalar_alu(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Mul,
     bool use_fpr_storage = true,
@@ -16305,6 +16420,8 @@ int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts()
   const Case cases[] = {
       {bir::CastOpcode::SExt, bir::TypeKind::I32, bir::TypeKind::I64,
        "ldr w0, [sp, #16]", "sxtw x0, w0"},
+      {bir::CastOpcode::SExt, bir::TypeKind::I16, bir::TypeKind::I32,
+       "ldrh w0, [sp, #16]", "sxth w0, w0"},
       {bir::CastOpcode::ZExt, bir::TypeKind::I8, bir::TypeKind::I32,
        "ldrb w0, [sp, #16]", "ubfx x0, x0, #0, #8"},
   };
@@ -16340,15 +16457,72 @@ int block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts()
         block.instructions.front().target.selection.status !=
             aarch64_codegen::MachineNodeSelectionStatus::Selected ||
         !assembler->has_inline_asm_payload) {
-      return fail("expected stack-sourced cast to materialize through assembler publication");
+      return fail("expected direct stack-sourced cast to preserve assembler publication");
     }
 
     const auto printed = print_route_block(function_cf.function_name, block);
     if (!printed.ok ||
         printed.assembly.find(test_case.expected_load) == std::string::npos ||
         printed.assembly.find(test_case.expected_assembly) == std::string::npos) {
-      return fail("expected stack-sourced cast to load and print from the consumer register");
+      return fail("expected direct stack-sourced cast to load and print from the consumer register");
     }
+  }
+
+  return 0;
+}
+
+int block_dispatch_publishes_select_stack_source_cast_from_prepared_consumer_move() {
+  auto prepared = prepared_with_select_produced_stack_source_cast();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 2 || result.emitted_instructions != 2 ||
+      block.instructions.size() != 2) {
+    return fail("expected selected stack-source cast plus return");
+  }
+  const auto* scalar =
+      std::get_if<aarch64_codegen::ScalarInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (scalar == nullptr ||
+      !block.instructions.front().origin.has_value() ||
+      block.instructions.front().origin->instruction_index != 1 ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !scalar->scalar_cast.has_value() || scalar->source_cast_opcode != bir::CastOpcode::SExt ||
+      scalar->result_value_id != prepare::PreparedValueId{31} ||
+      !scalar->result_register.has_value() ||
+      scalar->result_register->occupied_registers.empty() ||
+      scalar->result_register->occupied_registers.front() != "w0") {
+    return fail("expected selected scalar cast from select-produced stack source");
+  }
+
+  const auto* source =
+      std::get_if<aarch64_codegen::RegisterOperand>(
+          &scalar->scalar_cast->source.payload);
+  if (scalar->scalar_cast->source.kind != aarch64_codegen::OperandKind::Register ||
+      source == nullptr || source->value_id != prepare::PreparedValueId{30} ||
+      source->value_name != prepared.names.value_names.intern("%selected") ||
+      source->occupied_registers.empty() || source->occupied_registers.front() != "w0" ||
+      scalar->inputs.size() != 1 ||
+      scalar->inputs.front().kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected selected scalar cast to publish prepared consumer register source");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok ||
+      printed.assembly.find("sxth w0, w0") == std::string::npos ||
+      printed.assembly.find("scalar cast node requires a structured register source operand") !=
+          std::string::npos) {
+    return fail("expected selected scalar cast to print from structured register source");
   }
 
   return 0;
@@ -16864,6 +17038,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_prepared_consumer_register_for_stack_source_casts();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_select_stack_source_cast_from_prepared_consumer_move();
       status != 0) {
     return status;
   }

@@ -391,6 +391,39 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
   return PreparedScalarCastRecordError::UnsupportedOperandType;
 }
 
+[[nodiscard]] bool same_named_value(const bir::Value& lhs, const bir::Value& rhs) {
+  return lhs.kind == bir::Value::Kind::Named &&
+         rhs.kind == bir::Value::Kind::Named &&
+         !lhs.name.empty() &&
+         lhs.name == rhs.name;
+}
+
+[[nodiscard]] bool instruction_select_defines_value(const bir::Inst& inst,
+                                                    const bir::Value& value) {
+  if (const auto* select = std::get_if<bir::SelectInst>(&inst);
+      select != nullptr && same_named_value(select->result, value)) {
+    return true;
+  }
+  return false;
+}
+
+[[nodiscard]] bool has_same_block_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index) {
+  if (context.bir_block == nullptr ||
+      value.kind != bir::Value::Kind::Named ||
+      value.name.empty()) {
+    return false;
+  }
+  for (std::size_t index = before_instruction_index; index > 0; --index) {
+    if (instruction_select_defines_value(context.bir_block->insts[index - 1], value)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 [[nodiscard]] std::optional<RegisterOperand> make_prepared_consumer_register_source(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,
@@ -408,9 +441,13 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
       scalar.scalar_cast->operation != ScalarCastOperationKind::ZeroExtend) {
     return std::nullopt;
   }
-  if (source_home.kind != prepare::PreparedValueHomeKind::Register) {
+  if (source_home.kind != prepare::PreparedValueHomeKind::Register &&
+      source_home.kind != prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
+  const bool stack_source_has_same_block_select_producer =
+      source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+      has_same_block_select_producer(context, cast.operand, instruction_index);
   if (scalar.scalar_cast->source.kind == OperandKind::Register) {
     return std::nullopt;
   }
@@ -451,6 +488,11 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
         move.to_value_id != result_home->value_id) {
       continue;
     }
+    if (source_home.kind == prepare::PreparedValueHomeKind::StackSlot &&
+        (!stack_source_has_same_block_select_producer ||
+         move.reason != "consumer_stack_to_register")) {
+      continue;
+    }
 
     const auto prepared_class = register_class_from_bank(result_storage->bank);
     abi::PreparedRegisterConversionResult converted;
@@ -479,6 +521,10 @@ scalar_cast_instruction_record_error(PreparedScalarCastRecordError error) {
       converted.reg->view = *source_view;
     }
     if (!converted.has_value() || !abi::is_gp_register(*converted.reg)) {
+      return std::nullopt;
+    }
+    if (converted.reg->bank != scalar.result_register->reg.bank ||
+        converted.reg->index != scalar.result_register->reg.index) {
       return std::nullopt;
     }
     const auto display_name = register_display_name(*converted.reg);
