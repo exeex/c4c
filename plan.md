@@ -1,165 +1,176 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar Machine-Node Operand Fact Printing Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/334_aarch64_scalar_machine_node_operand_fact_printing.md
+Split from: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Reactivate the umbrella backend-regex inventory after the current focused
-routes have either closed, parked, or become stale. The goal is to identify the
-next current semantic backend owner from fresh evidence before any
-implementation work starts.
+Repair the current AArch64 compile/printer failures where selected scalar
+machine nodes reach the printer without coherent operand facts for spilled,
+frame-slot, or memory-backed operands.
 
 ## Goal
 
-Capture and classify the current main-build `backend` CTest surface, then
-split or activate a focused repair idea only when a tractable semantic owner is
-supported by current artifacts.
+Make selected AArch64 scalar arithmetic nodes printable by preserving or
+materializing structured operand facts for scalar operands across preparation,
+selection, register allocation, spill/reload, and machine printing.
 
 ## Core Rule
 
-Do not implement fixes under this umbrella. Use it to inventory, classify, and
-split focused owners. Do not reopen parked or closed owners from counts alone;
-require current generated-code, diagnostic, or proof evidence that contradicts
-their boundary.
+Repair a general scalar machine-node operand fact capability. Do not
+special-case `00164.c`, `00214.c`, one function, one instruction index, one
+stack offset, one scalar opcode, one register, or one emitted instruction
+sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- current `todo.md`
-- current canonical `test_before.log` / `test_after.log`, if the supervisor
-  says they are the relevant backend-regex baseline
-- current `ideas/open/` statuses, especially parked ideas 316, 328, 329, and
-  332
-- closed-owner boundaries only when comparing a current failure against an
-  already completed route
+- `ideas/open/334_aarch64_scalar_machine_node_operand_fact_printing.md`
+- `todo.md`
+- `test_after.log`
+- generated artifacts for `00164.c` and `00214.c` under
+  `build/c_testsuite_aarch64_backend/src/`
+- AArch64 scalar ALU, scalar mul/div/rem, operand resolution, instruction
+  record, and machine-printer code
+- existing focused AArch64 scalar, memory operand, frame-slot, and printer
+  guardrails
 
 ## Current Targets
 
-- Main build backend-regex surface selected by `ctest -R backend` or the
-  supervisor-selected equivalent.
-- Local backend/unit/CLI tests versus external
-  `c_testsuite_aarch64_backend_*` tests.
-- Current runtime failures, runtime mismatches, compile/printer diagnostics,
-  semantic handoff failures, timeouts, and output-storm cases.
-- Open inactive idea records that may be closable, parked, stale, or
-  activatable only with fresh evidence.
+- `c_testsuite_aarch64_backend_src_00164_c`
+  - current first bad fact: scalar `mul` printer reports incomplete printable
+    RHS facts
+  - representative prepared operations: `%t159 = bir.mul i32 %t157, %t158`
+    and `%t168 = bir.mul i32 %t166, %t167`
+- `c_testsuite_aarch64_backend_src_00214_c`
+  - current first bad fact: scalar `add` printer reports missing prepared
+    frame-slot sources for memory operands
+- Focused backend tests that can observe selected scalar operand facts before
+  c-testsuite runtime.
 
 ## Non-Goals
 
-- Do not edit implementation files or tests.
-- Do not treat the whole backend regex as one repair bucket.
-- Do not change expectations, unsupported classifications, allowlists,
-  runners, timeout policy, proof-log policy, or CTest registration.
-- Do not reactivate parked ideas 316, 328, 329, or 332 without fresh evidence
-  that their exact owner has returned.
-- Do not continue stale `00204.c` or `00216.c` evidence when current artifacts
-  show a different first bad fact or no bad fact.
+- Do not implement under the umbrella inventory idea 295.
+- Do not reopen parked idea 316's frame-layout route unless current
+  localization proves frame allocation is the first owner after, or inside,
+  this scalar-printer path.
+- Do not repair runtime mismatch, runtime nonzero, timeout, output-storm,
+  runner, expectation, unsupported classification, CTest registration, or
+  proof-log behavior here.
+- Do not reopen fixed-formal, byval, HFA/floating, stdarg cursor, MOVI,
+  large-offset spelling, or local/value publication owners without direct
+  current generated-code evidence.
 
 ## Working Model
 
-The previous focused routes have advanced many AArch64 residuals, and some
-open idea files remain parked because strict close-gate logs were unavailable
-or the representative moved outside their source scope. The next useful move is
-a fresh inventory pass, not speculative repair from stale notes.
+The backend now selects scalar machine nodes for these cases, but the AArch64
+printer requires operand facts that distinguish register, immediate,
+frame-slot, spill-slot, and materialized memory-backed sources. The first
+packet should localize which selected record or operand fact is missing before
+editing implementation.
 
 ## Execution Rules
 
-- Keep packet progress and inventory tables in `todo.md`.
-- Preserve canonical proof-log discipline: use `test_after.log` for a delegated
-  capture only when the supervisor selects that as the proof artifact.
-- Classify before splitting. Split a focused owner only when multiple facts or
-  one crisp singleton point to a semantic backend capability.
-- Quarantine timeouts or output-storm cases separately from normal runtime
-  mismatches.
-- When a focused owner is created or chosen, return to plan-owner for the
-  lifecycle switch before implementation.
+- Start from `test_after.log`, generated assembly, prepared BIR dumps, and
+  machine-node/instruction records.
+- Use c4c-clang-tools before large C++ reads when localizing implementation
+  owners.
+- Keep routine progress in `todo.md`.
+- Add or update focused backend coverage before relying on external
+  c-testsuite representatives.
+- If the representatives advance to frame layout, runtime mismatch, or another
+  distinct owner, record the new first bad fact in `todo.md` and return to
+  lifecycle classification.
 
 ## Ordered Steps
 
-### Step 1: Capture Fresh Backend Regex Inventory
+### Step 1: Localize Scalar Operand Fact Divergence
 
-Goal: obtain a current backend-regex result from the main build tree.
+Goal: identify the first selected-machine-node or printer contract point where
+operand facts become insufficient for the current representatives.
 
-Primary target: supervisor-selected backend-regex CTest command and canonical
-log path.
+Primary targets:
 
-Actions:
-
-- Capture the selected backend-regex output without editing implementation.
-- Record total selected, passed, failed, skipped, timeout, and incomplete
-  counts.
-- List failing tests by exact CTest name and failure mode.
-- Separate local backend/unit/CLI failures from
-  `c_testsuite_aarch64_backend_*` failures.
-- Identify whether any failures are stale relative to current generated
-  artifacts.
-
-Completion check:
-
-- `todo.md` contains a current backend-regex inventory with counts, failing
-  tests, and first-pass buckets.
-
-### Step 2: Classify Failure Families
-
-Goal: group current failures by semantic owner candidate rather than by test
-number.
-
-Primary targets: current logs, generated artifacts, prepared dumps, and
-focused command output for representative failures.
+- selected machine records for `00164.c` scalar `mul`
+- selected machine records for `00214.c` scalar `add`
+- AArch64 scalar operand resolution and printer diagnostics
+- prepared storage/home records for the named operands
 
 Actions:
 
-- Classify failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Compare current symptoms against parked open ideas and relevant closed-owner
-  boundaries.
-- Reject any classification that depends only on a filename, literal offset,
-  expected-output line, or stale lifecycle note.
-- Record representative evidence for each tractable family.
+- Map each failing scalar node from prepared BIR value to selected machine
+  record and printer operand.
+- Record source operands, prepared homes, selected operand facts, storage
+  widths, and the exact missing printer fact.
+- Determine whether the first owner is selection, operand resolution,
+  spill/frame-slot fact propagation, rematerialization, or printer acceptance.
+- Separate this owner from frame-layout/prologue allocation evidence.
 
 Completion check:
 
-- `todo.md` names the best next semantic owner candidate, or explains why no
-  focused owner is ready to split.
+- `todo.md` names the first scalar operand-fact owner with generated-code
+  evidence for both representatives or explains why they split into separate
+  owners.
 
-### Step 3: Split Or Select One Focused Owner
+### Step 2: Repair The Classified Operand-Fact Owner
 
-Goal: produce exactly one implementation-ready lifecycle target when evidence
-supports it.
+Goal: make the selected scalar operand facts coherent enough for AArch64
+printing and materialization.
 
-Primary target: one focused `ideas/open/*.md` source idea, either existing or
-new.
+Primary targets: implementation files identified by Step 1.
 
 Actions:
 
-- If an existing open idea directly matches the current owner and is not
-  parked/stale, select it for activation.
-- If no existing idea matches, create a minimal focused source idea with goal,
-  scope, acceptance criteria, and reviewer reject signals.
-- If the best candidate is parked, document the fresh evidence required to
-  reactivate it before switching.
-- Keep unrelated residual buckets parked under idea 295.
+- Apply the narrow semantic repair for the classified owner.
+- Preserve scalar operation semantics, width, signedness, frame-slot identity,
+  and existing register/immediate operand behavior.
+- Avoid named-case or literal-offset shortcuts.
 
 Completion check:
 
-- A single focused source idea is ready for activation, or `todo.md` records
-  `WAIT_FOR_NEW_IDEA` / no activatable focused owner with the exact ambiguity.
+- The current scalar `mul` and scalar `add` printer diagnostics no longer
+  occur through the repaired general path.
 
-### Step 4: Deactivate Umbrella And Hand Off
+### Step 3: Add Focused Coverage
 
-Goal: leave lifecycle state pointing at the focused owner before code changes.
+Goal: prove the repaired scalar operand-fact capability locally.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused source idea.
+Primary targets: focused AArch64 backend tests for scalar instruction records,
+operand resolution, machine printing, or dispatch.
 
 Actions:
 
-- Preserve the inventory summary and remaining buckets in idea 295.
-- Switch active lifecycle state to the focused source idea.
-- Ensure the new `plan.md` and `todo.md` point to the same focused source.
-- Do not perform implementation edits as part of the switch.
+- Add coverage that fails without the repair for spilled/frame-slot scalar
+  operands.
+- Cover at least one scalar `mul`/`div`/`rem` RHS-fact case and one scalar
+  `add`/`sub`/`bitwise` frame-slot or memory-operand case.
+- Include adjacent scalar, memory operand, and printer guardrails in the
+  focused proof when cheap.
 
 Completion check:
 
-- The umbrella inventory is inactive, exactly one focused plan is active, and
-  the next executor packet has a concrete localization or repair target.
+- Focused backend tests prove the repaired operand facts and preserve adjacent
+  guardrails.
+
+### Step 4: Validate Representatives And Classify Residuals
+
+Goal: prove the focused repair on the external representatives and classify
+the next first bad fact.
+
+Primary targets:
+
+- `c_testsuite_aarch64_backend_src_00164_c`
+- `c_testsuite_aarch64_backend_src_00214_c`
+
+Actions:
+
+- Run the delegated focused proof scope.
+- Confirm the old printer diagnostics are gone.
+- If either representative still fails, classify whether the next first bad
+  fact remains in scalar operand facts, moves to frame layout, or belongs to a
+  different runtime family.
+
+Completion check:
+
+- `todo.md` records fresh proof, the old printer diagnostics are gone, and any
+  residual has a lifecycle-ready owner classification.

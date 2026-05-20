@@ -616,6 +616,31 @@ Step 4 split 2026-05-19:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked buckets.
 
+Step 3/4 split 2026-05-20:
+
+- The fresh backend-regex inventory in `test_after.log` selected 354 tests:
+  299 passed and 55 failed. All current failures are
+  `c_testsuite_aarch64_backend_*`; local backend/unit/CLI tests selected by
+  the backend regex passed.
+- The best current focused owner is idea 334,
+  `ideas/open/334_aarch64_scalar_machine_node_operand_fact_printing.md`,
+  covering AArch64 scalar machine-node operand fact preservation/printing for
+  current compile/printer failures `00164.c` and `00214.c`.
+- `00164.c` fails at selected scalar `mul` printing with incomplete printable
+  RHS facts, while `00214.c` fails at selected scalar `add` printing because
+  scalar add/sub/bitwise memory operands require prepared frame-slot sources.
+- Fresh partial artifacts for those cases also show frame-size/prologue
+  tension that may become relevant later: `00164.c` partially emits accesses
+  above a `#64` prologue despite prepared `frame_size=256`, and `00214.c`
+  partially emits accesses above a `#48` prologue despite prepared
+  `frame_size=96`. This does not reactivate parked idea 316 yet because the
+  current CTest first bad facts are printer diagnostics.
+- Remaining buckets stay parked under this umbrella: runtime mismatch cases,
+  runtime nonzero/crash cases, timeouts, aggregate/global initializer
+  residuals, floating/math residuals, loop/control-flow residuals, and
+  potential frame-layout residuals after scalar printer localization.
+- Active implementation should move to idea 334 before code edits begin.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
