@@ -696,6 +696,28 @@ Step 3/4 split 2026-05-20:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked buckets.
 
+Step 4 split 2026-05-20:
+
+- Step 3 of the active umbrella runbook used the post-338 `test_after.log`,
+  generated AArch64 assembly, and prepared-BIR probes to reject a combined
+  scalar integer/FP runtime-value owner as too broad.
+- The selected focused owner is idea 339,
+  `ideas/open/339_aarch64_scalar_local_storage_writeback_sizing.md`, covering
+  AArch64 scalar local storage/writeback sizing for non-address-exposed scalar
+  locals, initially scoped to `00086` and `00111`.
+- The split is based on generated-code and prepared-access evidence: `00086`
+  shows frame-size-zero short local access, missing increment writeback, and a
+  stale reload for compare; `00111` reads short local `s` before
+  initialization, computes `s - l`, does not write the result back, and
+  returns the stale slot.
+- Parked buckets remain separate: FP comparison result materialization
+  (`00119`, `00123`), pointer/null conditional and pointer-local materialization
+  (`00112`, `00144`), FP expression/call materialization (`00174`), and broad
+  return-spill/ABI materialization (`00200`).
+- Active implementation should move to idea 339 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

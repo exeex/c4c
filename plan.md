@@ -1,164 +1,154 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Scalar Local Storage Writeback Sizing Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/339_aarch64_scalar_local_storage_writeback_sizing.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh and classify the main-build backend regex failure inventory after the
-recent focused AArch64 closures, then split the next semantic repair owner
-before implementation begins.
+Repair the focused AArch64 local scalar storage/writeback residual split from
+the post-338 backend-regex inventory.
 
 ## Goal
 
-Use the current `/workspaces/c4c/build` backend regex result to identify the
-next tractable semantic failure family without reopening closed owners from
-counts alone.
+Make non-address-exposed scalar locals carry usable size/alignment facts and
+produce correct AArch64 initialization, writeback, reload, compare, and return
+behavior for the `00086` and `00111` owner.
 
 ## Core Rule
 
-Do not implement repairs under this umbrella. Capture evidence, classify
-failures by semantic owner, and switch lifecycle state to a focused idea before
-code changes begin.
+Fix the semantic local sizing/writeback path. Do not special-case the
+c-testsuite filenames, and do not broaden this owner into FP, pointer/null,
+return-spill, aggregate, variadic, runner, timeout, expectation, or
+registration work.
 
 ## Read First
 
+- `ideas/open/339_aarch64_scalar_local_storage_writeback_sizing.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
-- Recent closure context from the source idea:
-  - idea 338 was the last split focused owner from this umbrella
-  - closed owners 333 through 338 must stay closed unless fresh generated-code
-    or proof evidence contradicts a closure boundary
-- Current backend regex command:
-  - `ctest --test-dir build -j10 -R backend --output-on-failure`
+- Current evidence summarized in `todo.md` before this switch:
+  - `00086` prepared BIR performs short local update/writeback, but generated
+    AArch64 uses frame size 0, reloads `[sp]`, and misses the incremented
+    short writeback.
+  - `00111` initializes only `long l`, reads short `s` before initialization,
+    computes `s - l`, misses writeback to `s`, and returns the stale short
+    slot.
 
 ## Current Targets
 
-- Main build tree: `/workspaces/c4c/build`
-- Backend regex scope selected by `ctest -R backend`
-- External AArch64 c-testsuite backend residuals:
-  - `c_testsuite_aarch64_backend_*`
-- Local backend/unit/CLI failures if any appear in the refreshed regex result
+- Representative external tests:
+  - `c_testsuite_aarch64_backend_src_00086_c`
+  - `c_testsuite_aarch64_backend_src_00111_c`
+- Local backend coverage around prepared local slot sizing, scalar
+  `store_local`/`load_local`, truncation/promotion, and AArch64 local slot
+  writeback.
 
 ## Non-Goals
 
-- Do not edit implementation code.
-- Do not change expectations, allowlists, unsupported classifications,
-  timeout policy, runner behavior, CTest registration, or proof-log contents.
-- Do not treat `ctest -R backend` as one monolithic failure bucket.
+- Do not repair FP comparison result materialization for `00119` or `00123`.
+- Do not repair FP expression/call argument materialization for `00174`.
+- Do not repair pointer-null conditionals or pointer-local buckets such as
+  `00112` or `00144`.
+- Do not repair broad return-spill or ABI materialization such as `00200`.
+- Do not change expectations, unsupported classifications, allowlists,
+  runner behavior, timeout policy, CTest registration, or proof-log policy.
 - Do not reopen closed focused owners from pass/fail counts alone.
-- Do not create filename-only, instruction-string-only, diagnostic-string-only,
-  or c-testsuite-number-specific repair routes.
 
 ## Working Model
 
-`ctest -R backend` is an imprecise umbrella selector. It can include local
-backend tests, AArch64 external runtime tests, frontend/prepared handoff
-failures, timeout/output-storm cases, and residual families that need separate
-owners. The job of this runbook is to classify the current failure surface and
-split the next focused owner only when evidence points to a semantic backend
-capability.
+The current evidence points at scalar local storage facts and AArch64 local
+slot writeback, not arithmetic itself. The bad path may be in prepared stack
+object/access size publication, lowering handoff, frame-slot allocation, or
+machine lowering that consumes local `store_local` and `load_local` records.
+The first packet should localize that boundary before changing code.
 
 ## Execution Rules
 
-- Keep progress notes and proof details in `todo.md`.
-- Use `test_before.log` and `test_after.log` only as canonical proof logs when
-  the supervisor delegates matching regression-log preparation.
-- Broad runtime scans should use timeout/stale-process cleanup when needed.
-- If a focused owner is split, write the new idea under `ideas/open/` with
-  concrete reviewer reject signals, then switch lifecycle state before any
-  implementation.
-- If no owner is ready, record the classified buckets and blocker in
-  `todo.md` instead of forcing a weak split.
+- Keep routine packet progress and proof details in `todo.md`.
+- Prefer backend unit coverage for the semantic local-sizing/writeback
+  contract before relying on c-testsuite filenames.
+- Generated assembly probes are useful only when tied back to a general local
+  sizing/writeback rule.
+- If the first bad fact moves outside scalar local storage/writeback, record
+  the new boundary in `todo.md` and stop for supervisor review.
+- Use `test_after.log` as the canonical executor proof log only when the
+  supervisor delegates the matching proof command.
 
 ## Steps
 
-### Step 1: Capture Current Backend Regex Inventory
+### Step 1: Localize Scalar Local Slot Sizes And Writeback Path
 
-Goal: establish the post-338 backend-regex failure set from the main build.
+Goal: identify where the focused short-local cases lose usable local size,
+initialization, or writeback facts.
 
-Primary target: `ctest --test-dir build -j10 -R backend --output-on-failure`
-
-Actions:
-
-- Confirm the build tree exists and is suitable for backend CTest execution.
-- Run the supervisor-delegated backend regex command, with timeout cleanup if
-  the supervisor requires it for runtime/output-storm safety.
-- Record selected, passed, failed, timeout, and skipped counts in `todo.md`.
-- Preserve the raw canonical proof log path selected by the supervisor.
-
-Completion check:
-
-- `todo.md` records a current backend regex inventory and the exact command
-  used to produce it.
-
-### Step 2: Classify Residual Failures
-
-Goal: split the current failures into actionable semantic buckets.
-
-Primary target: failures selected by Step 1.
+Primary target: prepared stack-object/access facts and AArch64 local
+`store_local`/`load_local` lowering for `00086` and `00111`.
 
 Actions:
 
-- Separate local backend/unit/CLI failures from
-  `c_testsuite_aarch64_backend_*` failures.
-- Classify each failure by first bad stage:
-  - frontend/prepared-node or machine-printer diagnostics
-  - semantic `lir_to_bir` admission or prepared-module handoff
-  - assembler/linker legality
-  - runtime nonzero/crash
-  - runtime mismatch
-  - timeout or output-storm
-- Compare candidate buckets against closed focused owners through idea 338
-  using generated-code or proof evidence, not counts alone.
-- Record remaining parked buckets and any unsafe timeout/output-storm handling
-  in `todo.md`.
+- Inspect the prepared BIR and backend handoff for `00086` and `00111`.
+- Trace scalar local object size/alignment from the source type through the
+  prepared stack-object/access representation and into AArch64 frame-slot
+  lowering.
+- Trace scalar `store_local` writeback for initialization, truncation after
+  arithmetic, compound assignment, and final reload/compare/return use.
+- Identify whether the first bad boundary is fact production, fact
+  normalization, frame-slot allocation, or machine lowering consumption.
+- Add or adjust narrow backend coverage only if it proves the general
+  local-sizing/writeback contract.
 
 Completion check:
 
-- `todo.md` contains a classified inventory with closed-owner boundaries
-  respected and no implementation route chosen from counts alone.
+- `todo.md` records the concrete first bad boundary and the narrow proof or
+  probe commands used to find it, without implementation drift outside this
+  owner.
 
-### Step 3: Select The Next Focused Owner
+### Step 2: Repair Scalar Local Sizing And Writeback
 
-Goal: choose one focused semantic repair family, or explain why none is ready.
+Goal: make non-address-exposed scalar locals lower with stable size/alignment
+and correct writeback semantics.
 
-Primary target: the highest-value bucket from Step 2 with concrete evidence.
+Primary target: the producer/consumer boundary localized in Step 1.
 
 Actions:
 
-- Prefer a bucket with multiple related failures and a shared generated-code,
-  diagnostic, ABI, or lowering owner.
-- Allow a singleton only when evidence proves a semantic capability rather
-  than a named testcase shortcut.
-- Define the candidate owner's scope, non-goals, representative tests, and
-  proof ladder.
-- Reject buckets that would require expectation, runner, timeout, or CTest
-  changes to claim progress.
+- Repair the general scalar local sizing/writeback rule at the localized
+  boundary.
+- Preserve existing aggregate, address-exposed local, pointer, variadic, and
+  ABI behavior unless the Step 1 evidence proves shared ownership.
+- Keep the change focused on semantic local slot facts and writeback, not on
+  emitted instruction spelling for one testcase.
+- Extend focused backend coverage for the repaired contract when existing
+  tests do not pin it down.
 
 Completion check:
 
-- `todo.md` names the selected focused owner and evidence, or explains why no
-  focused owner is ready to split.
+- Focused backend coverage passes and generated assembly for `00086` and
+  `00111` no longer shows the old frame-size-zero, uninitialized load, or
+  missing writeback failure mode.
 
-### Step 4: Split And Switch Lifecycle State
+### Step 3: Prove Focused Runtime Progress And Reclassify Residuals
 
-Goal: leave the umbrella after classification and hand implementation to a
-focused idea.
+Goal: prove the focused owner advanced and identify any remaining first bad
+facts before lifecycle closure.
 
-Primary target: `ideas/open/<new-focused-owner>.md`
+Primary target:
+`c_testsuite_aarch64_backend_src_00086_c|c_testsuite_aarch64_backend_src_00111_c`.
 
 Actions:
 
-- Create a focused source idea with goal, scope, non-goals, acceptance
-  criteria, and concrete reviewer reject signals.
-- Add a durable deactivation note to
-  `ideas/open/295_backend_regex_failure_family_inventory.md` recording the
-  inventory count, selected owner, proof scope, and remaining buckets.
-- Replace this umbrella runbook with a focused `plan.md` and reset `todo.md`
-  through the plan-owner lifecycle workflow.
-- Do not edit implementation code before the lifecycle switch is complete.
+- Run the supervisor-delegated focused proof command after code changes.
+- Confirm `00086` uses the incremented short value for comparison or an
+  equivalent register-resident semantic value.
+- Confirm `00111` initializes `s`, applies `s -= l`, writes back the updated
+  short, and returns the updated value or an equivalent register-resident
+  semantic value.
+- If either case still fails, classify the new first bad fact without
+  expanding this owner by default.
+- Record proof results and any residual classification in `todo.md`.
 
 Completion check:
 
-- A focused idea is active in `plan.md` and `todo.md`, or the umbrella remains
-  active only with a documented blocker in `todo.md`.
+- `todo.md` contains focused proof results, residual classification if needed,
+  and enough evidence for the supervisor to decide whether to continue,
+  review, or close the focused idea.
