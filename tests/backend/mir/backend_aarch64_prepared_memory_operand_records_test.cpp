@@ -376,7 +376,7 @@ int frame_slot_load_conversion_preserves_prepared_and_bir_facts() {
   const bir::LoadLocalInst load{
       .result = named_value(bir::TypeKind::I32, "%load"),
       .slot_id = c4c::SlotNameId{5},
-      .byte_offset = 8,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -477,7 +477,7 @@ int global_symbol_store_conversion_preserves_prepared_and_bir_facts() {
   const bir::StoreGlobalInst store{
       .global_name_id = fixture.global_name,
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 16,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -517,7 +517,7 @@ int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
   const bir::StoreLocalInst store{
       .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 24,
+      .byte_offset = 0,
       .align_bytes = 8,
       .address =
           bir::MemoryAddress{
@@ -591,12 +591,131 @@ int pointer_value_store_conversion_preserves_prepared_and_bir_facts() {
   return 0;
 }
 
+int pointer_value_store_combines_selected_address_and_member_offsets() {
+  auto fixture = make_fixture();
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = fixture.function_name,
+      .block_label = fixture.block_label,
+      .inst_index = 8,
+      .stored_value_name = fixture.stored_name,
+      .address_space = bir::AddressSpace::Default,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = fixture.pointer_name,
+              .byte_offset = 28,
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .can_use_base_plus_offset = true,
+          },
+  });
+  const bir::StoreLocalInst store{
+      .slot_id = c4c::SlotNameId{5},
+      .value = named_value(bir::TypeKind::I32, "%stored"),
+      .byte_offset = 4,
+      .align_bytes = 4,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = named_value(bir::TypeKind::Ptr, "%ptr"),
+              .byte_offset = 24,
+              .size_bytes = 4,
+              .align_bytes = 4,
+          },
+  };
+
+  const auto selected = aarch64_codegen::make_prepared_store_memory_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 8, store);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected pointer-value store with selected member offset to select");
+  }
+  const auto& store_record = *selected.record;
+  if (store_record.address.base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      store_record.address.pointer_value_id != prepare::PreparedValueId{12} ||
+      store_record.address.byte_offset != 28 ||
+      !store_record.address.base_register.has_value() ||
+      store_record.address.base_register->occupied_registers.empty() ||
+      store_record.address.base_register->occupied_registers.front() != "x2" ||
+      !store_record.value.has_value() ||
+      store_record.value->kind != aarch64_codegen::OperandKind::Register) {
+    return fail("expected selected pointer store to preserve base register plus combined offset");
+  }
+  const auto instruction = aarch64_codegen::make_memory_instruction(store_record);
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "str w1, [x2, #28]") {
+    return fail("expected pointer-value store to print with selected combined offset");
+  }
+  return 0;
+}
+
+int pointer_value_load_combines_selected_address_and_member_offsets() {
+  auto fixture = make_fixture();
+  fixture.addressing.accesses.push_back(prepare::PreparedMemoryAccess{
+      .function_name = fixture.function_name,
+      .block_label = fixture.block_label,
+      .inst_index = 9,
+      .result_value_name = fixture.load_name,
+      .address_space = bir::AddressSpace::Default,
+      .address =
+          prepare::PreparedAddress{
+              .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+              .pointer_value_name = fixture.pointer_name,
+              .byte_offset = 24,
+              .size_bytes = 1,
+              .align_bytes = 1,
+              .can_use_base_plus_offset = true,
+          },
+  });
+  const bir::LoadLocalInst load{
+      .result = named_value(bir::TypeKind::I8, "%load"),
+      .slot_id = c4c::SlotNameId{5},
+      .byte_offset = 6,
+      .align_bytes = 1,
+      .address =
+          bir::MemoryAddress{
+              .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+              .base_value = named_value(bir::TypeKind::Ptr, "%ptr"),
+              .byte_offset = 18,
+              .size_bytes = 1,
+              .align_bytes = 1,
+          },
+  };
+
+  const auto selected =
+      aarch64_codegen::make_prepared_frame_slot_load_memory_instruction_record(
+      fixture.names, fixture.locations, fixture.storage, fixture.addressing, fixture.block_label, 9, load);
+  if (!selected.record.has_value() ||
+      selected.error != aarch64_codegen::PreparedMemoryOperandRecordError::None) {
+    return fail("expected pointer-value load with selected member offset to select");
+  }
+  const auto& load_record = *selected.record;
+  if (load_record.address.base_kind != aarch64_codegen::MemoryBaseKind::PointerValue ||
+      load_record.address.pointer_value_id != prepare::PreparedValueId{12} ||
+      load_record.address.byte_offset != 24 ||
+      !load_record.address.base_register.has_value() ||
+      load_record.result_value_id != prepare::PreparedValueId{10} ||
+      !load_record.result_register.has_value() ||
+      load_record.result_register->occupied_registers.empty() ||
+      load_record.result_register->occupied_registers.front() != "w0") {
+    return fail("expected selected pointer load to preserve base register plus combined offset");
+  }
+  const auto instruction = aarch64_codegen::make_memory_instruction(load_record);
+  const auto printed = aarch64_codegen::print_machine_instruction_line_payloads(instruction);
+  if (!printed.ok || printed.instruction_lines.size() != 1 ||
+      printed.instruction_lines.front() != "ldrb w0, [x2, #24]") {
+    return fail("expected pointer-value load to print with selected combined offset");
+  }
+  return 0;
+}
+
 int frame_slot_store_conversion_selects_structured_register_source() {
   auto fixture = make_fixture();
   const bir::StoreLocalInst store{
       .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 12,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -744,7 +863,7 @@ int string_constant_load_conversion_preserves_prepared_and_bir_facts() {
   auto fixture = make_fixture();
   const bir::LoadGlobalInst load{
       .result = named_value(bir::TypeKind::I32, "%load"),
-      .byte_offset = 4,
+      .byte_offset = 0,
       .align_bytes = 8,
       .address =
           bir::MemoryAddress{
@@ -785,7 +904,7 @@ int volatile_memory_does_not_fabricate_atomic_authority() {
   const bir::LoadLocalInst load{
       .result = named_value(bir::TypeKind::I32, "%load"),
       .slot_id = c4c::SlotNameId{5},
-      .byte_offset = 8,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -894,7 +1013,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreGlobalInst store_mismatch{
       .global_name_id = c4c::LinkNameId{777},
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 16,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -925,7 +1044,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreGlobalInst store{
       .global_name_id = fixture.global_name,
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 16,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -950,7 +1069,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::LoadLocalInst offset_mismatch_load{
       .result = named_value(bir::TypeKind::I32, "%load"),
       .slot_id = c4c::SlotNameId{5},
-      .byte_offset = 8,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -982,7 +1101,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreGlobalInst address_space_mismatch_store{
       .global_name_id = fixture.global_name,
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 16,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -1012,7 +1131,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreGlobalInst volatility_mismatch_store{
       .global_name_id = fixture.global_name,
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 16,
+      .byte_offset = 0,
       .align_bytes = 4,
       .address =
           bir::MemoryAddress{
@@ -1063,7 +1182,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreLocalInst pointer_missing_home_store{
       .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 24,
+      .byte_offset = 0,
       .align_bytes = 8,
       .address =
           bir::MemoryAddress{
@@ -1112,7 +1231,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   const bir::StoreLocalInst pointer_mismatch_store{
       .slot_id = c4c::SlotNameId{5},
       .value = named_value(bir::TypeKind::I32, "%stored"),
-      .byte_offset = 24,
+      .byte_offset = 0,
       .align_bytes = 8,
       .address =
           bir::MemoryAddress{
@@ -1140,7 +1259,7 @@ int unsupported_or_mismatched_memory_facts_fail_closed() {
   fixture = make_fixture();
   const bir::LoadGlobalInst string_mismatch_load{
       .result = named_value(bir::TypeKind::I32, "%load"),
-      .byte_offset = 4,
+      .byte_offset = 0,
       .align_bytes = 8,
       .address =
           bir::MemoryAddress{
@@ -1524,6 +1643,14 @@ int main() {
     return status;
   }
   if (const int status = pointer_value_store_conversion_preserves_prepared_and_bir_facts();
+      status != 0) {
+    return status;
+  }
+  if (const int status = pointer_value_store_combines_selected_address_and_member_offsets();
+      status != 0) {
+    return status;
+  }
+  if (const int status = pointer_value_load_combines_selected_address_and_member_offsets();
       status != 0) {
     return status;
   }

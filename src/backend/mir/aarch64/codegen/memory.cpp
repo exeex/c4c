@@ -384,14 +384,20 @@ std::optional<c4c::ValueNameId> named_value_id(
 
 PreparedMemoryOperandRecordError validate_structured_memory_address_facts(
     const bir::MemoryAddress& address,
+    std::size_t instruction_byte_offset,
     const MemoryOperand& memory) {
+  const auto selected_byte_offset =
+      address.byte_offset + static_cast<std::int64_t>(instruction_byte_offset);
+  const bool prepared_address_selected_offset =
+      address.byte_offset == memory.byte_offset;
   const bool prepared_frame_slot_local_address =
       memory.base_kind == MemoryBaseKind::FrameSlot &&
       memory.byte_offset == 0 &&
       (address.base_kind == bir::MemoryAddress::BaseKind::LocalSlot ||
        address.base_kind == bir::MemoryAddress::BaseKind::PointerValue);
   if ((!prepared_frame_slot_local_address &&
-       address.byte_offset != memory.byte_offset) ||
+       !prepared_address_selected_offset &&
+       selected_byte_offset != memory.byte_offset) ||
       (address.size_bytes != 0 && address.size_bytes != memory.size_bytes) ||
       (address.align_bytes != 0 && address.align_bytes != memory.align_bytes) ||
       address.address_space != memory.address_space ||
@@ -420,7 +426,8 @@ PreparedMemoryOperandRecordError validate_memory_instruction_facts(
     std::size_t instruction_align_bytes,
     const MemoryOperand& memory) {
   if (address != nullptr) {
-    return validate_structured_memory_address_facts(*address, memory);
+    return validate_structured_memory_address_facts(
+        *address, instruction_byte_offset, memory);
   }
   return validate_unstructured_memory_instruction_facts(
       instruction_byte_offset, instruction_align_bytes, memory);

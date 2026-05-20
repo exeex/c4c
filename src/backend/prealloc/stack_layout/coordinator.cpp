@@ -636,6 +636,7 @@ struct SlotSliceCoverage {
 [[nodiscard]] std::optional<PreparedAddress> build_pointer_indirect_address(
     PreparedNameTables& names,
     const std::optional<bir::MemoryAddress>& address,
+    std::int64_t fallback_byte_offset,
     std::size_t size_bytes,
     std::size_t align_bytes) {
   if (!address.has_value() || address->base_kind != bir::MemoryAddress::BaseKind::PointerValue ||
@@ -646,7 +647,7 @@ struct SlotSliceCoverage {
   return PreparedAddress{
       .base_kind = PreparedAddressBaseKind::PointerValue,
       .pointer_value_name = prepared_named_value_id(names, address->base_value),
-      .byte_offset = address->byte_offset,
+      .byte_offset = address->byte_offset + fallback_byte_offset,
       .size_bytes = size_bytes,
       .align_bytes = align_bytes == 0 ? address->align_bytes : align_bytes,
       .can_use_base_plus_offset = true,
@@ -669,7 +670,8 @@ struct SlotSliceCoverage {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(
+      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -701,7 +703,8 @@ struct SlotSliceCoverage {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(
+      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -733,7 +736,8 @@ struct SlotSliceCoverage {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(
+      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
@@ -765,7 +769,8 @@ struct SlotSliceCoverage {
       inst.align_bytes == 0 && inst.address.has_value() ? inst.address->align_bytes
                                                         : inst.align_bytes,
       size_bytes);
-  auto address = build_pointer_indirect_address(names, inst.address, size_bytes, align_bytes);
+  auto address = build_pointer_indirect_address(
+      names, inst.address, static_cast<std::int64_t>(inst.byte_offset), size_bytes, align_bytes);
   if (!address.has_value()) {
     return std::nullopt;
   }
