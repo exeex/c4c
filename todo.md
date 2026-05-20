@@ -8,50 +8,31 @@ Current Step Title: Validate And Reclassify For Closure
 
 ## Just Finished
 
-Step 2 repaired the caller-side direct-call local frame-address publication
-boundary in `src/backend/mir/aarch64/codegen/calls.cpp`: before-call pointer
-arguments whose prepared source is a register home now prefer prepared
-frame-slot address materialization or the matching local stack object when the
-BIR call argument is a pointer. The call-boundary move then materializes that
-frame address directly into the destination ABI register before `bl` instead
-of moving a stale register source.
+Step 4 validation ran the delegated closure-readiness proof with no code,
+test, registration, expectation, `plan.md`, or source-idea changes.
 
-Focused dispatch coverage now proves a register-homed local pointer call
-argument with a matching prepared local stack object is lowered as a frame
-address materialization into the ABI register. The generated representative
-assembly for the repaired shapes now publishes local frame addresses with
-`add xN, sp, #...` before the direct calls. The repair is general over
-prepared pointer call arguments, frame-slot address materializations, and
-local stack-object metadata; it does not match `x20`, `x21`, `f1`,
-`convert_like_real`, function names, filenames, or the representative set.
+Validation result:
 
-The delegated representative proof now shows `00140` and `00218` pass.
-Existing guards `00159` and `00170` remain passing.
+- `^backend_`: passed 141/141.
+- Representative set:
+  - `00140`: passed.
+  - `00159`: passed.
+  - `00170`: passed.
+  - `00218`: passed.
+  - `00175`: failed with the expected residual local conversion store/load
+    publication mismatch (`97 17`, `97 -1039755664`,
+    `0.000000 0.000000`), which remains split to
+    `ideas/open/347_aarch64_local_conversion_store_load_publication.md`.
 
-Remaining first bad facts after this slice:
-
-- `00175`: still fails with local store/load conversion publication residuals
-  after the direct-call series. The direct-call scalar and FP argument moves
-  remain advanced; the remaining mismatch is the later local conversion output
-  (`97 17`, `97 -581795216`, `0.000000 0.000000`) rather than stale direct-call
-  ABI argument publication.
-
-Lifecycle review classified the remaining `00175` failure as outside the
-active direct-call argument/formal publication owner: the direct-call call
-series now publishes expected scalar and FP arguments, and the remaining bad
-output is from later local conversion stores/reloads. Continuing Step 2
-implementation for that residual would broaden this idea into local conversion
-store/load publication, so Step 2 direct-call implementation is stopped. The
-residual is split to
-`ideas/open/347_aarch64_local_conversion_store_load_publication.md`.
+The active direct-call argument/formal publication owner is closure-ready from
+the executor perspective: the broad backend subset is green, the four
+direct-call representative guardrails pass, and the only representative
+failure is the already-classified `00175` residual outside this owner.
 
 ## Suggested Next
 
-Proceed with Step 4 validation/classification for the active direct-call owner.
-Use the accepted proof showing `00140`, `00159`, `00170`, and `00218` pass and
-`00175` has advanced beyond direct-call ABI publication. If closure is
-requested, run the close-time regression guard before moving the active source
-idea out of `ideas/open/`.
+Supervisor can hand this to plan-owner for closure or parking decision. Keep
+`00175` under idea 347 rather than broadening this direct-call owner.
 
 ## Watchouts
 
@@ -94,16 +75,10 @@ idea out of `ideas/open/`.
 ## Proof
 
 Delegated proof command was run exactly:
-`set +e; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'backend_aarch64|backend_cli_aarch64' && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c'; } > test_after.log 2>&1; rc=$?; printf 'proof_rc=%s\n' "$rc"; exit 0`.
+`set +e; { cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_' && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_(00140|00159|00170|00175|00218)_c'; } > test_after.log 2>&1; rc=$?; printf 'step4_validation_rc=%s\n' "$rc"; exit 0`.
 
-Result: `proof_rc=8`. The AArch64 backend/backend CLI subset passed 31/31.
-The representative c-testsuite subset passed `00140`, `00159`, `00170`, and
-`00218`, and still failed `00175`. The representative pass count advanced from
-2/5 in `test_before.log` to 4/5 in `test_after.log`.
-
-Supervisor regression guard accepted this as PASS against the prior
-`test_before.log`: `00140` and `00218` were resolved with no new failures. The
-accepted `test_after.log` was rolled forward to `test_before.log`.
-
-Focused pre-proof check also passed:
-`ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_instruction_dispatch|backend_aarch64_machine_printer|backend_aarch64_target_instruction_records'`.
+Result: `step4_validation_rc=8`, caused by the expected `00175` residual.
+`test_after.log` is the preserved proof log. The broad `^backend_` subset
+passed 141/141. The representative c-testsuite subset passed `00140`, `00159`,
+`00170`, and `00218`, and failed only `00175` with the residual classified to
+idea 347.
