@@ -1,7 +1,8 @@
 # AArch64 Return Result Publication Epilogue Clobber
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
+Closed: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -54,7 +55,7 @@ and return/epilogue ordering problem across many generated functions.
   fixed return-result publication path without relying only on external
   c-testsuite cases.
 - Validate at least one no-call scalar return case, one pointer/local return
-  case, and one call-result return case from the current 22-case bucket.
+  case, and one call-result case from the current 22-case bucket.
 
 ## Out Of Scope
 
@@ -85,6 +86,36 @@ and return/epilogue ordering problem across many generated functions.
   `00124`.
 - Adjacent AArch64 result-publication, local-slot, call-boundary, frame, and
   scalar backend guardrails remain stable.
+
+## Completion Notes
+
+- Step 1 localized the stale overwrite to duplicate or late return-result
+  publication after a value had already been emitted into the ABI return
+  register.
+- Step 2 repaired the narrow owner by suppressing duplicate `before_return`
+  FunctionReturnAbi moves when the same value is already in the ABI return
+  register, retaining required before-return publications in scalar state
+  before terminal return lowering, and avoiding redundant terminal self-moves
+  for same physical return registers.
+- Focused backend coverage was added for direct-load and call-result return
+  publication.
+- Representative no-call scalar, pointer/local, and call-result cases
+  `00011`, `00022`, `00052`, `00004`, and `00087` pass after the repair.
+- Close-gate regression scope:
+  `ctest --test-dir build -j --output-on-failure -R 'backend_aarch64_(return_lowering|scalar_alu_records|instruction_dispatch|machine_printer)|c_testsuite_aarch64_backend_src_(00004|00011|00022|00052|00087)_c'`.
+  The guard passed with `test_before.log` at 4/9 and `test_after.log` at 9/9,
+  resolving the five selected return-publication representatives without new
+  failures.
+
+## Residual Split
+
+`00168` advanced past the stale return-publication overwrite. Recursive
+`factorial` now computes into `w0` and returns directly from `w0`; the remaining
+first bad fact is separate callee-saved scalar-home preservation. The generated
+function keeps caller `n` in `w19` across `bl factorial`, but the frame
+preservation set omits `x19`, so recursive returns leave `w19 == 1` and the
+runtime output is all `1`. That residual is tracked separately in
+`ideas/open/337_aarch64_callee_saved_scalar_home_preservation.md`.
 
 ## Reviewer Reject Signals
 
