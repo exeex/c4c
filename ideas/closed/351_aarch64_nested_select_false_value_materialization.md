@@ -1,8 +1,9 @@
 # AArch64 Nested Select False Value Materialization
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/closed/316_aarch64_frame_slot_layout_consistency.md
+Closed: 2026-05-20
 
 ## Goal
 
@@ -66,6 +67,23 @@ carry `d[1]` through `d[31]` collapse to the first element. For input
   first bad fact after the select/materialization repair.
 - Adjacent scalar select publication, scalar operand materialization, and
   frame-layout guardrails remain stable.
+
+## Closure Notes
+
+Closed after repairing AArch64 scalar select publication so the accumulated
+false operand is materialized into the final result before the true scratch is
+filled. Focused coverage now proves a nested scalar select whose final false
+operand comes from the previously accumulated stack-published select result.
+
+Close proof used the existing matching focused regression logs:
+`test_before.log` had 6/7 passing with
+`c_testsuite_aarch64_backend_src_00182_c` failing by rendering seven `7`
+digits, and `test_after.log` had 7/7 passing with no new failures. The
+close-time regression guard passed. Supervisor broader backend guard
+`ctest --test-dir build -j --output-on-failure -R '^backend_'` passed 141/141.
+
+The attempted full-suite baseline candidate was rejected because it introduced
+five new failures despite net improvement, so it was not used as closure proof.
 
 ## Reviewer Reject Signals
 
