@@ -4189,15 +4189,66 @@ lower_missing_fused_compare_operand_publications(
   return std::nullopt;
 }
 
+[[nodiscard]] bool entry_formal_same_aarch64_register_bank(
+    const bir::CallArgAbiInfo& lhs,
+    const bir::CallArgAbiInfo& rhs) {
+  const auto is_float_bank = [](const bir::CallArgAbiInfo& abi) {
+    return abi.primary_class == bir::AbiValueClass::Sse ||
+           abi.primary_class == bir::AbiValueClass::X87;
+  };
+  if (is_float_bank(lhs) || is_float_bank(rhs)) {
+    return is_float_bank(lhs) == is_float_bank(rhs);
+  }
+  return lhs.primary_class == bir::AbiValueClass::Integer &&
+         rhs.primary_class == bir::AbiValueClass::Integer;
+}
+
+[[nodiscard]] std::optional<std::size_t> entry_formal_abi_register_index(
+    const c4c::TargetProfile& target_profile,
+    const bir::Function& function,
+    std::size_t param_index) {
+  if (param_index >= function.params.size()) {
+    return std::nullopt;
+  }
+  const auto& param = function.params[param_index];
+  if (!param.abi.has_value() || !param.abi->passed_in_register) {
+    return std::nullopt;
+  }
+  if (target_profile.arch != c4c::TargetArch::Aarch64) {
+    return param_index;
+  }
+
+  std::size_t register_index = 0;
+  for (std::size_t candidate_index = 0; candidate_index < param_index; ++candidate_index) {
+    const auto& candidate = function.params[candidate_index];
+    if (!candidate.abi.has_value() || !candidate.abi->passed_in_register) {
+      continue;
+    }
+    if (entry_formal_same_aarch64_register_bank(*candidate.abi, *param.abi)) {
+      ++register_index;
+    }
+  }
+  return register_index;
+}
+
 [[nodiscard]] std::optional<abi::RegisterReference> entry_formal_source_register(
     const c4c::TargetProfile& target_profile,
-    const bir::Param& param,
+    const bir::Function& function,
     std::size_t param_index) {
+  if (param_index >= function.params.size()) {
+    return std::nullopt;
+  }
+  const auto& param = function.params[param_index];
   if (!param.abi.has_value()) {
     return std::nullopt;
   }
+  const auto abi_register_index =
+      entry_formal_abi_register_index(target_profile, function, param_index);
   const auto register_name =
-      prepare::call_arg_destination_register_name(target_profile, *param.abi, param_index);
+      abi_register_index.has_value()
+          ? prepare::call_arg_destination_register_name(
+                target_profile, *param.abi, *abi_register_index)
+          : std::nullopt;
   const auto expected_view = entry_formal_register_view(param.type);
   if (!register_name.has_value() || !expected_view.has_value()) {
     return std::nullopt;
@@ -4608,7 +4659,9 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
       lines = entry_formal_stack_source_publication_lines(context, param, *home, param_index);
     } else {
       const auto source = entry_formal_source_register(
-          context.function.prepared->target_profile, param, param_index);
+          context.function.prepared->target_profile,
+          *context.function.bir_function,
+          param_index);
       if (!source.has_value()) {
         continue;
       }

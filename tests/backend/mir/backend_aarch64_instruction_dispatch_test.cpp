@@ -3566,6 +3566,112 @@ prepare::PreparedBirModule prepared_with_stack_passed_f128_hfa_formals() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_mixed_gpr_hfa_entry_formals() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.entry.mixed.gpr.hfa.formals");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.entry.mixed.gpr.hfa.formals.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.entry.mixed.gpr.hfa.formals.entry");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.entry.mixed.gpr.hfa.formals",
+      .return_type = bir::TypeKind::Void,
+      .blocks = {bir::Block{
+          .label = "dispatch.entry.mixed.gpr.hfa.formals.entry",
+          .terminator = bir::Terminator{bir::ReturnTerminator{}},
+          .label_id = bir_entry_label,
+      }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+  });
+
+  auto next_value_id = std::uint64_t{220};
+  auto add_param = [&](bir::TypeKind type,
+                       std::string name,
+                       bir::CallArgAbiInfo abi,
+                       bool is_byval,
+                       std::size_t home_offset,
+                       std::size_t size_bytes,
+                       std::size_t align_bytes) {
+    prepared.module.functions.front().params.push_back(bir::Param{
+        .type = type,
+        .name = name,
+        .size_bytes = size_bytes,
+        .align_bytes = align_bytes,
+        .abi = abi,
+        .is_byval = is_byval,
+    });
+    prepared.value_locations.functions.front().value_homes.push_back(
+        prepare::PreparedValueHome{
+            .value_id = prepare::PreparedValueId{next_value_id++},
+            .function_name = function_name,
+            .value_name = prepared.names.value_names.intern(name),
+            .kind = prepare::PreparedValueHomeKind::StackSlot,
+            .offset_bytes = std::size_t{home_offset},
+            .size_bytes = std::size_t{size_bytes},
+            .align_bytes = std::size_t{align_bytes},
+        });
+  };
+  auto byval_register_abi = [](std::size_t size_bytes,
+                               std::size_t align_bytes) {
+    auto abi = register_arg_abi(
+        bir::TypeKind::Ptr, size_bytes, align_bytes, bir::AbiValueClass::Integer);
+    abi.byval_copy = true;
+    return abi;
+  };
+
+  add_param(bir::TypeKind::Ptr, "%s1", byval_register_abi(1, 1), true, 0, 1, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F32,
+              "%hfa14.hfa" + std::to_string(lane),
+              register_arg_abi(bir::TypeKind::F32, 4, 4, bir::AbiValueClass::Sse),
+              false,
+              8 + lane * 4,
+              4,
+              4);
+  }
+  add_param(bir::TypeKind::Ptr, "%s2", byval_register_abi(2, 1), true, 24, 2, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F64,
+              "%hfa24.hfa" + std::to_string(lane),
+              register_arg_abi(bir::TypeKind::F64, 8, 8, bir::AbiValueClass::Sse),
+              false,
+              32 + lane * 8,
+              8,
+              8);
+  }
+  add_param(bir::TypeKind::Ptr, "%s3", byval_register_abi(3, 1), true, 64, 3, 1);
+  for (std::size_t lane = 0; lane < 4; ++lane) {
+    add_param(bir::TypeKind::F128,
+              "%hfa34.hfa" + std::to_string(lane),
+              stack_arg_abi(bir::TypeKind::F128, 16, 16, bir::AbiValueClass::Sse),
+              false,
+              80 + lane * 16,
+              16,
+              16);
+  }
+
+  prepared.frame_plan.functions.push_back(prepare::PreparedFramePlanFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 160,
+      .frame_alignment_bytes = 16,
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_direct_call_f128_constant_argument(
     bool include_payload = true,
     bool include_source_value = true,
@@ -9061,8 +9167,8 @@ int variadic_entry_fixed_formals_publish_typed_stack_homes_before_helper() {
       "str w3, [sp, #20]",
       "str x4, [sp, #24]",
       "str x5, [sp, #32]",
-      "str s6, [sp, #40]",
-      "str d7, [sp, #48]",
+      "str s0, [sp, #40]",
+      "str d1, [sp, #48]",
   };
   for (std::size_t index = 0; index < expected_publications.size(); ++index) {
     const auto* publication =
@@ -11467,6 +11573,67 @@ int block_dispatch_seeds_stack_passed_f128_hfa_formals_with_none_home() {
   if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
           block.instructions.back().target.payload)) {
     return fail("expected return terminator after f128 HFA stack formal publication");
+  }
+  return 0;
+}
+
+int block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals() {
+  auto prepared = prepared_with_mixed_gpr_hfa_entry_formals();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 0 ||
+      !result.visited_terminator || result.emitted_instructions != 16 ||
+      block.instructions.size() != 16) {
+    for (const auto& diagnostic : diagnostics.entries) {
+      std::cerr << diagnostic.message << "\n";
+    }
+    return fail("expected mixed GPR/HFA formals to publish before return");
+  }
+
+  const std::array<std::string_view, 15> expected_publications = {
+      "strb w0, [sp]",
+      "str s0, [sp, #8]",
+      "str s1, [sp, #12]",
+      "str s2, [sp, #16]",
+      "str s3, [sp, #20]",
+      "strb w1, [sp, #24]\nlsr x9, x1, #8\nstrb w9, [sp, #25]",
+      "str d4, [sp, #32]",
+      "str d5, [sp, #40]",
+      "str d6, [sp, #48]",
+      "str d7, [sp, #56]",
+      "strb w2, [sp, #64]\nlsr x9, x2, #8\nstrb w9, [sp, #65]\nlsr x9, x2, #16\nstrb w9, [sp, #66]",
+      "ldr q16, [sp, #160]\nstr q16, [sp, #80]",
+      "ldr q16, [sp, #176]\nstr q16, [sp, #96]",
+      "ldr q16, [sp, #192]\nstr q16, [sp, #112]",
+      "ldr q16, [sp, #208]\nstr q16, [sp, #128]",
+  };
+  for (std::size_t index = 0; index < expected_publications.size(); ++index) {
+    const auto* publication =
+        std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+            &block.instructions[index].target.payload);
+    if (publication == nullptr ||
+        block.instructions[index].target.family !=
+            aarch64_codegen::InstructionFamily::Assembler ||
+        block.instructions[index].target.selection.status !=
+            aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+        !publication->has_inline_asm_payload ||
+        publication->inline_asm_template != expected_publications[index]) {
+      return fail("expected mixed fixed formals to use bank-local ABI source registers");
+    }
+  }
+  if (!std::holds_alternative<aarch64_codegen::ReturnInstructionRecord>(
+          block.instructions.back().target.payload)) {
+    return fail("expected return terminator after mixed fixed formal publication");
   }
   return 0;
 }
@@ -14019,6 +14186,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_seeds_stack_passed_f128_hfa_formals_with_none_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_uses_bank_local_indices_for_mixed_gpr_hfa_formals();
       status != 0) {
     return status;
   }
