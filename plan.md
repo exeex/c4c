@@ -49,6 +49,15 @@ policy, proof-log policy, or CTest registration changes.
   - `/workspaces/c4c/test_after.log`
   - 354 selected, 330 passed, 24 failed, 2 timed out
 
+## Route Checkpoint
+
+After Step 2 direct-call repairs, `00140`, `00159`, `00170`, and `00218` pass.
+The remaining `00175` mismatch has advanced beyond direct-call ABI
+argument/formal publication into local conversion store/load publication. Do
+not continue Step 2 implementation for that residual under this owner; classify
+or close this owner through Step 4 and keep the local conversion residual in
+`ideas/open/347_aarch64_local_conversion_store_load_publication.md`.
+
 ## Non-Goals
 
 - Do not reopen closed indirect-call, selected call-boundary printer,

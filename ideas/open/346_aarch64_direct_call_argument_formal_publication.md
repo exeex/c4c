@@ -89,6 +89,16 @@ belongs in this focused owner before any backend code edits begin.
   selected call-boundary printer admission, return-result publication,
   callee-saved scalar-home preservation, and scalar-select result publication.
 
+## Lifecycle Split Note
+
+Post-Step-2 evidence shows the remaining `00175` residual no longer belongs to
+this direct-call argument/formal publication owner. The direct-call call series
+now publishes its scalar and FP arguments correctly; the remaining bad output
+comes from later local scalar/FP conversion store/load publication. That
+residual is tracked separately in
+`ideas/open/347_aarch64_local_conversion_store_load_publication.md`; it should
+not drive more Step 2 implementation here.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

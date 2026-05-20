@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/346_aarch64_direct_call_argument_formal_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair The Narrow Publication Boundary
+Current Step ID: 4
+Current Step Title: Validate And Reclassify For Closure
 
 # Current Packet
 
@@ -36,12 +36,22 @@ Remaining first bad facts after this slice:
   (`97 17`, `97 -581795216`, `0.000000 0.000000`) rather than stale direct-call
   ABI argument publication.
 
+Lifecycle review classified the remaining `00175` failure as outside the
+active direct-call argument/formal publication owner: the direct-call call
+series now publishes expected scalar and FP arguments, and the remaining bad
+output is from later local conversion stores/reloads. Continuing Step 2
+implementation for that residual would broaden this idea into local conversion
+store/load publication, so Step 2 direct-call implementation is stopped. The
+residual is split to
+`ideas/open/347_aarch64_local_conversion_store_load_publication.md`.
+
 ## Suggested Next
 
-Continue Step 2 by repairing the remaining `00175` local store/load conversion
-publication path if the supervisor keeps that residual in this owner, or ask
-for reclassification if that first bad fact is outside direct-call
-argument/formal publication.
+Proceed with Step 4 validation/classification for the active direct-call owner.
+Use the accepted proof showing `00140`, `00159`, `00170`, and `00218` pass and
+`00175` has advanced beyond direct-call ABI publication. If closure is
+requested, run the close-time regression guard before moving the active source
+idea out of `ideas/open/`.
 
 ## Watchouts
 
