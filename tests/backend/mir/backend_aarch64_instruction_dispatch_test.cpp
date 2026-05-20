@@ -7244,6 +7244,282 @@ prepare::PreparedBirModule prepared_with_select_produced_stack_source_cast() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_stack_published_i16_select_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.select.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.select.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.select.store.entry");
+  const auto lhs_name = prepared.names.value_names.intern("%lhs");
+  const auto rhs_name = prepared.names.value_names.intern("%rhs");
+  const auto true_name = prepared.names.value_names.intern("%true");
+  const auto false_name = prepared.names.value_names.intern("%false");
+  const auto select_name = prepared.names.value_names.intern("%selected");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.select.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.select.store.entry",
+              .insts =
+                  {bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I16, "%selected"),
+                       .compare_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%lhs"),
+                       .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
+                       .true_value = bir::Value::named(bir::TypeKind::I16, "%true"),
+                       .false_value = bir::Value::named(bir::TypeKind::I16, "%false"),
+                   },
+                   bir::StoreLocalInst{
+                       .slot_id = c4c::SlotNameId{41},
+                       .value = bir::Value::named(bir::TypeKind::I16, "%selected"),
+                       .byte_offset = 0,
+                       .align_bytes = 2,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 2,
+                               .align_bytes = 2,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_slot_id = c4c::SlotNameId{41},
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{40},
+               .function_name = function_name,
+               .value_name = lhs_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{40},
+               .offset_bytes = std::size_t{32},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{41},
+               .function_name = function_name,
+               .value_name = rhs_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{41},
+               .offset_bytes = std::size_t{36},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{42},
+               .function_name = function_name,
+               .value_name = true_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{42},
+               .offset_bytes = std::size_t{40},
+               .size_bytes = std::size_t{2},
+               .align_bytes = std::size_t{2},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{43},
+               .function_name = function_name,
+               .value_name = false_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{43},
+               .offset_bytes = std::size_t{44},
+               .size_bytes = std::size_t{2},
+               .align_bytes = std::size_t{2},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{44},
+               .function_name = function_name,
+               .value_name = select_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{44},
+               .offset_bytes = std::size_t{16},
+               .size_bytes = std::size_t{2},
+               .align_bytes = std::size_t{2},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{40},
+                              lhs_name,
+                              prepare::PreparedFrameSlotId{40},
+                              32),
+           frame_slot_storage(prepare::PreparedValueId{41},
+                              rhs_name,
+                              prepare::PreparedFrameSlotId{41},
+                              36),
+           frame_slot_storage(prepare::PreparedValueId{42},
+                              true_name,
+                              prepare::PreparedFrameSlotId{42},
+                              40),
+           frame_slot_storage(prepare::PreparedValueId{43},
+                              false_name,
+                              prepare::PreparedFrameSlotId{43},
+                              44),
+           frame_slot_storage(prepare::PreparedValueId{44},
+                              select_name,
+                              prepare::PreparedFrameSlotId{44},
+                              16)},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{40},
+               .object_id = prepare::PreparedObjectId{40},
+               .function_name = function_name,
+               .offset_bytes = 32,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{41},
+               .object_id = prepare::PreparedObjectId{41},
+               .function_name = function_name,
+               .offset_bytes = 36,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{42},
+               .object_id = prepare::PreparedObjectId{42},
+               .function_name = function_name,
+               .offset_bytes = 40,
+               .size_bytes = 2,
+               .align_bytes = 2,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{43},
+               .object_id = prepare::PreparedObjectId{43},
+               .function_name = function_name,
+               .offset_bytes = 44,
+               .size_bytes = 2,
+               .align_bytes = 2,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{44},
+               .object_id = prepare::PreparedObjectId{44},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = 2,
+               .align_bytes = 2,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{45},
+               .object_id = prepare::PreparedObjectId{45},
+               .function_name = function_name,
+               .offset_bytes = 24,
+               .size_bytes = 2,
+               .align_bytes = 2,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 48,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = lhs_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{40},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = rhs_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{41},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = true_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{42},
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = false_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{43},
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .stored_value_name = select_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{45},
+                       .size_bytes = 2,
+                       .align_bytes = 2,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f64_scalar_alu(
     bir::BinaryOpcode opcode = bir::BinaryOpcode::Mul,
     bool use_fpr_storage = true,
@@ -17084,6 +17360,64 @@ int block_dispatch_publishes_select_stack_source_cast_from_prepared_consumer_mov
   return 0;
 }
 
+int block_dispatch_publishes_stack_homed_scalar_select_before_store_consumer() {
+  auto prepared = prepared_with_stack_published_i16_select_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 2 ||
+      result.emitted_instructions != 3 || block.instructions.size() != 3) {
+    return fail("expected stack-homed scalar select, store consumer, and return: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+  const auto* select_publication =
+      std::get_if<aarch64_codegen::AssemblerInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (select_publication == nullptr ||
+      block.instructions.front().target.family !=
+          aarch64_codegen::InstructionFamily::Assembler ||
+      block.instructions.front().target.selection.status !=
+          aarch64_codegen::MachineNodeSelectionStatus::Selected ||
+      !select_publication->has_inline_asm_payload) {
+    return fail("expected scalar select to lower through selected assembler publication");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-homed scalar select store route to print: " +
+                printed.diagnostic);
+  }
+  const auto csel = printed.assembly.find("csel ");
+  const auto publication = printed.assembly.find("strh ", csel);
+  const auto consumer_reload = printed.assembly.find("ldrh ", publication);
+  const auto destination_store = printed.assembly.find("strh ", consumer_reload);
+  if (csel == std::string::npos || publication == std::string::npos ||
+      consumer_reload == std::string::npos ||
+      destination_store == std::string::npos ||
+      printed.assembly.find("[sp, #16]", publication) == std::string::npos ||
+      printed.assembly.find("[sp, #24]", destination_store) == std::string::npos) {
+    return fail("expected scalar select to publish its stack home before the store consumer reloads it: " +
+                printed.assembly);
+  }
+
+  return 0;
+}
+
 int block_dispatch_defers_unsupported_casts_and_missing_cast_register_facts() {
   {
     auto prepared = prepared_with_simple_integer_cast(
@@ -17599,6 +17933,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_select_stack_source_cast_from_prepared_consumer_move();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_stack_homed_scalar_select_before_store_consumer();
       status != 0) {
     return status;
   }

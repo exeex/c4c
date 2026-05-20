@@ -1,77 +1,57 @@
 Status: Active
 Source Idea Path: ideas/open/345_aarch64_scalar_select_result_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Scalar Select Result Publication
+Current Step ID: 3
+Current Step Title: Prove Representative And Reclassify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Completed `plan.md` Step 1 localization for
-`c_testsuite_aarch64_backend_src_00143_c`.
+Completed `plan.md` Step 2 scalar select publication work in
+`src/backend/mir/aarch64/codegen/alu.cpp`.
 
-First bad owner: `src/backend/mir/aarch64/codegen/alu.cpp`
-`lower_scalar_select_publication`. It resolves the prepared scalar select
-result home through `control_prepared_scalar_result_operand`, receives
-`result_stack_offset_bytes`, computes the selected value into the result
-register with `csel`, then discards the stack-home offset and only records the
-emitted register in `BlockScalarLoweringState`. The modeled select-result home
-is therefore never written before the next local-store consumer reloads it.
+`lower_scalar_select_publication` now carries the prepared
+`result_stack_offset_bytes` through the `csel` publication boundary and appends
+stack-home publication lines for prepared stack-homed scalar select results.
+The shared scalar stack-publication helper now uses scalar-width stores for
+`i1`/`i8`/`i16` homes (`strb`/`strh`) instead of always publishing narrow
+integer homes with a 32-bit `str`.
 
-Key evidence:
+Added focused dispatch coverage in
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` for an `i16`
+scalar select whose result has a prepared stack home and is then consumed by a
+prepared frame-slot store. The test asserts that the printed route emits
+`csel`, publishes the select result home, then allows the store consumer to
+reload that home and store to the destination.
 
-- Semantic BIR and prepared BIR both model the same producer/consumer shape:
-  `%t13.store0 = bir.select eq i64 %t12, 0, i16 0, %t13.elt0` immediately
-  followed by `bir.store_local %lv.b.0, i16 %t13.store0`; the same shape exists
-  for the `%t9.store*` initialization chain.
-- Prepared storage assigns stack homes to the select results, e.g.
-  `%t13.store0` has stack storage at offset 402 while the destination local
-  `%lv.b.0` is addressed through frame slot #39. Prepared addressing records
-  the store-local consumer at `block_1 inst_index=125` storing `%t13.store0`
-  into frame slot #39.
-- Generated AArch64 computes the fresh selected value in `w9` with
-  `csel w9, w10, w9, eq`, but the immediately following consumer reloads
-  `ldrh w9, [sp, #402]` and stores that reloaded value with
-  `strh w9, [sp, #78]`. There is no intervening store of the `csel` result to
-  `[sp, #402]`.
-- The generic store-local publication boundary in
-  `lower_store_local_value_publication` only handles byval frame-slot loads and
-  wide loads from narrow local stores. It does not currently recognize a
-  same-block scalar select producer as a value-publication case, so it does not
-  compensate for the unpublished select-result home.
+The old `00143` unpublished-select-home symptom is fixed in generated AArch64:
+the representative route now emits `csel`, then `strh w9, [sp, #402]`, then
+the consumer `ldrh w9, [sp, #402]` before storing to `[sp, #78]`.
 
 ## Suggested Next
 
-Delegate Step 2 to an executor: repair scalar select result publication
-generally at `lower_scalar_select_publication` by publishing the fresh `csel`
-register value to the modeled result home when the prepared result has stack
-storage, or by adding the equivalent general store-local publication path for a
-same-block scalar select producer. Add focused coverage for a short integer
-select result feeding a local store or equivalent stack-homed consumer.
+Investigate the remaining `c_testsuite_aarch64_backend_src_00143_c` runtime
+nonzero after scalar select result homes are published. The current failure no
+longer matches the old unpublished-select-home reload; the next packet should
+localize the next bad value or control-flow fact in the generated Duff-device
+route.
 
 ## Watchouts
 
-- Do not special-case `00143`, `%t9.store0`, `%t13.store0`, `%lv.a.0`, one
-  stack offset, one block number, one source line, or one emitted instruction
-  string.
-- Do not weaken expectations, unsupported classifications, runner behavior,
-  timeout policy, proof-log policy, or CTest registration.
-- Preserve the idea 344 pointer-local dereference repair and the Duff emission
-  repairs from ideas 343 and 342.
-- `lower_scalar_select_publication` currently discards
-  `result_stack_offset_bytes`; any repair should be keyed on prepared storage
-  metadata, not on temporary names or observed offsets.
-- The AArch64 `--dump-mir` surface still reports the x86/debug contract stub
-  for this target, so the useful evidence for this packet is semantic BIR,
-  prepared BIR/storage/addressing, and generated AArch64.
+- `test_after.log` is red only because
+  `c_testsuite_aarch64_backend_src_00143_c` still exits with code 1; all
+  `backend_*` tests in the delegated subset passed.
+- The next `00143` investigation should not back out the scalar select
+  publication repair or the typed narrow stack-home stores.
+- `clang-format` was not available on `PATH` in this environment; formatting
+  was kept manual.
 
 ## Proof
 
 Ran:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R 'c_testsuite_aarch64_backend_src_00143_c' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '(^backend_|c_testsuite_aarch64_backend_src_00143_c)' > test_after.log 2>&1`
 
-Result: build completed with `ninja: no work to do`; focused CTest still fails
-as expected for this localization-only packet. `test_after.log` records
-`c_testsuite_aarch64_backend_src_00143_c` failing with `[RUNTIME_NONZERO]`
-`exit=1`.
+Result: build completed with `ninja: no work to do`; CTest ran 142 tests,
+141 passed and `c_testsuite_aarch64_backend_src_00143_c` failed with
+`[RUNTIME_NONZERO] exit=1`. `test_after.log` is the canonical proof log.

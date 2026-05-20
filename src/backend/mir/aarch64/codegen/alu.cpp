@@ -182,8 +182,14 @@ namespace mir = c4c::backend::mir;
   if (*alu.result_stack_offset_bytes < 0) {
     return std::string{};
   }
+  std::string_view mnemonic = "str";
+  if (alu.result_type == bir::TypeKind::I1 || alu.result_type == bir::TypeKind::I8) {
+    mnemonic = "strb";
+  } else if (alu.result_type == bir::TypeKind::I16) {
+    mnemonic = "strh";
+  }
   std::ostringstream store;
-  store << "str " << result << ", [sp";
+  store << mnemonic << " " << result << ", [sp";
   if (*alu.result_stack_offset_bytes != 0) {
     store << ", #" << *alu.result_stack_offset_bytes;
   }
@@ -196,7 +202,9 @@ namespace mir = c4c::backend::mir;
   switch (type) {
     case bir::TypeKind::I1:
     case bir::TypeKind::I8:
+      return 1U;
     case bir::TypeKind::I16:
+      return 2U;
     case bir::TypeKind::I32:
       return 4U;
     case bir::TypeKind::I64:
@@ -268,7 +276,14 @@ namespace mir = c4c::backend::mir;
     }
     lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
   }
-  lines.push_back("str " + std::string{result} + ", [" + scratch_name + "]");
+  std::string_view mnemonic = "str";
+  if (alu.result_type == bir::TypeKind::I1 || alu.result_type == bir::TypeKind::I8) {
+    mnemonic = "strb";
+  } else if (alu.result_type == bir::TypeKind::I16) {
+    mnemonic = "strh";
+  }
+  lines.push_back(std::string{mnemonic} + " " + std::string{result} + ", [" +
+                  scratch_name + "]");
   return lines;
 }
 
@@ -1843,8 +1858,15 @@ lower_scalar_select_publication(
   csel << "csel " << *result << ", " << true_name << ", " << *result << ", "
        << *condition;
   lines.push_back(csel.str());
+  const auto publication = scalar_alu_stack_publication_lines(
+      ScalarAluRecord{.result_type = select.result.type,
+                      .result_stack_offset_bytes = result_stack_offset_bytes},
+      *result);
+  if (!publication.has_value()) {
+    return std::nullopt;
+  }
+  lines.insert(lines.end(), publication->begin(), publication->end());
   (void)diagnostics;
-  (void)result_stack_offset_bytes;
   record_emitted_scalar_register(scalar_state,
                                  result_register.value_name,
                                  result_register);
