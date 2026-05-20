@@ -1,6 +1,6 @@
 # AArch64 Scalar Local Storage Writeback Sizing
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -74,6 +74,32 @@ conditional, or return ABI materialization as a whole.
   expectation, runner, timeout, unsupported, or CTest-registration changes.
 - Any remaining failures in the focused cases are reclassified by their new
   first bad fact before this idea is closed.
+
+## Closure Evidence
+
+Closed: 2026-05-20
+
+The active runbook completed localization, repair, and focused runtime proof
+for the scoped AArch64 scalar local storage/writeback owner. Step 3 recorded
+that both focused runtime representatives,
+`c_testsuite_aarch64_backend_src_00086_c` and
+`c_testsuite_aarch64_backend_src_00111_c`, passed after the scalar local
+sizing/writeback repair, with no residual first bad fact remaining inside this
+owner.
+
+Close-time regression guard used matching canonical logs generated for the
+same scope:
+
+`ctest --test-dir build -j --output-on-failure -R 'backend_prepare_stack_layout|backend_aarch64_(machine_printer|instruction_dispatch)|c_testsuite_aarch64_backend_src_(00086|00111)_c'`
+
+Guard command:
+
+`python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log`
+
+Result: PASS. Before was 3 passed / 2 failed / 5 total; after was 5 passed /
+0 failed / 5 total. The guard resolved
+`c_testsuite_aarch64_backend_src_00086_c` and
+`c_testsuite_aarch64_backend_src_00111_c` with no new failing tests.
 
 ## Reviewer Reject Signals
 
