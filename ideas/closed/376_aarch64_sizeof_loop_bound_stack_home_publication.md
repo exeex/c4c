@@ -1,7 +1,8 @@
 # AArch64 Sizeof Loop-Bound Stack Home Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -78,6 +79,21 @@ selected element publication.
   failures and does not regress recent selected-value, aggregate address,
   aggregate layout, pointer-local, external-call, or scalar-publication
   guardrails.
+
+## Closure Notes
+
+The active runbook completed Step 4. `c_testsuite_aarch64_backend_src_00205_c`
+passes, no remaining `00205` first bad fact was exposed in this owner, and the
+generated AArch64 loop bounds now compare against folded immediates instead of
+unpublished RHS stack-home loads.
+
+Close-gate proof used canonical root logs `test_before.log` and
+`test_after.log`, both covering matching `^backend_` runs with 144/144 passed.
+The regression guard passed with:
+
+```bash
+python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log --allow-non-decreasing-passed
+```
 
 ## Reviewer Reject Signals
 
