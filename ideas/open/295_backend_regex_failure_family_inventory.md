@@ -881,6 +881,33 @@ Step 3/4 split 2026-05-21 post-365/366:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the remaining parked buckets.
 
+Step 3 split 2026-05-21 post-368:
+
+- Step 2 of the active umbrella runbook classified the current backend-regex
+  residual surface into 26 non-passing residuals: 24 failed and 2 timed out.
+- The selected focused owner is idea 369,
+  `ideas/open/369_semantic_bir_local_pointer_memory_observation_canonicalization.md`,
+  covering the 7-case semantic-BIR local/pointer memory observation bucket.
+- The selected bucket fails before runtime as
+  `BACKEND_ROUTE_SNIPPET_MISSING`, with actual semantic-BIR dumps substituting
+  string-literal pointer values or computed-pointer load/store paths where the
+  route observers expect local pointer stores and dynamic local
+  aggregate/member lane materialization.
+- Existing open or parked ideas do not own this route by current evidence:
+  nearby pointer-derived string-load and pointer-addressed store/load ideas
+  are parked after their source intent was satisfied, while the open
+  variadic/HFA, formal-publication, and ABI ideas are generated-code or
+  call-boundary routes rather than semantic-BIR observation failures.
+- Remaining buckets stay parked under this umbrella: AArch64 scalar
+  expression result materialization, aggregate/array/member address
+  materialization, switch/fallthrough with pointer post-increment, composite
+  ABI/HFA/f128 call-boundary preparation, libc call result materialization,
+  complex initializer/relocation semantics, unsigned enum bitfield
+  load/extension, and the two quarantined timeout residuals.
+- Active implementation should move to idea 369 before code edits begin. This
+  umbrella should proceed to lifecycle handoff rather than retaining
+  implementation work under the inventory runbook.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

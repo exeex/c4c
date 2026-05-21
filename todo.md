@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Residuals by Semantic Owner
+Current Step ID: 3
+Current Step Title: Select the Next Focused Owner
 
 # Current Packet
 
@@ -250,11 +250,48 @@ Rejected adjacent owners for timeout bucket:
 - Keep both out of the Step 3 owner-selection pool until a focused timeout
   probe produces first-bad evidence.
 
+Step 3 owner selection:
+
+Selected next focused owner:
+`ideas/open/369_semantic_bir_local_pointer_memory_observation_canonicalization.md`.
+
+Selection basis from Step 2:
+
+- This is the largest currently classified non-timeout bucket, with 7
+  residuals.
+- The failures stop before runtime as `BACKEND_ROUTE_SNIPPET_MISSING`, so the
+  first bad boundary is the semantic-BIR route dump/observation surface rather
+  than AArch64 or x86 target machine lowering.
+- The bucket has concrete shared semantic evidence: string-literal pointer
+  local materialization substitutes `ptr @.str0` where the observer expects a
+  pointer local store, and dynamic local aggregate/member accesses are
+  represented through computed pointer load/store paths where the observers
+  expect local/member lane materialization.
+- Nearby existing ideas do not own this active route. Idea 356 is parked with
+  its dynamic pointer-derived string-load source intent satisfied; ideas 361
+  and 362 are parked AArch64 pointer store/load-address residuals; the open
+  variadic/HFA, formal-publication, and ABI ideas are generated-code or
+  call-boundary routes, not semantic-BIR observation failures.
+
+Rejected owner choices for Step 3:
+
+- Do not choose the AArch64 scalar expression materialization bucket yet:
+  current evidence reaches generated AArch64/runtime and is lower priority
+  than the cleaner compile-stage semantic-BIR observation owner.
+- Do not choose the AArch64 aggregate/address materialization bucket yet:
+  it mixes local arrays, global aggregate traversal, and member address
+  publication and needs a focused first-bad probe before implementation.
+- Do not choose the ABI/HFA/f128 or initializer singletons from existing open
+  variadic ideas: the current Step 2 evidence for those cases is narrower than
+  those parked lifecycle scopes or still singleton-localized.
+- Do not choose the timeout bucket: Step 2 explicitly quarantined timeouts
+  until focused timeout probes identify a first bad owner.
+
 ## Suggested Next
 
-Step 3 should select exactly one non-timeout owner bucket for a bounded repair
-packet, using the classifications above as input. This packet intentionally did
-not choose that owner.
+Step 4 should prepare lifecycle handoff from the umbrella inventory to
+`ideas/open/369_semantic_bir_local_pointer_memory_observation_canonicalization.md`
+before implementation starts.
 
 ## Watchouts
 
