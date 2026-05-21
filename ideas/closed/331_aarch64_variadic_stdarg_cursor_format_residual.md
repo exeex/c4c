@@ -1,6 +1,6 @@
 # AArch64 Variadic Stdarg Cursor Format Residual
 
-Status: Open
+Status: Closed
 Created: 2026-05-20
 Split From: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 
@@ -145,3 +145,9 @@ before the standalone HFA stdarg invocation has been proven reachable. Resume
 from AArch64 format-byte materialization and NUL-test publication; do not
 reopen HFA register-save-area ownership unless fresh evidence reaches a
 standalone HFA/floating first bad fact.
+
+2026-05-21: Closed after the stdarg format-byte/NUL-test repair and follow-up
+close-blocker regression repair landed through commit `dda380c87`. Focused
+proof covered `backend_.*`, `00123`, `00130`, `00140`, and `00204` with
+147/147 passing, and the supervisor accepted the hook-generated full-suite
+baseline at `dda380c87`, improving from 33 failures to 30 with no new failures.
