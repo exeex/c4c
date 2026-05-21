@@ -1,8 +1,23 @@
 # AArch64 Shift Promotion Codegen Scalability Timeout
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
+
+## Completion Note
+
+Closed after accepted repair and Step 5 handoff. Commits `4c24fe298`,
+`ab3229b92`, and `ca9b02724` are in place. Delegated subset proof passed
+150/150 for
+`^(backend_|c_testsuite_aarch64_backend_src_00200_c$|c_testsuite_aarch64_backend_src_00181_c$)`,
+with `c_testsuite_aarch64_backend_src_00200_c` passing under existing runner
+and timeout policy. Refreshed full-suite baseline was accepted with 3363
+passed / 17 failed / 3380 total, no new failures, `00200` removed from the
+AArch64 backend c-testsuite failure set, and only `00207` remaining there.
+
+Residual dynamic stack/VLA fixed-slot addressing work remains owned by
+`ideas/open/382_aarch64_dynamic_stack_vla_fixed_slot_addressing.md`.
 
 ## Goal
 
