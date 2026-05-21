@@ -7317,7 +7317,22 @@ void append_entry_formal_byte_load(std::vector<std::string>& lines,
   }
 
   std::vector<std::string> lines;
-  for (std::size_t byte_index = 0; byte_index < param.size_bytes; ++byte_index) {
+  std::size_t byte_index = 0;
+  while (byte_index + 8U <= param.size_bytes) {
+    const std::size_t lane_index = byte_index / 8U;
+    const auto lane_x =
+        abi::gp_register(static_cast<std::uint8_t>(source.index + lane_index),
+                         abi::RegisterView::X);
+    if (!lane_x.has_value()) {
+      return {};
+    }
+    auto lane_lines = entry_formal_store_lines(*lane_x,
+                                               bir::TypeKind::I64,
+                                               stack_offset_bytes + byte_index);
+    lines.insert(lines.end(), lane_lines.begin(), lane_lines.end());
+    byte_index += 8U;
+  }
+  for (; byte_index < param.size_bytes; ++byte_index) {
     const std::size_t lane_index = byte_index / 8U;
     const std::size_t lane_byte = byte_index % 8U;
     const auto lane_x =

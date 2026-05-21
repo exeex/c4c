@@ -158,6 +158,11 @@ set_tests_properties(backend_aarch64_instruction_dispatch PROPERTIES
   LABELS "backend;internal;cpp;aarch64"
 )
 
+c4c_add_aarch64_cpp_test(backend_aarch64_call_boundary_owner)
+set_tests_properties(backend_aarch64_call_boundary_owner PROPERTIES
+  LABELS "backend;internal;cpp;aarch64"
+)
+
 c4c_add_aarch64_cpp_test(backend_aarch64_return_lowering)
 set_tests_properties(backend_aarch64_return_lowering PROPERTIES
   LABELS "backend;internal;cpp;aarch64"

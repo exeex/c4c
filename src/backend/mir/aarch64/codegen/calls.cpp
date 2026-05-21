@@ -376,6 +376,18 @@ void append_call_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
          carrier->constant_payload.has_value();
 }
 
+[[nodiscard]] const prepare::PreparedF128Carrier*
+find_prepared_f128_carrier_in_module(const prepare::PreparedBirModule& prepared,
+                                     prepare::PreparedValueId value_id) {
+  for (const auto& function_carriers : prepared.f128_carriers.functions) {
+    if (const auto* carrier =
+            prepare::find_prepared_f128_carrier(function_carriers, value_id)) {
+      return carrier;
+    }
+  }
+  return nullptr;
+}
+
 [[nodiscard]] std::optional<abi::RegisterView> scalar_fp_view_from_register_name(
     const std::optional<std::string>& register_name) {
   if (!register_name.has_value() || register_name->empty()) {
@@ -1352,6 +1364,31 @@ make_byval_register_lane_prepared_source(
   return abi.size_bytes;
 }
 
+[[nodiscard]] bool aarch64_indirect_register_byval_argument(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallArgumentPlan& argument,
+    std::size_t instruction_index) {
+  if (context.function.prepared == nullptr ||
+      context.function.prepared->target_profile.arch != c4c::TargetArch::Aarch64 ||
+      context.bir_block == nullptr ||
+      instruction_index >= context.bir_block->insts.size()) {
+    return false;
+  }
+  const auto* call =
+      std::get_if<bir::CallInst>(&context.bir_block->insts[instruction_index]);
+  if (call == nullptr || argument.arg_index >= call->arg_abi.size()) {
+    return false;
+  }
+  const auto& abi = call->arg_abi[argument.arg_index];
+  return abi.type == bir::TypeKind::Ptr &&
+         abi.byval_copy &&
+         !abi.sret_pointer &&
+         abi.passed_in_register &&
+         !abi.passed_on_stack &&
+         abi.primary_class == bir::AbiValueClass::Integer &&
+         abi.size_bytes > 16;
+}
+
 [[nodiscard]] std::optional<MemoryOperand> make_sret_memory_return_address_source(
     const module::BlockLoweringContext& context,
     const prepare::PreparedCallPlan& call_plan,
@@ -2006,6 +2043,12 @@ make_prior_preserved_call_argument_source(
   const auto* preserved = find_prior_preserved_value_for_call_argument(
       context, current_call_plan, argument, move);
   if (preserved == nullptr) {
+    return std::nullopt;
+  }
+  if ((source_home != nullptr &&
+       make_local_frame_address_call_argument_source(
+           context, argument, *source_home, instruction_index).has_value()) ||
+      aarch64_indirect_register_byval_argument(context, argument, instruction_index)) {
     return std::nullopt;
   }
 
@@ -3104,6 +3147,18 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     source_f128_carrier =
         prepare::find_prepared_f128_carrier(*f128_carriers, *argument->source_value_id);
   }
+  if (source_f128_carrier == nullptr && context.function.prepared != nullptr &&
+      argument != nullptr && argument->source_value_id.has_value()) {
+    source_f128_carrier =
+        find_prepared_f128_carrier_in_module(*context.function.prepared,
+                                             *argument->source_value_id);
+  }
+  const bool structured_f128_register_argument_move =
+      argument != nullptr &&
+      (argument->source_register_bank == prepare::PreparedRegisterBank::Vreg ||
+       argument->source_register_bank == prepare::PreparedRegisterBank::Fpr) &&
+      argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
+      complete_full_width_f128_carrier(source_f128_carrier);
 
   CallBoundaryMoveInstructionRecord move_record{
       .function_name = context.function.control_flow != nullptr
@@ -3138,7 +3193,7 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
          make_frame_slot_call_argument_address_source(
              context, *argument, *source_home, instruction_index)
              .has_value());
-    if (!frame_slot_address_argument) {
+    if (!frame_slot_address_argument && !structured_f128_register_argument_move) {
       auto preserved_source = make_prior_preserved_call_argument_source(
           context,
           call_plan,
@@ -3196,19 +3251,18 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       argument->source_register_bank == prepare::PreparedRegisterBank::Gpr &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Gpr;
   const bool selected_f128_argument_move =
-      argument != nullptr &&
-      (argument->source_register_bank == prepare::PreparedRegisterBank::Vreg ||
-       argument->source_register_bank == prepare::PreparedRegisterBank::Fpr) &&
-      argument->destination_register_bank == prepare::PreparedRegisterBank::Vreg &&
-      complete_full_width_f128_carrier(source_f128_carrier);
+      structured_f128_register_argument_move;
   const bool selected_scalar_fpr_argument_move =
       argument != nullptr &&
       argument->source_encoding == prepare::PreparedStorageEncodingKind::Register &&
       argument->source_register_bank == prepare::PreparedRegisterBank::Fpr &&
       argument->destination_register_bank == prepare::PreparedRegisterBank::Fpr &&
-      binding != nullptr &&
-      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
-      scalar_fp_view_from_register_name(binding->destination_register_name).has_value();
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) &&
+      scalar_fp_view_from_register_name(
+          binding != nullptr && binding->destination_register_name.has_value()
+              ? binding->destination_register_name
+              : move.destination_register_name).has_value();
   const bool selected_f128_constant_argument_move =
       argument != nullptr &&
       argument->value_bank == prepare::PreparedRegisterBank::Vreg &&
@@ -3253,8 +3307,8 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       source_home->register_name.has_value() && argument != nullptr &&
       (selected_gpr_argument_move || selected_scalar_fpr_argument_move ||
        selected_f128_argument_move) &&
-      binding != nullptr &&
-      binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
+      (binding == nullptr ||
+       binding->destination_storage_kind == prepare::PreparedMoveStorageKind::Register) &&
       !move_record.destination_register.has_value()) {
     if (argument->source_register_name.has_value() &&
         *argument->source_register_name != *source_home->register_name) {
@@ -3279,7 +3333,10 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
     const auto expected_view =
         selected_f128_argument_move ? std::optional<abi::RegisterView>{abi::RegisterView::Q}
         : selected_scalar_fpr_argument_move
-            ? scalar_fp_view_from_register_name(binding->destination_register_name)
+            ? scalar_fp_view_from_register_name(
+                  binding != nullptr && binding->destination_register_name.has_value()
+                      ? binding->destination_register_name
+                      : move.destination_register_name)
             : std::nullopt;
     const auto source_register_name =
         selected_scalar_fpr_argument_move &&
@@ -3287,15 +3344,23 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
             ? std::optional<std::string>{}
             : source_home->register_name;
     auto destination = make_register_operand_from_prepared_authority(
-        binding->destination_register_name,
-        binding->destination_register_placement,
+        binding != nullptr && binding->destination_register_name.has_value()
+            ? binding->destination_register_name
+            : move.destination_register_name,
+        binding != nullptr && binding->destination_register_placement.has_value()
+            ? binding->destination_register_placement
+            : (move.destination_register_placement.has_value()
+                   ? move.destination_register_placement
+                   : argument->destination_register_placement),
         argument->destination_register_bank,
         RegisterOperandRole::CallAbi,
         move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
                               : std::nullopt,
         source_home->value_name,
-        binding->destination_contiguous_width,
-        binding->destination_occupied_register_names,
+        binding != nullptr ? binding->destination_contiguous_width
+                           : move.destination_contiguous_width,
+        binding != nullptr ? binding->destination_occupied_register_names
+                           : move.destination_occupied_register_names,
         expected_view,
         diagnostics,
         context,

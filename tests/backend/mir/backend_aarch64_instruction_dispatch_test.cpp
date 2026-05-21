@@ -12960,21 +12960,7 @@ int variadic_entry_byval_aggregate_publishes_frame_slot_before_helper() {
       std::get_if<aarch64_module::codegen::AssemblerInstructionRecord>(
           &block.instructions.front().target.payload);
   constexpr std::string_view expected_publication =
-      "strb w0, [sp, #32]\n"
-      "lsr x9, x0, #8\n"
-      "strb w9, [sp, #33]\n"
-      "lsr x9, x0, #16\n"
-      "strb w9, [sp, #34]\n"
-      "lsr x9, x0, #24\n"
-      "strb w9, [sp, #35]\n"
-      "lsr x9, x0, #32\n"
-      "strb w9, [sp, #36]\n"
-      "lsr x9, x0, #40\n"
-      "strb w9, [sp, #37]\n"
-      "lsr x9, x0, #48\n"
-      "strb w9, [sp, #38]\n"
-      "lsr x9, x0, #56\n"
-      "strb w9, [sp, #39]\n"
+      "str x0, [sp, #32]\n"
       "strb w1, [sp, #40]";
   if (publication == nullptr ||
       block.instructions.front().target.family !=
@@ -19878,10 +19864,10 @@ int block_dispatch_uses_rounded_byval_slots_for_register_to_stack_formals() {
   }
 
   const std::array<std::string_view, 6> required_fragments = {
-      "strb w0, [sp]\n",
-      "strb w1, [sp, #8]\n",
-      "strb w3, [sp, #17]\n",
-      "strb w5, [sp, #27]\n",
+      "str x0, [sp]",
+      "str x1, [sp, #8]",
+      "str x3, [sp, #17]",
+      "str x5, [sp, #27]",
       "ldrb w9, [sp, #80]\nstrb w9, [sp, #38]",
       "ldrb w9, [sp, #96]\nstrb w9, [sp, #50]",
   };
