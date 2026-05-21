@@ -2864,6 +2864,11 @@ find_latest_narrow_store_for_wide_local_load(
 
   if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(producer);
       load_global != nullptr) {
+    if (const auto* home = prepared_value_home_for_value(context, value);
+        home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+        home->offset_bytes.has_value()) {
+      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+    }
     const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
     if (!address.has_value() || load_global->global_name.empty()) {
       return false;
@@ -4370,20 +4375,15 @@ lower_store_local_value_publication(
       (!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
        !store_local_value_is_wide_load_from_narrow_local_store(
            context, *store, instruction_index) &&
-       cast_producer == nullptr)) {
+       cast_producer == nullptr &&
+       !select_chain_contains_direct_global_load(context, store->value, instruction_index))) {
     return std::nullopt;
   }
   const auto* memory_record =
       std::get_if<MemoryInstructionRecord>(&lowered_memory.target.payload);
   if (memory_record == nullptr ||
       memory_record->memory_kind != MemoryInstructionKind::Store ||
-      !memory_record->value.has_value() ||
-      memory_record->value->kind != OperandKind::Register) {
-    return std::nullopt;
-  }
-  const auto* target_register =
-      std::get_if<RegisterOperand>(&memory_record->value->payload);
-  if (target_register == nullptr || abi::is_reserved_mir_scratch(target_register->reg)) {
+      !memory_record->value.has_value()) {
     return std::nullopt;
   }
 
@@ -4395,22 +4395,62 @@ lower_store_local_value_publication(
           ? find_same_block_named_producer(context, value.name, instruction_index)
           : nullptr;
   bool emitted = false;
-  if (cast_producer != nullptr) {
-    emitted = emit_scalar_conversion_cast_to_register(
-        context,
-        *cast_producer,
-        producer_instruction_index(context, producer_inst).value_or(instruction_index),
-        *target_register,
-        lines);
-  }
-  if (!emitted && abi::is_gp_register(target_register->reg)) {
-    lines.clear();
+  bool published_stack_home = false;
+  if (const auto* target_register =
+          std::get_if<RegisterOperand>(&memory_record->value->payload);
+      target_register != nullptr) {
+    if (abi::is_reserved_mir_scratch(target_register->reg)) {
+      return std::nullopt;
+    }
+    if (cast_producer != nullptr) {
+      emitted = emit_scalar_conversion_cast_to_register(
+          context,
+          *cast_producer,
+          producer_instruction_index(context, producer_inst).value_or(instruction_index),
+          *target_register,
+          lines);
+    }
+    if (!emitted && abi::is_gp_register(target_register->reg) && !scratches.empty()) {
+      lines.clear();
+      emitted = emit_value_publication_to_register(context,
+                                                   value,
+                                                   instruction_index,
+                                                   target_register->reg.index,
+                                                   scratches.front().index,
+                                                   lines);
+    }
+  } else if (const auto* target_memory =
+                 std::get_if<MemoryOperand>(&memory_record->value->payload);
+             target_memory != nullptr &&
+             select_chain_contains_direct_global_load(context, value, instruction_index)) {
+    const auto store_mnemonic = scalar_store_mnemonic(value.type);
+    const auto store_view = scalar_view_for_type(value.type);
+    const auto store_register =
+        store_view.has_value() && !scratches.empty()
+            ? gp_register_name(scratches.front().index, *store_view)
+            : std::nullopt;
+    const auto stack_home = memory_address(*target_memory);
+    if (target_memory->support != MemoryOperandSupportKind::Prepared ||
+        target_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        !target_memory->byte_offset_is_prepared_snapshot ||
+        !target_memory->can_use_base_plus_offset ||
+        scratches.size() < 2U ||
+        !store_mnemonic.has_value() ||
+        !store_register.has_value() ||
+        stack_home.empty()) {
+      return std::nullopt;
+    }
     emitted = emit_value_publication_to_register(context,
                                                  value,
                                                  instruction_index,
-                                                 target_register->reg.index,
                                                  scratches.front().index,
+                                                 scratches[1].index,
                                                  lines);
+    if (emitted) {
+      lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
+                      ", " + stack_home);
+      published_stack_home = true;
+    }
   }
   if (!emitted || lines.empty()) {
     return std::nullopt;
@@ -4431,7 +4471,12 @@ lower_store_local_value_publication(
                          : c4c::kInvalidBlockLabel,
       .block_index = context.block_index,
       .instruction_index = instruction_index,
-      .side_effects = {MachineSideEffectKind::MemoryRead},
+      .side_effects = published_stack_home
+                          ? std::vector<MachineSideEffectKind>{
+                                MachineSideEffectKind::MemoryRead,
+                                MachineSideEffectKind::MemoryWrite}
+                          : std::vector<MachineSideEffectKind>{
+                                MachineSideEffectKind::MemoryRead},
       .payload = AssemblerInstructionRecord{
           .has_inline_asm_payload = true,
           .side_effects = true,
