@@ -854,6 +854,33 @@ Step 3 route 2026-05-21 post-348/354:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the remaining parked buckets.
 
+Step 3/4 split 2026-05-21 post-365/366:
+
+- Step 1 of the active umbrella runbook reconstructed the current
+  backend-regex residual surface from the committed proof log after closed
+  ideas 365 and 366: 354 selected tests, 333 passed, and 19 non-passing
+  residuals. Local backend/unit/CLI tests selected by the backend regex are
+  clean, and `c_testsuite_aarch64_backend_src_00173_c` passes.
+- Step 2 classification committed as `a4093586e` selected semantic BIR
+  indirect local-memory lvalue admission as the next focused owner.
+- The focused split is idea 367,
+  `ideas/open/367_semantic_bir_indirect_local_memory_lvalue_admission.md`,
+  covering `lir_to_bir` lowering for indirect local-memory lvalues whose
+  address comes from loaded pointer values, pointer-to-pointer locals, pointer
+  arithmetic, or casts.
+- Representative first bad facts are compile-stage semantic handoff failures:
+  `c_testsuite_aarch64_backend_src_00005_c` rejects the store local-memory
+  path for `**pp = 1`, and `c_testsuite_aarch64_backend_src_00217_c` rejects
+  the load local-memory path for `*(unsigned*)(data + r) += a - b`.
+- This owner is separate from the completed `00173` pointer-derived string
+  load/publication chain, current local backend-route expectation drift,
+  runtime scalar compare/select buckets, composite/byval/HFA/f128 ABI buckets,
+  aggregate/writeback runtime buckets, timeout/output-storm buckets, and
+  AArch64 printer or runner policy.
+- Active implementation should move to idea 367 before code edits begin. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the remaining parked buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

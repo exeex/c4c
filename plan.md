@@ -1,143 +1,155 @@
-# Backend Regex Failure Family Inventory Runbook
+# Semantic BIR Indirect Local-Memory Lvalue Admission Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/367_semantic_bir_indirect_local_memory_lvalue_admission.md
+Supersedes: ideas/open/295_backend_regex_failure_family_inventory.md active umbrella runbook
 
 ## Purpose
 
-Refresh and classify the backend-regex failure surface after the 00173-focused
-ideas 365 and 366 closed, then identify the next focused semantic owner before
-implementation work begins.
+Repair the semantic `lir_to_bir` admission gap for indirect local-memory
+lvalues whose address comes from pointer values, then hand only advanced or
+new first-bad-fact residuals back to later focused owners.
 
 ## Goal
 
-Produce a current backend-regex inventory from the main build tree, separate
-local backend failures from external AArch64 c-testsuite failures, and hand the
-supervisor one focused repair owner or an explicit no-owner-yet result.
+Make pointer-derived local-memory load and store lvalues lower as real
+pointer-based memory operations before AArch64 preparation.
 
 ## Core Rule
 
-Classify semantic failure families. Do not claim progress by changing
-expectations, unsupported classifications, runner behavior, timeout policy,
-CTest registration, proof-log policy, or by fixing one named testcase shape.
+Fix semantic lowering capability. Do not claim progress through expectations,
+unsupported classifications, runner behavior, timeout policy, CTest
+registration, proof-log policy, AArch64 runtime changes, or filename-shaped
+matching.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- The latest lifecycle context: ideas 365 and 366 are closed, and `00173` now
-  passes.
-- Existing open ideas only when comparing candidate owners; treat parked notes
-  as lifecycle evidence and do not reactivate a parked/satisfied focused idea
-  from its stale header alone.
+- `ideas/open/367_semantic_bir_indirect_local_memory_lvalue_admission.md`
+- `todo.md`
+- `ideas/open/295_backend_regex_failure_family_inventory.md` latest
+  deactivation note for the split context
+- Current semantic and backend-route tests around `lir_to_bir` local-memory
+  load/store diagnostics before editing code
 
-## Current Scope
+## Current Targets
 
-- Capture a fresh backend-regex result from `/workspaces/c4c/build`.
-- Classify remaining non-passing tests by semantic owner and by source
-  category.
-- Exclude the completed 00173 path unless fresh evidence shows a new,
-  distinct first bad fact.
-- Select the next focused owner from existing open ideas or prepare a
-  lifecycle handoff to create one.
+- `c_testsuite_aarch64_backend_src_00005_c`: store local-memory rejection for
+  the pointer-to-pointer local shape `**pp = 1`.
+- `c_testsuite_aarch64_backend_src_00217_c`: load local-memory rejection for
+  pointer arithmetic plus casted unsigned update,
+  `*(unsigned*)(data + r) += a - b`.
+- Focused semantic or backend-route coverage proving indirect local-memory
+  load and store lvalues use the computed pointer address.
 
 ## Non-Goals
 
-- Do not implement backend fixes under this umbrella plan.
-- Do not reopen closed ideas 365 or 366 because of historical counts.
-- Do not mutate `ideas/closed/`, review artifacts, logs, runner policy,
-  expectations, unsupported classifications, or CTest registration.
-- Do not broaden a parked focused idea into active work unless current
-  generated-code evidence contradicts its parked boundary.
+- Do not edit AArch64 register allocation, machine printing, assembler,
+  linker, runtime, runner, timeout, CTest registration, unsupported
+  classifications, or external expectations for this owner.
+- Do not clean up local backend-route snippet drift unless separately
+  delegated.
+- Do not reopen the completed `00173` pointer-derived string-load/publication
+  chain unless fresh evidence shows its old first bad fact returned.
+- Do not absorb composite/byval/HFA/f128 ABI, aggregate writeback, scalar
+  compare/select, initializer, dynamic stack, variadic/floating, timeout, or
+  runtime mismatch buckets.
 
 ## Working Model
 
-This source idea is an inventory umbrella. Its job is to keep broad backend
-regex results from becoming a monolithic implementation bucket. The executor
-should gather fresh evidence, classify the residual surface, and stop at a
-focused lifecycle recommendation instead of editing compiler code.
+The failing representatives stop before prepared-module or AArch64 handoff.
+The likely owner is semantic BIR construction for an lvalue whose effective
+address is not a direct local slot but a pointer value loaded from local state
+or produced by pointer arithmetic/casts. A valid repair should admit both
+loads and stores through that computed address without reducing the case to a
+named source file or a single pointer depth.
 
 ## Execution Rules
 
-- Use the main build tree for backend-regex evidence.
-- Keep routine inventory progress in `todo.md`.
-- If classification identifies a new focused owner, report the exact proposed
-  idea title, representative tests, first bad facts, and reject signals for
-  plan-owner handoff.
-- If an existing open idea already owns the current first bad fact, identify it
-  by path and explain why parked or stale alternatives are not selected.
-- Escalate to the supervisor before any implementation edits.
+- Localize the first rejecting semantic branch before changing behavior.
+- Add focused coverage before or with the repair so the rule is protected
+  independently of the two c-testsuite filenames.
+- Preserve adjacent passing pointer-derived load behavior, especially the
+  completed `00173` path.
+- When a representative advances into AArch64 runtime, printer, ABI, or
+  aggregate behavior, record the new first bad fact in `todo.md` instead of
+  broadening this plan.
 
 ## Ordered Steps
 
-### Step 1: Capture Fresh Backend Regex Inventory
+### Step 1: Localize Indirect Local-Memory Rejection
 
-Goal: establish the current non-passing surface after the 00173 chain closed.
-
-Concrete actions:
-
-- Run the supervisor-delegated backend-regex command from the main build tree.
-- Record selected, passed, failed, and timed-out counts in `todo.md`.
-- List non-passing tests and separate local backend/unit/CLI tests from
-  external `c_testsuite_aarch64_backend_*` tests.
-- Confirm whether `c_testsuite_aarch64_backend_src_00173_c` is passing in the
-  fresh result.
-
-Completion check:
-
-- `todo.md` contains the command, result counts, non-passing list, and the
-  00173 status from the fresh inventory.
-
-### Step 2: Classify Residual Families
-
-Goal: group the remaining failures by semantic owner instead of by filename.
+Goal: identify the semantic `lir_to_bir` boundary that rejects the two
+representatives.
 
 Concrete actions:
 
-- For each residual bucket, inspect available output, generated artifacts, or
-  focused dumps enough to identify the first bad fact.
-- Separate runtime mismatch, runtime nonzero/crash, timeout/output-storm,
-  machine-printer/prepared-node, semantic handoff, and local backend buckets.
-- Compare each candidate against open focused ideas and recent closed owner
-  boundaries.
-- Reject buckets whose only support is historical counts or a single filename.
+- Reproduce the focused failures for `00005` and `00217` with the
+  supervisor-delegated proof command.
+- Inspect the semantic lowering path for the failing local-memory load and
+  store diagnostics.
+- Compare the failing lvalue address sources: loaded pointer value,
+  pointer-to-pointer local, pointer arithmetic, and cast-derived address.
+- Record the first bad branch, relevant helper names, and current diagnostic
+  evidence in `todo.md`.
 
 Completion check:
 
-- `todo.md` records candidate buckets, representative evidence, rejected
-  owners, and the strongest current semantic owner.
+- `todo.md` names the concrete semantic owner and explains why both
+  representatives share it or why the plan must split before implementation.
 
-### Step 3: Select Or Split The Next Focused Owner
+### Step 2: Add Focused Semantic Coverage
 
-Goal: decide the next executable lifecycle target.
+Goal: protect the indirect local-memory load and store shapes outside the
+c-testsuite filenames.
 
 Concrete actions:
 
-- If an existing open idea clearly owns the strongest current first bad fact,
-  recommend activating that idea and explain the match.
-- If no existing idea owns it, draft the focused owner summary needed for a new
-  `ideas/open/*.md` handoff: goal, scope, out-of-scope boundaries,
-  acceptance criteria, and concrete reviewer reject signals.
-- If the residual surface is too ambiguous, identify the smallest extra probe
-  needed before splitting.
+- Add or update focused semantic/backend-route tests for an indirect store
+  lvalue through a loaded pointer or pointer-to-pointer local.
+- Add or update focused semantic/backend-route tests for an indirect load
+  lvalue through pointer arithmetic and a cast-derived address.
+- Assert the semantic BIR or backend-route contract at the memory-operation
+  level, not through emitted AArch64 instruction spelling.
 
 Completion check:
 
-- `todo.md` contains one of: selected existing idea path, new-idea handoff
-  draft, or an explicit ambiguity with the next probe.
+- The focused coverage fails before the semantic repair or demonstrates the
+  missing contract clearly enough to guard the repair.
 
-### Step 4: Supervisor Handoff
+### Step 3: Repair Semantic Admission
 
-Goal: leave lifecycle state ready for the next plan-owner or executor action.
+Goal: lower indirect local-memory lvalues as pointer-based memory operations.
 
 Concrete actions:
 
-- Summarize the inventory result and selected owner in `todo.md`.
-- Do not edit source ideas directly unless the supervisor delegates a
-  plan-owner split after reviewing the classification.
-- Recommend the narrow proof command that should accompany the next focused
-  executor packet.
+- Change the localized semantic `lir_to_bir` path so computed pointer-address
+  lvalues are admitted for both load and store forms.
+- Keep direct local-slot lowering intact where the address is genuinely a
+  direct local object and not a loaded or computed pointer.
+- Avoid special handling for `00005`, `00217`, source variable names, one cast
+  spelling, one pointer depth, or one generated BIR identifier.
 
 Completion check:
 
-- The supervisor can either delegate the selected focused implementation
-  packet or call plan-owner to switch/split without redoing the inventory.
+- Focused coverage passes, and the two representatives advance past semantic
+  handoff or pass without expectation, runner, timeout, or AArch64 policy
+  changes.
+
+### Step 4: Validate And Reclassify Residuals
+
+Goal: prove the focused owner and park any new first bad facts correctly.
+
+Concrete actions:
+
+- Run the supervisor-delegated focused proof command after the repair.
+- Confirm adjacent passing pointer-derived load coverage, including the
+  completed `00173` path, remains passing.
+- If `00005` or `00217` advances to a new AArch64/runtime/ABI/aggregate
+  residual, record that new first bad fact in `todo.md` without expanding this
+  semantic plan.
+
+Completion check:
+
+- `todo.md` records proof results, any residual first bad facts, and whether
+  the source idea is ready for close review or needs a follow-up focused
+  split.
