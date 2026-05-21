@@ -8,34 +8,33 @@ Current Step Title: Repair Same-Owner Pointer-Derived Copy Mismatch
 
 ## Just Finished
 
-Step 5 localized the `struct S ls21 = *pls` mismatch to AArch64/prealloc
-frame-slot publication, not semantic BIR copy width: BIR already copied four
-`i8` lanes from the pointer-derived load, but stack layout had let the
-`%lv.ls21.N` lane slots become sparse while call lowering published
-`%lv.ls21` as the address of the first lane.
+Step 5 follow-up localized the `flow` aggregate mismatch to subobject
+byte-layout publication in AArch64/prealloc stack layout, not to semantic BIR or
+call-boundary address publication. Semantic BIR already copied contiguous
+`i8` lanes from `phdr->daddr` and `phdr->saddr`, and the AArch64 call lowered
+`print(flow)` with the address of `%lv.flow.0`; the bad bytes came from
+prepared frame slots assigning the fixed `%lv.flow.N` byte lanes at even
+offsets because each lane inherited `align=2`.
 
-The repair now marks aggregate slice families whose root pointer value is
-published to a non-LLVM call or pointer store as fixed home-slot families before
-frame-slot assignment. This keeps pointer-published aggregate lanes contiguous
-without applying the rule to unrelated sliced locals. The focused backend route
-snippet for local aggregate address pointer copy passes again, and `00216`
-now prints `ls21: 1 2 3 4`.
+The repair keeps fixed slice-family offsets when a dense byte-indexed family
+would otherwise be padded by lane alignment. `%lv.flow.0..31` now occupy
+contiguous byte offsets, so the pointer-published aggregate prints the expected
+`flow: 9 8 7 6 ... 6 5 4 3 ...` sequence. An earlier broad value-home remap
+was rejected during localization because it regressed prior aggregate prints;
+the accepted change is scoped to stack-layout slice offset preservation.
 
 ## Suggested Next
 
-Delegate the next packet for the new first bad fact in `00216`: `flow` now
-prints corrupt bytes after the `lt2` line even though `ls21`, `lu22`, and `lv3`
-match expected output. Localize whether `flow` is a pointer-derived aggregate
-load/store, prepared frame-slot coverage, call-boundary preservation, or
-subobject byte-layout publication issue.
+Delegate the next packet for the new first bad fact in `00216`: the
+function-pointer-table/relocation observation is now first, with
+`test_multi_relocs` printing `two/two/two` instead of `one/two/three`.
 
 ## Watchouts
 
-The function-pointer-table/relocation observation remains later in the same
-proof: `test_multi_relocs` still prints `two/two/two` instead of
-`one/two/three`, but it is no longer the first mismatch. Keep it parked unless
-a later proof makes it first. Do not turn the current aggregate-copy route into
-a relocation/table-dispatch repair.
+The function-pointer-table/relocation observation was parked while `flow` was
+first. It is now the first remaining mismatch in the focused `00216` proof.
+Treat it as a separate route decision rather than expanding the aggregate-copy
+slice silently.
 
 ## Proof
 
@@ -44,7 +43,7 @@ Ran the delegated proof exactly:
 
 Result: build completed and CTest ran 147 tests. All 146 `backend_` tests
 passed. `c_testsuite_aarch64_backend_src_00216_c` failed with
-`[RUNTIME_MISMATCH]`, but the former first bad fact is fixed:
-`ls21: 1 2 3 4` now matches expected output. The first remaining mismatch is
-`flow`, followed later by the known `two/two/two` relocation/table-dispatch
-observation. Proof log: `test_after.log`.
+`[RUNTIME_MISMATCH]`, but the former first bad fact is fixed: `ls21`, `lu22`,
+`lv3`, and `flow` now match expected output. The first remaining mismatch is
+the known `two/two/two` relocation/table-dispatch observation. Proof log:
+`test_after.log`.

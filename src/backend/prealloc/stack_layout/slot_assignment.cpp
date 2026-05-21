@@ -83,14 +83,19 @@ struct ObjectSliceLayout {
               });
 
     bool dense_ordinal_family = !entries.empty();
+    bool alignment_would_pad_slice_offsets = false;
     for (std::size_t index = 0; index < entries.size(); ++index) {
+      if (entries[index].align_bytes > entries[index].size_bytes) {
+        alignment_would_pad_slice_offsets = true;
+      }
       if (entries[index].ordinal != index ||
           (index > 0 && entries[index - 1].ordinal == entries[index].ordinal)) {
         dense_ordinal_family = false;
         break;
       }
     }
-    family_layouts[family_name].preserve_slice_offsets = !dense_ordinal_family;
+    family_layouts[family_name].preserve_slice_offsets =
+        !dense_ordinal_family || alignment_would_pad_slice_offsets;
   }
 
   return family_layouts;
