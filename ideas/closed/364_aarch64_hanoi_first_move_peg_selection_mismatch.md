@@ -1,8 +1,9 @@
 # AArch64 Hanoi First Move Peg Selection Mismatch
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/closed/363_aarch64_prepared_select_condition_join_stale_reload.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -77,6 +78,22 @@ store-address/value publication path.
   distinct index and scale registers in the representative multiply shape.
 - `00170`, `00189`, and the focused backend contracts for nearby memory,
   prepared-BIR, and AArch64 dispatch shapes remain passing.
+
+## Completion Note
+
+The first-move mismatch was localized to same-register select-materialized
+predecessor edge publication. Commit `c0466384e` repaired the general
+same-register RHS edge publication path so the generated compare in `00181`
+loads the actual edge value (`ldr w13, [sp, #112]`, `cmp w13, #0`,
+`cset w13, eq`) instead of preserving the stale no-op `mov x13, x13`.
+
+Focused before/after regression guard for the idea scope passed: the seven-test
+subset improved from 6/7 to 7/7, resolving
+`c_testsuite_aarch64_backend_src_00181_c` with no new failures. Supervisor
+broader backend guard also passed (`ctest --test-dir build -j
+--output-on-failure -R '^backend_'`, 141/141). The hook full-suite candidate
+was not accepted as a baseline because it introduced unrelated new failures
+outside this idea's scope.
 
 ## Reviewer Reject Signals
 
