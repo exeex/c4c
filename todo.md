@@ -8,65 +8,65 @@ Current Step Title: Prove Representative And Classify Residuals
 
 ## Just Finished
 
-Step 4 reran the delegated focused representative proof after commit
-`047790dac`. The selected backend tests, `00140`, and `00204` all pass; there
-is no new `00204` first bad fact in this proof.
+Step 4 close-blocker regression repair is implemented and proofed. The
+regressions introduced after `047790dac` had two independent causes:
 
-The active stdarg format-byte owner is acceptance-proven for the delegated
-subset. The representative no longer overreads from the second stdarg
-`%7s %9s ...` format string into adjacent `HFA long double:` text, and it does
-not advance to HFA, byval lane, aggregate `va_arg`, MOVI, or another known
-handoff owner under this command.
+- `00130`: the new stack-home fused-compare branch path was allowed to consume
+  a stack home for a same-block derived value. In `00130`, `%t17 = sext i8
+  %t16 to i32` had a stack-slot home, but that slot depended on a same-block
+  publication that had not run; the branch shortcut loaded `[sp, #32]` and
+  compared stale/uninitialized data instead of the loaded byte. The repair
+  restricts stack-home fused compare branching to values whose same-block
+  producer is an actual memory load, preserving the intended byte-home path
+  used by `00204` while forcing cast-derived compare operands through normal
+  value publication.
+- `00123`: the close guard exposed a pre-existing gap in register publication
+  for floating scalar compare results. `double x = 100.0; return x < 1;`
+  lowered the load but never materialized the `sitofp` operand or the
+  floating compare result, so the return moved raw FP bits through the GPR
+  return register. The repair teaches the existing value-publication helper to
+  materialize FP-producing casts (`sitofp`/`uitofp`, `fpext`/`fptrunc`) into FP
+  scratch registers and to publish `f32`/`f64` compare results with
+  `fcmp`/`cset` into the prepared GPR result home.
 
-Closure review did not close idea 331 because the plan-owner close-time
-regression guard failed. The existing 145-test `test_before.log` /
-`test_after.log` pair was rejected by the guard for equal pass count
-(`145/145` before and after). A broader full-suite close guard was then run
-using `test_baseline.log` as `test_before.log` and a fresh current full-suite
-run as `test_after.log`; it improved the overall pass count by one and resolved
-`c_testsuite_aarch64_backend_src_00140_c` plus
-`c_testsuite_aarch64_backend_src_00204_c`, but introduced two new failing
-tests relative to the baseline:
-`c_testsuite_aarch64_backend_src_00123_c` and
-`c_testsuite_aarch64_backend_src_00130_c`.
+The `00204` format-byte repair is preserved. Generated
+`build/c_testsuite_aarch64_backend/src/00204.c.s` still contains the intended
+byte-width loop terminator publication:
+`ldrb w9, [x13]`; `strb w9, [sp, #880]`; `ldrb w9, [sp, #880]`;
+`cmp w9, #0`.
+
+Focused backend coverage was added in
+`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`:
+
+- `fp_scalar_compare_result_publication_materializes_fcmp_cset` covers the
+  `00123`-style FP compare result path and asserts the route emits FP operand
+  materialization plus `fcmp`/`cset` before any GPR return move.
+- `stack_home_fused_compare_rejects_same_block_i8_extension_home` covers the
+  `00130`-style same-block i8 load plus sign extension branch path and asserts
+  the branch route uses `ldrb`/`sxtb`/`cmp`, not the stale stack-home shortcut
+  load from the derived value's stack slot.
 
 ## Watchouts
 
-Closure status: close rejected by regression guard. Do not move
-`ideas/open/331_aarch64_variadic_stdarg_cursor_format_residual.md` to
-`ideas/closed/` until the supervisor resolves or classifies the two new
-full-suite failures and reruns an accepted close gate.
-
-Keep the closure review scoped to the stdarg cursor/format-byte owner. The
-green `00204` representative means no lifecycle handoff is currently needed
-for HFA, byval aggregate, aggregate `va_arg`, MOVI, expectations, unsupported
-classification, or runner behavior.
-
-The failed full-suite close guard is a regression/lifecycle blocker, not
-evidence that the stdarg format-byte owner itself remains broken.
+This packet did not touch expectations, unsupported classifications, runners,
+HFA register-save-area code, byval aggregate lane code, `plan.md`, or
+`ideas/open/*`. The `00123` repair is limited to general FP compare value
+publication and the `00130` repair is limited to rejecting stack-home fused
+branching for same-block derived homes.
 
 ## Proof
 
-Ran the delegated Step 4 proof:
+Ran the delegated close-blocker proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00140_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00123_c|c_testsuite_aarch64_backend_src_00130_c|c_testsuite_aarch64_backend_src_00140_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log 2>&1
 ```
 
-Result: build succeeded/up to date; `backend_.*` passed;
-`c_testsuite_aarch64_backend_src_00140_c` passed;
-`c_testsuite_aarch64_backend_src_00204_c` passed. The selected test set ran
-145 tests with 0 failures (`100% tests passed, 0 tests failed out of 145`).
-`test_after.log` is the preserved proof log.
-
-Plan-owner close gate:
-
-```sh
-python3 .codex/skills/c4c-regression-guard/scripts/check_monotonic_regression.py --before test_before.log --after test_after.log
-```
-
-Result: failed. Current `test_before.log` is the copied full-suite
-`test_baseline.log`; current `test_after.log` is the fresh full-suite run.
-The guard reported `before: passed=3341 failed=33 total=3374`,
-`after: passed=3342 failed=33 total=3375`, resolved `00140` and `00204`, and
-new failures in `00123` and `00130`.
+Result: build succeeded; `backend_.*`,
+`c_testsuite_aarch64_backend_src_00123_c`,
+`c_testsuite_aarch64_backend_src_00130_c`,
+`c_testsuite_aarch64_backend_src_00140_c`, and
+`c_testsuite_aarch64_backend_src_00204_c` all passed after adding focused
+backend coverage. The selected test set ran
+147 tests with 0 failures (`100% tests passed, 0 tests failed out of 147`).
+`test_after.log` is the preserved proof log for this packet.
