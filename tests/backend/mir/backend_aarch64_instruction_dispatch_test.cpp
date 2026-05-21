@@ -11123,6 +11123,349 @@ prepare::PreparedBirModule prepared_with_dual_i32_select_global_call_arguments()
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_dynamic_index_i32_select_global_call_argument() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.i32.dynamic.select.call");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.i32.dynamic.select.call.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.i32.dynamic.select.call.entry");
+  const auto global_name =
+      prepared.names.link_names.intern("g.i32.dynamic.select.call");
+  const auto bir_global_name =
+      prepared.module.names.link_names.intern("g.i32.dynamic.select.call");
+  const auto callee_link = prepared.names.link_names.intern("consume_i32_ptr");
+  const auto index_name = prepared.names.value_names.intern("%index");
+  const auto wide_index_name = prepared.names.value_names.intern("%wide.index");
+  const auto lane0_name = prepared.names.value_names.intern("%lane0");
+  const auto lane1_name = prepared.names.value_names.intern("%lane1");
+  const auto selected_name = prepared.names.value_names.intern("%selected.dynamic");
+  const auto buffer_name = prepared.names.value_names.intern("%buffer");
+  constexpr prepare::PreparedValueId kIndexValue{410};
+  constexpr prepare::PreparedValueId kWideIndexValue{411};
+  constexpr prepare::PreparedValueId kLane0Value{412};
+  constexpr prepare::PreparedValueId kLane1Value{413};
+  constexpr prepare::PreparedValueId kSelectedValue{414};
+  constexpr prepare::PreparedValueId kBufferValue{415};
+
+  prepared.module.globals.push_back(bir::Global{
+      .name = "g.i32.dynamic.select.call",
+      .link_name_id = bir_global_name,
+      .type = bir::TypeKind::I32,
+      .size_bytes = 8,
+      .align_bytes = 4,
+  });
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.i32.dynamic.select.call",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.i32.dynamic.select.call.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%index"),
+                       .slot_name = "%index.local",
+                       .slot_id = c4c::SlotNameId{410},
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{410},
+                           },
+                   },
+                   bir::CastInst{
+                       .opcode = bir::CastOpcode::SExt,
+                       .result = bir::Value::named(bir::TypeKind::I64, "%wide.index"),
+                       .operand = bir::Value::named(bir::TypeKind::I32, "%index"),
+                   },
+                   bir::LoadGlobalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%lane0"),
+                       .global_name = "g.i32.dynamic.select.call",
+                       .global_name_id = bir_global_name,
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                   },
+                   bir::LoadGlobalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%lane1"),
+                       .global_name = "g.i32.dynamic.select.call",
+                       .global_name_id = bir_global_name,
+                       .byte_offset = 4,
+                       .align_bytes = 4,
+                   },
+                   bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I32, "%selected.dynamic"),
+                       .compare_type = bir::TypeKind::I64,
+                       .lhs = bir::Value::named(bir::TypeKind::I64, "%wide.index"),
+                       .rhs = bir::Value::immediate_i64(0),
+                       .true_value = bir::Value::named(bir::TypeKind::I32, "%lane0"),
+                       .false_value = bir::Value::named(bir::TypeKind::I32, "%lane1"),
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::Ptr, "%buffer"),
+                       .slot_name = "%buffer.local",
+                       .slot_id = c4c::SlotNameId{415},
+                       .byte_offset = 0,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{415},
+                           },
+                   },
+                   bir::CallInst{
+                       .callee = "consume_i32_ptr",
+                       .callee_link_name_id = callee_link,
+                       .args =
+                           {bir::Value::named(bir::TypeKind::I32, "%selected.dynamic"),
+                            bir::Value::named(bir::TypeKind::Ptr, "%buffer")},
+                       .arg_types = {bir::TypeKind::I32, bir::TypeKind::Ptr},
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = kIndexValue,
+               .function_name = function_name,
+               .value_name = index_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kWideIndexValue,
+               .function_name = function_name,
+               .value_name = wide_index_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kLane0Value,
+               .function_name = function_name,
+               .value_name = lane0_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kLane1Value,
+               .function_name = function_name,
+               .value_name = lane1_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w21"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kSelectedValue,
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w21"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = kBufferValue,
+               .function_name = function_name,
+               .value_name = buffer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x13"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeCall,
+              .block_index = 0,
+              .instruction_index = 6,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                       .from_value_id = kSelectedValue,
+                       .to_value_id = kSelectedValue,
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{0},
+                       .destination_register_name = std::string{"w0"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"w0"},
+                       .block_index = 0,
+                       .instruction_index = 6,
+                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                       .reason = "call_arg_selected_dynamic_i32_to_abi",
+                   },
+                   prepare::PreparedMoveResolution{
+                       .from_value_id = kBufferValue,
+                       .to_value_id = kBufferValue,
+                       .destination_kind =
+                           prepare::PreparedMoveDestinationKind::CallArgumentAbi,
+                       .destination_storage_kind =
+                           prepare::PreparedMoveStorageKind::Register,
+                       .destination_abi_index = std::size_t{1},
+                       .destination_register_name = std::string{"x1"},
+                       .destination_contiguous_width = 1,
+                       .destination_occupied_register_names = {"x1"},
+                       .block_index = 0,
+                       .instruction_index = 6,
+                       .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                       .reason = "call_arg_buffer_ptr_to_abi",
+                   }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(kIndexValue, index_name, "w20"),
+           register_storage(kWideIndexValue, wide_index_name, "x13"),
+           register_storage(kLane0Value, lane0_name, "w20"),
+           register_storage(kLane1Value, lane1_name, "w21"),
+           register_storage(kSelectedValue, selected_name, "w21"),
+           register_storage(kBufferValue, buffer_name, "x13")},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 6,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"consume_i32_ptr"},
+          .arguments =
+              {prepare::PreparedCallArgumentPlan{
+                   .instruction_index = 6,
+                   .arg_index = 0,
+                   .value_bank = prepare::PreparedRegisterBank::Gpr,
+                   .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                   .source_value_id = kSelectedValue,
+                   .source_register_name = std::string{"w21"},
+                   .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .destination_register_name = std::string{"w0"},
+                   .destination_contiguous_width = 1,
+                   .destination_occupied_register_names = {"w0"},
+                   .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+               },
+               prepare::PreparedCallArgumentPlan{
+                   .instruction_index = 6,
+                   .arg_index = 1,
+                   .value_bank = prepare::PreparedRegisterBank::Gpr,
+                   .source_encoding = prepare::PreparedStorageEncodingKind::Register,
+                   .source_value_id = kBufferValue,
+                   .source_register_name = std::string{"x13"},
+                   .source_register_bank = prepare::PreparedRegisterBank::Gpr,
+                   .destination_register_name = std::string{"x1"},
+                   .destination_contiguous_width = 1,
+                   .destination_occupied_register_names = {"x1"},
+                   .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
+               }},
+      }},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{410},
+               .function_name = function_name,
+               .offset_bytes = 0,
+               .size_bytes = 4,
+               .align_bytes = 4,
+          },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{415},
+               .function_name = function_name,
+               .offset_bytes = 8,
+               .size_bytes = 8,
+               .align_bytes = 8,
+          }},
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 16,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = index_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{410},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .result_value_name = lane0_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 0,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .result_value_name = lane1_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                       .symbol_name = global_name,
+                       .byte_offset = 4,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 5,
+               .result_value_name = buffer_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{415},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 const char* dispatch_register_for_type(bir::TypeKind type, unsigned index) {
   if (type == bir::TypeKind::F64) {
     return index == 0 ? "d0" : "d1";
@@ -25067,6 +25410,64 @@ int repeated_select_chain_materializations_use_unique_synthetic_labels() {
   return 0;
 }
 
+int selected_i32_global_read_preserves_dynamic_selector_and_call_carrier() {
+  auto prepared = prepared_with_dynamic_index_i32_select_global_call_argument();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 7 || !result.visited_terminator ||
+      block.instructions.size() < 4) {
+    return fail("expected dynamic-index select-chain call argument materialization before call: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected dynamic-index select-chain call route to print: " +
+                printed.diagnostic);
+  }
+
+  const auto select_region = printed.assembly.find("csel w21");
+  const auto search_begin =
+      select_region == std::string::npos ? std::size_t{0} : select_region;
+  const auto compare = printed.assembly.find("cmp x13, #0");
+  const auto stale_lane_compare_w = printed.assembly.find("cmp w20, #0");
+  const auto stale_lane_compare_x = printed.assembly.find("cmp x20, #0");
+  const auto selected_arg = printed.assembly.find("mov w0, w21", compare);
+  const auto pointer_arg = printed.assembly.find("mov x1, x13", selected_arg);
+  const auto call = printed.assembly.find("bl consume_i32_ptr", pointer_arg);
+  if (select_region == std::string::npos ||
+      compare == std::string::npos ||
+      (stale_lane_compare_w != std::string::npos &&
+       stale_lane_compare_w < selected_arg) ||
+      (stale_lane_compare_x != std::string::npos &&
+       stale_lane_compare_x < selected_arg) ||
+      selected_arg == std::string::npos ||
+      pointer_arg == std::string::npos ||
+      call == std::string::npos ||
+      !(compare < search_begin && search_begin < selected_arg &&
+        selected_arg < pointer_arg && pointer_arg < call)) {
+    return fail("expected dynamic selector to be preserved separately from lane registers and selected result to feed prepared call carrier before ptr arg materialization: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_defers_floating_scalar_alu_missing_fpr_facts() {
   auto prepared = prepared_with_f64_scalar_alu(bir::BinaryOpcode::Add, false);
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -25946,6 +26347,11 @@ int main() {
   }
   if (const int status =
           repeated_select_chain_materializations_use_unique_synthetic_labels();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          selected_i32_global_read_preserves_dynamic_selector_and_call_carrier();
       status != 0) {
     return status;
   }

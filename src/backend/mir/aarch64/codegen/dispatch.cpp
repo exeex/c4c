@@ -3689,13 +3689,15 @@ lower_stack_home_fused_compare_branch(
   }
 
   if (const auto* cast = std::get_if<bir::CastInst>(producer); cast != nullptr) {
+    const auto cast_index =
+        producer_instruction_index(context, producer).value_or(before_instruction_index);
     if (cast->opcode == bir::CastOpcode::SExt) {
       bir::Value source = cast->operand;
       source.type = cast->operand.type;
       if (!emit_value_publication_to_register(
               context,
               source,
-              before_instruction_index,
+              cast_index,
               target_index,
               scratch_index,
               lines,
@@ -3728,7 +3730,7 @@ lower_stack_home_fused_compare_branch(
       if (!emit_value_publication_to_register(
               context,
               source,
-              before_instruction_index,
+              cast_index,
               target_index,
               scratch_index,
               lines,
@@ -3758,7 +3760,7 @@ lower_stack_home_fused_compare_branch(
       return emit_value_publication_to_register(
           context,
           source,
-          before_instruction_index,
+          cast_index,
           target_index,
           scratch_index,
           lines,
@@ -5383,11 +5385,41 @@ materialize_direct_global_select_chain_call_argument(
         context, before_instruction_index, std::move(lines));
   }
   const auto result_view = scalar_view_for_type(value.type);
-  const auto result_register =
-      result_view.has_value()
-          ? abi::gp_register(scratches[0].index, *result_view)
-          : std::nullopt;
+  if (!result_view.has_value()) {
+    return std::nullopt;
+  }
+  std::optional<abi::RegisterReference> result_register;
+  std::optional<prepare::PreparedValueHome> result_home;
+  if (context.function.value_locations != nullptr) {
+    if (const auto* home =
+            prepare::find_prepared_value_home(*context.function.value_locations,
+                                              *value_name);
+        home != nullptr) {
+      result_home = *home;
+      if (home->kind == prepare::PreparedValueHomeKind::Register &&
+          home->register_name.has_value()) {
+        if (const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+            parsed.has_value() &&
+            parsed->bank == abi::RegisterBank::GeneralPurpose) {
+          result_register = abi::gp_register(parsed->index, *result_view);
+        }
+      }
+    }
+  }
   if (!result_register.has_value()) {
+    result_register = abi::gp_register(scratches[0].index, *result_view);
+  }
+  if (!result_register.has_value()) {
+    return std::nullopt;
+  }
+  std::optional<std::uint8_t> scratch_index;
+  for (const auto scratch : scratches) {
+    if (scratch.index != result_register->index) {
+      scratch_index = scratch.index;
+      break;
+    }
+  }
+  if (!scratch_index.has_value()) {
     return std::nullopt;
   }
   std::vector<std::string> lines;
@@ -5396,19 +5428,23 @@ materialize_direct_global_select_chain_call_argument(
   if (!emit_select_chain_value_to_register(context,
                                            value,
                                            before_instruction_index,
-                                           scratches[0].index,
-                                           scratches[1].index,
+                                           result_register->index,
+                                           *scratch_index,
                                            before_instruction_index,
                                            *value_name,
                                            lines,
                                            label_index,
-                                           active_values) ||
+                                           active_values,
+                                           true) ||
       lines.empty()) {
     return std::nullopt;
   }
   RegisterOperand emitted{
       .reg = *result_register,
       .role = RegisterOperandRole::StoragePlan,
+      .value_id = result_home.has_value()
+                      ? std::optional<prepare::PreparedValueId>{result_home->value_id}
+                      : std::nullopt,
       .value_name = *value_name,
       .prepared_bank = prepare::PreparedRegisterBank::Gpr,
       .expected_view = result_view,

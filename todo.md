@@ -1,54 +1,42 @@
 Status: Active
 Source Idea Path: ideas/open/373_aarch64_static_global_selected_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Selected Value Publication Gap
+Current Step ID: 3
+Current Step Title: Repair Selected Static/Global Value Publication
 
 # Current Packet
 
 ## Just Finished
 
-Executed Step 1 localization for `c_testsuite_aarch64_backend_src_00182_c`.
-The focused proof still fails with `RUNTIME_MISMATCH`: expected LED rendering
-for `1234567`, actual output renders every digit as the zero pattern.
+Executed idea 373 Steps 2 and 3. Added focused backend coverage for a dynamic
+selected global scalar read feeding a scalar call argument while lane registers
+and a later pointer argument use overlapping prepared carriers. The focused
+test asserts that the dynamic selector is not replaced by a selected lane
+carrier and that the selected i32 value reaches the prepared call-source
+register before the call.
 
-Prepared BIR for `print_led` is semantically correct. The digit extraction path
-stores `x % 10` through selected static lanes, and the top-line read has:
-`%t33 = load_local %lv.i`, `%t34 = sext %t33`, static lane loads
-`%t36.outer0.eltN`, then `%t36.outer0 = select eq i64 %t34, N, ...`, followed
-by `bir.call void topline(i32 %t36.outer0, ptr %t37)`. The prepared callsite
-expects arg0 from `%t36.outer0` in `x21` and arg1 from `%t37` in `x13`.
+Repair: AArch64 direct global select-chain call-argument materialization now
+targets the selected value's prepared GPR home when one exists, chooses a
+distinct scratch register, records the prepared value id/name for that carrier,
+and reloads current memory-load/cast operands at the producer boundary instead
+of trusting stale register homes from after later lane snapshots. The cast
+publication helper now recursively materializes cast operands at the cast
+producer index, not at the later consumer index, so a widened selector cannot
+reuse a register home after intervening selected lane loads have clobbered it.
 
-First bad generated AArch64 fact is in the static selected read before the
-first `topline` call. In `.LBB195_113`, the loop index is loaded and extended
-into `x13`, but lane snapshotting immediately overwrites `w20` with `d[0]`,
-`w21` with `d[1]`, and later overwrites `x13` with the buffer pointer. The
-select materialization then compares `mov w9, w20; sxtw x9, w9; cmp x9,#N`
-instead of comparing the preserved `%t34` index. It also leaves the selected
-value in scratch `w9` before `mov w0,w9`, rather than publishing the prepared
-`%t36.outer0` carrier/home (`x21`) that the call-boundary plan names.
-
-Owner boundary: AArch64 selected scalar value materialization/publication for
-static/global selected aggregate reads feeding scalar consumers. The generated
-code does not protect the selector carrier from lane loads/consumer-argument
-materialization and does not consistently publish the selected result to its
-prepared carrier before the call consumer.
-
-Rejected adjacent owners based on evidence: this is not the unsigned remainder
-or digit extraction lowering, not static/global selected store writeback, not
-the `topline`/`midline`/`botline` callees, and not a generic call ABI argument
-move bug. Older closed `00182` buckets should remain archived unless Step 2
-proves an exact boundary overlap.
+Generated `00182.c.s` now advances through the localized gap and passes. In
+`print_led`, the first selected static digit read reloads the loop index from
+`[sp,#16]` into the prepared selected-result carrier, extends it, and compares
+that value before selecting lanes: `ldr w21, [sp,#16]; sxtw x21,w21; cmp
+x21,#0 ...`. True arms load selected static lanes into `w21`, and the call
+uses the selected value from `w21` rather than stale lane `w20` or scratch `w9`.
 
 ## Suggested Next
 
-Execute Step 2: add focused backend coverage for a selected static/global
-scalar value loaded by dynamic index and consumed by a scalar call/control path.
-The test should prove that the selector carrier remains distinct from lane
-value carriers and later call/pointer argument materialization, and that the
-final selected value is published to the prepared carrier/home before the
-consumer observes it. Keep it semantic: avoid `00182`, `print_led`, one static
-symbol, 32 lanes, one register, or one exact label sequence.
+Execute Step 4 narrow proof/classification or supervisor regression guard. The
+representative and protected regressions are green in the delegated subset; any
+broader residuals should remain under the inventory umbrella unless a new first
+bad fact is found.
 
 ## Watchouts
 
@@ -62,17 +50,17 @@ fresh localization proves a handoff.
 
 ## Proof
 
-Ran exact Step 1 command:
+Ran exact Steps 2/3 proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00182_c$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00182_c|c_testsuite_aarch64_backend_src_00163_c|c_testsuite_aarch64_backend_src_00151_c|c_testsuite_aarch64_backend_src_00214_c)$' > test_after.log 2>&1
 ```
 
-Result: build completed, selected 1 test, 0 passed, 1 failed
-(`c_testsuite_aarch64_backend_src_00182_c`) with the runtime mismatch above.
-Inspection used generated
-`build/c_testsuite_aarch64_backend/src/00182.c.s` plus
-`build/c4cll --dump-prepared-bir --mir-focus-function print_led
-tests/c/external/c-testsuite/src/00182.c`. A `--trace-mir --target
-aarch64-linux-gnu` probe was not useful because the current trace route reports
-the x86/debug owner.
+Result: passed. `test_after.log` reports 147 selected tests, 147 passed, 0
+failed. This includes `backend_.*`, `00182`, and protected representatives
+`00163`, `00151`, and `00214`.
+
+Supervisor full-suite candidate against the accepted baseline also passed the
+monotonic guard: `3351` passed / `24` failed before, `3352` passed / `23`
+failed after, resolving `c_testsuite_aarch64_backend_src_00182_c` with no new
+failing tests.
