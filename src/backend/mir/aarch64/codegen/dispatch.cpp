@@ -1092,6 +1092,16 @@ lower_fused_compare_branch_from_emitted_cast(
     std::uint8_t target_index,
     std::uint8_t scratch_index,
     std::vector<std::string>& lines);
+[[nodiscard]] bool emit_select_chain_value_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    std::size_t before_instruction_index,
+    std::uint8_t target_index,
+    std::uint8_t scratch_index,
+    std::size_t root_instruction_index,
+    std::vector<std::string>& lines,
+    std::size_t& label_index,
+    std::vector<std::string_view>& active_values);
 
 [[nodiscard]] const bir::Global* find_load_global_target(
     const module::BlockLoweringContext& context,
@@ -1128,8 +1138,7 @@ lower_materialized_compare_condition_branch(
           ? prepare::find_prepared_value_home(*context.function.value_locations,
                                               *condition_name)
           : nullptr;
-  if (condition_home == nullptr ||
-      condition_home->kind != prepare::PreparedValueHomeKind::StackSlot) {
+  if (condition_home == nullptr) {
     return std::nullopt;
   }
   const auto* producer =
@@ -2819,6 +2828,20 @@ find_latest_narrow_store_for_wide_local_load(
           context, source, before_instruction_index, target_index, scratch_index, lines);
     }
     return false;
+  }
+
+  if (std::get_if<bir::SelectInst>(producer) != nullptr) {
+    std::size_t label_index = 0;
+    std::vector<std::string_view> active_values;
+    return emit_select_chain_value_to_register(context,
+                                               value,
+                                               before_instruction_index,
+                                               target_index,
+                                               scratch_index,
+                                               before_instruction_index,
+                                               lines,
+                                               label_index,
+                                               active_values);
   }
 
   const auto* binary = std::get_if<bir::BinaryInst>(producer);

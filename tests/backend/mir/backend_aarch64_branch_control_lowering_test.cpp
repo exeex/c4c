@@ -8,6 +8,7 @@
 
 #include <cstddef>
 #include <iostream>
+#include <string>
 #include <string_view>
 #include <variant>
 
@@ -806,6 +807,169 @@ prepare::PreparedBirModule prepared_with_materialized_compare_condition_clobber(
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_late_conditional_successor_after_return() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("late.cond.fn");
+  const auto entry_label = prepared.names.block_labels.intern("late.cond.entry");
+  const auto return_label = prepared.names.block_labels.intern("late.cond.return");
+  const auto body_label = prepared.names.block_labels.intern("late.cond.body");
+  const auto join_label = prepared.names.block_labels.intern("late.cond.join");
+  const auto selected_name = prepared.names.value_names.intern("%selected");
+  const auto condition_name = prepared.names.value_names.intern("%cond");
+  const auto function_link_name = prepared.module.names.link_names.intern("late.cond.fn");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern("late.cond.entry");
+  const auto bir_return_label = prepared.module.names.block_labels.intern("late.cond.return");
+  const auto bir_body_label = prepared.module.names.block_labels.intern("late.cond.body");
+  const auto bir_join_label = prepared.module.names.block_labels.intern("late.cond.join");
+  const auto selected = bir::Value::named(bir::TypeKind::I32, "%selected");
+  const auto condition = bir::Value::named(bir::TypeKind::I32, "%cond");
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {
+              prepare::PreparedControlFlowBlock{
+                  .block_label = entry_label,
+                  .terminator_kind = bir::TerminatorKind::CondBranch,
+                  .true_label = body_label,
+                  .false_label = return_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = return_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = body_label,
+                  .terminator_kind = bir::TerminatorKind::Branch,
+                  .branch_target_label = join_label,
+              },
+              prepare::PreparedControlFlowBlock{
+                  .block_label = join_label,
+                  .terminator_kind = bir::TerminatorKind::Return,
+              },
+          },
+      .branch_conditions = {prepare::PreparedBranchCondition{
+          .function_name = function_name,
+          .block_label = entry_label,
+          .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+          .condition_value = condition,
+          .predicate = bir::BinaryOpcode::Slt,
+          .compare_type = bir::TypeKind::I32,
+          .lhs = selected,
+          .rhs = bir::Value::immediate_i32(7),
+          .can_fuse_with_branch = true,
+          .true_label = body_label,
+          .false_label = return_label,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{60},
+                  .function_name = function_name,
+                  .value_name = selected_name,
+                  .kind = prepare::PreparedValueHomeKind::StackSlot,
+                  .slot_id = prepare::PreparedFrameSlotId{60},
+                  .offset_bytes = 16,
+                  .size_bytes = 4,
+                  .align_bytes = 4,
+              },
+              prepare::PreparedValueHome{
+                  .value_id = prepare::PreparedValueId{61},
+                  .function_name = function_name,
+                  .value_name = condition_name,
+                  .kind = prepare::PreparedValueHomeKind::Register,
+                  .register_name = std::string{"w21"},
+              },
+          },
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{60},
+                  .value_name = selected_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .slot_id = prepare::PreparedFrameSlotId{60},
+                  .stack_offset_bytes = 16,
+              },
+              prepare::PreparedStoragePlanValue{
+                  .value_id = prepare::PreparedValueId{61},
+                  .value_name = condition_name,
+                  .encoding = prepare::PreparedStorageEncodingKind::Register,
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .contiguous_width = 1,
+                  .register_name = std::string{"w21"},
+                  .occupied_register_names = {std::string{"w21"}},
+              },
+          },
+  });
+
+  bir::Block entry;
+  entry.label = "late.cond.entry";
+  entry.label_id = bir_entry_label;
+  entry.insts.push_back(bir::SelectInst{
+      .predicate = bir::BinaryOpcode::Eq,
+      .result = selected,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::immediate_i32(0),
+      .rhs = bir::Value::immediate_i32(0),
+      .true_value = bir::Value::immediate_i32(3),
+      .false_value = bir::Value::immediate_i32(9),
+  });
+  entry.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Slt,
+      .result = condition,
+      .operand_type = bir::TypeKind::I32,
+      .lhs = selected,
+      .rhs = bir::Value::immediate_i32(7),
+  });
+  entry.terminator = bir::CondBranchTerminator{
+      .condition = condition,
+      .true_label = "late.cond.body",
+      .false_label = "late.cond.return",
+      .true_label_id = bir_body_label,
+      .false_label_id = bir_return_label,
+  };
+
+  bir::Block early_return;
+  early_return.label = "late.cond.return";
+  early_return.label_id = bir_return_label;
+  early_return.terminator = bir::ReturnTerminator{};
+
+  bir::Block late_body;
+  late_body.label = "late.cond.body";
+  late_body.label_id = bir_body_label;
+  late_body.terminator = bir::BranchTerminator{
+      .target_label = "late.cond.join",
+      .target_label_id = bir_join_label,
+  };
+
+  bir::Block join;
+  join.label = "late.cond.join";
+  join.label_id = bir_join_label;
+  join.terminator = bir::ReturnTerminator{};
+
+  bir::Function function;
+  function.name = "late.cond.fn";
+  function.link_name_id = function_link_name;
+  function.return_type = bir::TypeKind::Void;
+  function.blocks.push_back(entry);
+  function.blocks.push_back(early_return);
+  function.blocks.push_back(late_body);
+  function.blocks.push_back(join);
+  prepared.module.functions.push_back(function);
+  return prepared;
+}
+
 int direct_dispatch_lowers_unconditional_branch_to_selected_node() {
   auto prepared = prepared_with_unconditional_branch();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -1310,6 +1474,46 @@ int non_fusable_compare_branch_control_stays_fail_closed() {
   return 0;
 }
 
+int module_print_labels_late_conditional_successor_after_return() {
+  auto prepared = prepared_with_late_conditional_successor_after_return();
+  const auto result = aarch64_codegen::compile_prepared_module(prepared);
+  if (result.error.has_value() || !result.module.has_value()) {
+    return fail("expected late conditional successor fixture to build");
+  }
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& entry_cf = function_cf.blocks[0];
+  const auto& function = result.module->mir.functions.front();
+  if (function.blocks.size() != 4 || function.blocks.front().successors.size() != 2 ||
+      function.blocks.front().successors[0].target_label != entry_cf.true_label ||
+      function.blocks.front().successors[1].target_label != entry_cf.false_label ||
+      function.blocks.front().instructions.empty()) {
+    return fail("expected entry conditional branch to keep true/false successors");
+  }
+
+  const auto printed =
+      mir::print_machine_function(function, aarch64_codegen::MachineInstructionPrinter{});
+  if (!printed.ok) {
+    return fail("expected late conditional successor fixture to print: " +
+                printed.diagnostic);
+  }
+
+  const std::string late_label = ".LBB" + std::to_string(function_cf.function_name) +
+                                 "_" + std::to_string(entry_cf.true_label) + ":\n";
+  const std::string true_branch =
+      "b.lt .LBB" + std::to_string(function_cf.function_name) + "_" +
+      std::to_string(entry_cf.true_label);
+  const auto branch_pos = printed.assembly.find(true_branch);
+  const auto return_pos = printed.assembly.find("ret");
+  const auto late_label_pos = printed.assembly.find(late_label);
+  if (branch_pos == std::string::npos || return_pos == std::string::npos ||
+      late_label_pos == std::string::npos || !(return_pos < late_label_pos)) {
+    return fail("expected conditional successor after return to stay branched and labeled: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 }  // namespace
 
 int main() {
@@ -1354,6 +1558,11 @@ int main() {
   }
   if (const int status =
           direct_dispatch_lowers_loop_header_fused_compare_branch_with_divergent_bir_label_ids();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          module_print_labels_late_conditional_successor_after_return();
       status != 0) {
     return status;
   }
