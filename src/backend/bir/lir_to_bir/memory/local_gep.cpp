@@ -868,6 +868,16 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_slot_pointer_gep(
                                                      value_aliases,
                                                      type_decls,
                                                      structured_layouts);
+  if (!resolved_target.has_value() &&
+      !local_slot_ptr_it->second.storage_type_text.empty() &&
+      local_slot_ptr_it->second.storage_type_text != local_slot_ptr_it->second.type_text) {
+    resolved_target = resolve_relative_gep_target(local_slot_ptr_it->second.storage_type_text,
+                                                  local_slot_ptr_it->second.byte_offset,
+                                                  gep,
+                                                  value_aliases,
+                                                  type_decls,
+                                                  structured_layouts);
+  }
   if (!local_slot_ptr_it->second.array_element_slots.empty() && gep.indices.size() == 1) {
     const auto parsed_index = parse_typed_operand(gep.indices.front());
     if (!parsed_index.has_value()) {
@@ -1057,11 +1067,24 @@ std::optional<bool> BirFunctionLowerer::try_lower_local_pointer_array_base_gep(
     DynamicLocalPointerArrayMap* dynamic_local_pointer_arrays,
     DynamicLocalAggregateArrayMap* dynamic_local_aggregate_arrays,
     LocalSlotPointerValues* local_slot_pointer_values) {
-  (void)type_decls;
-  (void)structured_layouts;
   const auto array_base_it = local_pointer_array_bases->find(std::string(gep.ptr.str()));
   if (array_base_it == local_pointer_array_bases->end()) {
     return std::nullopt;
+  }
+  if (local_slot_pointer_values->find(std::string(gep.ptr.str())) !=
+      local_slot_pointer_values->end()) {
+    if (!array_base_it->second.element_slots.empty()) {
+      const auto first_slot_type_it =
+          local_slot_types.find(array_base_it->second.element_slots.front());
+      const auto gep_element_layout =
+          lookup_local_gep_layout(gep.element_type.str(), type_decls, structured_layouts);
+      if (first_slot_type_it != local_slot_types.end() &&
+          first_slot_type_it->second == bir::TypeKind::I8 &&
+          (gep_element_layout.kind == AggregateTypeLayout::Kind::Struct ||
+           gep_element_layout.kind == AggregateTypeLayout::Kind::Array)) {
+        return std::nullopt;
+      }
+    }
   }
 
   if (gep.indices.empty() || gep.indices.size() > 2) {

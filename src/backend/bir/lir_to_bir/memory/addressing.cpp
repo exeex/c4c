@@ -1114,6 +1114,21 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
         value_aliases[std::string(result_name)] =
             bir::Value::named(bir::TypeKind::Ptr, std::string(slot_name));
       };
+  const auto publish_byte_storage_subobject_alias =
+      [&](std::string_view slot_name, const LocalSlotAddress& address) {
+        const auto slot_type_it = local_slot_types.find(std::string(slot_name));
+        if (slot_type_it == local_slot_types.end() ||
+            slot_type_it->second != bir::TypeKind::I8) {
+          return;
+        }
+        const auto layout =
+            lookup_addressing_layout(address.type_text, type_decls, &structured_layouts_);
+        if (layout.kind != AggregateTypeLayout::Kind::Struct &&
+            layout.kind != AggregateTypeLayout::Kind::Array) {
+          return;
+        }
+        local_slot_pointer_values.try_emplace(std::string(slot_name), address);
+      };
   const auto publish_aarch64_local_array_base_address =
       [&](std::string_view result_name) {
         if (context_.target_profile.arch != c4c::TargetArch::Aarch64) {
@@ -1355,6 +1370,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             subobject_address.array_element_slots = array_base_it->second.element_slots;
             subobject_address.array_base_index = array_base_it->second.base_index;
           }
+          publish_byte_storage_subobject_alias(leaf_it->second, subobject_address);
           local_slot_pointer_values[gep.result.str()] = std::move(subobject_address);
           publish_exact_local_pointer_owner(gep.result.str(), leaf_it->second);
           return true;
@@ -1379,6 +1395,7 @@ bool BirFunctionLowerer::lower_memory_gep_inst(
             subobject_address.array_element_slots = array_base_it->second.element_slots;
             subobject_address.array_base_index = array_base_it->second.base_index;
           }
+          publish_byte_storage_subobject_alias(leaf_it->second, subobject_address);
           local_slot_pointer_values[gep.result.str()] = std::move(subobject_address);
           publish_exact_local_pointer_owner(gep.result.str(), leaf_it->second);
         }
