@@ -1161,6 +1161,36 @@ Step 3/4 selection 2026-05-21 post-375:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-376:
+
+- Step 2 classified the current backend-regex residual surface from existing
+  `test_after.log`, source representatives, and generated artifacts under
+  `build/c_testsuite_aarch64_backend/`.
+- The captured backend subset reports 357 selected tests, 352 passed, and 5
+  residual failures. Local backend/unit tests selected by the backend regex
+  remain clean; all residuals are external `c_testsuite_aarch64_backend_*`.
+- The selected focused owner is new idea 377,
+  `ideas/open/377_aarch64_external_libc_call_result_publication.md`.
+- The lead representative is `00187`: source checks
+  `fread(freddy, 1, 6, f) != 6`, but generated AArch64 calls `fread` and then
+  compares stale `[sp, #96]` against `6` instead of the return count in `x0`.
+  The runtime prints `couldn't read fred.txt` before otherwise reading the
+  file successfully.
+- Existing open ideas do not exactly own this bucket by current evidence.
+  Recursive/call-preservation, direct argument/formal publication,
+  local/formal frame-slot publication, scalar ALU producer publication, and
+  address/pointer publication ideas are adjacent, but they do not cover
+  external/libc call return-count publication to the immediate scalar
+  comparison consumer.
+- Remaining ranked buckets stay parked under this umbrella for later
+  classification: scalar FP expression or constant materialization (`00174`),
+  aggregate initializer/compound relocation/function-pointer-table behavior
+  (`00216`), dynamic stack/VLA fixed-slot timeout (`00207`), and
+  shift/type-promotion timeout (`00200`).
+- The active lifecycle state should now use idea 377 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
