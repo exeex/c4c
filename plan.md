@@ -1,165 +1,161 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Sizeof Loop-Bound Stack Home Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/375_aarch64_local_aggregate_bitfield_layout_publication.md
+Source Idea: ideas/open/376_aarch64_sizeof_loop_bound_stack_home_publication.md
+Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after local aggregate bit-field
-layout publication closed, then select the next focused semantic owner before
-any implementation work starts.
+Repair the scalar constant or `sizeof` publication gap where AArch64 loop
+compares read compile-time loop bounds from stack homes that were never
+initialized.
 
 ## Goal
 
-Classify the current backend-matching failure surface after idea 375 and split
-or select one tractable repair owner from the remaining parked buckets.
+Make compile-time scalar loop bounds available to AArch64 loop compare
+consumers without relying on unpublished stack slots.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat pass/fail counts alone as
-owner evidence.
+Fix the semantic publication path for constant loop-bound values; do not
+special-case `00205`, one `sizeof` expression, one frame offset, or one
+emitted compare sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/376_aarch64_sizeof_loop_bound_stack_home_publication.md`
 - `todo.md`
-- `test_before.log`
-- `test_after.log`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
-- `ideas/closed/375_aarch64_local_aggregate_bitfield_layout_publication.md`
+- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `build/c_testsuite_aarch64_backend/src/00205.c.s`
+- source for `c_testsuite` case `00205.c`
+- current `test_after.log`
 
 ## Current Scope
 
-- backend-regex residual classification after closed idea 375
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- reclassification of the parked buckets after `00218` was resolved
-- selection or creation of the next focused semantic owner
+- AArch64 scalar constants and `sizeof`/constant-binary values used as loop
+  bounds.
+- Prepared value storage and selected loop-compare operand publication for
+  compile-time constants.
+- Representative external case `c_testsuite_aarch64_backend_src_00205_c`.
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
+- Do not repair global aggregate data emission for `cases`; current evidence
+  shows the data is emitted.
+- Do not reopen closed selected-value, aggregate-address, or aggregate-layout
+  owners without fresh first-bad-fact evidence.
+- Do not include external/libc call-result publication, scalar FP
+  materialization, complex aggregate initializer/relocation, dynamic-stack
+  timeout, or shift/type-promotion timeout work.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
 
 ## Working Model
 
-Closed idea 375 resolved the local aggregate bit-field layout/store mismatch
-for `00218`; matching canonical `^backend_` before/after logs reported
-144/144 backend tests passing. The remaining external AArch64 backend buckets
-from the umbrella need reclassification against the current surface before
-the next focused implementation owner is selected.
-
-Recent parked candidates include scalar constant or `sizeof` stack-home
-publication (`00205`), external/libc call-result publication (`00187`),
-scalar FP expression or constant materialization (`00174`), aggregate
-initializer or compound-relocation behavior (`00216`), dynamic stack/VLA
-fixed-slot timeout (`00207`), and shift/type-promotion timeout (`00200`).
+`00205` fails before printing any rows. The outer and inner loop bounds are
+compile-time expressions, but generated AArch64 compares loop indices against
+values loaded from unpublished stack slots. The repair should either publish
+the compile-time value into the selected home before the compare or select a
+representation that materializes the constant directly for the compare.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, runtime mismatch,
-  runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open idea scopes before choosing a route.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Start by localizing the first bad fact across source, prepared/BIR/MIR, and
+  generated AArch64 artifacts.
+- Prefer small backend coverage that proves constant or `sizeof` loop bounds
+  cannot read uninitialized homes.
+- Keep the fix at the value-publication or selected-operand layer indicated by
+  localization; avoid broad aggregate or loop-lowering rewrites unless the
+  evidence requires them.
+- Treat any new `00205` failure after this first bad fact is removed as a
+  reclassification point, not automatic scope expansion.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize Constant Loop-Bound Publication
 
-Goal: establish the current backend-regex residual surface after idea 375.
+Goal: identify where the `sizeof`/constant-binary loop-bound value loses its
+materialized value or receives an unpublished stack home.
 
-Primary target: `test_before.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether local backend/unit tests fail or whether residuals remain
-  only external `c_testsuite_aarch64_backend_*`.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: `00205.c` source, prepared dumps/helpers, and
+`build/c_testsuite_aarch64_backend/src/00205.c.s`.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Re-check the parked ranked buckets from the post-374 inventory after the
-  `00218` resolution.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by recent focused ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Trace the outer and inner loop-bound expressions from source through the
+  prepared value records and selected compare operands.
+- Identify whether the selected compare expects a stack home, register, or
+  immediate for each bound.
+- Confirm the stores, if any, that should publish the bound value before the
+  first compare.
+- Record the smallest backend subsystem boundary that owns the missing
+  publication.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` records the concrete first bad fact and the repair boundary before
+  implementation begins.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Repair Scalar Constant Home Publication
 
-Goal: choose one focused owner for implementation outside this umbrella plan.
+Goal: make compile-time scalar loop bounds available to selected AArch64 loop
+  compare consumers.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: the localized value-publication, prepared-value, or selected
+operand lowering path from Step 1.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for supervisor handoff.
+- Implement the narrow repair at the localized publication boundary.
+- Ensure constants are published to required homes before first use or are
+  selected as direct materialized operands where that is the existing model.
+- Keep stack-home behavior consistent for nearby scalar constant consumers.
+- Avoid adding filename, expression-shape, offset, or instruction-text
+  shortcuts.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused backend coverage and the `00205` representative advance past the
+  unpublished loop-bound stack-home failure.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Add Focused Coverage
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: guard the general constant or `sizeof` loop-bound publication behavior.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: local backend tests or focused c-testsuite proof selected by
+the supervisor.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Add or update narrow backend coverage for compile-time loop bounds consumed
+  by generated compares.
+- Include a shape that would fail if the compare reads an uninitialized stack
+  home.
+- Keep coverage semantic; do not assert one emitted offset or exact
+  instruction sequence unless existing backend test style requires it.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- The focused proof scope passes and would catch the old unpublished
+  stack-home behavior.
+
+### Step 4: Validate And Reclassify
+
+Goal: prove the repair and decide whether this focused owner is complete.
+
+Primary target: supervisor-selected focused tests plus any backend-regex
+subset needed for regression confidence.
+
+Actions:
+
+- Run the delegated build and proof command exactly.
+- Check whether `c_testsuite_aarch64_backend_src_00205_c` passes or exposes a
+  new first bad fact.
+- Preserve any new residual classification in `todo.md` without broadening
+  this idea silently.
+- Hand back to the supervisor for broader validation and lifecycle close.
+
+Completion check:
+
+- Proof results are recorded in `todo.md`, and any remaining `00205` residual
+  is classified outside the old loop-bound stack-home publication failure.

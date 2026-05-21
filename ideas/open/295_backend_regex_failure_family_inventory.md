@@ -1132,6 +1132,35 @@ Step 3/4 selection 2026-05-21 post-373:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-375:
+
+- Step 2 classified the current backend-regex residual surface from existing
+  `test_after.log`, generated AArch64 assembly, and source representatives:
+  6 external AArch64 failures remain after closed local aggregate bit-field
+  layout owner 375.
+- The selected focused owner is new idea 376,
+  `ideas/open/376_aarch64_sizeof_loop_bound_stack_home_publication.md`.
+- The lead representative is `00205`: source loop bounds are compile-time
+  constants derived from `sizeof(cases) / sizeof(cases[0])` and
+  `sizeof(cases->c) / sizeof(cases->c[0])`, but generated AArch64 compares
+  loop indices against uninitialized stack homes loaded from `[sp, #40]`,
+  `[sp, #32]`, `[sp, #64]`, and `[sp, #56]`. The emitted `cases:` global data
+  is present, and the runtime prints no rows, so the first bad fact is before
+  selected global element publication.
+- Existing open ideas do not exactly own this bucket by current evidence.
+  Nearby stack-home, aggregate, call-boundary, and pointer-publication ideas
+  are adjacent but do not cover compile-time scalar `sizeof` loop-bound homes
+  being consumed before publication.
+- Remaining ranked buckets stay parked under this umbrella for later
+  classification: external/libc call-result publication (`00187`), scalar FP
+  expression or constant materialization (`00174`), aggregate
+  initializer/compound relocation/function-pointer-table behavior (`00216`),
+  dynamic stack/VLA fixed-slot timeout (`00207`), and shift/type-promotion
+  timeout (`00200`).
+- The active lifecycle state should now use idea 376 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
