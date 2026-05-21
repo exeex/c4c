@@ -1,144 +1,162 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Synthetic Select Label Uniqueness Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated After: ideas/closed/331_aarch64_variadic_stdarg_cursor_format_residual.md
+Source Idea: ideas/open/364_aarch64_synthetic_select_label_uniqueness.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Reactivate the umbrella backend inventory after the stdarg format-byte owner
-closed, so the next focused repair owner is selected from current evidence
-rather than from stale parked handoffs.
+Repair the focused `00143` compile/assembler blocker selected by the backend
+inventory: duplicate synthetic select/materialized labels in generated AArch64
+assembly.
 
 ## Goal
 
-Classify the current backend failure surface, separate unrelated buckets, and
-split or select exactly one focused semantic owner before implementation work
-continues.
+Make AArch64 synthetic select labels unique across all emitted select regions
+so generated assembly cannot define the same `.Lselect_mat_*` true/end labels
+more than once.
 
 ## Core Rule
 
-This umbrella is for classification and lifecycle routing only. Do not make
-implementation edits under this plan, and do not claim progress from pass
-counts, expectation changes, runner changes, or unsupported reclassification.
+Repair the general synthetic label allocation or emission boundary. Do not
+special-case `00143`, one label suffix, one block, one selected instruction,
+or one emitted assembly neighborhood.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- `test_baseline.log`
-- `test_after.log`
-- current `ctest -R backend` output if the supervisor delegates a fresh run
-- generated AArch64 artifacts for any selected representative failures
-- existing open ideas before creating a new focused owner
+- `ideas/open/364_aarch64_synthetic_select_label_uniqueness.md`
+- `todo.md`
+- `test_after.log` from the Step 2 inventory classification
+- `build/c_testsuite_aarch64_backend/src/00143.c.s`
+- AArch64 select/materialized-label lowering and machine-printer label
+  allocation code
+- focused backend tests covering select or materialized-label emission
 
 ## Current Scope
 
-- current main-build backend-regex inventory
-- c-testsuite AArch64 backend failures still present after commit `dda380c87`
-- residual buckets from the post-369 inventory notes that remain unassigned
-- evidence-based selection of one focused owner under `ideas/open/`
+- AArch64 synthetic labels used by select/materialized-label lowering
+- duplicate label allocation, formatting, or emission within one function or
+  assembly file
+- focused backend coverage for multiple synthetic select regions
+- representative proof for `c_testsuite_aarch64_backend_src_00143_c`
 
 ## Non-Goals
 
-- Do not edit implementation files, tests, expectations, runners, timeout
-  policy, unsupported classifications, CTest registration, or proof-log
-  policy.
-- Do not reactivate parked owners solely because their files remain under
-  `ideas/open/`.
-- Do not reopen closed ideas or mutate `ideas/closed/*`.
-- Do not continue idea 326 HFA/floating work unless fresh evidence reaches a
-  standalone HFA/floating first bad fact.
-- Do not revive the closed idea 331 stdarg format-byte owner unless fresh
-  evidence contradicts its closure.
+- Do not change implementation outside the synthetic label owner unless
+  generated-code evidence requires it.
+- Do not reopen basic block label ordering or epilogue placement from idea 352
+  without fresh proof that it owns the duplicate synthetic labels.
+- Do not reopen scalar-cast source-publication or the old `00143` structured
+  register-source diagnostic.
+- Do not repair later runtime value correctness under this idea until the
+  duplicate-label assembler failure is gone and reclassified.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
 
 ## Working Model
 
-The previous focused owner, idea 331, closed after `00140`, `00204`, and the
-close-blocker representatives passed in the accepted proof set. Several open
-idea files are parked or closure-deferred because their source scope was
-satisfied but archival close was blocked by regression-guard policy. The next
-useful action is therefore an umbrella classification pass against current
-baseline evidence, followed by activation or creation of one focused owner.
+The current first bad fact is not missing block labels or fallthrough ordering.
+Generated `00143.c.s` defines the same synthetic select true/end label names
+more than once, so the assembler rejects the file before runtime. Treat the
+owner as synthetic label allocation or naming for select/materialized-label
+emission until focused evidence proves otherwise.
 
 ## Execution Rules
 
-- Start from the accepted `test_baseline.log` at `dda380c87`; request a fresh
-  backend-regex run only if that log is insufficient for classification.
-- Classify by semantic owner, not by testcase name or emitted-text shape.
-- Before creating a new idea, check whether an existing open idea already owns
-  the current first bad fact and is not merely parked for closure.
-- If a focused owner is selected, update lifecycle state to that idea before
-  any implementation packet begins.
-- Leave durable inventory findings in `todo.md` first; update the source idea
-  only for a durable deactivation or split note.
+- Start from the duplicate `.Lselect_mat_*` labels in generated `00143.c.s`.
+- Trace each duplicate name back to the selected instruction, block, or
+  emission helper that created it.
+- Add focused coverage before or with the repair so label collisions are
+  guarded independently of `00143`.
+- Preserve existing block-label ordering, scalar cast, aggregate writeback,
+  and runtime behavior.
+- If `00143` advances after the duplicate-label fix, record the new first bad
+  fact in `todo.md` instead of expanding this idea silently.
 
 ## Steps
 
-### Step 1: Capture Current Backend Inventory
+### Step 1: Localize Synthetic Label Collision
 
-Goal: establish the current failure surface after the idea 331 close and the
-accepted full-suite baseline.
+Goal: identify the exact allocation or naming boundary that reuses synthetic
+select label names.
 
-Primary target: `test_baseline.log`, `test_after.log`, and, if delegated by
-the supervisor, a fresh `ctest --test-dir build -j --output-on-failure -R
-backend` log.
-
-Actions:
-
-- Record the baseline commit, selected scope, pass/failure count, and failed
-  test names.
-- Separate local backend/unit failures from external AArch64 c-testsuite
-  backend failures.
-- Note which previously active representatives now pass, especially `00140`,
-  `00204`, `00123`, and `00130`.
-- Identify any failures that require generated assembly, dumps, or timeout
-  quarantine before classification.
-
-Completion check:
-
-- `todo.md` contains the current classified inventory source, counts, failed
-  tests, and any evidence gaps that block owner selection.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group the current failures into semantic owners and reject stale parked
-handoffs.
-
-Primary target: failed AArch64 backend representatives and nearby generated
-artifacts or dump tests.
+Primary target: generated `00143.c.s`, selected AArch64 records for the
+matching select/materialized regions, and the relevant label helper code.
 
 Actions:
 
-- Compare each candidate bucket against existing open ideas.
-- Mark parked closure-deferred ideas as non-active unless fresh evidence shows
-  their exact owner has returned.
-- For each viable bucket, name the first bad fact, owning boundary, and proof
-  artifact needed for a focused packet.
-- Quarantine timeout-only cases unless there is a safe bounded reproducer.
+- List the duplicated true/end labels and every definition site in the
+  generated assembly.
+- Map each definition site back to the selected node, block, instruction id,
+  or emission helper that produced it.
+- Determine whether the collision is caused by insufficient uniqueness inputs,
+  counter reset, copied label records, or repeated formatting during emission.
+- Confirm whether idea 352 block-label ordering is downstream or unrelated.
 
 Completion check:
 
-- `todo.md` records the leading focused owner candidate, rejected adjacent
-  owners, and the evidence for the selection.
+- `todo.md` names the first bad fact, owning backend boundary, and the focused
+  coverage shape needed for the repair.
 
-### Step 3: Split Or Select One Focused Owner
+### Step 2: Add Focused Collision Coverage
 
-Goal: leave the umbrella plan only after one implementation-ready owner exists.
+Goal: lock the duplicate synthetic label owner to a focused backend contract.
 
-Primary target: `ideas/open/*.md`, plus `plan.md` / `todo.md` lifecycle state.
+Primary target: backend tests or dump coverage that can force multiple
+synthetic select/materialized-label regions in one emitted unit.
 
 Actions:
 
-- If an existing open idea owns the selected bucket, switch lifecycle state to
-  that idea.
-- If no existing idea owns it, create a new focused idea with concrete scope,
-  acceptance criteria, and reviewer reject signals.
-- Preserve a compact deactivation note in idea 295 naming the selected owner,
-  proof basis, and remaining parked buckets.
-- Do not leave implementation instructions under this umbrella once a focused
-  owner is selected.
+- Add or extend focused coverage for at least two synthetic select regions
+  whose labels would collide before the repair.
+- Assert uniqueness of emitted labels or absence of duplicate definitions.
+- Keep the test semantic, not tied to the exact `00143` label spelling.
 
 Completion check:
 
-- Active lifecycle state points to one focused source idea under
-  `ideas/open/`, or `todo.md` states the exact classification blocker.
+- Focused coverage fails before the repair or directly guards the previously
+  duplicated synthetic label allocation path.
+
+### Step 3: Repair General Label Uniqueness
+
+Goal: ensure synthetic select labels are unique wherever AArch64 emission uses
+them.
+
+Primary target: the allocation, naming, or emission helper localized in
+Step 1.
+
+Actions:
+
+- Implement the smallest general uniqueness repair for synthetic
+  select/materialized labels.
+- Preserve deterministic assembly where practical.
+- Avoid widening the fix into unrelated block traversal or runtime value
+  repairs unless Step 1 proves that owner.
+- Run build proof before focused and representative tests.
+
+Completion check:
+
+- Focused coverage passes and generated AArch64 no longer contains duplicate
+  synthetic select labels for the covered shape.
+
+### Step 4: Prove Representative And Classify Residual
+
+Goal: prove `00143` advances past the duplicate-label assembler failure and
+classify any next first bad fact.
+
+Primary target: focused backend coverage and
+`c_testsuite_aarch64_backend_src_00143_c`.
+
+Actions:
+
+- Run the supervisor-delegated build and focused proof command.
+- Inspect generated `00143.c.s` for duplicate `.Lselect_mat_*` definitions.
+- If `00143` still fails, classify the next first bad fact and decide whether
+  it remains in this idea or needs lifecycle handoff.
+- Ask the supervisor whether broader backend-regex or regression-guard proof
+  is needed before closure.
+
+Completion check:
+
+- `00143` no longer fails for duplicate synthetic select labels, and any
+  remaining failure is explicitly classified in `todo.md`.

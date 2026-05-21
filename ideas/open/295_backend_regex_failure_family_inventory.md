@@ -961,6 +961,38 @@ Lifecycle switch 2026-05-21 post-369:
   `sizeof` materialization, complex aggregate initializer/object layout,
   unsigned enum bit-field layout, and the two timeout-only residuals.
 
+Step 3 selection 2026-05-21 post-331:
+
+- Step 2 classified 12 current non-timeout AArch64 backend residuals using
+  `test_after.log` and generated artifacts after commit `61a786326`.
+- The selected focused owner is new idea 364,
+  `ideas/open/364_aarch64_synthetic_select_label_uniqueness.md`, for the
+  `00143` compile/assembler failure caused by duplicate generated synthetic
+  select labels such as `.Lselect_mat_1_24_164_37_true` and its `_end` label.
+- Existing open ideas do not exactly own this bucket by current evidence:
+  `ideas/open/352_aarch64_block_label_emission_ordering.md` is adjacent basic
+  block label/epilogue ordering work, while this fact is duplicate synthetic
+  select/materialized-label allocation inside emitted AArch64 assembly; the
+  old `00143` scalar-cast source-publication thread is likewise not the
+  current owner.
+- Remaining non-timeout buckets stay parked under this umbrella for later
+  classification: pointer constant comparison result publication, indexed
+  local/global aggregate element writeback, local pointer reassignment
+  writeback, scalar FP expression materialization, unsigned div/rem or local
+  array digit publication, conditional operator/select value materialization,
+  libc file-call result publication, constant `sizeof` or global aggregate
+  metadata, complex aggregate initializer/object layout, and unsigned enum
+  bit-field storage/load layout. `00200` and `00207` remain timeout-only
+  quarantine cases.
+
+Lifecycle switch 2026-05-21 post-331:
+
+- Umbrella inventory idea 295 is parked after creating focused owner idea 364,
+  `ideas/open/364_aarch64_synthetic_select_label_uniqueness.md`.
+- The active lifecycle state should now use idea 364 for implementation. The
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
