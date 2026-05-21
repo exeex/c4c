@@ -1,8 +1,9 @@
 # AArch64 Function Pointer Table Relocation Dispatch
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/closed/379_aarch64_local_aggregate_copy_load_publication.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -71,6 +72,28 @@ of a shared lowering boundary.
   in `todo.md`.
 - Backend-focused proof keeps the 146 backend tests passing and preserves the
   aggregate outputs repaired under idea 379.
+
+## Closure Notes
+
+Idea 380 is complete. The route localized the remaining `00216.c`
+`test_multi_relocs` failure to multi-entry function-pointer table relocation
+dispatch, added focused backend coverage independent of the external filename,
+and repaired the general lowering path without expectation movement or
+filename/symbol special-casing.
+
+Close proof:
+
+- Regression guard passed on the canonical `test_before.log` and
+  `test_after.log` pair.
+- Before: 146 passed, 1 failed, 147 total in the selected backend plus
+  `00216` scope.
+- After: 148 passed, 0 failed, 148 total in the same selected scope.
+- The resolved failing test was
+  `backend_codegen_route_aarch64_global_function_pointer_table_selected_indirect_call`.
+- `c_testsuite_aarch64_backend_src_00216_c` passes in the after proof, so the
+  prior `test_multi_relocs` `two/two/two` mismatch is gone.
+- Full-suite baseline review accepted the advancement, and `00216` was removed
+  from the full-suite failure baseline before closure.
 
 ## Reviewer Reject Signals
 
