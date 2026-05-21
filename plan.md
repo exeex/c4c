@@ -1,156 +1,152 @@
-# AArch64 Synthetic Select Label Uniqueness Runbook
+# AArch64 Signed Remainder Lowering Runbook
 
 Status: Active
-Source Idea: ideas/open/364_aarch64_synthetic_select_label_uniqueness.md
-Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/365_aarch64_signed_remainder_lowering.md
+Activated From: ideas/open/364_aarch64_synthetic_select_label_uniqueness.md
 
 ## Purpose
 
-Repair the focused `00143` compile/assembler blocker selected by the backend
-inventory: duplicate synthetic select/materialized labels in generated AArch64
-assembly.
+Repair the `00143` runtime residual exposed after duplicate synthetic
+select-label generation was fixed: signed `count % 8` lowering computes the
+wrong selector.
 
 ## Goal
 
-Make AArch64 synthetic select labels unique across all emitted select regions
-so generated assembly cannot define the same `.Lselect_mat_*` true/end labels
-more than once.
+Make AArch64 signed remainder lowering compute `a - (a / b) * b` using the
+original divisor for the multiply-subtract operand.
 
 ## Core Rule
 
-Repair the general synthetic label allocation or emission boundary. Do not
-special-case `00143`, one label suffix, one block, one selected instruction,
-or one emitted assembly neighborhood.
+Repair signed remainder lowering generally. Do not special-case `00143`, one
+Duff's-device dispatch, literal `8`, one register, or one emitted
+`sdiv`/`msub` sequence.
 
 ## Read First
 
-- `ideas/open/364_aarch64_synthetic_select_label_uniqueness.md`
+- `ideas/open/365_aarch64_signed_remainder_lowering.md`
 - `todo.md`
-- `test_after.log` from the Step 2 inventory classification
+- `test_after.log`
 - `build/c_testsuite_aarch64_backend/src/00143.c.s`
-- AArch64 select/materialized-label lowering and machine-printer label
-  allocation code
-- focused backend tests covering select or materialized-label emission
+- AArch64 scalar div/rem lowering and scalar ALU materialization code
+- focused backend tests for signed division/remainder or scalar ALU records
 
 ## Current Scope
 
-- AArch64 synthetic labels used by select/materialized-label lowering
-- duplicate label allocation, formatting, or emission within one function or
-  assembly file
-- focused backend coverage for multiple synthetic select regions
+- signed integer `%` lowering in AArch64
+- dividend/divisor/quotient carrier preservation around `sdiv`
+- `msub` operand selection for signed remainder
+- focused coverage for signed remainder feeding switch or scalar consumers
 - representative proof for `c_testsuite_aarch64_backend_src_00143_c`
 
 ## Non-Goals
 
-- Do not change implementation outside the synthetic label owner unless
-  generated-code evidence requires it.
-- Do not reopen basic block label ordering or epilogue placement from idea 352
-  without fresh proof that it owns the duplicate synthetic labels.
-- Do not reopen scalar-cast source-publication or the old `00143` structured
-  register-source diagnostic.
-- Do not repair later runtime value correctness under this idea until the
-  duplicate-label assembler failure is gone and reclassified.
+- Do not continue synthetic select-label work under this plan.
+- Do not reopen unsigned div/rem idea 350 unless fresh evidence proves the
+  signed boundary also owns an unsigned residual.
+- Do not repair later `00143` runtime failures after signed remainder advances
+  without lifecycle classification.
 - Do not change expectations, unsupported classifications, runners, timeout
   policy, proof-log policy, or CTest registration.
 
 ## Working Model
 
-The current first bad fact is not missing block labels or fallthrough ordering.
-Generated `00143.c.s` defines the same synthetic select true/end label names
-more than once, so the assembler rejects the file before runtime. Treat the
-owner as synthetic label allocation or naming for select/materialized-label
-emission until focused evidence proves otherwise.
+Generated AArch64 currently computes the quotient for `39 / 8` as `4`, then
+forms the remainder with `msub w13, w9, w9, w13`, effectively subtracting
+`4 * 4` from the dividend. The remainder path must preserve or rematerialize
+the original divisor and use it in the multiply-subtract, yielding
+`39 - 4 * 8 == 7`.
 
 ## Execution Rules
 
-- Start from the duplicate `.Lselect_mat_*` labels in generated `00143.c.s`.
-- Trace each duplicate name back to the selected instruction, block, or
-  emission helper that created it.
-- Add focused coverage before or with the repair so label collisions are
-  guarded independently of `00143`.
-- Preserve existing block-label ordering, scalar cast, aggregate writeback,
-  and runtime behavior.
-- If `00143` advances after the duplicate-label fix, record the new first bad
-  fact in `todo.md` instead of expanding this idea silently.
+- Start from the bad `sdiv`/`msub` sequence in generated `00143.c.s`.
+- Trace the dividend, divisor, quotient, and remainder destination through
+  selected records and emitted instructions.
+- Add focused coverage before or with the repair for signed remainder
+  materialization.
+- Preserve unsigned div/rem behavior, scalar ALU materialization, switch
+  lowering, and the idea 364 label uniqueness repair.
+- If `00143` advances after signed remainder is fixed, record the new first
+  bad fact in `todo.md` instead of expanding this idea silently.
 
 ## Steps
 
-### Step 1: Localize Synthetic Label Collision
+### Step 1: Localize Signed Remainder Operand Flow
 
-Goal: identify the exact allocation or naming boundary that reuses synthetic
-select label names.
+Goal: identify the exact AArch64 lowering boundary that replaces the original
+divisor with the quotient in the remainder `msub`.
 
-Primary target: generated `00143.c.s`, selected AArch64 records for the
-matching select/materialized regions, and the relevant label helper code.
+Primary target: generated `00143.c.s`, selected AArch64 records for
+`count % 8`, and scalar div/rem lowering helpers.
 
 Actions:
 
-- List the duplicated true/end labels and every definition site in the
-  generated assembly.
-- Map each definition site back to the selected node, block, instruction id,
-  or emission helper that produced it.
-- Determine whether the collision is caused by insufficient uniqueness inputs,
-  counter reset, copied label records, or repeated formatting during emission.
-- Confirm whether idea 352 block-label ordering is downstream or unrelated.
+- Locate the `count % 8` lowered sequence and record the expected dividend,
+  divisor, quotient, and destination registers or homes.
+- Trace whether the divisor is clobbered, not preserved, or incorrectly mapped
+  to the quotient register before `msub`.
+- Name the first backend boundary where the wrong operand fact becomes
+  authoritative.
+- Decide the focused coverage shape needed before repair.
 
 Completion check:
 
-- `todo.md` names the first bad fact, owning backend boundary, and the focused
-  coverage shape needed for the repair.
+- `todo.md` names the first bad fact, owning backend boundary, and coverage
+  requirement for signed remainder lowering.
 
-### Step 2: Add Focused Collision Coverage
+### Step 2: Add Focused Signed Remainder Coverage
 
-Goal: lock the duplicate synthetic label owner to a focused backend contract.
+Goal: guard signed remainder materialization independently of `00143`.
 
-Primary target: backend tests or dump coverage that can force multiple
-synthetic select/materialized-label regions in one emitted unit.
+Primary target: backend scalar ALU or instruction-dispatch coverage that can
+assert the signed remainder `sdiv`/`msub` operand relationship.
 
 Actions:
 
-- Add or extend focused coverage for at least two synthetic select regions
-  whose labels would collide before the repair.
-- Assert uniqueness of emitted labels or absence of duplicate definitions.
-- Keep the test semantic, not tied to the exact `00143` label spelling.
+- Add or extend focused coverage for signed `%` with a nontrivial quotient and
+  divisor.
+- Assert the multiply-subtract uses the original divisor operand, not the
+  quotient twice.
+- Include a consumer shape such as switch selection or scalar publication if
+  needed to expose the localized boundary.
 
 Completion check:
 
-- Focused coverage fails before the repair or directly guards the previously
-  duplicated synthetic label allocation path.
+- Focused coverage fails before the repair or directly guards the bad operand
+  relation.
 
-### Step 3: Repair General Label Uniqueness
+### Step 3: Repair Signed Remainder Lowering
 
-Goal: ensure synthetic select labels are unique wherever AArch64 emission uses
-them.
+Goal: make signed remainder lowering preserve and use the divisor correctly.
 
-Primary target: the allocation, naming, or emission helper localized in
-Step 1.
+Primary target: the scalar div/rem lowering or operand-publication helper
+localized in Step 1.
 
 Actions:
 
-- Implement the smallest general uniqueness repair for synthetic
-  select/materialized labels.
-- Preserve deterministic assembly where practical.
-- Avoid widening the fix into unrelated block traversal or runtime value
-  repairs unless Step 1 proves that owner.
+- Implement the smallest general repair for signed remainder operand
+  selection.
+- Preserve deterministic register use where practical.
+- Avoid changes to unsigned div/rem unless the localized helper is shared and
+  focused proof covers both paths.
 - Run build proof before focused and representative tests.
 
 Completion check:
 
-- Focused coverage passes and generated AArch64 no longer contains duplicate
-  synthetic select labels for the covered shape.
+- Focused coverage passes and generated AArch64 for the covered shape uses
+  the original divisor in the signed remainder `msub`.
 
 ### Step 4: Prove Representative And Classify Residual
 
-Goal: prove `00143` advances past the duplicate-label assembler failure and
-classify any next first bad fact.
+Goal: prove `00143` advances past the bad `count % 8` selector and classify
+any next first bad fact.
 
 Primary target: focused backend coverage and
 `c_testsuite_aarch64_backend_src_00143_c`.
 
 Actions:
 
-- Run the supervisor-delegated build and focused proof command.
-- Inspect generated `00143.c.s` for duplicate `.Lselect_mat_*` definitions.
+- Run the supervisor-delegated build and proof command.
+- Inspect generated `00143.c.s` for the corrected signed remainder sequence.
 - If `00143` still fails, classify the next first bad fact and decide whether
   it remains in this idea or needs lifecycle handoff.
 - Ask the supervisor whether broader backend-regex or regression-guard proof
@@ -158,5 +154,5 @@ Actions:
 
 Completion check:
 
-- `00143` no longer fails for duplicate synthetic select labels, and any
+- `00143` no longer fails from `count % 8` producing selector `23`; any
   remaining failure is explicitly classified in `todo.md`.

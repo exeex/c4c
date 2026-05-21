@@ -1,6 +1,6 @@
 # AArch64 Synthetic Select Label Uniqueness
 
-Status: Open
+Status: Parked - scope satisfied; close deferred
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
@@ -86,3 +86,20 @@ Reject the route if it:
   lifecycle split;
 - proves only the external `00143` representative while leaving nearby focused
   synthetic select/materialized-label collision behavior untested.
+
+## Lifecycle Handoff
+
+2026-05-21: Scope satisfied after commit `a591ae012` repaired duplicate
+synthetic select/materialized-label generation. Step 4 proof after commit
+`214e3d510` shows generated
+`build/c_testsuite_aarch64_backend/src/00143.c.s` now contains 152
+`.Lselect_mat_*` definitions with zero duplicates, and the representative
+advances past assembly into a runtime `exit=1`.
+
+Closure was rejected by the strict close-time regression guard because the
+matching focused scope stayed at 143/144 passing with the same failing
+`c_testsuite_aarch64_backend_src_00143_c` representative. The remaining first
+bad fact is outside this idea: signed `count % 8` lowering computes
+`39 - 4 * 4 == 23` via `sdiv` followed by `msub` using the quotient as the
+multiplier operand instead of computing `39 - 4 * 8 == 7`. Active lifecycle
+switches to `ideas/open/365_aarch64_signed_remainder_lowering.md`.
