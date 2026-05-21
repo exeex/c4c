@@ -1,8 +1,9 @@
 # AArch64 Recursive Pointer Formal Home Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
-Split From: ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md
+Closed: 2026-05-21
+Split From: ideas/closed/355_aarch64_address_valued_memory_call_argument_publication.md
 
 ## Goal
 
@@ -23,6 +24,36 @@ generated code initializes those homes only on the base-case path before
 
 This is adjacent to earlier call-argument preservation work, but distinct from
 idea 355's address-valued external-call publication boundary.
+
+## Completion Notes
+
+The recursive pointer-formal home publication scope is complete.
+
+Commit `778f52274` added focused sibling-control-flow backend coverage and
+repaired preserved-home population so a prior preservation suppresses a fresh
+callee-saved home population only when the prior call is in the same block
+before the current call or its block dominates the current block.
+
+Generated `00181` AArch64 advanced past the original pointer-formal first bad
+fact. The recursive path now publishes incoming `%p.source` and `%p.dest` into
+`x20` and `x21` before recursive/helper-call consumers use those homes.
+Focused proof kept backend contracts passing and preserved idea 355
+representatives `00170` and `00189`.
+
+The remaining `00181` `RUNTIME_NONZERO` failure is a different first bad fact:
+after recursive/helper calls, generated AArch64 computes the later `n - 1`
+from clobbered `w0` instead of the preserved `%p.n` stack home. That residual
+is split to
+`ideas/open/358_aarch64_recursive_scalar_formal_post_call_preservation.md`.
+
+Close-time regression note: the canonical root `test_before.log` and
+`test_after.log` present at lifecycle close time were from different scopes
+(backend inventory versus focused Step 2/3 proof), so the standard root-log
+comparison was not a valid close gate. The plan owner did not modify proof logs
+because the delegated packet explicitly marked proof logs as do-not-touch. The
+lifecycle close relies on the supervisor-provided backend guard
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`, which passed
+141/141, plus the focused Step 2/3 proof evidence above.
 
 ## In Scope
 
@@ -69,7 +100,7 @@ Reject the route if it:
   policy, proof-log policy, or CTest registration;
 - claims progress through helper renames or classification-only notes while
   recursive paths can still pass uninitialized callee-saved pointer homes;
-- broadens into semantic string-load repair, frontend admission, ABI
-  composite handling, or variadic/scalar residuals without a lifecycle split;
+- broadens into semantic string-load repair, frontend admission, ABI composite
+  handling, or variadic/scalar residuals without a lifecycle split;
 - regresses address-valued call-argument publication for the already passing
   `00170` and `00189` representatives.
