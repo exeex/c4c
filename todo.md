@@ -1,16 +1,31 @@
 Status: Active
 Source Idea Path: ideas/open/295_backend_regex_failure_family_inventory.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Classify Residual Buckets
+Current Step ID: 4
+Current Step Title: Handoff Lifecycle
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 classified the current residual buckets, focusing first on the only
-non-timeout residual, `c_testsuite_aarch64_backend_src_00216_c`.
+Step 3 selected the next focused owner for implementation outside this
+umbrella inventory. No existing open idea exactly owns the current `00216`
+first bad fact: the closed idea 374 local aggregate address-call owner repaired
+the earlier stale `print(ls)`/`&local_aggregate` call publication shape, while
+the current crash is later inside `foo` through an apparently uninitialized
+stack-slot-derived pointer used by a local aggregate copy/load-local-memory
+path.
 
+Created focused source idea:
+`ideas/open/379_aarch64_local_aggregate_copy_load_publication.md`.
+
+Owner decision: idea 379 owns the current non-timeout residual because it is
+centered on `00216` `foo` local aggregate initializer/copy/pointer-load and
+flexible-array wrapper access lowering, with acceptance requiring the current
+`ldrb w9, [x10]` segfault to advance without filename-specific matching and
+without expectation, runner, timeout, allowlist, CTest, or proof-log changes.
+
+The Step 2 classification details remain the evidence for this selection.
 `00216` is a runtime nonzero/crash bucket, not a compile, assembler, linker,
 runner, timeout, or expectation bucket. The delegated focused proof reproduces
 `[RUNTIME_NONZERO] .../00216.c exit=Segmentation fault`.
@@ -56,19 +71,15 @@ allowlist, CTest registration, or implementation changes were made.
 
 ## Suggested Next
 
-Step 3 should select or create a focused owner before any implementation work.
-Candidate owner ranking:
+Step 4 should switch lifecycle state from umbrella idea 295 to focused idea
+379 before any implementation work begins. Preserve the parked buckets for
+later inventory reactivation:
 
-1. New focused `00216` AArch64 local aggregate copy/load-local-memory crash
-   owner, centered on `foo` stack-slot address publication for nested local
-   struct copies and flexible-array wrapper accesses. Acceptance should prove
-   the current `foo` segfault advances without filename-specific matching and
-   without changing expectations/runners/timeouts.
-2. `00216` follow-on relocation/function-pointer-table audit only after the
+1. `00216` follow-on relocation/function-pointer-table audit only after the
    `foo` crash advances; generated `test_multi_relocs` already suggests an
    index-insensitive indirect-call table dispatch, but it is not yet the first
    failing fact.
-3. Timeout-specific owner for `00207` dynamic stack/VLA fixed-slot behavior or
+2. Timeout-specific owner for `00207` dynamic stack/VLA fixed-slot behavior or
    `00200` shift/type-promotion timeout only if the supervisor intentionally
    parks the non-timeout crash and selects a timeout route.
 
@@ -77,9 +88,12 @@ Candidate owner ranking:
 This umbrella is for classification and focused-owner selection only. Do not
 implement fixes under idea 295. `00174` remains absent from the Step 1 backend
 failure list and should stay closed unless fresh proof contradicts that
-boundary. `00216` should not be solved by a named-case shortcut; the focused
-owner needs a semantic/backend lowering rule for valid local aggregate
-copy/load-local-memory address materialization.
+boundary. `00216` should not be solved by a named-case shortcut; idea 379
+requires a semantic/backend lowering rule for valid local aggregate
+copy/load-local-memory address or value publication. Do not fold later
+compound relocation/function-pointer-table behavior into idea 379 until the
+current `foo` crash advances and fresh first-bad-fact evidence justifies that
+handoff.
 
 ## Proof
 
