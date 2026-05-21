@@ -1,9 +1,23 @@
 # AArch64 Indexed Aggregate Snapshot Writeback Regression
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 Follow-up To: ideas/closed/348_aarch64_indexed_aggregate_address_writeback.md
+Closed: 2026-05-21
+
+## Closure Summary
+
+Completed by implementation commits `f0e556f6f` and `3bbe5f8f0`, with proof
+updates `db9145c1c` and `9c9758163`. The selected aggregate snapshot
+publication repair made `c_testsuite_aarch64_backend_src_00157_c` and
+`c_testsuite_aarch64_backend_src_00176_c` pass; the refinement repaired the
+scaled pointer publication clobber exposed by `00181` while preserving the
+representatives and backend subset. Narrow proof passed `backend_.*`,
+`00157`, `00176`, and `00181` at 146/146. The accepted full-suite guard
+improved from `3347` passed / `28` failed to `3350` passed / `25` failed,
+resolving `00157`, `00176`, and `00183` with no new failing tests. The
+canonical full-suite baseline was rolled forward to the `3bbe5f8f0` result.
 
 ## Goal
 
