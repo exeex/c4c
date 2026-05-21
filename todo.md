@@ -8,56 +8,77 @@ Current Step Title: Repair Pointer-Local Address Publication
 
 ## Just Finished
 
-Executed idea 372 Steps 2 and 3 as one implementation packet.
+Refined idea 372 Step 3 again and refreshed Step 4 representative proof notes
+for the second full-suite regression found after the `00151` refinement.
 
 Coverage added:
 
-- `backend_aarch64_instruction_dispatch` now has a focused
-  pointer-local reassignment fixture where a pointer local first receives one
-  address, then receives a distinct computed global-subobject address, and a
-  later reload/dereference must observe the reassigned address.
+- `backend_aarch64_instruction_dispatch` now also covers a stack-homed scalar
+  compare result feeding a logical-not-style XOR consumer. The test requires
+  the compare result to be published before any logical consumer can read the
+  prepared stack home or reuse the live compare register.
+- `backend_aarch64_instruction_dispatch` now covers a same-width `zext` stack
+  publication for a logical-not value feeding a boolean branch path. The test
+  requires the already-emitted logical value to be stored into the prepared
+  stack home before any later branch materialization can observe or rederive
+  the value.
 
 Repair:
 
-- BIR lowering for AArch64 now publishes nonzero global/subobject GEP pointer
-  values as explicit pointer `add` values instead of only recording them in
-  global-address side tables. This gives later scalar pointer-local stores a
-  real `%t34 = bir.add ptr @global, offset` source instead of an anonymous
-  side-table-only address.
-- AArch64 `StoreLocal` publication now materializes direct global pointer
-  values and `pointer_base_plus_offset` computed-address homes into a scratch
-  register and stores that address into the pointer local home before later
-  reload/dereference consumers.
+- Regression cause: the `00151` compare result `%t14` is intentionally
+  stack-homed after the idea 372 pointer-address publication changes increased
+  pressure. AArch64 compare publication emitted `cmp`/`cset` but discarded the
+  prepared `result_stack_offset_bytes`, so the following logical-not path
+  reloaded stale stack bytes from `[sp]`.
+- Refinement: scalar compare publication now uses the existing scalar ALU stack
+  publication helper to store stack-homed compare results immediately after
+  `cset`.
+- Second regression cause: `00214` lowered `!r` through a compare, XOR, and a
+  prepared same-width `zext` stack home before branching. The stack publication
+  for the no-op `zext i32 -> i32` re-materialized the logical-not expression
+  instead of storing the already-emitted XOR value, which added a second
+  boolean inversion and sent the non-null `r` path to `wrong4`.
+- Refinement: same-width zero-extension stack publication now publishes the
+  emitted scalar source register directly to the prepared stack home when that
+  source is already available, avoiding duplicate logical-not materialization.
+  The control cast helper also accepts same-width zero-extension as a valid
+  no-op publication.
 
-Representative result: `00163` passes. Generated `00163.c.s` now materializes
-the final `&(bolshevic.b)` assignment as `adrp/add bolshevic`, `add x13, x20,
-#4`, then `str x13, [sp, #8]`; the final reload uses `[sp, #8]` and dereferences
-the stored global-subobject pointer, so the old `b = &a` value is no longer
-consumed.
+Representative results: `00151`, `00163`, and `00214` pass. Generated
+`00151.c.s` still loads `arr+36` and `arr+96`, then emits `cmp w20, w21`,
+`cset w9, eq`, `str w9, [sp]` before the logical-not path. Generated
+`00163.c.s` still materializes `bolshevic + 4`, stores that computed pointer
+into `[sp, #8]`, and reloads it before the final dereference. Generated
+`00214.c.s` now computes `r != 0`, XORs once for `!r`, stores that value with
+`str w13, [sp, #12]`, then reloads and branches; for non-null `r`, the branch
+falls through to the `okay` arm.
 
 ## Suggested Next
 
-Execute Step 4 narrow proof/classification for idea 372: rerun the
-representative `00163` proof from the committed baseline, inspect the final
-assembly publication shape, and record whether any residual remains. Supervisor
-still owns broader backend-regex/full-suite guard before closure.
+Supervisor should run the broader/full regression guard before accepting idea
+372 closure, since this packet repaired two full-suite regressions exposed by
+previous narrow proofs.
 
 ## Watchouts
 
-The repair is semantic, not `00163`-shaped: it covers pointer-valued
-global/subobject address publication into scalar pointer locals and leaves the
+This refinement is not `00151`- or `00214`-shaped: it repairs the general
+stack-homed scalar compare publication path and the same-width zero-extension
+stack publication path. The pointer-local address publication behavior from
+idea 372 remains intact for `00163`; closed ideas 294/355 and unrelated
 external-call return, static selected arrays, aggregate initializer, FP,
-bit-field, timeout, and idea 371 selected-aggregate buckets untouched. Closed
-ideas 294/355 remain adjacent archive context only.
+bit-field, timeout, and idea 371 selected-aggregate buckets remain out of
+scope.
 
 ## Proof
 
-Delegated Steps 2/3 command:
+Delegated refinement command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00163_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00163_c|c_testsuite_aarch64_backend_src_00151_c|c_testsuite_aarch64_backend_src_00214_c)$' > test_after.log 2>&1
 ```
 
-Result: build completed; CTest selected 144 tests and all 144 passed,
-including local `backend_.*` coverage and
-`c_testsuite_aarch64_backend_src_00163_c`. Proof log is `test_after.log`.
+Result: build completed; CTest selected 146 tests and all 146 passed,
+including local `backend_.*` coverage,
+`c_testsuite_aarch64_backend_src_00163_c`,
+`c_testsuite_aarch64_backend_src_00151_c`, and
+`c_testsuite_aarch64_backend_src_00214_c`. Proof log is `test_after.log`.

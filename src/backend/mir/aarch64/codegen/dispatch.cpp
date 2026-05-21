@@ -7184,7 +7184,8 @@ lower_scalar_cast_publication_to_prepared_register(
 lower_scalar_cast_publication_to_prepared_stack(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
-    std::size_t instruction_index) {
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
   const auto* cast = std::get_if<bir::CastInst>(&inst);
   const auto result = instruction_result_value(inst);
   if (cast == nullptr || !result.has_value()) {
@@ -7211,6 +7212,30 @@ lower_scalar_cast_publication_to_prepared_stack(
   }
 
   std::vector<std::string> lines;
+  const auto source_bits = integer_bit_width(cast->operand.type);
+  const auto result_bits = integer_bit_width(cast->result.type);
+  if (cast->opcode == bir::CastOpcode::ZExt && source_bits.has_value() &&
+      result_bits.has_value() && *source_bits == *result_bits &&
+      cast->operand.kind == bir::Value::Kind::Named) {
+    const auto source_name = prepared_named_value_id(context, cast->operand);
+    const auto source_view = scalar_view_for_type(cast->operand.type);
+    const auto emitted_source =
+        source_name.has_value()
+            ? find_emitted_scalar_register(scalar_state, *source_name)
+            : std::nullopt;
+    if (source_view.has_value() && emitted_source.has_value() &&
+        emitted_source->reg.bank == abi::RegisterBank::GeneralPurpose) {
+      const auto source_register =
+          abi::gp_register(emitted_source->reg.index, *source_view);
+      if (source_register.has_value()) {
+        lines.push_back(std::string{*mnemonic} + " " +
+                        std::string{abi::register_name(*source_register)} + ", " +
+                        frame_slot_address(*home->offset_bytes));
+        return make_select_chain_materialization_instruction(
+            context, instruction_index, std::move(lines));
+      }
+    }
+  }
   if (!emit_value_publication_to_register(context,
                                           *result,
                                           instruction_index + 1,
@@ -9148,7 +9173,7 @@ InstructionDispatchResult dispatch_prepared_block(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_cast_publication_to_prepared_stack(
-              context, inst, instruction_index)) {
+              context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (is_current_block_join_parallel_copy_source(context, inst)) {
         continue;

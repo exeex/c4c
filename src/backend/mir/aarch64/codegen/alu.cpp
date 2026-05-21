@@ -1769,7 +1769,7 @@ materialize_control_binary_result_source(
                         abi::register_name(*widened) + ", #0, #" +
                         std::to_string(*source_bits));
       }
-      return *source_bits < *result_bits;
+      return *source_bits <= *result_bits;
     case bir::CastOpcode::Trunc:
       return *source_bits > *result_bits;
     default:
@@ -1993,7 +1993,14 @@ lower_scalar_compare_publication(
   std::ostringstream cset;
   cset << "cset " << *result << ", " << *condition;
   lines.push_back(cset.str());
-  (void)result_stack_offset_bytes;
+  const auto publication = scalar_alu_stack_publication_lines(
+      ScalarAluRecord{.result_type = binary.result.type,
+                      .result_stack_offset_bytes = result_stack_offset_bytes},
+      *result);
+  if (!publication.has_value()) {
+    return std::nullopt;
+  }
+  lines.insert(lines.end(), publication->begin(), publication->end());
   record_emitted_scalar_register(scalar_state,
                                  result_register.value_name,
                                  result_register);
