@@ -159,6 +159,24 @@ std::optional<HomogeneousFpAggregateFacts> homogeneous_fp_aggregate_facts(
   return pointer_address;
 }
 
+[[nodiscard]] PointerAddress runtime_pointer_address_from_global_address(
+    const bir::Value& base_value,
+    const lir_to_bir_detail::GlobalAddress& address,
+    const BirFunctionLowerer::GlobalTypes& global_types) {
+  const auto global_it = global_types.find(address.global_name);
+  const std::string storage_type_text =
+      global_it != global_types.end() ? global_it->second.type_text : std::string{};
+  return PointerAddress{
+      .base_value = base_value,
+      .value_type = address.value_type,
+      .byte_offset = 0,
+      .storage_type_text = storage_type_text,
+      .type_text = address.value_type != bir::TypeKind::Void
+                       ? render_type(address.value_type)
+                       : storage_type_text,
+  };
+}
+
 void publish_runtime_local_pointer_slot_address(std::string_view slot_name,
                                                 const bir::Value& stored_value,
                                                 const LocalSlotAddressSlots& local_slot_address_slots,
@@ -1775,7 +1793,10 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
   if (const auto addr_it = local_address_slots.find(slot); addr_it != local_address_slots.end()) {
     const bool preserve_loaded_pointer_provenance =
         local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
-    if (!preserve_loaded_pointer_provenance) {
+    if (preserve_loaded_pointer_provenance) {
+      (*pointer_value_addresses)[result] = runtime_pointer_address_from_global_address(
+          bir::Value::named(bir::TypeKind::Ptr, result), addr_it->second, global_types);
+    } else {
       if (addr_it->second.byte_offset == 0 &&
           is_known_function_global_address(addr_it->second, function_symbols)) {
         (*value_aliases)[result] = bir::Value::named_symbol_pointer(
@@ -1791,36 +1812,24 @@ bool BirFunctionLowerer::try_lower_tracked_local_pointer_slot_load(
         (*global_pointer_slots)[result] = *honest_base;
         return true;
       }
+      (*global_pointer_slots)[result] = addr_it->second;
     }
-    (*global_pointer_slots)[result] = addr_it->second;
   }
   if (const auto pointer_slot_it = local_pointer_slot_addresses.find(slot);
       pointer_slot_it != local_pointer_slot_addresses.end()) {
-    if (context_.target_profile.arch == c4c::TargetArch::Aarch64) {
-      // Loading a mutable pointer slot produces the current runtime pointer
-      // value. The slot may have been initialized from another SSA value, but
-      // after a store/reload cycle follow-on AArch64 GEPs must use the loaded
-      // value as their base for local-home publication.
-      (*pointer_value_addresses)[result] = PointerAddress{
-          .base_value = bir::Value::named(bir::TypeKind::Ptr, result),
-          .value_type = pointer_slot_it->second.value_type,
-          .byte_offset = 0,
-          .dynamic_element_count = pointer_slot_it->second.dynamic_element_count,
-          .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
-          .storage_type_text = pointer_slot_it->second.storage_type_text,
-          .type_text = pointer_slot_it->second.type_text,
-      };
-    } else {
-      const bool preserve_loaded_pointer_provenance =
-          local_indirect_pointer_slots.find(slot) != local_indirect_pointer_slots.end();
-      if (!preserve_loaded_pointer_provenance && pointer_slot_it->second.byte_offset == 0 &&
-          pointer_slot_it->second.base_value.kind == bir::Value::Kind::Named) {
-        (*value_aliases)[result] = pointer_slot_it->second.base_value;
-        (*pointer_value_addresses)[result] = pointer_slot_it->second;
-        return true;
-      }
-      (*pointer_value_addresses)[result] = pointer_slot_it->second;
-    }
+    // Loading a mutable pointer slot produces the current runtime pointer
+    // value. The slot may have been initialized from another SSA value, but
+    // after a store/reload cycle follow-on GEPs and byte loads must use the
+    // loaded value as their base instead of reusing stale base+offset facts.
+    (*pointer_value_addresses)[result] = PointerAddress{
+        .base_value = bir::Value::named(bir::TypeKind::Ptr, result),
+        .value_type = pointer_slot_it->second.value_type,
+        .byte_offset = 0,
+        .dynamic_element_count = pointer_slot_it->second.dynamic_element_count,
+        .dynamic_element_stride_bytes = pointer_slot_it->second.dynamic_element_stride_bytes,
+        .storage_type_text = pointer_slot_it->second.storage_type_text,
+        .type_text = pointer_slot_it->second.type_text,
+    };
   }
 
   lowered_insts->push_back(bir::LoadLocalInst{

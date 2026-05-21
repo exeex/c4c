@@ -91,6 +91,7 @@ int expect_link_name_id_extern_identity_rejects_unresolved_id();
 int expect_dynamic_global_scalar_array_loads_carry_link_name_id();
 int expect_dynamic_global_scalar_array_loads_reject_missing_link_name_spelling();
 int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
+int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
 int expect_pointer_initializer_symbol_names_carry_link_name_id();
 int expect_pointer_value_symbol_identity_carrier();
 int expect_addressed_global_pointer_provenance_uses_link_name_id_keys();
@@ -822,6 +823,124 @@ int expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility() {
   }
   if (dynamic_load_count == 0) {
     return fail("raw dynamic scalar-array fixture should materialize global loads");
+  }
+  return 0;
+}
+
+int expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base() {
+  LirModule module;
+  module.target_profile = c4c::target_profile_from_triple("x86_64-unknown-linux-gnu");
+
+  LirGlobal string_global;
+  string_global.name = ".str0";
+  string_global.qualifier = "constant ";
+  string_global.llvm_type = "[4 x i8]";
+  string_global.init_text = "c\"abc\\00\"";
+  string_global.align_bytes = 1;
+  module.globals.push_back(std::move(string_global));
+
+  LirFunction function;
+  function.name = "string_backed_incremented_pointer_carrier_load";
+  function.signature_text = "define i8 @string_backed_incremented_pointer_carrier_load()";
+  function.return_type = c4c::TypeSpec{.base = c4c::TB_CHAR};
+  function.alloca_insts.push_back(LirAllocaOp{
+      .result = LirOperand("%lv.p"),
+      .type_str = "ptr",
+      .count = LirOperand(""),
+      .align = 8,
+  });
+
+  LirBlock entry;
+  entry.label = "entry";
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%str.base"),
+      .element_type = c4c::codegen::lir::LirTypeRef("[4 x i8]"),
+      .ptr = LirOperand("@.str0"),
+      .inbounds = true,
+      .indices = {"i64 0", "i64 0"},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%str.base"),
+      .ptr = LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%current.ptr"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(LirGepOp{
+      .result = LirOperand("%advanced.ptr"),
+      .element_type = c4c::codegen::lir::LirTypeRef("i8"),
+      .ptr = LirOperand("%current.ptr"),
+      .inbounds = true,
+      .indices = {"i64 1"},
+  });
+  entry.insts.push_back(LirStoreOp{
+      .type_str = "ptr",
+      .val = LirOperand("%advanced.ptr"),
+      .ptr = LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%reloaded.ptr"),
+      .type_str = "ptr",
+      .ptr = LirOperand("%lv.p"),
+  });
+  entry.insts.push_back(LirLoadOp{
+      .result = LirOperand("%loaded.byte"),
+      .type_str = "i8",
+      .ptr = LirOperand("%reloaded.ptr"),
+  });
+  entry.terminator = LirRet{
+      .value_str = "%loaded.byte",
+      .type_str = "i8",
+  };
+  function.blocks.push_back(std::move(entry));
+  module.functions.push_back(std::move(function));
+
+  auto result = try_lower_to_bir_with_options(module, BirLoweringOptions{});
+  if (!result.module.has_value()) {
+    return fail("string-backed incremented pointer carrier fixture should lower to BIR");
+  }
+
+  const c4c::backend::bir::Function* lowered_function = nullptr;
+  for (const auto& candidate : result.module->functions) {
+    if (candidate.name == "string_backed_incremented_pointer_carrier_load") {
+      lowered_function = &candidate;
+      break;
+    }
+  }
+  if (lowered_function == nullptr || lowered_function->blocks.empty()) {
+    return fail("string-backed incremented pointer carrier fixture lost the lowered function");
+  }
+
+  bool saw_pointer_base_load = false;
+  bool saw_fixed_global_byte_load = false;
+  for (const auto& block : lowered_function->blocks) {
+    for (const auto& inst : block.insts) {
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadLocalInst>(&inst);
+          load != nullptr && load->result.name == "%loaded.byte" &&
+          load->address.has_value() &&
+          load->address->base_kind ==
+              c4c::backend::bir::MemoryAddress::BaseKind::PointerValue &&
+          (load->address->base_value.name == "%reloaded.ptr" ||
+           load->address->base_value.name == "%advanced.ptr") &&
+          load->address->size_bytes == 1) {
+        saw_pointer_base_load = true;
+      }
+      if (const auto* load = std::get_if<c4c::backend::bir::LoadGlobalInst>(&inst);
+          load != nullptr && load->result.name == "%loaded.byte" &&
+          load->global_name == ".str0") {
+        saw_fixed_global_byte_load = true;
+      }
+    }
+  }
+
+  if (saw_fixed_global_byte_load) {
+    return fail("incremented pointer-carrier dereference must not become a fixed .str0 byte load");
+  }
+  if (!saw_pointer_base_load) {
+    return fail("incremented pointer-carrier dereference should load from the current pointer base");
   }
   return 0;
 }
@@ -7413,6 +7532,12 @@ int main() {
           expect_dynamic_global_scalar_array_loads_keep_no_id_compatibility();
       dynamic_global_array_raw_identity_status != 0) {
     return dynamic_global_array_raw_identity_status;
+  }
+
+  if (const int string_pointer_carrier_load_status =
+          expect_string_backed_incremented_pointer_carrier_load_uses_pointer_base();
+      string_pointer_carrier_load_status != 0) {
+    return string_pointer_carrier_load_status;
   }
 
   if (const int pointer_initializer_identity_status =
