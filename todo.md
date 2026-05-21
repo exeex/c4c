@@ -1,54 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/366_aarch64_string_literal_pointer_null_comparison.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair General Pointer Constant Comparison
+Current Step ID: 4
+Current Step Title: Prove Representative And Classify Residual
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 added focused AArch64 dispatch coverage for a direct string-literal
-pointer/null comparison. The test now requires string address materialization
-to precede `cmp x..., #0`, `cset w..., eq`, and the final I32 return
-publication, proving the boolean result is defined before return.
+Step 4 proved the representative `00112` case on implementation baseline
+`ef4f45482`.
 
-Step 3 repaired the general direct string-pointer comparison path:
-`lir_to_bir` now rewrites string-pointer aliases in pointer compare operands,
-not only call arguments; stack-layout prepared addressing now publishes
-pointer-value string materializations for binary operands; AArch64 dispatch can
-emit exact-instruction address materializations together with scalar compare
-publication; and scalar immediate operands now include pointer null immediates.
-For `00112`, prepared BIR now carries `bir.eq ptr @.str0, 0`, prepared
-addressing records a string materialization for `@.str0`, and generated AArch64
-emits `adrp`/`add`, `cmp`, and `cset` before returning the result.
+Generated AArch64 in
+`build/c_testsuite_aarch64_backend/src/00112.c.s` now advances past the stale
+pointer-comparison return. The first block is:
 
-Refinement before supervisor acceptance tightened the implementation without
-changing the capability: AArch64 address-materialized scalar lowering now uses
-a trial scalar state and commits materialized-address/result publications only
-after scalar lowering succeeds, and the LIR-to-BIR string-pointer compare
-rewrite now falls back to result-name pairing when LIR and BIR pointer compare
-counts differ.
+```asm
+main:
+    adrp x20, .str0
+    add x20, x20, :lo12:.str0
+    cmp x20, #0
+    cset w13, eq
+    mov x0, x13
+    ret
+```
+
+This proves the direct string-literal pointer operand is materialized before
+the null comparison, and the boolean compare result is published before return.
+The previous first bad fact, `mov x0, x13` without any defining
+materialization/`cmp`/`cset`, is gone.
+
+Residual classification: no new first bad fact remains for `00112` in the
+representative proof. The test passes.
 
 ## Suggested Next
 
-Supervisor can review the pointer-constant comparison slice for commit
-readiness or delegate the next active packet.
+Supervisor can accept Step 4 for idea 366 and decide whether to close the idea
+or run any broader regression guard required by lifecycle policy.
 
 ## Watchouts
 
-The repair remains distinct from idea 356 dynamic pointer-derived byte loads:
-no byte-load owner code or C test expectations were changed. The implementation
-is general for direct string-pointer compare operands and pointer null
-immediates, without `.str0` or register-specific handling.
+Step 4 touched only `todo.md` and `test_after.log`. The proof is representative
+only for `00112`; broader acceptance remains supervisor-owned.
 
 ## Proof
 
-Ran the delegated proof:
+Ran the delegated Step 4 proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00112_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00112_c$' > test_after.log 2>&1
 ```
 
-Result: passed. `test_after.log` reports 144/144 tests passed, including
-`backend_.*` and `c_testsuite_aarch64_backend_src_00112_c`.
+Result: passed. `test_after.log` reports 1/1 test passed for
+`c_testsuite_aarch64_backend_src_00112_c`.
