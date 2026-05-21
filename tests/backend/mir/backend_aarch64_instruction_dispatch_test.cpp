@@ -8131,6 +8131,92 @@ prepare::PreparedBirModule prepared_with_stack_homed_pointer_value_store() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_pointer_index_byte_offset_scale() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.pointer.byte.offset");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.pointer.byte.offset.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.pointer.byte.offset.entry");
+  const auto index_name = prepared.names.value_names.intern("%idx64");
+  const auto offset_name = prepared.names.value_names.intern("%byte_offset");
+
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+              .slot_id = prepare::PreparedFrameSlotId{81},
+              .object_id = prepare::PreparedObjectId{81},
+              .function_name = function_name,
+              .offset_bytes = 40,
+              .size_bytes = 8,
+              .align_bytes = 8,
+              .fixed_location = true,
+          }},
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.pointer.byte.offset",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.pointer.byte.offset.entry",
+              .insts =
+                  {bir::BinaryInst{
+                      .opcode = bir::BinaryOpcode::Mul,
+                      .result = bir::Value::named(bir::TypeKind::I64, "%byte_offset"),
+                      .operand_type = bir::TypeKind::I64,
+                      .lhs = bir::Value::named(bir::TypeKind::I64, "%idx64"),
+                      .rhs = bir::Value::immediate_i64(4),
+                  }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{81},
+               .function_name = function_name,
+               .value_name = index_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{81},
+               .offset_bytes = std::size_t{40},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{82},
+               .function_name = function_name,
+               .value_name = offset_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x9",
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{81},
+                              index_name,
+                              prepare::PreparedFrameSlotId{81},
+                              40),
+           register_storage(prepare::PreparedValueId{82}, offset_name, "x9")},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_simple_integer_cast(
     bir::CastOpcode opcode = bir::CastOpcode::SExt,
     bir::TypeKind source_type = bir::TypeKind::I32,
@@ -22256,6 +22342,50 @@ int block_dispatch_lowers_stack_homed_pointer_value_store_writeback() {
   return 0;
 }
 
+int block_dispatch_keeps_pointer_index_and_scale_registers_distinct() {
+  auto prepared = prepared_with_pointer_index_byte_offset_scale();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 1 ||
+      block.instructions.empty()) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected pointer byte-offset scale multiply to lower: ops=" +
+                std::to_string(result.visited_operations) +
+                " instructions=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected pointer byte-offset scale route to print: " +
+                printed.diagnostic);
+  }
+  const auto load_index = printed.assembly.find("ldr x9, [sp, #40]");
+  const auto load_scale = printed.assembly.find("mov x10, #4");
+  const auto multiply = printed.assembly.find("mul x9, x9, x10");
+  if (load_index == std::string::npos ||
+      load_scale == std::string::npos ||
+      multiply == std::string::npos ||
+      !(load_index < load_scale && load_scale < multiply) ||
+      printed.assembly.find("mov x9, #4") != std::string::npos ||
+      printed.assembly.find("mul x9, x9, x9") != std::string::npos) {
+    return fail("expected pointer byte-offset scale to preserve index carrier: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_publishes_stack_homed_pointer_value_load_chain() {
   auto prepared = prepared_with_stack_homed_pointer_value_load_chain();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -22639,6 +22769,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_stack_homed_pointer_value_store_writeback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_keeps_pointer_index_and_scale_registers_distinct();
       status != 0) {
     return status;
   }
