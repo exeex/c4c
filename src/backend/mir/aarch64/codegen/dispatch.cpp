@@ -5869,9 +5869,6 @@ publish_stack_preserved_call_values(
     }
     const auto emitted =
         find_emitted_scalar_register(scalar_state, preserved.value_name);
-    if (!emitted.has_value() || !abi::is_gp_register(emitted->reg)) {
-      continue;
-    }
     std::optional<abi::RegisterView> expected_view;
     if (*preserved.stack_size_bytes == 8) {
       expected_view = abi::RegisterView::X;
@@ -5882,7 +5879,55 @@ publish_stack_preserved_call_values(
     } else {
       continue;
     }
-    const auto source_reg = abi::gp_register(emitted->reg.index, *expected_view);
+    const bool has_prior_stack_preservation = [&]() {
+      const auto* call_plans =
+          context.function.call_plans != nullptr
+              ? context.function.call_plans
+              : (context.function.prepared != nullptr &&
+                         context.function.control_flow != nullptr
+                     ? prepare::find_prepared_call_plans(
+                           *context.function.prepared,
+                           context.function.control_flow->function_name)
+                     : nullptr);
+      if (call_plans == nullptr) {
+        return false;
+      }
+      for (const auto& call : call_plans->calls) {
+        if (call.block_index != context.block_index ||
+            call.instruction_index >= instruction_index) {
+          continue;
+        }
+        for (const auto& prior : call.preserved_values) {
+          if (prior.value_id == preserved.value_id &&
+              prior.route == prepare::PreparedCallPreservationRoute::StackSlot) {
+            return true;
+          }
+        }
+      }
+      return false;
+    }();
+    std::optional<abi::RegisterReference> source_register;
+    if (emitted.has_value() && abi::is_gp_register(emitted->reg)) {
+      source_register = emitted->reg;
+    } else if (!has_prior_stack_preservation &&
+               context.function.value_locations != nullptr) {
+      const auto* home =
+          prepare::find_prepared_value_home(*context.function.value_locations,
+                                            preserved.value_id);
+      if (home != nullptr &&
+          home->kind == prepare::PreparedValueHomeKind::Register &&
+          home->register_name.has_value()) {
+        const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+        if (parsed.has_value() &&
+            parsed->bank == abi::RegisterBank::GeneralPurpose) {
+          source_register = *parsed;
+        }
+      }
+    }
+    if (!source_register.has_value()) {
+      continue;
+    }
+    const auto source_reg = abi::gp_register(source_register->index, *expected_view);
     if (!source_reg.has_value()) {
       continue;
     }
@@ -6848,6 +6893,43 @@ InstructionDispatchResult dispatch_prepared_block(
                                      *move_record->destination_register);
     }
   };
+  auto record_call_boundary_source_in_destination =
+      [&](const module::MachineInstruction& instruction) {
+    const auto* move_record =
+        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+    if (move_record == nullptr || !move_record->destination_register.has_value()) {
+      return;
+    }
+    std::optional<prepare::PreparedValueId> source_value_id;
+    c4c::ValueNameId source_value_name = c4c::kInvalidValueName;
+    if (move_record->source_memory.has_value() &&
+        move_record->source_memory->result_value_name.has_value()) {
+      source_value_id = move_record->source_memory->result_value_id;
+      source_value_name = *move_record->source_memory->result_value_name;
+    } else if (move_record->source_register.has_value() &&
+               move_record->source_register->value_name != c4c::kInvalidValueName) {
+      source_value_id = move_record->source_register->value_id;
+      source_value_name = move_record->source_register->value_name;
+    }
+    if (source_value_name == c4c::kInvalidValueName) {
+      return;
+    }
+    auto source_alias = *move_record->destination_register;
+    source_alias.value_id = source_value_id;
+    source_alias.value_name = source_value_name;
+    record_emitted_scalar_register(scalar_state, source_value_name, source_alias);
+  };
+  auto call_boundary_move_reloads_prepared_stack_source =
+      [](const module::MachineInstruction& instruction) {
+    const auto* move_record =
+        std::get_if<CallBoundaryMoveInstructionRecord>(&instruction.target.payload);
+    return move_record != nullptr &&
+           move_record->phase == prepare::PreparedMovePhase::BeforeInstruction &&
+           move_record->source_memory.has_value() &&
+           move_record->source_memory->support == MemoryOperandSupportKind::Prepared &&
+           move_record->source_memory->base_kind == MemoryBaseKind::FrameSlot &&
+           move_record->source_memory->byte_offset_is_prepared_snapshot;
+  };
 
   auto retarget_call_boundary_source_to_emitted_scalar =
       [&](module::MachineInstruction& instruction) {
@@ -6982,6 +7064,21 @@ InstructionDispatchResult dispatch_prepared_block(
           memory_instruction_index != memory_lowering_index &&
           prepared_memory_access_matches_instruction(
               context, prepared_index_access, inst);
+      if (std::get_if<bir::BinaryInst>(&inst) != nullptr) {
+        for (auto& before_instruction_move : lower_value_moves(
+                 context,
+                 prepare::PreparedMovePhase::BeforeInstruction,
+                 instruction_index,
+                 diagnostics)) {
+          if (!call_boundary_move_reloads_prepared_stack_source(
+                  before_instruction_move)) {
+            continue;
+          }
+          record_call_boundary_destination(before_instruction_move);
+          record_call_boundary_source_in_destination(before_instruction_move);
+          block.instructions.push_back(std::move(before_instruction_move));
+        }
+      }
       if (const auto* call = std::get_if<bir::CallInst>(&inst)) {
         if (auto dynamic_stack = lower_dynamic_stack_helper_call(
                 context, *call, instruction_index, diagnostics)) {

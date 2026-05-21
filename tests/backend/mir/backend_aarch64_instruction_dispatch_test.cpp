@@ -2463,6 +2463,55 @@ prepare::PreparedBirModule prepared_with_preserved_argument_non_call_reuse() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_stack_preserved_argument_non_call_reuse() {
+  auto prepared = prepared_with_preserved_argument_non_call_reuse();
+  auto& function = prepared.value_locations.functions.front();
+  auto& arg_home = function.value_homes.front();
+  arg_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  arg_home.register_name.reset();
+  arg_home.slot_id = prepare::PreparedFrameSlotId{44};
+  arg_home.offset_bytes = std::size_t{32};
+  arg_home.size_bytes = std::size_t{8};
+  arg_home.align_bytes = std::size_t{8};
+
+  function.move_bundles.insert(
+      function.move_bundles.begin() + 1,
+      prepare::PreparedMoveBundle{
+          .function_name = function.function_name,
+          .phase = prepare::PreparedMovePhase::BeforeInstruction,
+          .block_index = 0,
+          .instruction_index = 1,
+          .moves =
+              {prepare::PreparedMoveResolution{
+                  .from_value_id = prepare::PreparedValueId{141},
+                  .to_value_id = prepare::PreparedValueId{142},
+                  .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                  .destination_storage_kind =
+                      prepare::PreparedMoveStorageKind::Register,
+                  .destination_register_name = std::string{"x22"},
+                  .destination_contiguous_width = 1,
+                  .destination_occupied_register_names = {"x22"},
+                  .block_index = 0,
+                  .instruction_index = 1,
+                  .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                  .reason = "consumer_stack_to_register",
+              }},
+      });
+
+  auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  preserved.route = prepare::PreparedCallPreservationRoute::StackSlot;
+  preserved.callee_saved_save_index.reset();
+  preserved.register_name.reset();
+  preserved.register_bank.reset();
+  preserved.occupied_register_names.clear();
+  preserved.slot_id = prepare::PreparedFrameSlotId{44};
+  preserved.stack_offset_bytes = std::size_t{32};
+  preserved.stack_size_bytes = std::size_t{8};
+  preserved.stack_align_bytes = std::size_t{8};
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_cross_block_call_preserved_argument_reuse() {
   auto prepared = prepared_with_nested_call_preserved_argument_reuse();
   auto& function = prepared.module.functions.front();
@@ -13286,6 +13335,72 @@ int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   return 0;
 }
 
+int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
+  auto prepared = prepared_with_stack_preserved_argument_non_call_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 3 || !result.visited_terminator ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6 ||
+      !diagnostics.empty()) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected stack-preserved scalar reload, scalar use, later call, and return: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* reload =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[1].target.payload);
+  if (reload == nullptr || !reload->source_memory.has_value() ||
+      !reload->destination_register.has_value() ||
+      reload->source_memory->byte_offset != 32 ||
+      reload->destination_register->reg != aarch64_module::abi::x_register(22)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected before-instruction stack home reload to seed x22: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* scalar =
+      std::get_if<aarch64_module::codegen::ScalarInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (scalar == nullptr || !scalar->scalar_alu.has_value()) {
+    return fail("expected scalar add after stack-home reload");
+  }
+  const auto* lhs =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(
+          &scalar->scalar_alu->lhs.payload);
+  if (lhs == nullptr || lhs->reg != aarch64_module::abi::x_register(22)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected scalar add to read reloaded stack home, not stale x1: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-preserved scalar route to print: " + printed.diagnostic);
+  }
+  const auto first_call = printed.assembly.find("bl clobber_arg");
+  const auto stack_reload = printed.assembly.find("ldr x22, [sp, #32]", first_call);
+  const auto preserved_scalar = printed.assembly.find("add x22, x22, #1", stack_reload);
+  const auto stale_scalar = printed.assembly.find("add x22, x1, #1", first_call);
+  if (first_call == std::string::npos ||
+      stack_reload == std::string::npos ||
+      preserved_scalar == std::string::npos ||
+      (stale_scalar != std::string::npos && stale_scalar < preserved_scalar)) {
+    return fail("expected later non-call scalar use to consume stack-preserved home: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -22268,6 +22383,11 @@ int main() {
   }
   if (const int status =
           preserved_home_feeds_later_non_call_scalar_after_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          stack_preserved_home_feeds_later_non_call_scalar_after_clobber();
       status != 0) {
     return status;
   }

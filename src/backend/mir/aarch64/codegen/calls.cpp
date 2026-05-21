@@ -1842,6 +1842,42 @@ find_prior_preserved_value_for_value(
   return selected;
 }
 
+[[nodiscard]] const prepare::PreparedCallPreservedValue*
+find_prior_stack_preserved_value_before_instruction(
+    const module::BlockLoweringContext& context,
+    prepare::PreparedValueId value_id,
+    std::size_t instruction_index) {
+  const auto* call_plans =
+      context.function.call_plans != nullptr
+          ? context.function.call_plans
+          : (context.function.prepared != nullptr && context.function.control_flow != nullptr
+                 ? prepare::find_prepared_call_plans(
+                       *context.function.prepared, context.function.control_flow->function_name)
+                 : nullptr);
+  if (call_plans == nullptr) {
+    return nullptr;
+  }
+
+  const prepare::PreparedCallPreservedValue* selected = nullptr;
+  for (const auto& call : call_plans->calls) {
+    if (call.block_index != context.block_index ||
+        call.instruction_index >= instruction_index) {
+      continue;
+    }
+    for (const auto& preserved : call.preserved_values) {
+      if (preserved.value_id == value_id &&
+          preserved.route == prepare::PreparedCallPreservationRoute::StackSlot &&
+          preserved.slot_id.has_value() &&
+          preserved.stack_offset_bytes.has_value() &&
+          preserved.stack_size_bytes.has_value() &&
+          *preserved.stack_size_bytes != 0) {
+        selected = &preserved;
+      }
+    }
+  }
+  return selected;
+}
+
 [[nodiscard]] bool value_spelling_matches(const bir::Value& value,
                                           std::string_view spelling) {
   return value.kind == bir::Value::Kind::Named && value.name == spelling;
@@ -5116,6 +5152,30 @@ std::vector<module::MachineInstruction> lower_value_moves(
         continue;
       }
       move_record.source_immediate = immediate;
+    } else if (const auto* prior_stack_preserved =
+                   phase == prepare::PreparedMovePhase::BeforeInstruction
+                       ? find_prior_stack_preserved_value_before_instruction(
+                             context, move.from_value_id, instruction_index)
+                       : nullptr;
+               prior_stack_preserved != nullptr) {
+      move_record.source_memory = MemoryOperand{
+          .surface = RecordSurfaceKind::MachineInstructionNode,
+          .support = MemoryOperandSupportKind::Prepared,
+          .function_name = context.function.control_flow->function_name,
+          .block_label = context.control_flow_block->block_label,
+          .instruction_index = instruction_index,
+          .result_value_id = prior_stack_preserved->value_id,
+          .result_value_name = prior_stack_preserved->value_name,
+          .base_kind = MemoryBaseKind::FrameSlot,
+          .frame_slot_id = prior_stack_preserved->slot_id,
+          .byte_offset =
+              static_cast<std::int64_t>(*prior_stack_preserved->stack_offset_bytes),
+          .byte_offset_is_prepared_snapshot = true,
+          .size_bytes = *prior_stack_preserved->stack_size_bytes,
+          .align_bytes = prior_stack_preserved->stack_align_bytes.value_or(
+              *prior_stack_preserved->stack_size_bytes),
+          .can_use_base_plus_offset = true,
+      };
     } else if (source_home != nullptr &&
                source_home->kind == prepare::PreparedValueHomeKind::Register &&
                source_home->register_name.has_value()) {
