@@ -1,8 +1,31 @@
 # AArch64 Materialized Pointer StoreLocal Writeback
 
-Status: Open
+Status: Parked
 Created: 2026-05-21
 Split From: ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md
+
+## Parked Outcome
+
+Parked: 2026-05-21
+
+The materialized pointer-addressed `StoreLocal` writeback owner was repaired by
+commit `ee027c36a Write back materialized pointer stores`. The accepted slice
+added focused backend coverage for explicit materialized pointer stores and the
+`00181` stack-homed pointer shape, and generated `Move` assembly now contains
+real stores through reloaded computed pointers before `PrintAll`.
+
+Focused proof after repair was 6/7: the backend contracts, `00170`, and
+`00189` pass. `00181` advanced beyond the old unchanged subsequent-state
+runtime mismatch and now fails as a 5 second timeout. The visible residual is
+adjacent pointer-derived load/address scaling, with suspicious generated
+address scaling such as `mov x9, #4; mul x9, x9, x9` around pointer-derived
+loads, not missing store writeback.
+
+Close was rejected by the plan-owner close gate because
+`c4c-regression-guard` reported no strict pass-count increase for the focused
+before/after logs: both runs remained 6/7 with `00181` failing. The residual is
+split to
+`ideas/open/362_aarch64_pointer_derived_load_address_scaling_timeout.md`.
 
 ## Goal
 
