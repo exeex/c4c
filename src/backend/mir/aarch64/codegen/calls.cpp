@@ -3193,7 +3193,12 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
          make_frame_slot_call_argument_address_source(
              context, *argument, *source_home, instruction_index)
              .has_value());
-    if (!frame_slot_address_argument && !structured_f128_register_argument_move) {
+    const bool register_byval_argument =
+        aarch64_register_byval_argument_size_bytes(
+            context, *argument, call_plan.instruction_index)
+            .has_value();
+    if (!frame_slot_address_argument && !structured_f128_register_argument_move &&
+        !register_byval_argument) {
       auto preserved_source = make_prior_preserved_call_argument_source(
           context,
           call_plan,
