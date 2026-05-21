@@ -1,8 +1,9 @@
 # AArch64 External Libc Call-Result Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
 
 ## Goal
 
@@ -65,6 +66,18 @@ consumer immediately after the call.
 - Supervisor-selected guardrails for adjacent call argument, function return,
   local/formal, scalar producer, address publication, and file/string runtime
   paths remain stable.
+
+## Closure Notes
+
+Closed after the active runbook completed the external/libc call-result
+publication repair and the supervisor regenerated matching backend close-gate
+logs. The close gate used:
+
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; }`
+
+`test_before.log` and `test_after.log` both cover the same backend scope and
+show 144/144 passing tests with no new failures. The c4c regression guard
+passed in non-decreasing mode for this closure re-check.
 
 ## Reviewer Reject Signals
 
