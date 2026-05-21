@@ -1,6 +1,6 @@
 # AArch64 Recursive Call Argument Preservation
 
-Status: Open
+Status: Parked
 Created: 2026-05-20
 Split From: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
 
@@ -62,6 +62,35 @@ idea 348 into call-boundary preservation.
   reclassified by a new first bad fact.
 - Adjacent call publication and aggregate selected-address guardrails selected
   by the supervisor remain stable.
+
+## Lifecycle Handoff
+
+2026-05-21: Step 3/4 follow-up repaired stale cross-block call-argument
+publication from callee-saved preservation homes. `00176` now emits
+`mov x0, x20` before the final `bl swap` in `partition` block `block_3`, and
+the stale `mov w0, w1` publication no longer appears in the generated file.
+Focused proof remained 4/6 because `00176` and `00181` still segfault, but
+the remaining failures are no longer the caller-clobbered recursive argument
+reuse boundary owned by this idea:
+
+- `00176` advanced to generated AArch64 block label/emission ordering after
+  the `partition` `block_3` return. Prepared metadata has `block_3` as a
+  return block followed by `block_4` and `block_5`, but generated assembly
+  prints the `block_3` return/epilogue before later unlabeled `swap` code.
+  That first bad fact is split to
+  `ideas/open/352_aarch64_block_label_emission_ordering.md`.
+- `00181` remains at the previously classified out-of-scope
+  stack-preserved symbol/local publication crash. Later `Hanoi`
+  call-preservation hazards may still exist, but they are not the current
+  first bad fact until that earlier publication crash is fixed or bypassed by
+  its owner.
+
+Supervisor broader backend guard passed 141/141. Close was not accepted in
+this lifecycle pass because the available canonical focused before/after logs
+match at 4/6 and the strict regression guard rejects closure without a pass
+count increase. Keep 349 parked as a completion candidate rather than active;
+resume it only if fresh generated-code evidence again shows an in-scope stale
+caller-clobbered post-call argument use.
 
 ## Reviewer Reject Signals
 
