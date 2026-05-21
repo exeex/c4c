@@ -1,7 +1,8 @@
 # AArch64 Dynamic Stack VLA Fixed Slot Addressing
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Goal
@@ -64,6 +65,16 @@ pointer. The loop control no longer reliably reaches zero.
   remain stable.
 - Any separate runtime mismatch after the timeout advances is classified
   independently instead of folded into this owner.
+
+## Completion Notes
+
+Closed after the active runbook reached Step 5 Acceptance Handoff. The accepted
+proof shows `c_testsuite_aarch64_backend_src_00207_c` passes under the existing
+runner and timeout policy, focused dynamic-stack fixed-slot coverage passes,
+and the backend guard improved from 148 passed / 0 failed / 148 total to
+149 passed / 0 failed / 149 total. The accepted full-suite baseline movement
+was 3363 passed / 17 failed / 3380 total to 3365 passed / 16 failed /
+3381 total.
 
 ## Reviewer Reject Signals
 
