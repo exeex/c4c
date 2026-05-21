@@ -1,7 +1,8 @@
 # Backend Regex Failure Family Inventory
 
-Status: Open
+Status: Closed
 Created: 2026-05-19
+Closed: 2026-05-21
 
 ## Intent
 
@@ -1272,6 +1273,18 @@ Step 4 timeout split 2026-05-21 post-380:
   shortcuts, timeout policy changes, runner changes, expectation weakening,
   unsupported-list or CTest-registration changes, and count-only progress
   claims.
+
+Completion 2026-05-21 post-382:
+
+- Focused ideas 381 and 382 are closed, covering the last parked timeout
+  residuals from the backend-regex inventory.
+- The clean inventory proof was captured with:
+  `cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R backend > test_after.log 2>&1`.
+- The proof selected 362 backend-regex tests: 150 local backend/unit/CLI tests
+  and 212 external `c_testsuite_aarch64_backend_*` tests. All 362 passed, with
+  0 failures and no remaining timeout bucket to classify.
+- No focused owner remains to split from this umbrella by the current
+  backend-regex evidence. The umbrella inventory is complete and closed.
 
 ## Reviewer Reject Signals
 
