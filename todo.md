@@ -1,71 +1,76 @@
 Status: Active
 Source Idea Path: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair General Call-Boundary Preparation
+Current Step ID: 4
+Current Step Title: Prove Representatives And Classify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired the generalized AArch64 variadic small byval aggregate
-GPR-lane publication gap for the `00204` second `stdarg` call. AST-backed
-lookup was run before editing against `lower_before_call_move`,
-`make_byval_register_lane_prepared_source`,
-`print_aggregate_register_lane_publication_lines`, and the surrounding
-call-boundary lowering path.
+Step 4 ran the delegated `00204` representative proof and classified the next
+residual after the fixed second-`stdarg` `%9s` byval aggregate publication.
+No implementation, test, expectation, runner, `plan.md`, or source-idea files
+were changed.
 
-The root cause was precedence, not missing prepared facts. The prepared call
-plan already records the `.str50` `%9s` byval arguments as size-16,
-register-passed integer aggregates with contiguous destination lanes
-`x2,x3`, `x4,x5`, and `x6,x7`. However, the generic
-`make_prior_preserved_call_argument_source` branch ran first for preserved
-stack sources and lowered each argument as a normal single stack-slot reload,
-using the preserved pointer/value home size of 8 bytes. That bypassed the
-existing aggregate register-lane publication path, so only `x2`, `x4`, and
-`x6` were emitted.
+The proof confirms the prior `%9s` first bad fact is gone: the second
+`stdarg` line now prints `lmnopqr ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI
+ABCDEFGHI`. The next concrete first bad fact is immediately after that line in
+`HFA long double:`. The first HFA payload call is source
+`myprintf("%hfa34 %hfa34 %hfa34 %hfa34", hfa34, hfa34, hfa34, hfa34)`;
+expected output starts with `34.1,34.4 34.1,34.4 ...`, but runtime output
+starts with `0.0,0.0 0.0,0.0 0.0,0.0` and then huge long-double values before
+later `HFA double:` / `HFA float:` corruption.
 
-The repair makes the prior-preserved shortcut yield for authoritative
-AArch64 small register-passed byval aggregate arguments. Those moves now flow
-into the existing aggregate lane path, which consumes the call-plan ABI byval
-size and destination occupied-register provenance instead of guessing lanes
-from slot names or synthetic stack offsets. Regenerated `.str50` code now
-fills `x2/x3`, `x4/x5`, and `x6/x7`; the second `stdarg` line advances from
-three `%9s` payloads to all six payloads before the later HFA output.
+Generated AArch64 evidence localizes the owner to the variadic HFA
+FP-register-save-area path. The `.str52` callsite loads the first two `hfa34`
+arguments into `q0`-`q7` and spills the later two 64-byte HFA payloads into
+the outgoing overflow area. In `myprintf`, the `%hfa34` `va_arg` branch uses
+the aggregate HFA access plan: it reads from the FP register-save-area while
+`fp_offset + 64 <= 0`, reconstructs four q-lanes from 16-byte slots, advances
+`fp_offset` by 64, and then publishes lanes `a` and `d` to
+`printf("%.1Lf,%.1Lf", ...)`. That path should materialize the first
+register-resident `hfa34` from saved `q0`-`q3`, but the first printed pair is
+already `0.0,0.0`.
+
+AST-backed lookup confirmed the relevant planning boundary is
+`infer_aapcs64_hfa_va_arg_shape` feeding
+`make_aapcs64_aggregate_va_arg_access_plan` in
+`src/backend/prealloc/variadic_entry_plans.cpp`; the generated branch matches
+that HFA register-save-area plan rather than the ordinary GPR/byval aggregate
+plan.
 
 ## Suggested Next
 
-Classify the next `00204` residual in the later HFA output corruption after
-the repaired non-HFA `%9s` byval aggregate publication. Decide whether the
-remaining long-double/double/float HFA corruption is still inside idea 326's
-call-boundary/HFA floating publication scope or needs a separate handoff.
+Repair or instrument the general AArch64 variadic HFA register-save-area
+publication/materialization path for anonymous HFA aggregate `va_arg`, starting
+with a focused backend case for `struct { long double a,b,c,d; }` passed to a
+variadic callee and read by `va_arg`.
 
 ## Watchouts
 
-Do not reintroduce synthetic lane recovery by slot-name suffix or callsite
-stack-offset guessing. The accepted route is precedence-based: small AArch64
-register-passed byval aggregate arguments bypass the generic preserved-source
-reload so the existing aggregate publication path can use prepared ABI width
-and occupied lane facts.
+This is not the fixed non-HFA `%9s` byval aggregate GPR-lane publication
+fault: `.str50` now reaches all six payloads. It is also not the earlier
+HFA return-value lane, fixed-formal entry publication, stdarg cursor
+progression for `%7s` / `%9s`, MOVI zero-extension, expectation, runner, or
+unsupported-classification owner.
 
-The delegated proof command still exits nonzero because
-`c_testsuite_aarch64_backend_src_00204_c` fails later in HFA output, after the
-targeted `Return values:` and second `stdarg` `%9s` facts have advanced.
-Treat that as a new first bad fact, not persistence of the missing aggregate
-GPR-lane publication bug.
+Classification: continue inside idea 326. The residual is specifically an
+AArch64 variadic HFA/floating aggregate call-boundary and `va_arg`
+register-save-area source/publication issue. A lifecycle handoff is not
+needed unless a focused probe proves the first `hfa34` payload arrives intact
+in `myprintf`'s saved `q0`-`q3` and is only corrupted by the nested libc
+`printf` call, which current generated evidence does not show.
 
 ## Proof
 
-Ran the delegated Step 3 proof:
+Ran the delegated Step 4 proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00140_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$' > test_after.log 2>&1
 ```
 
-Result: build succeeded. The selected `backend_.*` tests passed, including
-`backend_aarch64_instruction_dispatch`; `c_testsuite_aarch64_backend_src_00140_c`
-passed; `c_testsuite_aarch64_backend_src_00204_c` still failed later in runtime
-output. `test_after.log` is the preserved proof log and records the targeted
-advancement: the second `stdarg` line now prints
-`lmnopqr ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI ABCDEFGHI` before the later
-`HFA long double:` corruption.
+Result: build succeeded/up to date; the selected `00204` CTest still failed
+with `RUNTIME_NONZERO` / segmentation fault after advancing past the fixed
+`%9s` byval aggregate line. `test_after.log` is the preserved proof log and
+contains the runtime output used for this classification.
