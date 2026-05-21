@@ -1092,7 +1092,8 @@ lower_fused_compare_branch_from_emitted_cast(
     std::size_t before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines);
+    std::vector<std::string>& lines,
+    bool reload_current_memory_loads = false);
 [[nodiscard]] bool emit_select_chain_value_to_register(
     const module::BlockLoweringContext& context,
     const bir::Value& value,
@@ -1102,7 +1103,8 @@ lower_fused_compare_branch_from_emitted_cast(
     std::size_t root_instruction_index,
     std::vector<std::string>& lines,
     std::size_t& label_index,
-    std::vector<std::string_view>& active_values);
+    std::vector<std::string_view>& active_values,
+    bool reload_current_memory_loads = false);
 
 [[nodiscard]] const bir::Global* find_load_global_target(
     const module::BlockLoweringContext& context,
@@ -2787,7 +2789,8 @@ find_latest_narrow_store_for_wide_local_load(
     std::size_t before_instruction_index,
     std::uint8_t target_index,
     std::uint8_t scratch_index,
-    std::vector<std::string>& lines) {
+    std::vector<std::string>& lines,
+    bool reload_current_memory_loads) {
   const auto target_view = scalar_view_for_type(value.type);
   if (!target_view.has_value()) {
     return false;
@@ -2842,7 +2845,8 @@ find_latest_narrow_store_for_wide_local_load(
                                              narrow_store->instruction_index,
                                              target_index,
                                              scratch_index,
-                                             lines)) {
+                                             lines,
+                                             reload_current_memory_loads)) {
         return true;
       }
     }
@@ -2865,7 +2869,8 @@ find_latest_narrow_store_for_wide_local_load(
   if (const auto* load_global = std::get_if<bir::LoadGlobalInst>(producer);
       load_global != nullptr) {
     if (const auto* home = prepared_value_home_for_value(context, value);
-        home != nullptr && home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+        !reload_current_memory_loads && home != nullptr &&
+        home->kind == prepare::PreparedValueHomeKind::StackSlot &&
         home->offset_bytes.has_value()) {
       return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
     }
@@ -2900,7 +2905,13 @@ find_latest_narrow_store_for_wide_local_load(
       bir::Value source = cast->operand;
       source.type = cast->operand.type;
       if (!emit_value_publication_to_register(
-              context, source, before_instruction_index, target_index, scratch_index, lines)) {
+              context,
+              source,
+              before_instruction_index,
+              target_index,
+              scratch_index,
+              lines,
+              reload_current_memory_loads)) {
         return false;
       }
       const auto source_bits = integer_bit_width(cast->operand.type);
@@ -2927,7 +2938,13 @@ find_latest_narrow_store_for_wide_local_load(
       bir::Value source = cast->operand;
       source.type = cast->operand.type;
       if (!emit_value_publication_to_register(
-              context, source, before_instruction_index, target_index, scratch_index, lines)) {
+              context,
+              source,
+              before_instruction_index,
+              target_index,
+              scratch_index,
+              lines,
+              reload_current_memory_loads)) {
         return false;
       }
       const auto source_bits = integer_bit_width(cast->operand.type);
@@ -2951,7 +2968,13 @@ find_latest_narrow_store_for_wide_local_load(
       bir::Value source = cast->operand;
       source.type = cast->operand.type;
       return emit_value_publication_to_register(
-          context, source, before_instruction_index, target_index, scratch_index, lines);
+          context,
+          source,
+          before_instruction_index,
+          target_index,
+          scratch_index,
+          lines,
+          reload_current_memory_loads);
     }
     return false;
   }
@@ -2967,7 +2990,8 @@ find_latest_narrow_store_for_wide_local_load(
                                                before_instruction_index,
                                                lines,
                                                label_index,
-                                               active_values);
+                                               active_values,
+                                               reload_current_memory_loads);
   }
 
   const auto* binary = std::get_if<bir::BinaryInst>(producer);
@@ -2991,7 +3015,13 @@ find_latest_narrow_store_for_wide_local_load(
     auto lhs = binary->lhs;
     lhs.type = binary->operand_type;
     if (!emit_value_publication_to_register(
-            context, lhs, before_instruction_index, target_index, scratch_index, lines)) {
+            context,
+            lhs,
+            before_instruction_index,
+            target_index,
+            scratch_index,
+            lines,
+            reload_current_memory_loads)) {
       return false;
     }
     std::optional<std::string> rhs_name;
@@ -3009,7 +3039,8 @@ find_latest_narrow_store_for_wide_local_load(
                                               before_instruction_index,
                                               scratch_index,
                                               nested_scratch_index,
-                                              lines)) {
+                                              lines,
+                                              reload_current_memory_loads)) {
         return false;
       }
     }
@@ -3037,7 +3068,13 @@ find_latest_narrow_store_for_wide_local_load(
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
     if (!emit_value_publication_to_register(
-            context, lhs, before_instruction_index, target_index, scratch_index, lines)) {
+            context,
+            lhs,
+            before_instruction_index,
+            target_index,
+            scratch_index,
+            lines,
+            reload_current_memory_loads)) {
       return false;
     }
     const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
@@ -3046,7 +3083,8 @@ find_latest_narrow_store_for_wide_local_load(
                                             before_instruction_index,
                                             scratch_index,
                                             nested_scratch_index,
-                                            lines)) {
+                                            lines,
+                                            reload_current_memory_loads)) {
       return false;
     }
     std::string_view opcode = "and";
@@ -3079,24 +3117,33 @@ find_latest_narrow_store_for_wide_local_load(
                                             before_instruction_index,
                                             scratch_index,
                                             nested_scratch_index,
-                                            lines) ||
+                                            lines,
+                                            reload_current_memory_loads) ||
         !emit_value_publication_to_register(context,
                                             lhs,
                                             before_instruction_index,
                                             target_index,
                                             scratch_index,
-                                            lines)) {
+                                            lines,
+                                            reload_current_memory_loads)) {
       return false;
     }
   } else {
     if (!emit_value_publication_to_register(
-            context, lhs, before_instruction_index, target_index, scratch_index, lines) ||
+            context,
+            lhs,
+            before_instruction_index,
+            target_index,
+            scratch_index,
+            lines,
+            reload_current_memory_loads) ||
         !emit_value_publication_to_register(context,
                                             rhs,
                                             before_instruction_index,
                                             scratch_index,
                                             nested_scratch_index,
-                                            lines)) {
+                                            lines,
+                                            reload_current_memory_loads)) {
       return false;
     }
   }
@@ -3820,7 +3867,8 @@ lower_predecessor_join_source_publication(
     std::size_t root_instruction_index,
     std::vector<std::string>& lines,
     std::size_t& label_index,
-    std::vector<std::string_view>& active_values) {
+    std::vector<std::string_view>& active_values,
+    bool reload_current_memory_loads) {
   if (value.kind == bir::Value::Kind::Immediate) {
     const auto target_view = scalar_view_for_type(value.type);
     const auto target = target_view.has_value()
@@ -3845,7 +3893,13 @@ lower_predecessor_join_source_publication(
       find_same_block_select_producer(context, value, before_instruction_index);
   if (producer.select == nullptr) {
     return emit_value_publication_to_register(
-        context, value, before_instruction_index, target_index, scratch_index, lines);
+        context,
+        value,
+        before_instruction_index,
+        target_index,
+        scratch_index,
+        lines,
+        reload_current_memory_loads);
   }
 
   const auto condition = branch_condition_suffix(producer.select->predicate);
@@ -3868,7 +3922,8 @@ lower_predecessor_join_source_publication(
                                           producer.instruction_index,
                                           target_index,
                                           scratch_index,
-                                          lines)) {
+                                          lines,
+                                          reload_current_memory_loads)) {
     active_values.pop_back();
     return false;
   }
@@ -3884,7 +3939,8 @@ lower_predecessor_join_source_publication(
                                             producer.instruction_index,
                                             scratch_index,
                                             target_index,
-                                            lines)) {
+                                            lines,
+                                            reload_current_memory_loads)) {
       active_values.pop_back();
       return false;
     }
@@ -3900,7 +3956,8 @@ lower_predecessor_join_source_publication(
                                            root_instruction_index,
                                            lines,
                                            label_index,
-                                           active_values)) {
+                                           active_values,
+                                           reload_current_memory_loads)) {
     active_values.pop_back();
     return false;
   }
@@ -3914,7 +3971,8 @@ lower_predecessor_join_source_publication(
                                            root_instruction_index,
                                            lines,
                                            label_index,
-                                           active_values)) {
+                                           active_values,
+                                           reload_current_memory_loads)) {
     active_values.pop_back();
     return false;
   }
@@ -4233,7 +4291,8 @@ lower_store_global_value_publication(
                                                  instruction_index,
                                                  scratches.front().index,
                                                  scratches[1].index,
-                                                 lines);
+                                                 lines,
+                                                 stack_homes_only);
     if (emitted) {
       lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
                       ", " + stack_home);

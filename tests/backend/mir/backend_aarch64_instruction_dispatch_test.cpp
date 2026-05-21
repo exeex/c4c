@@ -8880,6 +8880,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
   const auto true_name = prepared.names.value_names.intern("%true");
   const auto false_name = prepared.names.value_names.intern("%false");
   const auto selected_name = prepared.names.value_names.intern("%selected.store");
+  const auto tail_old_name = prepared.names.value_names.intern("%tail.old");
   const auto selected_tail_name =
       prepared.names.value_names.intern("%selected.tail.store");
 
@@ -8931,6 +8932,13 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                                .base_link_name_id = global_name,
                            },
                    },
+                   bir::LoadGlobalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%tail.old"),
+                       .global_name = "g.i32.selected.array",
+                       .global_name_id = global_name,
+                       .byte_offset = 4,
+                       .align_bytes = 4,
+                   },
                    bir::SelectInst{
                        .predicate = bir::BinaryOpcode::Eq,
                        .result =
@@ -8940,7 +8948,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                        .lhs = bir::Value::named(bir::TypeKind::I32, "%cmp"),
                        .rhs = bir::Value::named(bir::TypeKind::I32, "%rhs"),
                        .true_value = bir::Value::named(bir::TypeKind::I32, "%inner"),
-                       .false_value = bir::Value::named(bir::TypeKind::I32, "%true"),
+                       .false_value = bir::Value::named(bir::TypeKind::I32, "%tail.old"),
                    },
                    bir::StoreGlobalInst{
                        .global_name = "g.i32.selected.array",
@@ -9025,6 +9033,16 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                .align_bytes = std::size_t{4},
            },
            prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{96},
+               .function_name = function_name,
+               .value_name = tail_old_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{96},
+               .offset_bytes = std::size_t{40},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
                .value_id = prepare::PreparedValueId{95},
                .function_name = function_name,
                .value_name = selected_tail_name,
@@ -9058,6 +9076,10 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                               selected_name,
                               prepare::PreparedFrameSlotId{94},
                               16),
+           frame_slot_storage(prepare::PreparedValueId{96},
+                              tail_old_name,
+                              prepare::PreparedFrameSlotId{96},
+                              40),
            frame_slot_storage(prepare::PreparedValueId{95},
                               selected_tail_name,
                               prepare::PreparedFrameSlotId{95},
@@ -9111,6 +9133,15 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                .fixed_location = true,
            },
            prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{96},
+               .object_id = prepare::PreparedObjectId{96},
+               .function_name = function_name,
+               .offset_bytes = 40,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
                .slot_id = prepare::PreparedFrameSlotId{95},
                .object_id = prepare::PreparedObjectId{95},
                .function_name = function_name,
@@ -9119,7 +9150,7 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
                .align_bytes = 4,
                .fixed_location = true,
            }},
-      .frame_size_bytes = 40,
+      .frame_size_bytes = 48,
       .frame_alignment_bytes = 16,
   };
   prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
@@ -9145,7 +9176,22 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_select_global_store
           prepare::PreparedMemoryAccess{
               .function_name = function_name,
               .block_label = entry_label,
-              .inst_index = 4,
+              .inst_index = 3,
+              .result_value_name = tail_old_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::GlobalSymbol,
+                      .symbol_name = global_name,
+                      .byte_offset = 4,
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          },
+          prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 5,
               .stored_value_name = selected_tail_name,
               .address =
                   prepare::PreparedAddress{
@@ -21500,8 +21546,8 @@ int block_dispatch_publishes_stack_homed_i32_select_before_global_store() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
 
-  if (diagnostics.entries.size() != 3 || result.visited_operations != 5 ||
-      result.emitted_instructions != 5 || block.instructions.size() != 5) {
+  if (diagnostics.entries.size() != 3 || result.visited_operations != 6 ||
+      result.emitted_instructions != 6 || block.instructions.size() != 6) {
     return fail("expected store-owned stack select publication before global store: visited=" +
                 std::to_string(result.visited_operations) +
                 " emitted=" + std::to_string(result.emitted_instructions) +
@@ -21536,6 +21582,10 @@ int block_dispatch_publishes_stack_homed_i32_select_before_global_store() {
                 printed.diagnostic);
   }
   const auto selected_publication = printed.assembly.find("str w9, [sp, #16]");
+  const auto tail_global_reload = printed.assembly.find("ldr w9, [x10]",
+                                                        selected_publication);
+  const auto stale_tail_reload = printed.assembly.find("ldr w9, [sp, #40]",
+                                                       selected_publication);
   const auto tail_publication = printed.assembly.find("str w9, [sp, #20]");
   const auto consumer_reload = printed.assembly.find("ldr w10, [sp, #16]");
   const auto global_store = printed.assembly.find("str w10, [x9]", consumer_reload);
@@ -21543,10 +21593,14 @@ int block_dispatch_publishes_stack_homed_i32_select_before_global_store() {
                                                           global_store);
   if (selected_publication == std::string::npos ||
       tail_publication == std::string::npos ||
+      tail_global_reload == std::string::npos ||
+      (stale_tail_reload != std::string::npos &&
+       stale_tail_reload < tail_publication) ||
       consumer_reload == std::string::npos ||
       global_store == std::string::npos ||
       tail_consumer_reload == std::string::npos ||
       !(selected_publication < tail_publication &&
+        tail_global_reload < tail_publication &&
         tail_publication < consumer_reload &&
         consumer_reload < global_store &&
         global_store < tail_consumer_reload)) {
