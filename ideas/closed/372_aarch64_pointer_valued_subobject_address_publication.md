@@ -1,8 +1,22 @@
 # AArch64 Pointer-Valued Subobject Address Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
+
+## Closure Summary
+
+Completed by implementation commits `5fca30460` and `118cd2593`.
+`c_testsuite_aarch64_backend_src_00163_c` now passes because the
+`&(bolshevic.b)` address is published to the scalar pointer local before the
+final dereference. Follow-on full-suite regressions in `00151` and `00214`
+were repaired through general stack-homed scalar compare publication and
+same-width zero-extension stack publication fixes, preserving the `00163`
+repair. Focused proof passed `backend_.*`, `00163`, `00151`, and `00214` at
+146/146. The accepted full-suite guard improved from `3350` passed / `25`
+failed to `3351` passed / `24` failed, resolving `00163` with no new failing
+tests, and the canonical baseline was accepted.
 
 ## Goal
 
