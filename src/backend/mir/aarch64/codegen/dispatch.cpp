@@ -4032,6 +4032,15 @@ make_load_global_got_materialization_instruction(
   lines.push_back("ldr " + target + ", " +
                   register_indirect_address(address, load_global.byte_offset));
 
+  if (const auto* home = prepared_value_home_for_value(context, load_global.result);
+      home != nullptr &&
+      home->kind == prepare::PreparedValueHomeKind::StackSlot &&
+      home->offset_bytes.has_value()) {
+    lines.push_back("str " + target + ", " + frame_slot_address(*home->offset_bytes));
+    return make_select_chain_materialization_instruction(
+        context, instruction_index, std::move(lines));
+  }
+
   RegisterOperand emitted{
       .reg = *target_register,
       .role = prepared_result.has_value() ? prepared_result->role
@@ -5841,6 +5850,54 @@ materialize_missing_frame_slot_call_arguments(
   return lowered;
 }
 
+[[nodiscard]] std::vector<module::MachineInstruction>
+publish_stack_preserved_call_values(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedCallPlan& call_plan,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
+  std::vector<module::MachineInstruction> lowered;
+  for (const auto& preserved : call_plan.preserved_values) {
+    if (preserved.route != prepare::PreparedCallPreservationRoute::StackSlot ||
+        preserved.value_name == c4c::kInvalidValueName ||
+        !preserved.slot_id.has_value() ||
+        !preserved.stack_offset_bytes.has_value() ||
+        !preserved.stack_size_bytes.has_value() ||
+        *preserved.stack_size_bytes == 0) {
+      continue;
+    }
+    const auto emitted =
+        find_emitted_scalar_register(scalar_state, preserved.value_name);
+    if (!emitted.has_value() || !abi::is_gp_register(emitted->reg)) {
+      continue;
+    }
+    std::optional<abi::RegisterView> expected_view;
+    if (*preserved.stack_size_bytes == 8) {
+      expected_view = abi::RegisterView::X;
+    } else if (*preserved.stack_size_bytes == 4 ||
+               *preserved.stack_size_bytes == 2 ||
+               *preserved.stack_size_bytes == 1) {
+      expected_view = abi::RegisterView::W;
+    } else {
+      continue;
+    }
+    const auto source_reg = abi::gp_register(emitted->reg.index, *expected_view);
+    if (!source_reg.has_value()) {
+      continue;
+    }
+
+    std::vector<std::string> lines;
+    lines.push_back("str " + std::string(abi::register_name(*source_reg)) + ", " +
+                    frame_slot_address(*preserved.stack_offset_bytes));
+    if (auto published =
+            make_select_chain_materialization_instruction(
+                context, instruction_index, std::move(lines))) {
+      lowered.push_back(std::move(*published));
+    }
+  }
+  return lowered;
+}
+
 [[nodiscard]] std::optional<module::MachineInstruction>
 lower_missing_conditional_branch_condition_publication(
     const module::BlockLoweringContext& context,
@@ -6960,6 +7017,11 @@ InstructionDispatchResult dispatch_prepared_block(
                                                    diagnostics);
           for (auto& argument_producer : argument_producers) {
             block.instructions.push_back(std::move(argument_producer));
+          }
+          for (auto& preserved_stack_publication :
+               publish_stack_preserved_call_values(
+                   context, *call_plan, instruction_index, scalar_state)) {
+            block.instructions.push_back(std::move(preserved_stack_publication));
           }
           auto materialized_addresses =
               lower_address_materializations(context, instruction_index, diagnostics);

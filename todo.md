@@ -1,33 +1,32 @@
 Status: Active
 Source Idea Path: ideas/open/355_aarch64_address_valued_memory_call_argument_publication.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Repair Minimal Indirect Memory Publication
+Current Step ID: 3
+Current Step Title: Repair Address-Valued Call Argument Publication
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the minimal indirect-memory boundary for idea 355:
-prepared AArch64 lowering now handles a `LoadLocalInst` whose address is
-`base=pointer_value` when the pointer value itself is stack-homed. The new
-lowering reloads the stack-homed pointer, performs the final pointee load, and
-publishes the prepared result home before downstream consumers observe it.
+Step 3 repaired address-valued call-argument publication for idea 355.
+Frame-slot call arguments that have prepared address-materialization facts now
+prefer the address source over a prior preserved stack reload, so an
+address-exposed local passed to a pointer parameter materializes the frame
+address instead of loading an unpublished pointer-sized home.
 
-Focused backend coverage now constructs the `00020` shape directly:
-frame-slot pointer load, pointer-value load into a stack home, pointer-value
-load through that stack-homed pointer, and a return consumer. The generated
-route includes the stack-home publication and final pointee load before the
-return move.
+Stack-homed GOT-required global loads now publish their prepared stack home at
+the load site. Later call-boundary moves reload that home rather than trusting a
+scratch register that may be reused by another global load before the call.
 
-The delegated proof advanced the localized boundary: `00020` and adjacent
-`00103` both pass.
+Focused backend coverage now proves both Step 3 representatives: `00170` and
+`00189` pass, while the Step 2 representatives `00020` and `00103` remain
+passing.
 
 ## Suggested Next
 
-Proceed to Step 3 with a focused call-argument publication packet for one
-call-boundary representative, starting with `00170` or `00189` as selected by
-the supervisor.
+Proceed to Step 4 with the supervisor-selected adjacent pointer subset,
+checking whether `00005`, `00173`, and `00181` remain in scope or need a
+separate lifecycle owner.
 
 ## Watchouts
 
@@ -35,10 +34,9 @@ the supervisor.
   policy, CTest registration, or proof-log behavior.
 - Do not special-case c-testsuite filenames, source function names, stack
   offsets, symbol names, or emitted instruction neighborhoods.
-- Keep Step 3 distinct from the repaired Step 2 path: `00170` needs
-  materialize-address for an address-exposed local passed as a call argument;
-  `00189` needs publication of a loaded global pointer into its preserved stack
-  home before a later call-argument reload.
+- `00170` and `00189` now pass through semantic call-boundary publication; do
+  not regress them by reintroducing preserved stack reloads for address
+  arguments or late publication from reused scratch registers.
 - Keep scalar compare/select, floating variadic scalar, composite ABI,
   dynamic-stack/goto, and aggregate initializer residuals out of this owner
   unless fresh first-bad-fact evidence justifies a lifecycle split.
@@ -48,14 +46,22 @@ the supervisor.
 Delegated proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|c_testsuite_aarch64_backend_src_00020_c|c_testsuite_aarch64_backend_src_00103_c)$' | tee test_after.log
+cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|c_testsuite_aarch64_backend_src_00020_c|c_testsuite_aarch64_backend_src_00103_c|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00189_c)$' | tee test_after.log
 ```
 
-Result: passed, 6/6. The backend unit/CLI contracts passed, and
-`c_testsuite_aarch64_backend_src_00020_c` plus
-`c_testsuite_aarch64_backend_src_00103_c` both passed.
+Result: passed, 8/8. The backend unit/CLI contracts passed, and
+`c_testsuite_aarch64_backend_src_00020_c`,
+`c_testsuite_aarch64_backend_src_00103_c`,
+`c_testsuite_aarch64_backend_src_00170_c`, and
+`c_testsuite_aarch64_backend_src_00189_c` all passed.
 
 Proof log: `test_after.log`.
+
+Supervisor broader guard:
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed, 141/141.
 
 Supervisor broader guard:
 

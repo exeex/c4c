@@ -12933,7 +12933,13 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   if (result.visited_operations != 2 || !result.visited_terminator ||
       result.emitted_instructions != 5 || block.instructions.size() != 5 ||
       !diagnostics.empty()) {
-    return fail("expected nested call dispatch to populate preserved home before call and reuse it later");
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected nested call dispatch to populate preserved home before call and reuse it later: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (printed.ok ? " asm=" + printed.assembly
+                            : " print=" + printed.diagnostic));
   }
 
   const auto* populate =
@@ -15942,6 +15948,22 @@ int prepared_frame_slot_address_call_argument_materializes_address_register() {
               .destination_occupied_register_names = {"x1"},
               .destination_register_bank = prepare::PreparedRegisterBank::Gpr,
           }},
+      .preserved_values =
+          {prepare::PreparedCallPreservedValue{
+              .value_id = value_id,
+              .value_name = value_name,
+              .route = prepare::PreparedCallPreservationRoute::StackSlot,
+              .contiguous_width = 1,
+              .slot_id = prepare::PreparedFrameSlotId{7},
+              .stack_offset_bytes = std::size_t{48},
+              .stack_size_bytes = std::size_t{8},
+              .stack_align_bytes = std::size_t{8},
+              .spill_slot_placement =
+                  prepare::PreparedSpillSlotPlacement{
+                      .slot_id = prepare::PreparedFrameSlotId{7},
+                      .offset_bytes = 48,
+                  },
+          }},
   };
   const prepare::PreparedControlFlowFunction control_flow{
       .function_name = function_name,
@@ -17889,6 +17911,105 @@ int load_global_call_argument_uses_got_for_got_required_global() {
           std::string::npos ||
       printed.assembly.find(":lo12:external_data_symbol") != std::string::npos) {
     return fail("expected printed GOT-required route to avoid direct external relocation");
+  }
+  return 0;
+}
+
+int stack_preserved_loaded_global_pointer_publishes_before_call_argument_reload() {
+  auto prepared = prepared_with_load_global_call_argument(
+      bir::GlobalAddressMaterializationPolicy::GotRequired);
+  auto& value_locations = prepared.value_locations.functions.front();
+  auto& loaded_home = value_locations.value_homes.front();
+  loaded_home.kind = prepare::PreparedValueHomeKind::StackSlot;
+  loaded_home.register_name.reset();
+  loaded_home.slot_id = prepare::PreparedFrameSlotId{43};
+  loaded_home.offset_bytes = std::size_t{40};
+  loaded_home.size_bytes = std::size_t{8};
+  loaded_home.align_bytes = std::size_t{8};
+
+  auto& storage = prepared.storage_plans.functions.front().values.front();
+  storage.encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  storage.register_name.reset();
+  storage.occupied_register_names.clear();
+  storage.slot_id = prepare::PreparedFrameSlotId{43};
+  storage.stack_offset_bytes = std::size_t{40};
+
+  auto& call_plan = prepared.call_plans.functions.front().calls.front();
+  auto& argument = call_plan.arguments.front();
+  argument.source_encoding = prepare::PreparedStorageEncodingKind::FrameSlot;
+  argument.source_register_name.reset();
+  argument.source_register_placement.reset();
+  argument.source_slot_id = prepare::PreparedFrameSlotId{43};
+  argument.source_stack_offset_bytes = std::size_t{40};
+  call_plan.preserved_values =
+      {prepare::PreparedCallPreservedValue{
+          .value_id = loaded_home.value_id,
+          .value_name = loaded_home.value_name,
+          .route = prepare::PreparedCallPreservationRoute::StackSlot,
+          .contiguous_width = 1,
+          .slot_id = prepare::PreparedFrameSlotId{43},
+          .stack_offset_bytes = std::size_t{40},
+          .stack_size_bytes = std::size_t{8},
+          .stack_align_bytes = std::size_t{8},
+          .spill_slot_placement =
+              prepare::PreparedSpillSlotPlacement{
+                  .slot_id = prepare::PreparedFrameSlotId{43},
+                  .offset_bytes = 40,
+              },
+      }};
+
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{43},
+      .object_id = prepare::PreparedObjectId{43},
+      .function_name = prepared.control_flow.functions.front().function_name,
+      .offset_bytes = 40,
+      .size_bytes = 8,
+      .align_bytes = 8,
+      .fixed_location = true,
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 4 || block.instructions.size() != 4 ||
+      !diagnostics.empty()) {
+    return fail("expected loaded global pointer stack preservation before call: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.empty() ? std::string{}
+                                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-preserved loaded global pointer route to print: " +
+                printed.diagnostic);
+  }
+  const auto got_page = printed.assembly.find("adrp x9, :got:external_data_symbol");
+  const auto got_low =
+      printed.assembly.find("ldr x9, [x9, :got_lo12:external_data_symbol]", got_page);
+  const auto global_load = printed.assembly.find("ldr x9, [x9]", got_low);
+  const auto stack_publish = printed.assembly.find("str x9, [sp, #40]", global_load);
+  const auto arg_move = printed.assembly.find("ldr x0, [sp, #40]", stack_publish);
+  const auto call = printed.assembly.find("bl consume_ptr", arg_move);
+  if (got_page == std::string::npos || got_low == std::string::npos ||
+      global_load == std::string::npos || stack_publish == std::string::npos ||
+      arg_move == std::string::npos || call == std::string::npos ||
+      !(got_page < got_low && got_low < global_load &&
+        global_load < stack_publish && stack_publish < arg_move && arg_move < call)) {
+    return fail("expected loaded global pointer to publish stack home before call argument use: " +
+                printed.assembly);
   }
   return 0;
 }
@@ -22151,6 +22272,11 @@ int main() {
   }
   if (const int status =
           load_global_call_argument_uses_got_for_got_required_global();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          stack_preserved_loaded_global_pointer_publishes_before_call_argument_reload();
       status != 0) {
     return status;
   }

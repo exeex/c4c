@@ -867,6 +867,28 @@ make_f128_q_register_operand_from_carrier(
   }
   if (source_access->address.base_kind != prepare::PreparedAddressBaseKind::FrameSlot ||
       !source_access->address.frame_slot_id.has_value()) {
+    const auto source_offset = source_home.offset_bytes.has_value()
+                                   ? source_home.offset_bytes
+                                   : argument.source_stack_offset_bytes;
+    if (source_offset.has_value()) {
+      return MemoryOperand{
+          .surface = RecordSurfaceKind::MachineInstructionNode,
+          .support = MemoryOperandSupportKind::Prepared,
+          .function_name = context.function.control_flow->function_name,
+          .block_label = context.control_flow_block->block_label,
+          .instruction_index = instruction_index,
+          .result_value_id = argument.source_value_id,
+          .result_value_name = source_home.value_name,
+          .base_kind = MemoryBaseKind::FrameSlot,
+          .frame_slot_id = source_home.slot_id.has_value() ? source_home.slot_id
+                                                           : argument.source_slot_id,
+          .byte_offset = static_cast<std::int64_t>(*source_offset),
+          .byte_offset_is_prepared_snapshot = true,
+          .size_bytes = source_home.size_bytes.value_or(4),
+          .align_bytes = source_home.align_bytes.value_or(4),
+          .can_use_base_plus_offset = true,
+      };
+    }
     return std::nullopt;
   }
 
@@ -2978,50 +3000,61 @@ make_fragmented_byval_register_lane_stack_publication_instruction(
       move.destination_storage_kind == prepare::PreparedMoveStorageKind::Register &&
       move.op_kind == prepare::PreparedMoveResolutionOpKind::Move &&
       argument != nullptr) {
-    auto preserved_source = make_prior_preserved_call_argument_source(
-        context,
-        call_plan,
-        *argument,
-        move,
-        source_home,
-        instruction_index,
-        diagnostics);
-    if (preserved_source.has_value()) {
-      auto destination = make_register_operand_from_prepared_authority(
-          binding != nullptr && binding->destination_register_name.has_value()
-              ? binding->destination_register_name
-              : move.destination_register_name,
-          binding != nullptr && binding->destination_register_placement.has_value()
-              ? binding->destination_register_placement
-              : move.destination_register_placement,
-          argument->destination_register_bank,
-          RegisterOperandRole::CallAbi,
-          move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
-                                : argument->source_value_id,
-          preserved_source->preserved != nullptr
-              ? preserved_source->preserved->value_name
-              : c4c::kInvalidValueName,
-          binding != nullptr ? binding->destination_contiguous_width
-                             : move.destination_contiguous_width,
-          binding != nullptr ? binding->destination_occupied_register_names
-                             : move.destination_occupied_register_names,
-          preserved_source->source_memory.has_value()
-              ? scalar_integer_register_view_from_size(
-                    preserved_source->source_memory->size_bytes)
-              : (source_home != nullptr && source_home->size_bytes.has_value()
-                     ? scalar_integer_register_view_from_size(*source_home->size_bytes)
-                     : scalar_view_from_register_name(move.destination_register_name)),
-          diagnostics,
+    const bool frame_slot_address_argument =
+        source_home != nullptr &&
+        argument->source_encoding == prepare::PreparedStorageEncodingKind::FrameSlot &&
+        (make_sret_memory_return_address_source(
+             context, call_plan, *argument, instruction_index)
+             .has_value() ||
+         make_frame_slot_call_argument_address_source(
+             context, *argument, *source_home, instruction_index)
+             .has_value());
+    if (!frame_slot_address_argument) {
+      auto preserved_source = make_prior_preserved_call_argument_source(
           context,
-          instruction_index);
-      if (destination.has_value()) {
-        move_record.source_register = preserved_source->source_register;
-        move_record.source_memory = preserved_source->source_memory;
-        move_record.destination_register = *destination;
-        return make_call_boundary_machine_instruction(
+          call_plan,
+          *argument,
+          move,
+          source_home,
+          instruction_index,
+          diagnostics);
+      if (preserved_source.has_value()) {
+        auto destination = make_register_operand_from_prepared_authority(
+            binding != nullptr && binding->destination_register_name.has_value()
+                ? binding->destination_register_name
+                : move.destination_register_name,
+            binding != nullptr && binding->destination_register_placement.has_value()
+                ? binding->destination_register_placement
+                : move.destination_register_placement,
+            argument->destination_register_bank,
+            RegisterOperandRole::CallAbi,
+            move.to_value_id != 0 ? std::optional<prepare::PreparedValueId>{move.to_value_id}
+                                  : argument->source_value_id,
+            preserved_source->preserved != nullptr
+                ? preserved_source->preserved->value_name
+                : c4c::kInvalidValueName,
+            binding != nullptr ? binding->destination_contiguous_width
+                               : move.destination_contiguous_width,
+            binding != nullptr ? binding->destination_occupied_register_names
+                               : move.destination_occupied_register_names,
+            preserved_source->source_memory.has_value()
+                ? scalar_integer_register_view_from_size(
+                      preserved_source->source_memory->size_bytes)
+                : (source_home != nullptr && source_home->size_bytes.has_value()
+                       ? scalar_integer_register_view_from_size(*source_home->size_bytes)
+                       : scalar_view_from_register_name(move.destination_register_name)),
+            diagnostics,
             context,
-            instruction_index,
-            make_call_boundary_move_instruction(std::move(move_record)));
+            instruction_index);
+        if (destination.has_value()) {
+          move_record.source_register = preserved_source->source_register;
+          move_record.source_memory = preserved_source->source_memory;
+          move_record.destination_register = *destination;
+          return make_call_boundary_machine_instruction(
+              context,
+              instruction_index,
+              make_call_boundary_move_instruction(std::move(move_record)));
+        }
       }
     }
   }
