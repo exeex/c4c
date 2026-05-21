@@ -1076,6 +1076,36 @@ Step 3/4 selection 2026-05-21 post-371:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-372:
+
+- Step 1 refreshed the backend-regex surface after closed idea 372: 356
+  selected tests, 348 passed, and 8 failed. Local backend/unit/route/MIR/BIR,
+  CLI, runtime, and smoke tests are clean; all residuals are external
+  `c_testsuite_aarch64_backend_*`.
+- Step 2 commit `6a817e9dc` classified the remaining residuals. The selected
+  focused owner is new idea 373,
+  `ideas/open/373_aarch64_static_global_selected_value_publication.md`.
+- The lead representative is `00182`: `print_led` stores extracted digits into
+  the static local digit array, then uses selected-load chains for `d[i]`
+  before calling `topline`, `midline`, and `botline`; the current runtime
+  output renders all LED digits as zeroes. This is current selected
+  static/global aggregate value publication before scalar consumers, not the
+  old unsigned div/rem, large-immediate, frame-layout, or selected false-value
+  closure boundary.
+- `00205` and `00216` remain adjacency checks only until the lead selected
+  value publication boundary is localized: `00205` also has a crisp scalar
+  constant-binary stack publication first bad fact for loop bounds, and
+  `00216` is broad aggregate initializer/relocation plus selected global
+  function-pointer load stress.
+- Remaining parked buckets stay under this umbrella for later classification:
+  scalar constant-binary stack publication (`00205` first bad fact),
+  external/libc call-result stack publication (`00187`), scalar FP
+  arithmetic/materialization (`00174`), timeouts (`00200`, `00207`), and
+  unsigned enum bit-field/local aggregate address publication (`00218`).
+- The active lifecycle state should now use idea 373 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

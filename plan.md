@@ -1,161 +1,163 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Static/Global Selected Value Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/372_aarch64_pointer_valued_subobject_address_publication.md
+Source Idea: ideas/open/373_aarch64_static_global_selected_value_publication.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after pointer-valued subobject
-address publication closed and select the next focused owner before any
-implementation work.
+Repair the focused selected static/global aggregate value publication residual
+selected by the backend inventory.
 
 ## Goal
 
-Classify the current backend-matching failure surface from the accepted
-post-372 baseline and split or select one semantic repair owner.
+Make selected values loaded from static or global aggregates publish to their
+scalar consumers, beginning with `00182` digit values passed to LED renderer
+calls.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat counts alone as owner
-evidence.
+Repair selected static/global value publication generally. Do not special-case
+`00182`, `print_led`, one digit array, one call target, one register, one
+stack offset, or one emitted instruction sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/373_aarch64_static_global_selected_value_publication.md`
 - `todo.md`
-- `test_baseline.log`
 - `test_after.log`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
+- `tests/c/external/c-testsuite/src/00182.c`
+- generated `build/c_testsuite_aarch64_backend/src/00182.c.s`
+- semantic/prepared BIR for `00182`
+- recent closed `00182`-adjacent owners only as boundary checks
 
 ## Current Scope
 
-- backend-regex residual classification after closed idea 372
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- reclassification of parked buckets after `00163` was resolved
-- selection or creation of the next focused semantic owner
+- selected static local aggregate value loads
+- selected global aggregate value loads as adjacency checks
+- publication of selected values to scalar call consumers
+- representative proof for `c_testsuite_aarch64_backend_src_00182_c`
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
+- Do not reopen closed `00182` owners from counts alone.
+- Do not broaden into scalar constant-binary stack publication, external call
+  result publication, scalar FP materialization, timeout repair, enum
+  bit-field layout, or broad aggregate initializer/relocation work.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
+- Do not implement under umbrella idea 295.
 
 ## Working Model
 
-Closed idea 372 resolved `00163` in the accepted full-suite guard with no new
-failures. The remaining parked buckets under idea 295 need reclassification
-against the new backend surface before selecting the next implementation
-owner. Recent parked candidates include external/libc call return publication,
-static selected array store/readback, aggregate initializer/layout, scalar FP
-publication, unsigned enum bit-field layout/address publication, and timeout
-quarantine.
+`00182` now advances past older frame-layout, large-immediate, unsigned
+div/rem, and selected false-value failure modes. The current generated shape
+stores extracted digits into a static local digit array and later uses
+selected-load chains for `d[i]`, but the runtime renders all LED digits as
+zeroes. Treat the first bad fact as selected static/global value publication
+to scalar call consumers until localization proves otherwise.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, runtime mismatch,
-  runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open idea scopes before choosing a route.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Start from source, generated AArch64, and semantic/prepared records for
+  `print_led` digit extraction and renderer call arguments.
+- Trace selected static/global value authority from storage through
+  prepared/MIR/AArch64 publication before changing code.
+- Add focused coverage before or with the repair.
+- Sample `00205` and `00216` only for adjacency after the lead boundary is
+  localized.
+- Keep parked residual buckets under idea 295 unless a new first bad fact
+  proves a lifecycle handoff is required.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize Selected Value Publication Gap
 
-Goal: establish the current backend-regex residual surface after idea 372.
+Goal: identify where selected static/global aggregate values stop reaching
+their scalar consumers.
 
-Primary target: `test_baseline.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether local backend/unit tests fail or whether residuals remain
-  only external `c_testsuite_aarch64_backend_*`.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: generated `00182.c.s`, semantic/prepared BIR for `print_led`,
+and AArch64 selected value/call-argument publication helpers.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Re-check the parked ranked buckets from the post-372 inventory after the
-  `00163` resolution.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by recent focused ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Inspect the digit extraction stores into the static local digit array.
+- Inspect the later selected-load chain for `d[i]` before `topline`,
+  `midline`, and `botline`.
+- Trace whether selected values are present in semantic/prepared state and
+  where they are lost before call-argument publication.
+- Compare against recent closed `00182` boundaries so this route does not
+  repeat old unsigned div/rem, frame-layout, immediate, or nested-select work.
+- Decide the focused coverage shape needed before repair.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` names the first bad fact, owning backend boundary, and focused
+  coverage requirement for selected static/global value publication.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Add Focused Selected Value Coverage
 
-Goal: choose one tractable focused owner for implementation outside this
-umbrella plan.
+Goal: guard selected static/global aggregate value publication independently
+of `00182`.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: backend tests or dump coverage for selected static/global
+values feeding scalar consumers.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for the supervisor handoff.
+- Add coverage where a selected static or global aggregate element feeds a
+  scalar call argument or equivalent consumer.
+- Assert the selected value reaches the consumer, not a stale or zero fallback.
+- Keep coverage semantic and not tied to one digit array, one call target, one
+  register, or one stack offset.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused coverage fails before the repair or directly guards the selected
+  value publication fact.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Repair Selected Static/Global Value Publication
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: publish selected static/global aggregate values to scalar consumers.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: the semantic/prepared/MIR/AArch64 helper localized in Step 1.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Implement the smallest semantic repair at the owning publication boundary.
+- Preserve recent selected-address, pointer-local, scalar publication, and
+  aggregate snapshot repairs.
+- Avoid broad rewrites of unrelated scalar constant, external-call, FP,
+  timeout, bit-field, or initializer owners.
+- Run build proof before focused and representative tests.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- Focused coverage passes and generated AArch64 no longer collapses selected
+  digit values to zero before renderer calls.
+
+### Step 4: Prove Representative And Classify Adjacency
+
+Goal: prove `00182` advances and classify whether adjacent cases share the
+same boundary.
+
+Primary target: focused backend coverage,
+`c_testsuite_aarch64_backend_src_00182_c`, and adjacency reads for `00205` /
+`00216`.
+
+Actions:
+
+- Run the supervisor-delegated build and proof command.
+- Inspect generated `00182.c.s` enough to confirm selected values feed the
+  renderer calls.
+- Sample `00205` and `00216` only enough to classify whether their first bad
+  facts share this owner or remain parked.
+- If `00182` still fails, classify the new first bad fact and decide whether
+  it remains in this idea or needs lifecycle handoff.
+- Ask the supervisor whether backend-regex or broader regression guard proof
+  is needed before closure.
+
+Completion check:
+
+- `00182` no longer fails because selected digit values collapse to zero
+  before scalar consumers, and proof/classification is recorded in `todo.md`.
