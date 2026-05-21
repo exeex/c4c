@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/373_aarch64_static_global_selected_value_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Selected Static/Global Value Publication
+Current Step ID: 4
+Current Step Title: Prove Representative And Classify Adjacency
 
 # Current Packet
 
