@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/379_aarch64_local_aggregate_copy_load_publication.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Advancement And Reclassify
+Current Step ID: 5
+Current Step Title: Repair Same-Owner Pointer-Derived Copy Mismatch
 
 # Current Packet
 
@@ -22,10 +22,13 @@ relocation or function-pointer-table dispatch.
 
 ## Suggested Next
 
-Delegate a follow-up Step 4/repair packet for the new first bad fact:
-localize why `struct S ls21 = *pls` copies corrupt bytes after `pls = &ls`,
-then repair the remaining local aggregate copy/load publication path without
-special-casing `00216`, `foo`, `ls21`, stack offsets, registers, or output text.
+Delegate Step 5 for the new first bad fact: localize why
+`struct S ls21 = *pls` copies corrupt bytes after `pls = &ls`, decide whether
+the remaining mismatch is a copy-width, byte-layout, load-from-local-address,
+prepared-value, MIR handoff, or AArch64 frame-slot publication problem, then
+repair the general local aggregate copy/load publication path without
+special-casing `00216`, `foo`, `ls21`, `struct S`, stack offsets, registers, or
+output text.
 
 ## Watchouts
 

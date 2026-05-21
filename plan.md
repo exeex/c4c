@@ -179,3 +179,35 @@ Completion check:
 
 - `todo.md` records focused proof, broader proof if delegated, and either
   acceptance for idea 379 or a new first-bad-fact handoff note.
+
+### Step 5: Repair Same-Owner Pointer-Derived Copy Mismatch
+
+Goal: repair the remaining same-owner `foo` local aggregate copy mismatch
+where `struct S ls21 = *pls` reads from `pls = &ls` but corrupts trailing
+bytes after the prior segfault repair.
+
+Primary target: the local aggregate copy/load-from-local-address lowering
+boundary that feeds `struct S ls21 = *pls`, plus the focused backend coverage
+from Steps 2 and 3.
+
+Actions:
+
+- Localize why the `pls = &ls` source address or copied aggregate value
+  produces `ls21` bytes other than `1 2 3 4` after the address-publication
+  repair.
+- Decide whether the remaining mismatch is a copy-width, byte-layout,
+  load-from-local-address, prepared-value, MIR handoff, or AArch64 frame-slot
+  publication problem.
+- Repair the general local aggregate copy/load publication path without
+  special-casing `00216`, `foo`, `ls21`, `struct S`, stack offsets, registers,
+  or output text.
+- Keep later `lv3`, `flow`, relocation, and function-pointer-table/table
+  observations parked unless fresh proof makes one of them the first bad fact.
+- Re-run the supervisor-delegated focused proof and preserve the existing
+  local aggregate address-call guardrails selected by the supervisor.
+
+Completion check:
+
+- Focused local aggregate publication coverage passes, `ls21` copies
+  `1 2 3 4` from `pls = &ls`, and `todo.md` records either acceptance for
+  idea 379 or the next first bad fact with its owner classified.
