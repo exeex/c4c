@@ -1106,6 +1106,32 @@ Step 3/4 selection 2026-05-21 post-372:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-373:
+
+- Step 1 refreshed the backend-regex surface after closed idea 373: 356
+  selected tests, 349 passed, and 7 failed. Local backend/unit/route/MIR/BIR,
+  CLI, runtime, and smoke tests are clean; all residuals are external
+  `c_testsuite_aarch64_backend_*`.
+- Step 2 commit `60d4641be` classified the remaining residuals. The selected
+  focused owner is new idea 374,
+  `ideas/open/374_aarch64_local_aggregate_address_call_publication.md`.
+- The lead representative is `00218`: `main` should pass `&convs` to
+  `convert_like_real`, and the callee's bit-field mask/compare is already
+  plausible, but generated AArch64 passes stale `x21` instead of
+  materializing the local aggregate address.
+- `00216` is a crash guard with the same first crash shape in `foo`: the first
+  `print(ls)` call passes stale `x13` instead of the address of local
+  aggregate `ls`. Later aggregate initializer/function-pointer residuals
+  should be reclassified after the local-address crash is repaired.
+- Remaining parked buckets stay under this umbrella for later classification:
+  scalar constant/`sizeof` stack-home publication (`00205`), external call
+  result publication (`00187`), scalar FP publication (`00174`), dynamic
+  stack/VLA fixed-slot timeout (`00207`), and shift/type-promotion timeout
+  (`00200`).
+- The active lifecycle state should now use idea 374 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
