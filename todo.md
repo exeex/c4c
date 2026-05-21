@@ -1,66 +1,61 @@
 Status: Active
 Source Idea Path: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
 Source Plan Path: plan.md
-Current Step ID: 4
-Current Step Title: Prove Representatives And Classify Residuals
+Current Step ID: 3
+Current Step Title: Repair General Call-Boundary Preparation
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 ran the delegated `00204` representative proof and classified the next
-residual after the fixed HFA return-value lane. No implementation, test,
-expectation, runner, `plan.md`, or source-idea files were changed.
+Step 3 attempted a generalized AArch64 variadic small byval aggregate GPR-lane
+publication repair for the `00204` second `stdarg` call. AST-backed lookup was
+run before editing against the call-plan and AArch64 call-boundary files.
 
-The fixed `Return values:` block now reaches the expected HFA output through
-`34.1 34.4`, including the previously bad `fr_hfa12().a` /
-`fr_hfa12().b` lane (`12.1 12.2`).
+The useful confirmed facts are:
+the prepared call plan and grouped trace already know the `.str50` `%9s`
+arguments consume two contiguous GPR lanes each (`x2,x3`, `x4,x5`, `x6,x7`),
+but emitted AArch64 publishes only the first lanes (`x2`, `x4`, `x6`) before
+the call. The source BIR is byval size 16 for these `%9s` aggregates, so the
+missing lanes are a call-boundary publication/preparation gap rather than a
+format-string or `va_arg` cursor issue.
 
-The next concrete first bad fact is in `stdarg`, at the second variadic call:
-source `myprintf("%7s %9s %9s %9s %9s %9s", s7, s9, s9, s9, s9, s9)`
-should print `lmnopqr` followed by five `ABCDEFGHI` payloads. The fresh
-runtime output prints only `lmnopqr ABCDEFGHI ABCDEFGHI` and then appends
-`HFA long double:` without the expected remaining `%9s` payloads/newline.
-
-Generated AArch64 evidence points to variadic aggregate call-boundary
-publication, not to HFA return-value publication: the caller for `.str50`
-loads the mixed `%7s` / `%9s` format into `x0`, publishes `s7` in `x1`, then
-publishes only alternating register lanes for the following small aggregate
-varargs (`x2`, `x4`, `x6`) while later chunks are written through the outgoing
-overflow area. The missing `x3` / `x5` / `x7` aggregate lanes leave
-`myprintf`'s register-save-area `va_arg` reads misaligned before the later HFA
-long-double cases.
+An attempted synthetic lane fallback in the AArch64 call-boundary path was
+reverted because proof showed it selected the wrong aggregate lane storage for
+nearby same-feature cases, regressed `backend_aarch64_instruction_dispatch`,
+and still did not advance `00204` past the second `stdarg` first bad fact. No
+implementation changes from that failed route remain.
 
 ## Suggested Next
 
-Repair the general AArch64 variadic aggregate call-boundary publication path
-for small non-HFA aggregates that consume multiple GPR slots after a preceding
-smaller aggregate vararg, starting from the `.str50` `%7s` + `%9s` evidence.
+Repair the authoritative call-boundary move/source-selection layer that should
+consume the existing prepared call-plan width and aggregate lane provenance.
+The next route should explain why the existing aggregate register-lane
+publication path is not used for the `.str50` register-passed byval arguments
+even though the prepared call plan has width 2 spans.
 
 ## Watchouts
 
-This is not persistence of the fixed `Return values:` HFA lane. The fresh bad
-fact occurs after that block, before the HFA long-double stdarg payloads are
-decoded.
+Do not synthesize residual lanes by slot-name suffix or callsite-local stack
+offset guessing. The reverted fallback loaded `x3`/`x5`/`x7` from concrete
+stack offsets that looked plausible for `.str50` but corrupted neighboring
+same-feature calls. Direct `ldr xN, [sp,#offset]` synthesis also needs the
+existing address-materialization rules for large or unaligned offsets.
 
-Classification: this remains inside the active runbook's reactivated
-aggregate/varargs ABI call-boundary publication scope for idea 326 because the
-evidence is a variadic call-boundary GPR-lane publication fault. It is not a
-stdarg cursor/progression fault inside `myprintf`, not a fixed byval aggregate
-call, and not an expectation/runner issue. It is also outside the narrower
-HFA-return-value repair that just landed, so the next packet should be scoped
-to variadic small-aggregate GPR lane publication rather than reopening floating
-preserved-source retargeting.
+Keep `backend_aarch64_instruction_dispatch` in the focused subset; it caught
+the size-1 byval aggregate publication regression introduced by the attempted
+fallback.
 
 ## Proof
 
-Ran the delegated Step 4 proof:
+Ran the delegated Step 3 proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00204_c$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00140_c|c_testsuite_aarch64_backend_src_00204_c)$' > test_after.log 2>&1
 ```
 
-Result: build succeeded/up to date; the selected `00204` CTest still failed
-with `RUNTIME_NONZERO` / segmentation fault after advancing past the fixed
-`Return values:` HFA block. `test_after.log` is the preserved proof log and
-contains the runtime output used for this classification.
+Result: build succeeded; selected `backend_.*` tests and `00140` passed, but
+`c_testsuite_aarch64_backend_src_00204_c` still failed with `RUNTIME_NONZERO`.
+The preserved failing output still reaches the first `stdarg` line, then the
+second line prints only `lmnopqr ABCDEFGHI ABCDEFGHI` before flowing directly
+into `HFA long double:`. `test_after.log` is the preserved proof log.
