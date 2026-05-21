@@ -2820,6 +2820,68 @@ lower_fixed_formal_store_local_publication(
   }
   const auto* producer =
       find_same_block_named_producer(context, value.name, before_instruction_index);
+  if (const auto* binary =
+          producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
+      binary != nullptr && is_prepared_scalar_float_alu_operation(*binary)) {
+    const auto producer_index =
+        producer_instruction_index(context, producer).value_or(before_instruction_index);
+    std::string_view mnemonic;
+    switch (binary->opcode) {
+      case bir::BinaryOpcode::Add:
+        mnemonic = "fadd";
+        break;
+      case bir::BinaryOpcode::Sub:
+        mnemonic = "fsub";
+        break;
+      case bir::BinaryOpcode::Mul:
+        mnemonic = "fmul";
+        break;
+      case bir::BinaryOpcode::SDiv:
+      case bir::BinaryOpcode::UDiv:
+        mnemonic = "fdiv";
+        break;
+      default:
+        return false;
+    }
+    std::optional<abi::RegisterReference> rhs_scratch;
+    for (const auto scratch : abi::reserved_mir_scratch_fp_simd_registers()) {
+      if (scratch.index == destination_view->index) {
+        continue;
+      }
+      const auto viewed = scalar_fp_register_view(scratch, binary->operand_type);
+      if (!viewed.has_value()) {
+        continue;
+      }
+      rhs_scratch = *viewed;
+      break;
+    }
+    if (!rhs_scratch.has_value()) {
+      return false;
+    }
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    if (!emit_fp_value_to_register(context,
+                                   lhs,
+                                   producer_index,
+                                   *destination_view,
+                                   gp_scratch_index,
+                                   lines) ||
+        !emit_fp_value_to_register(context,
+                                   rhs,
+                                   producer_index,
+                                   *rhs_scratch,
+                                   gp_scratch_index,
+                                   lines)) {
+      return false;
+    }
+    lines.push_back(std::string{mnemonic} + " " +
+                    std::string{abi::register_name(*destination_view)} + ", " +
+                    std::string{abi::register_name(*destination_view)} + ", " +
+                    std::string{abi::register_name(*rhs_scratch)});
+    return true;
+  }
   if (const auto* select =
           producer != nullptr ? std::get_if<bir::SelectInst>(producer) : nullptr;
       select != nullptr) {
@@ -5937,6 +5999,20 @@ lower_store_global_value_publication(
   return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
 }
 
+[[nodiscard]] bool store_local_value_has_scalar_fp_binary_producer(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index) {
+  if (store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, store.value.name, instruction_index);
+  const auto* binary =
+      producer != nullptr ? std::get_if<bir::BinaryInst>(producer) : nullptr;
+  return binary != nullptr && is_prepared_scalar_float_alu_operation(*binary);
+}
+
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,
@@ -6074,6 +6150,8 @@ lower_store_local_value_publication(
        !store_local_value_is_wide_load_from_narrow_local_store(
            context, *store, instruction_index) &&
        !store_local_value_has_select_producer(context, *store, instruction_index) &&
+       !store_local_value_has_scalar_fp_binary_producer(
+           context, *store, instruction_index) &&
        cast_producer == nullptr &&
        !select_chain_contains_direct_global_load(context, store->value, instruction_index))) {
     return std::nullopt;
@@ -6105,6 +6183,18 @@ lower_store_local_value_publication(
   if (const auto* target_register =
           std::get_if<RegisterOperand>(&memory_record->value->payload);
       target_register != nullptr) {
+    if (const auto value_name = prepared_named_value_id(context, value);
+        value_name.has_value() &&
+        store_local_value_has_scalar_fp_binary_producer(
+            context, *store, instruction_index)) {
+      const auto emitted_value =
+          find_emitted_scalar_register(scalar_state, *value_name);
+      if (emitted_value.has_value() &&
+          register_operands_share_physical_register(
+              *emitted_value, *target_register)) {
+        return std::nullopt;
+      }
+    }
     if (store_local_uses_pointer_value_address(*store)) {
       const auto value_register =
           prepared_or_emitted_store_value_register(context, value, scalar_state);
@@ -6156,6 +6246,18 @@ lower_store_local_value_publication(
           producer_instruction_index(context, producer_inst).value_or(instruction_index),
           *target_register,
           lines);
+    }
+    if (!emitted && abi::is_fp_simd_register(target_register->reg) &&
+        store_local_value_has_scalar_fp_binary_producer(
+            context, *store, instruction_index) &&
+        !scratches.empty()) {
+      lines.clear();
+      emitted = emit_fp_value_to_register(context,
+                                          value,
+                                          instruction_index,
+                                          target_register->reg,
+                                          scratches.front().index,
+                                          lines);
     }
     if (!emitted && abi::is_gp_register(target_register->reg) && !scratches.empty()) {
       lines.clear();
@@ -7479,6 +7581,81 @@ lower_scalar_cast_publication_to_prepared_register(
       .value_name = home->value_name,
       .prepared_bank = prepare::PreparedRegisterBank::Gpr,
       .expected_view = expected_view,
+  };
+  record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_scalar_fp_binary_publication_to_prepared_register(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr || !is_prepared_scalar_float_alu_operation(*binary)) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, binary->result);
+  if (!value_name.has_value() ||
+      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+    return std::nullopt;
+  }
+  const auto* home = prepared_value_home_for_value(context, binary->result);
+  if (home == nullptr || home->kind != prepare::PreparedValueHomeKind::Register ||
+      !home->register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto* storage = [&]() -> const prepare::PreparedStoragePlanValue* {
+    if (context.function.storage_plan == nullptr) {
+      return nullptr;
+    }
+    for (const auto& value : context.function.storage_plan->values) {
+      if (value.value_id == home->value_id) {
+        return &value;
+      }
+    }
+    return nullptr;
+  }();
+  if (storage == nullptr ||
+      storage->encoding != prepare::PreparedStorageEncodingKind::Register ||
+      storage->bank != prepare::PreparedRegisterBank::Fpr ||
+      (!storage->register_placement.has_value() &&
+       (!storage->register_name.has_value() ||
+        *storage->register_name != *home->register_name))) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home->register_name);
+  if (!parsed.has_value() || !abi::is_fp_simd_register(*parsed)) {
+    return std::nullopt;
+  }
+  const auto result_register = scalar_fp_register_view(*parsed, binary->result.type);
+  if (!result_register.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  if (!emit_fp_value_to_register(context,
+                                 binary->result,
+                                 instruction_index + 1,
+                                 *result_register,
+                                 scratches.front().index,
+                                 lines) ||
+      lines.empty()) {
+    return std::nullopt;
+  }
+  RegisterOperand emitted{
+      .reg = *result_register,
+      .role = RegisterOperandRole::StoragePlan,
+      .value_id = home->value_id,
+      .value_name = home->value_name,
+      .prepared_class = prepare::PreparedRegisterClass::Float,
+      .prepared_bank = prepare::PreparedRegisterBank::Fpr,
+      .expected_view = result_register->view,
   };
   record_emitted_scalar_register(scalar_state, emitted.value_name, emitted);
   return make_select_chain_materialization_instruction(
@@ -9468,6 +9645,9 @@ InstructionDispatchResult dispatch_prepared_block(
               diagnostics, context, inst, instruction_index);
         }
       } else if (auto lowered = lower_prepared_scalar_float_alu_instruction(
+              context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
+      } else if (auto lowered = lower_scalar_fp_binary_publication_to_prepared_register(
               context, inst, instruction_index, scalar_state)) {
         block.instructions.push_back(std::move(*lowered));
       } else if (is_fused_compare_branch_support_instruction(context, inst, scalar_state)) {

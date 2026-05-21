@@ -1,44 +1,30 @@
 Status: Active
 Source Idea Path: ideas/open/378_aarch64_scalar_fp_expression_constant_publication.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize First Scalar FP Bad Fact
+Current Step ID: 3
+Current Step Title: Repair Scalar FP Publication
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized the first scalar FP bad fact in `00174`. The earliest
-incorrect runtime row is source row 1:
-`float a = 12.34 + 56.78; printf("%f\n", a);`, expected `69.120003`, actual
-`0.000000`.
+Step 3 repaired the shared AArch64 scalar FP publication boundary for non-call
+FP binary producers assigned to FPR storage. `emit_fp_value_to_register` now
+materializes scalar FP `BinaryInst` operands recursively, including FP
+immediates, and emits the matching `fadd`/`fsub`/`fmul`/`fdiv` into the
+destination FPR before later consumers read it.
 
-Semantic and prepared BIR still contain the intended producer chain:
-`%t0 = bir.add double 0x4028AE147AE147AE, 0x404C63D70A3D70A4`, then
-`%t1 = bir.fptrunc double %t0 to float`, store/load `%lv.a`, `%t4 =
-bir.fpext float %t3 to double`, and `printf(ptr @.str0, double %t4)`.
-Prepared locations assign `%t0` to FPR `d13` and the first call argument path
-to an FPR call argument.
-
-Generated AArch64 consumes the value at `build/c_testsuite_aarch64_backend/src/00174.c.s:10`-`20`
-by converting stale `d13` through `s8`/stack/`d8` and passing `d8` as `d0` to
-`printf`, but no preceding instruction materializes the `%t0` double add result
-or either FP literal into `d13`. The direct expression rows 2-5 and assignment
-operator rows 9-12 fail the same way; prefix literal rows 13-14 also consume
-unmaterialized scalar FP values. The adjacent comparison rows 6-8 still print
-the expected integer results, and the final `a = 2`/`sin(2)` rows 15-16 still
-work, keeping the boundary on scalar FP literal/arithmetic publication rather
-than comparisons, integer-to-FP conversion, fixed-arity `sin`, or final
-variadic handoff.
+The dispatch path also publishes prepared FPR-backed scalar FP binary results
+at the producer instruction when the prepared storage plan authorizes FPR
+storage, while preserving the existing fail-closed behavior for missing FPR
+storage facts. Store-local publication now covers scalar FP binary producers
+and skips duplicate publication when the producer already filled the same FPR.
 
 ## Suggested Next
 
-Execute Step 2 by adding focused backend coverage for AArch64 scalar FP
-literal/arithmetic result publication into the FPR consumed by a later
-conversion, store/load, or variadic call argument. The smallest useful case
-should prove that a non-call scalar FP producer such as `bir.add double
-<literal>, <literal>` is materialized before its assigned FPR is consumed,
-without naming `00174`.
+Execute Step 4 by proving the external `00174` representative and recording
+whether it passes or advances to a new first bad fact under the repaired scalar
+FP publication path.
 
 ## Watchouts
 
@@ -46,15 +32,18 @@ Do not special-case `00174`, one output row, one FP register, or one emitted
 instruction sequence. Keep `00216`, `00200`, and `00207` parked unless fresh
 evidence proves they share this scalar FP owner.
 
-Suspected Step 2/3 backend boundary: AArch64 scalar FP expression/literal
-materialization for non-call producers assigned to FPR storage. The call
-planner sees the FPR argument and comparisons can still fold/publish integer
-results, but the machine emission for scalar FP `BinaryInst`/literal producers
-does not publish the value before consumers read `d13`/`d8`.
+The repair intentionally stays on scalar FP literal/arithmetic publication. It
+does not reopen aggregate, timeout, HFA/variadic, external call-result, or
+expectation buckets. The next packet should use `00174` only as representative
+proof, not as a reason to absorb unrelated residuals.
 
 ## Proof
 
 Ran the delegated proof:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00174_c$'; } > test_after.log 2>&1`.
-The build was up to date and the selected test failed with the expected
-`[RUNTIME_MISMATCH]`; `test_after.log` is the proof log.
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`.
+The build completed and the backend subset passed: 145/145 tests green.
+The focused route
+`backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result`
+now passes; generated AArch64 materializes both double literals, emits
+`fadd d13, d13, d16`, stores/reloads that value, and passes it to `printf`.
+`test_after.log` is the proof log.

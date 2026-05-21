@@ -432,6 +432,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 pointer_value_store writeback
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_scalar_fp_literal_add_publishes_fpr_result
+  SRC "${BACKEND_CASE_ROOT}/aarch64_scalar_fp_literal_add_publication.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aarch64_scalar_fp_literal_add_publication.s"
+  REQUIRED_SNIPPETS "fadd d|bl printf"
+  FORBIDDEN_SNIPPETS ""
+  LABELS aarch64 scalar_fp publication
+)
+
 add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
