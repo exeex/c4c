@@ -18146,7 +18146,7 @@ int predecessor_join_source_publication_materializes_edge_compare() {
   const auto result =
       aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
   if (result.visited_operations != 0 || !result.visited_terminator ||
-      result.emitted_instructions != 3 || block.instructions.size() != 3 ||
+      result.emitted_instructions != 2 || block.instructions.size() != 2 ||
       !diagnostics.empty()) {
     return fail("expected predecessor join edge source to publish before branch: emitted=" +
                 std::to_string(result.emitted_instructions) +
@@ -18162,6 +18162,215 @@ int predecessor_join_source_publication_materializes_edge_compare() {
       printed.assembly.find("cset w20, eq") == std::string::npos ||
       printed.assembly.find("b .LBB") == std::string::npos) {
     return fail("expected predecessor edge compare source to materialize before branch");
+  }
+  return 0;
+}
+
+int predecessor_join_source_publication_materializes_loaded_edge_compare() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.join.edge.loaded.source");
+  const auto pred_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.loaded.pred");
+  const auto join_label =
+      prepared.names.block_labels.intern("dispatch.join.edge.loaded.join");
+  const auto bir_pred_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.loaded.pred");
+  const auto bir_join_label =
+      prepared.module.names.block_labels.intern("dispatch.join.edge.loaded.join");
+  const auto loaded_name = prepared.names.value_names.intern("%edge.loaded");
+  const auto source_name = prepared.names.value_names.intern("%edge.cmp");
+  const auto destination_name = prepared.names.value_names.intern("%join.cond");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.join.edge.loaded.source",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.join.edge.loaded.pred",
+               .insts =
+                   {bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%edge.loaded"),
+                       .slot_name = "%slot",
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                   }},
+               .terminator =
+                   bir::Terminator{bir::BranchTerminator{
+                       .target_label = "dispatch.join.edge.loaded.join",
+                       .target_label_id = bir_join_label,
+                   }},
+               .label_id = bir_pred_label,
+           },
+           bir::Block{
+               .label = "dispatch.join.edge.loaded.join",
+               .insts =
+                   {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Eq,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%edge.cmp"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%edge.loaded"),
+                       .rhs = bir::Value::immediate_i32(0),
+                   }},
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_join_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = pred_label,
+               .terminator_kind = bir::TerminatorKind::Branch,
+               .branch_target_label = join_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = join_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{301},
+               .function_name = function_name,
+               .value_name = loaded_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{301},
+               .offset_bytes = std::size_t{64},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{302},
+               .function_name = function_name,
+               .value_name = source_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w13"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{303},
+               .function_name = function_name,
+               .value_name = destination_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w13"},
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BlockEntry,
+              .authority_kind = prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+              .block_index = 0,
+              .instruction_index = 0,
+              .source_parallel_copy_predecessor_label = pred_label,
+              .source_parallel_copy_successor_label = join_label,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{302},
+                      .to_value_id = prepare::PreparedValueId{303},
+                      .destination_kind = prepare::PreparedMoveDestinationKind::Value,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_register_name = std::string{"w13"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"w13"},
+                      .block_index = 0,
+                      .instruction_index = 0,
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .authority_kind =
+                          prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy,
+                      .source_parallel_copy_predecessor_label = pred_label,
+                      .source_parallel_copy_successor_label = join_label,
+                      .reason = "test_loaded_edge_compare_publication",
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{301},
+                              loaded_name,
+                              prepare::PreparedFrameSlotId{301},
+                              64),
+           register_storage(prepare::PreparedValueId{302}, source_name, "w13"),
+           register_storage(prepare::PreparedValueId{303}, destination_name, "w13")},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{301},
+      .function_name = function_name,
+      .offset_bytes = 64,
+      .size_bytes = 4,
+      .align_bytes = 4,
+  });
+  prepared.stack_layout.frame_size_bytes = 80;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 80,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = pred_label,
+              .inst_index = 0,
+              .result_value_name = loaded_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{301},
+                      .size_bytes = 4,
+                      .align_bytes = 4,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto pred_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(pred_context, block, diagnostics);
+  if (result.visited_operations != 1 || !result.visited_terminator ||
+      !diagnostics.empty() || block.instructions.size() < 3) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected predecessor loaded edge compare to publish before branch: ops=" +
+                std::to_string(result.visited_operations) +
+                " term=" + std::to_string(result.visited_terminator) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected loaded predecessor join publication route to print: " +
+                printed.diagnostic);
+  }
+  const auto load = printed.assembly.find("ldr w13, [sp, #64]");
+  const auto compare = printed.assembly.find("cmp w13, #0");
+  const auto publish = printed.assembly.find("cset w13, eq");
+  const auto branch = printed.assembly.find("b .LBB");
+  if (load == std::string::npos ||
+      compare == std::string::npos ||
+      publish == std::string::npos ||
+      branch == std::string::npos ||
+      !(load < compare && compare < publish && publish < branch) ||
+      printed.assembly.find("mov x13, x13") != std::string::npos ||
+      printed.assembly.find("mov w13, w13") != std::string::npos) {
+    return fail("expected same-register edge publication to materialize loaded compare before branch: " +
+                printed.assembly);
   }
   return 0;
 }
@@ -23326,6 +23535,11 @@ int main() {
   }
   if (const int status =
           predecessor_join_source_publication_materializes_edge_compare();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          predecessor_join_source_publication_materializes_loaded_edge_compare();
       status != 0) {
     return status;
   }

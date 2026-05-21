@@ -2946,8 +2946,7 @@ void record_current_block_entry_publication_registers(
     for (const auto& move : bundle.moves) {
       if (move.op_kind != prepare::PreparedMoveResolutionOpKind::Move ||
           move.destination_kind != prepare::PreparedMoveDestinationKind::Value ||
-          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register ||
-          move.to_value_id == move_record->destination_register->value_id) {
+          move.destination_storage_kind != prepare::PreparedMoveStorageKind::Register) {
         continue;
       }
       const auto* home =
@@ -4100,14 +4099,21 @@ struct EdgeProducerContext {
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(producer->producer);
       load != nullptr) {
-    return emit_edge_load_local_to_register(edge_context,
-                                            successor_context,
-                                            *producer,
-                                            *load,
-                                            successor_before_instruction_index,
-                                            target_index,
-                                            scratch_index,
-                                            lines);
+    std::vector<std::string> load_lines;
+    if (emit_edge_load_local_to_register(edge_context,
+                                         successor_context,
+                                         *producer,
+                                         *load,
+                                         successor_before_instruction_index,
+                                         target_index,
+                                         scratch_index,
+                                         load_lines)) {
+      lines.insert(lines.end(), load_lines.begin(), load_lines.end());
+      return true;
+    }
+    const auto* home = prepared_value_home_for_value(successor_context, value);
+    return home != nullptr &&
+           emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
   }
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
@@ -7713,6 +7719,20 @@ InstructionDispatchResult dispatch_prepared_block(
            diagnostics)) {
     if (block_entry_move_clobbers_current_join_publication(context,
                                                            block_entry_move)) {
+      continue;
+    }
+    if (const auto* move =
+            std::get_if<CallBoundaryMoveInstructionRecord>(
+                &block_entry_move.target.payload);
+        move != nullptr &&
+        move->authority_kind ==
+            prepare::PreparedMoveAuthorityKind::OutOfSsaParallelCopy &&
+        move->source_parallel_copy_predecessor_label ==
+            std::optional<c4c::BlockLabelId>{context.control_flow_block->block_label} &&
+        move->source_parallel_copy_successor_label.has_value() &&
+        move->source_register.has_value() &&
+        move->destination_register.has_value() &&
+        registers_alias(*move->source_register, *move->destination_register)) {
       continue;
     }
     if (const auto* move =
