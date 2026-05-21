@@ -1,8 +1,17 @@
 # AArch64 Scalar FP Expression Constant Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+
+## Closure Note
+
+Closed after Step 5 repaired the remaining scalar FP immediate call-argument
+publication residual and `c_testsuite_aarch64_backend_src_00174_c` passed.
+Focused backend coverage and the external representative now prove scalar F32
+and F64 constants/expressions publish to their ordinary AArch64 FP consumers.
+`00216`, `00200`, and `00207` remain separate parked buckets.
 
 ## Goal
 
