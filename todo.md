@@ -1,44 +1,48 @@
 Status: Active
 Source Idea Path: ideas/open/379_aarch64_local_aggregate_copy_load_publication.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Publication
+Current Step ID: 4
+Current Step Title: Prove Advancement And Reclassify
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired the AArch64 local aggregate address publication boundary for
-stack-homed local-slot pointer address values. When prepared BIR contains a
-pointer add/sub whose base is a prepared `local_slot` object, lowering now
-publishes `sp + local-slot-offset` directly and stores that published address
-to any stack home for the pointer value before later pointer stores or
-pointer-derived aggregate copies consume it.
+Step 4 ran the focused `00216` proof after the local aggregate address repair.
+The prior `foo` segfault at the stale local-slot-derived pointer load advanced:
+the representative now executes through `foo` and fails as
+`[RUNTIME_MISMATCH]`, not as a crash.
 
-The Step 2 focused case now emits the real local frame address for `&local`:
-`add x9, sp, #0` followed by stack-home/pointer stores, instead of reloading
-the aggregate base from the `%lv.local.0` spill slot (`ldr x9, [sp, #72]`).
-The existing focused route assertion remained valid because the general repair
-materialized the same frame-address sequence in the same prepared register.
+The first current bad fact is the `foo` local pointer-derived aggregate copy
+`struct S ls21 = *pls` where `pls = &ls`. Expected bytes are `ls21: 1 2 3 4`;
+the fresh proof produced corrupt trailing bytes (`ls21: 1 30 66 a7` in
+`test_after.log`). This remains inside idea 379 because the first mismatch is
+still a local aggregate copy/load-from-local-address publication failure, not
+relocation or function-pointer-table dispatch.
 
 ## Suggested Next
 
-Delegate Step 4 to prove `00216` advances past the localized `foo` crash and
-classify any new first bad fact without expanding this owner silently.
+Delegate a follow-up Step 4/repair packet for the new first bad fact:
+localize why `struct S ls21 = *pls` copies corrupt bytes after `pls = &ls`,
+then repair the remaining local aggregate copy/load publication path without
+special-casing `00216`, `foo`, `ls21`, stack offsets, registers, or output text.
 
 ## Watchouts
 
-The repair is keyed to prepared local-slot metadata and pointer add/sub
-publication, not to `00216`, the focused test filename, stack offsets,
-registers, or a nearby `ldrb` sequence. Step 4 should check whether the
-external `00216` failure advances; any relocation, function-pointer-table, or
-timeout owner should be handed back to supervisor routing.
+Later observations in the same proof are not the first current failure:
+`lv3` shows a byte-layout/subobject aggregate mismatch, `flow` shows a later
+aggregate initializer mismatch, and `test_multi_relocs` prints `two/two/two`
+instead of `one/two/three`. Keep the function-pointer-table/relocation
+observation parked for lifecycle routing unless a later proof makes it the
+first bad fact. Do not mix that owner into the current `ls21` packet.
 
 ## Proof
 
 Ran the delegated proof exactly:
-`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^backend_'; } > test_after.log 2>&1`
+`{ cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^c_testsuite_aarch64_backend_src_00216_c$'; } > test_after.log 2>&1`
 
-Result: build completed and the backend subset passed 146/146 tests, including
-`backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address`.
+Result: build completed (`ninja: no work to do`), and the focused CTest
+executed 1 test. `c_testsuite_aarch64_backend_src_00216_c` failed with
+`[RUNTIME_MISMATCH]`, proving advancement past the prior `foo` segfault while
+leaving a same-owner local aggregate copy/load mismatch to repair.
 Proof log: `test_after.log`.
