@@ -2510,6 +2510,87 @@ prepare::PreparedBirModule prepared_with_cross_block_call_preserved_argument_reu
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_sibling_block_call_preserved_argument_reuse() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  auto& function = prepared.module.functions.front();
+  auto& blocks = function.blocks;
+  const auto entry_label = prepared.names.block_labels.intern(
+      "dispatch.nested.call.arg.branch");
+  const auto clobber_label = prepared.names.block_labels.intern(
+      "dispatch.nested.call.arg.clobber");
+  const auto consume_label = prepared.names.block_labels.intern(
+      "dispatch.nested.call.arg.consume");
+  const auto bir_entry_label = prepared.module.names.block_labels.intern(
+      "dispatch.nested.call.arg.branch");
+  const auto bir_clobber_label = prepared.module.names.block_labels.intern(
+      "dispatch.nested.call.arg.clobber");
+  const auto bir_consume_label = prepared.module.names.block_labels.intern(
+      "dispatch.nested.call.arg.consume");
+
+  auto clobber_call = std::move(blocks.front().insts.front());
+  auto consume_call = std::move(blocks.front().insts.back());
+  blocks.clear();
+  blocks.push_back(bir::Block{
+      .label = "dispatch.nested.call.arg.branch",
+      .insts = {},
+      .terminator = bir::Terminator{bir::CondBranchTerminator{
+          .condition = bir::Value::named(bir::TypeKind::I1, "%cond"),
+          .true_label = "dispatch.nested.call.arg.clobber",
+          .false_label = "dispatch.nested.call.arg.consume",
+          .true_label_id = bir_clobber_label,
+          .false_label_id = bir_consume_label,
+      }},
+      .label_id = bir_entry_label,
+  });
+  blocks.push_back(bir::Block{
+      .label = "dispatch.nested.call.arg.clobber",
+      .insts = {std::move(clobber_call)},
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_clobber_label,
+  });
+  blocks.push_back(bir::Block{
+      .label = "dispatch.nested.call.arg.consume",
+      .insts = {std::move(consume_call)},
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_consume_label,
+  });
+
+  auto& control_blocks = prepared.control_flow.functions.front().blocks;
+  control_blocks.clear();
+  control_blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = entry_label,
+      .terminator_kind = bir::TerminatorKind::CondBranch,
+      .true_label = clobber_label,
+      .false_label = consume_label,
+  });
+  control_blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = clobber_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  control_blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = consume_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+
+  auto& move_bundle =
+      prepared.value_locations.functions.front().move_bundles.front();
+  move_bundle.block_index = 2;
+  move_bundle.instruction_index = 0;
+  for (auto& move : move_bundle.moves) {
+    move.block_index = 2;
+    move.instruction_index = 0;
+  }
+
+  auto& calls = prepared.call_plans.functions.front().calls;
+  calls.front().block_index = 1;
+  calls.front().instruction_index = 0;
+  calls.back().block_index = 2;
+  calls.back().instruction_index = 0;
+  calls.back().arguments.front().instruction_index = 0;
+  calls.back().preserved_values = calls.front().preserved_values;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_load_global_call_argument(
     bir::GlobalAddressMaterializationPolicy policy) {
   prepare::PreparedBirModule prepared;
@@ -13065,6 +13146,75 @@ int cross_block_call_argument_publishes_from_prior_preservation_home() {
   return 0;
 }
 
+int sibling_block_call_argument_repopulates_incoming_formal_home() {
+  auto prepared = prepared_with_sibling_block_call_preserved_argument_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  if (function_cf.blocks.size() != 3 ||
+      function_context.call_plans == nullptr ||
+      function_context.call_plans->calls.size() != 2 ||
+      function_context.call_plans->calls.front().block_index != 1 ||
+      function_context.call_plans->calls.back().block_index != 2 ||
+      function_context.call_plans->calls.back().preserved_values.empty()) {
+    return fail("expected sibling-block fixture to keep a non-dominating prior preserved value");
+  }
+
+  aarch64_module::MachineBlock consume_block;
+  aarch64_module::ModuleLoweringDiagnostics consume_diagnostics;
+  const auto consume_context =
+      aarch64_codegen::make_block_lowering_context(
+          function_context, function_cf.blocks.back(), 2);
+  const auto consume_result =
+      aarch64_codegen::dispatch_prepared_block(
+          consume_context, consume_block, consume_diagnostics);
+  if (consume_result.visited_operations != 1 ||
+      !consume_result.visited_terminator ||
+      consume_result.emitted_instructions != 4 ||
+      consume_block.instructions.size() != 4 ||
+      !consume_diagnostics.empty()) {
+    const auto printed = print_route_block(function_cf.function_name, consume_block);
+    return fail("expected sibling consumer block to repopulate preserved home before call: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* populate =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &consume_block.instructions.front().target.payload);
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &consume_block.instructions[1].target.payload);
+  if (populate == nullptr || !populate->source_register.has_value() ||
+      !populate->destination_register.has_value() ||
+      populate->source_register->reg != aarch64_module::abi::x_register(1) ||
+      populate->destination_register->reg != aarch64_module::abi::x_register(20) ||
+      populate->move.reason != "callee_saved_preservation_home_population" ||
+      move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::x_register(20) ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    const auto printed = print_route_block(function_cf.function_name, consume_block);
+    return fail("expected sibling path to publish x1 -> x20 before x20 -> x0: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, consume_block);
+  if (!printed.ok) {
+    return fail("expected sibling consumer block to print: " + printed.diagnostic);
+  }
+  const auto populate_pos = printed.assembly.find("mov x20, x1");
+  const auto arg_pos = printed.assembly.find("mov x0, x20");
+  const auto call_pos = printed.assembly.find("bl consume_arg");
+  if (populate_pos == std::string::npos ||
+      arg_pos == std::string::npos ||
+      call_pos == std::string::npos ||
+      !(populate_pos < arg_pos && arg_pos < call_pos)) {
+    return fail("expected incoming formal home publication before preserved call argument: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -22108,6 +22258,11 @@ int main() {
   }
   if (const int status =
           cross_block_call_argument_publishes_from_prior_preservation_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          sibling_block_call_argument_repopulates_incoming_formal_home();
       status != 0) {
     return status;
   }

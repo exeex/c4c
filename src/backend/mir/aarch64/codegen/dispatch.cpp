@@ -5689,6 +5689,7 @@ void record_call_result_source_register(
       std::get_if<CallBoundaryMoveInstructionRecord>(&destination_instruction.target.payload);
   return source != nullptr &&
          destination != nullptr &&
+         destination->move.reason != "callee_saved_preservation_home_population" &&
          source->source_register.has_value() &&
          destination->destination_register.has_value() &&
          registers_alias(*source->source_register, *destination->destination_register);
