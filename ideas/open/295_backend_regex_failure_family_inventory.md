@@ -993,6 +993,36 @@ Lifecycle switch 2026-05-21 post-331:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3 selection 2026-05-21 post-365:
+
+- Step 2 classified 11 current non-timeout AArch64 backend residuals using
+  `test_after.log` and generated artifacts after commit `e5aae0994`.
+- The selected focused owner is new idea 366,
+  `ideas/open/366_aarch64_string_literal_pointer_null_comparison.md`, for the
+  `00112` runtime failure where `return "abc" == (void *)0;` lowers to
+  `mov x0, x13; ret` and returns a stale register instead of materializing the
+  string-literal pointer/null comparison result.
+- Existing open ideas do not exactly own this bucket by current evidence:
+  `ideas/open/356_semantic_bir_pointer_derived_string_loads.md` is a parked
+  dynamic pointer-derived byte-load owner, not direct string-literal pointer
+  constant comparison/result publication with no byte load.
+- Remaining non-timeout buckets stay parked under this umbrella for later
+  classification: indexed local/global aggregate element writeback, local
+  pointer reassignment writeback, scalar FP expression materialization,
+  unsigned div/rem or local/global element materialization, conditional/select
+  expression producer materialization, libc/file API return-count publication,
+  global array `sizeof`/loop-bound constant materialization, complex aggregate
+  initializer/object layout, and unsigned enum bit-field storage/load layout.
+  `00200` and `00207` remain timeout-only quarantine cases.
+
+Lifecycle switch 2026-05-21 post-365:
+
+- Umbrella inventory idea 295 is parked after creating focused owner idea 366,
+  `ideas/open/366_aarch64_string_literal_pointer_null_comparison.md`.
+- The active lifecycle state should now use idea 366 for implementation. The
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

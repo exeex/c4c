@@ -1,141 +1,161 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 String Literal Pointer Null Comparison Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Activated After: ideas/closed/365_aarch64_signed_remainder_lowering.md
+Source Idea: ideas/open/366_aarch64_string_literal_pointer_null_comparison.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Reactivate the umbrella backend inventory after the signed remainder owner
-closed, so the next focused repair owner is selected from current evidence.
+Repair the focused `00112` runtime residual selected by the backend inventory:
+direct string-literal pointer/null comparison returns a stale AArch64 register.
 
 ## Goal
 
-Classify the current backend failure surface, separate unrelated buckets, and
-split or select exactly one focused semantic owner before implementation work
-continues.
+Make AArch64 lowering materialize and publish a defined boolean result for
+string-literal pointer comparisons against null.
 
 ## Core Rule
 
-This umbrella is for classification and lifecycle routing only. Do not make
-implementation edits under this plan, and do not claim progress from pass
-counts, expectation changes, runner changes, or unsupported reclassification.
+Repair pointer constant comparison/result publication generally. Do not
+special-case `00112`, `.str0`, `"abc"`, null, one register, or the emitted
+`mov x0, x13; ret` sequence.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- `test_baseline.log`
+- `ideas/open/366_aarch64_string_literal_pointer_null_comparison.md`
+- `todo.md`
 - `test_after.log`
-- current `ctest -R backend` output if the supervisor delegates a fresh run
-- generated AArch64 artifacts for any selected representative failures
-- existing open ideas before creating a new focused owner
+- generated `build/c_testsuite_aarch64_backend/src/00112.c.s`
+- semantic/prepared BIR for `tests/c/external/c-testsuite/src/00112.c`
+- AArch64 pointer constant, comparison, boolean publication, and return
+  lowering paths
 
 ## Current Scope
 
-- current main-build backend-regex inventory after idea 365 closure
-- c-testsuite AArch64 backend failures still present in the accepted baseline
-- residual buckets from the latest inventory notes that remain unassigned
-- evidence-based selection of one focused owner under `ideas/open/`
+- string-literal pointer constant materialization
+- null pointer comparison lowering
+- boolean comparison result publication
+- scalar return publication for pointer-comparison results
+- representative proof for `c_testsuite_aarch64_backend_src_00112_c`
 
 ## Non-Goals
 
-- Do not edit implementation files, tests, expectations, runners, timeout
-  policy, unsupported classifications, CTest registration, or proof-log
-  policy.
-- Do not reactivate parked owners solely because their files remain under
-  `ideas/open/`.
-- Do not reopen closed ideas or mutate `ideas/closed/*`.
-- Do not continue idea 364 synthetic-label work or idea 365 signed-remainder
-  work unless fresh evidence contradicts their closure or parked status.
+- Do not reopen dynamic pointer-derived byte loads from idea 356 without fresh
+  evidence.
+- Do not repair local pointer reassignment, pointer-derived address scaling,
+  indexed aggregate writeback, scalar FP arithmetic, file I/O return counts,
+  `sizeof`, aggregate initializer layout, enum bit-field layout, or timeout
+  residuals under this plan.
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
 
 ## Working Model
 
-The previous focused owner, idea 365, closed after the full-suite guard
-resolved `c_testsuite_aarch64_backend_src_00143_c` with no new failures.
-Several open idea files are parked or closure-deferred because their source
-scope was satisfied but archival close was blocked by regression-guard policy.
-The next useful action is an umbrella classification pass against current
-baseline evidence, followed by activation or creation of one focused owner.
+The current first bad fact is not a string byte load. Generated `00112` emits
+the string literal but returns `x13` directly, so the missing capability is in
+the pointer constant comparison/result publication path before scalar return.
+Treat stale `x13` as the downstream symptom until localization proves the
+first missing boundary.
 
 ## Execution Rules
 
-- Start from the accepted current baseline and recent full-suite guard logs;
-  request a fresh backend-regex run only if those logs are insufficient for
-  classification.
-- Classify by semantic owner, not by testcase name or emitted-text shape.
-- Before creating a new idea, check whether an existing open idea already owns
-  the current first bad fact and is not merely parked for closure.
-- If a focused owner is selected, update lifecycle state to that idea before
-  any implementation packet begins.
-- Leave durable inventory findings in `todo.md` first; update the source idea
-  only for a durable deactivation or split note.
+- Start from generated `00112.c.s` and the semantic/prepared records for
+  `"abc" == (void *)0`.
+- Trace the string-literal pointer constant, null operand, comparison result,
+  and return value independently.
+- Add focused coverage before or with the repair so the behavior is guarded
+  without relying only on `00112`.
+- Preserve dynamic pointer-derived string-load behavior and unrelated pointer
+  memory owners.
+- If `00112` advances after the comparison repair, record the new first bad
+  fact in `todo.md` instead of expanding this idea silently.
 
 ## Steps
 
-### Step 1: Capture Current Backend Inventory
+### Step 1: Localize Pointer Comparison Publication Gap
 
-Goal: establish the current failure surface after idea 365 closed and the
-accepted full-suite baseline improved.
+Goal: identify the first backend boundary where the string-literal pointer,
+null comparison, boolean result, or return publication is lost.
 
-Primary target: `test_baseline.log`, `test_after.log`, and, if delegated by
-the supervisor, a fresh `ctest --test-dir build -j --output-on-failure -R
-backend` log.
-
-Actions:
-
-- Record the baseline commit, selected scope, pass/failure count, and failed
-  test names.
-- Separate local backend/unit failures from external AArch64 c-testsuite
-  backend failures.
-- Note which recently active representatives now pass, especially `00143`.
-- Identify any failures that require generated assembly, dumps, or timeout
-  quarantine before classification.
-
-Completion check:
-
-- `todo.md` contains the current classified inventory source, counts, failed
-  tests, and any evidence gaps that block owner selection.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group the current failures into semantic owners and reject stale parked
-handoffs.
-
-Primary target: failed AArch64 backend representatives and nearby generated
-artifacts or dump tests.
+Primary target: generated `00112.c.s`, semantic/prepared BIR for `00112`, and
+AArch64 scalar comparison/result publication helpers.
 
 Actions:
 
-- Compare each candidate bucket against existing open ideas.
-- Mark parked closure-deferred ideas as non-active unless fresh evidence shows
-  their exact owner has returned.
-- For each viable bucket, name the first bad fact, owning boundary, and proof
-  artifact needed for a focused packet.
-- Quarantine timeout-only cases unless there is a safe bounded reproducer.
+- Inspect semantic and prepared BIR for the string literal pointer constant
+  and null comparison.
+- Trace whether `.str0` address materialization is absent, comparison lowering
+  is skipped, the boolean result is unpublished, or return lowering consumes a
+  stale home.
+- Name the exact owner boundary and why idea 356 is not the owner.
+- Decide the focused coverage shape needed before repair.
 
 Completion check:
 
-- `todo.md` records the leading focused owner candidate, rejected adjacent
-  owners, and the evidence for the selection.
+- `todo.md` names the first bad fact, owning backend boundary, and coverage
+  requirement for string-literal pointer/null comparison publication.
 
-### Step 3: Split Or Select One Focused Owner
+### Step 2: Add Focused Pointer Comparison Coverage
 
-Goal: leave the umbrella plan only after one implementation-ready owner exists.
+Goal: guard string-literal pointer/null comparison publication independently
+of `00112`.
 
-Primary target: `ideas/open/*.md`, plus `plan.md` / `todo.md` lifecycle state.
+Primary target: backend tests or dump coverage for pointer constant
+comparison and scalar boolean return publication.
 
 Actions:
 
-- If an existing open idea owns the selected bucket, switch lifecycle state to
-  that idea.
-- If no existing idea owns it, create a new focused idea with concrete scope,
-  acceptance criteria, and reviewer reject signals.
-- Preserve a compact deactivation note in idea 295 naming the selected owner,
-  proof basis, and remaining parked buckets.
-- Do not leave implementation instructions under this umbrella once a focused
-  owner is selected.
+- Add or extend focused coverage for a string-literal pointer compared against
+  null.
+- Assert the result is materialized as a defined boolean value before return.
+- Keep the test semantic, not tied to `.str0`, `x13`, or one emitted text
+  sequence.
 
 Completion check:
 
-- Active lifecycle state points to one focused source idea under
-  `ideas/open/`, or `todo.md` states the exact classification blocker.
+- Focused coverage fails before the repair or directly guards the missing
+  pointer comparison/result publication fact.
+
+### Step 3: Repair General Pointer Constant Comparison
+
+Goal: make AArch64 pointer constant comparisons publish a defined result.
+
+Primary target: the materialization, comparison, result-publication, or return
+helper localized in Step 1.
+
+Actions:
+
+- Implement the smallest general repair for string-literal pointer/null
+  comparison publication.
+- Preserve dynamic pointer-derived string loads and existing pointer memory
+  behavior.
+- Avoid changes to unrelated pointer/address or aggregate owners unless
+  Step 1 proves they share the boundary.
+- Run build proof before focused and representative tests.
+
+Completion check:
+
+- Focused coverage passes and generated AArch64 no longer returns stale state
+  for the covered pointer comparison shape.
+
+### Step 4: Prove Representative And Classify Residual
+
+Goal: prove `00112` advances past the stale pointer-comparison return and
+classify any next first bad fact.
+
+Primary target: focused backend coverage and
+`c_testsuite_aarch64_backend_src_00112_c`.
+
+Actions:
+
+- Run the supervisor-delegated build and proof command.
+- Inspect generated `00112.c.s` for defined comparison/result publication.
+- If `00112` still fails, classify the next first bad fact and decide whether
+  it remains in this idea or needs lifecycle handoff.
+- Ask the supervisor whether broader backend-regex or regression-guard proof
+  is needed before closure.
+
+Completion check:
+
+- `00112` no longer fails because `main` returns stale `x13`, and any
+  remaining failure is explicitly classified in `todo.md`.
