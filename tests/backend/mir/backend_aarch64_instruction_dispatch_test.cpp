@@ -2463,6 +2463,22 @@ prepare::PreparedBirModule prepared_with_preserved_argument_non_call_reuse() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_stack_preserved_argument_call_reuse() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  auto& preserved =
+      prepared.call_plans.functions.front().calls.front().preserved_values.front();
+  preserved.route = prepare::PreparedCallPreservationRoute::StackSlot;
+  preserved.callee_saved_save_index.reset();
+  preserved.register_name.reset();
+  preserved.register_bank.reset();
+  preserved.occupied_register_names.clear();
+  preserved.slot_id = prepare::PreparedFrameSlotId{44};
+  preserved.stack_offset_bytes = std::size_t{32};
+  preserved.stack_size_bytes = std::size_t{8};
+  preserved.stack_align_bytes = std::size_t{8};
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_stack_preserved_argument_non_call_reuse() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   auto& function = prepared.value_locations.functions.front();
@@ -13401,6 +13417,67 @@ int stack_preserved_home_feeds_later_non_call_scalar_after_clobber() {
   return 0;
 }
 
+int stack_preserved_home_feeds_later_call_argument_after_clobber() {
+  auto prepared = prepared_with_stack_preserved_argument_call_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 2 || !result.visited_terminator ||
+      result.emitted_instructions != 5 || block.instructions.size() != 5 ||
+      !diagnostics.empty()) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected stack-preserved call argument to publish once, reload, and return: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto* populate =
+      std::get_if<aarch64_module::codegen::AssemblerInstructionRecord>(
+          &block.instructions[0].target.payload);
+  const auto* reload =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &block.instructions[2].target.payload);
+  if (populate == nullptr || reload == nullptr ||
+      !reload->source_memory.has_value() ||
+      !reload->destination_register.has_value() ||
+      reload->source_memory->byte_offset != 32 ||
+      reload->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    const auto printed = print_route_block(function_cf.function_name, block);
+    return fail("expected later call argument to reload stack-preserved home into x0: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected stack-preserved call argument route to print: " +
+                printed.diagnostic);
+  }
+  const auto initial_publish = printed.assembly.find("str x1, [sp, #32]");
+  const auto first_call = printed.assembly.find("bl clobber_arg");
+  const auto post_call_overwrite =
+      printed.assembly.find("str x1, [sp, #32]", first_call);
+  const auto preserved_publish =
+      printed.assembly.find("ldr x0, [sp, #32]", first_call);
+  const auto second_call = printed.assembly.find("bl consume_arg", preserved_publish);
+  if (initial_publish == std::string::npos ||
+      first_call == std::string::npos ||
+      !(initial_publish < first_call) ||
+      post_call_overwrite != std::string::npos ||
+      preserved_publish == std::string::npos ||
+      second_call == std::string::npos) {
+    return fail("expected later call argument to use stack home without post-call overwrite: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int prepared_immediate_cast_register_argument_publishes_before_direct_call() {
   auto prepared = prepared_with_direct_call_argument_register_move();
   auto& function = prepared.module.functions.front();
@@ -22388,6 +22465,11 @@ int main() {
   }
   if (const int status =
           stack_preserved_home_feeds_later_non_call_scalar_after_clobber();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          stack_preserved_home_feeds_later_call_argument_after_clobber();
       status != 0) {
     return status;
   }

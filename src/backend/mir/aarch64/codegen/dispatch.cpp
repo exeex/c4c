@@ -5906,11 +5906,13 @@ publish_stack_preserved_call_values(
       }
       return false;
     }();
+    if (has_prior_stack_preservation) {
+      continue;
+    }
     std::optional<abi::RegisterReference> source_register;
     if (emitted.has_value() && abi::is_gp_register(emitted->reg)) {
       source_register = emitted->reg;
-    } else if (!has_prior_stack_preservation &&
-               context.function.value_locations != nullptr) {
+    } else if (context.function.value_locations != nullptr) {
       const auto* home =
           prepare::find_prepared_value_home(*context.function.value_locations,
                                             preserved.value_id);
