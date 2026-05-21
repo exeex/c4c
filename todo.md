@@ -1,75 +1,51 @@
 Status: Active
 Source Idea Path: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
 Source Plan Path: plan.md
-Current Step ID: 1
-Current Step Title: Localize Global Indexed Array Snapshot/Writeback Boundary
+Current Step ID: 2
+Current Step Title: Add focused indexed aggregate coverage and repair selected-address snapshot/writeback handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 1 localized `00176` `swap` to the global dynamic scalar-array
-store-value publication/writeback boundary. Semantic BIR does not preserve a
-selected global element address into AArch64 for `array[a] = array[b]`; the
-dynamic global array store is scalarized into fixed
-`load_global`/`select`/`store_global` operations for every element. Prepared BIR
-therefore records fixed `base=global_symbol symbol=array offset=N` stores whose
-stored values are `%t7.outer0.eltN.inner.store` select results. AArch64 memory
-lowering then consumes those prepared store-value homes from frame slots such as
-`slot#70+stack264` and `slot#71+stack268`, but the generated first store batch
-reads `[sp, #264]` and `[sp, #268]` before any `cmp`/`csel` publication for
-those `%t7...inner.store` values. The corruption is an uninitialized selected
-store-value snapshot consumed by fixed global-symbol stores, not an incorrect
-prologue frame slot.
+Step 2 repaired the AArch64 selected store-value publication handoff for
+stack-homed selected values consumed by fixed `StoreGlobal` records. Global
+store value publication now handles prepared frame-slot store-value operands,
+emits the select-chain value into the stack home, tracks those publications to
+avoid duplicate per-store emission, and prepublishes the stack homes for a
+scalarized global select/store run before the first fixed global writeback
+store consumes any of them.
 
-Evidence:
+Focused coverage was added to `backend_aarch64_instruction_dispatch`: a
+scalarized global array-style fixture with two fixed global element stores now
+requires both selected stack homes to be published before the first fixed
+global store reloads `[sp, #16]`.
 
-- `/tmp/00176.swap.bir.txt`: `%t7.outer0.elt0.inner.store = bir.select eq i64
-  %t6, 0, i32 %t5.outer0, %t7.outer0.elt0`, followed by `bir.store_global
-  @array, i32 %t7.outer0.elt0.inner.store`; element offsets 4..60 repeat the
-  same select-then-fixed-store pattern.
-- `/tmp/00176.swap.prepared.txt`: `access block=entry inst_index=68
-  base=global_symbol stored=%t7.outer0.elt0.inner.store symbol=array offset=0`;
-  `%t7.outer0.elt0.inner.store` has home `slot#70+stack264`, and
-  `%t7.outer0.elt1.inner.store` has home `slot#71+stack268`.
-- `/tmp/00176.s`: the first `array[a] = array[b]` store batch emits
-  `ldr w20, [array]`, then `ldr w10, [sp, #264]` / `str w10, [array]`, then
-  `ldr w10, [sp, #268]` / `str w10, [array+4]`, with no preceding select
-  publication. The later `array[b] = tmp` batch does emit `cmp`/`csel` and
-  publishes `%t10...inner.store` values to `[sp, #328+]` before storing, so the
-  failure is specific to the first dynamic-global store-value publication path.
-
-Likely Step 2/3 implementation surface:
-
-- BIR scalarization/address ownership:
-  `src/backend/bir/lir_to_bir/memory/value_materialization.cpp`
-  (`append_dynamic_global_scalar_array_store`,
-  `load_dynamic_global_scalar_array_value`, `synthesize_value_array_selects`);
-  `src/backend/bir/lir_to_bir/memory/local_slots.cpp` dynamic-global
-  load/store delegation; `src/backend/bir/lir_to_bir/memory/addressing.cpp`
-  dynamic global aggregate/scalar array access discovery.
-- AArch64 publication/memory handoff:
-  `src/backend/mir/aarch64/codegen/alu.cpp`
-  (`lower_scalar_select_publication`);
-  `src/backend/mir/aarch64/codegen/dispatch.cpp` scalar-control lowering order;
-  `src/backend/mir/aarch64/codegen/memory.cpp`
-  (`make_prepared_store_memory_instruction_record`,
-  `make_memory_record_from_prepared_access`, `lower_memory_instruction`).
+`00176` advanced past the localized uninitialized selected store-value
+snapshot: generated `swap` assembly now emits the first batch of selected
+`%t7...inner.store` publications to stack homes such as `[sp, #264]` through
+`[sp, #324]` before the first fixed `array` store reloads `[sp, #264]`. The
+next first bad fact is a runtime output mismatch after that publication repair;
+the final observed sorted line was `1572863 65535 ... 65535`, indicating the
+remaining failure is no longer the original read-before-publication of
+uninitialized selected store-value homes.
 
 ## Suggested Next
 
-Use the first implementation packet to make AArch64 publish dynamic global
-store select values before fixed global-symbol stores consume their frame-slot
-homes, or replace the BIR scalarized writeback with a real selected-address
-writeback if Step 3 chooses to repair the earlier BIR boundary. The narrow
-proof subset for that packet should keep the delegated focus:
-
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|c_testsuite_aarch64_backend_src_00130_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00187_c|c_testsuite_aarch64_backend_src_00195_c)$' | tee test_after.log`
+Investigate the new `00176` first bad fact in the emitted select-chain
+semantics for scalarized global array writeback. The selected homes are now
+published before fixed stores, so the next packet should compare the emitted
+nested select-chain control flow against the semantic BIR for the
+`array[a] = array[b]` and `array[b] = tmp` batches rather than extending
+store-value publication ordering.
 
 ## Watchouts
 
 - Do not special-case `00176`, `swap`, one global symbol, one stack snapshot
   slot, one array index, one register, or one emitted instruction sequence.
+- Preserve the new batch prepublication invariant: selected stack homes for a
+  scalarized fixed-global store run must be filled before any fixed global
+  store in that run reloads them.
 - Preserve the formal-to-local publication repair from idea 353 and the prior
   indexed aggregate repairs for `00130`, `00187`, and `00195`.
 - Reclassify if the first bad fact reaches call preservation, unsigned div/rem
@@ -77,9 +53,8 @@ proof subset for that packet should keep the delegated focus:
 - Do not assume prepared AArch64 currently has selected global element
   addresses for this store shape; the prepared evidence shows fixed
   `global_symbol` offsets plus selected store values.
-- If repairing only AArch64 publication order, ensure true/false operands for
-  `%t7...inner.store` are materialized as well; `%t5.outer0` is itself a
-  dynamic-load select chain.
+- `c_testsuite_aarch64_backend_src_00187_c` still fails with the prior
+  segmentation fault in this delegated proof and was not part of this repair.
 
 ## Proof
 
@@ -94,7 +69,13 @@ Passing: `backend_aarch64_instruction_dispatch`,
 `backend_cli_dump_prepared_bir_local_arg_call_contract`,
 `c_testsuite_aarch64_backend_src_00130_c`,
 `c_testsuite_aarch64_backend_src_00195_c`. Failing:
-`c_testsuite_aarch64_backend_src_00176_c` with the localized runtime output
-mismatch, and `c_testsuite_aarch64_backend_src_00187_c` with
-`RUNTIME_NONZERO` segmentation fault. Canonical proof log:
-`test_after.log`.
+`c_testsuite_aarch64_backend_src_00176_c` with the advanced runtime output
+mismatch after selected store-value stack-home publication, and
+`c_testsuite_aarch64_backend_src_00187_c` with the prior `RUNTIME_NONZERO`
+segmentation fault. Canonical proof log: `test_after.log`.
+
+Supervisor broader guard:
+
+`ctest --test-dir build -j --output-on-failure -R '^backend_'`
+
+Result: passed, 141/141.

@@ -27,6 +27,7 @@
 #include <string>
 #include <string_view>
 #include <type_traits>
+#include <unordered_set>
 #include <utility>
 #include <variant>
 
@@ -4039,9 +4040,16 @@ lower_store_global_value_publication(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
     std::size_t instruction_index,
-    const module::MachineInstruction& lowered_memory) {
+    const module::MachineInstruction& lowered_memory,
+    std::unordered_set<c4c::ValueNameId>* published_stack_values = nullptr,
+    bool stack_homes_only = false) {
   const auto* store = std::get_if<bir::StoreGlobalInst>(&inst);
   if (store == nullptr || store->value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto store_value_name = prepared_named_value_id(context, store->value);
+  if (store_value_name.has_value() && published_stack_values != nullptr &&
+      published_stack_values->find(*store_value_name) != published_stack_values->end()) {
     return std::nullopt;
   }
   const auto* memory_record =
@@ -4049,34 +4057,71 @@ lower_store_global_value_publication(
   if (memory_record == nullptr ||
       memory_record->memory_kind != MemoryInstructionKind::Store ||
       !memory_record->value.has_value() ||
-      memory_record->value->kind != OperandKind::Register) {
+      (memory_record->value->kind != OperandKind::Register &&
+       memory_record->value->kind != OperandKind::Memory)) {
     return std::nullopt;
   }
-  const auto* target_register =
-      std::get_if<RegisterOperand>(&memory_record->value->payload);
-  if (target_register == nullptr ||
-      abi::is_reserved_mir_scratch(target_register->reg)) {
-    return std::nullopt;
-  }
-
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   std::vector<std::string> lines;
   auto value = store->value;
   bool emitted = false;
-  if (abi::is_gp_register(target_register->reg)) {
+  bool published_stack_home = false;
+  if (const auto* target_register =
+          std::get_if<RegisterOperand>(&memory_record->value->payload);
+      target_register != nullptr) {
+    if (stack_homes_only) {
+      return std::nullopt;
+    }
+    if (abi::is_reserved_mir_scratch(target_register->reg) || scratches.empty()) {
+      return std::nullopt;
+    }
+    if (abi::is_gp_register(target_register->reg)) {
+      emitted = emit_value_publication_to_register(context,
+                                                   value,
+                                                   instruction_index,
+                                                   target_register->reg.index,
+                                                   scratches.front().index,
+                                                   lines);
+    } else if (abi::is_fp_simd_register(target_register->reg)) {
+      emitted = emit_fp_value_to_register(context,
+                                          value,
+                                          instruction_index,
+                                          target_register->reg,
+                                          scratches.front().index,
+                                          lines);
+    }
+  } else if (const auto* target_memory =
+                 std::get_if<MemoryOperand>(&memory_record->value->payload);
+             target_memory != nullptr) {
+    const auto store_mnemonic = scalar_store_mnemonic(value.type);
+    const auto store_view = scalar_view_for_type(value.type);
+    const auto store_register =
+        store_view.has_value() && !scratches.empty()
+            ? gp_register_name(scratches.front().index, *store_view)
+            : std::nullopt;
+    const auto stack_home = memory_address(*target_memory);
+    if (target_memory->support != MemoryOperandSupportKind::Prepared ||
+        target_memory->base_kind != MemoryBaseKind::FrameSlot ||
+        !target_memory->byte_offset_is_prepared_snapshot ||
+        !target_memory->can_use_base_plus_offset ||
+        scratches.size() < 2U || !store_mnemonic.has_value() ||
+        !store_register.has_value() || stack_home.empty()) {
+      return std::nullopt;
+    }
     emitted = emit_value_publication_to_register(context,
                                                  value,
                                                  instruction_index,
-                                                 target_register->reg.index,
                                                  scratches.front().index,
+                                                 scratches[1].index,
                                                  lines);
-  } else if (abi::is_fp_simd_register(target_register->reg)) {
-    emitted = emit_fp_value_to_register(context,
-                                        value,
-                                        instruction_index,
-                                        target_register->reg,
-                                        scratches.front().index,
-                                        lines);
+    if (emitted) {
+      lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
+                      ", " + stack_home);
+      published_stack_home = true;
+      if (store_value_name.has_value() && published_stack_values != nullptr) {
+        published_stack_values->insert(*store_value_name);
+      }
+    }
   }
   if (!emitted || lines.empty()) {
     return std::nullopt;
@@ -4097,7 +4142,12 @@ lower_store_global_value_publication(
                          : c4c::kInvalidBlockLabel,
       .block_index = context.block_index,
       .instruction_index = instruction_index,
-      .side_effects = {MachineSideEffectKind::MemoryRead},
+      .side_effects = published_stack_home
+                          ? std::vector<MachineSideEffectKind>{
+                                MachineSideEffectKind::MemoryRead,
+                                MachineSideEffectKind::MemoryWrite}
+                          : std::vector<MachineSideEffectKind>{
+                                MachineSideEffectKind::MemoryRead},
       .payload = AssemblerInstructionRecord{
           .has_inline_asm_payload = true,
           .side_effects = true,
@@ -4413,6 +4463,49 @@ lower_store_local_value_publication(
               .instruction_index = instruction_index,
           },
   };
+}
+
+[[nodiscard]] bool is_store_global_select_snapshot_run_instruction(const bir::Inst& inst) {
+  return std::get_if<bir::SelectInst>(&inst) != nullptr ||
+         std::get_if<bir::LoadGlobalInst>(&inst) != nullptr ||
+         std::get_if<bir::BinaryInst>(&inst) != nullptr ||
+         std::get_if<bir::CastInst>(&inst) != nullptr ||
+         std::get_if<bir::StoreGlobalInst>(&inst) != nullptr;
+}
+
+void lower_pending_store_global_stack_value_publications(
+    const module::BlockLoweringContext& context,
+    std::size_t instruction_index,
+    std::unordered_set<c4c::ValueNameId>& published_stack_values,
+    module::MachineBlock& block) {
+  if (context.bir_block == nullptr) {
+    return;
+  }
+  for (std::size_t index = instruction_index; index < context.bir_block->insts.size();
+       ++index) {
+    const auto& candidate = context.bir_block->insts[index];
+    if (!is_store_global_select_snapshot_run_instruction(candidate)) {
+      break;
+    }
+    if (std::get_if<bir::StoreGlobalInst>(&candidate) == nullptr) {
+      continue;
+    }
+    module::ModuleLoweringDiagnostics ignored_diagnostics;
+    auto lowered_memory =
+        lower_memory_instruction(context, candidate, index, ignored_diagnostics);
+    if (!lowered_memory.handled || !lowered_memory.instruction.has_value()) {
+      continue;
+    }
+    if (auto publication =
+            lower_store_global_value_publication(context,
+                                                 candidate,
+                                                 index,
+                                                 *lowered_memory.instruction,
+                                                 &published_stack_values,
+                                                 true)) {
+      block.instructions.push_back(std::move(*publication));
+    }
+  }
 }
 
 [[nodiscard]] bool lower_store_local_with_address_materialization(
@@ -6499,6 +6592,7 @@ InstructionDispatchResult dispatch_prepared_block(
   }
 
   BlockScalarLoweringState scalar_state;
+  std::unordered_set<c4c::ValueNameId> published_store_global_stack_values;
   auto record_call_boundary_destination =
       [&](const module::MachineInstruction& instruction) {
     const auto* move_record =
@@ -6872,6 +6966,13 @@ InstructionDispatchResult dispatch_prepared_block(
             block.instructions.push_back(std::move(*lowered_memory.instruction));
           }
         } else {
+          if (std::get_if<bir::StoreGlobalInst>(&inst) != nullptr) {
+            lower_pending_store_global_stack_value_publications(
+                context,
+                instruction_index,
+                published_store_global_stack_values,
+                block);
+          }
           const auto diagnostic_count = diagnostics.entries.size();
           auto lowered_ordinary_memory =
               lower_memory_instruction(context, inst, memory_lowering_index, diagnostics);
@@ -6894,7 +6995,11 @@ InstructionDispatchResult dispatch_prepared_block(
               }
               if (auto value_publication =
                       lower_store_global_value_publication(
-                          context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
+                          context,
+                          inst,
+                          instruction_index,
+                          *lowered_ordinary_memory.instruction,
+                          &published_store_global_stack_values)) {
                 block.instructions.push_back(std::move(*value_publication));
               }
               retarget_memory_result_to_prepared_home(
