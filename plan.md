@@ -1,40 +1,35 @@
-# AArch64 Hanoi Starting-State Output Mismatch Runbook
+# AArch64 Materialized Pointer StoreLocal Writeback Runbook
 
 Status: Active
-Source Idea: ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md
+Source Idea: ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md
 
 ## Purpose
 
-Repair the AArch64 lowering residual where `00181` prints the wrong initial
-Tower of Hanoi source-tower state before the previously repaired recursive
-post-call pointer-formal path is observable.
+Repair the AArch64 residual where materialized pointer-addressed stores do not
+write back to their addressed memory, leaving `00181`'s later Hanoi moves
+unchanged after the starting-state fix.
 
 ## Goal
 
-Make the initial `00181` output print `A: 1 2 3 4` instead of
-`A: 1 2 0 4`, with the fix tied to the localized value-flow rule and prior
-recursive-call preservation repairs remaining stable.
+Make pointer-addressed `StoreLocal` or equivalent stores update the selected
+destination memory through a general lowering rule, while preserving the idea
+360 starting-state repair.
 
 ## Core Rule
 
-Localize and repair the general value-flow boundary that loses or reads the
-third source-tower element as zero. Do not special-case `00181`, `Hanoi`, the
-literal value `3`, a tower name, one stack offset, one ABI register, or one
-instruction neighborhood.
+Localize and repair the general materialized pointer-addressed store writeback
+boundary. Do not special-case `00181`, `Hanoi`, tower names, literal values,
+one stack offset, one ABI register, or one emitted instruction neighborhood.
 
 ## Read First
 
+- `ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md`
 - `ideas/open/360_aarch64_hanoi_starting_state_output_mismatch.md`
+- `review/360_starting_state_slice_review.md`
 - `src/backend/mir/aarch64/codegen/dispatch.cpp`
-- `src/backend/mir/aarch64/codegen/calls.cpp`
 - `tests/c/external/c-testsuite/src/00181.c`
 - `tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp`
-- Recent idea 357 closure notes under
-  `ideas/closed/357_aarch64_recursive_pointer_formal_home_publication.md`
-- Parked idea 358 notes under
-  `ideas/open/358_aarch64_recursive_scalar_formal_post_call_preservation.md`
-- Parked idea 359 notes under
-  `ideas/open/359_aarch64_recursive_stack_preserved_pointer_formal_post_call_overwrite.md`
+- Recent idea 357, 358, 359, and 360 notes
 
 ## Current Targets
 
@@ -49,11 +44,14 @@ instruction neighborhood.
 
 ## Non-Goals
 
-- Do not reopen stack-preserved pointer formal post-call overwrite handling
-  from idea 359.
+- Do not reopen the direct `LoadGlobal` current-memory select-store repair
+  from idea 360 except to keep it stable.
+- Do not reopen stack-preserved pointer formal post-call handling from idea
+  359.
 - Do not reopen scalar formal post-call reloads from idea 358.
 - Do not reopen pointer-formal callee-saved home publication from idea 357.
-- Do not reopen address-valued memory or call-argument publication from idea 355.
+- Do not reopen address-valued call-argument publication from idea 355 unless
+  fresh evidence proves the same owner and lifecycle state is split again.
 - Do not handle semantic-BIR dynamic pointer-derived string loads for `00173`.
 - Do not handle frontend or semantic admission failure for `00005`.
 - Do not change expectations, unsupported classifications, runner behavior,
@@ -63,76 +61,74 @@ instruction neighborhood.
 
 ## Working Model
 
-After idea 359, generated `Hanoi` no longer has the bad post-call
-`str x3, [sp, #8]` before the final `%p.spare` reload/call sequence. `00181`
-now fails earlier and visibly as a starting-state mismatch: expected
-`A: 1 2 3 4`, actual `A: 1 2 0 4`. The owner is whatever pre-recursion
-initialization, store, reload, or print value-flow boundary first loses that
-third source-tower element.
+After commit `87e79a50a`, `00181` prints the correct starting state:
+`A: 1 2 3 4`, `B: 0 0 0 0`, `C: 0 0 0 0`. The later tower states remain
+unchanged because the broader pointer-addressed `StoreLocal` fallback was
+removed from the accepted idea 360 slice. The owner is now the first
+materialized pointer-addressed store that should mutate tower memory after the
+starting-state print.
 
 ## Execution Rules
 
-- Use generated-code and prepared-BIR evidence to confirm the first bad fact
-  before editing.
-- Compare semantic BIR, prepared BIR, and generated AArch64 before choosing the
-  owner boundary.
-- Prefer existing memory, local, GEP, and publication helpers and local
-  codegen patterns.
-- Add focused backend coverage for the localized value-flow shape once known.
-- Keep stack-preserved pointer formal post-call behavior from idea 359 stable.
-- Keep scalar-formal post-call reload behavior from idea 358 stable.
-- Keep pointer-formal callee-saved home behavior from idea 357 stable.
+- Use generated-code and prepared-BIR evidence to confirm the first bad
+  pointer-addressed store fact before editing.
+- Compare semantic BIR, prepared BIR, and generated AArch64 before choosing
+  the owner boundary.
+- Prefer existing memory, local, GEP, address-projection, and publication
+  helpers and local codegen patterns.
+- Add focused backend coverage for the localized pointer-addressed writeback
+  shape before claiming capability progress.
+- Keep the idea 360 starting-state output correct.
+- Keep ideas 357, 358, and 359 stable.
 - Treat named-case matching or expectation weakening as route failure.
 
-## Step 1: Localize The Starting-State Value-Flow Boundary
+## Step 1: Localize The Pointer-Addressed Store Boundary
 
-Goal: find the first boundary where the source-tower element expected to print
-as `3` is missing, zeroed, stored incorrectly, reloaded incorrectly, or passed
-incorrectly to the print path.
+Goal: find the first store after the correct starting-state print that should
+change tower memory but does not.
 
 Actions:
 
 - Reproduce the focused subset including `00181`, `00170`, `00189`, and the
   backend contracts listed above.
 - Inspect `00181.c`, semantic BIR, prepared BIR, and generated AArch64 for the
-  initial tower population and first printed starting-state rows.
-- Identify whether the bad `0` is introduced during initialization, stack or
-  memory publication, address/index lowering, reload, call argument setup, or
-  print-time value movement.
+  first post-starting-state tower mutation.
+- Identify the producing source store, materialized address carrier, expected
+  target memory, emitted store behavior, and later load or print consumer.
 - Record the first bad fact and any adjacent same-shape examples in `todo.md`.
 
 Completion check:
 
-- `todo.md` names the producing source operation, expected value, lowered
-  storage or register location, first wrong boundary, and consumer path.
-- Prior recursive-call preservation repairs remain outside this step unless
-  fresh evidence contradicts the idea split.
+- `todo.md` names the source store operation, pointer/address carrier,
+  expected destination, first wrong boundary, and consumer path.
+- The idea 360 starting-state repair remains outside this step unless fresh
+  evidence contradicts the split.
 
-## Step 2: Repair The Localized Starting-State Rule
+## Step 2: Repair The Materialized Pointer Store Rule
 
-Goal: repair the general lowering rule that causes the initial source-tower
-element to become zero before the starting-state print completes.
+Goal: repair the general AArch64 lowering rule that fails to commit
+pointer-addressed stores to addressed memory.
 
 Actions:
 
-- Update the localized AArch64 lowering boundary only.
-- Ensure the repair applies to the general value-flow shape, not just `00181`,
-  `Hanoi`, the literal value `3`, or one emitted offset.
-- Preserve stack-preserved pointer formal post-call behavior from idea 359.
-- Preserve scalar-formal reload behavior from idea 358.
-- Preserve pointer-formal callee-saved home publication behavior from idea 357.
-- Add focused backend coverage for the repaired value-flow shape.
+- Update only the localized AArch64 store/writeback boundary.
+- Ensure the repair applies to the general materialized pointer-addressed
+  store shape, not just `00181` or one emitted offset.
+- Preserve direct `LoadGlobal` current-memory select-store handling from idea
+  360.
+- Preserve recursive formal post-call repairs from ideas 357, 358, and 359.
+- Add focused backend coverage for the repaired writeback shape.
 
 Completion check:
 
 - Focused backend coverage fails before the repair and passes after it.
-- Generated code or execution evidence for the representative no longer loses
-  the third source-tower element before recursion.
+- Generated code or execution evidence shows the representative store updates
+  the addressed memory.
 - `git diff --check` passes.
 
 ## Step 3: Prove Focused External Progress
 
-Goal: prove the starting-state repair advances or resolves `00181` without
+Goal: prove the pointer-addressed store repair advances `00181` without
 regressing nearby repaired paths.
 
 Actions:
@@ -140,8 +136,8 @@ Actions:
 - Run:
   `cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|backend_prepare_frame_stack_call_contract|backend_cli_dump_prepared_bir_local_arg_call_contract|c_testsuite_aarch64_backend_src_00181_c|c_testsuite_aarch64_backend_src_00170_c|c_testsuite_aarch64_backend_src_00189_c)$' | tee test_after.log`
 - If `00181` still fails, classify the new first bad fact in `todo.md` and
-  split it only if it is outside the starting-state value-flow owner.
-- Keep `00170` and `00189` passing.
+  split it only if it is outside the pointer-addressed store owner.
+- Keep `00170`, `00189`, and the idea 360 starting-state output passing.
 
 Completion check:
 
@@ -149,24 +145,22 @@ Completion check:
 - `00181` passes or has a newly localized out-of-scope first bad fact.
 - Stability representatives remain passing.
 
-## Step 4: Close Or Split Residual Scope
+## Step 4: Broader Backend Guard And Lifecycle Decision
 
-Goal: decide whether idea 360 is complete or whether a fresh residual belongs
-to a separate source idea.
+Goal: decide whether the residual is complete and safe to close or whether a
+new first bad fact needs its own source idea.
 
 Actions:
 
 - Compare the final residual, if any, against the source idea's in-scope and
   out-of-scope lists.
-- Request plan-owner closure only after the starting-state value-flow owner is
-  repaired and guarded.
-- Before closure, supervisor should run an appropriate broader backend guard
-  if the code diff touches shared memory, publication, or call-lowering
-  behavior.
+- Ask the supervisor for a broader backend guard before closure because the
+  repair touches shared store/writeback behavior.
+- Split unrelated residuals into new `ideas/open/` source ideas instead of
+  absorbing them into this plan.
 
 Completion check:
 
-- Idea 360 closes only when the starting-state value-flow residual is repaired
-  and guarded.
-- Any unrelated residual is split into a new `ideas/open/` source idea instead
-  of being absorbed into this plan.
+- The pointer-addressed store residual closes only when it is repaired,
+  guarded, and not masking a separate owner.
+- Any unrelated residual is split into a new source idea.

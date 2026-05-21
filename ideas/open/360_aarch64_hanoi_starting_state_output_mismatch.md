@@ -1,8 +1,28 @@
 # AArch64 Hanoi Starting-State Output Mismatch
 
-Status: Open
+Status: Parked
 Created: 2026-05-21
 Split From: ideas/open/359_aarch64_recursive_stack_preserved_pointer_formal_post_call_overwrite.md
+
+## Parked Outcome
+
+Parked: 2026-05-21
+
+The starting-state owner was repaired by commit
+`87e79a50a Reload select-store globals from memory`. The accepted slice kept
+the aligned direct `LoadGlobal` current-memory select-store fix and focused
+dispatch coverage, and removed the reviewed unguarded materialized
+pointer-addressed `StoreLocal` fallback.
+
+Focused proof after narrowing was 6/7: backend contracts, `00170`, and
+`00189` pass. `00181` still fails, but its starting state is now correct:
+`A: 1 2 3 4`, `B: 0 0 0 0`, `C: 0 0 0 0`. Later Hanoi moves remain
+unchanged because the pointer-addressed store fallback was removed.
+
+Close was rejected by the plan-owner close gate because
+`c4c-regression-guard` reported no strict pass-count increase for the focused
+before/after logs: both runs remained 6/7 with `00181` failing. The residual
+is split to `ideas/open/361_aarch64_materialized_pointer_storelocal_writeback.md`.
 
 ## Goal
 
