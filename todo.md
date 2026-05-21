@@ -1,42 +1,49 @@
 Status: Active
 Source Idea Path: ideas/open/356_semantic_bir_pointer_derived_string_loads.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Pointer-Derived Byte Load Lowering
+Current Step ID: 4
+Current Step Title: Prove Representative Progress And Decide Lifecycle
 
 # Current Packet
 
 ## Just Finished
 
-Completed Plan Step 3 pointer-carrier reload repair in
-`src/backend/bir/lir_to_bir/memory/local_slots.cpp`.
+Completed Plan Step 4 localization for the new `00173` runtime segmentation
+fault after the pointer-carrier reload repair.
 
-Code changes:
+New first bad fact:
 
-- Added a local helper that converts a tracked global address into runtime
-  `PointerAddress` provenance rooted at the loaded SSA pointer value.
-- Changed `try_lower_tracked_local_pointer_slot_load()` so
-  `local_indirect_pointer_slots` reloads no longer republish fixed
-  `global_pointer_slots[result]` provenance.
-- Changed reloaded runtime pointer slots to publish the loaded SSA pointer as
-  the new `PointerAddress` base with byte offset zero, instead of carrying
-  stale base-plus-offset facts forward after store/reload cycles.
+- Semantic BIR no longer contains the old fixed-global byte loads for dynamic
+  `*b` / `*src` consumers; the loop loads are dynamic pointer-value loads such
+  as `%t11 = bir.load_local i8 %t11.addr, addr %t10`, `%t30 = bir.load_local
+  i8 %t30.addr, addr %t29`, and prepared addressing records them as
+  `base=pointer_value`.
+- The bad producer is earlier: `char *a = "hello"` lowers to
+  `bir.store_local %lv.a, ptr %t2`, but semantic/prepared BIR has no
+  `.str0` / string-constant address materialization for `%t2`.
+- Prepared BIR allocates `%t2` as a normal frame spill
+  (`storage %t2 ... spill_slot=slot#26+stack72`) and records the first
+  `printf("%s\n", a)` argument as a register sourced from `%t4`, not as a
+  `.str0` symbol address.
+- Generated AArch64 materializes `%lv.a` as `add x9, sp, #72; str x9,
+  [sp, #16]`, so the runtime pointer value consumed by `printf`, `*a`, `*b`,
+  and `*src` is `sp+72` instead of `.str0`.
+- Runtime evidence remains `[RUNTIME_NONZERO] exit=Segmentation fault` with
+  empty stdout/stderr, consistent with the first `printf("%s\n", a)` reading
+  through the invalid stack-spill address before the loop/copy output appears.
 
-The new `backend_lir_to_bir_notes` coverage now passes: the incremented
-string/global-backed pointer-carrier dereference lowers as a pointer-value load
-rooted at `%reloaded.ptr` or equivalent `%advanced.ptr`, and no longer becomes a
-fixed `.str0` `LoadGlobalInst`. Existing dynamic-global-scalar array coverage
-in the same test remains green.
-
-`00173` advanced from the prior runtime output-only failure (`copied string is`)
-to a new runtime segmentation fault with empty stdout/stderr.
+Classification: the fixed-global-byte semantic bug remains repaired, and the
+new owner is not dynamic pointer-derived load preservation. It is a downstream
+address-materialization/publication residual for string literal pointer values:
+the address of `.str0` is not published for the pointer carrier `%t2`, so the
+now-dynamic pointer-value loads correctly follow a bad pointer.
 
 ## Suggested Next
 
-Localize the new `00173` segmentation fault now that pointer-carrier byte loads
-are dynamic. The next coherent packet should compare the prepared BIR/AArch64
-memory operations for the `*b`, `*src`, and destination-copy paths and identify
-which dynamic pointer-value address is becoming invalid at runtime.
+Open or activate a downstream AArch64/prepared-addressing packet for string
+literal pointer value publication. The narrow fix should make `%t2` / `char *a
+= "hello"` materialize `.str0` as a pointer value before `%lv.a` is stored,
+while preserving the repaired dynamic pointer-value loads for `*b` and `*src`.
 
 ## Watchouts
 
@@ -48,10 +55,13 @@ which dynamic pointer-value address is becoming invalid at runtime.
   materializes global array element candidates with `LoadGlobalInst`; the
   failing owner is pointer-carrier dereference provenance, not every global
   scalar-array access.
-- The semantic fixed-global-byte overfit is repaired; the live `00173` failure
-  is now a runtime crash, so the next owner is likely downstream dynamic
-  pointer-value address materialization or AArch64 memory lowering rather than
-  the stale `global_pointer_slots` publication fixed here.
+- The semantic fixed-global-byte overfit is repaired: prepared addressing for
+  `*b`, `*src`, and the destination copy uses `base=pointer_value`, not
+  fixed `.str0` global-byte loads.
+- The invalid dynamic address is `sp+72`, produced by treating `%t2` as a
+  frame-slot value instead of the `.str0` string address; consumers include
+  the first `printf("%s\n", a)`, the initial `*a`, the `b` loop loads, and the
+  `src` copy loop.
 - Do not reopen AArch64 address-valued memory, recursive `00181` publication,
   runner behavior, expectations, timeout policy, or CTest registration.
 
@@ -60,9 +70,11 @@ which dynamic pointer-value address is becoming invalid at runtime.
 Ran:
 `cmake --build --preset default && ctest --test-dir build -j10 --output-on-failure -R '^(backend_lir_to_bir_notes|backend_aarch64_instruction_dispatch|backend_aarch64_memory_operand_contract|c_testsuite_aarch64_backend_src_00173_c)$' | tee test_after.log`
 
-Result: build completed; `backend_lir_to_bir_notes`,
+Result: build completed with no work to do; `backend_lir_to_bir_notes`,
 `backend_aarch64_instruction_dispatch`, and
-`backend_aarch64_memory_operand_contract` passed;
-`c_testsuite_aarch64_backend_src_00173_c` failed with
-`[RUNTIME_NONZERO]` / `exit=Segmentation fault` and empty stdout/stderr.
-Proof log: `test_after.log`.
+`backend_aarch64_memory_operand_contract` passed, confirming the
+fixed-global-byte semantic repair still holds. The delegated CTest subset still
+reports `c_testsuite_aarch64_backend_src_00173_c` failed with
+`[RUNTIME_NONZERO] exit=Segmentation fault` and empty stdout/stderr, matching
+the localized bad `.str0` pointer-value publication residual. Proof log:
+`test_after.log`.
