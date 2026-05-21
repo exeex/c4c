@@ -1,43 +1,54 @@
 Status: Active
 Source Idea Path: ideas/open/369_semantic_bir_local_pointer_memory_observation_canonicalization.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Dynamic Local Aggregate/Member Lane Materialization
+Current Step ID: 4
+Current Step Title: Focused Proof and Regression Boundary Check
 
 # Current Packet
 
 ## Just Finished
 
-Step 3 repaired dynamic local aggregate/member lane materialization precedence
-in `lower_memory_load_inst` and `lower_memory_store_inst`. Dynamic
-pointer-value arrays, dynamic local aggregate arrays, and dynamic scalar arrays
-now get first refusal before generic pointer-provenance lowering when their
-lane type matches the requested access type, so the six dynamic backend-route
-targets lower through semantic-BIR lane loads/stores instead of opaque computed
-pointer accesses.
+Step 4 completed the focused proof and regression boundary check for idea 369
+after the pointer-local and dynamic-lane semantic-BIR repairs. The delegated
+backend-route/local backend subset passed with all seven idea 369
+backend-route targets green, nearby `backend_lir_to_bir_notes` green, and
+`c_testsuite_aarch64_backend_src_00173_c` stable.
 
-The repair preserves generic computed-pointer behavior for casted or otherwise
-wider/narrower accesses by letting scalar type mismatches fall through to the
-pointer-provenance path.
+The broader local backend subset selected by the supervisor, `backend_.*` plus
+`c_testsuite_aarch64_backend_src_00173_c`, ran 143 tests with 100% passing and
+no residual failures recorded in `test_after.log`.
 
 ## Suggested Next
 
-Supervisor should review and commit this completed Step 3 slice, then choose
-the next packet from the active plan.
+Source idea 369 appears ready for plan-owner close review. Supervisor should
+review the completed validation slice and route the active lifecycle state to
+the plan owner for close/deactivate/split decision.
 
 ## Watchouts
 
-No expectations, unsupported classifications, runner/CTest contracts,
-target-machine backend code, ABI/runtime buckets, or timeout buckets were
-touched. The compatibility guard is type-based, not test-name, member-index,
-packed-offset, temporary-name, or dump-line based.
+No implementation files, tests, expectations, unsupported classifications,
+runner/CTest contracts, target-machine backend code, ABI/runtime buckets, or
+timeout buckets were touched in this validation packet.
 
 ## Proof
 
 Proof command:
-`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_codegen_route_x86_64_pointer_param_loaded_char_deref_observe_semantic_bir|backend_codegen_route_x86_64_nested_pointer_param_dynamic_member_array_load_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir|backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir|backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir|backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir|backend_codegen_route_x86_64_packed_local_member_offsets_observe_semantic_bir|backend_lir_to_bir_notes|c_testsuite_aarch64_backend_src_00173_c)$' > test_after.log 2>&1`
+`cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00173_c)$' > test_after.log 2>&1`
 
-Result: passed. `test_after.log` is the proof log. The subset reports all nine
-delegated tests passed, including the six dynamic lane backend-route targets,
-the Step 2 pointer-local target, `backend_lir_to_bir_notes`, and
-`c_testsuite_aarch64_backend_src_00173_c`.
+Result: passed. `test_after.log` is the proof log. CTest reported 100% tests
+passed, 0 tests failed out of 143.
+
+The seven idea 369 backend-route targets passed:
+
+- `backend_codegen_route_x86_64_pointer_param_loaded_char_deref_observe_semantic_bir`
+- `backend_codegen_route_x86_64_nested_pointer_param_dynamic_member_array_load_observe_semantic_bir`
+- `backend_codegen_route_x86_64_local_dynamic_member_array_observe_semantic_bir`
+- `backend_codegen_route_x86_64_local_dynamic_member_array_store_observe_semantic_bir`
+- `backend_codegen_route_x86_64_local_direct_dynamic_member_array_store_observe_semantic_bir`
+- `backend_codegen_route_x86_64_local_direct_dynamic_member_array_load_observe_semantic_bir`
+- `backend_codegen_route_x86_64_packed_local_member_offsets_observe_semantic_bir`
+
+Nearby regression boundaries also passed:
+
+- `backend_lir_to_bir_notes`
+- `c_testsuite_aarch64_backend_src_00173_c`
