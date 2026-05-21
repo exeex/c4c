@@ -1,8 +1,21 @@
 # AArch64 Static/Global Selected Value Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/295_backend_regex_failure_family_inventory.md
+Closed: 2026-05-21
+
+## Closure Summary
+
+Completed by implementation commit `f6064ed7a` and proof update `7e213f3e5`.
+`c_testsuite_aarch64_backend_src_00182_c` now passes because selected static
+digit values are published to the scalar call-argument consumers instead of
+collapsing to stale or zero values. Focused backend coverage guards dynamic
+selected global/static value publication before scalar consumers. Delegated
+proof passed `backend_.*`, `00182`, and protected representatives `00163`,
+`00151`, and `00214` at 147/147. The accepted full-suite guard improved from
+`3351` passed / `24` failed to `3352` passed / `23` failed, resolving `00182`
+with no new failing tests, and the canonical baseline was accepted.
 
 ## Goal
 
