@@ -1656,6 +1656,126 @@ void retarget_fpr_call_result_store_value_to_emitted_scalar(
   memory_record->value = make_register_operand(*emitted);
 }
 
+[[nodiscard]] std::optional<std::string_view> fixed_formal_scalar_store_mnemonic(
+    bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::string_view{"strb"};
+    case bir::TypeKind::I16:
+      return std::string_view{"strh"};
+    case bir::TypeKind::I32:
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::string_view{"str"};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] bool store_local_value_is_fixed_formal(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr ||
+      context.function.bir_function == nullptr ||
+      store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  for (const auto& param : context.function.bir_function->params) {
+    if (param.is_varargs || param.is_sret || param.is_byval ||
+        param.type != store.value.type) {
+      continue;
+    }
+    const auto param_name = prepare::resolve_prepared_value_name_id(
+        context.function.prepared->names, param.name);
+    if (param_name.has_value() && *param_name == value_name) {
+      return true;
+    }
+  }
+  return false;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_fixed_formal_store_local_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      store->value.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  const auto value_name = prepared_named_value_id(context, store->value);
+  if (!value_name.has_value() ||
+      !store_local_value_is_fixed_formal(context, *store, *value_name)) {
+    return std::nullopt;
+  }
+  const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+  const auto address = prepared_frame_slot_load_address(context, instruction_index);
+  const auto mnemonic = fixed_formal_scalar_store_mnemonic(store->value.type);
+  if (!emitted.has_value() || !address.has_value() || !mnemonic.has_value() ||
+      !abi::is_gp_register(emitted->reg)) {
+    return std::nullopt;
+  }
+  auto store_reg = emitted->reg;
+  if (const auto expected_view = scalar_register_view(store->value.type);
+      expected_view.has_value()) {
+    const auto resized = abi::gp_register(emitted->reg.index, *expected_view);
+    if (!resized.has_value()) {
+      return std::nullopt;
+    }
+    store_reg = *resized;
+  }
+
+  InstructionRecord target{
+      .family = InstructionFamily::Assembler,
+      .surface = RecordSurfaceKind::MachineInstructionNode,
+      .opcode = MachineOpcode::Unspecified,
+      .selection =
+          MachineNodeStatusRecord{.status = MachineNodeSelectionStatus::Selected},
+      .function_name = context.function.control_flow != nullptr
+                           ? context.function.control_flow->function_name
+                           : c4c::kInvalidFunctionName,
+      .block_label = context.control_flow_block != nullptr
+                         ? context.control_flow_block->block_label
+                         : c4c::kInvalidBlockLabel,
+      .block_index = context.block_index,
+      .instruction_index = instruction_index,
+      .side_effects = {MachineSideEffectKind::MemoryWrite,
+                       MachineSideEffectKind::InlineAssembly},
+      .payload = AssemblerInstructionRecord{
+          .has_inline_asm_payload = true,
+          .side_effects = true,
+          .inline_asm_template = std::string{*mnemonic} + " " +
+                                 std::string{abi::register_name(store_reg)} +
+                                 ", " + *address,
+      },
+  };
+  return module::MachineInstruction{
+      .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+      .operands = {},
+      .target = std::move(target),
+      .origin =
+          c4c::backend::mir::MachineOrigin{
+              .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+              .function_name = context.function.control_flow != nullptr
+                                   ? context.function.control_flow->function_name
+                                   : c4c::kInvalidFunctionName,
+              .block_label = context.control_flow_block != nullptr
+                                 ? context.control_flow_block->block_label
+                                 : c4c::kInvalidBlockLabel,
+              .instruction_index = instruction_index,
+          },
+  };
+}
+
 [[nodiscard]] std::string relocation_operand(std::string_view label,
                                              std::size_t byte_offset) {
   std::string operand{label};
@@ -4320,6 +4440,7 @@ lower_store_local_value_publication(
   record_address_materialization_result(scalar_state, *materialized);
   block.instructions.push_back(std::move(*materialized));
 
+  const auto diagnostic_count = diagnostics.entries.size();
   auto lowered_memory =
       lower_memory_instruction(context, inst, instruction_index, diagnostics);
   if (lowered_memory.handled && lowered_memory.instruction.has_value()) {
@@ -4329,6 +4450,13 @@ lower_store_local_value_publication(
     }
     record_memory_result(scalar_state, *lowered_memory.instruction);
     block.instructions.push_back(std::move(*lowered_memory.instruction));
+  } else if (lowered_memory.handled) {
+    if (auto formal_store =
+            lower_fixed_formal_store_local_publication(
+                context, inst, instruction_index, scalar_state)) {
+      diagnostics.entries.resize(diagnostic_count);
+      block.instructions.push_back(std::move(*formal_store));
+    }
   }
   return lowered_memory.handled;
 }
@@ -6743,38 +6871,46 @@ InstructionDispatchResult dispatch_prepared_block(
             record_memory_result(scalar_state, *lowered_memory.instruction);
             block.instructions.push_back(std::move(*lowered_memory.instruction));
           }
-        } else if (auto lowered_ordinary_memory =
-                       lower_memory_instruction(context, inst, memory_lowering_index, diagnostics);
-                   lowered_ordinary_memory.handled) {
-          if (!lowered_ordinary_memory.instruction.has_value() &&
-              can_retry_prepared_memory_index &&
-              memory_instruction_index != memory_lowering_index) {
-            lowered_ordinary_memory =
-                lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
-          }
-          if (lowered_ordinary_memory.instruction.has_value()) {
-            retarget_pointer_store_value_to_emitted_scalar(
-                context, inst, scalar_state, *lowered_ordinary_memory.instruction);
-            retarget_fpr_call_result_store_value_to_emitted_scalar(
-                context, inst, scalar_state, *lowered_ordinary_memory.instruction);
-            if (auto value_publication =
-                    lower_store_local_value_publication(
-                        context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
-              block.instructions.push_back(std::move(*value_publication));
-            }
-            if (auto value_publication =
-                    lower_store_global_value_publication(
-                        context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
-              block.instructions.push_back(std::move(*value_publication));
-            }
-            retarget_memory_result_to_prepared_home(
-                context, *lowered_ordinary_memory.instruction);
-            record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
-            block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
-          }
         } else {
-          append_unsupported_instruction_diagnostic(
-              diagnostics, context, inst, instruction_index);
+          const auto diagnostic_count = diagnostics.entries.size();
+          auto lowered_ordinary_memory =
+              lower_memory_instruction(context, inst, memory_lowering_index, diagnostics);
+          if (lowered_ordinary_memory.handled) {
+            if (!lowered_ordinary_memory.instruction.has_value() &&
+                can_retry_prepared_memory_index &&
+                memory_instruction_index != memory_lowering_index) {
+              lowered_ordinary_memory =
+                  lower_memory_instruction(context, inst, memory_instruction_index, diagnostics);
+            }
+            if (lowered_ordinary_memory.instruction.has_value()) {
+              retarget_pointer_store_value_to_emitted_scalar(
+                  context, inst, scalar_state, *lowered_ordinary_memory.instruction);
+              retarget_fpr_call_result_store_value_to_emitted_scalar(
+                  context, inst, scalar_state, *lowered_ordinary_memory.instruction);
+              if (auto value_publication =
+                      lower_store_local_value_publication(
+                          context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
+                block.instructions.push_back(std::move(*value_publication));
+              }
+              if (auto value_publication =
+                      lower_store_global_value_publication(
+                          context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
+                block.instructions.push_back(std::move(*value_publication));
+              }
+              retarget_memory_result_to_prepared_home(
+                  context, *lowered_ordinary_memory.instruction);
+              record_memory_result(scalar_state, *lowered_ordinary_memory.instruction);
+              block.instructions.push_back(std::move(*lowered_ordinary_memory.instruction));
+            } else if (auto formal_store =
+                           lower_fixed_formal_store_local_publication(
+                               context, inst, memory_lowering_index, scalar_state)) {
+              diagnostics.entries.resize(diagnostic_count);
+              block.instructions.push_back(std::move(*formal_store));
+            }
+          } else {
+            append_unsupported_instruction_diagnostic(
+                diagnostics, context, inst, instruction_index);
+          }
         }
       }
       ++result.visited_operations;

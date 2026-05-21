@@ -823,6 +823,56 @@ std::optional<RegisterOperand> make_prepared_register_operand(
   };
 }
 
+std::optional<RegisterOperand> make_value_home_register_operand(
+    const prepare::PreparedValueHome& home,
+    bir::TypeKind type) {
+  if (home.kind != prepare::PreparedValueHomeKind::Register ||
+      !home.register_name.has_value()) {
+    return std::nullopt;
+  }
+  const auto expected_view = scalar_storage_register_view(type);
+  if (!expected_view.has_value()) {
+    return std::nullopt;
+  }
+  const auto parsed = abi::parse_aarch64_register_name(*home.register_name);
+  if (!parsed.has_value()) {
+    return std::nullopt;
+  }
+
+  std::optional<abi::RegisterReference> reg;
+  prepare::PreparedRegisterClass prepared_class =
+      prepare::PreparedRegisterClass::None;
+  prepare::PreparedRegisterBank prepared_bank = prepare::PreparedRegisterBank::None;
+  if (parsed->bank == abi::RegisterBank::GeneralPurpose) {
+    reg = abi::gp_register(parsed->index, *expected_view);
+    prepared_class = prepare::PreparedRegisterClass::General;
+    prepared_bank = prepare::PreparedRegisterBank::Gpr;
+  } else if (parsed->bank == abi::RegisterBank::FpSimd) {
+    reg = abi::fp_simd_register(parsed->index, *expected_view);
+    prepared_class = (*expected_view == abi::RegisterView::Q)
+                         ? prepare::PreparedRegisterClass::Vector
+                         : prepare::PreparedRegisterClass::Float;
+    prepared_bank = (*expected_view == abi::RegisterView::Q)
+                        ? prepare::PreparedRegisterBank::Vreg
+                        : prepare::PreparedRegisterBank::Fpr;
+  }
+  if (!reg.has_value()) {
+    return std::nullopt;
+  }
+
+  return RegisterOperand{
+      .reg = *reg,
+      .role = RegisterOperandRole::ValueHome,
+      .value_id = home.value_id,
+      .value_name = home.value_name,
+      .prepared_class = prepared_class,
+      .prepared_bank = prepared_bank,
+      .expected_view = expected_view,
+      .occupied_register_references = occupied_register_references(*reg),
+      .occupied_registers = occupied_register_views(*reg),
+  };
+}
+
 PreparedMemoryOperandRecordError resolve_pointer_value_base_register(
     const prepare::PreparedValueLocationFunction& value_locations,
     const prepare::PreparedStoragePlanFunction& storage_plan,
@@ -1575,6 +1625,25 @@ PreparedMemoryInstructionRecordResult make_store_memory_instruction_record(
                         .align_bytes = operand.record->align_bytes,
                         .can_use_base_plus_offset = true,
                     }),
+                .value_type = stored_value.type,
+            },
+        .error = PreparedMemoryOperandRecordError::None,
+    };
+  }
+  if (operand.record->base_kind == MemoryBaseKind::FrameSlot &&
+      stored_home->kind == prepare::PreparedValueHomeKind::Register &&
+      stored_storage->encoding == prepare::PreparedStorageEncodingKind::FrameSlot) {
+    auto stored_register = make_value_home_register_operand(*stored_home, stored_value.type);
+    if (!stored_register.has_value()) {
+      return memory_instruction_record_error(
+          PreparedMemoryOperandRecordError::RegisterConversionFailed);
+    }
+    return PreparedMemoryInstructionRecordResult{
+        .record =
+            MemoryInstructionRecord{
+                .memory_kind = MemoryInstructionKind::Store,
+                .address = *operand.record,
+                .value = make_register_operand(*stored_register),
                 .value_type = stored_value.type,
             },
         .error = PreparedMemoryOperandRecordError::None,

@@ -1403,6 +1403,275 @@ prepare::PreparedBirModule prepared_with_scalar_fixed_formal_register_home() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_fixed_formal_local_slot_publication() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.fixed.formal.local.slot");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.fixed.formal.local.slot.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.fixed.formal.local.slot.entry");
+  const auto clobber_link = prepared.names.link_names.intern("clobber_formal");
+  const auto param_name = prepared.names.value_names.intern("%p.x");
+  const auto first_name = prepared.names.value_names.intern("%first");
+  const auto second_name = prepared.names.value_names.intern("%second");
+  const auto sum_name = prepared.names.value_names.intern("%sum");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.fixed.formal.local.slot",
+      .return_type = bir::TypeKind::I32,
+      .params =
+          {bir::Param{
+              .type = bir::TypeKind::I32,
+              .name = "%p.x",
+              .size_bytes = 4,
+              .align_bytes = 4,
+              .abi = register_arg_abi(bir::TypeKind::I32,
+                                      4,
+                                      4,
+                                      bir::AbiValueClass::Integer),
+          }},
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.fixed.formal.local.slot.entry",
+              .insts =
+                  {bir::StoreLocalInst{
+                       .slot_id = c4c::SlotNameId{41},
+                       .value = bir::Value::named(bir::TypeKind::I32, "%p.x"),
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{41},
+                           },
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%first"),
+                       .slot_id = c4c::SlotNameId{41},
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{41},
+                           },
+                   },
+                   bir::CallInst{
+                       .callee = "clobber_formal",
+                       .callee_link_name_id = clobber_link,
+                       .return_type = bir::TypeKind::Void,
+                       .calling_convention = bir::CallingConv::C,
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%second"),
+                       .slot_id = c4c::SlotNameId{41},
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Fs,
+                               .base_slot_id = c4c::SlotNameId{41},
+                           },
+                   },
+                   bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Add,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%sum"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%first"),
+                       .rhs = bir::Value::named(bir::TypeKind::I32, "%second"),
+                   }},
+              .terminator =
+                  bir::Terminator{bir::ReturnTerminator{
+                      .value = bir::Value::named(bir::TypeKind::I32, "%sum"),
+                  }},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{410},
+               .function_name = function_name,
+               .value_name = param_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"x0"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{411},
+               .function_name = function_name,
+               .value_name = first_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w20"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{412},
+               .function_name = function_name,
+               .value_name = second_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w21"},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{413},
+               .function_name = function_name,
+               .value_name = sum_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = std::string{"w0"},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{410},
+               .value_name = param_name,
+               .encoding = prepare::PreparedStorageEncodingKind::FrameSlot,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .slot_id = prepare::PreparedFrameSlotId{410},
+               .stack_offset_bytes = std::size_t{0},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{411},
+               .value_name = first_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"w20"},
+               .occupied_register_names = {"w20"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{412},
+               .value_name = second_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"w21"},
+               .occupied_register_names = {"w21"},
+           },
+           prepare::PreparedStoragePlanValue{
+               .value_id = prepare::PreparedValueId{413},
+               .value_name = sum_name,
+               .encoding = prepare::PreparedStorageEncodingKind::Register,
+               .bank = prepare::PreparedRegisterBank::Gpr,
+               .contiguous_width = 1,
+               .register_name = std::string{"w0"},
+               .occupied_register_names = {"w0"},
+           }},
+  });
+  prepared.call_plans.functions.push_back(prepare::PreparedCallPlansFunction{
+      .function_name = function_name,
+      .calls = {prepare::PreparedCallPlan{
+          .block_index = 0,
+          .instruction_index = 2,
+          .wrapper_kind = prepare::PreparedCallWrapperKind::DirectExternFixedArity,
+          .direct_callee_name = std::string{"clobber_formal"},
+          .clobbered_registers =
+              {prepare::PreparedClobberedRegister{
+                  .bank = prepare::PreparedRegisterBank::Gpr,
+                  .register_name = std::string{"x0"},
+                  .contiguous_width = 1,
+                  .occupied_register_names = {"x0"},
+              }},
+      }},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{410},
+               .object_id = prepare::PreparedObjectId{410},
+               .function_name = function_name,
+               .offset_bytes = 0,
+               .size_bytes = 4,
+               .align_bytes = 4,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{411},
+               .object_id = prepare::PreparedObjectId{411},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = 4,
+               .align_bytes = 4,
+           }},
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 32,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .stored_value_name = param_name,
+               .address_space = bir::AddressSpace::Fs,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{411},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = first_name,
+               .address_space = bir::AddressSpace::Fs,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{411},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .result_value_name = second_name,
+               .address_space = bir::AddressSpace::Fs,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{411},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_variadic_entry_byval_aggregate_stack_home() {
   auto prepared = prepared_with_variadic_entry_helper_call(true, true, true);
   auto& function = prepared.module.functions.front();
@@ -11329,6 +11598,78 @@ int fixed_formal_register_home_feeds_later_scalar_lowering() {
   return 0;
 }
 
+int fixed_formal_register_home_publishes_to_local_slot_before_local_loads() {
+  auto prepared = prepared_with_fixed_formal_local_slot_publication();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context =
+      aarch64_codegen::make_function_lowering_context(
+          prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (!diagnostics.empty() || result.visited_operations != 5 ||
+      !result.visited_terminator || result.emitted_instructions != 6 ||
+      block.instructions.size() != 6) {
+    return fail("expected formal local-slot store, two loads, call, add, and return without diagnostics: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto* store =
+      std::get_if<aarch64_module::codegen::MemoryInstructionRecord>(
+          &block.instructions.front().target.payload);
+  if (store == nullptr ||
+      store->memory_kind != aarch64_module::codegen::MemoryInstructionKind::Store ||
+      store->address.base_kind != aarch64_module::codegen::MemoryBaseKind::FrameSlot ||
+      store->address.frame_slot_id != prepare::PreparedFrameSlotId{411} ||
+      !store->value.has_value() ||
+      store->value->kind != aarch64_module::codegen::OperandKind::Register) {
+    return fail("expected fixed formal to publish through a selected local-slot store");
+  }
+  const auto* stored_register =
+      std::get_if<aarch64_module::codegen::RegisterOperand>(&store->value->payload);
+  if (stored_register == nullptr ||
+      stored_register->reg != aarch64_abi::w_register(0) ||
+      stored_register->value_name != prepared.names.value_names.find("%p.x")) {
+    return fail("expected local-slot store to consume the incoming fixed formal register");
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected fixed-formal local-slot route to print: " +
+                printed.diagnostic);
+  }
+  const auto store_pos = printed.assembly.find("str w0, [sp, #16]");
+  const auto first_load_pos = printed.assembly.find("ldr w20, [sp, #16]");
+  const auto call_pos = printed.assembly.find("bl clobber_formal");
+  const auto second_load_pos = printed.assembly.find("ldr w21, [sp, #16]");
+  const auto add_pos = printed.assembly.find("add w0, w20, w21");
+  if (store_pos == std::string::npos ||
+      first_load_pos == std::string::npos ||
+      call_pos == std::string::npos ||
+      second_load_pos == std::string::npos ||
+      add_pos == std::string::npos ||
+      !(store_pos < first_load_pos && first_load_pos < call_pos &&
+        call_pos < second_load_pos && second_load_pos < add_pos) ||
+      printed.assembly.find("ldr w9, [sp]\n    str w9, [sp, #16]") !=
+          std::string::npos) {
+    return fail("expected formal register to seed the local slot before local loads: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int variadic_entry_byval_aggregate_publishes_frame_slot_before_helper() {
   auto prepared = prepared_with_variadic_entry_byval_aggregate_stack_home();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -20493,6 +20834,11 @@ int main() {
     return status;
   }
   if (const int status = fixed_formal_register_home_feeds_later_scalar_lowering();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          fixed_formal_register_home_publishes_to_local_slot_before_local_loads();
       status != 0) {
     return status;
   }
