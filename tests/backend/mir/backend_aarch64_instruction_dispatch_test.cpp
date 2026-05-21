@@ -7401,6 +7401,220 @@ enum class StoreDispatchFixtureKind {
   StringConstant,
 };
 
+prepare::PreparedBirModule prepared_with_stack_homed_pointer_value_load_chain() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name = prepared.names.function_names.intern("dispatch.pointer.chain");
+  const auto entry_label = prepared.names.block_labels.intern("dispatch.pointer.chain.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.pointer.chain.entry");
+  const auto first_pointer_name = prepared.names.value_names.intern("%t0");
+  const auto second_pointer_name = prepared.names.value_names.intern("%t1");
+  const auto pointee_name = prepared.names.value_names.intern("%t2");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.pointer.chain",
+      .return_type = bir::TypeKind::I32,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.pointer.chain.entry",
+              .insts =
+                  {bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::Ptr, "%t0"),
+                       .slot_name = "%lv.pp",
+                       .slot_id = c4c::SlotNameId{5},
+                       .byte_offset = 0,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                               .base_slot_id = c4c::SlotNameId{5},
+                           },
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::Ptr, "%t1"),
+                       .byte_offset = 0,
+                       .align_bytes = 8,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                               .base_value = bir::Value::named(bir::TypeKind::Ptr, "%t0"),
+                               .byte_offset = 0,
+                               .size_bytes = 8,
+                               .align_bytes = 8,
+                           },
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%t2"),
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::PointerValue,
+                               .base_value = bir::Value::named(bir::TypeKind::Ptr, "%t1"),
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{31},
+               .object_id = prepare::PreparedObjectId{31},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = 8,
+               .align_bytes = 8,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{32},
+               .object_id = prepare::PreparedObjectId{32},
+               .function_name = function_name,
+               .offset_bytes = 40,
+               .size_bytes = 8,
+               .align_bytes = 8,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{41},
+               .function_name = function_name,
+               .value_name = first_pointer_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x21",
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{42},
+               .function_name = function_name,
+               .value_name = second_pointer_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{32},
+               .offset_bytes = std::size_t{40},
+               .size_bytes = std::size_t{8},
+               .align_bytes = std::size_t{8},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{43},
+               .function_name = function_name,
+               .value_name = pointee_name,
+               .kind = prepare::PreparedValueHomeKind::Register,
+               .register_name = "x21",
+           }},
+      .move_bundles =
+          {prepare::PreparedMoveBundle{
+              .function_name = function_name,
+              .phase = prepare::PreparedMovePhase::BeforeReturn,
+              .block_index = 0,
+              .instruction_index = 3,
+              .moves =
+                  {prepare::PreparedMoveResolution{
+                      .from_value_id = prepare::PreparedValueId{43},
+                      .to_value_id = prepare::PreparedValueId{43},
+                      .destination_kind =
+                          prepare::PreparedMoveDestinationKind::FunctionReturnAbi,
+                      .destination_storage_kind =
+                          prepare::PreparedMoveStorageKind::Register,
+                      .destination_abi_index = std::size_t{0},
+                      .destination_register_name = std::string{"x0"},
+                      .destination_contiguous_width = 1,
+                      .destination_occupied_register_names = {"x0"},
+                      .op_kind = prepare::PreparedMoveResolutionOpKind::Move,
+                      .reason = "pointer_value_load_chain_return",
+                      .destination_register_placement =
+                          prepare::PreparedRegisterPlacement{
+                              .bank = prepare::PreparedRegisterBank::Gpr,
+                              .pool = prepare::PreparedRegisterSlotPool::CallResult,
+                              .slot_index = 0,
+                              .contiguous_width = 1,
+                          },
+                  }},
+          }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {register_storage(prepare::PreparedValueId{41}, first_pointer_name, "x21"),
+           frame_slot_storage(prepare::PreparedValueId{42},
+                              second_pointer_name,
+                              prepare::PreparedFrameSlotId{32},
+                              40),
+           register_storage(prepare::PreparedValueId{43}, pointee_name, "x21")},
+  });
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 0,
+               .result_value_name = first_pointer_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{31},
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = second_pointer_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                       .pointer_value_name = first_pointer_name,
+                       .size_bytes = 8,
+                       .align_bytes = 8,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 2,
+               .result_value_name = pointee_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::PointerValue,
+                       .pointer_value_name = second_pointer_name,
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_store(StoreDispatchFixtureKind kind,
                                                bool include_storage = true) {
   prepare::PreparedBirModule prepared;
@@ -21267,6 +21481,56 @@ int block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores() {
   return 0;
 }
 
+int block_dispatch_publishes_stack_homed_pointer_value_load_chain() {
+  auto prepared = prepared_with_stack_homed_pointer_value_load_chain();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (!diagnostics.empty() || result.visited_operations != 3 ||
+      !result.visited_terminator || block.instructions.size() < 4) {
+    const std::string diagnostic =
+        diagnostics.empty() ? std::string{} : " first=" + diagnostics.entries.front().message;
+    return fail("expected pointer-value load chain to lower without diagnostics: ops=" +
+                std::to_string(result.visited_operations) +
+                " term=" + std::to_string(result.visited_terminator) +
+                " emitted=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                diagnostic);
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected pointer-value load chain route to print: " +
+                printed.diagnostic);
+  }
+  const auto first_pointer_load = printed.assembly.find("ldr x21, [sp, #16]");
+  const auto stack_publication = printed.assembly.find("str x9, [sp, #40]");
+  const auto pointer_reload = printed.assembly.find("ldr x9, [sp, #40]");
+  const auto final_pointee_load = printed.assembly.find("ldr w21, [x9]");
+  const auto return_move = printed.assembly.find("mov x0, x21");
+  if (first_pointer_load == std::string::npos ||
+      stack_publication == std::string::npos ||
+      pointer_reload == std::string::npos ||
+      final_pointee_load == std::string::npos ||
+      return_move == std::string::npos ||
+      !(first_pointer_load < stack_publication &&
+        stack_publication < pointer_reload &&
+        pointer_reload < final_pointee_load &&
+        final_pointee_load < return_move)) {
+    return fail("expected stack-homed pointer value to publish before final pointee return: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_reports_missing_store_source_authority_and_unsupported_base() {
   {
     auto prepared = prepared_with_store(StoreDispatchFixtureKind::FrameSlot, false);
@@ -21590,6 +21854,11 @@ int main() {
   }
   if (const int status =
           block_dispatch_lowers_prepared_frame_slot_and_pointer_value_stores();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          block_dispatch_publishes_stack_homed_pointer_value_load_chain();
       status != 0) {
     return status;
   }
