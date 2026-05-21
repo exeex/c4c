@@ -1,37 +1,47 @@
 Status: Active
 Source Idea Path: ideas/open/382_aarch64_dynamic_stack_vla_fixed_slot_addressing.md
 Source Plan Path: plan.md
-Current Step ID: Step 4
-Current Step Title: Prove External Advancement and Guard Neighbors
+Current Step ID: Step 5
+Current Step Title: Acceptance Handoff
 
 # Current Packet
 
 ## Just Finished
 
-Step 4 completed the proof and handoff for the accepted AArch64 dynamic-stack
-fixed-slot repair. The delegated focused proof passes for the external
-`00207` case, the dynamic-stack fixed-slot backend coverage, and the
-`backend_aarch64_return_lowering` neighbor.
+Step 5 completed the acceptance handoff for the active AArch64 dynamic-stack
+fixed-slot idea without code changes. The accepted repair is already reflected
+in the committed implementation and test coverage files, while this packet only
+aligns canonical `todo.md` state for handoff.
 
-`c_testsuite_aarch64_backend_src_00207_c` now passes under the existing runner
-and timeout policy instead of repeating `boom!` until timeout. The focused
-backend route coverage confirms fixed-slot addressing uses the stable frame
-anchor across dynamic stack movement, and the return-lowering neighbor remains
-green.
+Accepted changed files from the completed repair slice:
+- `src/backend/mir/aarch64/codegen/alu.cpp`
+- `src/backend/mir/aarch64/codegen/dispatch.cpp`
+- `src/backend/mir/aarch64/codegen/globals.cpp`
+- `src/backend/mir/aarch64/codegen/instruction.hpp`
+- `src/backend/mir/aarch64/codegen/machine_printer.cpp`
+- `src/backend/mir/aarch64/codegen/memory.cpp`
+- `src/backend/mir/aarch64/codegen/prologue.cpp`
+- `tests/backend/bir/CMakeLists.txt`
+- `tests/backend/case/aarch64_dynamic_stack_fixed_slot_uses_fp_anchor.c`
+- `todo.md`
 
-No implementation, plan, source idea, expectation, unsupported-list, runner,
-timeout-policy, or CTest-registration changes were made in this packet.
+The accepted evidence shows `c_testsuite_aarch64_backend_src_00207_c` now passes
+under the existing runner and timeout policy. There is no residual `00207`
+timeout and no repeated `boom!` loop in the accepted focused proof.
+
+Closed idea 381 remains untouched; `00200` shift/type-promotion scalability is
+still outside this owner.
 
 ## Suggested Next
 
-Proceed to Step 5 acceptance handoff, or route to lifecycle close review if the
-supervisor considers the Step 4 proof and accepted regression evidence
-sufficient for this idea.
+Supervisor should call `c4c-plan-owner` for lifecycle close review of the active
+idea.
 
 ## Watchouts
 
-- The proof/handoff packet only refreshed `test_after.log` and aligned
-  `todo.md`; it intentionally did not touch the accepted repair.
+- This acceptance handoff packet only aligned `todo.md`; it intentionally did
+  not touch implementation files, tests, `plan.md`, source ideas, test logs,
+  external expectations, unsupported lists, runners, or timeout policy.
 - Supervisor-side backend regression guard evidence is already accepted:
   before 148 passed / 0 failed / 148 total; after 149 passed / 0 failed /
   149 total.
@@ -43,12 +53,16 @@ sufficient for this idea.
 
 ## Proof
 
-Ran exactly:
+No new command was run for Step 5. This handoff reuses the committed Step 4
+focused proof, accepted backend regression guard, and accepted full-suite
+baseline movement.
+
+Step 4 focused proof command:
 
 `cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_aarch64_return_lowering|backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor|c_testsuite_aarch64_backend_src_00207_c)$' > test_after.log 2>&1`
 
 Result: build succeeded; all three selected CTests passed. `test_after.log` is
-the canonical proof log for this packet.
+the canonical proof log for the accepted Step 4 packet.
 
 Selected tests:
 - `backend_aarch64_return_lowering`
