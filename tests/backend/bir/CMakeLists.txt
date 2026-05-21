@@ -422,6 +422,16 @@ set_tests_properties(
   PROPERTIES LABELS "backend;internal;cli"
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_pointer_value_named_scalar_writeback_uses_computed_store_value
+  SRC "${BACKEND_CASE_ROOT}/aarch64_pointer_value_named_scalar_writeback.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aarch64_pointer_value_named_scalar_writeback.s"
+  REQUIRED_SNIPPETS "writeback_data:|str w20, [x21]"
+  FORBIDDEN_SNIPPETS "sub x9, x9, x10|add x20, x20, x9"
+  LABELS aarch64 pointer_value_store writeback
+)
+
 add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"

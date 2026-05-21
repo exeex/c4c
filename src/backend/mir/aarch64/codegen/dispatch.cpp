@@ -1679,6 +1679,37 @@ void retarget_pointer_store_value_to_materialized_address(
   memory_record->value = make_register_operand(materialized_address);
 }
 
+[[nodiscard]] bool register_operands_share_physical_register(
+    const RegisterOperand& lhs,
+    const RegisterOperand& rhs) {
+  return lhs.reg.bank == rhs.reg.bank && lhs.reg.index == rhs.reg.index;
+}
+
+[[nodiscard]] bool store_local_uses_pointer_value_address(
+    const bir::StoreLocalInst& store) {
+  return store.address.has_value() &&
+         store.address->base_kind == bir::MemoryAddress::BaseKind::PointerValue;
+}
+
+[[nodiscard]] std::optional<RegisterOperand> prepared_or_emitted_store_value_register(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value,
+    const BlockScalarLoweringState& scalar_state) {
+  const auto value_name = prepared_named_value_id(context, value);
+  if (value_name.has_value()) {
+    if (const auto emitted = find_emitted_scalar_register(scalar_state, *value_name);
+        emitted.has_value()) {
+      return emitted;
+    }
+  }
+  auto prepared = make_named_prepared_result_register(context, value);
+  if (prepared.has_value()) {
+    prepared->occupied_register_references = {prepared->reg};
+    prepared->occupied_registers = {abi::register_name(prepared->reg)};
+  }
+  return prepared;
+}
+
 void retarget_store_address_to_materialized_pointer(
     const bir::StoreLocalInst& store,
     module::MachineInstruction& instruction,
@@ -1737,6 +1768,41 @@ void retarget_pointer_store_value_to_emitted_scalar(
     return;
   }
   memory_record->value = make_register_operand(*emitted);
+}
+
+void retarget_store_local_value_to_emitted_scalar(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    const BlockScalarLoweringState& scalar_state,
+    module::MachineInstruction& instruction) {
+  const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
+  if (store == nullptr ||
+      !store_local_uses_pointer_value_address(*store) ||
+      store->value.kind != bir::Value::Kind::Named) {
+    return;
+  }
+  auto* memory_record =
+      std::get_if<MemoryInstructionRecord>(&instruction.target.payload);
+  if (memory_record == nullptr ||
+      memory_record->memory_kind != MemoryInstructionKind::Store) {
+    return;
+  }
+  const auto* current_register =
+      memory_record->value.has_value()
+          ? std::get_if<RegisterOperand>(&memory_record->value->payload)
+          : nullptr;
+  if (current_register == nullptr) {
+    return;
+  }
+  const auto value_register =
+      prepared_or_emitted_store_value_register(context, store->value, scalar_state);
+  if (!value_register.has_value()) {
+    return;
+  }
+  if (register_operands_share_physical_register(*current_register, *value_register)) {
+    return;
+  }
+  memory_record->value = make_register_operand(*value_register);
 }
 
 void retarget_fpr_call_result_store_value_to_emitted_scalar(
@@ -5056,7 +5122,8 @@ lower_store_local_value_publication(
     const module::BlockLoweringContext& context,
     const bir::Inst& inst,
     std::size_t instruction_index,
-    const module::MachineInstruction& lowered_memory) {
+    const module::MachineInstruction& lowered_memory,
+    const BlockScalarLoweringState& scalar_state) {
   const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
   const auto* cast_producer =
       store != nullptr ? store_local_value_cast_producer(context, *store, instruction_index)
@@ -5089,6 +5156,14 @@ lower_store_local_value_publication(
   if (const auto* target_register =
           std::get_if<RegisterOperand>(&memory_record->value->payload);
       target_register != nullptr) {
+    if (store_local_uses_pointer_value_address(*store)) {
+      const auto value_register =
+          prepared_or_emitted_store_value_register(context, value, scalar_state);
+      if (value_register.has_value() &&
+          register_operands_share_physical_register(*value_register, *target_register)) {
+        return std::nullopt;
+      }
+    }
     if (abi::is_reserved_mir_scratch(target_register->reg)) {
       return std::nullopt;
     }
@@ -5237,24 +5312,40 @@ lower_stack_homed_pointer_store_writeback(
     return std::nullopt;
   }
   const auto value_register = gp_register_name(scratches[0].index, *value_view);
+  const auto address_register_ref =
+      abi::gp_register(scratches[1].index, abi::RegisterView::X);
   const auto address_register = gp_register_name(scratches[1].index, abi::RegisterView::X);
-  if (!value_register.has_value() || !address_register.has_value()) {
+  if (!value_register.has_value() || !address_register_ref.has_value() ||
+      !address_register.has_value()) {
     return std::nullopt;
   }
 
   std::vector<std::string> lines;
-  if (!emit_value_publication_to_register(context,
-                                          store->value,
-                                          instruction_index,
-                                          scratches[0].index,
-                                          scratches[1].index,
-                                          lines,
-                                          true)) {
-    return std::nullopt;
+  std::string stored_register = *value_register;
+  if (auto prepared_store_value =
+          make_named_prepared_result_register(context, store->value);
+      prepared_store_value.has_value() &&
+      !register_operands_share_physical_register(
+          *prepared_store_value,
+          RegisterOperand{.reg = *address_register_ref})) {
+    const auto source_register = std::string{abi::register_name(prepared_store_value->reg)};
+    if (source_register != stored_register) {
+      lines.push_back("mov " + stored_register + ", " + source_register);
+    }
+  } else {
+    if (!emit_value_publication_to_register(context,
+                                            store->value,
+                                            instruction_index,
+                                            scratches[0].index,
+                                            scratches[1].index,
+                                            lines,
+                                            true)) {
+      return std::nullopt;
+    }
   }
   lines.push_back("ldr " + *address_register + ", " +
                   frame_slot_address(*pointer_home->offset_bytes));
-  lines.push_back(std::string{*store_mnemonic} + " " + *value_register +
+  lines.push_back(std::string{*store_mnemonic} + " " + stored_register +
                   ", " + register_indirect_address(
                               *address_register,
                               static_cast<std::size_t>(access->address.byte_offset)));
@@ -8072,11 +8163,17 @@ InstructionDispatchResult dispatch_prepared_block(
             if (lowered_ordinary_memory.instruction.has_value()) {
               retarget_pointer_store_value_to_emitted_scalar(
                   context, inst, scalar_state, *lowered_ordinary_memory.instruction);
+              retarget_store_local_value_to_emitted_scalar(
+                  context, inst, scalar_state, *lowered_ordinary_memory.instruction);
               retarget_fpr_call_result_store_value_to_emitted_scalar(
                   context, inst, scalar_state, *lowered_ordinary_memory.instruction);
               if (auto value_publication =
                       lower_store_local_value_publication(
-                          context, inst, instruction_index, *lowered_ordinary_memory.instruction)) {
+                          context,
+                          inst,
+                          instruction_index,
+                          *lowered_ordinary_memory.instruction,
+                          scalar_state)) {
                 block.instructions.push_back(std::move(*value_publication));
               }
               if (auto value_publication =
