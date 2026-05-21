@@ -946,6 +946,21 @@ Step 3 selection 2026-05-21 post-369:
   `sizeof` materialization, complex aggregate initializer/object layout,
   unsigned enum bit-field layout, and the two timeout-only residuals.
 
+Lifecycle switch 2026-05-21 post-369:
+
+- Umbrella inventory idea 295 is parked after selecting focused owner idea
+  326, `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`.
+- The active lifecycle state should now use idea 326 for implementation. The
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+- Remaining parked buckets are unchanged from the Step 3 selection:
+  scalar comparison/value materialization, floating-point expression and
+  vararg call lowering, aggregate/member lvalue address lowering, indexed
+  array/select-matrix lowering, switch/select label ownership, conditional
+  operator lowering, file API call-boundary result lowering, constant
+  `sizeof` materialization, complex aggregate initializer/object layout,
+  unsigned enum bit-field layout, and the two timeout-only residuals.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:

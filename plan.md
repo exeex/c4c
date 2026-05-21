@@ -1,159 +1,182 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Variadic HFA And Floating Residual Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/326_aarch64_variadic_hfa_floating_residual.md
+Activated From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Reactivate the backend regex inventory after focused owner idea 369 closed,
-then classify the remaining backend-regex residuals before any new
-implementation work starts.
+Resume idea 326 from the post-369 umbrella classification and repair the
+current AArch64 aggregate/varargs ABI call-boundary move gap represented by
+`00140` and `00204`.
 
 ## Goal
 
-Produce a current, source-backed residual inventory from the main build backend
-regex surface and split or select one focused semantic owner for the next
-implementation plan.
+Classify and repair composite/variadic call-boundary move preparation and
+publication for AArch64, including the structured f128/q-register authority
+path now blocking `00204`.
 
 ## Core Rule
 
-Do not implement fixes under this umbrella plan. Use it only to capture,
-classify, compare, and split or select focused owner work.
+Repair the semantic AArch64 call-boundary capability. Do not reopen older
+idea-326 residuals or adjacent closed owners unless fresh generated-code
+evidence moves the current first bad fact back to that exact boundary.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
-- the latest canonical `test_after.log`, if it covers the backend regex
-  surface after idea 369 closed
-- recent closed owner notes when a residual appears to contradict a closure
-  boundary
+- `ideas/open/326_aarch64_variadic_hfa_floating_residual.md`
+- `todo.md`
+- current `test_after.log` entries for:
+  - `c_testsuite_aarch64_backend_src_00140_c`
+  - `c_testsuite_aarch64_backend_src_00204_c`
+- generated or prepared artifacts for `00140.c` and `00204.c` under
+  `build/c_testsuite_aarch64_backend/`, when present
+- nearby AArch64 call-boundary helpers in the backend before editing
 
 ## Current Scope
 
-- Main build backend regex surface:
-  `ctest --test-dir build -j10 -R backend --output-on-failure`
-- Local backend/unit/CLI tests selected by the backend regex
-- External `c_testsuite_aarch64_backend_*` residuals
-- Recently parked backend-regex buckets recorded in idea 295 after the
-  idea 369 split
+- AArch64 aggregate/varargs ABI call-boundary lowering for `00140` and `00204`
+- selected/prepared call-boundary move nodes whose source or destination facts
+  require GPR, scalar FPR, or structured f128/q-register authority
+- composite argument publication across fixed and variadic call boundaries
+- focused backend coverage for the repaired call-boundary owner
 
 ## Non-Goals
 
-- Do not make implementation edits.
-- Do not change expectations, unsupported classifications, allowlists, runner
-  behavior, timeout policy, proof-log policy, or CTest registration.
-- Do not treat the backend regex result as one monolithic failure bucket.
-- Do not reopen a closed owner from counts alone.
-- Do not split a new idea from a named testcase without semantic owner
+- Do not change expectations, unsupported classifications, runners, timeout
+  policy, proof-log policy, or CTest registration.
+- Do not special-case `00140.c`, `00204.c`, one struct name, one f128 value,
+  one register, one stack slot, one vararg callsite, or one emitted
+  instruction sequence.
+- Do not reopen local/value-home publication, fixed-formal entry publication,
+  byval lane publication, stdarg cursor/format, MOVI zero-extension, old
+  HFA-output repairs, or prior selected-call-boundary work without direct
   evidence.
-- Do not reactivate parked focused ideas unless their current notes identify
-  unsatisfied executable scope.
+- Do not broaden into scalar comparison, indexed array/writeback,
+  switch/select label ownership, file API result lowering, `sizeof`
+  materialization, complex initializer layout, enum bit-field layout, or
+  timeout residuals.
 
 ## Working Model
 
-The umbrella inventory is active only long enough to find the next focused
-owner. A focused owner may be a new `ideas/open/*.md` split or an existing open
-idea whose current lifecycle notes still make it executable. Once that owner
-is selected, the lifecycle should switch away from this umbrella before code
-edits begin.
+The fresh post-369 evidence selects idea 326 for a narrow current owner:
+`00140` segfaults in struct-plus-variadic calls, and `00204` fails before
+runtime with:
+
+```text
+deferred_unsupported: call-boundary move node requires prepared GPR registers, scalar FPR registers, or structured f128 q-register authority
+```
+
+Treat this as a call-boundary move preparation/publication gap, not as a
+counts-based reopen of historical HFA, byval, fixed-formal, stdarg, MOVI, or
+local/value-home routes.
 
 ## Execution Rules
 
-- Prefer existing canonical logs when they are fresh enough and their command
-  scope matches the backend regex surface.
-- If a fresh backend regex run is needed, use the main build tree command from
-  the source idea.
-- Separate local backend failures from external AArch64 c-testsuite failures.
-- Classify by first bad semantic or generated-code owner, not by filename,
-  emitted instruction text, or pass-count movement.
-- Treat timeout or output-storm cases as their own bucket and avoid broad
-  reruns without cleanup and timeout discipline.
-- Preserve source-idea durability: routine inventory details belong in
-  `todo.md`; only durable split/deactivation notes should later update the
-  source idea.
+- Start by localizing the first bad call-boundary fact in generated,
+  prepared, or selected-machine artifacts.
+- Preserve the distinction between fixed arguments, variadic extras,
+  aggregate-by-value transport, scalar floating transport, HFA/HVA transport,
+  and f128/q-register authority.
+- Prefer focused backend tests that assert structured call-boundary facts
+  before relying on the external c-testsuite representatives.
+- Keep each code slice narrow enough for build proof plus focused target proof.
+- Escalate to reviewer or lifecycle handoff if evidence shows the current
+  owner is actually one of the parked residual buckets.
 
 ## Steps
 
-### Step 1: Reconstruct the Current Backend Regex Surface
+### Step 1: Localize the Current Call-Boundary Gap
 
-Goal: establish the current residual set after idea 369 closed.
+Goal: identify the concrete prepared or selected-machine fact missing for the
+current `00140` / `00204` failures.
 
-Primary target: `test_after.log` or a fresh main-build backend regex run.
-
-Actions:
-
-- Inspect the existing canonical proof logs for command scope and freshness.
-- If no matching backend-regex log exists, ask the supervisor to provide or
-  authorize the exact backend-regex capture command before broad execution.
-- Record selected, passed, failed, and timed-out counts in `todo.md`.
-- List non-passing tests by local backend bucket versus external
-  `c_testsuite_aarch64_backend_*` bucket.
-
-Completion check:
-
-- `todo.md` names the log source or required capture command and records the
-  current backend-regex residual list.
-
-### Step 2: Classify Residuals by Semantic Owner
-
-Goal: identify tractable failure families without testcase overfit.
-
-Primary target: residual test outputs, generated artifacts, semantic BIR,
-prepared BIR, and recent closure notes.
+Primary target: `test_after.log`, generated artifacts, prepared dumps, and
+selected-machine diagnostics for `00140.c` and `00204.c`.
 
 Actions:
 
-- Group residuals by first bad boundary: semantic admission, prepared handoff,
-  selected-machine printing, AArch64 lowering, ABI publication, memory
-  writeback, runtime mismatch, timeout, or output storm.
-- Compare candidate groups against recent closed owners before declaring a
-  reopen.
-- Mark parked or closure-deferred open ideas as non-executable unless their
-  lifecycle notes identify an active unresolved scope.
-- Reject groups whose only evidence is a shared filename pattern or pass-count
-  movement.
+- Inspect the failing diagnostics and available generated artifacts for both
+  representatives.
+- For `00204`, trace the unsupported call-boundary move to the source value,
+  destination authority, and expected GPR/FPR/q-register preparation.
+- For `00140`, identify the first bad call or callee boundary that leads to
+  the struct-plus-variadic segfault.
+- Record whether the current owner is structured f128/q-register preparation,
+  composite GPR/FPR lane publication, variadic overflow placement, or another
+  directly evidenced call-boundary path.
 
 Completion check:
 
-- `todo.md` records the classified buckets, the evidence for each viable owner,
-  and the rejected adjacent owners.
+- `todo.md` names the first bad fact, the owning backend boundary, and any
+  adjacent owners rejected by generated-code or diagnostic evidence.
 
-### Step 3: Select the Next Focused Owner
+### Step 2: Add Focused Coverage For The Owner
 
-Goal: choose one focused semantic repair route for lifecycle handoff.
+Goal: lock the repaired behavior to a focused backend contract before touching
+broad c-testsuite expectations.
 
-Primary target: the strongest current bucket from Step 2.
+Primary target: the smallest backend/unit tests that can assert the missing
+call-boundary preparation or publication facts.
 
 Actions:
 
-- Prefer an existing open idea only if its current lifecycle notes still
-  describe unsatisfied executable scope.
-- If no existing idea fits, draft a new focused `ideas/open/*.md` with goal,
-  scope, acceptance criteria, and reviewer reject signals.
-- Keep the selected owner narrow enough for focused backend, backend-route, or
-  semantic proof.
-- Leave implementation details for the future focused plan.
+- Add or extend focused backend coverage for the localized call-boundary move
+  owner.
+- Cover representative GPR, scalar FPR, and structured f128/q-register facts
+  only where they are part of the localized owner.
+- Include a negative guard against falling back to an unstructured or
+  unsupported call-boundary move node.
+- Keep external `00140` / `00204` proof as representative integration proof,
+  not the only test of the repair.
 
 Completion check:
 
-- Exactly one next owner is selected, or `todo.md` explains why no owner is
-  activatable from the current evidence.
+- Focused tests fail before the repair or directly assert the previously
+  missing facts, and they are narrow enough to reject testcase-shaped fixes.
 
-### Step 4: Prepare Lifecycle Handoff
+### Step 3: Repair General Call-Boundary Preparation
 
-Goal: move execution away from the umbrella before implementation starts.
+Goal: make the selected/prepared AArch64 call-boundary path publish the
+required structured facts for the localized owner.
 
-Primary target: `ideas/open/295_backend_regex_failure_family_inventory.md`,
-`plan.md`, and `todo.md`.
+Primary target: AArch64 backend call-boundary preparation, move publication,
+and machine-printer consumption code identified in Step 1.
 
 Actions:
 
-- Add a durable deactivation note to the source idea only after the selected
-  owner and evidence are clear.
-- Request lifecycle switch to the selected focused owner.
-- Do not keep this umbrella active for code edits.
+- Implement the smallest general repair for the localized authority gap.
+- Preserve existing scalar GPR, scalar FPR, byval aggregate, fixed-formal,
+  stdarg, MOVI, and local/value-home behavior.
+- Avoid adding named testcase branches or emitted-text matching.
+- Run a build or compile proof before focused runtime proof.
 
 Completion check:
 
-- The umbrella inventory has a durable handoff note, and lifecycle state is
-  ready to switch to the focused owner.
+- The focused backend tests pass, and no older supported call-boundary path is
+  downgraded or bypassed.
+
+### Step 4: Prove Representatives And Classify Residuals
+
+Goal: prove the repair on the current external representatives and decide
+whether idea 326 can close or needs another focused handoff.
+
+Primary target:
+`c_testsuite_aarch64_backend_src_00140_c` and
+`c_testsuite_aarch64_backend_src_00204_c`.
+
+Actions:
+
+- Run the supervisor-delegated focused proof command for the representative
+  tests and any focused backend tests added in Step 2.
+- If `00140` or `00204` advances to a new first bad fact, classify it against
+  idea 326's source scope before continuing.
+- If the new first bad fact is outside this idea, record the handoff in
+  `todo.md` and request lifecycle transition instead of expanding this plan.
+- Ask the supervisor whether broader backend-regex or regression-guard proof
+  is needed before closure.
+
+Completion check:
+
+- The representative outcome is either passing under the repaired owner or a
+  new, explicitly classified first bad fact with lifecycle-ready handoff notes.
