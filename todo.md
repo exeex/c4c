@@ -1,8 +1,8 @@
 Status: Active
 Source Idea Path: ideas/open/370_aarch64_short_circuit_control_publication_regression.md
 Source Plan Path: plan.md
-Current Step ID: 3
-Current Step Title: Repair Short-Circuit Control Publication
+Current Step ID: 4
+Current Step Title: Prove Baseline Regression Is Removed
 
 你該做baseline sanity check了
 
@@ -10,56 +10,71 @@ Current Step Title: Repair Short-Circuit Control Publication
 
 ## Just Finished
 
-Steps 2 and 3 completed as one packet.
+Step 4 narrow proof/classification completed against implementation baseline
+`ea9d30f56 Repair AArch64 short-circuit join publication`.
 
-Focused backend coverage was added in
-`tests/backend/mir/backend_aarch64_instruction_dispatch_test.cpp` with
-`short_circuit_join_consumes_edge_published_result()`. The test builds a
-semantic short-circuit join where the skip edge publishes immediate `0` to the
-join result while the RHS edge source is a same-block derived add/compare. It
-asserts that the join block emits only the branch compare against the
-edge-published result register and does not emit RHS-only `add`/`cset`
-materialization.
+`c_testsuite_aarch64_backend_src_00196_c` now passes in the delegated narrow
+proof, so the baseline regression introduced after idea 366 is removed for the
+representative case. `c_testsuite_aarch64_backend_src_00112_c` also remains
+passing, preserving the string-literal pointer/null comparison repair.
 
-The AArch64 repair is in
-`src/backend/mir/aarch64/codegen/dispatch.cpp`. Dispatch now recognizes
-expression instructions whose results are either direct incoming sources for
-the current block's authoritative out-of-ssa parallel copy, or dependencies of
-such incoming sources. Those RHS-edge expressions are skipped in the join
-block, leaving the prepared predecessor edge publication as the owner of the
-join value. This keeps the branch sense unchanged and avoids recomputing
-RHS-only producers from stale registers after a skip edge.
+Assembly classification for
+`build/c_testsuite_aarch64_backend/src/00196.c.s` confirms the repaired
+boundary:
 
-The generated `00196` sequence now preserves the Step 1 branch fact and removes
-the stale join recomputation. Around
-`build/c_testsuite_aarch64_backend/src/00196.c.s` lines 147-171, the skip edge
-publishes `mov x13, #0`, the RHS edge computes `(1 + joe()) != 0` before the
-join, and `.LBB91_21` directly passes `x13` to `printf` without the previous
-join-local `add ...; cmp ...; cset ...` sequence.
+```asm
+bl fred
+mov x13, x0
+cmp w13, #0
+b.ne .LBB91_18
+b .LBB91_19
+.LBB91_18:
+bl joe
+mov x21, x0
+b .LBB91_20
+.LBB91_20:
+mov w13, #1
+mov w9, w21
+add x13, x13, x9
+cmp w13, #0
+cset w13, ne
+b .LBB91_21
+.LBB91_19:
+mov x13, #0
+b .LBB91_21
+.LBB91_21:
+adrp x0, .str2
+add x0, x0, :lo12:.str2
+mov x0, x20
+mov x1, x13
+bl printf
+```
+
+The RHS-derived `(1 + joe()) != 0` add/compare is on the RHS edge before the
+join. The skip edge publishes `x13 = 0`. The join no longer recomputes
+RHS-derived add/compare from stale `%t55/w21`; it consumes the prepared edge
+publication in `x13`.
 
 ## Suggested Next
 
-Supervisor review and commit of idea 370 Steps 2/3. The delegated proof is
-green for all backend tests plus `00196` and the preserved `00112`
-representative.
+Supervisor owns the full-suite regression guard against `test_baseline.log`
+and the final acceptance/commit decision for idea 370.
 
 ## Watchouts
 
-The repair intentionally treats prepared out-of-ssa edge copies as authoritative
-for join incoming expression values. It does not change branch lowering,
-string-pointer comparison semantics, HFA/byval handling, or testcase
-expectations. The focused test covers the stale RHS-derived add/compare shape;
-the full delegated proof covers the idea 366 representative `00112`.
+This packet was proof/classification only. No implementation or focused-test
+files were modified. The narrow proof does not replace the supervisor-owned
+full-suite regression guard against `test_baseline.log`.
 
 ## Proof
 
-Ran the delegated Steps 2/3 proof:
+Ran the delegated Step 4 narrow proof:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00112_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00196_c|c_testsuite_aarch64_backend_src_00112_c)$' > test_after.log 2>&1
 ```
 
-Result: passed, `100% tests passed, 0 tests failed out of 145`.
-`c_testsuite_aarch64_backend_src_00196_c`, `c_testsuite_aarch64_backend_src_00112_c`,
-and `backend_aarch64_instruction_dispatch` are green. `test_after.log` is the
+Result: passed, `100% tests passed, 0 tests failed out of 2`.
+`c_testsuite_aarch64_backend_src_00196_c` and
+`c_testsuite_aarch64_backend_src_00112_c` are green. `test_after.log` is the
 preserved proof log.
