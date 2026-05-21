@@ -908,6 +908,20 @@ Step 3 split 2026-05-21 post-368:
   umbrella should proceed to lifecycle handoff rather than retaining
   implementation work under the inventory runbook.
 
+Lifecycle switch 2026-05-21:
+
+- Umbrella inventory idea 295 is parked after selecting focused owner idea 369,
+  `ideas/open/369_semantic_bir_local_pointer_memory_observation_canonicalization.md`.
+- The active lifecycle state should now use idea 369 for implementation. The
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+- Remaining parked buckets are unchanged from the Step 3 split: AArch64 scalar
+  expression result materialization, aggregate/array/member address
+  materialization, switch/fallthrough with pointer post-increment, composite
+  ABI/HFA/f128 call-boundary preparation, libc call result materialization,
+  complex initializer/relocation semantics, unsigned enum bitfield
+  load/extension, and the two quarantined timeout residuals.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
