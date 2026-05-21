@@ -1101,6 +1101,41 @@ struct SameBlockSelectProducer {
     return std::nullopt;
   }
   switch (binary->opcode) {
+    case bir::BinaryOpcode::Add:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) +
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Sub:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) -
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Mul:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) *
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::And:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) &
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Or:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) |
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Xor:
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs) ^
+                                       static_cast<std::uint64_t>(*rhs));
+    case bir::BinaryOpcode::Shl:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
+                                       << static_cast<unsigned>(*rhs));
+    case bir::BinaryOpcode::LShr:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(static_cast<std::uint64_t>(*lhs)
+                                       >> static_cast<unsigned>(*rhs));
+    case bir::BinaryOpcode::AShr:
+      if (*rhs < 0 || *rhs >= 64) {
+        return std::nullopt;
+      }
+      return *lhs >> static_cast<unsigned>(*rhs);
     case bir::BinaryOpcode::SDiv:
       if (*rhs == 0) {
         return std::nullopt;
@@ -1112,28 +1147,45 @@ struct SameBlockSelectProducer {
       }
       return static_cast<std::int64_t>(
           static_cast<std::uint64_t>(*lhs) / static_cast<std::uint64_t>(*rhs));
-    case bir::BinaryOpcode::Add:
-    case bir::BinaryOpcode::Sub:
-    case bir::BinaryOpcode::Mul:
-    case bir::BinaryOpcode::And:
-    case bir::BinaryOpcode::Or:
-    case bir::BinaryOpcode::Xor:
-    case bir::BinaryOpcode::Shl:
-    case bir::BinaryOpcode::LShr:
-    case bir::BinaryOpcode::AShr:
     case bir::BinaryOpcode::SRem:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return *lhs % *rhs;
     case bir::BinaryOpcode::URem:
+      if (*rhs == 0) {
+        return std::nullopt;
+      }
+      return static_cast<std::int64_t>(
+          static_cast<std::uint64_t>(*lhs) % static_cast<std::uint64_t>(*rhs));
     case bir::BinaryOpcode::Eq:
+      return *lhs == *rhs ? 1 : 0;
     case bir::BinaryOpcode::Ne:
+      return *lhs != *rhs ? 1 : 0;
     case bir::BinaryOpcode::Slt:
+      return *lhs < *rhs ? 1 : 0;
     case bir::BinaryOpcode::Sle:
+      return *lhs <= *rhs ? 1 : 0;
     case bir::BinaryOpcode::Sgt:
+      return *lhs > *rhs ? 1 : 0;
     case bir::BinaryOpcode::Sge:
+      return *lhs >= *rhs ? 1 : 0;
     case bir::BinaryOpcode::Ult:
+      return static_cast<std::uint64_t>(*lhs) < static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
     case bir::BinaryOpcode::Ule:
+      return static_cast<std::uint64_t>(*lhs) <= static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
     case bir::BinaryOpcode::Ugt:
+      return static_cast<std::uint64_t>(*lhs) > static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
     case bir::BinaryOpcode::Uge:
-      return std::nullopt;
+      return static_cast<std::uint64_t>(*lhs) >= static_cast<std::uint64_t>(*rhs)
+                 ? 1
+                 : 0;
   }
   return std::nullopt;
 }
@@ -1610,6 +1662,93 @@ lower_current_block_entry_fused_compare_branch(
   std::vector<std::string> lines;
   lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
                   std::to_string(branch_condition->rhs->immediate));
+  lines.push_back("b." + std::string{*condition} + " " +
+                  machine_block_label(branch_condition->function_name,
+                                      branch_condition->true_label));
+  lines.push_back("b " + machine_block_label(branch_condition->function_name,
+                                             branch_condition->false_label));
+  return make_branch_compare_assembler_instruction(context, std::move(lines));
+}
+
+[[nodiscard]] bool value_has_current_block_entry_publication(
+    const module::BlockLoweringContext& context,
+    const prepare::PreparedValueHome& home);
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_constant_rhs_fused_compare_branch(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.function.prepared == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.bir_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition->can_fuse_with_branch ||
+      !branch_condition->predicate.has_value() ||
+      !branch_condition->compare_type.has_value() ||
+      !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value()) {
+    return std::nullopt;
+  }
+  const auto condition = branch_condition_suffix(*branch_condition->predicate);
+  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
+  if (!condition.has_value() || !operand_view.has_value() ||
+      branch_condition->true_label == c4c::kInvalidBlockLabel ||
+      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+
+  if (branch_condition->rhs->kind != bir::Value::Kind::Named ||
+      branch_condition->rhs->name.empty()) {
+    return std::nullopt;
+  }
+  auto rhs = *branch_condition->rhs;
+  rhs.type = *branch_condition->compare_type;
+  const auto* rhs_producer = find_same_block_binary_producer(context, rhs);
+  const auto rhs_name = prepared_named_value_id(context, rhs);
+  const auto* rhs_home =
+      rhs_name.has_value() && context.function.value_locations != nullptr
+          ? prepare::find_prepared_value_home(*context.function.value_locations,
+                                              *rhs_name)
+          : nullptr;
+  if (rhs_producer == nullptr ||
+      rhs_home == nullptr ||
+      rhs_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      value_has_current_block_entry_publication(context, *rhs_home)) {
+    return std::nullopt;
+  }
+  const auto rhs_constant = evaluate_same_block_integer_constant(context, rhs);
+  if (!rhs_constant.has_value() || !is_cmp_immediate_encodable(*rhs_constant)) {
+    return std::nullopt;
+  }
+
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.size() < 2U) {
+    return std::nullopt;
+  }
+  const auto lhs_reg = abi::gp_register(scratches[0].index, *operand_view);
+  if (!lhs_reg.has_value()) {
+    return std::nullopt;
+  }
+  auto lhs = *branch_condition->lhs;
+  lhs.type = *branch_condition->compare_type;
+  std::vector<std::string> lines;
+  if (!emit_value_publication_to_register(context,
+                                          lhs,
+                                          context.bir_block->insts.size(),
+                                          scratches[0].index,
+                                          scratches[1].index,
+                                          lines,
+                                          true)) {
+    return std::nullopt;
+  }
+  lines.push_back("cmp " + std::string{abi::register_name(*lhs_reg)} + ", #" +
+                  std::to_string(*rhs_constant));
   lines.push_back("b." + std::string{*condition} + " " +
                   machine_block_label(branch_condition->function_name,
                                       branch_condition->true_label));
@@ -3661,6 +3800,12 @@ lower_stack_home_fused_compare_branch(
   }
   if (value.kind != bir::Value::Kind::Named) {
     return false;
+  }
+  if (const auto constant = evaluate_same_block_integer_constant(
+          context, value);
+      constant.has_value()) {
+    lines.push_back("mov " + *target + ", #" + std::to_string(*constant));
+    return true;
   }
   if (auto published =
           current_block_entry_publication_register(context, value, *target_view)) {
@@ -9103,7 +9248,8 @@ InstructionDispatchResult dispatch_prepared_block(
       if (std::get_if<bir::BinaryInst>(&inst) != nullptr) {
         const bool stack_home_fused_compare_branch =
             is_fused_compare_branch_support_instruction(context, inst, scalar_state) &&
-            lower_stack_home_fused_compare_branch(context).has_value();
+            (lower_stack_home_fused_compare_branch(context).has_value() ||
+             lower_constant_rhs_fused_compare_branch(context).has_value());
         for (auto& before_instruction_move : lower_value_moves(
                  context,
                  prepare::PreparedMovePhase::BeforeInstruction,
@@ -9503,6 +9649,10 @@ InstructionDispatchResult dispatch_prepared_block(
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
             lower_fused_compare_branch_from_emitted_cast(context, scalar_state)) {
+      block.instructions.push_back(std::move(*lowered));
+      block.successors = make_conditional_branch_successors(context);
+    } else if (auto lowered =
+                   lower_constant_rhs_fused_compare_branch(context)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =
