@@ -2194,6 +2194,53 @@ prepare::PreparedBirModule prepared_with_preserved_argument_non_call_reuse() {
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_cross_block_call_preserved_argument_reuse() {
+  auto prepared = prepared_with_nested_call_preserved_argument_reuse();
+  auto& function = prepared.module.functions.front();
+  auto& blocks = function.blocks;
+  const auto next_label =
+      prepared.names.block_labels.intern("dispatch.nested.call.arg.next");
+  const auto bir_next_label =
+      prepared.module.names.block_labels.intern("dispatch.nested.call.arg.next");
+
+  auto second_call = std::move(blocks.front().insts.back());
+  blocks.front().insts.pop_back();
+  blocks.front().terminator =
+      bir::Terminator{bir::BranchTerminator{
+          .target_label = "dispatch.nested.call.arg.next",
+          .target_label_id = bir_next_label,
+      }};
+  blocks.push_back(bir::Block{
+      .label = "dispatch.nested.call.arg.next",
+      .insts = {std::move(second_call)},
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_next_label,
+  });
+
+  auto& control_blocks = prepared.control_flow.functions.front().blocks;
+  control_blocks.front().terminator_kind = bir::TerminatorKind::Branch;
+  control_blocks.front().branch_target_label = next_label;
+  control_blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = next_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+
+  auto& move_bundle =
+      prepared.value_locations.functions.front().move_bundles.front();
+  move_bundle.block_index = 1;
+  move_bundle.instruction_index = 0;
+  for (auto& move : move_bundle.moves) {
+    move.block_index = 1;
+    move.instruction_index = 0;
+  }
+
+  auto& calls = prepared.call_plans.functions.front().calls;
+  calls.back().block_index = 1;
+  calls.back().instruction_index = 0;
+  calls.back().arguments.front().instruction_index = 0;
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_load_global_call_argument(
     bir::GlobalAddressMaterializationPolicy policy) {
   prepare::PreparedBirModule prepared;
@@ -11773,6 +11820,84 @@ int nested_call_argument_publishes_from_prior_preservation_home() {
   return 0;
 }
 
+int cross_block_call_argument_publishes_from_prior_preservation_home() {
+  auto prepared = prepared_with_cross_block_call_preserved_argument_reuse();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  if (function_cf.blocks.size() != 2 ||
+      function_context.call_plans == nullptr ||
+      function_context.call_plans->calls.size() != 2 ||
+      function_context.call_plans->calls.front().block_index != 0 ||
+      function_context.call_plans->calls.back().block_index != 1 ||
+      function_context.call_plans->calls.front().instruction_index != 0 ||
+      function_context.call_plans->calls.back().instruction_index != 0 ||
+      function_context.call_plans->calls.front().preserved_values.empty() ||
+      function_context.call_plans->calls.back().arguments.empty()) {
+    return fail("expected cross-block fixture to carry prior preserved value into successor call");
+  }
+
+  aarch64_module::MachineBlock entry_block;
+  aarch64_module::ModuleLoweringDiagnostics entry_diagnostics;
+  const auto entry_context =
+      aarch64_codegen::make_block_lowering_context(
+          function_context, function_cf.blocks.front(), 0);
+  const auto entry_result =
+      aarch64_codegen::dispatch_prepared_block(
+          entry_context, entry_block, entry_diagnostics);
+  if (entry_result.visited_operations != 1 ||
+      !entry_result.visited_terminator ||
+      entry_result.emitted_instructions != 3 ||
+      entry_block.instructions.size() != 3 ||
+      !entry_diagnostics.empty()) {
+    return fail("expected entry block to populate preserved home before branch");
+  }
+
+  aarch64_module::MachineBlock successor_block;
+  aarch64_module::ModuleLoweringDiagnostics successor_diagnostics;
+  const auto successor_context =
+      aarch64_codegen::make_block_lowering_context(
+          function_context, function_cf.blocks.back(), 1);
+  const auto successor_result =
+      aarch64_codegen::dispatch_prepared_block(
+          successor_context, successor_block, successor_diagnostics);
+  if (successor_result.visited_operations != 1 ||
+      !successor_result.visited_terminator ||
+      successor_result.emitted_instructions != 3 ||
+      successor_block.instructions.size() != 3 ||
+      !successor_diagnostics.empty()) {
+    return fail("expected successor call block to dispatch preserved argument publication");
+  }
+
+  const auto* move =
+      std::get_if<aarch64_module::codegen::CallBoundaryMoveInstructionRecord>(
+          &successor_block.instructions.front().target.payload);
+  if (move == nullptr || !move->source_register.has_value() ||
+      !move->destination_register.has_value() ||
+      move->source_register->reg != aarch64_module::abi::x_register(20) ||
+      move->destination_register->reg != aarch64_module::abi::x_register(0)) {
+    const auto printed = print_route_block(function_cf.function_name, successor_block);
+    return fail("expected successor call argument to publish from preserved x20 home: " +
+                (printed.ok ? printed.assembly : printed.diagnostic));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, successor_block);
+  if (!printed.ok) {
+    return fail("expected successor call block to print: " + printed.diagnostic);
+  }
+  const auto preserved_publish = printed.assembly.find("mov x0, x20");
+  const auto stale_publish = printed.assembly.find("mov x0, x1");
+  const auto call = printed.assembly.find("bl consume_arg");
+  if (preserved_publish == std::string::npos ||
+      call == std::string::npos ||
+      preserved_publish > call ||
+      (stale_publish != std::string::npos && stale_publish < call)) {
+    return fail("expected successor call to use preserved x20, not stale x1: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int preserved_home_feeds_later_non_call_scalar_after_clobber() {
   auto prepared = prepared_with_preserved_argument_non_call_reuse();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -20397,6 +20522,11 @@ int main() {
   }
   if (const int status =
           nested_call_argument_publishes_from_prior_preservation_home();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          cross_block_call_argument_publishes_from_prior_preservation_home();
       status != 0) {
     return status;
   }

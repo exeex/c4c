@@ -1679,8 +1679,9 @@ find_prior_preserved_value_for_call_argument(
 
   const prepare::PreparedCallPreservedValue* selected = nullptr;
   for (const auto& call : call_plans->calls) {
-    if (call.block_index != current_call_plan.block_index ||
-        call.instruction_index >= current_call_plan.instruction_index) {
+    if (call.block_index > current_call_plan.block_index ||
+        (call.block_index == current_call_plan.block_index &&
+         call.instruction_index >= current_call_plan.instruction_index)) {
       continue;
     }
     for (const auto& preserved : call.preserved_values) {
