@@ -1,139 +1,155 @@
-# Backend Regex Timeout Residual Inventory Runbook
+# AArch64 Shift Promotion Codegen Scalability Timeout Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
+Source Idea: ideas/open/381_aarch64_shift_promotion_codegen_scalability_timeout.md
+Supersedes: ideas/open/295_backend_regex_failure_family_inventory.md Step 4 timeout split
 
 ## Purpose
 
-Refresh the backend-regex inventory after idea 380 and decide whether the
-remaining timeout-only residuals are ready for a focused semantic repair idea.
+Repair the `00200` timeout by localizing and fixing the backend-native AArch64
+asm-generation scalability problem for expanded shift/type-promotion CFGs.
 
 ## Goal
 
-Classify the current `00200` and `00207` timeout-only residuals without turning
-timeout policy, runner behavior, or filename-specific probes into claimed
-backend progress.
+Make `c_testsuite_aarch64_backend_src_00200_c` advance beyond backend asm
+generation timeout or pass under existing timeout and runner policy.
 
 ## Core Rule
 
-This umbrella plan is classification and lifecycle routing only. Do not edit
-implementation, tests, CTest registration, expectations, unsupported lists,
-timeout policy, runners, or proof-log policy under this plan.
+Progress must be a semantic backend scalability repair for the expanded
+shift/type-promotion codegen shape. Do not claim progress through timeout
+policy, runner behavior, expectation weakening, unsupported-list changes,
+CTest registration changes, or filename-specific shortcuts.
 
 ## Read First
 
+- `ideas/open/381_aarch64_shift_promotion_codegen_scalability_timeout.md`
 - `ideas/open/295_backend_regex_failure_family_inventory.md`
-- Existing `test_before.log` / `test_after.log` only if the supervisor says
-  they are the current baseline artifacts.
-- Generated artifacts for the residual representatives under
-  `build/c_testsuite_aarch64_backend/` when present.
-- Source representatives:
-  - `tests/c/external/c-testsuite/src/00200.c`
-  - `tests/c/external/c-testsuite/src/00207.c`
+- `tests/c/external/c-testsuite/src/00200.c`
+- Current `test_before.log` / `test_after.log` only if the supervisor says
+  they are the active baseline artifacts.
+- Existing `build/c_testsuite_aarch64_backend/src/00200.c.s` only as a stale
+  artifact; verify freshness before using it as proof.
 
-## Current Targets
+## Current Target
 
 - `c_testsuite_aarch64_backend_src_00200_c`
-- `c_testsuite_aarch64_backend_src_00207_c`
-
-The supervisor reports that the recent full-suite baseline removed `00216`.
-Treat `00216` as an adjacency check only unless fresh evidence reintroduces it.
 
 ## Non-Goals
 
-- Do not implement a timeout fix while this umbrella is active.
-- Do not broaden this pass back into closed non-timeout owners unless current
-  generated-code or proof evidence contradicts a closure boundary.
-- Do not classify a timeout by increasing limits, weakening contracts, killing
-  only the symptom, or changing runner behavior.
-- Do not split an idea that is only "make `00200` pass" or "make `00207`
-  pass" without a semantic owner.
+- Do not work on `00207` dynamic stack/VLA fixed-slot addressing under this
+  plan; that owner is parked in
+  `ideas/open/382_aarch64_dynamic_stack_vla_fixed_slot_addressing.md`.
+- Do not treat the stale generated binary's runtime return-status mismatch as
+  the primary owner unless the backend-native timeout first advances.
+- Do not change tests, expectations, unsupported classifications, timeout
+  policy, runners, CTest registration, or proof-log policy.
+- Do not special-case `00200`, `lshift-type.c`, one macro name, one source
+  line, or one emitted instruction neighborhood.
 
 ## Working Model
 
-- `00200` is currently treated as a shift/type-promotion timeout bucket.
-- `00207` is currently treated as a dynamic stack/VLA fixed-slot timeout
-  bucket.
-- Either bucket may need a separate focused owner, or both may share one owner
-  only if generated-code evidence shows the same semantic failure mechanism.
+- `00200` is a backend-native AArch64 asm-generation timeout.
+- The source expands shift/type-promotion checks into a large straight-line
+  CFG with constant-false branches.
+- Semantic and prepared BIR can reach the final `printf`/`ret`; the current
+  timeout is likely in prepared lowering, register allocation, or code
+  emission scalability.
+- A stale generated binary can run quickly, so runtime looping is not the
+  current first bad fact.
 
 ## Execution Rules
 
-- Use bounded commands for timeout investigation and clean up stale child
-  processes before trusting runtime logs.
-- Prefer existing fresh logs when they match the supervisor's baseline command.
-- Classify the first bad fact from source, semantic/prepared dumps, generated
-  AArch64, and bounded runtime behavior.
-- If a focused owner is found, create or update the appropriate
-  `ideas/open/*.md` with concrete reviewer reject signals, then request a
-  lifecycle switch before implementation.
+- Use bounded diagnostics and stale-process cleanup for any timeout
+  investigation.
+- Localize the first slow backend phase before changing code.
+- Prefer focused backend coverage for the localized shape before relying on
+  the external c-testsuite case alone.
+- Keep proof commands narrow during implementation, then use supervisor-chosen
+  broader validation when the slice is acceptance-ready.
+- Reject count-only improvement if `00200` still times out in the same backend
+  phase.
 
 ## Steps
 
-### Step 1: Confirm the Current Residual Surface
+### Step 1: Reconfirm Stage and First Slow Phase
 
-Goal: verify the post-380 baseline shape before choosing a timeout route.
-
-Actions:
-- Inspect current supervisor-provided proof logs, if present, for the exact
-  selected count, pass count, and failing tests.
-- Confirm `00216` is no longer a current backend-regex residual.
-- Confirm whether the only remaining backend-regex failures are
-  `c_testsuite_aarch64_backend_src_00200_c` and
-  `c_testsuite_aarch64_backend_src_00207_c`.
-- Record any mismatch in `todo.md` rather than mutating the source idea.
-
-Completion Check:
-- `todo.md` records the current residual list and whether `00200`/`00207` are
-  still timeout-only.
-
-### Step 2: Classify `00200` Timeout Mechanism
-
-Goal: decide whether `00200` has a semantic timeout owner.
+Goal: prove the current timeout is still backend-native asm generation and
+identify the first backend phase that crosses the timeout window.
 
 Actions:
-- Inspect the source and generated artifacts for shift, promotion, loop, and
-  runtime-output behavior that could explain the timeout.
-- Compare semantic/prepared state to generated AArch64 around the first
-  suspicious recurrence or unbounded loop.
-- Determine whether the owner is shift/type-promotion lowering, scalar value
-  publication, loop update state, or another concrete backend boundary.
+- Run the supervisor-delegated narrow proof command for `00200` with an
+  explicit timeout.
+- Capture bounded diagnostics for semantic BIR, prepared BIR, machine
+  preparation, register allocation, and final AArch64 emission as available.
+- Separate stale generated-artifact behavior from fresh codegen proof.
+- Record the first slow phase and the evidence path in `todo.md`.
 
 Completion Check:
-- `todo.md` names the first bad fact for `00200`, the suspected owner, and the
-  evidence path, or explains why it remains unclassified.
+- `todo.md` names the first backend phase and operation family responsible for
+  the timeout, or explains the exact ambiguity blocking implementation.
 
-### Step 3: Classify `00207` Timeout Mechanism
+### Step 2: Add Focused Scalability Coverage
 
-Goal: decide whether `00207` has a semantic timeout owner.
+Goal: create a focused backend test that represents the localized
+shift/type-promotion scalability shape without depending on the `00200`
+filename.
 
 Actions:
-- Inspect the source and generated artifacts for dynamic stack, VLA, fixed
-  stack slot, loop, and runtime-output behavior that could explain the timeout.
-- Compare semantic/prepared state to generated AArch64 around the first
-  suspicious stack or VLA address calculation.
-- Determine whether the owner is dynamic stack/VLA slot assignment, address
-  scaling, stack-frame publication, loop update state, or another concrete
-  backend boundary.
+- Extract the smallest representative shape from the localized first bad fact.
+- Add or update focused backend coverage for the expanded
+  shift/type-promotion CFG/codegen path.
+- Verify the focused test fails before the repair for the same reason.
 
 Completion Check:
-- `todo.md` names the first bad fact for `00207`, the suspected owner, and the
-  evidence path, or explains why it remains unclassified.
+- Focused coverage exists for the semantic scalability shape and is not a
+  testcase-shaped shortcut.
 
-### Step 4: Route to Focused Lifecycle Work
+### Step 3: Repair the Backend Scalability Owner
 
-Goal: leave the umbrella before implementation begins.
+Goal: fix the general AArch64 backend behavior that causes pathological
+codegen time for the localized shift/type-promotion CFG.
 
 Actions:
-- If one or both timeout buckets have a semantic owner, create or select a
-  focused `ideas/open/*.md` for that owner.
-- Include reviewer reject signals for testcase-specific shortcuts, timeout
-  policy changes, runner changes, expectation weakening, and count-only claims.
-- Preserve a concise durable deactivation note in
-  `ideas/open/295_backend_regex_failure_family_inventory.md` only if the
-  supervisor asks for a lifecycle switch.
-- Do not start code edits under this umbrella plan.
+- Apply the smallest semantic repair in the localized backend phase.
+- Preserve scalar shift, type-promotion, compare, branch, and call-return
+  behavior.
+- Avoid broad rewrites unless localization proves they are required.
 
 Completion Check:
-- A focused idea is ready for activation, or `todo.md` explains why no focused
-  owner can be split yet.
+- Focused coverage passes and the repair does not rely on filename,
+  timeout-policy, runner, expectation, unsupported-list, or CTest-registration
+  changes.
+
+### Step 4: Prove External Advancement and Guard Neighbors
+
+Goal: demonstrate `00200` advances beyond the backend asm-generation timeout
+or passes, then check relevant neighbors.
+
+Actions:
+- Run the supervisor-delegated narrow `00200` proof command.
+- Run focused backend tests covering scalar shift/type-promotion and related
+  AArch64 codegen behavior.
+- If `00200` advances to a runtime return-status or output issue, record that
+  as a separate residual instead of folding it into this owner.
+
+Completion Check:
+- `test_after.log` or the delegated proof artifact shows `00200` no longer
+  times out in backend asm generation, or `todo.md` records the blocking
+  evidence.
+
+### Step 5: Acceptance Handoff
+
+Goal: leave the slice ready for supervisor review, broader validation, and
+commit decision.
+
+Actions:
+- Summarize changed files, proof commands, and any remaining residual in
+  `todo.md`.
+- Call out whether parked idea 382 remains untouched.
+- Request supervisor-side broader validation if the repair changes shared
+  backend lowering, register allocation, or emission behavior.
+
+Completion Check:
+- The focused owner is ready for supervisor acceptance or has a clear blocker
+  that can be routed without reopening umbrella idea 295.

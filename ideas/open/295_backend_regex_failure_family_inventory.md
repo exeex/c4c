@@ -1246,6 +1246,33 @@ Step 3/4 selection 2026-05-21 post-378:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 4 timeout split 2026-05-21 post-380:
+
+- Step 2 classified `c_testsuite_aarch64_backend_src_00200_c` as a
+  backend-native AArch64 asm-generation timeout for expanded
+  shift/type-promotion CFG/codegen scalability. The observed timeout is in
+  codegen, not generated-program runtime loop behavior; the stale generated
+  binary exits quickly and prints `0 test(s) failed`.
+- Step 3 classified `c_testsuite_aarch64_backend_src_00207_c` as a
+  generated-program runtime timeout from AArch64 dynamic stack/VLA lowering
+  that addresses fixed stack homes relative to a moving `sp`. The generated
+  asm and binary are emitted before timeout, and the binary repeatedly prints
+  `boom!`.
+- These are different semantic owners. Focused idea 381,
+  `ideas/open/381_aarch64_shift_promotion_codegen_scalability_timeout.md`,
+  is split for the `00200` backend-native codegen scalability owner.
+- Focused idea 382,
+  `ideas/open/382_aarch64_dynamic_stack_vla_fixed_slot_addressing.md`, is
+  split for the `00207` dynamic-stack/VLA fixed-slot addressing owner.
+- The active lifecycle state should now use idea 381 for implementation before
+  any code edits begin. Idea 382 remains open and parked for a later lifecycle
+  switch after the `00200` owner is completed, rejected, or intentionally
+  deferred.
+- Reviewer reject signals for both focused owners must block testcase-specific
+  shortcuts, timeout policy changes, runner changes, expectation weakening,
+  unsupported-list or CTest-registration changes, and count-only progress
+  claims.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
