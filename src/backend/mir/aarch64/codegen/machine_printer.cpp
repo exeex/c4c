@@ -326,7 +326,8 @@ std::vector<std::string> materialize_local_address_lines(
     return {};
   }
   std::ostringstream line;
-  line << "add " << abi::register_name(scratch) << ", sp, #" << slot.offset_bytes;
+  line << "add " << abi::register_name(scratch) << ", "
+       << (slot.uses_frame_pointer_base ? "x29" : "sp") << ", #" << slot.offset_bytes;
   return {line.str()};
 }
 
@@ -369,14 +370,16 @@ std::vector<std::string> materialize_frame_slot_address_lines(
   }
   const auto offset = static_cast<std::uint64_t>(address.byte_offset);
   const std::string scratch_name = abi::register_name(scratch);
+  const std::string_view base = address.uses_frame_pointer_base ? "x29" : "sp";
   if (offset <= 4095U) {
-    return {"add " + scratch_name + ", sp, #" + std::to_string(offset)};
+    return {"add " + scratch_name + ", " + std::string{base} + ", #" +
+            std::to_string(offset)};
   }
   auto lines = materialize_integer_constant_lines(scratch, offset, 64);
   if (lines.empty()) {
     return {};
   }
-  lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+  lines.push_back("add " + scratch_name + ", " + std::string{base} + ", " + scratch_name);
   return lines;
 }
 
@@ -1577,7 +1580,7 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     return target_unsupported(bad_header(instruction) +
                               "frame node is missing prepared frame alignment");
   }
-  if (frame.has_dynamic_stack) {
+  if (frame.has_dynamic_stack && !frame.uses_frame_pointer_for_fixed_slots) {
     return target_unsupported(bad_header(instruction) +
                               "dynamic-stack frame node is outside the printable subset");
   }
@@ -1599,6 +1602,11 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     return target_unsupported(bad_header(instruction) +
                               "link-register frame node is missing save slot facts");
   }
+  if (frame.preserves_frame_pointer &&
+      !frame.frame_pointer_save_offset_bytes.has_value()) {
+    return target_unsupported(bad_header(instruction) +
+                              "frame-pointer frame node is missing save slot facts");
+  }
   for (const auto& saved : frame.saved_callee_registers) {
     if (!saved.slot_placement.has_value() ||
         !prepare::has_complete_prepared_saved_register_slot_placement(
@@ -1617,6 +1625,12 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
   auto adjustment = materialize_frame_adjustment_lines(mnemonic, frame.frame_size_bytes);
   if (frame.frame_kind == FrameInstructionKind::PrologueSetup) {
     lines.insert(lines.end(), adjustment.begin(), adjustment.end());
+    if (frame.preserves_frame_pointer) {
+      auto save =
+          frame_register_stack_lines("x29", *frame.frame_pointer_save_offset_bytes, "str");
+      lines.insert(lines.end(), save.begin(), save.end());
+      lines.push_back("mov x29, sp");
+    }
     if (frame.preserves_link_register) {
       auto save =
           frame_register_stack_lines("x30", *frame.link_register_save_offset_bytes, "str");
@@ -1631,6 +1645,9 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
       lines.insert(lines.end(), saved_lines->begin(), saved_lines->end());
     }
   } else {
+    if (frame.uses_frame_pointer_for_fixed_slots) {
+      lines.push_back("mov sp, x29");
+    }
     for (auto it = frame.saved_callee_registers.rbegin();
          it != frame.saved_callee_registers.rend();
          ++it) {
@@ -1644,6 +1661,11 @@ mir::TargetInstructionPrintResult print_frame(const InstructionRecord& instructi
     if (frame.preserves_link_register) {
       auto restore =
           frame_register_stack_lines("x30", *frame.link_register_save_offset_bytes, "ldr");
+      lines.insert(lines.end(), restore.begin(), restore.end());
+    }
+    if (frame.preserves_frame_pointer) {
+      auto restore =
+          frame_register_stack_lines("x29", *frame.frame_pointer_save_offset_bytes, "ldr");
       lines.insert(lines.end(), restore.begin(), restore.end());
     }
     lines.insert(lines.end(), adjustment.begin(), adjustment.end());

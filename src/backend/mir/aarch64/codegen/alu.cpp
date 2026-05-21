@@ -189,7 +189,8 @@ namespace mir = c4c::backend::mir;
     mnemonic = "strh";
   }
   std::ostringstream store;
-  store << mnemonic << " " << result << ", [sp";
+  store << mnemonic << " " << result << ", ["
+        << (alu.result_uses_frame_pointer_base ? "x29" : "sp");
   if (*alu.result_stack_offset_bytes != 0) {
     store << ", #" << *alu.result_stack_offset_bytes;
   }
@@ -266,15 +267,18 @@ namespace mir = c4c::backend::mir;
   }
   const auto offset = static_cast<std::uint64_t>(*alu.result_stack_offset_bytes);
   const std::string scratch_name = abi::register_name(*scratch);
+  const std::string_view base = alu.result_uses_frame_pointer_base ? "x29" : "sp";
   std::vector<std::string> lines;
   if (offset <= 4095U) {
-    lines.push_back("add " + scratch_name + ", sp, #" + std::to_string(offset));
+    lines.push_back("add " + scratch_name + ", " + std::string{base} + ", #" +
+                    std::to_string(offset));
   } else {
     lines = materialize_integer_constant_lines(*scratch, offset, 64);
     if (lines.empty()) {
       return std::nullopt;
     }
-    lines.push_back("add " + scratch_name + ", sp, " + scratch_name);
+    lines.push_back("add " + scratch_name + ", " + std::string{base} + ", " +
+                    scratch_name);
   }
   std::string_view mnemonic = "str";
   if (alu.result_type == bir::TypeKind::I1 || alu.result_type == bir::TypeKind::I8) {
@@ -1995,7 +1999,10 @@ lower_scalar_compare_publication(
   lines.push_back(cset.str());
   const auto publication = scalar_alu_stack_publication_lines(
       ScalarAluRecord{.result_type = binary.result.type,
-                      .result_stack_offset_bytes = result_stack_offset_bytes},
+                      .result_stack_offset_bytes = result_stack_offset_bytes,
+                      .result_uses_frame_pointer_base =
+                          context.function.frame_plan != nullptr &&
+                          context.function.frame_plan->uses_frame_pointer_for_fixed_slots},
       *result);
   if (!publication.has_value()) {
     return std::nullopt;
@@ -2117,7 +2124,10 @@ lower_scalar_select_publication(
   lines.push_back(csel.str());
   const auto publication = scalar_alu_stack_publication_lines(
       ScalarAluRecord{.result_type = select.result.type,
-                      .result_stack_offset_bytes = result_stack_offset_bytes},
+                      .result_stack_offset_bytes = result_stack_offset_bytes,
+                      .result_uses_frame_pointer_base =
+                          context.function.frame_plan != nullptr &&
+                          context.function.frame_plan->uses_frame_pointer_for_fixed_slots},
       *result);
   if (!publication.has_value()) {
     return std::nullopt;
@@ -3636,6 +3646,9 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
     scalar_record = prepared.record;
     if (scalar_record.has_value()) {
       if (scalar_record->scalar_alu.has_value() && scalar_record->inputs.size() == 2) {
+        scalar_record->scalar_alu->result_uses_frame_pointer_base =
+            context.function.frame_plan != nullptr &&
+            context.function.frame_plan->uses_frame_pointer_for_fixed_slots;
         if (const auto* lhs_home = find_named_value_home(binary->lhs, context.function);
             lhs_home != nullptr &&
             lhs_home->kind != prepare::PreparedValueHomeKind::RematerializableImmediate) {
@@ -3806,6 +3819,9 @@ std::optional<module::MachineInstruction> lower_scalar_instruction(
             .result_type = binary->result.type,
             .result_register = *result_register,
             .result_stack_offset_bytes = result_stack_offset_bytes,
+            .result_uses_frame_pointer_base =
+                context.function.frame_plan != nullptr &&
+                context.function.frame_plan->uses_frame_pointer_for_fixed_slots,
             .lhs = *lhs,
             .rhs = *rhs,
             .supported_integer_operation = true,

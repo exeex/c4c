@@ -604,6 +604,7 @@ struct FrameSlotOperand {
   std::size_t size_bytes = 0;
   std::size_t align_bytes = 0;
   bool fixed_location = false;
+  bool uses_frame_pointer_base = false;
 };
 
 struct SymbolOperand {
@@ -697,6 +698,7 @@ struct MemoryOperand {
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_volatile = false;
   bool can_use_base_plus_offset = false;
+  bool uses_frame_pointer_base = false;
 };
 
 using OperandPayload = std::variant<RegisterOperand,
@@ -751,6 +753,7 @@ struct ScalarAluRecord {
   bir::TypeKind result_type = bir::TypeKind::Void;
   std::optional<RegisterOperand> result_register;
   std::optional<std::int64_t> result_stack_offset_bytes;
+  bool result_uses_frame_pointer_base = false;
   OperandRecord lhs;
   OperandRecord rhs;
   std::optional<unsigned> post_zero_extend_result_bits;
@@ -1335,6 +1338,7 @@ struct AddressMaterializationRecord {
   bir::GlobalAddressMaterializationPolicy address_materialization_policy =
       bir::GlobalAddressMaterializationPolicy::Unspecified;
   std::int64_t byte_offset = 0;
+  bool uses_frame_pointer_base = false;
   bir::AddressSpace address_space = bir::AddressSpace::Default;
   bool is_thread_local = false;
   bool has_tls_address_space = false;
@@ -1399,6 +1403,8 @@ struct FrameInstructionRecord {
   std::vector<prepare::PreparedSavedRegister> saved_callee_registers;
   bool has_dynamic_stack = false;
   bool uses_frame_pointer_for_fixed_slots = false;
+  bool preserves_frame_pointer = false;
+  std::optional<std::size_t> frame_pointer_save_offset_bytes;
   std::optional<CalleeSaveInstructionRecord> callee_save;
   const prepare::PreparedFramePlanFunction* source_frame = nullptr;
 };

@@ -452,6 +452,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 aggregate local_address publication
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_dynamic_stack_fixed_slot_uses_fp_anchor
+  SRC "${BACKEND_CASE_ROOT}/aarch64_dynamic_stack_fixed_slot_uses_fp_anchor.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aarch64_dynamic_stack_fixed_slot_uses_fp_anchor.s"
+  REQUIRED_SNIPPETS "dynamic_stack_fixed_slot_uses_fp_anchor:|mov sp, x17|add w13, w13, #1"
+  FORBIDDEN_SNIPPETS "str w0, [sp, #8]|ldr w13, [sp, #8]|str w13, [sp, #8]|ldr w20, [sp, #8]"
+  LABELS aarch64 dynamic_stack vla fixed_slot
+)
+
 add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"

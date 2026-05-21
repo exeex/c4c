@@ -486,7 +486,12 @@ make_select_chain_materialization_instruction(
   if (adjusted_offset < 0) {
     return false;
   }
-  lines.push_back("add " + *target + ", sp, #" +
+  const std::string_view base =
+      context.function.frame_plan != nullptr &&
+              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
+          ? "x29"
+          : "sp";
+  lines.push_back("add " + *target + ", " + std::string{base} + ", #" +
                   std::to_string(adjusted_offset));
   return true;
 }
@@ -518,8 +523,13 @@ materialize_local_aggregate_address_call_argument(
   result_register->reg = address_register;
   result_register->expected_view = abi::RegisterView::X;
   std::vector<std::string> lines;
+  const std::string_view base =
+      context.function.frame_plan != nullptr &&
+              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
+          ? "x29"
+          : "sp";
   std::string line = "add " + std::string{abi::register_name(address_register)} +
-                     ", sp, #" + std::to_string(*offset);
+                     ", " + std::string{base} + ", #" + std::to_string(*offset);
   lines.push_back(std::move(line));
   auto instruction =
       make_select_chain_materialization_instruction(
@@ -1567,7 +1577,11 @@ struct SameBlockSelectProducer {
   }
   const auto offset =
       static_cast<std::int64_t>(slot->offset_bytes) + access->address.byte_offset;
-  std::string address = "[sp";
+  std::string address =
+      context.function.frame_plan != nullptr &&
+              context.function.frame_plan->uses_frame_pointer_for_fixed_slots
+          ? "[x29"
+          : "[sp";
   if (offset != 0) {
     address += ", #";
     address += std::to_string(offset);
@@ -2677,14 +2691,29 @@ lower_fixed_formal_store_local_publication(
   return address;
 }
 
-[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes) {
-  std::string address{"[sp"};
+[[nodiscard]] bool fixed_slots_use_frame_pointer(
+    const module::FunctionLoweringContext& context) {
+  return context.frame_plan != nullptr &&
+         context.frame_plan->uses_frame_pointer_for_fixed_slots;
+}
+
+[[nodiscard]] std::string frame_slot_address(std::size_t offset_bytes,
+                                             std::string_view base_register = "sp") {
+  std::string address{"["};
+  address += base_register;
   if (offset_bytes != 0) {
     address += ", #";
     address += std::to_string(offset_bytes);
   }
   address += "]";
   return address;
+}
+
+[[nodiscard]] std::string frame_slot_address(
+    const module::FunctionLoweringContext& context,
+    std::size_t offset_bytes) {
+  return frame_slot_address(offset_bytes,
+                            fixed_slots_use_frame_pointer(context) ? "x29" : "sp");
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> scalar_view_for_type(
@@ -3226,7 +3255,7 @@ lower_fixed_formal_store_local_publication(
                             : std::nullopt;
     if (offset.has_value()) {
       lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} +
-                      ", " + frame_slot_address(*offset));
+                      ", " + frame_slot_address(context.function, *offset));
       return true;
     }
   }
@@ -3346,7 +3375,7 @@ lower_fixed_formal_store_local_publication(
   if (home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       home->offset_bytes.has_value()) {
     lines.push_back("ldr " + std::string{abi::register_name(*destination_view)} +
-                    ", " + frame_slot_address(*home->offset_bytes));
+                    ", " + frame_slot_address(context.function, *home->offset_bytes));
     return true;
   }
   if (home->kind == prepare::PreparedValueHomeKind::Register &&
@@ -3460,11 +3489,12 @@ lower_fixed_formal_store_local_publication(
         return false;
       }
       lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
-                      frame_slot_address(static_cast<std::size_t>(offset)));
+                      frame_slot_address(context.function,
+                                         static_cast<std::size_t>(offset)));
       return true;
     }
     lines.push_back("ldr " + *address + ", " +
-                    frame_slot_address(*pointer_home->offset_bytes));
+                    frame_slot_address(context.function, *pointer_home->offset_bytes));
   } else if (pointer_home->kind == prepare::PreparedValueHomeKind::Register &&
              pointer_home->register_name.has_value()) {
     const auto parsed = abi::parse_aarch64_register_name(*pointer_home->register_name);
@@ -3924,7 +3954,8 @@ move.to_value_id);
     const prepare::PreparedValueHome& home,
     bir::TypeKind type,
     std::uint8_t target_index,
-    std::vector<std::string>& lines) {
+    std::vector<std::string>& lines,
+    bool use_frame_pointer_base = false) {
   const auto target_view = scalar_view_for_type(type);
   if (!target_view.has_value()) {
     return false;
@@ -3959,7 +3990,8 @@ move.to_value_id);
       return false;
     }
     lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
-                    frame_slot_address(*home.offset_bytes));
+                    frame_slot_address(*home.offset_bytes,
+                                       use_frame_pointer_base ? "x29" : "sp"));
     return true;
   }
   if (home.kind == prepare::PreparedValueHomeKind::Register &&
@@ -4040,7 +4072,8 @@ lower_stack_home_fused_compare_branch(
                                             *home,
                                             *branch_condition->compare_type,
                                             scratches.front().index,
-                                            lines)) {
+                                            lines,
+                                            fixed_slots_use_frame_pointer(context.function))) {
     return std::nullopt;
   }
   lines.push_back("cmp " + std::string{abi::register_name(*compare_reg)} + ", #" +
@@ -4163,7 +4196,8 @@ lower_stack_home_fused_compare_branch(
                                                  *home,
                                                  value.type,
                                                  target_index,
-                                                 lines);
+                                                 lines,
+                                                 fixed_slots_use_frame_pointer(context.function));
     }
   }
   if (producer == nullptr) {
@@ -4175,7 +4209,8 @@ lower_stack_home_fused_compare_branch(
                                                  *home,
                                                  value.type,
                                                  target_index,
-                                                 lines);
+                                                 lines,
+                                                 fixed_slots_use_frame_pointer(context.function));
     }
     return false;
   }
@@ -4187,7 +4222,8 @@ lower_stack_home_fused_compare_branch(
                                                *home,
                                                value.type,
                                                target_index,
-                                               lines);
+                                               lines,
+                                               fixed_slots_use_frame_pointer(context.function));
   }
 
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
@@ -4201,7 +4237,8 @@ lower_stack_home_fused_compare_branch(
                                                  *home,
                                                  value.type,
                                                  target_index,
-                                                 lines);
+                                                 lines,
+                                                 fixed_slots_use_frame_pointer(context.function));
     }
     if (emit_prepared_va_list_field_load_to_register(
             context, *load_local, target_index, lines)) {
@@ -4241,7 +4278,7 @@ lower_stack_home_fused_compare_branch(
         return false;
       }
       lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
-                      frame_slot_address(*offset));
+                      frame_slot_address(context.function, *offset));
       return true;
     }
     return index.has_value() &&
@@ -4261,7 +4298,8 @@ lower_stack_home_fused_compare_branch(
                                                  *home,
                                                  value.type,
                                                  target_index,
-                                                 lines);
+                                                 lines,
+                                                 fixed_slots_use_frame_pointer(context.function));
     }
     const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
     if (!address.has_value() || load_global->global_name.empty()) {
@@ -4719,7 +4757,7 @@ lower_local_slot_address_publication(
       return std::nullopt;
     }
     lines.push_back("str " + *result_name + ", " +
-                    frame_slot_address(*result_stack_offset_bytes));
+                    frame_slot_address(context.function, *result_stack_offset_bytes));
   }
   record_emitted_scalar_register(
       scalar_state, result_register->value_name, *result_register);
@@ -4852,7 +4890,7 @@ lower_scalar_mul_with_distinct_rhs_scratch(
   if (emitted_power_of_two_scale) {
     if (result_stack_offset_bytes.has_value()) {
       lines.push_back("str " + *result_name + ", " +
-                      frame_slot_address(*result_stack_offset_bytes));
+                      frame_slot_address(context.function, *result_stack_offset_bytes));
     }
     std::string asm_text;
     for (std::size_t index = 0; index < lines.size(); ++index) {
@@ -4943,7 +4981,7 @@ lower_scalar_mul_with_distinct_rhs_scratch(
   lines.push_back("mul " + *result_name + ", " + *result_name + ", " + *rhs_name);
   if (result_stack_offset_bytes.has_value()) {
     lines.push_back("str " + *result_name + ", " +
-                    frame_slot_address(*result_stack_offset_bytes));
+                    frame_slot_address(context.function, *result_stack_offset_bytes));
   }
 
   std::string asm_text;
@@ -5084,7 +5122,7 @@ lower_stack_homed_pointer_value_load_publication(
       return std::nullopt;
     }
     lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
-                    frame_slot_address(*result_home->offset_bytes));
+                    frame_slot_address(context.function, *result_home->offset_bytes));
   } else if (result_home->kind == prepare::PreparedValueHomeKind::Register) {
     const auto reg = abi::gp_register(*target_index, *target_view);
     if (!reg.has_value()) {
@@ -5369,9 +5407,10 @@ struct EdgeProducerContext {
       return false;
     }
     lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
-                    frame_slot_address(slot->offset_bytes +
-                                       static_cast<std::size_t>(
-                                           access->address.byte_offset)));
+                    frame_slot_address(producer.context.function,
+                                       slot->offset_bytes +
+                                           static_cast<std::size_t>(
+                                               access->address.byte_offset)));
     return true;
   }
   if (access->address.base_kind != prepare::PreparedAddressBaseKind::PointerValue ||
@@ -5439,7 +5478,8 @@ struct EdgeProducerContext {
                *home,
                value.type,
                target_index,
-               lines);
+               lines,
+               fixed_slots_use_frame_pointer(successor_context.function));
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(producer->producer);
       load != nullptr) {
@@ -5464,7 +5504,8 @@ struct EdgeProducerContext {
                *home,
                value.type,
                target_index,
-               lines);
+               lines,
+               fixed_slots_use_frame_pointer(successor_context.function));
   }
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
@@ -5965,7 +6006,7 @@ make_load_global_got_materialization_instruction(
       home != nullptr &&
       home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       home->offset_bytes.has_value()) {
-    lines.push_back("str " + target + ", " + frame_slot_address(*home->offset_bytes));
+    lines.push_back("str " + target + ", " + frame_slot_address(context.function, *home->offset_bytes));
     return make_select_chain_materialization_instruction(
         context, instruction_index, std::move(lines));
   }
@@ -6570,7 +6611,7 @@ lower_store_local_value_publication(
                                                    true);
       if (emitted) {
         lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
-                        ", " + frame_slot_address(*value_home->offset_bytes));
+                        ", " + frame_slot_address(context.function, *value_home->offset_bytes));
         published_stack_home = true;
       }
     } else if (cast_producer != nullptr) {
@@ -6763,7 +6804,7 @@ lower_stack_homed_pointer_store_writeback(
     }
   }
   lines.push_back("ldr " + *address_register + ", " +
-                  frame_slot_address(*pointer_home->offset_bytes));
+                  frame_slot_address(context.function, *pointer_home->offset_bytes));
   lines.push_back(std::string{*store_mnemonic} + " " + stored_register +
                   ", " + register_indirect_address(
                               *address_register,
@@ -6895,7 +6936,7 @@ lower_stack_homed_pointer_store_writeback(
                             ? prepared_local_load_offset(context, *producer_index)
                             : std::nullopt;
     if (offset.has_value()) {
-      lines.push_back("ldr " + *target + ", " + frame_slot_address(*offset));
+      lines.push_back("ldr " + *target + ", " + frame_slot_address(context.function, *offset));
       if (delta > 0) {
         lines.push_back("add " + *target + ", " + *target + ", #" +
                         std::to_string(delta));
@@ -6941,7 +6982,7 @@ lower_stack_homed_pointer_store_writeback(
   }
   if (base_home->kind == prepare::PreparedValueHomeKind::StackSlot &&
       base_home->offset_bytes.has_value()) {
-    lines.push_back("ldr " + *target + ", " + frame_slot_address(*base_home->offset_bytes));
+    lines.push_back("ldr " + *target + ", " + frame_slot_address(context.function, *base_home->offset_bytes));
     if (delta > 0) {
       lines.push_back("add " + *target + ", " + *target + ", #" +
                       std::to_string(delta));
@@ -7020,7 +7061,7 @@ lower_pointer_base_plus_offset_store_local_publication(
   if (!emitted) {
     return std::nullopt;
   }
-  lines.push_back("str " + *address_register + ", " + frame_slot_address(*destination_offset));
+  lines.push_back("str " + *address_register + ", " + frame_slot_address(context.function, *destination_offset));
 
   InstructionRecord target{
       .family = InstructionFamily::Assembler,
@@ -8057,7 +8098,7 @@ lower_scalar_cast_publication_to_prepared_stack(
       if (source_register.has_value()) {
         lines.push_back(std::string{*mnemonic} + " " +
                         std::string{abi::register_name(*source_register)} + ", " +
-                        frame_slot_address(*home->offset_bytes));
+                        frame_slot_address(context.function, *home->offset_bytes));
         return make_select_chain_materialization_instruction(
             context, instruction_index, std::move(lines));
       }
@@ -8073,7 +8114,7 @@ lower_scalar_cast_publication_to_prepared_stack(
     return std::nullopt;
   }
   lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
-                  frame_slot_address(*home->offset_bytes));
+                  frame_slot_address(context.function, *home->offset_bytes));
   return make_select_chain_materialization_instruction(
       context, instruction_index, std::move(lines));
 }
@@ -8955,7 +8996,7 @@ preserved.value_id);
 
     std::vector<std::string> lines;
     lines.push_back("str " + std::string(abi::register_name(*source_reg)) + ", " +
-                    frame_slot_address(*preserved.stack_offset_bytes));
+                    frame_slot_address(context.function, *preserved.stack_offset_bytes));
     if (auto published =
             make_select_chain_materialization_instruction(
                 context, instruction_index, std::move(lines))) {
@@ -9362,7 +9403,8 @@ lower_missing_fused_compare_operand_publications(
 [[nodiscard]] std::vector<std::string> entry_formal_store_lines(
     abi::RegisterReference source,
     bir::TypeKind type,
-    std::size_t stack_offset_bytes) {
+    std::size_t stack_offset_bytes,
+    std::string_view base_register) {
   const auto opcode = entry_formal_store_opcode(type);
   if (!opcode.has_value()) {
     return {};
@@ -9370,7 +9412,8 @@ lower_missing_fused_compare_operand_publications(
   const std::string source_name{abi::register_name(source)};
   std::vector<std::string> lines;
   if (stack_offset_bytes <= 4095U) {
-    std::string line = std::string{*opcode} + " " + source_name + ", [sp";
+    std::string line = std::string{*opcode} + " " + source_name + ", [" +
+                       std::string{base_register};
     if (stack_offset_bytes != 0U) {
       line += ", #";
       line += std::to_string(stack_offset_bytes);
@@ -9382,7 +9425,8 @@ lower_missing_fused_compare_operand_publications(
   const auto scratch = abi::reserved_mir_scratch_gp_registers().front();
   lines = materialize_integer_constant_lines(scratch, stack_offset_bytes, 64);
   lines.push_back("add " + std::string{abi::register_name(scratch)} +
-                  ", sp, " + std::string{abi::register_name(scratch)});
+                  ", " + std::string{base_register} + ", " +
+                  std::string{abi::register_name(scratch)});
   lines.push_back(std::string{*opcode} + " " + source_name + ", [" +
                   std::string{abi::register_name(scratch)} + "]");
   return lines;
@@ -9515,12 +9559,21 @@ lower_missing_fused_compare_operand_publications(
                          : std::optional<std::size_t>{frame_size};
 }
 
+[[nodiscard]] std::string_view entry_formal_fixed_home_base_register(
+    const module::FunctionLoweringContext& context) {
+  return context.frame_plan != nullptr &&
+                 context.frame_plan->uses_frame_pointer_for_fixed_slots
+             ? std::string_view{"x29"}
+             : std::string_view{"sp"};
+}
+
 void append_entry_formal_byte_store(std::vector<std::string>& lines,
                                     abi::RegisterReference byte_source,
-                                    std::size_t stack_offset_bytes) {
+                                    std::size_t stack_offset_bytes,
+                                    std::string_view base_register) {
   const std::string source_name{abi::register_name(byte_source)};
   if (stack_offset_bytes <= 4095U) {
-    std::string line = "strb " + source_name + ", [sp";
+    std::string line = "strb " + source_name + ", [" + std::string{base_register};
     if (stack_offset_bytes != 0U) {
       line += ", #";
       line += std::to_string(stack_offset_bytes);
@@ -9535,7 +9588,8 @@ void append_entry_formal_byte_store(std::vector<std::string>& lines,
   auto address_lines =
       materialize_integer_constant_lines(address_scratch, stack_offset_bytes, 64);
   lines.insert(lines.end(), address_lines.begin(), address_lines.end());
-  lines.push_back("add " + address_name + ", sp, " + address_name);
+  lines.push_back("add " + address_name + ", " + std::string{base_register} + ", " +
+                  address_name);
   lines.push_back("strb " + source_name + ", [" + address_name + "]");
 }
 
@@ -9566,7 +9620,8 @@ void append_entry_formal_byte_load(std::vector<std::string>& lines,
 [[nodiscard]] std::vector<std::string> entry_formal_byval_aggregate_store_lines(
     const bir::Param& param,
     abi::RegisterReference source,
-    std::size_t stack_offset_bytes) {
+    std::size_t stack_offset_bytes,
+    std::string_view destination_base_register) {
   if (!param.abi.has_value() || param.type != bir::TypeKind::Ptr ||
       !param.abi->byval_copy || !param.abi->passed_in_register ||
       param.abi->primary_class != bir::AbiValueClass::Integer ||
@@ -9599,7 +9654,8 @@ void append_entry_formal_byte_load(std::vector<std::string>& lines,
     }
     auto lane_lines = entry_formal_store_lines(*lane_x,
                                                bir::TypeKind::I64,
-                                               stack_offset_bytes + byte_index);
+                                               stack_offset_bytes + byte_index,
+                                               destination_base_register);
     lines.insert(lines.end(), lane_lines.begin(), lane_lines.end());
     byte_index += 8U;
   }
@@ -9625,7 +9681,8 @@ void append_entry_formal_byte_load(std::vector<std::string>& lines,
     }
     append_entry_formal_byte_store(lines,
                                    byte_source,
-                                   stack_offset_bytes + byte_index);
+                                   stack_offset_bytes + byte_index,
+                                   destination_base_register);
   }
   return lines;
 }
@@ -9634,7 +9691,8 @@ void append_entry_formal_byte_load(std::vector<std::string>& lines,
 entry_formal_byval_aggregate_stack_source_publication_lines(
     const bir::Param& param,
     const prepare::PreparedValueHome& home,
-    std::size_t source_stack_offset_bytes) {
+    std::size_t source_stack_offset_bytes,
+    std::string_view destination_base_register) {
   if (!param.abi.has_value() || param.type != bir::TypeKind::Ptr ||
       !param.abi->byval_copy ||
       param.abi->primary_class != bir::AbiValueClass::Integer ||
@@ -9657,7 +9715,8 @@ entry_formal_byval_aggregate_stack_source_publication_lines(
                                   source_stack_offset_bytes + byte_index);
     append_entry_formal_byte_store(lines,
                                    *value_scratch_w,
-                                   *home.offset_bytes + byte_index);
+                                   *home.offset_bytes + byte_index,
+                                   destination_base_register);
   }
   return lines;
 }
@@ -9739,7 +9798,10 @@ void record_entry_formal_register_home(
   }
   if (param.is_byval) {
     return entry_formal_byval_aggregate_stack_source_publication_lines(
-        param, home, *frame_size + *incoming_offset);
+        param,
+        home,
+        *frame_size + *incoming_offset,
+        entry_formal_fixed_home_base_register(context.function));
   }
   if (home.kind == prepare::PreparedValueHomeKind::None &&
       param.type == bir::TypeKind::F128) {
@@ -9751,7 +9813,7 @@ void record_entry_formal_register_home(
     auto lines = entry_formal_load_lines(*scratch,
                                          param.type,
                                          *frame_size + *incoming_offset);
-    auto stores = entry_formal_store_lines(*scratch, param.type, *incoming_offset);
+    auto stores = entry_formal_store_lines(*scratch, param.type, *incoming_offset, "sp");
     lines.insert(lines.end(), stores.begin(), stores.end());
     return lines;
   }
@@ -9776,7 +9838,10 @@ void record_entry_formal_register_home(
     return {};
   }
   auto lines = entry_formal_load_lines(*scratch, param.type, *frame_size + *incoming_offset);
-  auto stores = entry_formal_store_lines(*scratch, param.type, *home.offset_bytes);
+  auto stores = entry_formal_store_lines(*scratch,
+                                         param.type,
+                                         *home.offset_bytes,
+                                         entry_formal_fixed_home_base_register(context.function));
   lines.insert(lines.end(), stores.begin(), stores.end());
   return lines;
 }
@@ -9899,9 +9964,15 @@ void record_entry_formal_register_home(
         if (param.is_byval) {
           lines = entry_formal_byval_aggregate_store_lines(param,
                                                            *source,
-                                                           *home->offset_bytes);
+                                                           *home->offset_bytes,
+                                                           entry_formal_fixed_home_base_register(
+                                                               context.function));
         } else {
-          lines = entry_formal_store_lines(*source, param.type, *home->offset_bytes);
+          lines = entry_formal_store_lines(*source,
+                                           param.type,
+                                           *home->offset_bytes,
+                                           entry_formal_fixed_home_base_register(
+                                               context.function));
         }
       } else if (!param.is_byval &&
                  home->kind == prepare::PreparedValueHomeKind::Register) {

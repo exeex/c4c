@@ -55,6 +55,8 @@ struct FrameBoundaryFacts {
   std::size_t frame_alignment_bytes = 0;
   bool preserves_link_register = false;
   std::optional<std::size_t> link_register_save_offset_bytes;
+  bool preserves_frame_pointer = false;
+  std::optional<std::size_t> frame_pointer_save_offset_bytes;
 };
 
 [[nodiscard]] std::optional<FrameBoundaryFacts> frame_boundary_facts(
@@ -62,11 +64,16 @@ struct FrameBoundaryFacts {
     const module::MachineFunction& function) {
   const bool simple_fixed_frame = has_simple_fixed_frame_plan(context);
   const bool non_leaf = has_non_leaf_call(function);
-  if (!simple_fixed_frame && !non_leaf) {
+  const bool dynamic_fixed_slots =
+      context.frame_plan != nullptr &&
+      context.frame_plan->has_dynamic_stack &&
+      context.frame_plan->uses_frame_pointer_for_fixed_slots;
+  if (!simple_fixed_frame && !non_leaf && !dynamic_fixed_slots) {
     return std::nullopt;
   }
   if (context.frame_plan != nullptr &&
-      (context.frame_plan->has_dynamic_stack || context.dynamic_stack_plan != nullptr)) {
+      (context.frame_plan->has_dynamic_stack || context.dynamic_stack_plan != nullptr) &&
+      !dynamic_fixed_slots) {
     return std::nullopt;
   }
 
@@ -81,6 +88,9 @@ struct FrameBoundaryFacts {
       if (!saved.slot_placement.has_value() ||
           !prepare::has_complete_prepared_saved_register_slot_placement(
               *saved.slot_placement)) {
+        if (dynamic_fixed_slots) {
+          continue;
+        }
         return std::nullopt;
       }
       const auto& placement = *saved.slot_placement;
@@ -95,13 +105,37 @@ struct FrameBoundaryFacts {
   facts.frame_size_bytes = align_to(prepared_frame_size, frame_alignment);
   if (non_leaf) {
     facts.preserves_link_register = true;
+    prepared_frame_size = align_to(prepared_frame_size, 8U);
     facts.link_register_save_offset_bytes = prepared_frame_size;
-    facts.frame_size_bytes = align_to(prepared_frame_size + 16, frame_alignment);
+    prepared_frame_size += 16U;
   }
+  if (dynamic_fixed_slots) {
+    facts.preserves_frame_pointer = true;
+    prepared_frame_size = align_to(prepared_frame_size, 8U);
+    facts.frame_pointer_save_offset_bytes = prepared_frame_size;
+    prepared_frame_size += 8U;
+  }
+  facts.frame_size_bytes = align_to(prepared_frame_size, frame_alignment);
   if (facts.frame_size_bytes == 0) {
     return std::nullopt;
   }
   return facts;
+}
+
+[[nodiscard]] std::vector<prepare::PreparedSavedRegister> printable_saved_registers(
+    const prepare::PreparedFramePlanFunction* frame) {
+  std::vector<prepare::PreparedSavedRegister> saved_registers;
+  if (frame == nullptr) {
+    return saved_registers;
+  }
+  for (const auto& saved : frame->saved_callee_registers) {
+    if (saved.slot_placement.has_value() &&
+        prepare::has_complete_prepared_saved_register_slot_placement(
+            *saved.slot_placement)) {
+      saved_registers.push_back(saved);
+    }
+  }
+  return saved_registers;
 }
 
 [[nodiscard]] module::MachineInstruction make_frame_machine_instruction(
@@ -124,12 +158,12 @@ struct FrameBoundaryFacts {
       .frame_slot_order = frame != nullptr
                               ? frame->frame_slot_order
                               : std::vector<prepare::PreparedFrameSlotId>{},
-      .saved_callee_registers = frame != nullptr
-                                    ? frame->saved_callee_registers
-                                    : std::vector<prepare::PreparedSavedRegister>{},
+      .saved_callee_registers = printable_saved_registers(frame),
       .has_dynamic_stack = frame != nullptr ? frame->has_dynamic_stack : false,
       .uses_frame_pointer_for_fixed_slots =
           frame != nullptr ? frame->uses_frame_pointer_for_fixed_slots : false,
+      .preserves_frame_pointer = facts.preserves_frame_pointer,
+      .frame_pointer_save_offset_bytes = facts.frame_pointer_save_offset_bytes,
       .source_frame = frame,
   });
   target.block_label = block_label;

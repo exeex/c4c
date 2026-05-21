@@ -657,6 +657,12 @@ std::optional<module::MachineInstruction> lower_address_materialization_record(
     return std::nullopt;
   }
 
+  if (prepared.record->kind == AddressMaterializationKind::FrameSlot &&
+      context.function.frame_plan != nullptr &&
+      context.function.frame_plan->uses_frame_pointer_for_fixed_slots) {
+    prepared.record->uses_frame_pointer_base = true;
+  }
+
   InstructionRecord target =
       make_address_materialization_instruction(*prepared.record);
   target.function_name = context.function.control_flow->function_name;
@@ -973,11 +979,13 @@ mir::TargetInstructionPrintResult print_address_materialization_instruction(
 
   const std::string result = abi::register_name(address.result_register->reg);
   if (address.kind == AddressMaterializationKind::FrameSlot) {
+    const std::string_view base = address.uses_frame_pointer_base ? "x29" : "sp";
     if (address.byte_offset == 0) {
-      return address_materialization_printed({"mov " + result + ", sp"});
+      return address_materialization_printed({"mov " + result + ", " + std::string{base}});
     }
     return address_materialization_printed({
-        "add " + result + ", sp, #" + std::to_string(address.byte_offset),
+        "add " + result + ", " + std::string{base} + ", #" +
+            std::to_string(address.byte_offset),
     });
   }
   if (address.kind == AddressMaterializationKind::GotPageLow12) {

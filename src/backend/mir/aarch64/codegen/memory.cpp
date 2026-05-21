@@ -263,6 +263,30 @@ bool apply_stack_layout_to_memory_record(
       names, stack_layout, function_name, *local_store, record);
 }
 
+void apply_frame_pointer_base_policy(const module::FunctionLoweringContext& context,
+                                     MemoryInstructionRecord& record) {
+  const bool use_frame_pointer =
+      context.frame_plan != nullptr &&
+      context.frame_plan->uses_frame_pointer_for_fixed_slots;
+  if (!use_frame_pointer) {
+    return;
+  }
+  if (record.address.base_kind == MemoryBaseKind::FrameSlot) {
+    record.address.uses_frame_pointer_base = true;
+  }
+  if (!record.value.has_value()) {
+    return;
+  }
+  if (auto* source_memory = std::get_if<MemoryOperand>(&record.value->payload);
+      record.value->kind == OperandKind::Memory && source_memory != nullptr &&
+      source_memory->base_kind == MemoryBaseKind::FrameSlot) {
+    source_memory->uses_frame_pointer_base = true;
+  } else if (auto* source_slot = std::get_if<FrameSlotOperand>(&record.value->payload);
+             record.value->kind == OperandKind::FrameSlot && source_slot != nullptr) {
+    source_slot->uses_frame_pointer_base = true;
+  }
+}
+
 std::optional<RegisterOperand> find_memory_return_abi_register(
     const module::BlockLoweringContext& context,
     prepare::PreparedValueId value_id,
@@ -1161,7 +1185,7 @@ std::string_view memory_instruction_kind_name(MemoryInstructionKind kind) {
 std::string memory_address(const MemoryOperand& address) {
   std::ostringstream out;
   if (address.base_kind == MemoryBaseKind::FrameSlot) {
-    out << "[sp";
+    out << (address.uses_frame_pointer_base ? "[x29" : "[sp");
   } else if (address.base_kind == MemoryBaseKind::PointerValue &&
              address.base_register.has_value()) {
     out << "[" << abi::register_name(address.base_register->reg);
@@ -2186,6 +2210,7 @@ MemoryInstructionLoweringResult lower_memory_instruction(
     return MemoryInstructionLoweringResult{.handled = true};
   }
   retarget_load_result_to_return_abi(context, *prepared.record);
+  apply_frame_pointer_base_policy(context.function, *prepared.record);
   if (auto byte_immediate_store =
           make_byte_immediate_store_machine_instruction(context, instruction_index, *prepared.record);
       byte_immediate_store.has_value()) {
