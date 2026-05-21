@@ -3913,6 +3913,64 @@ lower_stack_home_fused_compare_branch(
     return true;
   }
 
+  if (binary->opcode == bir::BinaryOpcode::Mul) {
+    const auto operand_view = scalar_view_for_type(binary->operand_type);
+    const auto result_name =
+        operand_view.has_value() ? gp_register_name(target_index, *operand_view)
+                                 : std::nullopt;
+    const auto rhs_name =
+        operand_view.has_value() ? gp_register_name(scratch_index, *operand_view)
+                                 : std::nullopt;
+    if (!operand_view.has_value() || !result_name.has_value() ||
+        !rhs_name.has_value()) {
+      return false;
+    }
+    auto lhs = binary->lhs;
+    lhs.type = binary->operand_type;
+    auto rhs = binary->rhs;
+    rhs.type = binary->operand_type;
+    const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
+    const bool rhs_reads_target = value_publication_may_read_register_index(
+        context, rhs, before_instruction_index, target_index);
+    const bool lhs_reads_scratch = value_publication_may_read_register_index(
+        context, lhs, before_instruction_index, scratch_index);
+    if (rhs_reads_target && !lhs_reads_scratch) {
+      if (!emit_value_publication_to_register(context,
+                                              rhs,
+                                              before_instruction_index,
+                                              scratch_index,
+                                              nested_scratch_index,
+                                              lines,
+                                              reload_current_memory_loads) ||
+          !emit_value_publication_to_register(context,
+                                              lhs,
+                                              before_instruction_index,
+                                              target_index,
+                                              scratch_index,
+                                              lines,
+                                              reload_current_memory_loads)) {
+        return false;
+      }
+    } else if (!emit_value_publication_to_register(context,
+                                                   lhs,
+                                                   before_instruction_index,
+                                                   target_index,
+                                                   scratch_index,
+                                                   lines,
+                                                   reload_current_memory_loads) ||
+               !emit_value_publication_to_register(context,
+                                                   rhs,
+                                                   before_instruction_index,
+                                                   scratch_index,
+                                                   nested_scratch_index,
+                                                   lines,
+                                                   reload_current_memory_loads)) {
+      return false;
+    }
+    lines.push_back("mul " + *result_name + ", " + *result_name + ", " + *rhs_name);
+    return true;
+  }
+
   if (binary->opcode != bir::BinaryOpcode::Add &&
       binary->opcode != bir::BinaryOpcode::Sub) {
     return false;
@@ -5448,6 +5506,18 @@ lower_store_global_value_publication(
   return producer != nullptr ? std::get_if<bir::CastInst>(producer) : nullptr;
 }
 
+[[nodiscard]] bool store_local_value_has_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::StoreLocalInst& store,
+    std::size_t instruction_index) {
+  if (store.value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* producer =
+      find_same_block_named_producer(context, store.value.name, instruction_index);
+  return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
+}
+
 [[nodiscard]] bool emit_scalar_conversion_cast_to_register(
     const module::BlockLoweringContext& context,
     const bir::CastInst& cast,
@@ -5574,7 +5644,8 @@ lower_store_local_value_publication(
     const bir::Inst& inst,
     std::size_t instruction_index,
     const module::MachineInstruction& lowered_memory,
-    const BlockScalarLoweringState& scalar_state) {
+    const BlockScalarLoweringState& scalar_state,
+    const module::MachineBlock& block) {
   const auto* store = std::get_if<bir::StoreLocalInst>(&inst);
   const auto* cast_producer =
       store != nullptr ? store_local_value_cast_producer(context, *store, instruction_index)
@@ -5583,6 +5654,7 @@ lower_store_local_value_publication(
       (!store_local_value_is_byval_frame_slot_load(context, *store, instruction_index) &&
        !store_local_value_is_wide_load_from_narrow_local_store(
            context, *store, instruction_index) &&
+       !store_local_value_has_select_producer(context, *store, instruction_index) &&
        cast_producer == nullptr &&
        !select_chain_contains_direct_global_load(context, store->value, instruction_index))) {
     return std::nullopt;
@@ -5594,7 +5666,6 @@ lower_store_local_value_publication(
       !memory_record->value.has_value()) {
     return std::nullopt;
   }
-
   const auto scratches = abi::reserved_mir_scratch_gp_registers();
   std::vector<std::string> lines;
   auto value = store->value;
@@ -5602,6 +5673,14 @@ lower_store_local_value_publication(
       value.kind == bir::Value::Kind::Named
           ? find_same_block_named_producer(context, value.name, instruction_index)
           : nullptr;
+  const auto producer_index = producer_instruction_index(context, producer_inst);
+  if (producer_index.has_value() &&
+      std::get_if<bir::SelectInst>(producer_inst) != nullptr &&
+      !block.instructions.empty() &&
+      block.instructions.back().origin.has_value() &&
+      block.instructions.back().origin->instruction_index == *producer_index) {
+    return std::nullopt;
+  }
   bool emitted = false;
   bool published_stack_home = false;
   if (const auto* target_register =
@@ -5616,9 +5695,42 @@ lower_store_local_value_publication(
       }
     }
     if (abi::is_reserved_mir_scratch(target_register->reg)) {
-      return std::nullopt;
-    }
-    if (cast_producer != nullptr) {
+      const auto* value_home = prepared_value_home_for_value(context, value);
+      const auto store_mnemonic = scalar_store_mnemonic(value.type);
+      const auto store_view = scalar_view_for_type(value.type);
+      const auto store_register =
+          store_view.has_value()
+              ? gp_register_name(target_register->reg.index, *store_view)
+              : std::nullopt;
+      std::optional<std::uint8_t> alternate_scratch;
+      for (const auto& scratch : scratches) {
+        if (scratch.index != target_register->reg.index) {
+          alternate_scratch = scratch.index;
+          break;
+        }
+      }
+      if (!store_local_value_has_select_producer(context, *store, instruction_index) ||
+          value_home == nullptr ||
+          value_home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+          !value_home->offset_bytes.has_value() ||
+          !store_mnemonic.has_value() ||
+          !store_register.has_value() ||
+          !alternate_scratch.has_value()) {
+        return std::nullopt;
+      }
+      emitted = emit_value_publication_to_register(context,
+                                                   value,
+                                                   instruction_index,
+                                                   target_register->reg.index,
+                                                   *alternate_scratch,
+                                                   lines,
+                                                   true);
+      if (emitted) {
+        lines.push_back(std::string{*store_mnemonic} + " " + *store_register +
+                        ", " + frame_slot_address(*value_home->offset_bytes));
+        published_stack_home = true;
+      }
+    } else if (cast_producer != nullptr) {
       emitted = emit_scalar_conversion_cast_to_register(
           context,
           *cast_producer,
@@ -5638,7 +5750,8 @@ lower_store_local_value_publication(
   } else if (const auto* target_memory =
                  std::get_if<MemoryOperand>(&memory_record->value->payload);
              target_memory != nullptr &&
-             select_chain_contains_direct_global_load(context, value, instruction_index)) {
+             (store_local_value_has_select_producer(context, *store, instruction_index) ||
+              select_chain_contains_direct_global_load(context, value, instruction_index))) {
     const auto store_mnemonic = scalar_store_mnemonic(value.type);
     const auto store_view = scalar_view_for_type(value.type);
     const auto store_register =
@@ -5929,6 +6042,15 @@ void lower_pending_store_global_stack_value_publications(
           *lowered_memory.instruction, *materialized_address);
       retarget_store_address_to_materialized_pointer(
           *store, *lowered_memory.instruction, *materialized_address);
+    }
+    if (auto value_publication =
+            lower_store_local_value_publication(context,
+                                                inst,
+                                                instruction_index,
+                                                *lowered_memory.instruction,
+                                                scalar_state,
+                                                block)) {
+      block.instructions.push_back(std::move(*value_publication));
     }
     record_memory_result(scalar_state, *lowered_memory.instruction);
     block.instructions.push_back(std::move(*lowered_memory.instruction));
@@ -7313,7 +7435,8 @@ lower_missing_fused_compare_operand_publication(
                                           context.bir_block->insts.size(),
                                           target_index,
                                           scratch_index,
-                                          lines) ||
+                                          lines,
+                                          true) ||
       lines.empty()) {
     return std::nullopt;
   }
@@ -7367,6 +7490,37 @@ lower_missing_fused_compare_operand_publications(
     }
   }
   return lowered;
+}
+
+[[nodiscard]] bool fused_compare_operand_has_select_producer(
+    const module::BlockLoweringContext& context,
+    const bir::Value& value) {
+  if (context.bir_block == nullptr || value.kind != bir::Value::Kind::Named) {
+    return false;
+  }
+  const auto* producer = find_same_block_named_producer(
+      context, value.name, context.bir_block->insts.size());
+  return producer != nullptr && std::get_if<bir::SelectInst>(producer) != nullptr;
+}
+
+[[nodiscard]] bool fused_compare_uses_selected_operand(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
+    return false;
+  }
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition->can_fuse_with_branch) {
+    return false;
+  }
+  return (branch_condition->lhs.has_value() &&
+          fused_compare_operand_has_select_producer(context, *branch_condition->lhs)) ||
+         (branch_condition->rhs.has_value() &&
+          fused_compare_operand_has_select_producer(context, *branch_condition->rhs));
 }
 
 [[nodiscard]] std::optional<abi::RegisterView> entry_formal_register_view(
@@ -8689,7 +8843,8 @@ InstructionDispatchResult dispatch_prepared_block(
                           inst,
                           instruction_index,
                           *lowered_ordinary_memory.instruction,
-                          scalar_state)) {
+                          scalar_state,
+                          block)) {
                 block.instructions.push_back(std::move(*value_publication));
               }
               if (auto value_publication =
@@ -8763,6 +8918,13 @@ InstructionDispatchResult dispatch_prepared_block(
     }
   } else if (context.control_flow_block->terminator_kind ==
              c4c::backend::bir::TerminatorKind::CondBranch) {
+    if (fused_compare_uses_selected_operand(context)) {
+      for (auto& publication :
+           lower_missing_fused_compare_operand_publications(
+               context, scalar_state, diagnostics)) {
+        block.instructions.push_back(std::move(publication));
+      }
+    }
     if (auto lowered =
             lower_current_block_entry_fused_compare_branch(context)) {
       block.instructions.push_back(std::move(*lowered));

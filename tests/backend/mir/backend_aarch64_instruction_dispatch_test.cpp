@@ -9768,6 +9768,377 @@ prepare::PreparedBirModule prepared_with_stack_published_i32_global_load_select_
   return prepared;
 }
 
+prepare::PreparedBirModule prepared_with_binary_selected_local_store() {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.binary.select.local.store");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.binary.select.local.store.entry");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.binary.select.local.store.entry");
+  const auto count_name = prepared.names.value_names.intern("%count");
+  const auto index_name = prepared.names.value_names.intern("%index");
+  const auto square_name = prepared.names.value_names.intern("%square");
+  const auto old_lane_name = prepared.names.value_names.intern("%old.lane");
+  const auto selected_name = prepared.names.value_names.intern("%selected.store");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.binary.select.local.store",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+              .label = "dispatch.binary.select.local.store.entry",
+              .insts =
+                  {bir::BinaryInst{
+                       .opcode = bir::BinaryOpcode::Mul,
+                       .result = bir::Value::named(bir::TypeKind::I32, "%square"),
+                       .operand_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%count"),
+                       .rhs = bir::Value::named(bir::TypeKind::I32, "%count"),
+                   },
+                   bir::LoadLocalInst{
+                       .result = bir::Value::named(bir::TypeKind::I32, "%old.lane"),
+                       .slot_id = c4c::SlotNameId{61},
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_slot_id = c4c::SlotNameId{61},
+                           },
+                   },
+                   bir::SelectInst{
+                       .predicate = bir::BinaryOpcode::Eq,
+                       .result =
+                           bir::Value::named(bir::TypeKind::I32, "%selected.store"),
+                       .compare_type = bir::TypeKind::I32,
+                       .lhs = bir::Value::named(bir::TypeKind::I32, "%index"),
+                       .rhs = bir::Value::immediate_i32(0),
+                       .true_value = bir::Value::named(bir::TypeKind::I32, "%square"),
+                       .false_value = bir::Value::named(bir::TypeKind::I32, "%old.lane"),
+                   },
+                   bir::StoreLocalInst{
+                       .slot_id = c4c::SlotNameId{61},
+                       .value =
+                           bir::Value::named(bir::TypeKind::I32, "%selected.store"),
+                       .byte_offset = 0,
+                       .align_bytes = 4,
+                       .address =
+                           bir::MemoryAddress{
+                               .base_kind = bir::MemoryAddress::BaseKind::LocalSlot,
+                               .byte_offset = 0,
+                               .size_bytes = 4,
+                               .align_bytes = 4,
+                               .address_space = bir::AddressSpace::Default,
+                               .base_slot_id = c4c::SlotNameId{61},
+                           },
+                   }},
+              .terminator = bir::Terminator{bir::ReturnTerminator{}},
+              .label_id = bir_entry_label,
+          }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks = {prepare::PreparedControlFlowBlock{
+          .block_label = entry_label,
+          .terminator_kind = bir::TerminatorKind::Return,
+      }},
+  });
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes =
+          {prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{60},
+               .function_name = function_name,
+               .value_name = count_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{60},
+               .offset_bytes = std::size_t{32},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{61},
+               .function_name = function_name,
+               .value_name = index_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{61},
+               .offset_bytes = std::size_t{36},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{62},
+               .function_name = function_name,
+               .value_name = square_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{62},
+               .offset_bytes = std::size_t{40},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{63},
+               .function_name = function_name,
+               .value_name = old_lane_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{63},
+               .offset_bytes = std::size_t{44},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           },
+           prepare::PreparedValueHome{
+               .value_id = prepare::PreparedValueId{64},
+               .function_name = function_name,
+               .value_name = selected_name,
+               .kind = prepare::PreparedValueHomeKind::StackSlot,
+               .slot_id = prepare::PreparedFrameSlotId{64},
+               .offset_bytes = std::size_t{16},
+               .size_bytes = std::size_t{4},
+               .align_bytes = std::size_t{4},
+           }},
+  });
+  prepared.storage_plans.functions.push_back(prepare::PreparedStoragePlanFunction{
+      .function_name = function_name,
+      .values =
+          {frame_slot_storage(prepare::PreparedValueId{60},
+                              count_name,
+                              prepare::PreparedFrameSlotId{60},
+                              32),
+           frame_slot_storage(prepare::PreparedValueId{61},
+                              index_name,
+                              prepare::PreparedFrameSlotId{61},
+                              36),
+           frame_slot_storage(prepare::PreparedValueId{62},
+                              square_name,
+                              prepare::PreparedFrameSlotId{62},
+                              40),
+           frame_slot_storage(prepare::PreparedValueId{63},
+                              old_lane_name,
+                              prepare::PreparedFrameSlotId{63},
+                              44),
+           frame_slot_storage(prepare::PreparedValueId{64},
+                              selected_name,
+                              prepare::PreparedFrameSlotId{64},
+                              16)},
+  });
+  prepared.stack_layout = prepare::PreparedStackLayout{
+      .frame_slots =
+          {prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{60},
+               .object_id = prepare::PreparedObjectId{60},
+               .function_name = function_name,
+               .offset_bytes = 32,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{61},
+               .object_id = prepare::PreparedObjectId{61},
+               .function_name = function_name,
+               .offset_bytes = 48,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{62},
+               .object_id = prepare::PreparedObjectId{62},
+               .function_name = function_name,
+               .offset_bytes = 40,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{63},
+               .object_id = prepare::PreparedObjectId{63},
+               .function_name = function_name,
+               .offset_bytes = 44,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           },
+           prepare::PreparedFrameSlot{
+               .slot_id = prepare::PreparedFrameSlotId{64},
+               .object_id = prepare::PreparedObjectId{64},
+               .function_name = function_name,
+               .offset_bytes = 16,
+               .size_bytes = 4,
+               .align_bytes = 4,
+               .fixed_location = true,
+           }},
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+  };
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 1,
+               .result_value_name = old_lane_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{61},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           },
+           prepare::PreparedMemoryAccess{
+               .function_name = function_name,
+               .block_label = entry_label,
+               .inst_index = 3,
+               .stored_value_name = selected_name,
+               .address =
+                   prepare::PreparedAddress{
+                       .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                       .frame_slot_id = prepare::PreparedFrameSlotId{61},
+                       .size_bytes = 4,
+                       .align_bytes = 4,
+                       .can_use_base_plus_offset = true,
+                   },
+           }},
+  });
+  return prepared;
+}
+
+prepare::PreparedBirModule prepared_with_selected_global_load_fused_branch() {
+  auto prepared = prepared_with_stack_published_i32_global_load_select_local_store();
+  auto& function = prepared.module.functions.front();
+  auto& block = function.blocks.front();
+  const auto function_name = prepared.control_flow.functions.front().function_name;
+  const auto entry_label = prepared.control_flow.functions.front().blocks.front().block_label;
+  const auto true_label = prepared.names.block_labels.intern(
+      "dispatch.i32.select.global.load.branch.true");
+  const auto false_label = prepared.names.block_labels.intern(
+      "dispatch.i32.select.global.load.branch.false");
+  const auto bir_true_label = prepared.module.names.block_labels.intern(
+      "dispatch.i32.select.global.load.branch.true");
+  const auto bir_false_label = prepared.module.names.block_labels.intern(
+      "dispatch.i32.select.global.load.branch.false");
+  const auto pivot_name = prepared.names.value_names.intern("%pivot");
+  const auto condition_name = prepared.names.value_names.intern("%condition");
+
+  block.insts.pop_back();
+  block.insts.push_back(bir::BinaryInst{
+      .opcode = bir::BinaryOpcode::Slt,
+      .result = bir::Value::named(bir::TypeKind::I32, "%condition"),
+      .operand_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%selected.load"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%pivot"),
+  });
+  block.terminator =
+      bir::Terminator{bir::CondBranchTerminator{
+          .condition = bir::Value::named(bir::TypeKind::I32, "%condition"),
+          .true_label = "dispatch.i32.select.global.load.branch.true",
+          .false_label = "dispatch.i32.select.global.load.branch.false",
+          .true_label_id = bir_true_label,
+          .false_label_id = bir_false_label,
+      }};
+  function.blocks.push_back(bir::Block{
+      .label = "dispatch.i32.select.global.load.branch.true",
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_true_label,
+  });
+  function.blocks.push_back(bir::Block{
+      .label = "dispatch.i32.select.global.load.branch.false",
+      .terminator = bir::Terminator{bir::ReturnTerminator{}},
+      .label_id = bir_false_label,
+  });
+
+  auto& cf = prepared.control_flow.functions.front();
+  cf.blocks.front().terminator_kind = bir::TerminatorKind::CondBranch;
+  cf.blocks.front().true_label = true_label;
+  cf.blocks.front().false_label = false_label;
+  cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = true_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  cf.blocks.push_back(prepare::PreparedControlFlowBlock{
+      .block_label = false_label,
+      .terminator_kind = bir::TerminatorKind::Return,
+  });
+  cf.branch_conditions.push_back(prepare::PreparedBranchCondition{
+      .function_name = function_name,
+      .block_label = entry_label,
+      .kind = prepare::PreparedBranchConditionKind::FusedCompare,
+      .condition_value = bir::Value::named(bir::TypeKind::I32, "%condition"),
+      .predicate = bir::BinaryOpcode::Slt,
+      .compare_type = bir::TypeKind::I32,
+      .lhs = bir::Value::named(bir::TypeKind::I32, "%selected.load"),
+      .rhs = bir::Value::named(bir::TypeKind::I32, "%pivot"),
+      .can_fuse_with_branch = true,
+      .true_label = true_label,
+      .false_label = false_label,
+  });
+
+  auto& homes = prepared.value_locations.functions.front().value_homes;
+  homes.push_back(prepare::PreparedValueHome{
+      .value_id = prepare::PreparedValueId{125},
+      .function_name = function_name,
+      .value_name = pivot_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{125},
+      .offset_bytes = std::size_t{44},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  homes.push_back(prepare::PreparedValueHome{
+      .value_id = prepare::PreparedValueId{126},
+      .function_name = function_name,
+      .value_name = condition_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{126},
+      .offset_bytes = std::size_t{48},
+      .size_bytes = std::size_t{4},
+      .align_bytes = std::size_t{4},
+  });
+  prepared.storage_plans.functions.front().values.push_back(
+      frame_slot_storage(prepare::PreparedValueId{125},
+                         pivot_name,
+                         prepare::PreparedFrameSlotId{125},
+                         44));
+  prepared.storage_plans.functions.front().values.push_back(
+      frame_slot_storage(prepare::PreparedValueId{126},
+                         condition_name,
+                         prepare::PreparedFrameSlotId{126},
+                         48));
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{125},
+      .object_id = prepare::PreparedObjectId{125},
+      .function_name = function_name,
+      .offset_bytes = 44,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{126},
+      .object_id = prepare::PreparedObjectId{126},
+      .function_name = function_name,
+      .offset_bytes = 48,
+      .size_bytes = 4,
+      .align_bytes = 4,
+      .fixed_location = true,
+  });
+  prepared.addressing.functions.front().accesses.pop_back();
+  return prepared;
+}
+
 prepare::PreparedBirModule prepared_with_f64_select_global_call_argument() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -23672,6 +24043,102 @@ int block_dispatch_publishes_stack_homed_global_load_select_before_local_store()
   return 0;
 }
 
+int selected_local_store_materializes_binary_snapshot_value_before_writeback() {
+  auto prepared = prepared_with_binary_selected_local_store();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() > 1 || result.visited_operations != 4 ||
+      result.emitted_instructions < 4 || block.instructions.size() < 4) {
+    return fail("expected binary selected local store to publish before writeback: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected binary selected local store route to print: " +
+                printed.diagnostic);
+  }
+  const auto square = printed.assembly.find("mul ");
+  const auto selected_publication = printed.assembly.find("str w9, [sp, #16]");
+  const auto consumer_reload = printed.assembly.find("ldr w9, [sp, #16]",
+                                                     selected_publication);
+  const auto local_store = printed.assembly.find("str w9, [sp, #48]",
+                                                consumer_reload);
+  if (square == std::string::npos ||
+      selected_publication == std::string::npos ||
+      consumer_reload == std::string::npos ||
+      local_store == std::string::npos ||
+      !(square < selected_publication &&
+        selected_publication < consumer_reload &&
+        consumer_reload < local_store)) {
+    return fail("expected selected local store value to materialize and publish its home before writeback reload: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int selected_global_load_materializes_before_fused_compare_branch() {
+  auto prepared = prepared_with_selected_global_load_fused_branch();
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto& block_cf = function_cf.blocks.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context, block_cf, 0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+
+  if (diagnostics.entries.size() > 2 || !result.visited_terminator ||
+      block.instructions.size() < 3) {
+    return fail("expected selected global load to publish before fused branch: visited=" +
+                std::to_string(result.visited_operations) +
+                " emitted=" + std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()) +
+                (diagnostics.entries.empty()
+                     ? std::string{}
+                     : " first=" + diagnostics.entries.front().message));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected selected global load branch route to print: " +
+                printed.diagnostic);
+  }
+  const auto select_publication = printed.assembly.find(".Lselect_mat_");
+  const auto branch_compare = printed.assembly.find("cmp w9, w10", select_publication);
+  const auto branch = printed.assembly.find("b.lt ", branch_compare);
+  const auto stale_home_reload = printed.assembly.find("ldr w9, [sp, #16]");
+  if (select_publication == std::string::npos ||
+      branch_compare == std::string::npos ||
+      branch == std::string::npos ||
+      (stale_home_reload != std::string::npos &&
+       stale_home_reload < branch_compare)) {
+    return fail("expected fused branch to compare the materialized selected global load, not reload its stale stack home: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
 int block_dispatch_publishes_f64_select_before_call_argument_move() {
   auto prepared = prepared_with_f64_select_global_call_argument();
   const auto& function_cf = prepared.control_flow.functions.front();
@@ -24550,6 +25017,16 @@ int main() {
   }
   if (const int status =
           block_dispatch_publishes_stack_homed_global_load_select_before_local_store();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          selected_local_store_materializes_binary_snapshot_value_before_writeback();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          selected_global_load_materializes_before_fused_compare_branch();
       status != 0) {
     return status;
   }
