@@ -155,6 +155,18 @@ void append_block_diagnostic(module::ModuleLoweringDiagnostics& diagnostics,
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<unsigned> power_of_two_shift(std::uint64_t value) {
+  if (value == 0 || (value & (value - 1U)) != 0) {
+    return std::nullopt;
+  }
+  unsigned shift = 0;
+  while (value > 1U) {
+    value >>= 1U;
+    ++shift;
+  }
+  return shift;
+}
+
 [[nodiscard]] std::optional<std::string_view> branch_condition_suffix(
     bir::BinaryOpcode predicate) {
   switch (predicate) {
@@ -3929,6 +3941,25 @@ lower_stack_home_fused_compare_branch(
     lhs.type = binary->operand_type;
     auto rhs = binary->rhs;
     rhs.type = binary->operand_type;
+    if (rhs.kind == bir::Value::Kind::Immediate && rhs.immediate >= 0) {
+      if (const auto shift =
+              power_of_two_shift(static_cast<std::uint64_t>(rhs.immediate))) {
+        if (!emit_value_publication_to_register(context,
+                                                lhs,
+                                                before_instruction_index,
+                                                target_index,
+                                                scratch_index,
+                                                lines,
+                                                reload_current_memory_loads)) {
+          return false;
+        }
+        if (*shift != 0U) {
+          lines.push_back("lsl " + *result_name + ", " + *result_name +
+                          ", #" + std::to_string(*shift));
+        }
+        return true;
+      }
+    }
     const std::uint8_t nested_scratch_index = scratch_index == 9 ? 10 : 9;
     const bool rhs_reads_target = value_publication_may_read_register_index(
         context, rhs, before_instruction_index, target_index);
@@ -4123,12 +4154,95 @@ lower_scalar_mul_with_distinct_rhs_scratch(
   lhs.type = binary->operand_type;
   auto rhs = binary->rhs;
   rhs.type = binary->operand_type;
+  std::vector<std::string> lines;
+  const auto emit_shifted_power_of_two_operand =
+      [&](const bir::Value& value, std::uint64_t scale) -> bool {
+    const auto shift = power_of_two_shift(scale);
+    if (!shift.has_value() ||
+        !emit_value_publication_to_register(context,
+                                            value,
+                                            instruction_index,
+                                            result_register->reg.index,
+                                            *rhs_scratch_index,
+                                            lines)) {
+      return false;
+    }
+    if (*shift != 0U) {
+      lines.push_back("lsl " + *result_name + ", " + *result_name +
+                      ", #" + std::to_string(*shift));
+    }
+    return true;
+  };
+  bool emitted_power_of_two_scale = false;
+  if (rhs.kind == bir::Value::Kind::Immediate && rhs.immediate >= 0) {
+    emitted_power_of_two_scale =
+        emit_shifted_power_of_two_operand(lhs,
+                                          static_cast<std::uint64_t>(rhs.immediate));
+  } else if (lhs.kind == bir::Value::Kind::Immediate && lhs.immediate >= 0) {
+    emitted_power_of_two_scale =
+        emit_shifted_power_of_two_operand(rhs,
+                                          static_cast<std::uint64_t>(lhs.immediate));
+  }
+  if (emitted_power_of_two_scale) {
+    if (result_stack_offset_bytes.has_value()) {
+      lines.push_back("str " + *result_name + ", " +
+                      frame_slot_address(*result_stack_offset_bytes));
+    }
+    std::string asm_text;
+    for (std::size_t index = 0; index < lines.size(); ++index) {
+      if (index != 0) {
+        asm_text += '\n';
+      }
+      asm_text += lines[index];
+    }
+    InstructionRecord target{
+        .family = InstructionFamily::Assembler,
+        .surface = RecordSurfaceKind::MachineInstructionNode,
+        .opcode = MachineOpcode::Unspecified,
+        .selection =
+            MachineNodeStatusRecord{
+                .status = MachineNodeSelectionStatus::Selected,
+            },
+        .function_name = context.function.control_flow != nullptr
+                             ? context.function.control_flow->function_name
+                             : c4c::kInvalidFunctionName,
+        .block_label = context.control_flow_block != nullptr
+                           ? context.control_flow_block->block_label
+                           : c4c::kInvalidBlockLabel,
+        .block_index = context.block_index,
+        .instruction_index = instruction_index,
+        .payload =
+            AssemblerInstructionRecord{
+                .has_inline_asm_payload = true,
+                .side_effects = false,
+                .inline_asm_template = std::move(asm_text),
+            },
+    };
+    record_emitted_scalar_register(scalar_state,
+                                   result_register->value_name,
+                                   *result_register);
+    return module::MachineInstruction{
+        .opcode = static_cast<c4c::backend::mir::TargetOpcode>(target.opcode),
+        .operands = {},
+        .target = std::move(target),
+        .origin =
+            c4c::backend::mir::MachineOrigin{
+                .reason = c4c::backend::mir::MachineOriginReason::BirInstruction,
+                .function_name = context.function.control_flow != nullptr
+                                     ? context.function.control_flow->function_name
+                                     : c4c::kInvalidFunctionName,
+                .block_label = context.control_flow_block != nullptr
+                                   ? context.control_flow_block->block_label
+                                   : c4c::kInvalidBlockLabel,
+                .instruction_index = instruction_index,
+            },
+    };
+  }
   const bool rhs_reads_result = value_publication_may_read_register_index(
       context, rhs, instruction_index, result_register->reg.index);
   const bool lhs_reads_rhs_scratch = value_publication_may_read_register_index(
       context, lhs, instruction_index, *rhs_scratch_index);
 
-  std::vector<std::string> lines;
   if (rhs_reads_result && !lhs_reads_rhs_scratch) {
     if (!emit_value_publication_to_register(context,
                                             rhs,

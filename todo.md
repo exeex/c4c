@@ -8,52 +8,55 @@ Current Step Title: Prove Representatives And Classify Residuals
 
 ## Just Finished
 
-Executed Step 4 narrow proof/classification for idea 371 on implementation
-baseline `f0e556f6f`. The representative subset is green: `00157` and `00176`
-both pass under the delegated command.
+Refined the idea 371 implementation after supervisor full-suite guard found a
+new `00181` AArch64 segfault. The regression was in pointer-derived dynamic
+indexed load publication exposed by the selected-chain/current-memory-load
+repair: address publication built the pointer base in `x9`, then materialized
+the `index * 4` scale by writing `mov x9, #4`, clobbering the base before
+`add x9, x9, x10`.
 
-Assembly classification confirms the selected snapshot publication repair:
+Added focused backend coverage for a pointer-derived scaled-index load where
+the base and scaled index carriers must remain distinct before the final
+`ldr`. Also updated the existing byte-offset scale coverage to accept the more
+direct power-of-two lowering.
 
-- `00157`: in the first dynamic local array writeback loop, the selected store
-  value is materialized before the concrete lane store consumes it. For example,
-  `00157.c.s:53-62` compares the dynamic index, selects either the old lane or
-  recomputed square (`mul w9, w9, w10`), stores the selected value to its home
-  with `str w9, [sp, #92]`, then reloads that published home at
-  `00157.c.s:63` before the lane writeback `str w9, [sp]` at `00157.c.s:64`.
-  The same pattern repeats for later lanes (`#100`, `#108`, etc.), so the
-  previous unmaterialized selected-store-home overwrite is removed.
-- `00176`: in `partition`, the dynamic global-array selected load feeding
-  `array[i] < pivotValue` is rebuilt before the compare. The generated code
-  loads the loop index from `[sp, #12]`, compares it against lane numbers,
-  materializes the selected `array+N` lane through `adrp`/`add`/`ldr` branches,
-  and reaches `cmp w9, w13` at `00176.c.s:3839`. The old stale `%t14.outer0`
-  stack-home load at `sp + 260` is no longer the compare input; the controlling
-  value is the selected live global lane in `w9`.
+Implemented the refinement by recognizing non-negative power-of-two immediate
+multipliers in scalar publication and direct scalar multiply lowering. These
+now publish the scaled value with `lsl` instead of borrowing the other scratch
+register for `mov #scale; mul`, avoiding clobber of a live pointer base. This
+preserves the existing `00157` local selected store publication and `00176`
+selected global load/compare fixes.
 
-No residual first bad fact remains for the idea 371 representatives. Broader
-backend-regex/full-suite guard before closure remains supervisor-owned.
+Assembly classification for `00181` confirms the repair in `Move`: the first
+pointer-derived load now emits `mov x9, x0; ldr w10, [sp, #36]; sxtw x10, w10;
+lsl x10, x10, #2; add x9, x9, x10; ldr w13, [x9]` at
+`00181.c.s:284-289`, so the pointer base survives scale materialization.
+`00157`, `00176`, and `00181` all pass in the delegated proof. No representative
+residual remains in this refinement subset; broader backend-regex/full-suite
+guard before closure remains supervisor-owned.
 
 ## Suggested Next
 
-Supervisor can run the broader backend-regex/full-suite regression guard and
-decide whether idea 371 is ready for lifecycle close.
+Supervisor can run or compare the broader backend-regex/full-suite regression
+guard and decide whether idea 371 is ready for lifecycle close.
 
 ## Watchouts
 
-This Step 4 packet intentionally did not modify implementation files. Closed
-idea 348 remains archived. Treat any broader-suite failures as supervisor
-classification work rather than residuals proven by the `00157`/`00176`
-representative subset.
+Closed idea 348 remains archived. This refinement stays inside the idea 371
+selected snapshot/pointer-derived publication fallout and does not change
+expectations. Treat any broader-suite failures outside `00157`/`00176`/`00181`
+as supervisor classification work.
 
 ## Proof
 
 Delegated proof command:
 
 ```sh
-cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(c_testsuite_aarch64_backend_src_00157_c|c_testsuite_aarch64_backend_src_00176_c)$' > test_after.log 2>&1
+cmake --build --preset default && ctest --test-dir build -j --output-on-failure -R '^(backend_.*|c_testsuite_aarch64_backend_src_00157_c|c_testsuite_aarch64_backend_src_00176_c|c_testsuite_aarch64_backend_src_00181_c)$' > test_after.log 2>&1
 ```
 
-Result: build completed with no work to do; CTest selected 2 tests, 2 passed,
-0 failed. `c_testsuite_aarch64_backend_src_00157_c` and
-`c_testsuite_aarch64_backend_src_00176_c` are green. Proof log is
+Result: build completed; CTest selected 146 tests, 146 passed, 0 failed.
+`backend_.*`, `c_testsuite_aarch64_backend_src_00157_c`,
+`c_testsuite_aarch64_backend_src_00176_c`, and
+`c_testsuite_aarch64_backend_src_00181_c` are green. Proof log is
 `test_after.log`.
