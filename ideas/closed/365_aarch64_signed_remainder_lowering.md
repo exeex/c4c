@@ -1,6 +1,6 @@
 # AArch64 Signed Remainder Lowering
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
 Split From: ideas/open/364_aarch64_synthetic_select_label_uniqueness.md
 
@@ -83,3 +83,17 @@ Reject the route if it:
   buckets without fresh first-bad-fact evidence and lifecycle routing;
 - proves only the external representative while leaving focused signed
   remainder behavior unguarded.
+
+## Closure
+
+2026-05-21: Closed after commit `0652f810c` repaired signed remainder divisor
+scratch allocation with focused machine-printer coverage and Step 4 proof
+confirmed `00143` passes. Generated `00143.c.s` preserves the divisor carrier
+for `count % 8` as `mov w9, #8`; `sdiv w10, w13, w9`; `msub w13, w10, w9,
+w13`.
+
+Close used the supervisor-generated matching full-suite regression basis:
+`test_before.log` from the accepted baseline at `a591ae012` and a fresh
+full-suite `test_after.log`. The regression guard passed with 3345/3375
+passing before and 3346/3375 passing after, resolving
+`c_testsuite_aarch64_backend_src_00143_c` with no new failures.
