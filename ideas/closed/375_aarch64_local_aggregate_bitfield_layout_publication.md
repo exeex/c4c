@@ -1,8 +1,18 @@
 # AArch64 Local Aggregate Bit-Field Layout Publication
 
-Status: Open
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/closed/374_aarch64_local_aggregate_address_call_publication.md
+
+## Closure Note
+
+Closed after focused local aggregate bit-field layout publication coverage and
+the `00218` representative both passed. The old mismatch between the local
+store offset and the scalar pointer consumer load offset is gone, no new first
+bad fact was recorded for `00218`, and matching canonical `^backend_`
+before/after logs reported 144/144 backend tests passing with the monotonic
+regression guard passing.
 
 ## Goal
 
