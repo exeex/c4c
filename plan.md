@@ -1,170 +1,181 @@
-# Backend Regex Failure Family Inventory Runbook
+# AArch64 Local Aggregate Copy Load Publication Runbook
 
 Status: Active
-Source Idea: ideas/open/295_backend_regex_failure_family_inventory.md
-Reactivated After: ideas/closed/378_aarch64_scalar_fp_expression_constant_publication.md
+Source Idea: ideas/open/379_aarch64_local_aggregate_copy_load_publication.md
+Switched From: ideas/open/295_backend_regex_failure_family_inventory.md
 
 ## Purpose
 
-Refresh the backend-regex residual inventory after the focused scalar FP
-expression constant publication owner was closed, then select the next focused
-semantic owner before any implementation work starts.
+Repair the current non-timeout AArch64 backend residual where a local
+aggregate copy or pointer-derived load consumes an uninitialized frame-slot
+value inside `00216.c` `foo`.
 
 ## Goal
 
-Classify the current backend-matching failure surface after idea 378 and split
-or select one tractable repair owner from the remaining parked buckets.
+Publish the correct local aggregate address or copied value before generated
+AArch64 loads from copied local aggregate state, then prove the current `foo`
+segfault advances without filename-shaped matching.
 
 ## Core Rule
 
-This is an umbrella classification plan. Do not implement fixes here, do not
-change expectations or runners, and do not treat pass/fail counts alone as
-owner evidence.
+Fix the semantic/backend lowering rule for local aggregate copy or
+load-local-memory publication. Do not special-case `00216`, `foo`, one stack
+offset, one register, one aggregate type, or the observed `ldrb` neighborhood.
 
 ## Read First
 
-- `ideas/open/295_backend_regex_failure_family_inventory.md`
+- `ideas/open/379_aarch64_local_aggregate_copy_load_publication.md`
 - `todo.md`
-- `test_before.log`
-- `test_after.log`
-- generated artifacts under `build/c_testsuite_aarch64_backend/`
+- `tests/c/external/c-testsuite/src/00216.c`
+- `build/c_testsuite_aarch64_backend/src/00216.c.s`
+- recent local aggregate publication coverage near the closed idea 374 route
 
 ## Current Scope
 
-- backend-regex residual classification after closed idea 378
-- separation of local backend/unit failures from external
-  `c_testsuite_aarch64_backend_*` residuals
-- reclassification of the parked residual buckets after `00174` was removed
-  from the active implementation surface
-- selection or creation of the next focused semantic owner
+- the current first bad fact in `c_testsuite_aarch64_backend_src_00216_c`
+- local aggregate initializers and copies inside `foo`
+- pointer-derived loads such as `const struct S *pls = &ls` and
+  `struct S ls21 = *pls`
+- wrapper/subobject aggregate loads such as `(struct S)w->t.s` and
+  `((const struct W *)w)->t.t`
+- AArch64 frame-slot publication for local aggregate copy/load-local-memory
+  paths
 
 ## Non-Goals
 
-- Do not implement code under this inventory plan.
-- Do not reopen closed focused ideas from failing counts alone.
-- Do not change expectations, unsupported classifications, allowlists,
-  timeout policy, CTest registration, runner behavior, or proof-log policy.
-- Do not run broad runtime scans without bounded commands and stale-process
-  awareness.
-- Do not fold unrelated residual families into one monolithic fix.
-- Do not activate a parked residual idea merely because it exists; require
-  current first-bad-fact evidence that it is the next owner.
+- Do not reopen closed idea 374 unless fresh evidence again shows stale call
+  operands for `&local_aggregate`.
+- Do not include compound relocation, global relocation, or
+  function-pointer-table dispatch work after `foo` unless the current crash
+  advances and fresh evidence proves shared ownership.
+- Do not include timeout-only `00200` or `00207` routes.
+- Do not change expectations, unsupported classifications, allowlists, runner
+  behavior, timeout policy, CTest registration, proof-log policy, or external
+  test contracts.
+- Do not claim progress through helper renames, emitted-text reshuffling, or
+  classification-only changes.
 
 ## Working Model
 
-The latest supervisor context says focused idea 378 is closed by commit
-`2085e845c`. The next inventory pass should treat `00174` scalar FP
-publication as removed from the active residual surface unless fresh
-generated-code or proof evidence contradicts that closure boundary.
+The post-378 inventory reports 358 backend-regex selected tests, 355 passed,
+and 3 residual failures. Local backend/unit tests are clean. The only
+non-timeout residual is `c_testsuite_aarch64_backend_src_00216_c`; `00200` and
+`00207` are timeout-only parked buckets.
 
-The remaining ranked buckets from the umbrella are expected to include broad
-aggregate initializer/compound relocation/function-pointer-table behavior
-(`00216`), dynamic stack/VLA fixed-slot timeout (`00207`), and
-shift/type-promotion timeout (`00200`). Treat this as a starting hypothesis,
-not as proof; the active executor must classify the current surface before
-selecting a focused owner.
+Focused proof reproduces a runtime segfault inside `00216.c` `foo` before
+`test_compound_with_relocs` or `test_multi_relocs` can execute. The observed
+generated sequence loads a pointer through stack slots derived from
+`ldr x13, [sp, #496]` without a prior local initialization on the crashing
+path, then executes `ldrb w9, [x10]`.
+
+Treat `00216` as a representative and advancement proof, not as the only
+contract. Add or use focused backend coverage that demonstrates the same local
+aggregate copy/load-local-memory publication rule independently of the
+external filename.
 
 ## Execution Rules
 
-- Prefer current canonical logs when they already cover the needed surface.
-- If a fresh backend-regex capture is needed, use the main build tree and a
-  bounded command such as
-  `ctest --test-dir build -j10 -R backend --output-on-failure`.
-- Classify before splitting: local backend/unit, AArch64 external runtime,
-  frontend/prepared-node diagnostics, semantic handoff, assembler/linker,
-  runtime mismatch, runtime nonzero/crash, and timeout/output-storm cases.
-- Compare candidate owners against open idea scopes before choosing a route.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
-- When a focused owner is ready, create or select that idea and switch
-  lifecycle state before implementation begins.
+- Localize the first missing publication boundary before changing lowering.
+- Trace the value through semantic BIR, prepared BIR, MIR, and generated
+  AArch64 stack slots as needed.
+- Prefer existing aggregate/local-memory helper patterns over a new one-off
+  path.
+- Keep proof narrow while repairing, then run the supervisor-delegated broader
+  guard once the focused failure advances.
+- If the first bad fact changes after repair, classify the new failure in
+  `todo.md` and stop for supervisor routing when it leaves this source idea.
 
 ## Steps
 
-### Step 1: Capture Current Backend Surface
+### Step 1: Localize First Bad Fact
 
-Goal: establish the current backend-regex residual surface after idea 378.
+Goal: identify the exact local aggregate copy, pointer-derived source,
+prepared value, MIR handoff, or frame-slot publication boundary that feeds the
+uninitialized pointer consumed by the current `foo` `ldrb`.
 
-Primary target: `test_before.log`, `test_after.log`, and, if necessary, a
-fresh bounded `ctest -R backend` capture.
-
-Actions:
-
-- Verify whether existing logs are sufficient to reconstruct the current
-  backend-regex residual list.
-- If not sufficient, request or run the supervisor-approved backend-regex
-  command into `test_after.log`.
-- Record selected, passed, failed, and timeout counts.
-- Identify whether local backend/unit tests fail or whether residuals remain
-  only external `c_testsuite_aarch64_backend_*`.
-- Confirm that `00174` is absent from the current residual list before ranking
-  the next bucket.
-
-Completion check:
-
-- `todo.md` records the current backend-regex residual counts and whether the
-  surface is local-backend clean.
-
-### Step 2: Classify Residual Buckets
-
-Goal: group residuals by first bad fact and backend owner boundary.
-
-Primary target: failing test names, failure excerpts, generated assembly, and
-prepared/semantic dumps for representative cases.
+Primary target: `tests/c/external/c-testsuite/src/00216.c`,
+`build/c_testsuite_aarch64_backend/src/00216.c.s`, and compiler dumps for the
+representative path.
 
 Actions:
 
-- Split failures into compile/printer, semantic handoff, assembler/linker,
-  runtime nonzero/crash, runtime mismatch, timeout, and output-storm buckets.
-- Re-check the parked ranked buckets after the `00174` closure.
-- For each plausible leading bucket, inspect one or two representative
-  generated artifacts or diagnostics.
-- Reject owners already satisfied by recent focused ideas unless fresh proof
-  contradicts their closure boundary.
-- Keep timeout-only cases quarantined unless a safe timeout-specific owner is
-  the best next split.
+- Reproduce or inspect the current `foo` crash path and map the failing
+  generated instructions back to the source-level aggregate operation.
+- Trace the value publication through semantic BIR, prepared BIR, MIR, and
+  AArch64 frame-slot assignment.
+- Identify whether the missing publication is an aggregate address, copied
+  aggregate value, pointer-derived subobject load, or wrapper-subobject load.
+- Record the first bad fact and the smallest focused backend shape needed to
+  cover it.
 
 Completion check:
 
-- `todo.md` records classified buckets and the candidate semantic owner
-  ranking.
+- `todo.md` names the exact publication boundary and the focused coverage
+  shape to add or update before repair.
 
-### Step 3: Select Or Split Focused Owner
+### Step 2: Add Focused Coverage
 
-Goal: choose one focused owner for implementation outside this umbrella plan.
+Goal: create backend coverage for the local aggregate copy/load-local-memory
+publication rule without depending on `00216.c` by name.
 
-Primary target: the highest-signal classified bucket with semantic shared
-ownership.
+Primary target: the repo's focused backend/AArch64 tests for aggregate local
+memory publication.
 
 Actions:
 
-- Select an existing open idea if it exactly owns the leading bucket by
-  current evidence.
-- Otherwise create a new `ideas/open/*.md` focused owner with concrete
-  acceptance criteria and reviewer reject signals.
-- Keep the owner narrow enough for implementation and proof.
-- Preserve remaining parked buckets in `todo.md` for supervisor handoff.
+- Add a minimal focused case for the localized local aggregate copy or
+  pointer-derived load shape.
+- Keep the test semantic enough to reject filename, stack-offset, register, or
+  exact-instruction matching.
+- Verify the focused case fails before the repair for the same missing
+  publication reason.
+- Avoid expectation, runner, timeout, allowlist, CTest, or proof-log changes.
 
 Completion check:
 
-- A focused source idea exists or is selected, and `todo.md` explains why it
-  is the next owner.
+- Focused coverage exists and fails before the repair for a local aggregate
+  copy/load-local-memory publication gap.
 
-### Step 4: Handoff Lifecycle
+### Step 3: Repair Publication
 
-Goal: leave the umbrella inventory parked and activate the focused owner
-before code edits begin.
+Goal: make AArch64 lowering publish the needed local aggregate address or value
+before copied aggregate state or pointer-derived subobject loads consume it.
 
-Primary target: `plan.md`, `todo.md`, and the selected focused idea.
+Primary target: the localized semantic/backend lowering boundary from Step 1.
 
 Actions:
 
-- Record a durable deactivation note in the inventory source idea only if the
-  owner decision needs to survive beyond `todo.md`.
-- Ask plan-owner to switch lifecycle state to the focused owner.
-- Do not delegate implementation while this umbrella plan remains active.
+- Apply the smallest general repair at the publication boundary.
+- Reuse local aggregate/local-memory helper conventions already present in the
+  backend.
+- Preserve closed idea 374 address-call behavior and nearby local backend/unit
+  tests.
+- Keep relocation and function-pointer-table observations parked until `foo`
+  advances.
 
 Completion check:
 
-- The active lifecycle state no longer points at idea 295 before any
-  implementation work starts.
+- The focused coverage from Step 2 passes without special-casing names,
+  offsets, registers, or emitted instruction neighborhoods.
+
+### Step 4: Prove Advancement And Reclassify
+
+Goal: prove `00216` advances past the current `foo` segfault and classify any
+new first bad fact without expanding this owner silently.
+
+Primary target: supervisor-delegated focused and broader backend proof.
+
+Actions:
+
+- Run the supervisor-delegated build and focused backend test command.
+- Confirm `c_testsuite_aarch64_backend_src_00216_c` no longer crashes at the
+  current `foo` `ldrb w9, [x10]` through an uninitialized stack-slot-derived
+  pointer.
+- If `00216` still fails, classify the new first bad fact in `todo.md`.
+- Stop for lifecycle routing if the new owner is relocation,
+  function-pointer-table dispatch, `00200`, `00207`, or another parked bucket.
+
+Completion check:
+
+- `todo.md` records focused proof, broader proof if delegated, and either
+  acceptance for idea 379 or a new first-bad-fact handoff note.

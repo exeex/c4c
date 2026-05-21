@@ -1219,6 +1219,33 @@ Step 3/4 selection 2026-05-21 post-377:
   umbrella should be reactivated only for a later classification pass or for
   splitting another focused owner from the parked residual buckets.
 
+Step 3/4 selection 2026-05-21 post-378:
+
+- Step 2 classified the current backend-regex residual surface after closed
+  scalar FP owner 378 from existing proof logs, source representatives,
+  generated AArch64 assembly, and a focused debugger run.
+- The current backend-regex surface is 358 selected tests, 355 passed, and 3
+  residual failures. Local backend/unit tests selected by the backend regex
+  remain clean.
+- The only non-timeout residual is `00216`; `00200` and `00207` are
+  timeout-only buckets and remain quarantined until a timeout-specific route
+  is intentionally selected.
+- The selected focused owner is new idea 379,
+  `ideas/open/379_aarch64_local_aggregate_copy_load_publication.md`.
+- The lead representative is `00216`: the current runtime crash is inside
+  `foo` before `test_compound_with_relocs` or `test_multi_relocs` executes.
+  Generated AArch64 loads a pointer through stack slots derived from
+  `ldr x13, [sp, #496]` with no prior initialization on the observed path,
+  then reaches `ldrb w9, [x10]`.
+- Closed idea 374 remains valid for the earlier stale local aggregate address
+  call-publication shape. Current evidence is a later local aggregate
+  copy/load-local-memory address or value publication first bad fact.
+- Later `00216` compound relocation and function-pointer-table observations
+  remain parked adjacency checks until the current `foo` crash advances.
+- The active lifecycle state should now use idea 379 for implementation. This
+  umbrella should be reactivated only for a later classification pass or for
+  splitting another focused owner from the parked residual buckets.
+
 ## Reviewer Reject Signals
 
 Reject the route if it:
