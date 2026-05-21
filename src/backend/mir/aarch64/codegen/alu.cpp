@@ -467,11 +467,49 @@ namespace mir = c4c::backend::mir;
   return lines;
 }
 
+[[nodiscard]] std::optional<std::string_view> scalar_frame_slot_load_mnemonic(
+    std::size_t size_bytes) {
+  switch (size_bytes) {
+    case 1:
+      return std::string_view{"ldrb"};
+    case 2:
+      return std::string_view{"ldrh"};
+    case 4:
+    case 8:
+      return std::string_view{"ldr"};
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string> scalar_frame_slot_load_target(
+    std::string_view target,
+    std::size_t size_bytes) {
+  if (target.empty()) {
+    return std::nullopt;
+  }
+  std::string result{target};
+  if (size_bytes == 1 || size_bytes == 2 || size_bytes == 4) {
+    if (result.front() == 'x') {
+      result.front() = 'w';
+    }
+    return result;
+  }
+  if (size_bytes == 8) {
+    return result;
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] bool append_scalar_frame_slot_load(
     std::vector<std::string>& lines,
     const MemoryOperand& memory,
     std::string_view target,
     abi::RegisterReference address_scratch) {
+  const auto mnemonic = scalar_frame_slot_load_mnemonic(memory.size_bytes);
+  const auto load_target = scalar_frame_slot_load_target(target, memory.size_bytes);
+  if (!mnemonic.has_value() || !load_target.has_value()) {
+    return false;
+  }
   std::string address;
   if (scalar_frame_slot_direct_offset_is_encodable(memory)) {
     address = memory_address(memory);
@@ -486,7 +524,7 @@ namespace mir = c4c::backend::mir;
   if (address.empty()) {
     return false;
   }
-  lines.push_back("ldr " + std::string{target} + ", " + address);
+  lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " + address);
   return true;
 }
 
@@ -796,8 +834,8 @@ namespace mir = c4c::backend::mir;
       .byte_offset = static_cast<std::int64_t>(slot->offset_bytes) +
                      source_access->address.byte_offset,
       .byte_offset_is_prepared_snapshot = true,
-      .size_bytes = source_access->address.size_bytes,
-      .align_bytes = source_access->address.align_bytes,
+      .size_bytes = home.size_bytes.value_or(source_access->address.size_bytes),
+      .align_bytes = home.align_bytes.value_or(source_access->address.align_bytes),
       .address_space = source_access->address_space,
       .is_volatile = source_access->is_volatile,
       .can_use_base_plus_offset = true,
@@ -954,6 +992,10 @@ namespace mir = c4c::backend::mir;
       !source->can_use_base_plus_offset ||
       !source->byte_offset_is_prepared_snapshot) {
     return std::nullopt;
+  }
+  if (const auto loaded_size = scalar_type_size_bytes(load->result.type)) {
+    source->size_bytes = *loaded_size;
+    source->align_bytes = *loaded_size;
   }
   return source;
 }
@@ -1502,9 +1544,8 @@ materialize_control_binary_result_source(
     }
     if (memory->base_kind == MemoryBaseKind::FrameSlot) {
       if (scalar_frame_slot_direct_offset_is_encodable(*memory)) {
-        lines.push_back("ldr " + std::string{target} + ", " +
-                        memory_address(*memory));
-        return true;
+        return append_scalar_frame_slot_load(
+            lines, *memory, target, abi::reserved_mir_scratch_gp_registers().front());
       }
       const auto address_scratch =
           scalar_gp_scratch_register(abi::RegisterView::X, occupied);

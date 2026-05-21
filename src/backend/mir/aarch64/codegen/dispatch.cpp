@@ -2208,6 +2208,42 @@ lower_fixed_formal_store_local_publication(
   return std::nullopt;
 }
 
+[[nodiscard]] std::optional<std::size_t> scalar_type_size_bytes(bir::TypeKind type) {
+  switch (type) {
+    case bir::TypeKind::I1:
+    case bir::TypeKind::I8:
+      return std::size_t{1};
+    case bir::TypeKind::I16:
+      return std::size_t{2};
+    case bir::TypeKind::I32:
+      return std::size_t{4};
+    case bir::TypeKind::I64:
+    case bir::TypeKind::Ptr:
+      return std::size_t{8};
+    case bir::TypeKind::Void:
+    case bir::TypeKind::I128:
+    case bir::TypeKind::F32:
+    case bir::TypeKind::F64:
+    case bir::TypeKind::F128:
+      return std::nullopt;
+  }
+  return std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::string_view> scalar_load_mnemonic_for_width(
+    std::size_t width_bytes) {
+  switch (width_bytes) {
+    case 1:
+      return std::string_view{"ldrb"};
+    case 2:
+      return std::string_view{"ldrh"};
+    case 4:
+    case 8:
+      return std::string_view{"ldr"};
+  }
+  return std::nullopt;
+}
+
 [[nodiscard]] std::optional<std::string_view> scalar_store_mnemonic(bir::TypeKind type) {
   switch (type) {
     case bir::TypeKind::I1:
@@ -3049,6 +3085,7 @@ void record_current_block_entry_publication_registers(
 }
 
 [[nodiscard]] bool emit_prepared_value_home_to_register(
+    const prepare::PreparedStackLayout* stack_layout,
     const prepare::PreparedValueHome& home,
     bir::TypeKind type,
     std::uint8_t target_index,
@@ -3063,11 +3100,30 @@ void record_current_block_entry_publication_registers(
   }
   if (home.kind == prepare::PreparedValueHomeKind::StackSlot &&
       home.offset_bytes.has_value()) {
-    const auto mnemonic = scalar_load_mnemonic(type);
-    if (!mnemonic.has_value()) {
+    const auto type_width = scalar_type_size_bytes(type);
+    if (!type_width.has_value()) {
       return false;
     }
-    lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+    std::optional<std::size_t> home_width = home.size_bytes;
+    if (stack_layout != nullptr && home.slot_id.has_value()) {
+      if (const auto* slot = find_frame_slot(*stack_layout, *home.slot_id); slot != nullptr) {
+        home_width = home_width.has_value()
+                         ? std::min(*home_width, slot->size_bytes)
+                         : std::optional<std::size_t>{slot->size_bytes};
+      }
+    }
+    const auto load_width =
+        home_width.has_value()
+            ? std::min(*home_width, *type_width)
+            : *type_width;
+    const auto mnemonic = scalar_load_mnemonic_for_width(load_width);
+    const auto load_view = load_width == 8 ? abi::RegisterView::X
+                                           : abi::RegisterView::W;
+    const auto load_target = gp_register_name(target_index, load_view);
+    if (!mnemonic.has_value() || !load_target.has_value()) {
+      return false;
+    }
+    lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
                     frame_slot_address(*home.offset_bytes));
     return true;
   }
@@ -3088,6 +3144,69 @@ void record_current_block_entry_publication_registers(
     return true;
   }
   return false;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_stack_home_fused_compare_branch(
+    const module::BlockLoweringContext& context) {
+  if (context.function.control_flow == nullptr ||
+      context.function.prepared == nullptr ||
+      context.control_flow_block == nullptr ||
+      context.control_flow_block->terminator_kind != bir::TerminatorKind::CondBranch) {
+    return std::nullopt;
+  }
+  const auto* branch_condition = prepare::find_prepared_branch_condition(
+      *context.function.control_flow, context.control_flow_block->block_label);
+  if (branch_condition == nullptr ||
+      branch_condition->kind != prepare::PreparedBranchConditionKind::FusedCompare ||
+      !branch_condition->can_fuse_with_branch ||
+      !branch_condition->predicate.has_value() ||
+      !branch_condition->compare_type.has_value() ||
+      !branch_condition->lhs.has_value() ||
+      !branch_condition->rhs.has_value() ||
+      branch_condition->rhs->kind != bir::Value::Kind::Immediate ||
+      !is_cmp_immediate_encodable(branch_condition->rhs->immediate)) {
+    return std::nullopt;
+  }
+  const auto condition = branch_condition_suffix(*branch_condition->predicate);
+  const auto operand_view = scalar_view_for_type(*branch_condition->compare_type);
+  if (!condition.has_value() || !operand_view.has_value() ||
+      branch_condition->true_label == c4c::kInvalidBlockLabel ||
+      branch_condition->false_label == c4c::kInvalidBlockLabel) {
+    return std::nullopt;
+  }
+  auto lhs = *branch_condition->lhs;
+  lhs.type = *branch_condition->compare_type;
+  const auto* home = prepared_value_home_for_value(context, lhs);
+  if (home == nullptr ||
+      home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+      !home->offset_bytes.has_value()) {
+    return std::nullopt;
+  }
+  const auto scratches = abi::reserved_mir_scratch_gp_registers();
+  if (scratches.empty()) {
+    return std::nullopt;
+  }
+  const auto compare_reg = abi::gp_register(scratches.front().index, *operand_view);
+  if (!compare_reg.has_value()) {
+    return std::nullopt;
+  }
+  std::vector<std::string> lines;
+  if (!emit_prepared_value_home_to_register(&context.function.prepared->stack_layout,
+                                            *home,
+                                            *branch_condition->compare_type,
+                                            scratches.front().index,
+                                            lines)) {
+    return std::nullopt;
+  }
+  lines.push_back("cmp " + std::string{abi::register_name(*compare_reg)} + ", #" +
+                  std::to_string(branch_condition->rhs->immediate));
+  lines.push_back("b." + std::string{*condition} + " " +
+                  machine_block_label(branch_condition->function_name,
+                                      branch_condition->true_label));
+  lines.push_back("b " + machine_block_label(branch_condition->function_name,
+                                             branch_condition->false_label));
+  return make_branch_compare_assembler_instruction(context, std::move(lines));
 }
 
 [[nodiscard]] bool prepared_value_home_reads_register_index(
@@ -3188,19 +3307,37 @@ void record_current_block_entry_publication_registers(
       is_current_block_join_parallel_copy_source(context, *producer)) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
-      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
+                                                     ? &context.function.prepared->stack_layout
+                                                     : nullptr,
+                                                 *home,
+                                                 value.type,
+                                                 target_index,
+                                                 lines);
     }
   }
   if (producer == nullptr) {
     const auto* home = prepared_value_home_for_value(context, value);
     if (home != nullptr) {
-      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
+                                                     ? &context.function.prepared->stack_layout
+                                                     : nullptr,
+                                                 *home,
+                                                 value.type,
+                                                 target_index,
+                                                 lines);
     }
     return false;
   }
   if (const auto* home = prepared_value_home_for_value(context, value);
       home != nullptr && value_has_current_block_entry_publication(context, *home)) {
-    return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+    return emit_prepared_value_home_to_register(context.function.prepared != nullptr
+                                                   ? &context.function.prepared->stack_layout
+                                                   : nullptr,
+                                               *home,
+                                               value.type,
+                                               target_index,
+                                               lines);
   }
 
   if (const auto* load_local = std::get_if<bir::LoadLocalInst>(producer);
@@ -3208,7 +3345,13 @@ void record_current_block_entry_publication_registers(
     const auto index = producer_instruction_index(context, producer);
     if (const auto* home = prepared_value_home_for_value(context, value);
         !reload_current_memory_loads && home != nullptr) {
-      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
+                                                     ? &context.function.prepared->stack_layout
+                                                     : nullptr,
+                                                 *home,
+                                                 value.type,
+                                                 target_index,
+                                                 lines);
     }
     if (emit_prepared_va_list_field_load_to_register(
             context, *load_local, target_index, lines)) {
@@ -3241,10 +3384,13 @@ void record_current_block_entry_publication_registers(
         index.has_value() ? prepared_local_load_offset(context, *index) : std::nullopt;
     if (offset.has_value()) {
       const auto mnemonic = scalar_load_mnemonic(load_local->result.type);
-      if (!mnemonic.has_value()) {
+      const auto load_view = scalar_view_for_type(load_local->result.type);
+      const auto load_target =
+          load_view.has_value() ? gp_register_name(target_index, *load_view) : std::nullopt;
+      if (!mnemonic.has_value() || !load_target.has_value()) {
         return false;
       }
-      lines.push_back(std::string{*mnemonic} + " " + *target + ", " +
+      lines.push_back(std::string{*mnemonic} + " " + *load_target + ", " +
                       frame_slot_address(*offset));
       return true;
     }
@@ -3259,7 +3405,13 @@ void record_current_block_entry_publication_registers(
         !reload_current_memory_loads && home != nullptr &&
         home->kind == prepare::PreparedValueHomeKind::StackSlot &&
         home->offset_bytes.has_value()) {
-      return emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+      return emit_prepared_value_home_to_register(context.function.prepared != nullptr
+                                                     ? &context.function.prepared->stack_layout
+                                                     : nullptr,
+                                                 *home,
+                                                 value.type,
+                                                 target_index,
+                                                 lines);
     }
     const auto address = gp_register_name(scratch_index, abi::RegisterView::X);
     if (!address.has_value() || load_global->global_name.empty()) {
@@ -4165,7 +4317,14 @@ struct EdgeProducerContext {
   if (!producer.has_value() || producer->producer == nullptr) {
     const auto* home = prepared_value_home_for_value(successor_context, value);
     return home != nullptr &&
-           emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+           emit_prepared_value_home_to_register(
+               successor_context.function.prepared != nullptr
+                   ? &successor_context.function.prepared->stack_layout
+                   : nullptr,
+               *home,
+               value.type,
+               target_index,
+               lines);
   }
   if (const auto* load = std::get_if<bir::LoadLocalInst>(producer->producer);
       load != nullptr) {
@@ -4183,7 +4342,14 @@ struct EdgeProducerContext {
     }
     const auto* home = prepared_value_home_for_value(successor_context, value);
     return home != nullptr &&
-           emit_prepared_value_home_to_register(*home, value.type, target_index, lines);
+           emit_prepared_value_home_to_register(
+               successor_context.function.prepared != nullptr
+                   ? &successor_context.function.prepared->stack_layout
+                   : nullptr,
+               *home,
+               value.type,
+               target_index,
+               lines);
   }
   if (const auto* cast = std::get_if<bir::CastInst>(producer->producer);
       cast != nullptr) {
@@ -6774,8 +6940,7 @@ lower_missing_fused_compare_operand_publication(
     return std::nullopt;
   }
   const auto value_name = prepared_named_value_id(context, value);
-  if (!value_name.has_value() ||
-      find_emitted_scalar_register(scalar_state, *value_name).has_value()) {
+  if (!value_name.has_value()) {
     return std::nullopt;
   }
   const auto* home =
@@ -6783,6 +6948,10 @@ lower_missing_fused_compare_operand_publication(
           ? prepare::find_prepared_value_home(*context.function.value_locations, *value_name)
           : nullptr;
   if (home == nullptr) {
+    return std::nullopt;
+  }
+  if (find_emitted_scalar_register(scalar_state, *value_name).has_value() &&
+      home->kind != prepare::PreparedValueHomeKind::StackSlot) {
     return std::nullopt;
   }
   auto resolved =
@@ -7913,6 +8082,9 @@ InstructionDispatchResult dispatch_prepared_block(
           prepared_memory_access_matches_instruction(
               context, prepared_index_access, inst);
       if (std::get_if<bir::BinaryInst>(&inst) != nullptr) {
+        const bool stack_home_fused_compare_branch =
+            is_fused_compare_branch_support_instruction(context, inst, scalar_state) &&
+            lower_stack_home_fused_compare_branch(context).has_value();
         for (auto& before_instruction_move : lower_value_moves(
                  context,
                  prepare::PreparedMovePhase::BeforeInstruction,
@@ -7924,6 +8096,9 @@ InstructionDispatchResult dispatch_prepared_block(
           }
           if (!call_boundary_move_reloads_prepared_stack_source(
                   before_instruction_move)) {
+            continue;
+          }
+          if (stack_home_fused_compare_branch) {
             continue;
           }
           record_call_boundary_destination(before_instruction_move);
@@ -8285,6 +8460,10 @@ InstructionDispatchResult dispatch_prepared_block(
              c4c::backend::bir::TerminatorKind::CondBranch) {
     if (auto lowered =
             lower_current_block_entry_fused_compare_branch(context)) {
+      block.instructions.push_back(std::move(*lowered));
+      block.successors = make_conditional_branch_successors(context);
+    } else if (auto lowered =
+                   lower_stack_home_fused_compare_branch(context)) {
       block.instructions.push_back(std::move(*lowered));
       block.successors = make_conditional_branch_successors(context);
     } else if (auto lowered =

@@ -17775,6 +17775,185 @@ int prepared_branch_condition_stack_home_publishes_before_branch_use() {
   return 0;
 }
 
+int materialized_branch_stack_home_narrow_scalar_uses_sized_reload(
+    bir::TypeKind condition_type,
+    std::size_t size_bytes,
+    std::size_t offset_bytes,
+    std::string_view expected_load,
+    std::string_view expected_branch,
+    bool include_home_size = true) {
+  prepare::PreparedBirModule prepared;
+  prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
+  prepared.module.target_triple = prepared.target_profile.triple;
+
+  const auto function_name =
+      prepared.names.function_names.intern("dispatch.branch.narrow.compare");
+  const auto entry_label =
+      prepared.names.block_labels.intern("dispatch.branch.narrow.entry");
+  const auto true_label =
+      prepared.names.block_labels.intern("dispatch.branch.narrow.true");
+  const auto false_label =
+      prepared.names.block_labels.intern("dispatch.branch.narrow.false");
+  const auto bir_entry_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.narrow.entry");
+  const auto bir_true_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.narrow.true");
+  const auto bir_false_label =
+      prepared.module.names.block_labels.intern("dispatch.branch.narrow.false");
+  const auto condition_name = prepared.names.value_names.intern("%condition");
+  const auto condition_value = bir::Value::named(condition_type, "%condition");
+
+  prepared.module.functions.push_back(bir::Function{
+      .name = "dispatch.branch.narrow.compare",
+      .return_type = bir::TypeKind::Void,
+      .blocks =
+          {bir::Block{
+               .label = "dispatch.branch.narrow.entry",
+               .terminator =
+                   bir::Terminator{bir::CondBranchTerminator{
+                       .condition = condition_value,
+                       .true_label = "dispatch.branch.narrow.true",
+                       .false_label = "dispatch.branch.narrow.false",
+                       .true_label_id = bir_true_label,
+                       .false_label_id = bir_false_label,
+                   }},
+               .label_id = bir_entry_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.narrow.true",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_true_label,
+           },
+           bir::Block{
+               .label = "dispatch.branch.narrow.false",
+               .terminator = bir::Terminator{bir::ReturnTerminator{}},
+               .label_id = bir_false_label,
+           }},
+  });
+  prepared.control_flow.functions.push_back(prepare::PreparedControlFlowFunction{
+      .function_name = function_name,
+      .blocks =
+          {prepare::PreparedControlFlowBlock{
+               .block_label = entry_label,
+               .terminator_kind = bir::TerminatorKind::CondBranch,
+               .true_label = true_label,
+               .false_label = false_label,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = true_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           },
+           prepare::PreparedControlFlowBlock{
+               .block_label = false_label,
+               .terminator_kind = bir::TerminatorKind::Return,
+           }},
+      .branch_conditions =
+          {prepare::PreparedBranchCondition{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .kind = prepare::PreparedBranchConditionKind::MaterializedBool,
+              .condition_value = condition_value,
+              .true_label = true_label,
+              .false_label = false_label,
+          }},
+  });
+  prepare::PreparedValueHome condition_home{
+      .value_id = prepare::PreparedValueId{189},
+      .function_name = function_name,
+      .value_name = condition_name,
+      .kind = prepare::PreparedValueHomeKind::StackSlot,
+      .slot_id = prepare::PreparedFrameSlotId{18},
+      .offset_bytes = offset_bytes,
+      .align_bytes = size_bytes,
+  };
+  if (include_home_size) {
+    condition_home.size_bytes = size_bytes;
+  }
+  prepared.value_locations.functions.push_back(prepare::PreparedValueLocationFunction{
+      .function_name = function_name,
+      .value_homes = {condition_home},
+  });
+  prepared.stack_layout.frame_slots.push_back(prepare::PreparedFrameSlot{
+      .slot_id = prepare::PreparedFrameSlotId{18},
+      .function_name = function_name,
+      .offset_bytes = offset_bytes,
+      .size_bytes = size_bytes,
+      .align_bytes = size_bytes,
+  });
+  prepared.stack_layout.frame_size_bytes = 64;
+  prepared.stack_layout.frame_alignment_bytes = 16;
+  prepared.addressing.functions.push_back(prepare::PreparedAddressingFunction{
+      .function_name = function_name,
+      .frame_size_bytes = 64,
+      .frame_alignment_bytes = 16,
+      .accesses =
+          {prepare::PreparedMemoryAccess{
+              .function_name = function_name,
+              .block_label = entry_label,
+              .inst_index = 0,
+              .result_value_name = condition_name,
+              .address =
+                  prepare::PreparedAddress{
+                      .base_kind = prepare::PreparedAddressBaseKind::FrameSlot,
+                      .frame_slot_id = prepare::PreparedFrameSlotId{18},
+                      .size_bytes = 8,
+                      .align_bytes = 8,
+                      .can_use_base_plus_offset = true,
+                  },
+          }},
+  });
+
+  const auto& function_cf = prepared.control_flow.functions.front();
+  const auto function_context = aarch64_codegen::make_function_lowering_context(
+      prepared, prepared.target_profile, function_cf);
+  const auto block_context =
+      aarch64_codegen::make_block_lowering_context(function_context,
+                                                   function_cf.blocks.front(),
+                                                   0);
+
+  aarch64_module::MachineBlock block;
+  aarch64_module::ModuleLoweringDiagnostics diagnostics;
+  const auto result =
+      aarch64_codegen::dispatch_prepared_block(block_context, block, diagnostics);
+  if (result.visited_operations != 0 || !result.visited_terminator ||
+      result.emitted_instructions == 0 || block.instructions.empty() ||
+      !diagnostics.empty()) {
+    return fail("expected narrow stack compare branch to lower: emitted=" +
+                std::to_string(result.emitted_instructions) +
+                " block_size=" + std::to_string(block.instructions.size()) +
+                " diagnostics=" + std::to_string(diagnostics.entries.size()));
+  }
+
+  const auto printed = print_route_block(function_cf.function_name, block);
+  if (!printed.ok) {
+    return fail("expected narrow stack compare route to print: " +
+                printed.diagnostic);
+  }
+  if (printed.assembly.find(expected_load) == std::string::npos ||
+      printed.assembly.find(expected_branch) == std::string::npos ||
+      printed.assembly.find("ldr x9, [sp") != std::string::npos ||
+      printed.assembly.find("ldr w9, [sp") != std::string::npos) {
+    return fail("expected narrow stack-home compare to reload with prepared width: " +
+                printed.assembly);
+  }
+  return 0;
+}
+
+int materialized_branch_stack_home_i8_uses_ldrb_before_branch() {
+  return materialized_branch_stack_home_narrow_scalar_uses_sized_reload(
+      bir::TypeKind::I8, 1, 48, "ldrb w9, [sp, #48]", "cbnz w9");
+}
+
+int materialized_branch_stack_home_i16_uses_ldrh_before_branch() {
+  return materialized_branch_stack_home_narrow_scalar_uses_sized_reload(
+      bir::TypeKind::I16, 2, 50, "ldrh w9, [sp, #50]", "cbnz w9");
+}
+
+int materialized_branch_i64_transport_i8_home_uses_ldrb_before_branch() {
+  return materialized_branch_stack_home_narrow_scalar_uses_sized_reload(
+      bir::TypeKind::I64, 1, 52, "ldrb w9, [sp, #52]", "cbnz x9", false);
+}
+
 int materialized_compare_branch_reuses_emitted_latch_operand() {
   prepare::PreparedBirModule prepared;
   prepared.target_profile = c4c::default_target_profile(c4c::TargetArch::Aarch64);
@@ -23514,6 +23693,21 @@ int main() {
   }
   if (const int status =
           prepared_branch_condition_stack_home_publishes_before_branch_use();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_branch_stack_home_i8_uses_ldrb_before_branch();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_branch_stack_home_i16_uses_ldrh_before_branch();
+      status != 0) {
+    return status;
+  }
+  if (const int status =
+          materialized_branch_i64_transport_i8_home_uses_ldrb_before_branch();
       status != 0) {
     return status;
   }
