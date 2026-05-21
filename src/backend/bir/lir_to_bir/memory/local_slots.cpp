@@ -757,24 +757,13 @@ bool BirFunctionLowerer::lower_memory_store_inst(
     return false;
   }
 
-  if (const auto pointer_store = try_lower_pointer_provenance_store(store.ptr.str(),
-                                                                    *value_type,
-                                                                    *value,
-                                                                    type_decls_,
-                                                                    local_slot_types_,
-                                                                    local_slot_pointer_values_,
-                                                                    pointer_value_addresses_,
-                                                                    lowered_insts);
-      pointer_store.has_value()) {
-    clear_local_scalar_slot_values();
-    return *pointer_store;
-  }
-
   if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays_.find(store.ptr.str());
       dynamic_ptr_it != dynamic_pointer_value_arrays_.end()) {
-    clear_local_scalar_slot_values();
-    return append_dynamic_pointer_value_array_store(
-        store.ptr.str(), *value_type, *value, dynamic_ptr_it->second, lowered_insts);
+    if (dynamic_ptr_it->second.element_type == *value_type) {
+      clear_local_scalar_slot_values();
+      return append_dynamic_pointer_value_array_store(
+          store.ptr.str(), *value_type, *value, dynamic_ptr_it->second, lowered_insts);
+    }
   }
 
   if (const auto global_scalar_it = dynamic_global_scalar_arrays_.find(store.ptr.str());
@@ -799,6 +788,19 @@ bool BirFunctionLowerer::lower_memory_store_inst(
   if (handled_dynamic_local_aggregate_store) {
     clear_local_scalar_slot_values();
     return true;
+  }
+
+  if (const auto pointer_store = try_lower_pointer_provenance_store(store.ptr.str(),
+                                                                    *value_type,
+                                                                    *value,
+                                                                    type_decls_,
+                                                                    local_slot_types_,
+                                                                    local_slot_pointer_values_,
+                                                                    pointer_value_addresses_,
+                                                                    lowered_insts);
+      pointer_store.has_value()) {
+    clear_local_scalar_slot_values();
+    return *pointer_store;
   }
 
   if (const auto global_store = try_lower_global_provenance_store(
@@ -1119,38 +1121,21 @@ bool BirFunctionLowerer::lower_memory_load_inst(
     return *global_load;
   }
 
-  if (const auto pointer_load = try_lower_pointer_provenance_load(load.result.str(),
-                                                                  load.ptr.str(),
-                                                                  *value_type,
-                                                                  type_decls_,
-                                                                  local_slot_types_,
-                                                                  local_indirect_pointer_slots_,
-                                                                  local_address_slots_,
-                                                                  local_slot_address_slots_,
-                                                                  global_types_,
-                                                                  function_symbols_,
-                                                                  &value_aliases_,
-                                                                  &local_slot_pointer_values_,
-                                                                  &global_pointer_slots_,
-                                                                  pointer_value_addresses_,
-                                                                  lowered_insts);
-      pointer_load.has_value()) {
-    return *pointer_load;
-  }
-
   if (const auto dynamic_ptr_it = dynamic_pointer_value_arrays_.find(load.ptr.str());
       dynamic_ptr_it != dynamic_pointer_value_arrays_.end()) {
-    const auto selected_value = load_dynamic_pointer_value_array_value(
-        load.result.str(), *value_type, dynamic_ptr_it->second, lowered_insts);
-    if (!selected_value.has_value()) {
-      return false;
-    }
-    if (selected_value->kind == bir::Value::Kind::Named &&
-        selected_value->name == load.result.str()) {
+    if (dynamic_ptr_it->second.element_type == *value_type) {
+      const auto selected_value = load_dynamic_pointer_value_array_value(
+          load.result.str(), *value_type, dynamic_ptr_it->second, lowered_insts);
+      if (!selected_value.has_value()) {
+        return false;
+      }
+      if (selected_value->kind == bir::Value::Kind::Named &&
+          selected_value->name == load.result.str()) {
+        return true;
+      }
+      value_aliases_[load.result.str()] = *selected_value;
       return true;
     }
-    value_aliases_[load.result.str()] = *selected_value;
-    return true;
   }
 
   if (const auto global_scalar_it = dynamic_global_scalar_arrays_.find(load.ptr.str());
@@ -1183,6 +1168,25 @@ bool BirFunctionLowerer::lower_memory_load_inst(
   }
   if (handled_dynamic_local_aggregate_load) {
     return true;
+  }
+
+  if (const auto pointer_load = try_lower_pointer_provenance_load(load.result.str(),
+                                                                  load.ptr.str(),
+                                                                  *value_type,
+                                                                  type_decls_,
+                                                                  local_slot_types_,
+                                                                  local_indirect_pointer_slots_,
+                                                                  local_address_slots_,
+                                                                  local_slot_address_slots_,
+                                                                  global_types_,
+                                                                  function_symbols_,
+                                                                  &value_aliases_,
+                                                                  &local_slot_pointer_values_,
+                                                                  &global_pointer_slots_,
+                                                                  pointer_value_addresses_,
+                                                                  lowered_insts);
+      pointer_load.has_value()) {
+    return *pointer_load;
   }
 
   const auto local_slot_load = try_lower_local_slot_load(load.result.str(),
@@ -2198,6 +2202,16 @@ bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_store(
     return true;
   }
 
+  const auto element_layout =
+      lookup_scalar_byte_offset_layout(dynamic_local_aggregate_it->second.element_type_text,
+                                       type_decls,
+                                       &structured_layouts);
+  if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+      element_layout.scalar_type != value_type) {
+    *handled = false;
+    return true;
+  }
+
   *handled = true;
   return append_dynamic_local_aggregate_store(ptr_name,
                                               value_type,
@@ -2222,6 +2236,16 @@ bool BirFunctionLowerer::try_lower_dynamic_local_aggregate_load(
     bool* handled) {
   const auto dynamic_local_aggregate_it = dynamic_local_aggregate_arrays.find(std::string(ptr_name));
   if (dynamic_local_aggregate_it == dynamic_local_aggregate_arrays.end()) {
+    *handled = false;
+    return true;
+  }
+
+  const auto element_layout =
+      lookup_scalar_byte_offset_layout(dynamic_local_aggregate_it->second.element_type_text,
+                                       type_decls,
+                                       &structured_layouts);
+  if (element_layout.kind == AggregateTypeLayout::Kind::Scalar &&
+      element_layout.scalar_type != value_type) {
     *handled = false;
     return true;
   }
