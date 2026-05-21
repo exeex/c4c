@@ -1,7 +1,8 @@
 # AArch64 External Call Symbol Home Publication
 
-Status: Active
+Status: Closed
 Created: 2026-05-21
+Closed: 2026-05-21
 Split From: ideas/closed/348_aarch64_indexed_aggregate_address_writeback.md
 
 ## Goal
@@ -23,6 +24,18 @@ selected-address/writeback. The residual is external call argument/symbol home
 publication: generated AArch64 must publish the value or address expected by a
 call boundary from its prepared home into the actual ABI argument, symbol, or
 local storage location before the callee or runtime path dereferences it.
+
+## Completion Notes
+
+Closed after the AArch64 dispatch path stopped reloading unpublished preserved
+stack homes when an address materialization for the same value already owns the
+same call-argument register. Focused backend coverage now proves direct
+external calls keep preserved-home string-symbol arguments materialized in the
+ABI argument registers instead of clobbering them from stale stack homes.
+
+`c_testsuite_aarch64_backend_src_00187_c` passed the delegated proof, the
+supervisor broader backend guard passed 141/141, and the close-time regression
+guard passed from 4/5 to 5/5 with `00187` resolved and no new failures.
 
 ## In Scope
 
