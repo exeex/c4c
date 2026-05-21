@@ -364,20 +364,14 @@ make_select_chain_materialization_instruction(
     std::size_t instruction_index,
     std::vector<std::string> lines);
 
-[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
+[[nodiscard]] std::optional<std::size_t> local_slot_address_frame_offset(
     const module::BlockLoweringContext& context,
-    c4c::ValueNameId value_name) {
+    std::string_view local_slot_name) {
   if (context.function.prepared == nullptr ||
       context.function.control_flow == nullptr ||
-      value_name == c4c::kInvalidValueName) {
+      local_slot_name.empty()) {
     return std::nullopt;
   }
-  const auto source_name =
-      prepare::prepared_value_name(context.function.prepared->names, value_name);
-  if (source_name.empty()) {
-    return std::nullopt;
-  }
-  const std::string first_lane_name = std::string{source_name} + ".0";
   const prepare::PreparedFrameSlot* selected_slot = nullptr;
   for (const auto& object : context.function.prepared->stack_layout.objects) {
     if (object.function_name != context.function.control_flow->function_name ||
@@ -386,7 +380,7 @@ make_select_chain_materialization_instruction(
     }
     const auto object_name =
         prepare::prepared_stack_object_name(context.function.prepared->names, object);
-    if (object_name != first_lane_name) {
+    if (object_name != local_slot_name) {
       continue;
     }
     for (const auto& slot : context.function.prepared->stack_layout.frame_slots) {
@@ -402,6 +396,67 @@ make_select_chain_materialization_instruction(
   return selected_slot != nullptr
              ? std::optional<std::size_t>{selected_slot->offset_bytes}
              : std::nullopt;
+}
+
+[[nodiscard]] std::optional<std::size_t> local_aggregate_address_frame_offset(
+    const module::BlockLoweringContext& context,
+    c4c::ValueNameId value_name) {
+  if (context.function.prepared == nullptr ||
+      value_name == c4c::kInvalidValueName) {
+    return std::nullopt;
+  }
+  const auto source_name =
+      prepare::prepared_value_name(context.function.prepared->names, value_name);
+  if (source_name.empty()) {
+    return std::nullopt;
+  }
+  const std::string first_lane_name = std::string{source_name} + ".0";
+  return local_slot_address_frame_offset(context, first_lane_name);
+}
+
+[[nodiscard]] bool emit_local_slot_address_publication_to_register(
+    const module::BlockLoweringContext& context,
+    const bir::BinaryInst& binary,
+    std::uint8_t target_index,
+    std::vector<std::string>& lines) {
+  if (binary.result.type != bir::TypeKind::Ptr ||
+      binary.operand_type != bir::TypeKind::Ptr ||
+      (binary.opcode != bir::BinaryOpcode::Add &&
+       binary.opcode != bir::BinaryOpcode::Sub) ||
+      binary.lhs.kind != bir::Value::Kind::Named ||
+      binary.rhs.kind != bir::Value::Kind::Immediate) {
+    return false;
+  }
+  const auto lhs_name = prepared_named_value_id(context, binary.lhs);
+  const auto base_offset =
+      lhs_name.has_value()
+          ? local_slot_address_frame_offset(
+                context,
+                prepare::prepared_value_name(context.function.prepared->names, *lhs_name))
+          : std::nullopt;
+  if (!base_offset.has_value()) {
+    return false;
+  }
+  const auto target_register = abi::gp_register(target_index, abi::RegisterView::X);
+  const auto target = target_register.has_value()
+                          ? std::optional<std::string>{
+                                std::string{abi::register_name(*target_register)}}
+                          : std::nullopt;
+  if (!target.has_value()) {
+    return false;
+  }
+  const std::int64_t signed_base =
+      static_cast<std::int64_t>(*base_offset);
+  const std::int64_t signed_delta =
+      binary.opcode == bir::BinaryOpcode::Add ? binary.rhs.immediate
+                                              : -binary.rhs.immediate;
+  const std::int64_t adjusted_offset = signed_base + signed_delta;
+  if (adjusted_offset < 0) {
+    return false;
+  }
+  lines.push_back("add " + *target + ", sp, #" +
+                  std::to_string(adjusted_offset));
+  return true;
 }
 
 struct LocalAggregateAddressPublication {
@@ -4339,6 +4394,10 @@ lower_stack_home_fused_compare_branch(
       binary->opcode != bir::BinaryOpcode::Sub) {
     return false;
   }
+  if (emit_local_slot_address_publication_to_register(
+          context, *binary, target_index, lines)) {
+    return true;
+  }
   auto lhs = binary->lhs;
   lhs.type = binary->operand_type;
   auto rhs = binary->rhs;
@@ -4392,6 +4451,65 @@ lower_stack_home_fused_compare_branch(
   lines.push_back(std::string{binary->opcode == bir::BinaryOpcode::Add ? "add " : "sub "} +
                   *result + ", " + *result + ", " + *rhs_name);
   return true;
+}
+
+[[nodiscard]] std::optional<module::MachineInstruction>
+lower_local_slot_address_publication(
+    const module::BlockLoweringContext& context,
+    const bir::Inst& inst,
+    std::size_t instruction_index,
+    BlockScalarLoweringState& scalar_state) {
+  const auto* binary = std::get_if<bir::BinaryInst>(&inst);
+  if (binary == nullptr || binary->result.kind != bir::Value::Kind::Named) {
+    return std::nullopt;
+  }
+  auto result_register = make_named_prepared_result_register(context, binary->result);
+  std::optional<std::size_t> result_stack_offset_bytes;
+  if (!result_register.has_value()) {
+    const auto* home = prepared_value_home_for_value(context, binary->result);
+    const auto scratches = abi::reserved_mir_scratch_gp_registers();
+    if (home == nullptr ||
+        home->kind != prepare::PreparedValueHomeKind::StackSlot ||
+        !home->offset_bytes.has_value() ||
+        scratches.empty()) {
+      return std::nullopt;
+    }
+    const auto scratch = abi::gp_register(scratches.front().index, abi::RegisterView::X);
+    if (!scratch.has_value()) {
+      return std::nullopt;
+    }
+    result_register = RegisterOperand{
+        .reg = *scratch,
+        .role = RegisterOperandRole::SpillAuthority,
+        .value_id = home->value_id,
+        .value_name = home->value_name,
+        .prepared_bank = prepare::PreparedRegisterBank::Gpr,
+        .expected_view = abi::RegisterView::X,
+    };
+    result_stack_offset_bytes = *home->offset_bytes;
+  }
+  if (!abi::is_gp_register(result_register->reg)) {
+    return std::nullopt;
+  }
+
+  std::vector<std::string> lines;
+  if (!emit_local_slot_address_publication_to_register(
+          context, *binary, result_register->reg.index, lines)) {
+    return std::nullopt;
+  }
+  if (result_stack_offset_bytes.has_value()) {
+    const auto result_name =
+        gp_register_name(result_register->reg.index, abi::RegisterView::X);
+    if (!result_name.has_value()) {
+      return std::nullopt;
+    }
+    lines.push_back("str " + *result_name + ", " +
+                    frame_slot_address(*result_stack_offset_bytes));
+  }
+  record_emitted_scalar_register(
+      scalar_state, result_register->value_name, *result_register);
+  return make_select_chain_materialization_instruction(
+      context, instruction_index, std::move(lines));
 }
 
 [[nodiscard]] std::optional<module::MachineInstruction>
@@ -9677,6 +9795,9 @@ InstructionDispatchResult dispatch_prepared_block(
           record_memory_result(scalar_state, *lowered_f128_transport.instruction);
           block.instructions.push_back(std::move(*lowered_f128_transport.instruction));
         }
+      } else if (auto lowered = lower_local_slot_address_publication(
+              context, inst, instruction_index, scalar_state)) {
+        block.instructions.push_back(std::move(*lowered));
       } else if (auto lowered = lower_scalar_instruction(
               context, inst, instruction_index, scalar_state, diagnostics)) {
         block.instructions.push_back(std::move(*lowered));

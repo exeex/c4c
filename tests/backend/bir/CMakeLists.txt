@@ -442,6 +442,16 @@ c4c_add_backend_codegen_route_test(
   LABELS aarch64 scalar_fp publication
 )
 
+c4c_add_backend_codegen_route_test(
+  backend_codegen_route_aarch64_local_aggregate_address_pointer_copy_publishes_frame_address
+  SRC "${BACKEND_CASE_ROOT}/aarch64_local_aggregate_address_pointer_copy.c"
+  TARGET_TRIPLE aarch64-linux-gnu
+  OUT_TEXT "${CMAKE_BINARY_DIR}/backend_route/aarch64_local_aggregate_address_pointer_copy.s"
+  REQUIRED_SNIPPETS "add x9, sp, #0|str x9, [sp, #56]|ldrb w9, [x10]"
+  FORBIDDEN_SNIPPETS ""
+  LABELS aarch64 aggregate local_address publication
+)
+
 add_test(
   NAME backend_cli_dump_bir_focus_function_filters_00204
   COMMAND "${CMAKE_COMMAND}"
