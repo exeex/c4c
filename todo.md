@@ -1,43 +1,55 @@
 Status: Active
 Source Idea Path: ideas/open/348_aarch64_indexed_aggregate_address_writeback.md
 Source Plan Path: plan.md
-Current Step ID: 2
-Current Step Title: Add focused indexed aggregate coverage and repair selected-address snapshot/writeback handoff
+Current Step ID: 4
+Current Step Title: Prove Representatives And Reclassify Residuals
 
 # Current Packet
 
 ## Just Finished
 
-Step 2 repaired the AArch64 selected store-value publication handoff for
-stack-homed selected values consumed by fixed `StoreGlobal` records. Global
-store value publication now handles prepared frame-slot store-value operands,
-emits the select-chain value into the stack home, tracks those publications to
-avoid duplicate per-store emission, and prepublishes the stack homes for a
-scalarized global select/store run before the first fixed global writeback
-store consumes any of them.
+Step 4 localized the remaining `00176` runtime mismatch without implementation
+changes. The old fixed-store-value publication failure has advanced: generated
+`swap` still emits the `%t7...inner.store` publication batch to stack homes such
+as `[sp, #264]` before the first fixed `array` store reloads those homes.
 
-Focused coverage was added to `backend_aarch64_instruction_dispatch`: a
-scalarized global array-style fixture with two fixed global element stores now
-requires both selected stack homes to be published before the first fixed
-global store reloads `[sp, #16]`.
+The new `00176` first bad fact is earlier in `swap`, at the load-side selected
+value used for `tmp = array[a]`. Semantic and prepared BIR both contain the
+load select chain:
 
-`00176` advanced past the localized uninitialized selected store-value
-snapshot: generated `swap` assembly now emits the first batch of selected
-`%t7...inner.store` publications to stack homes such as `[sp, #264]` through
-`[sp, #324]` before the first fixed `array` store reloads `[sp, #264]`. The
-next first bad fact is a runtime output mismatch after that publication repair;
-the final observed sorted line was `1572863 65535 ... 65535`, indicating the
-remaining failure is no longer the original read-before-publication of
-uninitialized selected store-value homes.
+`%t2.outer0 = bir.select eq i64 %t0, 0, i32 %t2.outer0.elt0, %t2.outer0.sel1`
+
+followed by `bir.store_local %lv.tmp, i32 %t2.outer0`. Prepared storage assigns
+`%t2.outer0` to stack offset `124`, and `%lv.tmp` is the local home at `[sp]`.
+Generated assembly loads every fixed global element into `[sp, #4]` through
+`[sp, #64]`, then immediately does:
+
+`ldr w9, [sp, #124]`
+`str w9, [sp]`
+
+No instruction writes `[sp, #124]` before that load. The generated code does
+materialize later selected store-value homes such as `[sp, #264]`, but the
+initial load-side selected snapshot for `%t2.outer0` is consumed uninitialized.
+This keeps `00176` in scope for idea 348 as selected indexed aggregate
+value/snapshot materialization, but the owner is now the load-side selected
+result publication into the local snapshot consumed by `store_local`, not the
+fixed global store-value prepublication repaired in Step 2.
+
+`00187` was checked and does not reach this owner. Its prepared BIR/metadata
+center on local buffer plus external calls, and generated `main` reloads string
+symbol argument homes from `[sp, #32]`, `[sp, #40]`, `[sp, #48]`, and similar
+slots before those homes are populated, then passes them to `fopen`/`printf`.
+The runtime result remains `RUNTIME_NONZERO` segmentation fault, so `00187`
+stays separately classified as a call/symbol publication or preservation
+boundary rather than indexed aggregate selected-address/writeback.
 
 ## Suggested Next
 
-Investigate the new `00176` first bad fact in the emitted select-chain
-semantics for scalarized global array writeback. The selected homes are now
-published before fixed stores, so the next packet should compare the emitted
-nested select-chain control flow against the semantic BIR for the
-`array[a] = array[b]` and `array[b] = tmp` batches rather than extending
-store-value publication ordering.
+Repair the AArch64 publication/materialization path for load-side selected
+scalarized global aggregate values that are stack-homed and immediately
+consumed by `store_local` snapshots. Use a focused backend case that proves a
+selected global array load result is written to its prepared home before a local
+snapshot reload consumes it, then re-run `00176` and the existing Step 4 subset.
 
 ## Watchouts
 
@@ -53,8 +65,9 @@ store-value publication ordering.
 - Do not assume prepared AArch64 currently has selected global element
   addresses for this store shape; the prepared evidence shows fixed
   `global_symbol` offsets plus selected store values.
-- `c_testsuite_aarch64_backend_src_00187_c` still fails with the prior
-  segmentation fault in this delegated proof and was not part of this repair.
+- Do not fold `00187` into the next indexed aggregate packet. Its current
+  evidence reaches external call argument/symbol home publication, not the
+  `00176` selected global array load snapshot.
 
 ## Proof
 
@@ -72,10 +85,7 @@ Passing: `backend_aarch64_instruction_dispatch`,
 `c_testsuite_aarch64_backend_src_00176_c` with the advanced runtime output
 mismatch after selected store-value stack-home publication, and
 `c_testsuite_aarch64_backend_src_00187_c` with the prior `RUNTIME_NONZERO`
-segmentation fault. Canonical proof log: `test_after.log`.
-
-Supervisor broader guard:
-
-`ctest --test-dir build -j --output-on-failure -R '^backend_'`
-
-Result: passed, 141/141.
+segmentation fault. The fresh `00176` final line was
+`65535 3670015 74 74 74 74 74 74 74 74 74 74 74 74 74 74`, consistent with an
+uninitialized load-side selected snapshot. Canonical proof log:
+`test_after.log`.
